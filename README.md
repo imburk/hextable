@@ -21,6 +21,7 @@ Needs Node.js 22 or newer. There are no dependencies to install.
 
 ```
 npm test     # run the rules and server tests
+npm run content   # list rules content entered so far, by tier
 npm start    # build, then run the table server at http://localhost:8080
 ```
 

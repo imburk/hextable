@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
-import { SPELLS } from "../src/content/srd52.js";
+import { SPELLS } from "../src/content/index.js";
 import { apply, areaHexes, blocked, current, moveOptions, targetsFor } from "../src/engine.js";
 import * as H from "../src/hex.js";
 import { rand, roll } from "../src/rng.js";
@@ -114,7 +114,7 @@ test("a hidden monster is absent from the view and from events", () => {
     { type: "moved", id: "m2", path: [{ q: 0, r: 0 }] },
     { type: "attack", actor: "m2", target: "fighter", name: "Scimitar", rolls: [12], nat: 12, total: 16, ac: 18, mode: "normal", why: [], hit: false, crit: false },
     { type: "damage", target: "m2", amount: 4, dtype: "fire", hp: 6 },
-    { type: "cast", actor: "wizard", spell: "burningHands", name: "Burning Hands", hexes: [{ q: 1, r: 1 }], targets: ["m1", "m2"] },
+    { type: "cast", actor: "wizard", spell: "burning-hands", name: "Burning Hands", hexes: [{ q: 1, r: 1 }], targets: ["m1", "m2"] },
     { type: "moved", id: "fighter", path: [{ q: 0, r: 1 }] },
   ];
   const seen = viewEvents(events, s, PLAYER);
@@ -150,7 +150,7 @@ test("events: a monster's dice and a monster's Armor Class stay behind the scree
 test("events: saving throws, initiative, the chronicle and unknown event types", () => {
   const s = newGame(5);
   const save = (id) => ({ type: "save", id, abil: "dex", dc: 13, roll: 9, total: 11, success: false });
-  const cast = (actor) => ({ type: "cast", actor, spell: "sacredFlame", name: "Sacred Flame", hexes: null, targets: [] });
+  const cast = (actor) => ({ type: "cast", actor, spell: "sacred-flame", name: "Sacred Flame", hexes: null, targets: [] });
 
   // A hero's spell against a monster: the players know their own DC, not the monster's roll.
   assert.deepEqual(viewEvents([cast("cleric"), save("m1")], s, PLAYER)[1], { type: "save", id: "m1", abil: "dex", success: false, dc: 13 });

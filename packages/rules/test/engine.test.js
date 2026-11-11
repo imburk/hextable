@@ -56,7 +56,7 @@ test("players control only their own character; the DM controls anyone", () => {
   assert.ok(apply(s, { type: "move", actor: "fighter", to: dest("fighter") }, alice).ok);
   assert.ok(apply(s, { type: "move", actor: "rogue", to: dest("rogue") }, DM).ok);
 
-  assert.equal(apply(s, { type: "spawn", monster: "goblin", at: { q: 0, r: 0 } }, alice).ok, false);
+  assert.equal(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 0, r: 0 } }, alice).ok, false);
 });
 
 test("a rejected action changes nothing", () => {
@@ -116,7 +116,7 @@ test("spell slots are spent and run out", () => {
   assert.ok(apply(s, { type: "startEncounter", center: wizard.pos, radius: 3 }, DM).ok);
   for (let guard = 0; wizard.slots[1] > 0 && s.encounter && guard < 200; guard++) {
     const id = current(s);
-    if (id === "wizard" && up(s.entities.m1)) apply(s, { type: "cast", actor: "wizard", spell: "magicMissile", target: "m1" }, DM);
+    if (id === "wizard" && up(s.entities.m1)) apply(s, { type: "cast", actor: "wizard", spell: "magic-missile", target: "m1" }, DM);
     else if (id === "wizard") break;
     if (s.encounter) apply(s, { type: "endTurn", actor: current(s) }, DM);
   }
@@ -203,7 +203,7 @@ function withLurker(at, { autoEngage = false } = {}) {
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   for (const k of Object.keys(s.map.tiles)) s.map.tiles[k] = { t: "grass", h: 0.6 };      // open ground everywhere
   apply(s, { type: "setting", key: "autoEngage", value: autoEngage }, DM);
-  const res = apply(s, { type: "spawn", monster: "goblin", at, hidden: true }, DM);
+  const res = apply(s, { type: "spawn", monster: "goblin-warrior", at, hidden: true }, DM);
   assert.ok(res.ok, res.error);
   const lurker = s.entities[res.events[0].id];
   assert.equal(lurker.hidden, true);
@@ -246,7 +246,7 @@ test("to a player, a hidden creature does not exist", () => {
     { type: "move", actor: lurker.id, to: { q: 2, r: 0 } },
     { type: "claim", entity: lurker.id, user: "pat" },
     { type: "release", entity: lurker.id },
-    { type: "cast", actor: "fighter", spell: "fireBolt", target: lurker.id },
+    { type: "cast", actor: "fighter", spell: "fire-bolt", target: lurker.id },
   ]) {
     const res = apply(s, action, PAT);
     assert.deepEqual(res, { ok: false, error: "No such creature.", events: [] }, JSON.stringify(action));
@@ -339,7 +339,7 @@ test("a spell's area reveals what it catches, and attacking from hiding gives th
   apply(a.s, { type: "place", actor: "wizard", to: { q: -1, r: 0 } }, DM);
   apply(a.s, { type: "reveal", actor: a.lurker.id, hidden: true }, DM);        // placing next to it spotted nothing, but be sure
   assert.equal(a.lurker.hidden, true);
-  const burn = apply(a.s, { type: "cast", actor: "wizard", spell: "burningHands", hex: { q: 0, r: 0 } }, DM);
+  const burn = apply(a.s, { type: "cast", actor: "wizard", spell: "burning-hands", hex: { q: 0, r: 0 } }, DM);
   assert.ok(burn.ok, burn.error);
   assert.ok(revealed(burn, a.lurker.id));
 

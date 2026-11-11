@@ -114,7 +114,7 @@ test("actions are checked by the rules and the result goes to everyone", () => {
   // A player cannot move a character they haven't claimed, or use DM tools.
   player.say({ t: "act", action: { type: "move", actor: "rogue", to: freeHex(state(), "rogue") } });
   assert.match(player.last("error").error, /isn't yours/);
-  player.say({ t: "act", action: { type: "spawn", monster: "goblin", at: { q: 0, r: 0 } } });
+  player.say({ t: "act", action: { type: "spawn", monster: "goblin-warrior", at: { q: 0, r: 0 } } });
   assert.match(player.last("error").error, /Only the DM/);
 
   // Claiming for someone else is rewritten to a claim for yourself.

@@ -26,6 +26,13 @@ designs are in [docs/specs](docs/specs).
   mistakes there are rule or security bugs.
 - **Only SRD 5.2.1 content.** Nothing from other D&D books, and no invented
   stats presented as SRD.
+- **Content is data, and it is checked.** Entries go in
+  `packages/rules/src/content/srd52/` in the format `schema.js` enforces. No
+  functions or imports in those files. Do not add to the lists in `schema.js`;
+  if an entry needs something the vocabulary lacks, enter it at the tier that
+  is honest (`assist` or `manual`) and say what was missing in the pull
+  request. Set `checked: true` only if you compared every number in the
+  entry against the SRD 5.2.1 text, and say so in the pull request.
 - **Never trust the client.** Anything a browser sends is checked on the
   server through `apply()`.
 - **Phones count.** Any UI change is checked at a phone-sized screen with

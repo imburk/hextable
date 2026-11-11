@@ -4,6 +4,7 @@
 import { apply } from './shared/engine.js';
 import { newGame } from './shared/scenario.js';
 import { createReceiver } from './shared/patch.js';
+import { migrate } from './shared/migrate.js';
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -13,7 +14,7 @@ const store = {
 
 // Solo: the engine runs here and you are the DM and every hero.
 export function localTransport() {
-  let state = store.get('hextable.solo');
+  let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
   if (!state || state.version !== 1) state = newGame((Math.random() * 1e9) | 0);
   const t = {
     solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {},

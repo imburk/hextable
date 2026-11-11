@@ -344,6 +344,8 @@ pack.
 
 ```
 packages/rules/src/content/
+  schema.js          the closed vocabulary and the linter
+  terrain.js         terrain types (engine data, not rules content)
   srd52/
     pack.js          { id, name, version, license, attribution }
     conditions.js
@@ -364,11 +366,14 @@ packages/rules/src/content/
   means a data pull request cannot contain logic. The linter enforces it.
 - Ids are `kebab-case` and unique within their kind: `fire-bolt`,
   `goblin-warrior`. The current camelCase ids are migrated.
-- Every entry carries `text`: the SRD wording of what it does. The SRD 5.2.1
-  is licensed CC-BY-4.0, so the text may be included with the attribution in
-  `pack.js`.
-- Every entry carries `source: "SRD 5.2.1"` and, where practical, the heading
-  it comes from, so a reviewer can find it.
+- Every entry carries `text`: what it does, in plain words. The SRD 5.2.1 is
+  licensed CC-BY-4.0, so a contributor may use its wording with the
+  attribution in `pack.js`; a short description written for this project is
+  also fine.
+- Every entry carries `source: "SRD 5.2.1"`.
+- Every entry carries `checked`: `true` only when someone has compared every
+  number in it against the SRD text. The coverage report counts unchecked
+  entries, so accuracy is tracked separately from how much is entered.
 - A table's state records which packs it uses. Homebrew goes in its own pack;
   nothing outside `srd52/` may claim to be SRD.
 
@@ -618,7 +623,7 @@ each other and with the engine tasks.
 
 | # | Task | Who | Touches | Done when |
 |---|---|---|---|---|
-| R1 | Content pack layout, loader, and linter; move the existing 6 spells, 3 monsters and 4 pregens into `srd52/` in the new format | Fable | `content/**`, new linter, `scenario.js` | Linter passes; all existing tests pass unchanged apart from ids |
+| R1 (built) | Content pack layout, loader, and linter; move the existing 6 spells, 3 monsters and 4 pregens into `srd52/` in the new format | Fable | `content/**`, new linter, `scenario.js` | Linter passes; all existing tests pass unchanged apart from ids |
 | R2 | Effect steps: resolve `attack`, `save`, `damage`, `heal`, `condition`, `resource`, `manual` from data; delete the four hard-coded spell kinds | Fable | `engine.js`, new `effects.js` | The six spells play identically from data; a `manual` spell enforces its costs and shows its text |
 | R3 | Modifier system and the fifteen conditions as data; state version 2 and `migrate()` | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
 | R4 | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
