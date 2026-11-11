@@ -1,5 +1,8 @@
 // Seeded dice. The generator state lives in game state, so every game is replayable.
 export function rand(state) {
+  // A state with no seed is a player's view of the game, not the game. Rolling on one
+  // would quietly use seed 0 and produce dice that look real, so refuse instead.
+  if (!Number.isInteger(state.rng)) throw new Error('This game state has no dice seed; only the full state can roll.');
   let t = (state.rng = (state.rng + 0x6d2b79f5) | 0);
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
