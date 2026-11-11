@@ -150,3 +150,47 @@ test("a long rest restores the party and moves the clock", () => {
   assert.equal(s.entities.wizard.slots[1], s.entities.wizard.slotsMax[1]);
   assert.equal(s.clock, clock + 480);
 });
+
+test("a revived creature stays prone during a fight but gets up once it is free to", () => {
+  const s = newGame(5);
+  const pip = s.entities.rogue;
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+
+  // Knocked out and healed in the middle of a fight: still prone until its own turn.
+  apply(s, { type: "place", actor: "m1", to: H.neighbors(pip.pos).find((h) => moveOptions(s, pip).get(H.key(h))?.canStop) }, DM);
+  assert.ok(apply(s, { type: "startEncounter", center: pip.pos, radius: 3 }, DM).ok);
+  assert.ok(inFight(s, "rogue") && inFight(s, "m1"));
+  apply(s, { type: "setHp", actor: "rogue", hp: 0 }, DM);
+  assert.ok(pip.cond.prone && pip.cond.unconscious);
+  apply(s, { type: "setHp", actor: "rogue", hp: 4 }, DM);
+  assert.equal(pip.cond.unconscious, undefined);
+  assert.equal(pip.cond.prone, true);
+
+  // When the fight ends, everyone still standing a chance stands up.
+  assert.ok(apply(s, { type: "endEncounter" }, DM).ok);
+  assert.equal(pip.cond.prone, undefined);
+
+  // Knocked out and healed with no fight on: up straight away.
+  apply(s, { type: "setHp", actor: "rogue", hp: 0 }, DM);
+  assert.equal(pip.cond.prone, true);
+  const res = apply(s, { type: "setHp", actor: "rogue", hp: 4 }, DM);
+  assert.equal(pip.cond.prone, undefined);
+  assert.ok(res.events.some((e) => e.type === "stood"));
+});
+
+test("a character can be released by its player or the DM, and reassigned by the DM", () => {
+  const s = newGame(5);
+  const alice = { role: "player", userId: "alice" }, bob = { role: "player", userId: "bob" };
+  apply(s, { type: "claim", entity: "fighter", user: "alice", userName: "Alice" }, alice);
+
+  assert.equal(apply(s, { type: "release", entity: "fighter" }, bob).ok, false);
+  assert.equal(apply(s, { type: "release", entity: "rogue" }, DM).ok, false);
+  assert.ok(apply(s, { type: "release", entity: "fighter" }, alice).ok);
+  assert.equal(s.entities.fighter.owner, null);
+
+  // Free again, so Bob can take it; then the DM hands it to Alice instead.
+  assert.ok(apply(s, { type: "claim", entity: "fighter", user: "bob", userName: "Bob" }, bob).ok);
+  assert.ok(apply(s, { type: "claim", entity: "fighter", user: "alice", userName: "Alice" }, DM).ok);
+  assert.equal(s.entities.fighter.ownerName, "Alice");
+  assert.ok(apply(s, { type: "release", entity: "fighter" }, DM).ok);
+});

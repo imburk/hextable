@@ -106,3 +106,8 @@ button.quiet { background: transparent; }
 @media (max-width: 480px) { #cam { top: 38%; } #order { top: calc(max(10px, env(safe-area-inset-top)) + 58px); } }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 #toast.info { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); bottom: auto; top: 30%; }
+
+/* who plays whom, leaving */
+.assign { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.assign select { min-height: 40px; min-width: 9em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, #222); color: inherit; font: inherit; }
+button.leave.sure { outline: 2px solid currentColor; }

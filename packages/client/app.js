@@ -64,6 +64,7 @@ function describe(ev) {
     case 'time': return [`Time passes. It is now ${clockText(S.clock)}.`];
     case 'rest': return ['The party finishes a Long Rest.', 'good'];
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
+    case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
     default: return null;
   }
@@ -127,6 +128,7 @@ function refresh() {
   $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
   $('clock').textContent = clockText(S.clock);
   $('btn-dm').hidden = !isDM();
+  $('btn-leave').hidden = isDM() || !!T.solo;
 
   // turn order
   $('order').innerHTML = enc ? enc.order.map((o) => {
@@ -278,6 +280,22 @@ function renderDM() {
       row.lastChild.append(yes, no); table.append(row);
     }
   }
+  // Who plays whom: the DM can hand any character to any player, or take it back.
+  const players = lb.members.filter((m) => m.role === 'player');
+  $('dm-chars-box').hidden = T.solo; $('dm-leave-box').hidden = T.solo;
+  const chars = $('dm-chars'); chars.textContent = '';
+  if (!T.solo) for (const x of Object.values(S.entities).filter((x) => x.kind === 'pc')) {
+    const row = document.createElement('label'); row.className = 'assign';
+    const sel = document.createElement('select');
+    const known = players.some((m) => m.id === x.owner);
+    sel.innerHTML = `<option value="">Nobody (DM)</option>${players.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}${x.owner && !known ? `<option value="${esc(x.owner)}">${esc(x.ownerName || 'Someone')} (left)</option>` : ''}`;
+    sel.value = x.owner || '';
+    sel.onchange = () => {
+      const m = players.find((p) => p.id === sel.value);
+      act(m ? { type: 'claim', entity: x.id, user: m.id, userName: m.name } : { type: 'release', entity: x.id });
+    };
+    row.append(document.createTextNode(x.name), sel); chars.append(row);
+  }
   $('chron-list').innerHTML = recall(S, { types: ['chronicle'] }).reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
 }
 
@@ -329,6 +347,23 @@ $('dm-rest').onclick = () => act({ type: 'rest' });
 $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', value: ev.target.checked });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();
+// Leaving takes two taps, so a stray one can't drop you from the table.
+let leaveTimer = null;
+function leaveTable(btn) {
+  if (!btn.classList.contains('sure')) {
+    const label = btn.textContent;
+    btn.classList.add('sure'); btn.textContent = 'Tap again to leave';
+    clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { btn.classList.remove('sure'); btn.textContent = label; }, 3000);
+    return;
+  }
+  clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
+  T.leave?.(); T = null; S = null; selId = null; clearTimeout(aiTimer);
+  for (const id of ['dm', 'sheet', 'log', 'card']) $(id).hidden = true;
+  $('btn-dm').hidden = $('btn-leave').hidden = true;
+  lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
+}
+$('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
+$('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 for (const [id, m] of Object.entries(MONSTERS)) {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = `Add ${m.name}`;
   b.onclick = () => { closeDM(); setMode({ kind: 'spawn', monster: id }); };

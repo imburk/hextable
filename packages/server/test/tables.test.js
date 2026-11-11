@@ -176,3 +176,28 @@ test("a player who leaves before being let in withdraws their request", () => {
   second.session.disconnect();
   assert.equal(tables.get(code).members.length, 2);
 });
+
+test("a player who leaves frees their character and their seat; the DM's seat is kept", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const { token, userId } = player.last("welcome");
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  assert.equal(tables.get(code).state.entities.rogue.owner, userId);
+
+  player.say({ t: "leave" });
+  assert.equal(tables.get(code).state.entities.rogue.owner, null);
+  assert.equal(dm.last("update").events[0].type, "released");
+  assert.deepEqual(dm.last("lobby").members.map((m) => m.name), ["Dana"]);
+
+  // The old seat is gone, but the same connection can join again as a new player.
+  const back = client(tables);
+  back.say({ t: "resume", code, token });
+  assert.equal(back.last("error").expired, true);
+  player.say({ t: "join", code, name: "Pat" });
+  assert.equal(player.last("welcome").approved, false);
+
+  dm.say({ t: "leave" });
+  assert.equal(tables.get(code).members.some((m) => m.role === "dm"), true);
+  dm.say({ t: "act", action: { type: "rest" } });
+  assert.equal(dm.last("update").events[0].type, "rest");
+});
