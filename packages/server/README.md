@@ -39,11 +39,16 @@ JSON messages over the WebSocket at `/ws`.
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
-`{t:"leave"}`.
+`{t:"leave"}`, `{t:"history",types?,since?,limit?}`.
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",state,events}`, `{t:"lobby",members,pending}`,
-`{t:"error",error,expired?}`.
+`{t:"error",error,expired?}`, `{t:"history",entries,recent?}`.
+
+An update's `state` is the receiver's view of the game and never includes the
+timeline. Past entries come through `history`, redacted for players in the
+same way as live events. On joining or rejoining, each client is sent its last
+50 visible entries with `recent: true`.
 
 ## Hosting
 
@@ -56,8 +61,7 @@ WebSockets, and gives it a disk that survives restarts for `DATA_DIR`. The
 
 - Players are sent a view of the game, not the game: no dice seed, and other
   creatures only as name, position and a health word. They still see every
-  creature that is not marked hidden, the whole map, and the DM's timeline is
-  not yet split out for the DM. See `docs/specs/hidden-information.md`.
+  creature that is not marked hidden, and the whole map. See `docs/specs/hidden-information.md`.
 - The whole state is re-sent after every action. Fine for one table of this
   size; send only changes if maps grow large.
 - Anyone with a table code can ask to join, and the DM decides. There are no

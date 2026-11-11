@@ -1,6 +1,7 @@
 # Spec: hidden information
 
-Status: tasks 1 and 2 built (views, and the server sending them); 3 to 5 open. Owner of the design: Claude (Fable). Tasks at
+Status: tasks 1 to 3 built (views, the server sending them, the timeline out
+of updates); 4 and 5 open. Owner of the design: Claude (Fable). Tasks at
 the end are sized for one pull request each.
 
 ## Problem
@@ -140,7 +141,9 @@ after each action.
   uses it. Players may call it too; their answer is passed through
   `viewEvents`.
 - On join or resume, each client gets the last 50 visible entries so the log
-  is not empty.
+  is not empty, as `{t:"history", entries, recent: true}`.
+- `limit` is capped at 200. Timeline entries keep their in-world time `t`
+  when redacted.
 
 Solo play keeps `timeline` in its local state and calls `recall()` directly,
 as now.

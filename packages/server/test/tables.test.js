@@ -156,7 +156,8 @@ test("tables survive a restart", () => {
   assert.ok(back.last("update").state.entities.fighter);
   const dmBack = client(second);
   dmBack.say({ t: "resume", code, token: dm.last("welcome").token });
-  assert.ok(dmBack.last("update").state.timeline.some((e) => e.title === "The bridge burned"));
+  assert.ok(dmBack.last("history").entries.some((e) => e.title === "The bridge burned"));
+  assert.ok(second.get(code).state.timeline.length > 0);
 });
 
 test("a player who leaves before being let in withdraws their request", () => {
@@ -278,4 +279,68 @@ test("property 9: the DM's chronicle reaches the DM and not the players", () => 
   for (const m of back.got) assert.equal(JSON.stringify(m).includes("doppelganger"), false);
   // Nor is the scenario's own back story, which lives in the same timeline.
   for (const m of back.got) assert.equal(JSON.stringify(m).includes("timeline"), false);
+});
+
+test("the timeline is never part of an update; the DM reads it through history", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  dm.say({ t: "act", action: { type: "chronicle", title: "The duke is a doppelganger" } });
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 60 } });
+  dm.say({ t: "act", action: { type: "chronicle", title: "The bridge has fallen" } });
+
+  for (const c of [dm, player]) for (const m of c.got) assert.equal(JSON.stringify(m).includes('"timeline"'), false);
+  assert.ok(tables.get(code).state.timeline.length >= 5, "the server still keeps the record");
+
+  // The DM's chronicle list: every chronicle entry, oldest first, each with its in-world time.
+  dm.say({ t: "history", types: ["chronicle"], limit: 200 });
+  const entries = dm.last("history").entries;
+  assert.deepEqual(entries.slice(-2).map((e) => e.title), ["The duke is a doppelganger", "The bridge has fallen"]);
+  assert.equal(entries.at(-1).t - entries.at(-2).t, 60);
+  assert.ok(entries.every((e) => e.type === "chronicle" && typeof e.t === "number"));
+  assert.equal(dm.last("history").recent, undefined);
+
+  // A player asking the same question gets nothing private.
+  player.say({ t: "history", types: ["chronicle"], limit: 200 });
+  assert.deepEqual(player.last("history").entries, []);
+});
+
+test("history is redacted for players, limited in size, and refused before approval", () => {
+  const tables = createTables({ seed: () => 3 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  // A long campaign's worth of earlier entries, then a fight on top.
+  for (let i = 0; i < 300; i++) state.timeline.push({ t: state.clock, type: "std", id: "fighter", action: "Dodge" });
+  dm.say({ t: "act", action: { type: "startEncounter", center: state.entities.m1.pos, radius: 30 } });
+  for (let i = 0; i < 4000 && state.encounter; i++) {
+    const id = current(state), before = dm.count("error");
+    dm.say({ t: "act", action: aiStep(state, id) ?? { type: "endTurn", actor: id } });
+    if (dm.count("error") > before) dm.say({ t: "act", action: { type: "endTurn", actor: id } });
+  }
+  assert.equal(state.encounter, null);
+  assert.ok(state.timeline.length > 340);
+
+  player.say({ t: "history", limit: 100000 });
+  const seen = player.last("history").entries;
+  assert.equal(seen.length, 200);
+  const byMonsters = seen.filter((e) => e.type === "attack" && state.entities[e.actor].side !== "party");
+  assert.ok(byMonsters.length > 0);
+  for (const e of byMonsters) { assert.equal("rolls" in e, false); assert.equal("total" in e, false); assert.equal(typeof e.t, "number"); }
+  assert.equal(seen.some((e) => e.type === "chronicle"), false);
+
+  // Odd queries are tolerated, not trusted.
+  player.say({ t: "history", types: "attack", since: "yesterday", limit: -5 });
+  assert.equal(player.last("history").entries.length, 1);
+  player.say({ t: "history", types: ["heal", 7, null], limit: 3 });
+  assert.ok(player.last("history").entries.every((e) => e.type === "heal"));
+
+  // Someone rejoining gets the last 50 visible entries for their log; someone not yet let in gets nothing.
+  const back = client(tables);
+  back.say({ t: "resume", code, token: player.last("welcome").token });
+  assert.equal(back.last("history").recent, true);
+  assert.equal(back.last("history").entries.length, 50);
+  const waiting = client(tables);
+  waiting.say({ t: "join", code, name: "Lee" });
+  waiting.say({ t: "history", limit: 10 });
+  assert.equal(waiting.count("history"), 0);
+  assert.match(waiting.last("error").error, /Waiting for the DM/);
 });

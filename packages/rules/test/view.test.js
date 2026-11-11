@@ -224,3 +224,14 @@ test("in a fight, a monster's remaining movement and actions are not sent", () =
   });
   assert.ok(monsterTurns > 0 && heroTurns > 0);
 });
+
+test("a timeline entry keeps its in-world time when it is redacted", () => {
+  const s = newGame(5);
+  const entries = [
+    { t: 485, type: "attack", actor: "m1", target: "fighter", name: "Scimitar", rolls: [3], nat: 3, total: 7, ac: 18, mode: "normal", why: [], hit: false, crit: false },
+    { t: 486, type: "damage", target: "m1", amount: 4, dtype: "fire", hp: 6 },
+    { t: 487, type: "moved", id: "fighter", path: [] },
+  ];
+  assert.deepEqual(viewEvents(entries, s, PLAYER).map((e) => e.t), [485, 486, 487]);
+  assert.equal("t" in viewEvents([{ type: "rest" }], s, PLAYER)[0], false);
+});

@@ -43,6 +43,7 @@ export function serverTransport(first) {
         store.set('hextable.session', { code: msg.code, token: msg.token });
         t.on.welcome?.(t.you);
       } else if (msg.t === 'update') t.on.update(msg.state, msg.events);
+      else if (msg.t === 'history') t.on.history?.(msg);
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
     };
@@ -54,6 +55,8 @@ export function serverTransport(first) {
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
   // Leave the table for good and forget it on this device.
   t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); store.del('hextable.session'); t.close(); };
+  // Ask for past entries from the table's record: { types, since, limit }. The answer arrives on on.history.
+  t.history = (query) => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'history', ...query })); };
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
 }
