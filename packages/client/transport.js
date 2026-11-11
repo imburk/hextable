@@ -52,6 +52,8 @@ export function serverTransport(first) {
   // Drop this connection for good (used when the player starts over with a different table).
   t.close = () => { hello = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
+  // Leave the table for good and forget it on this device.
+  t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); store.del('hextable.session'); t.close(); };
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
 }

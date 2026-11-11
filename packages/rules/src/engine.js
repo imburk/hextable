@@ -112,7 +112,10 @@ function joinEncounter(s, e, ev) {
 }
 
 function endEncounter(s, ev, result) {
-  for (const e of fighters(s)) { delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false; }
+  for (const e of fighters(s)) {
+    delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false;
+    if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
+  }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round });
   s.encounter = null;
 }
@@ -189,6 +192,9 @@ function heal(s, t, amount, ev) {
   if (t.hp <= 0) { delete t.cond.unconscious; delete t.cond.stable; t.death = { s: 0, f: 0 }; }
   t.hp = Math.min(t.maxHp, t.hp + amount);
   ev.push({ type: 'heal', target: t.id, amount, hp: t.hp });
+  // In a fight a revived creature stays Prone until its turn, when standing costs half its Speed.
+  // Outside one, movement isn't budgeted, so it simply gets up.
+  if (t.cond.prone && !inFight(s, t.id)) { delete t.cond.prone; ev.push({ type: 'stood', id: t.id }); }
 }
 
 function checkRange(e, t, atk) {
@@ -439,6 +445,14 @@ const handlers = {
     }
     e.owner = a.user || null; e.ownerName = a.userName || null;
     ev.push({ type: 'claimed', id: e.id, userName: e.ownerName });
+  },
+  // Hand a character back so someone else can play it. Players can release their own; the DM, anyone's.
+  release(s, a, ctx, ev) {
+    const e = ent(s, a.entity);
+    e.owner || fail(`Nobody is playing ${e.name}.`);
+    ctx.role === 'dm' || e.owner === ctx.userId || fail(`${e.name} isn't yours to give up.`);
+    e.owner = null; e.ownerName = null;
+    ev.push({ type: 'released', id: e.id });
   },
 
   // ----- DM only -----

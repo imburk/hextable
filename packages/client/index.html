@@ -18,6 +18,7 @@
     <button type="button" id="btn-log" aria-controls="log">Log</button>
     <button type="button" id="btn-look" title="Change the look">Look</button>
     <button type="button" id="btn-dm" aria-controls="dm" hidden>DM<b id="dm-badge" hidden></b></button>
+    <button type="button" id="btn-leave" class="leave" hidden>Leave</button>
   </nav>
 </header>
 <ol id="order" aria-label="Turn order"></ol>
@@ -49,6 +50,7 @@
   <button type="button" class="close" data-close="dm">Close</button>
   <h2>Dungeon Master</h2>
   <div id="dm-table"></div>
+  <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
   <section><h3>Fight</h3>
     <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
@@ -65,6 +67,10 @@
     <p class="note">World events on the timeline. This is the record an AI DM or AI character will read.</p>
     <form id="dm-chron" class="row"><input id="chron-title" placeholder="What happened?" maxlength="80" autocomplete="off"><button type="submit">Add</button></form>
     <ol id="chron-list"></ol>
+  </section>
+  <section id="dm-leave-box" hidden><h3>Table</h3>
+    <p class="note">Leaving forgets this table on this device. Your players stay, but nobody can let new players in.</p>
+    <div class="row"><button type="button" id="dm-leave" class="leave">Leave table</button></div>
   </section>
   <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
 </aside>

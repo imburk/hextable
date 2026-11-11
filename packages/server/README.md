@@ -15,10 +15,12 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 
 1. The DM clicks **Host a table** and gets a six-character code.
 2. Players enter the code. Each waits until the DM lets them in.
-3. A player picks one unclaimed character. The DM controls everything else.
-4. Every action goes to the server, which runs it through the rules engine and
+3. A player picks one unclaimed character. The DM controls everything else,
+   and can hand any character to any player from the DM panel.
+4. A player who leaves the table frees their character for someone else.
+5. Every action goes to the server, which runs it through the rules engine and
    sends the result to everyone at the table.
-5. Tables are saved a second after each change and reloaded on restart.
+6. Tables are saved a second after each change and reloaded on restart.
    Players who reload or lose their connection rejoin automatically.
 
 When the game is opened from a host with no table server (such as GitHub
@@ -36,7 +38,8 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 JSON messages over the WebSocket at `/ws`.
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
-`{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`.
+`{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
+`{t:"leave"}`.
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",state,events}`, `{t:"lobby",members,pending}`,

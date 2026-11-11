@@ -113,10 +113,28 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       },
     };
 
+    // Leaving for good: a player's character is freed for someone else and their seat is removed.
+    // The DM's seat is kept, since a table with no DM cannot let anyone in.
+    handlers.leave = () => {
+      if (me.role === "dm") return;
+      const t = table, gone = me;
+      let events = [];
+      for (const e of Object.values(t.state.entities)) {
+        if (e.owner === gone.id) events = events.concat(apply(t.state, { type: "release", entity: e.id }, { role: "dm", userId: gone.id }).events);
+      }
+      t.members = t.members.filter((m) => m !== gone);
+      for (const c of conns(gone)) if (c !== conn) c.send({ t: "error", error: "You left the table.", expired: true });
+      online.delete(gone.id);
+      table = null; me = null;
+      save(t);
+      if (events.length) for (const m of t.members) if (m.approved) tell(m, { t: "update", state: t.state, events });
+      lobby(t);
+    };
+
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = msg.t === "approve" || msg.t === "act";
+        const seated = msg.t === "approve" || msg.t === "act" || msg.t === "leave";
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },
