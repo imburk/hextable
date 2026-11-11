@@ -1,6 +1,8 @@
 # Spec: rules expansion
 
-Status: design proposed, not built. Owner of the design: Claude (Fable).
+Status: design agreed by the project owner, not built. Owner of the design:
+Claude (Fable). Reviewed against the full current rules and common house
+rules in `rules-coverage.md`.
 Covers characters, levelling, conditions, durations, reactions, and the data
 format for all SRD 5.2.1 content. Tasks at the end are sized for one pull
 request each and say which can go to any coding agent.
@@ -41,12 +43,13 @@ hundred items **(check counts)**.
 5. Everything already true stays true: one `apply()`, pure and replayable,
    rejected actions change nothing, views decide what players are sent.
 
-Not in this spec: subclasses beyond the one per class in the SRD, multiclassing,
-crafting, downtime, vehicles, mounted combat, line of sight and light.
+Not in this spec: multiclassing, crafting, downtime, vehicles, mounted
+combat, line of sight, cover and light. `rules-coverage.md` says which of
+those the design can take later and which need their own spec.
 
-## The four decisions
+## The first four decisions
 
-Everything else follows from these. Each is the kind of choice that is
+Everything else follows from these and the four after them. Each is the kind of choice that is
 expensive to reverse once content has been written against it.
 
 ### Decision 1: three layers, not one
@@ -148,6 +151,21 @@ normal roll.
 
 The hook and tag lists are closed in the same way as effect steps.
 
+Two more fields make a modifier precise about *what* it touches and *when
+it is switched on*:
+
+- `scope` narrows which rolls it applies to. A magic weapon's +1 applies to
+  attacks with that weapon (`scope: { weapon: "self" }`). A weapon that makes
+  your *other* weapon better says so (`scope: { weapon: "other" }`), and one
+  that changes something unrelated to weapons simply names another hook
+  (`on: "save.wis"`, `on: "speed"`, `on: "spell.dc"`). Scope can also select
+  by weapon property, category, damage type, spell school or skill.
+- `requires` says what state the source must be in: `carried`, `equipped`,
+  `attuned` or `active` (see decision 6).
+
+So arming a weapon can modify anything a hook exists for, including other
+weapons, with no engine change per item.
+
 ### Decision 4: reactions by standing instruction first, prompts later
 
 A reaction interrupts someone else's turn. Doing that properly means the
@@ -169,7 +187,158 @@ does it in two stages:
   in the moment, such as Counterspell. Until then those are `manual`.
 
 Stage A is cheap, stays replayable, and plays faster at a table than waiting
-for a prompt on every enemy move. Stage B is not blocked by it.
+for a prompt on every enemy move.
+
+**Amended after the coverage review** (`rules-coverage.md`): a large share of
+class features, feats and monster abilities are decisions made *after* a roll
+is seen (spend a resource on a hit, add a die to a failed check, reroll, take
+a legendary action after another creature's turn). Standing instructions
+cover the common cases, but the review shows prompts are not a niche need.
+So task R2 builds action resolution as a queue of small steps stored in the
+game state from the start, even though nothing pauses yet. That costs a
+little more in R2 and avoids rebuilding it for stage B. Standing instructions
+then become one way of answering a pause point, and a live prompt another.
+
+## Four more decisions, from play experience
+
+Added after review by the project owner, who runs a campaign. Each is a
+requirement the first four decisions did not answer.
+
+### Decision 5: one model of space for size, height, flying and layers
+
+A creature's position becomes `{ q, r, z }` and its body has a footprint.
+
+- **Size and footprint.** Size (`tiny` to `gargantuan`) is data on the
+  record. Each size has a footprint: the set of hexes it fills, anchored on
+  one hex. Proposed: Tiny, Small and Medium fill one hex; Large three; Huge
+  seven; Gargantuan twelve. The table is in the content pack, so it can be
+  changed without touching the engine. Movement, reach, areas, opportunity
+  attacks and "is this hex free" all work on footprints. Several Tiny
+  creatures may share a hex.
+- **Height.** `z` is feet above the lowest ground. Every hex has a ground
+  height and may list further **surfaces** above it: a tree limb, a balcony,
+  a bridge, a roof. A creature is either standing on a surface or in the air.
+- **Movement modes.** A record has a speed per mode: walk, climb, swim, fly,
+  burrow, plus `hover`. Moving up a tree is climbing to a surface; flying is
+  moving through `z` with a fly speed. They are the same mechanism, which is
+  why attacking from a tree and attacking from the air need no separate code.
+- **Distance** between two creatures uses all three axes. How vertical
+  distance combines with horizontal is a table rule (decision 8), since
+  tables differ.
+- **Falling.** A flyer that cannot stay up (knocked Prone, Speed 0,
+  Incapacitated, unless it hovers), or a creature whose surface is removed,
+  falls to the next surface below and takes falling damage **(check the
+  amounts and limits)**.
+- Large creatures squeezing through small gaps, and being moved through by
+  smaller ones, follow the size rules **(check)**.
+- One creature can be **attached to** another (grappled and dragged,
+  swallowed, carried, later mounted): its position follows the other's until
+  the attachment ends.
+
+What this does not include: line of sight, cover and light. Those need the
+map's geometry and are the next spec; this decision gives them the `z` they
+will need.
+
+### Decision 6: equipment has states, and effects say which state they need
+
+An item on a sheet is in one of four states, each including the ones before:
+
+| State | Meaning |
+|---|---|
+| `carried` | in the pack; counts for weight |
+| `equipped` | worn or held; a weapon is in a hand, armour is on |
+| `attuned` | bonded, for items that require it; limited in number **(check the limit)** |
+| `active` | switched on: a command word spoken, a charge spent, a mode chosen |
+
+- A modifier, action or feature granted by an item names the state it needs
+  (`requires`). A ring that does nothing until activated simply requires
+  `active`.
+- Changing state is an action in the game with its own cost (free, an
+  action, a Bonus Action, a rest), so the engine enforces "you have not
+  drawn that yet".
+- Items may carry `charges`, a `recharge` rule, and `modes` (a staff with
+  two settings).
+- Hands are tracked: what is in the main hand and off hand decides which
+  attacks exist and whether a spell's gestures are possible.
+
+### Decision 7: forms, for animal transformation and anything like it
+
+Turning into an animal replaces part of who you are for a while. The engine
+models that as a **form** laid over the creature:
+
+```js
+form: { block: "brown-bear", rule: "wild-shape", ends: { on: "time", at: 1260 } }
+```
+
+- `block` is a stat block from the content packs.
+- `rule` is an entry in a `forms` table that says, field by field, what
+  comes from the stat block and what is kept from the character: ability
+  scores, Armor Class, speeds, size, attacks, hit points or temporary hit
+  points, proficiencies, features, whether spells can be cast, what happens
+  to equipment. Different transformations (a druid's shape change, a
+  polymorph spell, a lycanthrope's hybrid form) are different rows in that
+  table, not different code.
+- The playing record is `applyForm(derive(sheet), form)`. Size, footprint,
+  speeds and attacks change with it, so a character who becomes a giant
+  eagle can fly (decision 5) and one who becomes a buffalo fills more hexes.
+- The form ends by its own rule: time, dropping to 0 hit points, a Bonus
+  Action, or the DM. Ending restores the original record and carries over
+  what the rule says (remaining damage, conditions).
+- Monsters with more than one shape use the same mechanism.
+
+### Decision 8: table rules are switches, and homebrew is switches plus packs
+
+Tables differ. Each difference is a named option the DM sets for their table:
+
+```js
+rules: { encumbrance: "off", "spell-materials": "focus-or-pouch", flanking: "none", "critical-hits": "double-dice" }
+```
+
+- Options are declared in content packs with an id, a description, the
+  allowed choices and a default. The SRD pack's defaults are the rules as
+  written.
+- The engine reads an option at a fixed list of **rule points** (initiative,
+  critical damage, what a potion costs to drink, when a fight starts, how
+  vertical distance counts, and so on). A homebrew pack may add a choice at
+  an existing rule point; a new rule point is an engine change.
+- Options named by the project owner, all off-by-choice:
+  - **Encumbrance** is automatic when on. Every item has a weight; the sheet
+    totals what is carried; the limit comes from Strength and size; going
+    over applies a Speed modifier through decision 3. Nobody types a weight.
+    Choices: `off`, `capacity`, and a stricter variant.
+  - **Spell materials.** Choices: `ignore`, `focus-or-pouch` (the default:
+    covered unless the component has a cost), `track` (costly components are
+    inventory items and are used up when the spell says so).
+- Player-side choices, such as whose death saves are rolled out of sight,
+  are options too, read by the view layer.
+
+Common house rules found in a survey of community lists are mapped to rule
+points in `rules-coverage.md`.
+
+## The combat tracker
+
+The game already keeps everything a combat tracker shows: the order, whose
+turn it is, hit points, conditions, what each creature has left this turn.
+Today it is drawn as a strip of names. A proper tracker is a panel over the
+same state and needs no new rules.
+
+- **Tracker v1 (can be built now, by any agent):** a list in initiative
+  order with health, conditions, whose turn, round counter, reaction used,
+  and hidden creatures marked for the DM. DM controls on each row: damage
+  or heal by a typed amount, apply to several rows at once, set a condition,
+  skip, remove from the fight, reveal. Players see the same list through
+  their view: health words for monsters, no hidden rows.
+- **Tracker v2 (after R3 and R4):** effects with time remaining,
+  concentration, targets of the current action, delaying a turn, grouped
+  initiative for identical monsters, and a round-by-round history.
+
+## Modularity
+
+Quick entry and the character builder are separate front ends that both
+produce a sheet. The engine only ever sees the record made from it. Either
+can be rebuilt, replaced or extended later without touching the other or
+the rules. The same is true of the tracker, the renderer, and each content
+pack.
 
 ## Content packs
 
@@ -361,6 +530,9 @@ cond: { restrained: { source: "m4", ends: { on: "save", save: "str", dc: 13, at:
 `cond.prone` stays truthy for a creature that is prone, so existing checks
 keep working during the migration.
 
+A condition instance may carry a `level` for conditions that stack, such as
+Exhaustion; its modifiers can scale by it (`value: { perLevel: -2 }`).
+
 ### What ends an effect
 
 | `ends.on` | Ends when |
@@ -374,7 +546,9 @@ keep working during the migration.
 
 Active effects live in one list in the game state, `state.effects`, each with
 its source, targets, the modifiers and conditions it applies, and its ending
-rule. Removing the effect removes what it applied. The engine checks endings
+rule. An effect that covers an area is anchored either to hexes (a wall, a
+cloud) or to a creature (an aura that moves with it); who is inside is
+re-tested when anything moves. Removing the effect removes what it applied. The engine checks endings
 at turn boundaries and whenever the clock moves.
 
 ### Concentration
@@ -457,8 +631,20 @@ each other and with the engine tasks.
 | D3 | Equipment: weapons, armour, gear | any agent | `content/srd52/equipment.js` | as D1 |
 | D4 | Remaining classes, species, backgrounds, feats | any agent | `content/srd52/*.js` | as D1; each class checked by `derive()` tests from R7 |
 
+| R9 | Space: `z`, surfaces, movement modes, size and footprints, falling | Fable | `engine.js`, `hex.js`, `render.js`, map format | A Large creature blocks three hexes; a character climbs a tree and shoots from it; a flyer knocked Prone falls |
+| R10 | Equipment states, hands, charges; attacks derived from what is held | Fable | `derive.js`, `engine.js` | An item's bonus applies only in its required state; drawing a weapon costs what the rules say |
+| R11 | Forms | Fable | new `forms.js`, `engine.js` | A character becomes an SRD beast and back, with size, speed, attacks and hit points following the form's rule |
+| R12 | Table rules: declaration, storage, rule points; encumbrance and spell materials as the first two | Fable for the mechanism, any agent for options | `engine.js`, content, DM panel | The DM switches encumbrance on and an overloaded character slows down with nobody entering a weight |
+| T1 | Combat tracker v1 | any agent | `app.js`, `index.html`, `style.css` | The DM can run a fight from the tracker panel on a phone |
+| T2 | Combat tracker v2 | any agent, after R4 | as T1 | Effects, concentration and delays are visible and editable |
+
 D1 to D3 can start as soon as R1 is merged, because the linter defines the
 format. Entries written before R2 to R4 land are simply entered at the tier
 that is honest then, and promoted later.
 
-R5 is the fastest route to your own campaign and depends only on R1.
+R5 is the fastest route to your own campaign and depends only on R1. T1
+depends on nothing and can start today.
+
+Suggested order for the strongest model: R1, R2, R3, R4, then R9 (space),
+because size and height change what "adjacent" and "in range" mean and are
+cheaper to add before hundreds of monsters are entered than after.
