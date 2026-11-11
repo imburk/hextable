@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hextable</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;800&family=Silkscreen&family=Source+Sans+3:wght@400;600;700&family=Vollkorn+SC:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<canvas id="gl" aria-label="Game world"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<header id="top">
+  <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
+  <nav id="tools">
+    <button type="button" id="btn-log" aria-controls="log">Log</button>
+    <button type="button" id="btn-look" title="Change the look">Look</button>
+    <button type="button" id="btn-dm" aria-controls="dm" hidden>DM<b id="dm-badge" hidden></b></button>
+  </nav>
+</header>
+<ol id="order" aria-label="Turn order"></ol>
+<div id="hint" role="status" hidden><span id="hint-text"></span><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
+
+<div id="cam" aria-label="Camera">
+  <button type="button" id="cam-l" aria-label="Rotate left">⟲</button>
+  <button type="button" id="cam-r" aria-label="Rotate right">⟳</button>
+  <button type="button" id="cam-in" aria-label="Zoom in">+</button>
+  <button type="button" id="cam-out" aria-label="Zoom out">−</button>
+</div>
+
+<footer id="dock">
+  <div id="party" aria-label="Characters"></div>
+  <div id="card" hidden>
+    <div id="card-head">
+      <div><strong id="c-name"></strong><span id="c-sub"></span></div>
+      <span class="row"><button type="button" id="btn-sheet">Sheet</button><button type="button" id="btn-end" hidden>End turn</button></span>
+    </div>
+    <div id="c-hp"><div class="bar"><i></i></div><span id="c-hp-text"></span><span id="c-ac"></span></div>
+    <div id="c-res"></div>
+    <div id="actions"></div>
+  </div>
+</footer>
+
+<aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
+<aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2><ol id="log-list"></ol></aside>
+<aside id="dm" class="panel" hidden>
+  <button type="button" class="close" data-close="dm">Close</button>
+  <h2>Dungeon Master</h2>
+  <div id="dm-table"></div>
+  <section><h3>Fight</h3>
+    <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
+    <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
+    <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when enemies come within 10 ft</label>
+  </section>
+  <section><h3>Creatures</h3>
+    <div class="row" id="dm-spawn"></div>
+    <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-rest">Long rest</button></div>
+  </section>
+  <section><h3>World clock</h3>
+    <div class="row"><button type="button" data-time="10">+10 min</button><button type="button" data-time="60">+1 hour</button><button type="button" data-time="480">+8 hours</button></div>
+  </section>
+  <section><h3>Chronicle</h3>
+    <p class="note">World events on the timeline. This is the record an AI DM or AI character will read.</p>
+    <form id="dm-chron" class="row"><input id="chron-title" placeholder="What happened?" maxlength="80" autocomplete="off"><button type="submit">Add</button></form>
+    <ol id="chron-list"></ol>
+  </section>
+  <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
+</aside>
+
+<div id="lobby" hidden>
+  <form id="lobby-card" autocomplete="off">
+    <h1>Hextable</h1>
+    <p>Roam free. When a fight starts, the hexes lock and turns begin.</p>
+    <label for="lobby-name">Your name</label><input id="lobby-name" maxlength="24" placeholder="Name">
+    <div class="row"><button type="button" id="lobby-host">Host a table</button></div>
+    <label for="lobby-code">Table code</label>
+    <div class="row"><input id="lobby-code" maxlength="6" placeholder="ABC123"><button type="button" id="lobby-join">Join</button></div>
+    <div class="row"><button type="button" id="lobby-solo" class="quiet">Play solo on this device</button></div>
+    <p id="lobby-msg" role="status"></p>
+  </form>
+</div>
+<div id="toast" role="alert" hidden></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

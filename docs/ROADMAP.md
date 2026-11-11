@@ -1,29 +1,29 @@
 # Roadmap
 
-Each milestone ends with something playable. Model suggestions assume a Pro
-plan: the strongest model for design and hard bugs, Sonnet for implementation,
-Haiku for bulk data entry.
+Each milestone ends with something playable.
 
-## Week one: a fight you can play
+## Done
 
-| # | Milestone | Done when | Model |
-|---|---|---|---|
-| 1 | Repo skeleton | Monorepo builds, tests run, CI is green | Sonnet |
-| 2 | Rules core | Creatures, ability checks, attack rolls, saves, damage, HP and death, with tests | Top model to design, Sonnet to build |
-| 3 | Hex combat | Initiative, turn loop, movement budget, opportunity attacks on a hex grid, all headless and tested | Sonnet |
-| 4 | Server | Create a session, join by link, DM approval, intents in and events out | Sonnet |
-| 5 | Client v1 | 3D ground, tokens, free roam, hex lock on combat, tap to move and attack, works on a phone | Sonnet |
-| 6 | Sheet v1 | Live character sheet; attacking from the sheet works | Sonnet |
-| 7 | Online | Client and server deployed; a group can play one fight from a link | Sonnet |
+- **Playable solo game.** Free roaming, hex-locked fights, enforced SRD 5.2
+  combat, character sheets, DM tools, themes, monster AI. Runs on PC and phone.
+- **Repo, tests and CI.** The prototype is in the repo with engine tests that
+  run on every push.
+- **Online (solo).** Every merge to `main` deploys to GitHub Pages.
 
-## After week one
+## Next
 
-- SRD content in bulk: spells, monsters, items as data (Haiku, checked by tests)
-- Spellcasting: slots, concentration, areas of effect on hexes
-- Conditions, resting, levelling, character creation
+| # | Milestone | Done when |
+|---|---|---|
+| 1 | Table server | Host a table, join by code, DM approves players, everyone sees the same game. The client side already exists. |
+| 2 | Server hosting | The server runs on a small always-on host and the Pages site points at it |
+| 3 | Your campaign's characters | Character creation, or entering existing characters, at any level |
+| 4 | More of the SRD | Spells, monsters and equipment in bulk as data, with concentration and the remaining conditions |
+| 5 | Maps | A map editor or import, with terrain height |
+
+## Later
+
 - Visibility and fog of war
 - 3D character models, then animation
-- Terrain height and types
-- Persistent world and timeline
-- AI DM and AI characters
-- Model import and skins
+- Persistent world across sessions
+- AI DM and AI characters reading the timeline
+- Model import and full skins

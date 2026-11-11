@@ -18,88 +18,111 @@
 | Topic | Decision |
 |---|---|
 | Rules | SRD 5.2, fully enforced |
-| Licence of the project | Open source |
+| Licence of the project | Open source (MIT) |
 | Access | Cloud link, with login or DM approval |
 | Terrain mapping | Can come now or later; not blocking |
 | Presentation | Staged: tokens, then 3D, then animated |
 
-## Proposed (not yet confirmed)
+## Stack
 
-These are recommendations to confirm before code is written.
+The first playable version was prototyped before this repo existed and has been
+brought in as the codebase. It set the stack:
 
-| Topic | Proposal | Reason |
+| Topic | Choice | Reason |
 |---|---|---|
-| Platform | Web app, installable as a PWA | One codebase covers PC, phone and tablet with no app-store step |
-| Language | TypeScript everywhere | Rules code is shared between server and client |
-| 3D | Three.js | Largest ecosystem, runs well on phones, loads glTF models |
-| Server | Node.js with WebSockets | Same language as the rules; simple to host |
-| Storage | SQLite to start, Postgres when a persistent world needs it | No database to administer in week one |
-| Licence | MIT | Simplest permissive licence; revisit if copyleft is wanted |
-| Hex layout | Flat ground hexes, 5 ft each, axial coordinates | Matches SRD distances; elevation added as a per-hex height later |
+| Platform | Web app | One codebase covers PC, phone and tablet with no app-store step |
+| Language | Plain JavaScript ES modules | The working prototype is written in it; no build step, runs straight from static hosting |
+| 3D | The prototype's own WebGL renderer, no library | Already works on phones with nothing to download |
+| Server | Node.js with WebSockets (not built yet) | Same language as the rules; the client already speaks the protocol |
+| Storage | Browser storage for solo play; SQLite on the server later | No database to administer yet |
+| Licence | MIT | Simplest permissive licence |
+| Hex layout | Pointy-top hexes, 5 ft each, axial coordinates, per-hex height | Matches SRD distances |
+
+Two earlier proposals are deferred, not dropped:
+
+- **TypeScript.** Worth adding when the rules engine grows past what tests alone
+  keep safe. Convert module by module; do not rewrite.
+- **Three.js.** Worth adding when imported glTF character models and animation
+  arrive, since that is where a hand-written renderer stops paying for itself.
+  The renderer sits behind a presenter interface so it can be swapped.
 
 ## Architecture
 
 ```
 packages/
-  rules/    Pure rules engine + SRD data. No rendering, no network.
-  server/   Authoritative game server. Sessions, auth, persistence.
-  client/   Browser app. Rendering, input, character sheet UI.
-  shared/   Message types and schemas used by server and client.
+  rules/src/   Rules engine, hex maths, dice, monster AI, scenario, SRD content.
+  client/      Browser app: renderer, table UI, themes, transport.
+  server/      Table server (not built yet; protocol documented there).
+scripts/       build.mjs assembles dist/; serve.mjs serves it locally.
 ```
 
 ### Flow of a player action
 
-1. Client sends an **intent**: `{ type: "attack", attacker, target, weapon }`.
-2. Server asks `rules` whether it is legal in the current state.
-3. `rules` resolves it with the server's seeded dice and returns **events**:
-   `attackRolled`, `damageDealt`, `conditionApplied`.
-4. Server applies the events to the session state, stores them, and broadcasts
-   them.
+1. The client sends an **action**: `{ type: "attack", actor, target, attack }`.
+2. `apply(state, action, { role, userId })` checks it against the rules and
+   against who is allowed to control that creature.
+3. If it is illegal, nothing changes and the player gets a plain-language
+   reason ("Too far. Brenna has 10 ft of movement left.").
+4. If it is legal, the engine updates the state with its seeded dice and
+   returns **events**: `attack`, `damage`, `save`, `down`, `turn`, and so on.
 5. Clients update their view from the events. Today that is a number floating
-   over a token; later the same event triggers an animation.
+   over a pawn; later the same event triggers an animation.
 
-Because every change is an event, the event log is also the save file, the
-undo history for the DM, and later the timeline an AI can read.
+Events are also written to the world's **timeline** with the in-world time.
+`recall(state, { since, types, about, tags })` queries it; this is what an AI
+DM or AI character will read.
+
+In solo play the engine runs in the browser tab. Online, the same call runs on
+the server and the result is broadcast.
 
 ### Modes
 
-A session is a state machine:
-
 ```
-Exploration ──(DM or trigger starts combat)──▶ Initiative
-Initiative ──(all rolled)──▶ Combat (turn loop)
-Combat ──(DM ends or one side is down)──▶ Exploration
+Exploring ──(DM calls initiative, an attack, or walking within 10 ft of an enemy)──▶ Fight
+Fight ──(one side is down, or the DM ends it)──▶ Exploring
 ```
 
-- **Exploration**: continuous movement, no grid. Server checks positions loosely.
-- **Initiative**: each creature snaps to its nearest free hex; order is rolled.
-- **Combat**: only the active creature can act. Movement, actions, bonus
-  actions and reactions are budgeted and enforced per turn.
+- **Exploring**: free movement, up to 300 ft per tap, no turns.
+- **Fight**: the hexes around the start of the fight lock into an arena.
+  Initiative is rolled, only the active creature can act, and movement,
+  actions and bonus actions are budgeted per turn. Creatures who walk into the
+  arena join the fight; fighters cannot leave it.
 
 ### Rules engine (`packages/rules`)
 
-- **State**: creatures, their stats, resources, conditions, positions.
-- **Mechanics** (code): ability checks, attack rolls, saving throws, damage and
-  resistances, conditions, concentration, areas of effect on hexes, movement
-  cost, opportunity attacks, resting.
-- **Content** (data): spells, weapons, armour, items, monsters, classes,
-  species, backgrounds. JSON, schema-validated, each entry composed from the
-  mechanics above.
-- **DM override**: the engine enforces rules for players; the DM can always
-  apply a manual event (set HP, grant advantage, move a creature).
+Built so far:
+
+- Movement with terrain cost, difficult terrain, occupied hexes
+- Initiative, turn order, action / bonus action / movement budgets
+- Attack rolls with advantage and disadvantage from the situation, critical hits
+- Opportunity attacks, Dash, Disengage, Dodge, prone
+- Damage types with resistance, vulnerability and immunity
+- Death saving throws, instant death from massive damage, healing
+- Spell slots; attack, saving-throw, automatic and healing spells; cone areas
+- Class features in the starter set: Second Wind, Sneak Attack, Pack Tactics,
+  Nimble Escape
+- Long rest, the world clock, the chronicle and timeline
+- DM tools: spawn, place, set HP, start and end fights, settings
+- A monster AI that plays creatures through the same `apply()` call
+
+Content so far: 6 spells, 3 monsters, 4 level 1 pregenerated characters.
+
+Not built yet: character creation and levelling, conditions beyond prone and
+unconscious, concentration, reactions other than opportunity attacks, most
+spells and monsters, equipment as rules objects, visibility.
 
 ### Client (`packages/client`)
 
-- **Scene**: renders the world and entities from state. An entity's view is
-  chosen by a renderer interface, so token, static model and animated model
-  are drop-in replacements.
+- **Scene**: renders the world and creatures from state. Creatures are drawn
+  by a presenter (pawns today), so static and animated models can replace it
+  without touching the rules.
 - **Input**: one action layer mapped from mouse/keyboard and from touch.
 - **Sheet**: the character sheet is a live view of the creature's rules state.
   Tapping a spell or weapon on the sheet starts the same intent as using it in
   the scene.
-- **Skins**: a theme bundle (models, textures, UI styling). Styling only.
+- **Themes**: colours, fonts and UI styling, switchable in play. Styling only.
 
-### Server (`packages/server`)
+### Server (`packages/server`, not built yet)
 
 - Session rooms over WebSocket; one authoritative state per room.
 - Join by link. A player either logs in or waits for DM approval.
