@@ -97,7 +97,9 @@ client; that is fine. What is hidden is this particular creature's state.
 
 - `order`: ids in order. `init` and `dex` are kept for Open creatures and
   removed for Seen ones. Hidden creatures cannot be in an encounter (section 5).
-- `budget`: sent only while the active creature is Open; otherwise `null`.
+- `budget`: sent only while the active creature is Open; otherwise all zeros
+  (`{move: 0, action: 0, bonus: 0}`), so the engine's helpers run on a view
+  without a null check.
 - `id`, `center`, `radius`, `arena`, `round`, `turn`, `flags`: as is.
 
 ### 3. What a player sees of events
@@ -115,7 +117,9 @@ a player sees what the DM would say out loud at a table.
 | `deathSave` | as is (only player characters make them) |
 | `encounterStart`, `joined` | `init` and `dex` removed for Seen creatures |
 | `chronicle` | dropped unless the entry has `public: true` |
-| everything else (`moved`, `turn`, `stood`, `cond`, `cast`, `std`, `note`, `down`, `died`, `claimed`, `released`, `rest`, `time`, `encounterEnd`, `spawned`, `placed`) | as is |
+| `cast` | as is, with any Hidden creature removed from `targets` |
+| `moved`, `turn`, `stood`, `cond`, `std`, `note`, `down`, `died`, `claimed`, `released`, `rest`, `time`, `encounterEnd`, `spawned`, `placed`, `revealed` | as is |
+| any event type not named in this table | dropped, so a new event type is private until it is listed |
 
 `viewEvents` needs the state to classify creatures. It is called with the
 state as it is *after* the action. One consequence to handle: a creature that
