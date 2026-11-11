@@ -6,29 +6,45 @@ what is in scope right now.
 ## What this is
 
 A browser-based 3D virtual tabletop for D&D: free roaming until combat starts,
-then a locked hex grid and turn-based play. SRD 5.2 rules are fully enforced by
-the engine. Must work on PC, phone and tablet.
+then a locked hex arena and turn-based play. SRD 5.2 rules are fully enforced
+by the engine. Must work on PC, phone and tablet.
+
+## Layout
+
+- `packages/rules/src` — the rules engine. `apply(state, action, ctx)` is the
+  only way game state changes. Also hex maths, seeded dice, monster AI, the
+  starter scenario and SRD content.
+- `packages/client` — the browser app: WebGL renderer, table UI, themes, and
+  the transport that talks to either an in-tab engine (solo) or a server.
+- `packages/server` — not built yet; its README has the protocol the client
+  already speaks.
+- `scripts/build.mjs` copies the client and the rules into `dist/`, where the
+  rules appear as `./shared`. Client code imports rules from `./shared/...`.
 
 ## Rules that do not bend
 
-- **The server is authoritative.** Clients send intents ("move to hex", "cast
-  spell at target"); the server validates against the rules and broadcasts
-  results. Never trust client-computed outcomes.
-- **Rules live in `packages/rules` only.** Pure TypeScript, no rendering, no
-  network, no I/O. Everything in it is deterministic given a seeded RNG, and
-  everything in it has tests.
-- **Rules content is data, not code.** Spells, items, monsters and classes are
-  JSON under `packages/rules/data`, validated by schema. Code implements
-  mechanics (attack roll, saving throw, area shapes); data instantiates them.
+- **Everything goes through `apply()`.** The UI, the server, the monster AI and
+  any future AI DM send actions and read events. Nothing else mutates state.
+- **The server is authoritative** once it exists. Never trust client-computed
+  outcomes.
+- **The rules package is pure.** No rendering, no network, no I/O, no
+  `Math.random`: dice come from the seed stored in game state, so any game
+  replays exactly.
+- **A rejected action changes nothing.** Validate before mutating.
+- **Content is data.** Spells, monsters and characters are entries in
+  `packages/rules/src/content`; code implements mechanics, data uses them.
 - **Only SRD 5.2 content.** Nothing from non-SRD books goes in the repo.
-- **Presentation is swappable.** The client renders whatever state it is given.
-  Tokens, 3D models and animated models are interchangeable views of the same
-  entity; skins change styling only, never rules.
-- **Mobile is a first-class target.** Touch input and small screens are tested
-  for every UI change, not retrofitted.
+- **Presentation is swappable.** The renderer draws whatever state it is given;
+  themes change styling only, never rules.
+- **Mobile is a first-class target.** Check touch and a phone-sized screen for
+  every UI change.
 
 ## Conventions
 
-- TypeScript, strict mode, across all packages.
-- Each new mechanic lands with tests citing the SRD section it implements.
+- Plain JavaScript ES modules, no build tooling and no runtime dependencies.
+  Do not add a dependency or a bundler without a reason written in the design
+  doc. (TypeScript and Three.js were considered; see the design doc.)
+- `npm test` runs the rules tests with Node's built-in runner. Every new
+  mechanic lands with a test.
+- `npm start` builds and serves the game at http://localhost:8080.
 - Small PRs, one module at a time.

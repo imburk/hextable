@@ -6,23 +6,24 @@ SRD 5.2 rules enforced by the engine.
 
 Runs in a browser on PC, phone and tablet.
 
-## Status
+## Play
 
-Early development: the repo skeleton is in place and the rules engine is next. See [docs/DESIGN.md](docs/DESIGN.md) for the architecture and
-[docs/ROADMAP.md](docs/ROADMAP.md) for the build order.
+https://imburk.github.io/hextable/
+
+This is the solo version: you are the DM and all four heroes, and the game is
+saved in your browser. Multiplayer tables need the server, which is next on
+the [roadmap](docs/ROADMAP.md).
 
 ## Development
 
-Needs Node.js 22.18 or newer.
+Needs Node.js 22 or newer. There are no dependencies to install.
 
 ```
-npm install
-npm run typecheck
-npm test
+npm test     # run the rules engine tests
+npm start    # build and serve at http://localhost:8080
 ```
 
-TypeScript runs directly in Node, so there is no build step yet. The client
-gets a bundler when the 3D scene is added.
+See [docs/DESIGN.md](docs/DESIGN.md) for the architecture.
 
 ## Licence
 
@@ -30,5 +31,5 @@ MIT. See [LICENSE](LICENSE).
 
 ## Rules content
 
-Hextable uses the System Reference Document 5.2 by Wizards of the Coast LLC,
+Hextable uses the System Reference Document 5.2.1 by Wizards of the Coast LLC,
 available under the Creative Commons Attribution 4.0 International License.
