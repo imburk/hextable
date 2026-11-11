@@ -17,6 +17,8 @@ const MOVE = { kind: 'move' };
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null;
 let themeId = THEMES[prefs.get('hextable.theme')] ? prefs.get('hextable.theme') : 'classic';
 const log = [];
+let seeded = false;      // whether the log has been given the table's recent history yet
+let chron = [];          // the DM's chronicle when playing online; solo reads it from the local state
 
 function applyTheme() {
   for (const [k, v] of Object.entries(THEMES[themeId].ui)) document.documentElement.style.setProperty(k, v);
@@ -67,7 +69,7 @@ function describe(ev) {
     case 'cond': return [`${n(ev.id)} is knocked Prone.`];
     case 'stood': return [`${n(ev.id)} stands up (half their Speed).`];
     case 'chronicle': return [`Chronicle: ${ev.title}`, 'head'];
-    case 'time': return [`Time passes. It is now ${clockText(S.clock)}.`];
+    case 'time': return [`Time passes. It is now ${clockText(ev.t ?? S.clock)}.`];
     case 'rest': return ['The party finishes a Long Rest.', 'good'];
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
@@ -96,8 +98,14 @@ function floaters(events) {
 function onUpdate(state, events, fresh) {
   const first = !S || fresh;
   S = state;
-  if (first) { log.length = 0; selId = null; mode = MOVE; }
-  for (const ev of events) { const d = describe(ev); if (d) log.push(d); }
+  if (first) {
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false;
+    if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
+  }
+  for (const ev of events) {
+    const d = describe(ev); if (d) log.push(d);
+    if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
+  }
   if (log.length > 300) log.splice(0, log.length - 300);
   R.setState(S, events);
   floaters(events);
@@ -304,7 +312,7 @@ function renderDM() {
     };
     row.append(document.createTextNode(x.name), sel); chars.append(row);
   }
-  $('chron-list').innerHTML = recall(S, { types: ['chronicle'] }).reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
+  $('chron-list').innerHTML = (T.solo ? recall(S, { types: ['chronicle'] }) : chron).slice().reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
 }
 
 // ---------- taps ----------
@@ -398,6 +406,16 @@ function start(transport) {
   T.on.update = onUpdate;
   T.on.error = (msg, expired) => { if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
+  T.on.history = (msg) => {
+    if (!S) return;
+    if (msg.recent) {             // what happened before we sat down, so the log has some context
+      if (seeded) return;         // a reconnect sends it again; the log already has it
+      seeded = true;
+      const lines = msg.entries.map(describe).filter(Boolean);
+      log.unshift(...lines);
+    } else chron = msg.entries.filter((e) => e.type === 'chronicle');
+    refresh();
+  };
   T.on.welcome = (you) => { $('lobby').hidden = you.approved; if (!you.approved) $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; };
   T.start();
 }

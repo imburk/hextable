@@ -8,7 +8,7 @@
 //   session.receive(message);                 // a parsed client message
 //   session.disconnect();
 import { randomBytes, randomInt } from "node:crypto";
-import { apply } from "../../rules/src/engine.js";
+import { apply, recall } from "../../rules/src/engine.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { view, viewEvents } from "../../rules/src/view.js";
 
@@ -34,7 +34,18 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
   // everything, a player's has no dice seed and only what their characters could know.
   const update = (t, m, events) => {
     const viewer = { role: m.role, userId: m.id };
-    return { t: "update", state: view(t.state, viewer), events: viewEvents(events, t.state, viewer) };
+    // The timeline is the table's permanent record and only grows, so it is never part of
+    // an update, even the DM's. It is read through the history message instead.
+    const state = { ...view(t.state, viewer), timeline: undefined };
+    return { t: "update", state, events: viewEvents(events, t.state, viewer) };
+  };
+  // Past entries this member may see, oldest first, at most `limit` (never more than 200).
+  const history = (t, m, { types, since, limit } = {}) => {
+    const max = Math.max(1, Math.min(200, Number.isInteger(limit) ? limit : 50));
+    const wanted = Array.isArray(types) ? types.filter((x) => typeof x === "string").slice(0, 20) : undefined;
+    const from = typeof since === "number" && Number.isFinite(since) ? since : undefined;
+    const all = recall(t.state, { types: wanted?.length ? wanted : undefined, since: from, limit: Infinity });
+    return viewEvents(all, t.state, { role: m.role, userId: m.id }).slice(-max);
   };
   const welcome = (t, m) => ({ t: "welcome", role: m.role, userId: m.id, name: m.name, code: t.code, token: m.token, approved: m.approved });
 
@@ -55,7 +66,10 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       if (!online.has(m.id)) online.set(m.id, new Set());
       online.get(m.id).add(conn);
       conn.send(welcome(t, m));
-      if (m.approved) conn.send(update(t, m, []));
+      if (m.approved) {
+        conn.send(update(t, m, []));
+        conn.send({ t: "history", entries: history(t, m, { limit: 50 }), recent: true });   // so the log isn't empty
+      }
       lobby(t);
     }
 
@@ -94,6 +108,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
           m.approved = true;
           tell(m, welcome(table, m));
           tell(m, update(table, m, []));
+          tell(m, { t: "history", entries: history(table, m, { limit: 50 }), recent: true });
         } else {
           table.members = table.members.filter((x) => x !== m);
           tell(m, { t: "error", error: "The DM declined your request to join.", expired: true });
@@ -101,6 +116,10 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         }
         save(table);
         lobby(table);
+      },
+      history(msg) {
+        if (!me.approved) return error("Waiting for the DM to let you in.");
+        conn.send({ t: "history", entries: history(table, me, msg) });
       },
       act(msg) {
         if (!me.approved) return error("Waiting for the DM to let you in.");
@@ -141,7 +160,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = msg.t === "approve" || msg.t === "act" || msg.t === "leave";
+        const seated = ["approve", "act", "leave", "history"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },

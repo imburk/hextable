@@ -92,9 +92,12 @@ const AS_IS = new Set(['moved', 'turn', 'stood', 'cond', 'std', 'note', 'down', 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
   const cls = (id) => classify(state, id);
-  const out = [];
+  const kept = [];
+  // Timeline entries are events with the in-world time `t` added; the time survives redaction.
+  const out = { push(e) { if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
   let caster = null;                       // who cast the spell that the following saves answer
   for (const ev of events) {
+    out.ev = ev;
     if (ev.type === 'cast') caster = ev.actor;
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && cls(id) === 'hidden')) continue;
 
@@ -141,5 +144,5 @@ export function viewEvents(events, state, viewer) {
     }
   }
   // A creature is introduced before anything is said about it.
-  return [...out.filter((e) => e.type === 'revealed'), ...out.filter((e) => e.type !== 'revealed')];
+  return [...kept.filter((e) => e.type === 'revealed'), ...kept.filter((e) => e.type !== 'revealed')];
 }
