@@ -136,7 +136,8 @@ spells and monsters, equipment as rules objects, visibility.
   the DM gets everything, players get no dice seed and no monster numbers.
 - The DM can add creatures hidden from the players; the engine reveals one
   when the party comes close, walks into it, or a fight starts around it.
-- Not yet: line of sight, accounts, sending only changes.
+- After the first full view, each update carries only what changed.
+- Not yet: line of sight, accounts.
 
 ## Later, and what keeps the door open
 

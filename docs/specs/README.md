@@ -5,7 +5,7 @@ that whoever builds a piece, on whatever model, builds the same thing.
 
 | Spec | Status |
 |---|---|
-| [Hidden information](hidden-information.md) | Tasks 1 to 4 of 5 built: players no longer receive the dice seed, monster numbers, the timeline or hidden creatures |
+| [Hidden information](hidden-information.md) | Built: players no longer receive the dice seed, monster numbers, the timeline or hidden creatures, and updates carry only what changed |
 | Rules expansion: characters, levelling, conditions, the SRD data format | To write |
 | Renderer plan: Three.js, models, animation | To write |
 | Persistent world and the AI DM interface | To write |

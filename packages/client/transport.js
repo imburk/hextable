@@ -3,6 +3,7 @@
 //   { you, send(action), on: { update(state, events), error(msg), lobby(info), welcome(you) } }
 import { apply } from './shared/engine.js';
 import { newGame } from './shared/scenario.js';
+import { createReceiver } from './shared/patch.js';
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -32,6 +33,9 @@ export function localTransport() {
 export function serverTransport(first) {
   const t = { solo: false, you: null, on: {}, lobby: { members: [], pending: [] } };
   let ws, retry = 0, hello = first;
+  // After the first full state the server sends only what changed. The receiver keeps our copy
+  // up to date and asks for everything again if an update ever goes missing.
+  const receiver = createReceiver(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'sync' })); });
   const open = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
     ws.onopen = () => { retry = 0; ws.send(JSON.stringify(hello)); };
@@ -42,7 +46,7 @@ export function serverTransport(first) {
         hello = { t: 'resume', code: msg.code, token: msg.token };
         store.set('hextable.session', { code: msg.code, token: msg.token });
         t.on.welcome?.(t.you);
-      } else if (msg.t === 'update') t.on.update(msg.state, msg.events);
+      } else if (msg.t === 'update') { const u = receiver.receive(msg); if (u) t.on.update(u.state, u.events); }
       else if (msg.t === 'history') t.on.history?.(msg);
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }

@@ -9,6 +9,7 @@
 //   session.disconnect();
 import { randomBytes, randomInt } from "node:crypto";
 import { apply, recall } from "../../rules/src/engine.js";
+import { diff, snapshot } from "../../rules/src/patch.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { view, viewEvents } from "../../rules/src/view.js";
 
@@ -32,13 +33,33 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
   const tell = (m, msg) => { for (const c of conns(m)) c.send(msg); };
   // Nobody is ever sent the game state itself, only their view of it: the DM's view is
   // everything, a player's has no dice seed and only what their characters could know.
-  const update = (t, m, events) => {
-    const viewer = { role: m.role, userId: m.id };
-    // The timeline is the table's permanent record and only grows, so it is never part of
-    // an update, even the DM's. It is read through the history message instead.
-    const state = { ...view(t.state, viewer), timeline: undefined };
-    return { t: "update", state, events: viewEvents(events, t.state, viewer) };
-  };
+  // The timeline is the table's permanent record and only grows, so it is never part of
+  // an update, even the DM's. It is read through the history message instead.
+  const stateFor = (t, m) => ({ ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined });
+  const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
+
+  // What each connection was last sent, so the next update can be only what changed.
+  const sent = new WeakMap();
+  // The whole view, to one connection: on sitting down, on being let in, and on request.
+  function sendFull(t, m, c) {
+    const state = stateFor(t, m);
+    sent.set(c, snapshot(state));
+    c.send({ t: "update", seq: t.seq ?? 0, state, events: [] });
+  }
+  // Something happened: number it and send every approved connection its own difference.
+  function broadcast(t, events) {
+    t.seq = (t.seq ?? 0) + 1;
+    for (const m of t.members) {
+      if (!m.approved || !conns(m).size) continue;
+      const state = stateFor(t, m), next = snapshot(state), seen = eventsFor(t, m, events);
+      for (const c of conns(m)) {
+        const prev = sent.get(c);
+        sent.set(c, next);
+        if (prev) c.send({ t: "update", seq: t.seq, events: seen, patch: diff(prev, next, state) });
+        else c.send({ t: "update", seq: t.seq, state, events: seen });
+      }
+    }
+  }
   // Past entries this member may see, oldest first, at most `limit` (never more than 200).
   const history = (t, m, { types, since, limit } = {}) => {
     const max = Math.max(1, Math.min(200, Number.isInteger(limit) ? limit : 50));
@@ -67,7 +88,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       online.get(m.id).add(conn);
       conn.send(welcome(t, m));
       if (m.approved) {
-        conn.send(update(t, m, []));
+        sendFull(t, m, conn);
         conn.send({ t: "history", entries: history(t, m, { limit: 50 }), recent: true });   // so the log isn't empty
       }
       lobby(t);
@@ -107,7 +128,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         if (msg.ok) {
           m.approved = true;
           tell(m, welcome(table, m));
-          tell(m, update(table, m, []));
+          for (const c of conns(m)) sendFull(table, m, c);
           tell(m, { t: "history", entries: history(table, m, { limit: 50 }), recent: true });
         } else {
           table.members = table.members.filter((x) => x !== m);
@@ -116,6 +137,11 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         }
         save(table);
         lobby(table);
+      },
+      // The client noticed it missed an update and wants the whole view again.
+      sync() {
+        if (!me.approved) return error("Waiting for the DM to let you in.");
+        sendFull(table, me, conn);
       },
       history(msg) {
         if (!me.approved) return error("Waiting for the DM to let you in.");
@@ -135,7 +161,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         }
         if (!res.ok) return error(res.error);
         save(table);
-        for (const m of table.members) if (m.approved) tell(m, update(table, m, res.events));
+        broadcast(table, res.events);
       },
     };
 
@@ -153,14 +179,14 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       online.delete(gone.id);
       table = null; me = null;
       save(t);
-      if (events.length) for (const m of t.members) if (m.approved) tell(m, update(t, m, events));
+      if (events.length) broadcast(t, events);
       lobby(t);
     };
 
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "leave", "history"].includes(msg.t);
+        const seated = ["approve", "act", "leave", "history", "sync"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },
