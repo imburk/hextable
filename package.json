@@ -4,10 +4,12 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node --test \"packages/*/test/*.test.js\"",
     "build": "node scripts/build.mjs",
-    "start": "node scripts/build.mjs && node scripts/serve.mjs"
+    "start": "node scripts/build.mjs && node packages/server/src/index.js"
   }
 }
