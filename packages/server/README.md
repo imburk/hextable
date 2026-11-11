@@ -54,9 +54,10 @@ WebSockets, and gives it a disk that survives restarts for `DATA_DIR`. The
 
 ## Known limits
 
-- Everyone at a table receives the whole game state, including monster hit
-  points. Hiding information from players needs the visibility work on the
-  roadmap.
+- Players are sent a view of the game, not the game: no dice seed, and other
+  creatures only as name, position and a health word. They still see every
+  creature that is not marked hidden, the whole map, and the DM's timeline is
+  not yet split out for the DM. See `docs/specs/hidden-information.md`.
 - The whole state is re-sent after every action. Fine for one table of this
   size; send only changes if maps grow large.
 - Anyone with a table code can ask to join, and the DM decides. There are no

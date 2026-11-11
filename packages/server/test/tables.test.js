@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { moveOptions } from "../../rules/src/engine.js";
+import { aiStep } from "../../rules/src/ai.js";
+import { current, moveOptions } from "../../rules/src/engine.js";
 import * as H from "../../rules/src/hex.js";
 import { createTables } from "../src/tables.js";
 
@@ -110,7 +111,8 @@ test("actions are checked by the rules and the result goes to everyone", () => {
   // Now the move is legal, and both clients receive the same events.
   player.say({ t: "act", action: { type: "move", actor: "rogue", to: freeHex(state(), "rogue") } });
   assert.equal(dm.last("update").events[0].type, "moved");
-  assert.deepEqual(dm.last("update"), player.last("update"));
+  assert.deepEqual(dm.last("update").events, player.last("update").events);
+  assert.deepEqual(dm.last("update").state.entities.rogue, player.last("update").state.entities.rogue);
 
   // Garbage does not crash the table.
   player.say({ t: "act", action: { type: "move", actor: "rogue" } });
@@ -151,7 +153,10 @@ test("tables survive a restart", () => {
   const back = client(second);
   back.say({ t: "resume", code, token: player.last("welcome").token });
   assert.equal(back.last("welcome").role, "player");
-  assert.ok(back.last("update").state.timeline.some((e) => e.title === "The bridge burned"));
+  assert.ok(back.last("update").state.entities.fighter);
+  const dmBack = client(second);
+  dmBack.say({ t: "resume", code, token: dm.last("welcome").token });
+  assert.ok(dmBack.last("update").state.timeline.some((e) => e.title === "The bridge burned"));
 });
 
 test("a player who leaves before being let in withdraws their request", () => {
@@ -200,4 +205,77 @@ test("a player who leaves frees their character and their seat; the DM's seat is
   assert.equal(tables.get(code).members.some((m) => m.role === "dm"), true);
   dm.say({ t: "act", action: { type: "rest" } });
   assert.equal(dm.last("update").events[0].type, "rest");
+});
+
+// ---------- what players are sent (docs/specs/hidden-information.md) ----------
+
+test("players are never sent the dice seed or a monster's numbers; the DM is", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const late = client(tables);
+  late.say({ t: "join", code, name: "Lee" });
+  dm.say({ t: "approve", userId: late.last("welcome").userId, ok: true });
+  dm.say({ t: "act", action: { type: "rest" } });
+
+  for (const c of [player, late]) {
+    for (const m of c.got) {
+      const text = JSON.stringify(m);
+      assert.equal(text.includes('"rng"'), false, `seed sent in a ${m.t} message`);
+    }
+  }
+});
+
+test("property 4: a whole fight never tells a player a monster's hit points, Armor Class or unused attacks", () => {
+  const tables = createTables({ seed: () => 3 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const goblin = state.entities.m1;
+  Object.assign(goblin, { hp: 7919, maxHp: 7919, ac: 97 });
+  goblin.attacks.push({ id: "canary", name: "CANARY", type: "ranged", bonus: 61, damage: "1d4", dtype: "psychic", range: [5, 10] });
+
+  dm.say({ t: "act", action: { type: "startEncounter", center: goblin.pos, radius: 30 } });
+  for (let i = 0; i < 4000 && state.encounter; i++) {
+    const id = current(state);
+    const before = dm.count("error");
+    dm.say({ t: "act", action: aiStep(state, id) ?? { type: "endTurn", actor: id } });
+    if (dm.count("error") > before) dm.say({ t: "act", action: { type: "endTurn", actor: id } });
+  }
+  assert.equal(state.encounter, null, "the fight should have finished");
+
+  // The DM saw the real numbers, so the check below is not passing by accident.
+  // 7919 as a whole JSON number, so digits inside a terrain height don't count.
+  const has7919 = (text) => /[:\[,]7919[,}\]]/.test(text);
+  const dmText = dm.got.map((m) => JSON.stringify(m)).join("\n");
+  assert.ok(has7919(dmText) && dmText.includes('"ac":97') && dmText.includes("CANARY"));
+
+  const updates = player.got.filter((m) => m.t === "update");
+  assert.ok(updates.length > 50);
+  for (const m of player.got) {
+    const text = JSON.stringify(m);
+    assert.equal(text.includes('"rng"'), false);
+    assert.equal(has7919(text), false, "a monster's hit points were sent to a player");
+    assert.equal(text.includes('"ac":97'), false);
+    assert.equal(text.includes("CANARY"), false);
+    assert.equal(text.includes('"bonus":61'), false);
+  }
+  // Players did see the fight: attacks on their heroes, with outcomes but no monster dice.
+  const hits = updates.flatMap((m) => m.events).filter((e) => e.type === "attack" && e.actor === "m1");
+  assert.ok(hits.length > 0);
+  for (const e of hits) assert.deepEqual(Object.keys(e).filter((k) => ["rolls", "nat", "total"].includes(k)), []);
+  assert.equal(player.last("update").state.entities.m1.health, "healthy");
+});
+
+test("property 9: the DM's chronicle reaches the DM and not the players", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  dm.say({ t: "act", action: { type: "chronicle", title: "The duke is a doppelganger" } });
+  assert.equal(dm.last("update").events[0].title, "The duke is a doppelganger");
+  for (const m of player.got) assert.equal(JSON.stringify(m).includes("doppelganger"), false);
+
+  // A player who joins or rejoins later is not sent it either.
+  const back = client(tables);
+  back.say({ t: "resume", code, token: player.last("welcome").token });
+  for (const m of back.got) assert.equal(JSON.stringify(m).includes("doppelganger"), false);
+  // Nor is the scenario's own back story, which lives in the same timeline.
+  for (const m of back.got) assert.equal(JSON.stringify(m).includes("timeline"), false);
 });

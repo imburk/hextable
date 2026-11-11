@@ -132,7 +132,9 @@ spells and monsters, equipment as rules objects, visibility.
   with the sender's role, and sends the result to everyone at the table.
 - Tables are saved to disk as JSON and reloaded on restart; players rejoin
   with a saved token.
-- Not yet: hiding information from players, accounts, sending only changes.
+- Each person is sent a view of the game built by `packages/rules/src/view.js`:
+  the DM gets everything, players get no dice seed and no monster numbers.
+- Not yet: hidden creatures, line of sight, accounts, sending only changes.
 
 ## Later, and what keeps the door open
 
