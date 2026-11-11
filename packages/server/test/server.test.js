@@ -50,7 +50,10 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
   assert.ok(JSON.stringify(update).length > 20000);
   assert.ok(Object.keys(update.state.map.tiles).length > 400);
 
-  const next = new Promise((resolve) => { ws.onmessage = (ev) => resolve(JSON.parse(ev.data)); });
+  // The lobby message that follows hosting may still be in flight; wait for the next update.
+  const next = new Promise((resolve) => {
+    ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.t === "update") resolve(m); };
+  });
   ws.send(JSON.stringify({ t: "act", action: { type: "chronicle", title: "x".repeat(70) } }));
   const reply = await next;
   assert.equal(reply.t, "update");
