@@ -153,3 +153,26 @@ test("tables survive a restart", () => {
   assert.equal(back.last("welcome").role, "player");
   assert.ok(back.last("update").state.timeline.some((e) => e.title === "The bridge burned"));
 });
+
+test("a player who leaves before being let in withdraws their request", () => {
+  const tables = createTables({ seed: () => 5 });
+  const dm = client(tables);
+  dm.say({ t: "host", name: "Dana" });
+  const code = dm.last("welcome").code;
+  const first = client(tables), second = client(tables);
+  first.say({ t: "join", code, name: "Pat" });
+  second.say({ t: "join", code, name: "Pat" });
+  assert.equal(dm.last("lobby").pending.length, 2);
+
+  first.session.disconnect();
+  assert.deepEqual(dm.last("lobby").pending.map((p) => p.id), [second.last("welcome").userId]);
+  assert.equal(tables.get(code).members.length, 2);
+
+  // The withdrawn request cannot be resumed, and an approved player who drops is kept.
+  const again = client(tables);
+  again.say({ t: "resume", code, token: first.last("welcome").token });
+  assert.equal(again.last("error").expired, true);
+  dm.say({ t: "approve", userId: second.last("welcome").userId, ok: true });
+  second.session.disconnect();
+  assert.equal(tables.get(code).members.length, 2);
+});

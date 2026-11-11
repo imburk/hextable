@@ -125,6 +125,11 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         const set = online.get(me.id);
         set?.delete(conn);
         if (set && !set.size) online.delete(me.id);
+        // Someone who leaves before being let in withdraws their request.
+        if (!me.approved && !online.has(me.id) && table.members.includes(me)) {
+          table.members = table.members.filter((m) => m !== me);
+          save(table);
+        }
         lobby(table);
       },
     };
