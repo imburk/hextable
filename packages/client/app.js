@@ -346,10 +346,14 @@ addEventListener('keydown', (ev) => {
 window.hextable = { R, act, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
+// While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
+const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled = on; };
 function start(transport) {
+  T?.close?.();                 // only ever one connection to a table
   T = transport; S = null;
+  lobbyBusy(!T.solo);
   T.on.update = onUpdate;
-  T.on.error = (msg, expired) => { if (expired) { S = null; $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
+  T.on.error = (msg, expired) => { if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.welcome = (you) => { $('lobby').hidden = you.approved; if (!you.approved) $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; };
   T.start();

@@ -49,6 +49,8 @@ export function serverTransport(first) {
     ws.onclose = () => { if (hello?.t === 'resume') setTimeout(open, Math.min(8000, 500 * 2 ** retry++)); };
   };
   t.start = open;
+  // Drop this connection for good (used when the player starts over with a different table).
+  t.close = () => { hello = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
