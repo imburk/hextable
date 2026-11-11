@@ -168,7 +168,7 @@ export class Renderer {
       }
       const key = `${e.dead}|${e.side}`;
       if (key !== a.key) { a.key = key; a.mesh.set(this.#makePawn(e)); }
-      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0);
+      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
       a.el.firstChild.textContent = e.name;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;

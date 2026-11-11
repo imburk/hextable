@@ -74,6 +74,8 @@ function describe(ev) {
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
+    case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
+    case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
     default: return null;
   }
 }
@@ -89,6 +91,7 @@ function floaters(events) {
     else if (ev.type === 'std') f(ev.id, ev.action, '');
     else if (ev.type === 'cond') f(ev.id, 'Prone', '');
     else if (ev.type === 'down') f(ev.id, 'Down!', 'dmg');
+    else if (ev.type === 'revealed') f(ev.id, 'Spotted!', 'crit');
     else if (ev.type === 'cast') f(ev.actor, ev.name, '');
     else if (ev.type === 'deathSave') f(ev.id, `Death Save ${ev.roll}`, ev.roll >= 10 ? 'heal' : 'dmg');
   }
@@ -181,7 +184,7 @@ function refresh() {
     $('btn-end').hidden = !(my && enc && cur === e.id);
     const myTurn = enc && cur === e.id && up(e), b = enc?.budget;
     const pip = (label, have) => `<span class="${have ? 'have' : 'spent'}">${label}</span>`;
-    const conds = [e.dead && 'Dead', !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`), e.cond.prone && 'Prone', e.cond.dodging && 'Dodging', e.cond.disengaged && 'Disengaged'].filter(Boolean);
+    const conds = [e.dead && 'Dead', !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`), e.hidden && 'Hidden from players', e.cond.prone && 'Prone', e.cond.dodging && 'Dodging', e.cond.disengaged && 'Disengaged'].filter(Boolean);
     $('c-res').innerHTML =
       (myTurn && full ? pip('Action', b.action > 0) + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
       (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
@@ -281,6 +284,9 @@ function renderSheet() {
 function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage;
+  const picked = S.entities[selId], hideable = picked && picked.side !== 'party' && !picked.dead;
+  $('dm-hide').disabled = !hideable || (!picked.hidden && inFight(S, picked.id));
+  $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   $('dm-badge').hidden = !lb.pending.length; $('dm-badge').textContent = lb.pending.length;
@@ -319,7 +325,7 @@ function renderDM() {
 R.onTap = ({ hex, id }) => {
   if (!S || !T) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
-  if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex });
+  if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id }) : setMode(MOVE);
@@ -360,6 +366,7 @@ $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
 $('dm-rest').onclick = () => act({ type: 'rest' });
+$('dm-hide').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'reveal', actor: e.id, hidden: !e.hidden }); };
 $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', value: ev.target.checked });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();

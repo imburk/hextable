@@ -60,8 +60,9 @@ WebSockets, and gives it a disk that survives restarts for `DATA_DIR`. The
 ## Known limits
 
 - Players are sent a view of the game, not the game: no dice seed, and other
-  creatures only as name, position and a health word. They still see every
-  creature that is not marked hidden, and the whole map. See `docs/specs/hidden-information.md`.
+  creatures only as name, position and a health word. Creatures the DM marks
+  hidden are not sent at all until the party finds them. Players still see
+  the whole map and every creature that is not hidden. See `docs/specs/hidden-information.md`.
 - The whole state is re-sent after every action. Fine for one table of this
   size; send only changes if maps grow large.
 - Anyone with a table code can ask to join, and the DM decides. There are no

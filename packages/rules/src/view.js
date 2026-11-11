@@ -69,7 +69,8 @@ export function view(state, viewer) {
     else if (c === 'seen') entities[id] = seenRecord(e);
   }
   return {
-    version: state.version, seq: state.seq, clock: state.clock,
+    // No `seq`: it counts creatures as they are added, so it would tick when the DM adds a hidden one.
+    version: state.version, clock: state.clock,
     settings: structuredClone(state.settings),
     map: structuredClone(state.map),
     entities,

@@ -134,7 +134,9 @@ spells and monsters, equipment as rules objects, visibility.
   with a saved token.
 - Each person is sent a view of the game built by `packages/rules/src/view.js`:
   the DM gets everything, players get no dice seed and no monster numbers.
-- Not yet: hidden creatures, line of sight, accounts, sending only changes.
+- The DM can add creatures hidden from the players; the engine reveals one
+  when the party comes close, walks into it, or a fight starts around it.
+- Not yet: line of sight, accounts, sending only changes.
 
 ## Later, and what keeps the door open
 

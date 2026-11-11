@@ -76,6 +76,15 @@ function threatsAt(s, e, pos) {
     o.attacks.some((a) => a.type === 'melee') && H.dist(o.pos, pos) <= 1);
 }
 
+// ---------- hidden creatures ----------
+// `hidden` is a DM switch: players are not told the creature exists (see view.js). The engine's
+// part is to lift it the moment the party would find out for themselves.
+function reveal(s, e, ev) {
+  if (!e.hidden) return;
+  delete e.hidden;
+  ev.push({ type: 'revealed', id: e.id });
+}
+
 // ---------- encounters ----------
 
 const initiativeSort = (order) => order.sort((a, b) => b.init - a.init || b.dex - a.dex);
@@ -86,7 +95,7 @@ function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
   for (const h of H.range(center, radius)) if (s.map.tiles[H.key(h)]) arena[H.key(h)] = 1;
   const who = living(s).filter((e) => arena[H.key(e.pos)]);
   if (!who.length) fail('Nobody is close enough to fight here.');
-  for (const e of who) e.reactionUsed = false;
+  for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
     order: initiativeSort(who.map((e) => rollInit(s, e))),
@@ -103,6 +112,7 @@ function engage(s, e, t, ev) {
 
 function joinEncounter(s, e, ev) {
   const enc = s.encounter, cur = current(s);
+  reveal(s, e, ev);
   e.reactionUsed = false;
   const slot = rollInit(s, e);
   enc.order.push(slot);
@@ -293,7 +303,18 @@ const handlers = {
     up(e) || fail(`${e.name} can't move.`);
     const fighting = inFight(s, e.id);
     if (fighting && current(s) !== e.id) fail(`It isn't ${e.name}'s turn.`);
-    const reach = moveOptions(s, e), tk = H.key(a.to), node = reach.get(tk);
+    const reach = moveOptions(s, e);
+    let tk = H.key(a.to), node = reach.get(tk);
+    // Walking onto a hex where something unseen is standing: stop beside it and find out what it
+    // is. Refusing the move would tell the player something is there without saying what.
+    const lurker = fighting ? null : living(s).find((o) => o.hidden && hostile(o, e) && H.key(o.pos) === tk);
+    if (lurker) {
+      if (H.dist(e.pos, lurker.pos) <= 1) return reveal(s, lurker, ev);      // already beside it: no move, but it is found
+      const beside = H.neighbors(a.to).map(H.key).filter((k) => reach.get(k)?.canStop)
+        .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
+      if (!beside) fail("Can't get there.");
+      tk = beside; node = reach.get(tk);
+    }
     if (!node || !node.canStop) {
       if (!s.map.tiles[tk]) fail("There's nothing there to stand on.");
       if (fighting && !s.encounter.arena[tk]) fail("The arena is locked until the fight ends.");
@@ -317,6 +338,8 @@ const handlers = {
       if (fighting && s.encounter) s.encounter.budget.move -= TILES[s.map.tiles[k].t].cost * FT;
       e.pos = step; seg.push(step); prev = step;
       if (fighting) continue;
+      // Anything lying in wait this close is spotted, whether or not a fight follows.
+      for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE) { flush(); reveal(s, o, ev); }
       const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
       if (s.encounter && s.encounter.arena[k] && free) { flush(); joinEncounter(s, e, ev); break; }
       if (!s.encounter && s.settings.autoEngage && free &&
@@ -325,6 +348,7 @@ const handlers = {
       }
     }
     flush();
+    if (lurker) reveal(s, lurker, ev);
     checkEnd(s, ev);
   },
 
@@ -373,6 +397,7 @@ const handlers = {
       if (sp.level > 0) s.encounter.flags.slot = true;
     }
     if (sp.level > 0) e.slots[sp.level]--;
+    for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
     const st = spellStats(e);
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id) });
     if (sp.kind === 'attack') {
@@ -473,7 +498,7 @@ const handlers = {
     !living(s).some((o) => H.key(o.pos) === H.key(a.at)) || fail('That hex is occupied.');
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
-    s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: a.at });
+    s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: a.at, ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
     if (s.encounter?.arena[H.key(a.at)]) joinEncounter(s, s.entities[id], ev);
   },
@@ -485,6 +510,21 @@ const handlers = {
     e.pos = a.to;
     ev.push({ type: 'placed', id: e.id, to: a.to });
     if (s.encounter?.arena[H.key(a.to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+  },
+  // Hide a creature from the players, or show it to them. { type: 'reveal', actor, hidden: true|false }
+  reveal(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can hide or reveal creatures.');
+    const e = ent(s, a.actor);
+    if (a.hidden) {
+      e.side !== 'party' || fail("A party member can't be hidden from the party.");
+      !e.hidden || fail(`${e.name} is already hidden.`);
+      !inFight(s, e.id) || fail(`${e.name} is in the fight and can't be hidden.`);
+      e.hidden = true;
+      ev.push({ type: 'concealed', id: e.id });
+    } else {
+      e.hidden || fail(`${e.name} isn't hidden.`);
+      reveal(s, e, ev);
+    }
   },
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');
@@ -524,6 +564,9 @@ const handlers = {
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];
   try {
+    // To anyone but the DM a hidden creature does not exist. Answering "it's 40 ft away" or
+    // "it isn't yours" to a guessed id would confirm that it does.
+    if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (s.entities[action[k]]?.hidden) fail('No such creature.');
     const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
     h(s, action, ctx, ev);
   } catch (err) {
