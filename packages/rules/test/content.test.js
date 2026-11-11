@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CONTENT, MONSTERS, PACKS, PREGENS, SPELLS } from "../src/content/index.js";
+import { CONTENT, legacyMonster, legacySpell, MONSTERS, PACKS, playable, PREGENS, SPELLS } from "../src/content/index.js";
 import { coverage, lintPack } from "../src/content/schema.js";
 import { apply } from "../src/engine.js";
 import { migrate } from "../src/migrate.js";
@@ -123,4 +123,31 @@ test("a game saved with the old ids is upgraded and still plays", () => {
   assert.ok(res.ok, res.error);
   assert.equal(migrate(null), null);
   assert.deepEqual(migrate({}), {});
+});
+
+test("an entry the engine cannot play yet is entered without breaking the game", () => {
+  // Shapes other agents will add long before the engine can resolve them.
+  const spell = (over) => ({ ...clone(srd.spells[0]), ...over });
+  const notYet = [
+    spell({ id: "bless-like", concentration: true }),
+    spell({ id: "wall-like", target: { area: { shape: "line", size: 60 } }, effects: [{ save: "dex", onFail: [{ damage: "5d8", type: "fire" }] }] }),
+    spell({ id: "hold-like", effects: [{ save: "wis", onFail: [{ condition: "paralyzed" }] }] }),
+    spell({ id: "wish-like", tier: "manual", effects: [{ manual: "The DM decides." }] }),
+    spell({ id: "ritual-like", time: "minute" }),
+    spell({ id: "two-step", effects: [{ damage: "1d6", type: "fire" }, { condition: "prone" }] }),
+  ];
+  for (const s of notYet) {
+    assert.deepEqual(lintPack({ ...srd, spells: [s] }), [], s.id);
+    assert.equal(playable(s), false, s.id);
+  }
+  for (const s of srd.spells) { assert.equal(playable(s), true, s.id); assert.ok(legacySpell(s)); }
+
+  // A monster keeps the attacks the engine can run and drops the rest, instead of failing to load.
+  const dragon = clone(srd.monsters[2]);
+  dragon.actions.push({ id: "breath", name: "Breath", target: { area: { shape: "cone", size: 30 } },
+    effects: [{ save: "dex", half: true, onFail: [{ damage: "7d6", type: "fire" }] }], text: "A cone of fire." });
+  dragon.actions.push({ id: "roar", name: "Roar", target: { self: true }, effects: [{ manual: "Each creature that hears it is afraid." }], text: "A roar." });
+  dragon.tier = "assist";
+  assert.deepEqual(lintPack({ ...srd, monsters: [dragon] }), []);
+  assert.deepEqual(legacyMonster(dragon).attacks.map((a) => a.id), ["shortsword", "shortbow"]);
 });
