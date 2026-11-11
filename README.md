@@ -11,16 +11,16 @@ Runs in a browser on PC, phone and tablet.
 https://imburk.github.io/hextable/
 
 This is the solo version: you are the DM and all four heroes, and the game is
-saved in your browser. Multiplayer tables need the server, which is next on
-the [roadmap](docs/ROADMAP.md).
+saved in your browser. Multiplayer tables need the table server running
+somewhere; see [packages/server](packages/server/README.md).
 
 ## Development
 
 Needs Node.js 22 or newer. There are no dependencies to install.
 
 ```
-npm test     # run the rules engine tests
-npm start    # build and serve at http://localhost:8080
+npm test     # run the rules and server tests
+npm start    # build, then run the table server at http://localhost:8080
 ```
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the architecture.

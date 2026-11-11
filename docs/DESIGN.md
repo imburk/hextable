@@ -33,8 +33,8 @@ brought in as the codebase. It set the stack:
 | Platform | Web app | One codebase covers PC, phone and tablet with no app-store step |
 | Language | Plain JavaScript ES modules | The working prototype is written in it; no build step, runs straight from static hosting |
 | 3D | The prototype's own WebGL renderer, no library | Already works on phones with nothing to download |
-| Server | Node.js with WebSockets (not built yet) | Same language as the rules; the client already speaks the protocol |
-| Storage | Browser storage for solo play; SQLite on the server later | No database to administer yet |
+| Server | Node.js, WebSockets written on the built-in `http` module | Same language as the rules; nothing to install |
+| Storage | Browser storage for solo play; one JSON file per table on the server | A table is one JSON document; move to a database when a persistent world needs queries |
 | Licence | MIT | Simplest permissive licence |
 | Hex layout | Pointy-top hexes, 5 ft each, axial coordinates, per-hex height | Matches SRD distances |
 
@@ -52,8 +52,8 @@ Two earlier proposals are deferred, not dropped:
 packages/
   rules/src/   Rules engine, hex maths, dice, monster AI, scenario, SRD content.
   client/      Browser app: renderer, table UI, themes, transport.
-  server/      Table server (not built yet; protocol documented there).
-scripts/       build.mjs assembles dist/; serve.mjs serves it locally.
+  server/      Table server: static files, tables over WebSocket, saving.
+scripts/       build.mjs assembles dist/.
 ```
 
 ### Flow of a player action
@@ -122,13 +122,17 @@ spells and monsters, equipment as rules objects, visibility.
   the scene.
 - **Themes**: colours, fonts and UI styling, switchable in play. Styling only.
 
-### Server (`packages/server`, not built yet)
+### Server (`packages/server`)
 
-- Session rooms over WebSocket; one authoritative state per room.
-- Join by link. A player either logs in or waits for DM approval.
-- Roles: DM and player. Players see only what their characters could see once
-  visibility is implemented; until then, everything is visible.
-- Persists the event log and periodic snapshots.
+- One Node process serves the built game, `/api/ping`, and tables over a
+  WebSocket at `/ws`. No dependencies.
+- The DM hosts a table and gets a code; players join with the code and wait
+  for the DM to let them in. A player controls the one character they claim.
+- The server holds each table's state, runs every action through `apply()`
+  with the sender's role, and sends the result to everyone at the table.
+- Tables are saved to disk as JSON and reloaded on restart; players rejoin
+  with a saved token.
+- Not yet: hiding information from players, accounts, sending only changes.
 
 ## Later, and what keeps the door open
 

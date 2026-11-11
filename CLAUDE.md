@@ -16,8 +16,8 @@ by the engine. Must work on PC, phone and tablet.
   starter scenario and SRD content.
 - `packages/client` — the browser app: WebGL renderer, table UI, themes, and
   the transport that talks to either an in-tab engine (solo) or a server.
-- `packages/server` — not built yet; its README has the protocol the client
-  already speaks.
+- `packages/server` — the table server: serves the built game and runs
+  multiplayer tables over a WebSocket. Its README has the protocol.
 - `scripts/build.mjs` copies the client and the rules into `dist/`, where the
   rules appear as `./shared`. Client code imports rules from `./shared/...`.
 
@@ -25,8 +25,8 @@ by the engine. Must work on PC, phone and tablet.
 
 - **Everything goes through `apply()`.** The UI, the server, the monster AI and
   any future AI DM send actions and read events. Nothing else mutates state.
-- **The server is authoritative** once it exists. Never trust client-computed
-  outcomes.
+- **The server is authoritative.** It runs every action through `apply()`
+  with the sender's role. Never trust client-computed outcomes.
 - **The rules package is pure.** No rendering, no network, no I/O, no
   `Math.random`: dice come from the seed stored in game state, so any game
   replays exactly.
@@ -44,7 +44,8 @@ by the engine. Must work on PC, phone and tablet.
 - Plain JavaScript ES modules, no build tooling and no runtime dependencies.
   Do not add a dependency or a bundler without a reason written in the design
   doc. (TypeScript and Three.js were considered; see the design doc.)
-- `npm test` runs the rules tests with Node's built-in runner. Every new
-  mechanic lands with a test.
-- `npm start` builds and serves the game at http://localhost:8080.
+- `npm test` runs the rules and server tests with Node's built-in runner.
+  Every new mechanic lands with a test.
+- `npm start` builds the game and runs the table server at
+  http://localhost:8080.
 - Small PRs, one module at a time.
