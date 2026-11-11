@@ -8,11 +8,12 @@ Runs in a browser on PC, phone and tablet.
 
 ## Play
 
-https://imburk.github.io/hextable/
+- **With a group:** https://hextable-production.up.railway.app/ — one person
+  hosts a table and shares the code; the others join and the DM lets them in.
+- **Solo:** https://imburk.github.io/hextable/ — you are the DM and all four
+  heroes, and the game is saved in your browser.
 
-This is the solo version: you are the DM and all four heroes, and the game is
-saved in your browser. Multiplayer tables need the table server running
-somewhere; see [packages/server](packages/server/README.md).
+To run your own table server, see [packages/server](packages/server/README.md).
 
 ## Development
 
