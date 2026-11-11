@@ -5,9 +5,13 @@
 // plays with today. They are a bridge, deleted when R2 lands.
 import { TILES } from './terrain.js';
 import { pack } from './srd52/pack.js';
-import { spells } from './srd52/spells.js';
-import { monsters } from './srd52/monsters.js';
+import { spells as spellsStarter } from './srd52/spells.js';
+import { monsters as monstersStarter } from './srd52/monsters.js';
 import { pregens } from './srd52/pregens.js';
+
+// A new content file is added in two places: an import above, and its list here.
+const spells = [...spellsStarter];
+const monsters = [...monstersStarter];
 
 export { TILES };
 export const PACKS = [{ pack, spells, monsters, pregens }];
