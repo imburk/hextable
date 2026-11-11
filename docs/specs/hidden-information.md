@@ -1,6 +1,6 @@
 # Spec: hidden information
 
-Status: design agreed, not built. Owner of the design: Claude (Fable). Tasks at
+Status: tasks 1 and 2 built (views, and the server sending them); 3 to 5 open. Owner of the design: Claude (Fable). Tasks at
 the end are sized for one pull request each.
 
 ## Problem

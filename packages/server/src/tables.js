@@ -10,6 +10,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { apply } from "../../rules/src/engine.js";
 import { newGame } from "../../rules/src/scenario.js";
+import { view, viewEvents } from "../../rules/src/view.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I/L
 const makeCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
@@ -29,6 +30,12 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
 
   const conns = (m) => online.get(m.id) ?? new Set();
   const tell = (m, msg) => { for (const c of conns(m)) c.send(msg); };
+  // Nobody is ever sent the game state itself, only their view of it: the DM's view is
+  // everything, a player's has no dice seed and only what their characters could know.
+  const update = (t, m, events) => {
+    const viewer = { role: m.role, userId: m.id };
+    return { t: "update", state: view(t.state, viewer), events: viewEvents(events, t.state, viewer) };
+  };
   const welcome = (t, m) => ({ t: "welcome", role: m.role, userId: m.id, name: m.name, code: t.code, token: m.token, approved: m.approved });
 
   function lobby(t) {
@@ -48,7 +55,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       if (!online.has(m.id)) online.set(m.id, new Set());
       online.get(m.id).add(conn);
       conn.send(welcome(t, m));
-      if (m.approved) conn.send({ t: "update", state: t.state, events: [] });
+      if (m.approved) conn.send(update(t, m, []));
       lobby(t);
     }
 
@@ -86,7 +93,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         if (msg.ok) {
           m.approved = true;
           tell(m, welcome(table, m));
-          tell(m, { t: "update", state: table.state, events: [] });
+          tell(m, update(table, m, []));
         } else {
           table.members = table.members.filter((x) => x !== m);
           tell(m, { t: "error", error: "The DM declined your request to join.", expired: true });
@@ -109,7 +116,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         }
         if (!res.ok) return error(res.error);
         save(table);
-        for (const m of table.members) if (m.approved) tell(m, { t: "update", state: table.state, events: res.events });
+        for (const m of table.members) if (m.approved) tell(m, update(table, m, res.events));
       },
     };
 
@@ -127,7 +134,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       online.delete(gone.id);
       table = null; me = null;
       save(t);
-      if (events.length) for (const m of t.members) if (m.approved) tell(m, { t: "update", state: t.state, events });
+      if (events.length) for (const m of t.members) if (m.approved) tell(m, update(t, m, events));
       lobby(t);
     };
 

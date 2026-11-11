@@ -5,7 +5,7 @@ import * as H from './shared/hex.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, FT } from './shared/engine.js';
 import { aiStep } from './shared/ai.js';
 import { SPELLS, MONSTERS } from './shared/content/srd52.js';
-import { Renderer } from './render.js';
+import { Renderer, hpFraction } from './render.js';
 import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
 
@@ -41,18 +41,24 @@ function select(id) { selId = id; mode = MOVE; }
 function describe(ev) {
   const n = name;
   switch (ev.type) {
-    case 'encounterStart': return ['Roll initiative! ' + ev.order.map((o) => `${n(o.id)} ${o.init}`).join(', '), 'head'];
+    case 'encounterStart': return ['Roll initiative! ' + ev.order.map((o) => (o.init === undefined ? n(o.id) : `${n(o.id)} ${o.init}`)).join(', '), 'head'];
     case 'encounterEnd': return [{ victory: 'The fight is won.', defeat: 'The party has fallen.', ended: 'The DM ends the fight.', stalemate: 'The fight ends.' }[ev.result] + ` (${ev.rounds} round${ev.rounds > 1 ? 's' : ''})`, 'head'];
     case 'turn': return [`Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
-    case 'joined': return [`${n(ev.id)} joins the fight (initiative ${ev.init}).`];
+    case 'joined': return [`${n(ev.id)} joins the fight${ev.init === undefined ? '' : ` (initiative ${ev.init})`}.`];
     case 'attack': {
+      const how = `${n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)} with ${ev.name}`;
+      const result = ev.crit ? 'Critical hit!' : ev.hit ? 'Hit.' : 'Miss.';
+      // A monster's roll stays behind the DM's screen: players get the outcome only.
+      if (!ev.rolls) return [`${how}${ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : ''}. ${result}`];
       const dice = ev.rolls.length > 1 ? `${ev.rolls.join(' / ')} with ${ev.mode === 'adv' ? 'Advantage' : 'Disadvantage'} (${ev.why.join(', ')})` : `${ev.nat}`;
-      return [`${n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)} with ${ev.name}: ${dice} → ${ev.total} vs AC ${ev.ac}. ${ev.crit ? 'Critical hit!' : ev.hit ? 'Hit.' : 'Miss.'}`];
+      return [`${how}: ${dice} → ${ev.total}${ev.ac === undefined ? '' : ` vs AC ${ev.ac}`}. ${result}`];
     }
     case 'damage': return [`${n(ev.target)} takes ${ev.amount} ${ev.dtype} damage${ev.note ? ` (${ev.note})` : ''}.`, 'bad'];
     case 'heal': return [`${n(ev.target)} regains ${ev.amount} Hit Points.`, 'good'];
     case 'cast': return [`${n(ev.actor)} casts ${ev.name}.`];
-    case 'save': return [`${n(ev.id)} ${ev.roll ? `rolls a ${ev.abil.toUpperCase()} save: ${ev.total} vs DC ${ev.dc}.` : `automatically fails the ${ev.abil.toUpperCase()} save.`} ${ev.success ? 'Saved.' : 'Failed.'}`];
+    case 'save':
+      if (!('roll' in ev)) return [`${n(ev.id)} makes a ${ev.abil.toUpperCase()} save${ev.dc === undefined ? '' : ` against DC ${ev.dc}`}. ${ev.success ? 'Saved.' : 'Failed.'}`];
+      return [`${n(ev.id)} ${ev.roll ? `rolls a ${ev.abil.toUpperCase()} save: ${ev.total} vs DC ${ev.dc}.` : `automatically fails the ${ev.abil.toUpperCase()} save.`} ${ev.success ? 'Saved.' : 'Failed.'}`];
     case 'down': return [`${n(ev.id)} drops to 0 Hit Points and is dying.`, 'bad'];
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
@@ -155,21 +161,23 @@ function refresh() {
   const hl = { selected: selId, turn: enc ? cur : null };
   let hint = '', go = false;
   if (e) {
-    const my = mine(e), showNumbers = my || e.side === 'party';
+    // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
+    const my = mine(e), full = !!e.abil, showNumbers = full && (my || e.side === 'party');
     $('c-name').textContent = e.name;
     $('c-sub').textContent = e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
-    $('c-hp').querySelector('i').style.width = `${(e.hp / e.maxHp) * 100}%`;
-    $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP` : e.dead ? 'Dead' : e.hp < e.maxHp / 2 ? 'Bloodied' : 'Healthy';
+    $('c-hp').querySelector('i').style.width = `${hpFraction(e) * 100}%`;
+    const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
+    $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
     $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
     $('btn-sheet').hidden = !showNumbers;
     $('btn-end').hidden = !(my && enc && cur === e.id);
     const myTurn = enc && cur === e.id && up(e), b = enc?.budget;
     const pip = (label, have) => `<span class="${have ? 'have' : 'spent'}">${label}</span>`;
-    const conds = [e.dead && 'Dead', !e.dead && e.hp <= 0 && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`), e.cond.prone && 'Prone', e.cond.dodging && 'Dodging', e.cond.disengaged && 'Disengaged'].filter(Boolean);
+    const conds = [e.dead && 'Dead', !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`), e.cond.prone && 'Prone', e.cond.dodging && 'Dodging', e.cond.disengaged && 'Disengaged'].filter(Boolean);
     $('c-res').innerHTML =
-      (myTurn ? pip('Action', b.action > 0) + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
-      (enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
-      Object.keys(e.slotsMax).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
+      (myTurn && full ? pip('Action', b.action > 0) + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
+      (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
+      Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
       conds.map((c) => `<span>${c}</span>`).join('');
 
     const bar = $('actions'); bar.textContent = '';
@@ -232,7 +240,7 @@ function refresh() {
   R.inset = $('dock').offsetHeight * 0.85;
 
   if (!$('log').hidden) renderLog();
-  if (!$('sheet').hidden) renderSheet();
+  if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
   if (isDM()) renderDM();
 }
 

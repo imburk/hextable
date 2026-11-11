@@ -110,6 +110,13 @@ const jitter = (q, r) => { const h = Math.sin(q * 127.1 + r * 311.7) * 43758.545
 const shade = (c, f) => [c[0] * f, c[1] * f, c[2] * f, 1];
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 
+// How full to draw a health bar. Players are not sent a monster's numbers, only a
+// word for how it looks, so a record without maxHp is drawn from that word.
+export function hpFraction(e) {
+  if (e.maxHp > 0) return Math.max(0, Math.min(1, e.hp / e.maxHp));
+  return { healthy: 1, bloodied: 0.45, down: 0, dead: 0 }[e.health] ?? (e.hp > 0 ? 1 : 0);
+}
+
 export class Renderer {
   constructor(canvas, labels, theme) {
     this.canvas = canvas; this.labels = labels; this.theme = theme;
@@ -163,7 +170,7 @@ export class Renderer {
       if (key !== a.key) { a.key = key; a.mesh.set(this.#makePawn(e)); }
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0);
       a.el.firstChild.textContent = e.name;
-      a.el.querySelector('i').style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
+      a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
     }
     for (const ev of events) {
