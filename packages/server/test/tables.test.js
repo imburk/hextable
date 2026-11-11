@@ -3,18 +3,35 @@ import { test } from "node:test";
 import { aiStep } from "../../rules/src/ai.js";
 import { current, moveOptions } from "../../rules/src/engine.js";
 import * as H from "../../rules/src/hex.js";
+import { createReceiver } from "../../rules/src/patch.js";
+import { view } from "../../rules/src/view.js";
 import { createTables } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
+// It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
+// each update is stored with the full state as the client has reconstructed it. `raw` holds
+// the messages exactly as sent. Set `drop` to lose the next n updates on the way.
 function client(tables) {
-  const got = [];
-  const session = tables.connect({ send: (m) => got.push(structuredClone(m)) });
-  return {
-    got, session,
+  const got = [], raw = [];
+  const c = { got, raw, drop: 0 };
+  const receiver = createReceiver(() => c.session.receive({ t: "sync" }));
+  c.receiver = receiver;
+  c.session = tables.connect({
+    send(m) {
+      const msg = JSON.parse(JSON.stringify(m));           // as it would arrive over the wire
+      raw.push(msg);
+      if (msg.t !== "update") return got.push(msg);
+      if (c.drop > 0) { c.drop--; return; }
+      const u = receiver.receive(msg);
+      if (u) got.push({ t: "update", seq: msg.seq, events: u.events, state: structuredClone(u.state) });
+    },
+  });
+  const session = c.session;
+  return Object.assign(c, {
     say: (m) => session.receive(m),
     last: (t) => got.findLast((m) => m.t === t),
     count: (t) => got.filter((m) => m.t === t).length,
-  };
+  });
 }
 function seated(tables) {
   const dm = client(tables);
@@ -391,4 +408,103 @@ test("property 5: a hidden monster is in no message to a player until it is reve
   const after = player.got.slice(n).filter((m) => m.t === "update");
   assert.equal(id in after.at(-1).state.entities, false);
   assert.equal(after.at(-1).events.length, 0);
+});
+
+// ---------- sending only what changed (spec section 6) ----------
+
+// What a client should know: the member's view of the table as it is now, as it would arrive.
+const expected = (tables, code, c) => {
+  const w = c.last("welcome");
+  return JSON.parse(JSON.stringify({ ...view(tables.get(code).state, { role: w.role, userId: w.userId }), timeline: undefined }));
+};
+
+test("property 8: patches applied in order always equal the full view, for the DM and for players", () => {
+  const tables = createTables({ seed: () => 3 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const check = () => { for (const c of [dm, player]) assert.deepEqual(c.receiver.state, expected(tables, code, c)); };
+
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: { q: 0, r: 0 }, hidden: true } });
+  check();
+  dm.say({ t: "act", action: { type: "startEncounter", center: state.entities.m1.pos, radius: 30 } });
+  check();
+  let steps = 0;
+  for (; steps < 4000 && state.encounter; steps++) {
+    const id = current(state), before = dm.count("error");
+    dm.say({ t: "act", action: aiStep(state, id) ?? { type: "endTurn", actor: id } });
+    if (dm.count("error") > before) dm.say({ t: "act", action: { type: "endTurn", actor: id } });
+    check();
+  }
+  assert.ok(steps > 30);
+  dm.say({ t: "act", action: { type: "rest" } });
+  check();
+
+  // After the first full state, everything arrived as a patch, in sequence.
+  for (const c of [dm, player]) {
+    const updates = c.raw.filter((m) => m.t === "update");
+    assert.equal(updates.filter((m) => m.state).length, 1);
+    assert.ok(updates.slice(1).every((m, i) => m.patch && m.seq === updates[0].seq + i + 1));
+  }
+});
+
+test("a lost update is noticed and repaired with one sync", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const fulls = () => player.raw.filter((m) => m.t === "update" && m.state).length;
+  assert.equal(fulls(), 1);
+
+  player.drop = 1;                                                     // this one never arrives
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  assert.notDeepEqual(player.receiver.state, expected(tables, code, player));
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });   // the gap shows on the next one
+  assert.equal(fulls(), 2);
+  assert.deepEqual(player.receiver.state, expected(tables, code, player));
+
+  // Back in step: the next change is a patch again, and nobody else was resent anything.
+  dm.say({ t: "act", action: { type: "rest" } });
+  assert.equal(fulls(), 2);
+  assert.ok(player.raw.at(-1).patch);
+  assert.deepEqual(player.receiver.state, expected(tables, code, player));
+  assert.equal(dm.raw.filter((m) => m.t === "update" && m.state).length, 1);
+});
+
+test("sync is refused before approval and gives a player only their view", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const waiting = client(tables);
+  waiting.say({ t: "join", code, name: "Lee" });
+  waiting.say({ t: "sync" });
+  assert.equal(waiting.raw.some((m) => m.t === "update"), false);
+  player.say({ t: "sync" });
+  const full = player.raw.at(-1);
+  assert.ok(full.state && !("rng" in full.state) && !("timeline" in full.state));
+  assert.equal("maxHp" in full.state.entities.m1, false);
+});
+
+test("an ordinary move is a small message, and patches leak nothing a full view would not", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  const fullSize = JSON.stringify(player.raw.find((m) => m.t === "update" && m.state)).length;
+
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to: freeHex(state, "rogue") } });
+  const mine = JSON.stringify(player.raw.at(-1)), theirs = JSON.stringify(dm.raw.at(-1));
+  assert.ok(player.raw.at(-1).patch);
+  assert.ok(fullSize > 20000);
+  assert.ok(mine.length < 1500, `a move cost the player ${mine.length} bytes`);
+  assert.ok(theirs.length < 1500, `a move cost the DM ${theirs.length} bytes`);
+
+  // A monster moves: the player's patch carries its public record only.
+  dm.say({ t: "act", action: { type: "move", actor: "m1", to: freeHex(state, "m1") } });
+  const patch = player.raw.at(-1).patch;
+  assert.deepEqual(Object.keys(patch), ["entities"]);
+  assert.deepEqual(Object.keys(patch.entities), ["m1"]);
+  assert.equal("ac" in patch.entities.m1, false);
+  for (const m of player.raw) assert.equal(JSON.stringify(m).includes('"rng"'), false);
+  // The DM hides it: the player's patch says only that it is gone.
+  dm.say({ t: "act", action: { type: "reveal", actor: "m1", hidden: true } });
+  assert.deepEqual(player.raw.at(-1).patch, { entities: { m1: null } });
+  assert.deepEqual(player.raw.at(-1).events, []);
 });

@@ -1,7 +1,6 @@
 # Spec: hidden information
 
-Status: tasks 1 to 4 built (views, the server sending them, the timeline out
-of updates, hidden creatures); 5 open. Owner of the design: Claude (Fable). Tasks at
+Status: built. All five tasks are merged or in review; see the task table. Owner of the design: Claude (Fable). Tasks at
 the end are sized for one pull request each.
 
 ## Problem
@@ -188,21 +187,29 @@ sends a patch.
 { t: "update", seq, events,
   patch: {
     entities: { [id]: record | null },   // changed or new records; null = gone
-    encounter,                           // present only if it changed (null = fight over)
-    clock, settings,                     // present only if changed
-    map                                  // present only if the map changed
+    within: { encounter: { ...fields } },// fields that changed inside the fight still going on
+    gone: [key, ...],                    // top-level fields that no longer exist
+    encounter, clock, settings, map, ... // any other top-level field, present only if it changed
   } }
 ```
 
-- `seq` counts updates per table. A client that receives `seq` other than
-  last + 1 sends `{t:"sync"}` and gets a full `{t:"update", seq, state}`.
-- Change detection is by comparing each record's JSON with the last one sent.
-  At this scale that is cheaper and safer than tracking mutations in the
-  engine. The map is compared by a version number bumped when tiles change.
-- Welcome, resume and sync always send full state.
+- `seq` counts updates per table. A client that receives a patch whose `seq`
+  is not last + 1 sends `{t:"sync"}` and gets a full
+  `{t:"update", seq, state}`. Until it arrives the client ignores patches.
+- Change detection is by comparing each record's JSON with the last one sent
+  to that connection. At this scale that is cheaper and safer than tracking
+  mutations in the engine. The map is compared the same way; a version number
+  was not needed.
+- An ongoing fight is compared field by field, because it changes on every
+  action while its list of locked hexes does not.
+- Welcome, being let in, resume and sync always send full state.
+- The format and the receiving logic live in `packages/rules/src/patch.js`,
+  used by both the server and the browser.
 
-Expected effect on the starter valley: a move goes from about 31 KB per
-player to well under 1 KB.
+Measured on the starter valley, over a whole AI-played fight of 52 actions:
+a full view is about 28 KB for a player and 31 KB for the DM. The median
+update is now 337 bytes for a player and 953 bytes for the DM. The largest,
+about 6 KB, is the start of a fight with an unusually large arena.
 
 ## Security properties to test
 
