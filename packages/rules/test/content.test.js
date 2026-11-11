@@ -137,7 +137,7 @@ test("an entry the engine cannot play yet is entered without breaking the game",
     spell({ id: "two-step", effects: [{ damage: "1d6", type: "fire" }, { condition: "prone" }] }),
   ];
   for (const s of notYet) {
-    assert.deepEqual(lintPack({ ...srd, spells: [s] }), [], s.id);
+    assert.deepEqual(lintPack({ pack: srd.pack, spells: [s] }), [], s.id);
     assert.equal(playable(s), false, s.id);
   }
   for (const s of srd.spells) { assert.equal(playable(s), true, s.id); assert.ok(legacySpell(s)); }
@@ -148,6 +148,6 @@ test("an entry the engine cannot play yet is entered without breaking the game",
     effects: [{ save: "dex", half: true, onFail: [{ damage: "7d6", type: "fire" }] }], text: "A cone of fire." });
   dragon.actions.push({ id: "roar", name: "Roar", target: { self: true }, effects: [{ manual: "Each creature that hears it is afraid." }], text: "A roar." });
   dragon.tier = "assist";
-  assert.deepEqual(lintPack({ ...srd, monsters: [dragon] }), []);
+  assert.deepEqual(lintPack({ pack: srd.pack, monsters: [dragon] }), []);
   assert.deepEqual(legacyMonster(dragon).attacks.map((a) => a.id), ["shortsword", "shortbow"]);
 });
