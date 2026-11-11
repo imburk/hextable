@@ -1,0 +1,464 @@
+# Spec: rules expansion
+
+Status: design proposed, not built. Owner of the design: Claude (Fable).
+Covers characters, levelling, conditions, durations, reactions, and the data
+format for all SRD 5.2.1 content. Tasks at the end are sized for one pull
+request each and say which can go to any coding agent.
+
+Rule details quoted here are from memory of the SRD 5.2.1 and are marked
+**(check)** where an implementer must confirm them against the SRD text
+before coding. The SRD is the authority, not this document.
+
+## Where we are
+
+The engine plays a correct level 1 fight for four pregenerated characters and
+three monsters. It does so with numbers that were worked out by hand and
+typed in:
+
+- A character is a flat record: `ac: 18`, `attacks: [{ bonus: 5, damage: "1d8+3" }]`.
+  Nothing records *why* the bonus is 5, so nothing can recompute it at level 2.
+- A spell is one of four hard-coded kinds (`attack`, `save`, `auto`, `heal`).
+- Conditions are booleans on the creature (`cond.prone`), each with its rules
+  written inline in the engine. Two exist (Prone, Unconscious) of fifteen.
+- Nothing lasts: there are no durations and no concentration.
+- The only reaction is the opportunity attack, taken automatically.
+- All content is one 87-line file.
+
+This got a playable game fast. It will not carry a campaign: the SRD has
+roughly 340 spells, 330 monsters, 12 classes over 20 levels, and several
+hundred items **(check counts)**.
+
+## Goals
+
+1. **Your campaign's real characters can sit at the table soon**, at any
+   level, before full character creation exists.
+2. **Adding SRD content is data entry**, done by any agent or person, checked
+   by a machine, with no engine change per entry.
+3. **The engine never pretends.** If it cannot apply an effect by the rules,
+   it says so and hands the decision to the DM. It does not approximate.
+4. **Derived numbers are never typed in.** Attack bonuses, save DCs, Armor
+   Class and hit points are computed from choices.
+5. Everything already true stays true: one `apply()`, pure and replayable,
+   rejected actions change nothing, views decide what players are sent.
+
+Not in this spec: subclasses beyond the one per class in the SRD, multiclassing,
+crafting, downtime, vehicles, mounted combat, line of sight and light.
+
+## The four decisions
+
+Everything else follows from these. Each is the kind of choice that is
+expensive to reverse once content has been written against it.
+
+### Decision 1: three layers, not one
+
+```
+content   definitions that are the same for every table      (data, read-only)
+sheet     the choices that make one character                (data, per character)
+record    the numbers the engine plays with                  (computed, never typed)
+```
+
+- **Content** is what the SRD says: a Longsword does 1d8 slashing, a Fighter
+  gets Second Wind at level 1.
+- **A sheet** is what the player chose: Human, Soldier, Fighter 3, these
+  ability scores, this armour, these spells prepared.
+- **A record** is what `derive(sheet, content)` produces: the flat creature
+  the engine already reads today (`ac`, `attacks`, `saveProf`, `slotsMax`).
+
+The engine keeps reading records. `derive()` is a new pure function. Because
+the record's shape barely changes, the 594 lines of engine and its tests keep
+working while the layers are built underneath them.
+
+A creature in the game state becomes `{ ...record, sheet, state }`, where
+`state` is what changes in play (current hit points, spent slots, active
+conditions). On level-up or an equipment change the engine re-derives the
+record and carries `state` across.
+
+Monsters have no sheet: a stat block already is a record.
+
+### Decision 2: effects are a small vocabulary; anything else is manual
+
+A spell, a monster action, a class feature, a magic item and a condition all
+*do things*. They are described with one shared list of effect steps:
+
+| Step | Meaning |
+|---|---|
+| `attack` | make an attack roll (`melee` or `ranged`, `weapon` or `spell`) against each target; later steps under `onHit` / `onMiss` |
+| `save` | each target makes a saving throw; later steps under `onFail` / `onSuccess`, with `half: true` for half damage |
+| `damage` | roll dice of a type; supports `+mod`, scaling, and "extra on a critical hit" |
+| `heal` | restore hit points; `temp: true` for temporary hit points |
+| `condition` | apply or remove a condition, with a duration |
+| `modifier` | attach a modifier to a creature for a duration (see decision 3) |
+| `move` | push, pull or teleport a creature a number of feet |
+| `resource` | spend or restore a resource (spell slot, class feature use, hit dice) |
+| `manual` | the engine does nothing; the text is shown and the DM applies it |
+
+Targeting is described separately: `self`, `creature` (with range and count),
+or an `area` (`cone`, `sphere`, `line`, `cube`, `cylinder`, `emanation`
+**(check the 2024 area names)**) with a size in feet.
+
+Every entry is in one of three **tiers**, recorded in the data:
+
+| Tier | Meaning | Engine behaviour |
+|---|---|---|
+| `auto` | fully described by the steps above | resolved and enforced |
+| `assist` | the roll and damage are described; some consequence is not | resolved, then the leftover text is shown to the DM as a prompt |
+| `manual` | not described | costs are enforced (action, slot, range, components); the effect text is shown; the DM applies the outcome with DM tools |
+
+This is what makes goal 2 and goal 3 compatible. Every SRD spell and monster
+can be entered now, with its full rules text, at whatever tier is honest.
+Play is never blocked on the engine, and nothing is silently wrong. Tiers are
+then raised over time by adding steps, without touching the entries that are
+already `auto`.
+
+The vocabulary is deliberately closed. A new step type is an engine change
+that needs a spec amendment; it is not something a content pull request can
+introduce.
+
+### Decision 3: one modifier system
+
+Advantage from Pack Tactics, +2 AC from a Shield, Disadvantage from being
+Poisoned, resistance from Rage, Speed 0 from Grappled: these are all the same
+thing. Today each is an `if` in the engine. They become data:
+
+```js
+{ on: "attack.roll",  op: "advantage",    when: ["target.prone", "within5"] }
+{ on: "ac",           op: "add", value: 2 }
+{ on: "save.dex",     op: "autoFail" }
+{ on: "speed",        op: "set", value: 0 }
+{ on: "damage.taken", op: "resist", types: ["bludgeoning", "piercing", "slashing"] }
+```
+
+- `on` names one of a fixed list of hooks (about twenty: ability checks,
+  attack rolls made and received, each save, damage dealt and taken, AC,
+  speed, initiative, concentration, and so on).
+- `op` is one of `add`, `set`, `min`, `max`, `advantage`, `disadvantage`,
+  `autoFail`, `autoSucceed`, `resist`, `vulnerable`, `immune`, `crit`.
+- `when` is a list of named situation tags the engine knows how to test
+  (`within5`, `target.prone`, `attacker.unseen`, `ranged`, `ally.adjacent`).
+  All must hold.
+
+One engine function, `modifiers(state, creature, hook, situation)`, collects
+every modifier that applies from four sources: the creature's features and
+equipment (static, folded in by `derive`), its active conditions, and effects
+currently on it. Each roll asks once and gets back the total and the list of
+reasons, which is what the log already shows ("with Advantage (Pack Tactics)").
+
+Advantage and Disadvantage keep their rule: any number of each cancels to a
+normal roll.
+
+The hook and tag lists are closed in the same way as effect steps.
+
+### Decision 4: reactions by standing instruction first, prompts later
+
+A reaction interrupts someone else's turn. Doing that properly means the
+engine must stop half-way through resolving an action, wait for another
+player, and resume. That requires rebuilding action resolution as a queue of
+resumable steps stored in the game state, because a paused JavaScript
+function cannot be saved, replayed or sent over a network.
+
+That rebuild is the single largest piece of engine work in sight. This spec
+does it in two stages:
+
+- **Stage A (in this spec):** each creature carries standing instructions for
+  its reactions, set on its sheet and changeable at any time, even off-turn:
+  "take Opportunity Attacks: always / never / ask the DM", "cast Shield when
+  an attack would hit: yes / no". The engine consults them and resolves
+  without pausing. This covers Opportunity Attacks, Shield, Uncanny Dodge and
+  similar "when X, do Y" reactions **(check which SRD reactions fit)**.
+- **Stage B (a later spec):** true prompts for reactions that need a choice
+  in the moment, such as Counterspell. Until then those are `manual`.
+
+Stage A is cheap, stays replayable, and plays faster at a table than waiting
+for a prompt on every enemy move. Stage B is not blocked by it.
+
+## Content packs
+
+```
+packages/rules/src/content/
+  srd52/
+    pack.js          { id, name, version, license, attribution }
+    conditions.js
+    spells.js        (split by level when it grows: spells-0.js ... spells-9.js)
+    monsters.js      (split by first letter when it grows)
+    classes.js
+    species.js
+    backgrounds.js
+    feats.js
+    equipment.js     weapons, armour, gear
+    magic-items.js
+  index.js           loads packs and builds lookup tables by id
+```
+
+- Files are JavaScript modules that export plain data: objects, arrays,
+  strings, numbers, booleans. **No functions, no computed values, no
+  imports.** This keeps them loadable in the browser with no build step, and
+  means a data pull request cannot contain logic. The linter enforces it.
+- Ids are `kebab-case` and unique within their kind: `fire-bolt`,
+  `goblin-warrior`. The current camelCase ids are migrated.
+- Every entry carries `text`: the SRD wording of what it does. The SRD 5.2.1
+  is licensed CC-BY-4.0, so the text may be included with the attribution in
+  `pack.js`.
+- Every entry carries `source: "SRD 5.2.1"` and, where practical, the heading
+  it comes from, so a reviewer can find it.
+- A table's state records which packs it uses. Homebrew goes in its own pack;
+  nothing outside `srd52/` may claim to be SRD.
+
+### A spell
+
+```js
+{
+  id: "burning-hands", name: "Burning Hands", source: "SRD 5.2.1",
+  level: 1, school: "evocation", classes: ["sorcerer", "wizard"],
+  time: "action", range: "self", components: ["v", "s"],
+  duration: "instant", concentration: false, ritual: false,
+  target: { area: { shape: "cone", size: 15 } },
+  effects: [
+    { save: "dex", half: true,
+      onFail: [{ damage: "3d6", type: "fire" }] },
+  ],
+  higher: { slot: { damage: "+1d6" } },      // per slot level above 1st
+  tier: "auto",
+  text: "A thin sheet of flames shoots forth ...",
+}
+```
+
+Cantrips scale by character level with `higher: { level: { 5: "2d10", 11: "3d10", 17: "4d10" } }`.
+
+### A monster
+
+```js
+{
+  id: "wolf", name: "Wolf", source: "SRD 5.2.1",
+  size: "medium", type: "beast", cr: 0.25, xp: 50,
+  ac: 12, hp: 11, hitDice: "2d8+2", speed: { walk: 40 },
+  abilities: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
+  saves: {}, skills: { perception: 5, stealth: 4 }, senses: { darkvision: 60, passivePerception: 15 },
+  traits: [
+    { id: "pack-tactics", name: "Pack Tactics",
+      modifiers: [{ on: "attack.roll", op: "advantage", when: ["ally.adjacentToTarget"] }],
+      text: "..." },
+  ],
+  actions: [
+    { id: "bite", name: "Bite",
+      target: { creature: { reach: 5 } },
+      effects: [{ attack: "melee", bonus: 4,
+        onHit: [{ damage: "1d6+2", type: "piercing" },
+                { condition: "prone", when: ["target.sizeAtMost.large"] }] }],
+      text: "..." },
+  ],
+  tier: "auto",
+}
+```
+
+Multiattack is an action whose effect is a list of other action ids.
+Recharge, legendary actions and lair actions are fields the format reserves
+now and the engine treats as `manual` until built.
+
+### A class
+
+```js
+{
+  id: "fighter", name: "Fighter", hitDie: 10,
+  primary: ["str", "dex"], saves: ["str", "con"],
+  proficiencies: { armour: ["light", "medium", "heavy", "shield"], weapons: ["simple", "martial"] },
+  skills: { choose: 2, from: ["acrobatics", "athletics", "..."] },
+  levels: {
+    1: { grants: ["fighting-style", "second-wind", "weapon-mastery"], choices: [{ kind: "feat", category: "fighting-style" }] },
+    2: { grants: ["action-surge", "tactical-mind"] },
+    3: { choices: [{ kind: "subclass" }] },
+    // ... to 20
+  },
+  spellcasting: null,
+}
+```
+
+Features (`second-wind`) live in a `features` table shared by classes,
+species and feats. A feature is a name, text, optional modifiers, optional
+resource (`uses: 2, recover: "short"`), and optional action built from effect
+steps.
+
+## Characters
+
+### Quick entry first
+
+Full character creation is a long road (species, backgrounds, 12 classes, 20
+levels, feats, equipment, spell lists). Your campaign should not wait for it.
+
+**Quick entry** is a form the DM or player fills in from an existing sheet:
+name, class and level (for display), ability scores, proficiency bonus, saves
+proficient, Armor Class, hit point maximum, speed, attacks, spell slots,
+spells known, and features as free text. It produces a sheet marked
+`mode: "manual"`, whose record is taken as typed.
+
+- It works for any character from any source at any level.
+- Attacks and spells chosen from content packs resolve normally. A spell not
+  in the packs can be added by name as `manual`.
+- It deliberately breaks goal 4 for these characters, and says so on the
+  sheet: "Numbers entered by hand".
+- A manual sheet can later be converted to a built one, keeping its `state`.
+
+### Built characters
+
+A built sheet records choices only:
+
+```js
+{
+  mode: "built", name: "Brenna",
+  species: "human", background: "soldier",
+  classes: [{ id: "fighter", level: 3, subclass: "champion" }],
+  abilities: { method: "standard-array", base: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 } },
+  choices: { /* keyed by the choice's id: skills, feats, fighting style, masteries, spells */ },
+  equipment: [{ id: "chain-mail", equipped: true }, { id: "longsword", equipped: true, hand: "main" }],
+  hp: { method: "average" },
+  reactions: { "opportunity-attack": "always" },
+}
+```
+
+`derive()` applies, in order: species, background, class levels, feats,
+equipment, then modifiers. It returns the record plus a `why` map
+(`ac: ["Chain Mail 16", "Shield +2"]`) that the sheet UI shows when a number
+is tapped.
+
+`validate(sheet, content)` returns the list of problems (a choice not made,
+an option not allowed, two shields). A sheet with problems can be saved but
+not brought into play without the DM's override.
+
+### Levelling
+
+`levelUp` is an action. The player proposes it with their choices; the DM
+approves it (or the table setting "players level themselves" is on). The
+engine validates against the class data, re-derives the record, raises
+maximum hit points, and logs it. It is refused during a fight.
+
+## Conditions, durations and concentration
+
+### Conditions as data
+
+The fifteen conditions **(check the list)** are entries in `conditions.js`:
+
+```js
+{ id: "restrained", name: "Restrained", visible: true,
+  modifiers: [
+    { on: "speed", op: "set", value: 0 },
+    { on: "attack.received", op: "advantage" },
+    { on: "attack.roll", op: "disadvantage" },
+    { on: "save.dex", op: "disadvantage" },
+  ],
+  text: "..." }
+```
+
+Flags cover what modifiers cannot: `incapacitated: true` (no actions, bonus
+actions or reactions), `includes: ["incapacitated", "prone"]` for conditions
+that imply others. `visible` decides whether players see it on a creature
+that is not theirs; the view layer reads it instead of its current fixed list.
+
+On a creature, `cond` changes from booleans to instances:
+
+```js
+cond: { restrained: { source: "m4", ends: { on: "save", save: "str", dc: 13, at: "turnEnd" } } }
+```
+
+`cond.prone` stays truthy for a creature that is prone, so existing checks
+keep working during the migration.
+
+### What ends an effect
+
+| `ends.on` | Ends when |
+|---|---|
+| `time` | the world clock reaches a value (one round is six seconds) |
+| `turnStart` / `turnEnd` | the named creature's next turn starts or ends |
+| `save` | the affected creature succeeds on a repeat save at a stated moment |
+| `concentration` | the caster's concentration ends |
+| `rest` | the next short or long rest |
+| `manual` | the DM removes it |
+
+Active effects live in one list in the game state, `state.effects`, each with
+its source, targets, the modifiers and conditions it applies, and its ending
+rule. Removing the effect removes what it applied. The engine checks endings
+at turn boundaries and whenever the clock moves.
+
+### Concentration
+
+A creature concentrates on at most one effect. It ends when the creature
+casts another concentration spell, is Incapacitated or dies, or fails a
+Constitution save after taking damage (DC 10 or half the damage, whichever is
+higher, to a maximum of 30 **(check)**). The save is automatic and logged.
+
+## State version and saved tables
+
+The game state's `version` goes from 1 to 2. `migrate(state)` upgrades a
+version 1 state in place: creatures become `{ ...record, sheet: { mode:
+"manual" }, state }`, boolean conditions become instances, ids become
+kebab-case, `effects: []` is added. The server runs it when loading a table
+and solo play runs it when loading from browser storage. A test keeps a saved
+version 1 table and checks it still loads and plays.
+
+## Views
+
+The view layer needs three changes, each small because of its allow lists:
+
+- An Open creature's `sheet` is sent with it. A Seen creature's is not.
+- Conditions shown on a Seen creature come from `visible` in the data.
+- `state.effects` is sent filtered: an effect is included only if one of its
+  targets is Open, or it is marked `visible` (a wall of fire is; a charm is not).
+
+## Checking the data
+
+`npm test` gains a content linter, with no dependencies:
+
+- every file exports data only (no functions, no imports)
+- required fields present and of the right type for each kind
+- ids unique; every reference (a spell on a class list, an action in a
+  multiattack, a feature on a level) resolves
+- every effect step, hook, op and tag is in the closed lists
+- dice strings parse; areas have a shape and size; ranges are numbers or
+  known words
+- `text` is present and `source` is set
+- an entry marked `auto` contains no `manual` step
+
+It prints a coverage table: entries per kind, per tier. That table is how
+progress on the SRD is tracked.
+
+A second check, for a human or a careful agent: each data pull request quotes
+the SRD heading for a sample of its entries so a reviewer can compare.
+
+## Known costs and risks
+
+- **The vocabulary will be too small.** Expect amendments. The closed lists
+  make each one a deliberate decision instead of drift.
+- **`derive()` is where rule bugs will hide** (stacking AC formulas, which
+  bonuses combine). It needs the densest tests in the project.
+- **Manual-tier spells put work on the DM.** That is the honest state of the
+  engine, and it is still less work than a tabletop with no automation.
+- **Quick entry lets wrong numbers in.** They are labelled, and they are the
+  player's own sheet.
+- **Standing-instruction reactions are not the rules as written** for
+  reactions that involve a choice. Those stay manual until stage B.
+- **Migration touches every saved table.** The live server has few; the test
+  with a saved version 1 table is the guard.
+
+## Tasks
+
+Order matters down to R4. After R4, the data tasks can run in parallel with
+each other and with the engine tasks.
+
+| # | Task | Who | Touches | Done when |
+|---|---|---|---|---|
+| R1 | Content pack layout, loader, and linter; move the existing 6 spells, 3 monsters and 4 pregens into `srd52/` in the new format | Fable | `content/**`, new linter, `scenario.js` | Linter passes; all existing tests pass unchanged apart from ids |
+| R2 | Effect steps: resolve `attack`, `save`, `damage`, `heal`, `condition`, `resource`, `manual` from data; delete the four hard-coded spell kinds | Fable | `engine.js`, new `effects.js` | The six spells play identically from data; a `manual` spell enforces its costs and shows its text |
+| R3 | Modifier system and the fifteen conditions as data; state version 2 and `migrate()` | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
+| R4 | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
+| R5 | Quick entry: form, manual sheets, DM adds a character to the table | any agent, reviewed | `app.js`, `index.html`, small engine action | A level 5 character typed from a paper sheet can be claimed and played |
+| R6 | Standing-instruction reactions | Fable | `engine.js` | Opportunity Attack honours always / never; one spell reaction works |
+| R7 | `derive()` and `validate()` for built sheets: species, backgrounds, one class to level 5 | Fable | new `derive.js` | A built Fighter 1 to 5 matches hand-checked numbers at each level |
+| R8 | Character builder UI and `levelUp` | any agent, reviewed | `app.js`, `index.html` | A new player can make a level 1 Fighter on a phone |
+| D1 | Spells, in batches by level | any agent | `content/srd52/spells-*.js` | Linter passes; tier set honestly; SRD headings quoted in the PR |
+| D2 | Monsters, in batches by letter | any agent | `content/srd52/monsters-*.js` | as D1 |
+| D3 | Equipment: weapons, armour, gear | any agent | `content/srd52/equipment.js` | as D1 |
+| D4 | Remaining classes, species, backgrounds, feats | any agent | `content/srd52/*.js` | as D1; each class checked by `derive()` tests from R7 |
+
+D1 to D3 can start as soon as R1 is merged, because the linter defines the
+format. Entries written before R2 to R4 land are simply entered at the tier
+that is honest then, and promoted later.
+
+R5 is the fastest route to your own campaign and depends only on R1.
