@@ -46,7 +46,7 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
   const { ws, got } = await talk({ t: "host", name: "Dana" }, (g) => g.some((m) => m.t === "update"));
   const welcome = got.find((m) => m.t === "welcome"), update = got.find((m) => m.t === "update");
   assert.equal(welcome.role, "dm");
-  // The state is far larger than 64 KB, so this also exercises long WebSocket frames.
+  // About 31 KB: exercises WebSocket frames with a 16-bit length.
   assert.ok(JSON.stringify(update).length > 20000);
   assert.ok(Object.keys(update.state.map.tiles).length > 400);
 
@@ -58,5 +58,14 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
   const reply = await next;
   assert.equal(reply.t, "update");
   assert.equal(reply.events[0].type, "chronicle");
+
+  // A 70 KB message each way exercises frames with a 64-bit length, in and out.
+  const big = new Promise((resolve) => {
+    ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.t === "update") resolve(m); };
+  });
+  ws.send(JSON.stringify({ t: "act", action: { type: "chronicle", title: "Long entry", text: "y".repeat(70000) } }));
+  const bigReply = await big;
+  assert.equal(bigReply.events[0].text.length, 70000);
+  assert.ok(JSON.stringify(bigReply).length > 65536);
   ws.close();
 });

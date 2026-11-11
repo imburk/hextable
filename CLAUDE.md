@@ -1,7 +1,8 @@
 # Hextable — working notes for Claude
 
 Read `docs/DESIGN.md` before changing architecture and `docs/ROADMAP.md` to see
-what is in scope right now.
+what is in scope right now. Agreed designs are in `docs/specs`; build to them.
+`AGENTS.md` has the working agreement for every coding agent, including you.
 
 ## What this is
 
