@@ -23,11 +23,9 @@
 | Terrain mapping | Can come now or later; not blocking |
 | Presentation | Staged: tokens, then 3D, then animated |
 
-## Proposed (not yet confirmed)
+## Stack (confirmed 2026-11-10)
 
-These are recommendations to confirm before code is written.
-
-| Topic | Proposal | Reason |
+| Topic | Choice | Reason |
 |---|---|---|
 | Platform | Web app, installable as a PWA | One codebase covers PC, phone and tablet with no app-store step |
 | Language | TypeScript everywhere | Rules code is shared between server and client |

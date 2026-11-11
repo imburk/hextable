@@ -8,7 +8,7 @@ Haiku for bulk data entry.
 
 | # | Milestone | Done when | Model |
 |---|---|---|---|
-| 1 | Repo skeleton | Monorepo builds, tests run, CI is green | Sonnet |
+| 1 | Repo skeleton (done) | Monorepo builds, tests run, CI is green | Sonnet |
 | 2 | Rules core | Creatures, ability checks, attack rolls, saves, damage, HP and death, with tests | Top model to design, Sonnet to build |
 | 3 | Hex combat | Initiative, turn loop, movement budget, opportunity attacks on a hex grid, all headless and tested | Sonnet |
 | 4 | Server | Create a session, join by link, DM approval, intents in and events out | Sonnet |

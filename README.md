@@ -8,8 +8,25 @@ Runs in a browser on PC, phone and tablet.
 
 ## Status
 
-Design phase. See [docs/DESIGN.md](docs/DESIGN.md) for the architecture and
+Early development: the repo skeleton is in place and the rules engine is next. See [docs/DESIGN.md](docs/DESIGN.md) for the architecture and
 [docs/ROADMAP.md](docs/ROADMAP.md) for the build order.
+
+## Development
+
+Needs Node.js 22.18 or newer.
+
+```
+npm install
+npm run typecheck
+npm test
+```
+
+TypeScript runs directly in Node, so there is no build step yet. The client
+gets a bundler when the 3D scene is added.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
 
 ## Rules content
 
