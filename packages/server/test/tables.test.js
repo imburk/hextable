@@ -344,3 +344,51 @@ test("history is redacted for players, limited in size, and refused before appro
   assert.equal(waiting.count("history"), 0);
   assert.match(waiting.last("error").error, /Waiting for the DM/);
 });
+
+test("property 5: a hidden monster is in no message to a player until it is revealed", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  dm.say({ t: "act", action: { type: "setting", key: "autoEngage", value: false } });
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  const pip = state.entities.rogue;
+
+  // The DM adds a hidden wolf a few hexes from Pip, moves it, and writes it into the record.
+  const spot = H.range(pip.pos, 5).find((h) => H.dist(h, pip.pos) === 5 && state.map.tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: spot, hidden: true, name: "Greyjaw" } });
+  const id = dm.last("update").events[0].id;
+  assert.equal(state.entities[id].hidden, true);
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  dm.say({ t: "act", action: { type: "rest" } });
+  player.say({ t: "history", limit: 200 });
+  const back = client(tables);
+  back.say({ t: "resume", code, token: player.last("welcome").token });
+
+  const mentions = (m) => { const text = JSON.stringify(m); return text.includes(`"${id}"`) || text.includes("Greyjaw"); };
+  assert.ok(dm.got.some(mentions), "the DM does see it");
+  for (const c of [player, back]) for (const m of c.got) assert.equal(mentions(m), false, `sent to a player early: ${m.t}`);
+
+  // A guessed id gets the same answer as an id that does not exist.
+  player.say({ t: "act", action: { type: "attack", actor: "rogue", target: id, attack: "shortbow" } });
+  assert.equal(player.last("error").error, "No such creature.");
+  assert.equal(mentions(player.last("error")), false);
+
+  // Pip walks toward it. The first message that mentions the wolf carries its reveal, first in the list.
+  const seenBefore = player.got.length;
+  const steps = [...moveOptions(state, pip)].filter(([k, v]) => v.canStop && H.dist(H.parse(k), spot) === 2).sort((a, b) => a[1].cost - b[1].cost);
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to: H.parse(steps[0][0]) } });
+  const first = player.got.slice(seenBefore).find(mentions);
+  assert.ok(first, "the reveal reached the player");
+  assert.deepEqual(first.events[0], { type: "revealed", id });
+  assert.equal(first.state.entities[id].name, "Greyjaw");
+  assert.equal(first.state.entities[id].health, "healthy");
+  assert.equal("maxHp" in first.state.entities[id], false);
+
+  // The DM hides it again: it leaves the player's view and the player is told nothing about it.
+  const n = player.got.length;
+  dm.say({ t: "act", action: { type: "place", actor: id, to: spot } });
+  dm.say({ t: "act", action: { type: "reveal", actor: id, hidden: true } });
+  const after = player.got.slice(n).filter((m) => m.t === "update");
+  assert.equal(id in after.at(-1).state.entities, false);
+  assert.equal(after.at(-1).events.length, 0);
+});

@@ -1,7 +1,7 @@
 # Spec: hidden information
 
-Status: tasks 1 to 3 built (views, the server sending them, the timeline out
-of updates); 4 and 5 open. Owner of the design: Claude (Fable). Tasks at
+Status: tasks 1 to 4 built (views, the server sending them, the timeline out
+of updates, hidden creatures); 5 open. Owner of the design: Claude (Fable). Tasks at
 the end are sized for one pull request each.
 
 ## Problem
@@ -62,8 +62,9 @@ Top level:
 
 | Field | Player view |
 |---|---|
-| `version`, `seq`, `clock`, `settings` | as is |
+| `version`, `clock`, `settings` | as is |
 | `rng` | **removed** |
+| `seq` | **removed**: it counts creatures as they are added, so it would tick when the DM adds a hidden one |
 | `map` | as is (terrain is public for now) |
 | `timeline` | **removed** from state (see section 4) |
 | `entities` | filtered and redacted, below |
@@ -159,12 +160,20 @@ as now.
   - it is attacked, targeted or caught in an area, or
   - a party creature moves within `ENGAGE_RANGE` of it (this already starts a
     fight when auto-engage is on), or
-  - a party creature tries to move onto its hex. The move stops short and the
-    creature is revealed, so a refused move never silently confirms that
-    something is there.
+  - a party creature tries to move onto its hex. The move stops on the nearest
+    hex beside it and the creature is revealed, so a refused move never
+    silently confirms that something is there. If the mover is already beside
+    it, there is no move and the creature is revealed.
+  A hidden creature that attacks or casts is revealed too, because both start
+  or require a fight. One that only moves stays hidden unless it walks into an
+  arena or auto-engage starts a fight.
+- For anyone but the DM, an action that names a hidden creature as `actor`,
+  `target` or `entity` is refused with "No such creature.", the same answer
+  as an id that does not exist, and changes nothing.
 - Revealing emits `{type:"revealed", id}`. `viewEvents` sends `revealed`
   first in the batch, and the view sent with it already contains the creature.
-- Hiding a creature that is in an encounter is refused.
+- Hiding a creature that is in an encounter, or a party member, is refused.
+- Hiding emits `{type:"concealed", id}`, which only the DM receives.
 
 This is deliberately a DM switch, not the SRD's Hide action or the Invisible
 condition. Those are creature abilities with their own rules and come with
@@ -245,6 +254,10 @@ These are the acceptance tests for the whole spec. Each is a test in
 - The DM's browser still runs the monster AI and so must hold everything.
   Moving the AI to the server is separate work.
 - Anyone who can read the server's disk can read everything.
+- A hidden creature completely boxed in by walls or other creatures cannot be
+  walked up to, so a move onto its hex is refused with "Can't get there."
+- Once a creature is revealed, a player's `history` includes earlier entries
+  about it, such as the moment it was added.
 
 ## Tasks
 

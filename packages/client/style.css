@@ -111,3 +111,6 @@ button.quiet { background: transparent; }
 .assign { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .assign select { min-height: 40px; min-width: 9em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, #222); color: inherit; font: inherit; }
 button.leave.sure { outline: 2px solid currentColor; }
+
+/* a creature the players can't see yet (only the DM is ever sent one) */
+.label.unseen { opacity: .6; } .label.unseen span::after { content: ' (hidden)'; font-weight: 400; }

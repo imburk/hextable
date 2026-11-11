@@ -51,6 +51,7 @@ test("property 1: a player's view never contains the dice seed, at any depth", (
     assert.equal(allKeys(v).has("rng"), false);
     assert.equal(allKeys(v).has("timeline"), false);
   });
+  assert.equal("seq" in view(newGame(1), PLAYER), false);
   for (const viewer of [PLAYER, { role: "spectator" }, {}, undefined, null]) {
     assert.equal("rng" in view(newGame(1), viewer), false, `leaked to ${JSON.stringify(viewer)}`);
   }
