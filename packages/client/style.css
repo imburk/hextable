@@ -84,6 +84,11 @@ body.fight #status { border-color: var(--accent); }
 #actions button.armed { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); } #actions button.armed small { color: inherit; }
 #actions button.bonus { border-style: dashed; }
 #actions button.end { margin-left: auto; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; min-width: 0; align-content: center; }
+#actions { overscroll-behavior-x: contain; }
+/* A creature with many actions (a monster with a Multiattack and four attacks, plus Search, Dash, Disengage, Dodge):
+   on a phone the bar is two rows that scroll sideways together, so about twice as many are in reach and the card
+   grows by one row, not by a screenful. */
+@media (max-width: 600px) { #actions.many { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); grid-auto-columns: max-content; } #actions.many button { min-width: 0; } }
 #actions .wait { color: var(--muted); align-self: center; padding: 8px 0; }
 
 /* panels */

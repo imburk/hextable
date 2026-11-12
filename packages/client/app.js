@@ -320,6 +320,8 @@ function refresh() {
       conds.map((c) => `<span>${c}</span>`).join('') + lasting;
 
     const bar = $('actions'); bar.textContent = '';
+    bar.classList.remove('many');
+    if (bar.dataset.for !== e.id) { bar.scrollLeft = 0; bar.dataset.for = e.id; }        // another creature starts at the left
     if (my && up(e)) {
       if (enc && inFight(S, e.id) && cur !== e.id) bar.innerHTML = `<span class="wait">Waiting for ${esc(name(cur))}…</span>`;
       else {
@@ -368,6 +370,7 @@ function refresh() {
           bar.append(button('Disengage', `${nimble ? 'Bonus' : 'Action'} · no Opportunity Attacks`, nimble ? 'bonus' : '', blocked(S, e, nimble ? 'bonus' : 'action'), () => act({ type: 'disengage', actor: e.id })));
           bar.append(button('Dodge', 'Action · attackers roll with Disadvantage', '', blocked(S, e, 'action'), () => act({ type: 'dodge', actor: e.id })));
         }
+        bar.classList.toggle('many', bar.querySelectorAll('button').length > 6);       // on a phone, two rows (see style.css)
       }
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
