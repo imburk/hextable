@@ -123,6 +123,31 @@ Sleet Storm and Stinking Cloud (losing Concentration; a Poisoned that also bars 
 | Obscurement with a rider no hook can say (Concentration lost, no actions) | | sleet storm, stinking cloud |
 | Assist spells held at assist by: Speed doubled and an extra action, healing from damage dealt, a wall of free shape, a later action | | haste, vampiric touch, wind wall, call lightning |
 
+**Levels 4 and 5** (#110): 3 moved from manual to assist: Conjure Woodland Beings (an emanation zone that
+moves with the caster, spares the caster's side, a Wisdom save for force damage on entering or ending a
+turn there), Fire Shield (the damage type resisted is the choice: Cold for the warm shield, Fire for the
+chill one; the retaliation and the light stay with the DM) and Mislead (the caster is Invisible; the DM ends
+it and runs the double). Black Tentacles and Insect Plague stay assist but are now zones, so the save on
+entering or ending a turn in the area is run by the engine (they were first-save only). Level 4 was 2 auto,
+9 assist, 23 manual and is now 2 / 11 / 21; level 5 was 2 / 9 / 27 and is now 2 / 10 / 26. Considered and left:
+Cloudkill (the sphere moves 10 feet away from the caster each turn, which a zone cannot do), Holy Aura and
+Aura of Life (effects while inside an aura). Still missing:
+
+| Kind | Level 4 | Level 5 |
+|---|---|---|
+| Information, communication, crafting and terrain with nothing to roll | divination, locate creature, fabricate, stone shape, control water, secret chest | commune, commune with nature, legend lore, dream, telepathic bond, scrying, creation, awaken, passwall |
+| Illusions | hallucinatory terrain | seeming |
+| Summons, objects and sensors that act, and actions the spell grants for later turns | arcane eye, faithful hound, guardian of faith, giant insect | animate objects, conjure elemental, summon dragon, arcane hand, telekinesis |
+| Forms | polymorph | |
+| Teleporting and tree travel | dimension door | teleportation circle, tree stride |
+| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, Hit Point maximum, magical Restrained) | aura of life, death ward, freedom of movement | |
+| Barriers and walls of free shape, or around a creature | wall of fire, resilient sphere, private sanctum | wall of force, wall of stone |
+| Barriers and wards by creature type | | antilife shell, dispel evil and good, hallow, planar binding |
+| Raising or restoring | | greater restoration, raise dead, reincarnate |
+| An aura with a rider (extra damage to attacks against creatures in it) | conjure minor elementals | |
+| Random behaviour | confusion | |
+| Assist spells held at assist by: Difficult Terrain, a Plant creature that auto-fails, an escape check, forced obedience, a banishment that leaves play, a sphere that moves | black tentacles, blight, compulsion, dominate beast, banishment | cloudkill, insect plague, dominate person, geas |
+
 ## Maps, sight and movement
 
 | # | What | Who |
