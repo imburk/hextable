@@ -625,7 +625,7 @@ entry names what was added to `schema.js` and what the engine does with it.
   `choice` of damage type (Spirit Guardians' radiant or necrotic).
   Not built: moving a zone after it is cast (Moonbeam's Magic action), a zone that changes
   something while a creature is inside it (Spirit Guardians' halved Speed, Difficult Terrain),
-  walls of free shape (Wall of Fire), and drawing zones on the map.
+  walls of free shape (Wall of Fire). The renderer draws each zone in the state it is given (a tinted patch by damage type, name on hover or tap); players are not sent zones yet.
 
 ### A class
 
