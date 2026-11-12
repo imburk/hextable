@@ -44,6 +44,18 @@ precision mediump float;
 varying vec4 vCol; varying float vFog; uniform vec3 uSky;
 void main() { gl_FragColor = vec4(mix(vCol.rgb, uSky, vFog * 0.8), vCol.a); }`;
 
+// A level's background picture: a textured flat quad, lit by the hour and fogged like the rest.
+const VS_PIC = `
+attribute vec3 aPos; attribute vec2 aUV;
+uniform mat4 uVP; uniform vec2 uFog;
+varying vec2 vUV; varying float vFog;
+void main() { gl_Position = uVP * vec4(aPos, 1.0); vUV = aUV; vFog = clamp((gl_Position.w - uFog.x) / uFog.y, 0.0, 1.0); }`;
+const FS_PIC = `
+precision mediump float;
+varying vec2 vUV; varying float vFog; uniform vec3 uSky, uGrade; uniform sampler2D uTex;
+void main() { vec4 t = texture2D(uTex, vUV); gl_FragColor = vec4(mix(t.rgb * uGrade, uSky, vFog * 0.8), 1.0); }`;
+const RETRY_MS = 8000;                                // a picture that could not be fetched is tried again after this long
+
 // ---------- tiny matrix kit (column-major) ----------
 const ident = () => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 function mul(a, b) {
@@ -161,16 +173,30 @@ export class Renderer {
     if (!gl) throw new Error('WebGL is not available in this browser.');
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
     const prog = gl.createProgram();
-    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+    ['aPos', 'aNor', 'aCol'].forEach((a, i) => gl.bindAttribLocation(prog, i, a));       // fixed places, shared with the picture program
+    gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
     gl.useProgram(prog);
     this.loc = {};
     for (const a of ['aPos', 'aNor', 'aCol']) { this.loc[a] = gl.getAttribLocation(prog, a); gl.enableVertexAttribArray(this.loc[a]); }
     for (const u of ['uVP', 'uM', 'uLight', 'uTint', 'uLit', 'uFog', 'uSky', 'uGrade']) this.loc[u] = gl.getUniformLocation(prog, u);
+    this.prog = prog;
+    const pp = (this.picProg = gl.createProgram());
+    gl.attachShader(pp, sh(gl.VERTEX_SHADER, VS_PIC)); gl.attachShader(pp, sh(gl.FRAGMENT_SHADER, FS_PIC));
+    gl.bindAttribLocation(pp, 0, 'aPos'); gl.bindAttribLocation(pp, 1, 'aUV'); gl.linkProgram(pp);
+    if (!gl.getProgramParameter(pp, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pp));
+    this.picLoc = {}; for (const u of ['uVP', 'uFog', 'uSky', 'uGrade', 'uTex']) this.picLoc[u] = gl.getUniformLocation(pp, u);
+    this.picBuf = gl.createBuffer();
+    this.images = new Map();                  // asset id -> { state: 'loading' | 'ready' | 'failed', tex, at }
+    this.pics = [];                           // what to draw: { asset, first } (first vertex in picBuf), rebuilt with the terrain
+    this.onPicture = null;                    // called when a picture has arrived
+    this.assetUrl = null;                     // (asset id) -> Promise<blob: URL>; set by the app (never a token in a URL)
+    this.pins = [];                           // points in map feet to mark (the editor's scale tool)
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
+    this.terrain = new Mesh(gl); this.grid = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -195,7 +221,8 @@ export class Renderer {
     this.state = state;
     const want = lightAt(state.clock ?? 480);
     this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}:${this.#pictureSig()}`;
+    this.#fetchPictures();
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
@@ -248,12 +275,33 @@ export class Renderer {
   // The hex under a screen point on a flat plane `feet` high, ignoring what is drawn: for picking
   // empty space (the map editor). Null if the point looks at the sky.
   planeHex(px, py, feet = 0) {
+    const p = this.#plane(px, py, feet);
+    return p && H.fromWorld(p[0], p[1]);
+  }
+  // The same, as a point in map feet (x east, y south): for tapping on a level's picture.
+  planePoint(px, py, feet = 0) {
+    const p = this.#plane(px, py, feet);
+    return p && [p[0] / UNIT, p[1] / UNIT];
+  }
+  #plane(px, py, feet) {
     const C = this.C; if (!C) return null;
     const nx = (px / this.canvas.clientWidth) * 2 - 1, ny = 1 - (py / this.canvas.clientHeight) * 2 - C.shift;
     const d = norm([0, 1, 2].map((i) => C.f[i] + C.r[i] * nx * C.tan * C.aspect + C.u[i] * ny * C.tan));
     const t = (surfY(feet) - C.eye[1]) / d[1];
     if (!(t > 0) || t > 400) return null;
-    return H.fromWorld(C.eye[0] + d[0] * t, C.eye[2] + d[2] * t);
+    return [C.eye[0] + d[0] * t, C.eye[2] + d[2] * t];
+  }
+  // Which way is screen-right and screen-up on the ground, as unit vectors in map feet: for nudging a picture.
+  screenAxes() {
+    const C = this.C ?? this.#camera(), u = (a) => { const l = Math.hypot(a[0], a[2]) || 1; return [a[0] / l, a[2] / l]; };
+    return { right: u(C.r), up: u(C.f) };
+  }
+  // Marks on the floor of a level (map feet), for the scale tool: a dot at each point and a line between two.
+  setPins(points, levelZ = 0) { this.pins = points.map((p) => [...p]); this.pinZ = levelZ; if (this.state) this.#buildOverlay(); }
+  // A level's picture, if there is one and it has arrived (so the floor can be drawn from it).
+  hasPicture(levelId) {
+    const l = this.state?.map.levels.find((x) => x.id === levelId);
+    return !!l?.image && this.images.get(l.image.asset)?.state === 'ready';
   }
   screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
   rotate(d) { this.cam.yaw += d; }
@@ -278,6 +326,47 @@ export class Renderer {
     return { x: x / parts.length, y: base.y, z: z / parts.length };
   }
 
+  // ---------- level pictures ----------
+  #pictureSig() {
+    return this.state.map.levels.map((l) => (l.image ? `${l.image.asset}@${l.image.feet}@${l.image.origin}@${l.z}@${this.images.get(l.image.asset)?.state === 'ready' ? 1 : 0}` : '-')).join('|');
+  }
+  #fetchPictures() {
+    if (!this.assetUrl) return;
+    const now = performance.now();
+    for (const l of this.state.map.levels) {
+      const id = l.image?.asset, had = id && this.images.get(id);
+      if (!id || (had && (had.state !== 'failed' || had.tries >= 3 || now - had.at < RETRY_MS))) continue;
+      this.#loadPicture(id, (had?.tries ?? 0) + 1);
+    }
+  }
+  // Fetch (with the session token, by the app's assetUrl), decode and upload as a texture. Not there yet
+  // or refused: the level is drawn from its hex tiles as before, and it is tried again a few times.
+  async #loadPicture(id, tries) {
+    const gl = this.gl, rec = { state: 'loading', tex: null, at: performance.now(), tries };
+    this.images.set(id, rec);
+    try {
+      const img = new Image();
+      img.src = await this.assetUrl(id);
+      await img.decode();
+      const max = Math.min(2048, gl.getParameter(gl.MAX_TEXTURE_SIZE)), pot = (n) => 2 ** Math.max(0, Math.min(Math.log2(max), Math.round(Math.log2(Math.max(1, n)))));
+      const cv = document.createElement('canvas');       // power-of-two, so it can be mipmapped on any phone
+      cv.width = pot(img.naturalWidth); cv.height = pot(img.naturalHeight);
+      const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, cv.width, cv.height);
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      rec.tex = tex; rec.state = 'ready';
+      if (this.state) this.setState(this.state, []);
+      this.onPicture?.();
+    } catch {
+      rec.state = 'failed'; rec.at = performance.now();
+      if (tries < 3) setTimeout(() => this.state && this.#fetchPictures(), RETRY_MS + 100);
+    }
+  }
+
   #buildTerrain() {
     const b = new Builder(), sb = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6, sh = th.shadow ?? { a: 0.4 };
     const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;      // a floor above whoever is being followed
@@ -286,8 +375,23 @@ export class Renderer {
     // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
     const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
     const patch = (level, h) => { const t = level.tiles[H.col(h)]; return t ? surfY(level.z + (t.h ?? 0), t).toFixed(3) : null; };
+    // A level with a picture that has arrived is floored by the picture: its hexes are only a faint outline.
+    const gb = new Builder(), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
+    this.pics = []; const pv = [];
+    for (const l of map.levels) {
+      if (!pictured.has(l.id)) continue;
+      const { asset, feet: [fw, fh], origin: [ox, oy] } = l.image, y = surfY(l.z), x0 = ox * UNIT, x1 = (ox + fw) * UNIT, z0 = oy * UNIT, z1 = (oy + fh) * UNIT;
+      this.pics.push({ asset, first: pv.length / 5 });
+      pv.push(x0, y, z0, 0, 0, x0, y, z1, 0, 1, x1, y, z1, 1, 1, x0, y, z0, 0, 0, x1, y, z1, 1, 1, x1, y, z0, 1, 0);
+    }
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.picBuf); this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(pv), this.gl.DYNAMIC_DRAW);
     for (const h of allTiles(map)) {
       if (h.z > this.ceiling) continue;
+      if (pictured.has(h.level.id)) {
+        const w = H.toWorld(h), inFight = enc && enc.arena[H.col(h)];
+        gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
+        continue;
+      }
       const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
       const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
       const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;              // a room's floor is one even colour, not a patchwork
@@ -347,7 +451,7 @@ export class Renderer {
         this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);
       }
     }
-    this.terrain.set(b); this.shadows.set(sb); this.#buildEdge();
+    this.terrain.set(b); this.grid.set(gb); this.shadows.set(sb); this.#buildEdge();
   }
   // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
   #buildEdge() {
@@ -400,6 +504,15 @@ export class Renderer {
     for (const id of hl.allies) ringOn(id, c.ally);
     if (hl.turn) ringOn(hl.turn, [...this.theme.arenaRim, 0.95], 0.72, 0.98);
     if (hl.selected) ringOn(hl.selected, c.select, 0.56, 0.68);
+    if (this.pins.length) {
+      const y = surfY(this.pinZ ?? 0) + 0.06, red = [0.95, 0.15, 0.15, 0.95];
+      for (const [x, z] of this.pins) b.flatHex(x * UNIT, z * UNIT, y, 0, 0.32, red);
+      if (this.pins.length > 1) {
+        const [p, q] = this.pins, ax = p[0] * UNIT, az = p[1] * UNIT, bx = q[0] * UNIT, bz = q[1] * UNIT, len = Math.hypot(bx - ax, bz - az) || 1, nx = (-(bz - az) / len) * 0.06, nz = ((bx - ax) / len) * 0.06;
+        b.quad([ax + nx, y, az + nz], [ax - nx, y, az - nz], [bx - nx, y, bz - nz], [bx + nx, y, bz + nz], red);
+        b.quad([ax - nx, y, az - nz], [ax + nx, y, az + nz], [bx + nx, y, bz + nz], [bx - nx, y, bz - nz], red);
+      }
+    }
     this.overlay.set(b);
   }
 
@@ -465,6 +578,7 @@ export class Renderer {
     gl.uniform2f(this.loc.uFog, c.dist + th.fog[0] * 0.5, th.fog[1]);
     gl.disable(gl.BLEND);
     this.terrain.draw(this.loc, ident());
+    if (this.pics.length) this.#drawPictures(C, sky, lt.light);
     for (const a of this.actors.values()) {
       const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0;      // drawn only: the pawn is not really moved; it shakes across the screen whichever way the camera faces
       a.mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + (a.tilt ? 0.15 : 0) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, a.tilt),
@@ -473,6 +587,7 @@ export class Renderer {
     gl.enable(gl.BLEND); gl.depthMask(false);
     gl.uniform3f(this.loc.uGrade, 1, 1, 1);                                // highlights, the arena edge and shadows are not tinted by the hour
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
+    this.grid.draw(this.loc, ident(), [1, 1, 1, 1], 0);
     this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
     for (const a of this.actors.values()) {
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);                    // a flier's shadow is fainter and smaller
@@ -505,6 +620,21 @@ export class Renderer {
       f.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
       return true;
     });
+  }
+
+  #drawPictures(C, sky, grade) {
+    const gl = this.gl, L = this.picLoc;
+    gl.useProgram(this.picProg); gl.disableVertexAttribArray(2); gl.enableVertexAttribArray(1);
+    gl.uniformMatrix4fv(L.uVP, false, C.vp); gl.uniform3fv(L.uSky, sky); gl.uniform3fv(L.uGrade, grade);
+    gl.uniform2f(L.uFog, this.cam.dist + this.theme.fog[0] * 0.5, this.theme.fog[1]); gl.uniform1i(L.uTex, 0);
+    gl.disable(gl.CULL_FACE);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.picBuf);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
+    for (const p of this.pics) {
+      const tex = this.images.get(p.asset)?.tex; if (!tex) continue;
+      gl.bindTexture(gl.TEXTURE_2D, tex); gl.drawArrays(gl.TRIANGLES, p.first, 6);
+    }
+    gl.enable(gl.CULL_FACE); gl.useProgram(this.prog); gl.enableVertexAttribArray(2);
   }
 
   // ---------- picking and input ----------
