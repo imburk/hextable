@@ -84,7 +84,7 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| T1 | Undo history is in memory only and is lost when the server restarts | any |
+| ~~T1~~ | ~~Undo history is in memory only and is lost when the server restarts~~ saved beside each table file (PR #PRN). Solo play still starts a reload with an empty history | any |
 | T2 | The timeline grows without limit | any |
 | T3 | Per-address limits can be dodged without a proxy in front of the server (documented) | any |
 | ~~T4~~ | ~~No client tests: UI work is checked by hand in a headless browser each time~~ `npm run smoke` drives the page in headless Chromium (PR #60). It is a smoke test, not a unit suite | any |
