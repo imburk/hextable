@@ -23,26 +23,28 @@ players are sent). **any** can be handed to any agent.
 
 ## Monsters
 
-329 are entered; 33 play fully by the rules. The rest are held back by these, in order of how
+329 are entered; 33 play fully by the rules (tiers were not raised by #71). The rest are held back by these, in order of how
 many monsters each one touches:
 
 | # | What | Who |
 |---|---|---|
-| M1 | **Multiattack.** Stored as text on about 180 monsters. The AI makes one attack a turn, so most monsters hit far below their strength. Design exists: an action whose effect is a list of other actions (`rules-expansion.md`). It needs the weapon-attack bridge replaced by effect steps first (M2) | engine |
-| M2 | Monster attacks still go through the old flat bridge: only the first damage of an attack is rolled (the Ankheg's acid is lost), and save-based actions (breath weapons, Constrict) are never used by the AI | engine |
-| M3 | Recharge, uses per day, bonus actions and reactions have no fields | engine |
-| M4 | Condition immunities have no field (the Skeleton cannot be Poisoned) | engine |
+| M1 | ~~**Multiattack.** Stored as text on about 180 monsters. The AI makes one attack a turn, so most monsters hit far below their strength.~~ Built (#71): 146 monsters have a working Multiattack. 32 stay text: 18 adult and ancient dragons whose Multiattack may swap an attack for a spell, 8 with spellcasting or "if available" (aboleth, clay golem, cloud giant, doppelganger, dryad, glabrezu, hydra, oni), 5 with a part the DM applies (roper, rust monster, young silver dragon, sphinx of valor, succubus), and the chimera (a recharge breath as an alternative) | engine |
+| M2 | ~~Monster attacks still go through the old flat bridge: only the first damage of an attack is rolled (the Ankheg's acid is lost), and save-based actions (breath weapons, Constrict) are never used by the AI~~ (#71) | engine |
+| M3 | ~~Recharge, uses per day, bonus actions~~ (#71: 75 recharges, 6 daily uses, 7 Bonus Actions entered) and reactions have no fields. Daily uses of monsters are never restored (a long rest restores the party only) | engine |
+| M4 | ~~Condition immunities have no field (the Skeleton cannot be Poisoned)~~ (#71: 96 monsters). Two conditional ones stay text: the archmage (Mind Blank) and the vampire familiar (except from its master) | engine |
 | M5 | Legendary actions and lair-free legendary resistance | engine |
 | M6 | Monster spellcasting (a list of spells with uses) | engine |
 | M7 | Senses, saving throw bonuses, languages and initiative bonuses are not entered for most monsters; the format now takes senses | any |
 | M8 | 49 monsters are not marked checked (mostly D to G entries with text not compared line by line) | any |
-| M9 | The monster AI uses only the first melee and first ranged attack, treats height only as distance, and does not hide | engine |
+| M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, does not hide, and uses no Bonus Action but an area one | engine |
+| M10 | An attack with two damage steps (Rend with fire) makes two damage events: two Concentration saves, and resistance halves each part separately. Spells with two damage steps already did | engine |
+| M11 | Monster lines and cubes (22 breath weapons are lines) and spheres or cylinders with no `area.range` cannot be aimed; the DM applies them | engine (with S3) |
 
 ## Characters
 
 | # | What | Who |
 |---|---|---|
-| C1 | **Extra Attack** (the characters' Multiattack: Fighter, Paladin, Ranger, Barbarian and Monk at level 5). Not built. A typed-in level 5 fighter attacks once | engine (with M1) |
+| C1 | ~~**Extra Attack** (the characters' Multiattack: Fighter, Paladin, Ranger, Barbarian and Monk at level 5). Not built. A typed-in level 5 fighter attacks once~~ (#71: `features.extraAttack`, also in quick entry) | engine (with M1) |
 | C2 | Only Second Wind and Sneak Attack exist as features. Everything else on a sheet (Action Surge, Rage, Channel Divinity, Cunning Action, Wild Shape...) is not there | engine (R7) |
 | C3 | No levelling or derived sheets: numbers are typed in (R7, R8) | engine, then any |
 | C4 | Equipment states, attunement, encumbrance, spell materials (R10) | engine |
