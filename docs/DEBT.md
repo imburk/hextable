@@ -40,7 +40,7 @@ many monsters each one touches:
 | M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
 | M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, does not hide, and uses no Bonus Action but an area one | engine |
 | M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
-| M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (PR_A: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
+| M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
 
 ## Characters
 
@@ -63,7 +63,7 @@ cannot say, by how much it would unlock:
 |---|---|---|
 | S1 | Dice-valued modifiers (Bless, Bane, Guidance) | engine |
 | S2 | More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing | engine |
-| S3 | ~~Line and cube areas~~ (PR_A). Left: a Line placed at a distance or of free shape (Wind Wall), several cubes arranged by the caster (Fire Storm), and creatures of the caster's choice in an area (Slow, `area.choose`) | engine |
+| S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall), several cubes arranged by the caster (Fire Storm), and creatures of the caster's choice in an area (Slow, `area.choose`) | engine |
 | S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
 | S5 | Temporary Hit Points, a damage type chosen at casting, "until the end of your next turn" | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |
