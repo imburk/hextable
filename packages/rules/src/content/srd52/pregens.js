@@ -25,7 +25,7 @@ export const pregens = [
   {
     id: "cleric", name: "Odessa", cls: "Cleric", level: 1, ac: 18, hp: 10, speed: 30, prof: 2,
     abil: { str: 14, dex: 10, con: 14, int: 8, wis: 17, cha: 12 },
-    saveProf: ["wis", "cha"], castAbil: "wis", spells: ["sacred-flame", "cure-wounds", "healing-word"], slots: { 1: 2 },
+    saveProf: ["wis", "cha"], castAbil: "wis", spells: ["sacred-flame", "cure-wounds", "healing-word", "shield-of-faith"], slots: { 1: 2 },
     attacks: [{ id: "mace", name: "Mace", type: "melee", bonus: 4, damage: "1d6+2", dtype: "bludgeoning", reach: 5 }],
     gear: ["Chain Mail", "Shield", "Mace", "Holy Symbol", "Priest's Pack"],
   },

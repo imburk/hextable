@@ -117,3 +117,7 @@ button.leave.sure { outline: 2px solid currentColor; }
 
 /* DM: conditions */
 .cond-row select { min-height: 40px; flex: 1; min-width: 8em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, #222); color: inherit; font: inherit; }
+
+/* lasting effects on the creature card */
+#c-res .fx { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; color: inherit; background: transparent; }
+#c-res button.fx { min-height: 32px; cursor: pointer; }

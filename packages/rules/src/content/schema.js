@@ -16,6 +16,9 @@ export const CAST_TIMES = ['action', 'bonus', 'reaction', 'minute', '10 minutes'
 export const MOVE_MODES = ['walk', 'climb', 'swim', 'fly', 'burrow'];
 export const AREA_SHAPES = ['cone', 'sphere', 'line', 'cube', 'cylinder', 'emanation'];
 export const TIERS = ['auto', 'assist', 'manual'];
+// How long something lasts: "instant", a count of rounds, minutes, hours or days, or one of two
+// forms the engine cannot time ("until dispelled", "special").
+export const isDuration = (x) => typeof x === 'string' && (/^(instant|until dispelled|special)$/.test(x) || /^[1-9]\d* (round|minute|hour|day)s?$/.test(x));
 export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frightened', 'grappled', 'incapacitated', 'invisible',
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
@@ -82,7 +85,15 @@ function lintSteps(steps, say, seen = { manual: false }) {
       if (step.times !== undefined && !(isInt(step.times) && step.times > 0)) say('`times` must be a positive whole number');
     }
     if (kind === 'heal' && !isDice(step.heal)) say(`heal "${step.heal}" is not dice like 2d8`);
-    if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+    if (kind === 'condition') {
+      if (!CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+      const ends = step.ends;
+      if (ends !== undefined) {
+        if (!['turnStart', 'turnEnd', 'save'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd or save');
+        if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart or turnEnd)');
+        if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
+      }
+    }
     if (kind === 'modifier') lintModifier(step.modifier ?? {}, say);
     if (kind === 'manual') { seen.manual = true; if (!isText(step.manual)) say('a manual step needs text saying what the DM applies'); }
     for (const branch of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (step[branch]) lintSteps(step[branch], say, seen);
@@ -121,7 +132,7 @@ function lintSpell(e, say) {
   if (!CAST_TIMES.includes(e.time)) say(`unknown casting time "${e.time}"`);
   if (!(e.range === 'self' || e.range === 'touch' || e.range > 0)) say('range must be "self", "touch" or a number of feet');
   if (!allOf(['v', 's', 'm'])(e.components)) say('components must be a list drawn from v, s, m');
-  if (!isText(e.duration)) say('needs a duration');
+  if (!isDuration(e.duration)) say('duration must be \"instant\", a number of rounds, minutes, hours or days (\"10 minutes\"), \"until dispelled\" or \"special\"');
   if (typeof e.concentration !== 'boolean' || typeof e.ritual !== 'boolean') say('concentration and ritual must be true or false');
   if (!Array.isArray(e.classes)) say('classes must be a list');
   lintTarget(e.target, say);

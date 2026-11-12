@@ -206,7 +206,7 @@ test("a step that depends on something the engine cannot judge is handed over, a
   assert.ok(hits > 0);
 });
 
-test("casting time: reactions are refused, long rituals only outside a fight, and lasting spells say so", () => {
+test("casting time: reactions are refused, long rituals only outside a fight, and lasting spells become effects", () => {
   const s = field();
   const shield = learn(s, { id: "test-shield", level: 1, time: "reaction", range: "self", target: { self: true }, tier: "manual", effects: [{ manual: "+5 AC until your next turn." }] });
   const ritual = learn(s, { id: "test-alarm", level: 1, time: "minute", range: 30, target: { self: true }, duration: "8 hours", tier: "manual", effects: [{ manual: "An alarm is set." }] });
@@ -215,12 +215,12 @@ test("casting time: reactions are refused, long rituals only outside a fight, an
 
   const out = cast(s, ritual);
   assert.ok(out.ok, out.error);
-  assert.match(out.events.at(-1).text, /lasts 8 hours.*does not track/);
+  assert.deepEqual(out.events.map((e) => e.type), ["cast", "effectStart", "manual"]);
+  assert.deepEqual([out.events[1].lasts, out.events[1].conc], ["8 hours", false]);
   add(s, "goblin-warrior", { q: 2, r: 0 }); fight(s); wizardsTurn(s);
   assert.match(cast(s, ritual).error, /longer than a turn/);
   const res = cast(s, bless);
-  assert.match(res.events.at(-1).text, /lasts 1 minute and needs Concentration/);
-  assert.equal(res.events.at(-1).partial, true);
+  assert.deepEqual([res.events[1].type, res.events[1].lasts, res.events[1].conc], ["effectStart", "1 minute", true]);
 });
 
 test("nothing is left on the stack after an action, whether it worked or not", () => {

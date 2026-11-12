@@ -75,7 +75,28 @@ export function view(state, viewer) {
     map: structuredClone(state.map),
     entities,
     encounter: viewEncounter(state),
+    effects: viewEffects(state),
   };
+}
+
+// A lasting effect is sent to players if it comes from, or sits on, one of their own. Of what
+// it does they see everything on their own characters and, on other creatures, only the
+// conditions they could see by looking.
+function viewEffects(state) {
+  const out = [];
+  for (const fx of state.effects ?? []) {
+    const src = classify(state, fx.source);
+    if (src !== 'open' && !fx.parts.some((p) => classify(state, p.target) === 'open')) continue;
+    const parts = [];
+    for (const p of fx.parts) {
+      const c = classify(state, p.target);
+      if (c === 'open') parts.push(structuredClone(p));
+      else if (c === 'seen' && p.cond && conditionDef(p.cond)?.visible) parts.push({ target: p.target, cond: p.cond, ...(p.ended ? { ended: true } : {}) });
+    }
+    out.push({ id: fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), conc: fx.conc, lasts: fx.lasts,
+      until: fx.until ? { ...fx.until } : null, parts });
+  }
+  return out;
 }
 
 // ---------- events ----------
@@ -140,6 +161,15 @@ export function viewEvents(events, state, viewer) {
       case 'cond':
       case 'condEnd':                                  // gaining or losing a condition, if it is one you could see
         if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) out.push(structuredClone(ev));
+        break;
+      case 'effectStart':
+      case 'effectEnd': {                              // a lasting effect that involves one of ours
+        const targets = (ev.targets || []).filter((id) => cls(id) !== 'hidden');
+        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) out.push({ ...pick(ev, ['type', 'fx', 'name', 'source', 'conc', 'lasts', 'why']), targets });
+        break;
+      }
+      case 'concentration':
+        if (cls(ev.id) === 'open') out.push(structuredClone(ev));
         break;
       case 'manual':                                   // what the DM must apply by hand
         // Everyone sees what a spell does when the engine cannot apply it. Notes about what

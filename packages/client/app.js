@@ -70,6 +70,9 @@ function describe(ev) {
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
     case 'condEnd': return [`${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
     case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
+    case 'effectStart': return [`${ev.name} takes hold${ev.conc ? ` (${n(ev.source)} is concentrating)` : ''}: ${ev.lasts}.`];
+    case 'effectEnd': return [`${ev.name} ends: ${ev.why}.`];
+    case 'concentration': return [`${n(ev.id)} rolls to keep Concentration on ${ev.name}: ${ev.total} vs DC ${ev.dc}. ${ev.success ? 'Held.' : 'Lost.'}`];
     case 'stood': return [`${n(ev.id)} stands up (half their Speed).`];
     case 'chronicle': return [`Chronicle: ${ev.title}`, 'head'];
     case 'time': return [`Time passes. It is now ${clockText(ev.t ?? S.clock)}.`];
@@ -190,11 +193,17 @@ function refresh() {
     const dying = !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`);
     const named = Object.keys(e.cond).filter((c) => e.cond[c] && c !== 'stable').map((c) => conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : ''));
     const conds = [e.dead && 'Dead', dying, e.hidden && 'Hidden from players', ...named].filter(Boolean);
+    // Lasting effects this creature is under or is keeping up. Whoever controls the source can end one.
+    const lasting = (S.effects || []).filter((fx) => fx.source === e.id || fx.parts.some((p) => p.target === e.id && !p.ended)).map((fx) => {
+      const left = !fx.until ? '' : fx.until.clock !== undefined ? ` · until ${clockText(fx.until.clock)}` : enc ? ` · ${Math.max(0, fx.until.round - enc.round)} rounds` : '';
+      const label = `${esc(fx.name)}${fx.conc ? ' (C)' : ''}${left}`;
+      return mine(S.entities[fx.source]) ? `<button type="button" class="fx" data-fx="${esc(fx.id)}" title="End ${esc(fx.name)}">${label} ✕</button>` : `<span class="fx">${label}</span>`;
+    }).join('');
     $('c-res').innerHTML =
       (myTurn && full ? pip('Action', b.action > 0) + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
       (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
       Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
-      conds.map((c) => `<span>${c}</span>`).join('');
+      conds.map((c) => `<span>${c}</span>`).join('') + lasting;
 
     const bar = $('actions'); bar.textContent = '';
     if (my && up(e)) {
@@ -375,6 +384,7 @@ $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
 $('dm-rest').onclick = () => act({ type: 'rest' });
+$('c-res').onclick = (ev) => { const b = ev.target.closest('[data-fx]'); if (b) act({ type: 'endEffect', effect: b.dataset.fx }); };
 // Conditions: pick one, then put it on the selected creature or take it off.
 $('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 $('dm-cond-set').onclick = () => {
