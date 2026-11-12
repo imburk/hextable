@@ -370,13 +370,17 @@ export class Renderer {
     const gl = this.gl, th = this.theme, c = this.cam;
     if (c.goal) { c.x += (c.goal.x - c.x) * Math.min(1, dt * 5); c.z += (c.goal.z - c.z) * Math.min(1, dt * 5); if (Math.hypot(c.goal.x - c.x, c.goal.z - c.z) < 0.02) c.goal = null; }
     for (const a of this.actors.values()) {
-      let step = dt * 9;
+      // A pawn glides hex by hex; a long walk speeds up so it never drags, and each step is a small hop.
+      let step = dt * 9 * Math.max(1, a.way.length / 5), walked = 0;
       while (a.way.length && step > 0) {
         const w = a.way[0], dx = w.x - a.x, dz = w.z - a.z, d = Math.hypot(dx, dz);
-        if (d > 0.001) a.yaw = Math.atan2(dx, dz);
-        if (d <= step) { Object.assign(a, { x: w.x, y: w.y, z: w.z }); a.way.shift(); step -= d; }
-        else { a.x += (dx / d) * step; a.z += (dz / d) * step; a.y += (w.y - a.y) * Math.min(1, step / d); step = 0; }
+        if (d > 0.001) a.face = Math.atan2(dx, dz);
+        if (d <= step) { Object.assign(a, { x: w.x, y: w.y, z: w.z }); a.way.shift(); step -= d; walked += d; }
+        else { a.x += (dx / d) * step; a.z += (dz / d) * step; a.y += (w.y - a.y) * Math.min(1, step / d); walked += step; step = 0; }
       }
+      if (a.face !== undefined) { const turn = Math.atan2(Math.sin(a.face - a.yaw), Math.cos(a.face - a.yaw)); a.yaw += turn * Math.min(1, dt * 16); }    // turn to face the way it walks
+      a.walk = a.way.length ? (a.walk ?? 0) + walked : 0;
+      a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;                                            // drawn only; where it stands does not change
     }
     const C = (this.C = this.#camera());
     gl.clearColor(...th.sky, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -387,7 +391,7 @@ export class Renderer {
     gl.uniform2f(this.loc.uFog, c.dist + th.fog[0] * 0.5, th.fog[1]);
     gl.disable(gl.BLEND);
     this.terrain.draw(this.loc, ident());
-    for (const a of this.actors.values()) a.mesh.draw(this.loc, model(a.x, a.y + (a.tilt ? 0.15 : 0), a.z, a.yaw, a.tilt));
+    for (const a of this.actors.values()) a.mesh.draw(this.loc, model(a.x, a.y + (a.tilt ? 0.15 : 0) + (a.hop ?? 0), a.z, a.yaw, a.tilt));
     gl.enable(gl.BLEND); gl.depthMask(false);
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
     this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
