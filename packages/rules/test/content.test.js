@@ -80,7 +80,7 @@ test("the linter catches broken monsters and dangling references", () => {
 test("coverage counts entries by tier and how many are unchecked", () => {
   const c = coverage({ spells: srd.spells, monsters: srd.monsters });
   assert.deepEqual(c.spells, { total: 7, auto: 6, assist: 1, manual: 0, unchecked: 7 });
-  assert.deepEqual(c.monsters, { total: 3, auto: 2, assist: 1, manual: 0, unchecked: 3 });
+  assert.deepEqual(c.monsters, { total: 60, auto: 11, assist: 49, manual: 0, unchecked: 60 });
 });
 
 test("lookups by id, and the bridge to the engine's current shape", () => {
