@@ -142,3 +142,14 @@ test("a monster keeps the attacks the engine can run and drops the rest, instead
   assert.deepEqual(lintPack({ pack: srd.pack, monsters: [dragon] }), []);
   assert.deepEqual(legacyMonster(dragon).attacks.map((a) => a.id), ["shortsword", "shortbow"]);
 });
+
+test("the conditions and the SRD sample traps were audited against the SRD text (docs/srd-audit.md)", () => {
+  // Prone stays unchecked until the engine can crawl; see the audit.
+  assert.deepEqual(srd.conditions.filter((c) => !c.checked).map((c) => c.id), ["prone"]);
+  assert.ok(srd.objects.filter((o) => o.source === "SRD 5.2.1").every((o) => o.checked), "every SRD trap is checked");
+  // A few of the numbers the audit confirmed or corrected.
+  const dc = (id) => CONTENT.objects[id].dc;
+  assert.deepEqual([dc("collapsing-roof"), dc("falling-net"), dc("poisoned-needle")].map((d) => [d.find, d.save]), [[11, 13], [11, 10], [15, 11]]);
+  assert.match(CONTENT.conditions.grappled.also, /1 extra foot/);
+  assert.match(CONTENT.conditions.petrified.also, /Immunity to the Poisoned condition/);
+});
