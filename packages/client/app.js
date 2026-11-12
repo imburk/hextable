@@ -14,7 +14,6 @@ import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
-import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
