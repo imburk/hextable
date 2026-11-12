@@ -108,7 +108,9 @@ export class Editor {
     this.#options($('ed-region'), [['', '+ New room'], ...rooms.map((r) => [r.id, `${r.name} (${r.hexes.length})${r.revealed ? ' · shown' : ''}`])], this.region);
     const room = map.regions.find((r) => r.id === this.region);
     if (room && document.activeElement !== $('ed-rname')) $('ed-rname').value = room.name;
-    $('ed-wallin').disabled = $('ed-unregion').disabled = !room;
+    $('ed-wallin').disabled = $('ed-unregion').disabled = $('ed-rlight').disabled = !room;
+    if (document.activeElement !== $('ed-rlight')) $('ed-rlight').value = room?.light ?? '';
+    if (document.activeElement !== $('ed-llight')) $('ed-llight').value = l.light ?? 'bright';
     $('ed-unlevel').disabled = map.levels.length < 2;
     for (const b of $('ed-tools').children) b.classList.toggle('sel', b.dataset.tool === this.tool);
     for (const b of $('ed-terrain').children) b.classList.toggle('sel', b.dataset.t === this.terrain);
@@ -350,6 +352,9 @@ export class Editor {
     const def = CONTENT.objects[o.def], d = P.draft, opts = (obj, sel) => Object.entries(obj).map(([k, st]) => `<option value="${esc(k)}"${k === sel ? ' selected' : ''}>${esc(st.name)}</option>`).join('');
     const target = P.target && map.objects.find((x) => x.id === P.target), tdef = target && CONTENT.objects[target.def];
     const label = (x) => `${CONTENT.objects[x.def].name}${x.name ? ` "${x.name}"` : ''} (${x.id})`;
+    // A light source (brazier, campfire) has a state that gives light and one that does not: one button flips between them.
+    const lampOn = Object.keys(def.states).find((k) => def.states[k].light), lampOff = Object.keys(def.states).find((k) => !def.states[k].light && !def.states[k].hidden);
+    const lamp = lampOn && lampOff ? { on: lampOn, off: lampOff } : null;
     const dcs = [];
     if (def.dc?.find !== undefined || def.find || Object.values(def.states).some((st) => st.hidden)) dcs.push(['find', 'Find DC', def.dc?.find]);
     if (JSON.stringify(def).includes('"save"')) dcs.push(['save', 'Save DC', def.dc?.save]);
@@ -363,6 +368,7 @@ export class Editor {
     f.innerHTML = `
       <strong>${esc(label(o))}</strong>
       <label>Starts <select name="state">${opts(def.states, d.state)}</select></label>
+      ${lamp ? `<div class="ed-line"><span>Light source: ${d.state === lamp.on ? 'lit' : 'unlit'}</span><button type="button" id="ed-lit">${d.state === lamp.on ? 'Put it out' : 'Light it'}</button></div>` : ''}
       <label>Name <input name="name" maxlength="40" value="${esc(d.name ?? '')}" placeholder="shown to the DM" autocomplete="off"></label>
       ${usesKey ? `<label>Key <input name="key" maxlength="40" value="${esc(d.key ?? '')}" placeholder="name of the item that fits" autocomplete="off"></label>` : ''}
       ${dcs.length ? `<div class="ed-dcs">${dcs.map(([k, t, dflt]) => `<label>${esc(t)} <input type="number" inputmode="numeric" min="1" max="40" step="1" data-dc="${esc(k)}" value="${d.dc?.[k] ?? ''}" placeholder="${dflt ?? ''}"></label>`).join('')}</div>` : ''}
@@ -372,6 +378,7 @@ export class Editor {
         ${target ? `<div class="ed-line"><label>When this is <select name="when">${opts(def.states, P.when)}</select></label><label>it puts that <select name="sets">${opts(tdef.states, P.sets)}</select></label><button type="button" id="ed-addlink">Add link</button></div>` : ''}
       </div>
       <div class="ed-line"><button type="submit" class="go">Save</button><button type="button" id="ed-closeform">Close</button></div>`;
+    if (lamp) f.querySelector('#ed-lit').onclick = () => { this.#readForm(); d.state = d.state === lamp.on ? lamp.off : lamp.on; this.#renderForm(); };
     f.querySelector('#ed-closeform').onclick = () => { this.props = null; f.innerHTML = ''; this.refresh(); };
     for (const b of f.querySelectorAll('[data-unlink]')) b.onclick = () => { this.#readForm(); d.links.splice(+b.dataset.unlink, 1); if (!d.links.length) delete d.links; this.#renderForm(); };
     const pick = (what) => () => { this.#readForm(); P.pick = P.pick === what ? null : what; this.#renderForm(); };
@@ -825,8 +832,10 @@ export class Editor {
         <div class="ed-row" data-for="wall"><button type="button" id="ed-outline">Wall around this level</button></div>
         <div class="ed-row" data-for="object"><select id="ed-def" aria-label="What to place">${objs}</select></div>
         <div class="ed-row" data-for="region"><select id="ed-region" aria-label="Room"></select><input id="ed-rname" maxlength="40" placeholder="Room name" autocomplete="off"></div>
+        <div class="ed-row" data-for="region"><label class="check">Light <select id="ed-rlight" aria-label="Light in this room"><option value="">Same as the level</option><option value="bright">Bright</option><option value="dim">Dim</option><option value="dark">Dark</option></select></label></div>
         <div class="ed-row" data-for="region"><button type="button" id="ed-wallin">Wall it in</button><button type="button" id="ed-unregion">Delete room</button></div>
         <form class="ed-row" data-for="level" id="ed-addlevel"><input id="ed-lname" maxlength="40" placeholder="New level name" autocomplete="off"><input id="ed-lfeet" type="number" step="5" value="10" aria-label="Height in feet" class="feet"><button type="submit">Add level</button></form>
+        <div class="ed-row" data-for="level"><label class="check">Light <select id="ed-llight" aria-label="Light on this level"><option value="bright">Bright (daylight, a lit hall)</option><option value="dim">Dim (dusk, moonlight)</option><option value="dark">Dark (a cave at night)</option></select></label></div>
         <div class="ed-row" data-for="level"><button type="button" id="ed-unlevel">Delete this level</button><label class="check"><input type="checkbox" id="ed-all"> Show levels above</label></div>
         <div class="ed-row" data-for="file"><button type="button" id="ed-new">New blank map</button><button type="button" id="ed-export">Export map</button><button type="button" id="ed-import">Import map</button><input type="file" id="ed-file" accept=".json,application/json" hidden>
           <button type="button" id="ed-uvtt">Import Universal VTT</button><input type="file" id="ed-uvttfile" accept=".dd2vtt,.df2vtt,.uvtt,.json" hidden></div>
@@ -849,6 +858,13 @@ export class Editor {
     $('ed-rname').onchange = (ev) => {
       const room = this.S.map.regions.find((r) => r.id === this.region), name = ev.target.value.trim();
       if (room && name && name !== room.name) this.edit([{ op: 'region', region: { ...room, name } }]);
+    };
+    // Ambient light: the same map edits as the DM panel's Sight and light (`light: null` on a level is bright again; a room that says nothing takes its level's).
+    $('ed-llight').onchange = (ev) => this.edit([{ op: 'level', level: { id: this.level().id, light: ev.target.value === 'bright' ? null : ev.target.value } }]);
+    $('ed-rlight').onchange = (ev) => {
+      const room = this.S.map.regions.find((r) => r.id === this.region); if (!room) return;
+      const { light, ...rest } = room;
+      this.edit([{ op: 'region', region: ev.target.value ? { ...rest, light: ev.target.value } : rest }]);
     };
     $('ed-wallin').onclick = () => { const room = this.S.map.regions.find((r) => r.id === this.region); if (room) this.#wallAround(new Set(room.hexes)); };
     $('ed-unregion').onclick = (ev) => this.#sure(ev.currentTarget, () => { this.edit([{ op: 'unregion', id: this.region }]); this.region = ''; });
