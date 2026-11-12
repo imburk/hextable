@@ -50,7 +50,9 @@ function toast(msg, info = false) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), info ? 1600 : 3200);
 }
 function setMode(m) { mode = m; refresh(); }
-const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh() });     // the DM's map editor
+R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
+R.onPicture = () => { if (ED.on) refresh(); };
+const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh(), assets: () => T?.assets });     // the DM's map editor
 function select(id) { selId = id; mode = MOVE; }
 
 // ---------- events -> log lines and floating numbers ----------
@@ -638,7 +640,7 @@ const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => se
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, act, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, ED, act, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
