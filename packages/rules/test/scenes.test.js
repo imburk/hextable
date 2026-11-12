@@ -275,6 +275,12 @@ test("over many random scene actions, nothing private reaches a player", () => {
     if (!action) continue;
     const before = mark(s), text0 = JSON.stringify(s);
     const res = apply(s, action, who);
+    // A player speaks only as their own character, or out of character: never as another's character, a monster or an NPC.
+    if (action.type === "say" && who !== DM) {
+      const mine = action.as === null || s.entities[action.as]?.owner === who.userId;
+      assert.equal(res.ok, mine, `step ${step}: ${who.userId} speaking as ${action.as} was ${res.ok ? "allowed" : "refused"}`);
+      if (res.ok) assert.equal(res.events[0].as, action.as);
+    }
     if (!res.ok) { refused++; assert.equal(JSON.stringify(s), text0, `step ${step}: a refused ${action.type} changed the state`); continue; }
     const label = describeStep(action, res.events, before, s);
     h.record(before, s, label);
