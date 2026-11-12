@@ -78,7 +78,7 @@ Each pull request takes two levels, converts what the vocabulary can now say exa
 what is still missing for the rest, by kind. A spell can be held back by more than one thing; it
 is counted under the first that applies.
 
-**Levels 0 and 1** (PR_NUM): 2 moved from manual to assist (Chromatic Orb: chosen damage type;
+**Levels 0 and 1** (#105): 2 moved from manual to assist (Chromatic Orb: chosen damage type;
 Grease: a zone). Before: 0 auto, 3 assist, 15 manual at level 0 and 14 auto, 11 assist, 32 manual
 at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. Still missing:
 
