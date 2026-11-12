@@ -10,6 +10,7 @@ that whoever builds a piece, on whatever model, builds the same thing.
 | [Rules coverage review](rules-coverage.md): would the design support the full current rules and common house rules? | Review, done |
 | [Maps and objects](maps-and-objects.md): buildings and caves, walls, doors, floors and height, size, traps and secret doors, room-by-room reveal, handouts, scenes, and how maps get into the game | Built: maps with levels, walls, doors, regions, objects and traps, checks, height and size (M1 to M7); the editor (M8); uploads, handouts and private notes (M9); tracing (M10); Universal VTT import (M12); object content (M13). Scenes (M11 beyond private notes) and generating a map (M14) to do |
 | [Sight](sight.md): line of sight, cover, light and darkness, senses, hiding and finding, what players are sent | Proposed. Built: line of sight, cover, light and `canSee` (S1, S2, S4, S5); hiding, finding and what players are sent (S6, S7) are not |
+| [Dice on the screen](dice.md): the faces of every roll in its event, who may see them, the `diceThrow` table rule, thrown 3D dice | Built in two parts: faces and `diceThrow` (rules), then the dice and throwing (client) |
 | Prompts: reactions and decisions made after a roll | To write |
 | Companions and summons | To write |
 | [Renderer](renderer.md): rooms drawn from the map instead of hexes, the event timeline and waiting for animations, models and sizes, doors, traps and spells, phones, light and memory, the renderer interface, and the move to Three.js | Draft by an agent, to be reviewed by the design owner |
