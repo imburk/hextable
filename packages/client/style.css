@@ -27,6 +27,10 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 
 /* world labels */
 .label { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; will-change: transform; }
+.label .marks { order: -1; display: flex; gap: 3px; font-style: normal; } .label .marks:empty { display: none; }
+.label .marks b { font: 700 10px/1 var(--body); padding: 2px 5px; border-radius: 8px; border: 1px solid #0007; text-shadow: none; color: #1d2622; background: #e9c46a; }
+.label .marks b.dodging { background: #8fd0e8; } .label .marks b.dying { background: #e0685a; color: #fff; animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .6; } } @media (prefers-reduced-motion: reduce) { .label .marks b.dying { animation: none; } }
 .label .bar { width: 44px; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
 .label.down span::after { content: ' (down)'; font-weight: 400; }
 .bar { height: 6px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; }

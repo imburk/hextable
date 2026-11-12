@@ -13,17 +13,29 @@ import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
+// Light through the day, by hour: [hour, light colour that multiplies the scene, how much of the sky colour is left].
+// Daytime is left exactly as it always looked; dusk is warm, night is blue and dimmer but never dark enough to hide a hex.
+const DAY = [[0, [0.56, 0.63, 0.86], 0.34], [4.5, [0.58, 0.64, 0.86], 0.36], [6, [1.1, 0.84, 0.74], 0.78], [8, [1, 1, 1], 1], [17, [1, 1, 1], 1],
+  [18.5, [1.12, 0.82, 0.66], 0.8], [20, [0.74, 0.64, 0.8], 0.5], [21.5, [0.56, 0.63, 0.86], 0.34], [24, [0.56, 0.63, 0.86], 0.34]];
+export function lightAt(clock) {
+  const h = (((clock % 1440) + 1440) % 1440) / 60;
+  let i = 1; while (i < DAY.length - 1 && DAY[i][0] < h) i++;
+  const [h0, c0, s0] = DAY[i - 1], [h1, c1, s1] = DAY[i], k = (h - h0) / (h1 - h0 || 1);
+  return { light: c0.map((v, j) => v + (c1[j] - v) * k), sky: s0 + (s1 - s0) * k };
+}
+const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging' };
+const FLASH = 0.45, SHAKE = 0.5;                     // seconds a hit flash and a critical shake last
 const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
 const VS = `
 attribute vec3 aPos; attribute vec3 aNor; attribute vec4 aCol;
-uniform mat4 uVP, uM; uniform vec3 uLight; uniform vec4 uTint; uniform float uLit; uniform vec2 uFog;
+uniform mat4 uVP, uM; uniform vec3 uLight, uGrade; uniform vec4 uTint; uniform float uLit; uniform vec2 uFog;
 varying vec4 vCol; varying float vFog;
 void main() {
   vec4 w = uM * vec4(aPos, 1.0);
   vec3 n = normalize(mat3(uM) * aNor);
   float l = mix(1.0, 0.56 + 0.5 * max(dot(n, uLight), 0.0), uLit);
-  vCol = vec4(aCol.rgb * l * uTint.rgb, aCol.a * uTint.a);
+  vCol = vec4(aCol.rgb * l * uTint.rgb * uGrade, aCol.a * uTint.a);
   gl_Position = uVP * w;
   vFog = clamp((gl_Position.w - uFog.x) / uFog.y, 0.0, 1.0);
 }`;
@@ -92,6 +104,16 @@ class Builder {
       prev = cur;
     }
   }
+  // A flat shadow blob: darkest in the middle and fading to nothing at the rim (or a hard-edged one for a blocky theme).
+  blob(cx, cz, y, r, a, { sides = 12, hard = false } = {}) {
+    const rot = sides === 4 ? Math.PI / 4 : 0, o = this.ring(cx, cz, r, y, sides, rot), n = this.ring(cx, cz, r * 0.5, y, sides, rot), dark = [0, 0, 0, a], edge = [0, 0, 0, hard ? a : 0];
+    const v = (p, col) => this.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
+    for (let k = 0; k < sides; k++) {
+      const j = (k + 1) % sides;
+      v(n[j], dark); v(n[k], dark); v([cx, y, cz], dark);                 // solid middle
+      v(o[j], edge); v(o[k], edge); v(n[k], dark); v(o[j], edge); v(n[k], dark); v(n[j], dark);      // soft rim
+    }
+  }
   flatHex(cx, cz, y, r0, r1, col) {            // disc (r0 = 0) or ring on the ground plane
     const o = this.ring(cx, cz, r1, y, 6, Math.PI / 6), i = r0 ? this.ring(cx, cz, r0, y, 6, Math.PI / 6) : null;
     for (let k = 0; k < 6; k++) {
@@ -144,11 +166,11 @@ export class Renderer {
     gl.useProgram(prog);
     this.loc = {};
     for (const a of ['aPos', 'aNor', 'aCol']) { this.loc[a] = gl.getAttribLocation(prog, a); gl.enableVertexAttribArray(this.loc[a]); }
-    for (const u of ['uVP', 'uM', 'uLight', 'uTint', 'uLit', 'uFog', 'uSky']) this.loc[u] = gl.getUniformLocation(prog, u);
+    for (const u of ['uVP', 'uM', 'uLight', 'uTint', 'uLit', 'uFog', 'uSky', 'uGrade']) this.loc[u] = gl.getUniformLocation(prog, u);
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl);
+    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -167,10 +189,12 @@ export class Renderer {
   }
 
   // ---------- public ----------
-  setTheme(theme) { this.theme = theme; this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
+  setTheme(theme) { this.theme = theme; this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
 
   setState(state, events = []) {
     this.state = state;
+    const want = lightAt(state.clock ?? 480);
+    this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
     const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
@@ -179,7 +203,7 @@ export class Renderer {
       const w = this.#spot(e, e.pos);
       if (!a) {
         const el = document.createElement('div');
-        el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div>';
+        el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div><em class="marks"></em>';
         this.labels.append(el);
         a = { mesh: new Mesh(this.gl), ...w, yaw: 0, way: [], el, key: '' };
         this.actors.set(e.id, a);
@@ -190,11 +214,19 @@ export class Renderer {
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
       a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
+      const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging'].filter(Boolean);      // small badges over the pawn's head
+      const mk = marks.join();
+      if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
+      const floor = e.dead || ground(state.map, e.pos) ? null : under(state.map, e.pos);
+      a.air = floor ? Math.max(0, w.y - this.#stand({ q: e.pos.q, r: e.pos.r, z: floor.z }).y) : 0;      // how far above the floor it hangs: its shadow stays down there
     }
     for (const ev of events) {
       const a = this.actors.get(ev.id);
       if (ev.type === 'moved' && a) for (const h of ev.path) a.way.push(this.#spot(state.entities[ev.id], h));
+      const hurt = this.actors.get(ev.target);                   // a hit flashes the pawn; a critical one also shakes it
+      if (ev.type === 'damage' && hurt && ev.amount > 0) hurt.flash = FLASH;
+      if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {            // anything teleported or out of sync
       const a = this.actors.get(e.id), w = this.#stand(e.pos);
@@ -247,7 +279,7 @@ export class Renderer {
   }
 
   #buildTerrain() {
-    const b = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6;
+    const b = new Builder(), sb = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6, sh = th.shadow ?? { a: 0.4 };
     const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;      // a floor above whoever is being followed
     for (const h of allTiles(map)) {
       if (h.z > this.ceiling) continue;
@@ -266,7 +298,9 @@ export class Renderer {
         const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
         for (let i = 0; i < 2; i++) {
           const a = jitter(h.q + i * 7, h.r - i * 3) * 6.28, d = 0.28 + 0.2 * i, hh = 0.9 + jitter(h.r, h.q + i) * 0.7;
-          b.lathe(w.x + Math.cos(a) * d, w.z + Math.sin(a) * d, y, [[0.1, 0], [0.1, 0.25], [0.42, 0.25], [0, hh + 0.25]], 6, a, (s) => (s === 0 ? shade(tc, 0.5) : tc));
+          const tx = w.x + Math.cos(a) * d, tz = w.z + Math.sin(a) * d;
+          b.lathe(tx, tz, y, [[0.1, 0], [0.1, 0.25], [0.42, 0.25], [0, hh + 0.25]], 6, a, (s) => (s === 0 ? shade(tc, 0.5) : tc));
+          sb.blob(tx - 0.16, tz - 0.12, y + 0.012, 0.5 + hh * 0.12, sh.a * (locked ? 0.6 : 1), sh);       // the light comes from the upper right
         }
       }
     }
@@ -292,7 +326,28 @@ export class Renderer {
         this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);
       }
     }
-    this.terrain.set(b);
+    this.terrain.set(b); this.shadows.set(sb); this.#buildEdge();
+  }
+  // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
+  #buildEdge() {
+    const eb = new Builder(), map = this.state.map, enc = this.state.encounter, th = this.theme;
+    if (enc) {
+      const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
+      const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
+      for (const h of allTiles(map)) {
+        if (h.z > this.ceiling || !enc.arena[H.col(h)]) continue;
+        const w = H.toWorld(h), y = surfY(h.z, h.tile) + 0.03, R = Math.PI / 6;
+        const top = eb.ring(w.x, w.z, 1.02, y, 6, R), inner = eb.ring(w.x, w.z, 0.86, y, 6, R);
+        for (let i = 0; i < 6; i++) {
+          const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
+          if (enc.arena[H.col(out)]) continue;                                        // inside the area on that side: no edge
+          const lo = [...glow, 0.85], hi = [...glow, 0];
+          quad2(top[i], top[n], [top[n][0], y + tall, top[n][2]], [top[i][0], y + tall, top[i][2]], lo, lo, hi, hi);
+          quad2(inner[i], inner[n], top[n], top[i], [...glow, 0.35], [...glow, 0.35], [...glow.map((v) => v * 0.5 + 0.5), 1], [...glow.map((v) => v * 0.5 + 0.5), 1]);       // a bright line on the floor
+        }
+      }
+    }
+    this.edge.set(eb);
   }
   // An upright slab along a line given in map feet.
   #slab(b, p, q, y0, height, half, col) {
@@ -304,6 +359,9 @@ export class Renderer {
     face(hi[0], hi[1], hi[2], hi[3], 1.1);
     for (let i = 0; i < 4; i++) { const n = (i + 1) % 4; face(hi[i], hi[n], lo[n], lo[i], i % 2 ? 0.7 : 0.9); }
   }
+
+  // One unit shadow, drawn under every creature at its own size.
+  #makeBlob() { const b = new Builder(), sh = this.theme.shadow ?? { a: 0.4 }; b.blob(0, 0, 0, 1, sh.a, sh); this.blobMesh.set(b); }
 
   #buildOverlay() {
     const b = new Builder(), s = this.state, hl = this.hl, c = this.theme.hl;
@@ -360,26 +418,55 @@ export class Renderer {
     const gl = this.gl, th = this.theme, c = this.cam;
     if (c.goal) { c.x += (c.goal.x - c.x) * Math.min(1, dt * 5); c.z += (c.goal.z - c.z) * Math.min(1, dt * 5); if (Math.hypot(c.goal.x - c.x, c.goal.z - c.z) < 0.02) c.goal = null; }
     for (const a of this.actors.values()) {
-      let step = dt * 9;
+      // A pawn glides hex by hex; a long walk speeds up so it never drags, and each step is a small hop.
+      let step = dt * 9 * Math.max(1, a.way.length / 5), walked = 0;
       while (a.way.length && step > 0) {
         const w = a.way[0], dx = w.x - a.x, dz = w.z - a.z, d = Math.hypot(dx, dz);
-        if (d > 0.001) a.yaw = Math.atan2(dx, dz);
-        if (d <= step) { Object.assign(a, { x: w.x, y: w.y, z: w.z }); a.way.shift(); step -= d; }
-        else { a.x += (dx / d) * step; a.z += (dz / d) * step; a.y += (w.y - a.y) * Math.min(1, step / d); step = 0; }
+        if (d > 0.001) a.face = Math.atan2(dx, dz);
+        if (d <= step) { Object.assign(a, { x: w.x, y: w.y, z: w.z }); a.way.shift(); step -= d; walked += d; }
+        else { a.x += (dx / d) * step; a.z += (dz / d) * step; a.y += (w.y - a.y) * Math.min(1, step / d); walked += step; step = 0; }
       }
+      if (a.face !== undefined) { const turn = Math.atan2(Math.sin(a.face - a.yaw), Math.cos(a.face - a.yaw)); a.yaw += turn * Math.min(1, dt * 16); }    // turn to face the way it walks
+      a.walk = a.way.length ? (a.walk ?? 0) + walked : 0;
+      a.flash = Math.max(0, (a.flash ?? 0) - dt); a.shake = Math.max(0, (a.shake ?? 0) - dt);
+      a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;                                            // drawn only; where it stands does not change
     }
     const C = (this.C = this.#camera());
-    gl.clearColor(...th.sky, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const td = this.tod, k = Math.min(1, dt * 1.5);
+    if (td) { const n = td.now, g = td.goal; td.now = { light: n.light.map((v, i) => v + (g.light[i] - v) * k), sky: n.sky + (g.sky - n.sky) * k }; }
+    const lt = td?.now ?? { light: [1, 1, 1], sky: 1 }, sky = th.sky.map((v, i) => v * lt.sky * (0.5 + 0.5 * lt.light[i]));       // the sky and the fog follow the light
+    gl.clearColor(...sky, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (!this.state) return;
     gl.uniformMatrix4fv(this.loc.uVP, false, C.vp);
     gl.uniform3fv(this.loc.uLight, norm([0.45, 0.8, 0.35]));
-    gl.uniform3fv(this.loc.uSky, th.sky);
+    gl.uniform3fv(this.loc.uSky, sky);
+    gl.uniform3fv(this.loc.uGrade, lt.light);
     gl.uniform2f(this.loc.uFog, c.dist + th.fog[0] * 0.5, th.fog[1]);
     gl.disable(gl.BLEND);
     this.terrain.draw(this.loc, ident());
-    for (const a of this.actors.values()) a.mesh.draw(this.loc, model(a.x, a.y + (a.tilt ? 0.15 : 0), a.z, a.yaw, a.tilt));
+    for (const a of this.actors.values()) {
+      const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0;      // drawn only: the pawn is not really moved; it shakes across the screen whichever way the camera faces
+      a.mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + (a.tilt ? 0.15 : 0) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, a.tilt),
+        f ? [1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, 1] : [1, 1, 1, 1]);
+    }
     gl.enable(gl.BLEND); gl.depthMask(false);
+    gl.uniform3f(this.loc.uGrade, 1, 1, 1);                                // highlights, the arena edge and shadows are not tinted by the hour
+    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
+    this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
+    for (const a of this.actors.values()) {
+      const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);                    // a flier's shadow is fainter and smaller
+      this.blobMesh.draw(this.loc, model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade)), [1, 1, 1, fade], 0);
+    }
+    gl.disable(gl.POLYGON_OFFSET_FILL);
     this.overlay.draw(this.loc, ident(), [1, 1, 1, 1], 0);
+    const enc = this.state.encounter;                                     // the edge fades in when a fight starts, flashes once, then breathes
+    const eid = enc ? enc.id ?? 0 : null;
+    if (eid !== this.edgeId) { this.edgeId = eid; this.edgeAge = 0; }
+    this.edgeAge += dt; this.anim += dt;
+    if (enc) {
+      const k = Math.min(1, this.edgeAge / 1.2), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), burst = Math.max(0, 1 - this.edgeAge / 1.6) * 0.8;
+      this.edge.draw(this.loc, ident(), [1 + burst, 1 + burst, 1 + burst, k * k * pulse], 0);
+    }
     gl.depthMask(true);
 
     for (const a of this.actors.values()) {
