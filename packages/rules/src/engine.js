@@ -10,8 +10,8 @@ import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
 import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
-import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount } from './effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
+import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from './effects.js';
+import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
@@ -628,12 +628,12 @@ export function rollMode(s, e, t, atk) {
     if (mine.see === 'no' && !own.includes(mine.why)) dis.push(`target ${UNSEEN[mine.why]}`);
     if (theirs.see === 'no' && !own.includes(theirs.why)) adv.push(`attacker ${UNSEEN[theirs.why]}`);
   }
-  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, dice: [...mine.dice, ...theirs.dice], crit: theirs.crit };
+  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, dice: [...mine.dice, ...theirs.dice], crit: theirs.crit, used: [...mine.used, ...theirs.used] };
 }
 
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 function rollToHit(s, e, t, atk, ev, extra = {}) {
-  const { mode, adv, dis, add, dice, crit: sureCrit } = rollMode(s, e, t, atk);
+  const { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, atk);
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, dice);
@@ -644,6 +644,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   const crit = hit && (nat === 20 || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
     total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}), ...extra });
+  useUp(s, ev, used);
   return { hit, crit, mode };
 }
 
@@ -684,7 +685,7 @@ function condition(s, t, id, ev, f = null, step = null, level = undefined) {
   if (t.conditionImmune?.includes(id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
-  if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc } : {}) });
+  if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc, born: turnKey(s) } : {}) });
   ev.push({ type: 'cond', id: t.id, cond: id });
   const def = conditionDef(id), name = conditionName(id);
   const rest = def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
@@ -704,7 +705,7 @@ function modifier(s, t, mod_, ev, f, step = {}) {
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
   const { against, ...m } = mod_;
-  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}) };
+  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(step.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc, born: turnKey(s) } : {}) };
   if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {
     holder.maxHp += m.value;
     holder.hp = m.value > 0 && holder.hp > 0 ? holder.hp + m.value : Math.min(holder.hp, holder.maxHp);
@@ -742,9 +743,12 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
   // `save` applies to every saving throw (Bless, Bane); `extra` names one more hook, such as 'concentration'.
   for (const hook of ['save', ...(extra ? [extra] : [])]) {
     const x = modifiers(s, t, hook, sit, '');
-    m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage); m.dice.push(...x.dice);
+    m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage); m.dice.push(...x.dice); m.used.push(...x.used);
     m.autoFail ||= x.autoFail; m.autoSucceed ||= x.autoSucceed;
   }
+  // A single-use modifier is spent by this save (the effect runner has no events list here, so
+  // the ending is recorded silently; the save that used it is in the log).
+  if (m.used.length) useUp(s, [], m.used);
   if (m.autoFail) return { roll: 0, total: 0, success: false };
   if (m.autoSucceed) return { roll: 0, total: dc, success: true };
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
@@ -775,6 +779,7 @@ function abilityCheck(s, e, what) {
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, m.dice);
+  if (m.used.length) useUp(s, [], m.used);
   return { roll: r, total: r + bonus + more.total, bonus, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}) };
 }
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
@@ -1001,6 +1006,25 @@ function recharge(s, e, ev) {
   }
 }
 
+// Something with no duration of its own whose steps end at a turn boundary ("Blinded until the
+// end of the mephit's next turn", Ray of Frost's slowing) needs an effect to hang that on: one
+// `bound` to its parts, which ends when they do. Null if no step has an `ends`.
+function boundEffect(s, name, source, steps, spell = null) {
+  let timed = false;
+  walkSteps(steps, (st) => { if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save')) timed = true; });
+  if (!timed) return null;
+  const fx = startEffect(s, { name, spell, source, conc: false, duration: 'special' });
+  fx.bound = true;
+  return fx;
+}
+// After the steps ran: a bound effect that put nothing on anyone is dropped unannounced; one that
+// did is announced with what it holds.
+function settle(s, ev, fx, targets) {
+  if (!fx.parts.length) { s.effects = effectsOf(s).filter((x) => x !== fx); return; }
+  ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: fx.source, conc: false, lasts: 'until its parts end', targets: [...new Set(fx.parts.map((p) => p.target))] });
+  void targets;
+}
+
 // Who or what an action is aimed at: { targets, hexes, origin }. `targets` is null for an area
 // the engine cannot lay out (a line, a cube), which the DM then applies.
 function aimAction(s, e, def, a) {
@@ -1054,12 +1078,14 @@ function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   const c = def.target.creature;
   // An attack roll says what it is in its own event; anything else (a breath, a gaze) is announced.
   if (!('attack' in def.effects[0])) ev.push({ type: 'act', actor: e.id, action: def.id, name: def.name, hexes, targets: (targets ?? []).map((t) => t.id) });
+  const steps = structuredClone(def.effects), fx = boundEffect(s, def.name, e.id, steps);
   begin(s, {
-    steps: structuredClone(def.effects), actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
-    src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}) },
+    steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
+    src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}), ...(fx ? { fx: fx.id } : {}) },
     shared: def.target.area && targets ? sharedRolls(s, def.effects) : null,
   });
   run(s, ev, KIT);
+  if (fx) settle(s, ev, fx, targets ?? []);
 }
 
 // ---------- walking ----------
@@ -1376,7 +1402,7 @@ const handlers = {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
       fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
-    }
+    } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : targets.map((t) => t.id),
@@ -1392,7 +1418,8 @@ const handlers = {
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
     if (sp.def.tier !== 'auto' && !toldAlready) note(sp.def.text);
     if (unscaled) note(`Cast with a level ${slot} slot. The engine could not add ${unscaled}; the DM does.`);
-    if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
+    if (fx?.bound) settle(s, ev, fx, targets);
+    else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
     checkEnd(s, ev);
   },
 
