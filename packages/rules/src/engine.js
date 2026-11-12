@@ -1972,6 +1972,22 @@ const handlers = {
     if (hp > e.hp) { e.dead = false; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },
+  // The DM's damage and healing, by the rules: Resistance and the like, Temporary Hit Points first, Concentration, death saves.
+  harm(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can do damage this way.');
+    const e = ent(s, a.actor), n = a.amount;
+    (Number.isInteger(n) && n > 0 && n <= 9999) || fail('Damage must be a whole number above 0.');
+    e.dead && fail(`${e.name} is dead.`);
+    damage(s, e, n, a.dtype ?? 'untyped', ev);
+    checkEnd(s, ev);
+  },
+  mend(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can heal this way.');
+    const e = ent(s, a.actor), n = a.amount;
+    (Number.isInteger(n) && n > 0 && n <= 9999) || fail('Healing must be a whole number above 0.');
+    e.dead && fail(`${e.name} is dead; healing does not bring back the dead.`);
+    heal(s, e, n, ev);
+  },
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');
     !s.encounter || fail("You can't rest in the middle of a fight.");

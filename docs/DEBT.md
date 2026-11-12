@@ -70,7 +70,7 @@ cannot say, by how much it would unlock:
 | S7 | ~~The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `save.death`; the `check` hook cannot be limited to one skill~~ (#80, #86). `carry` is still unread (no encumbrance) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
-| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82. The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone; a DM damage action would spend them first. The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82. ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
 
 ## Maps, sight and movement
 
