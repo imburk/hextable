@@ -49,7 +49,7 @@ function describe(ev) {
     case 'turn': return [`Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
     case 'joined': return [`${n(ev.id)} joins the fight${ev.init === undefined ? '' : ` (initiative ${ev.init})`}.`];
     case 'attack': {
-      const how = `${n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)} with ${ev.name}`;
+      const how = `${ev.actor === null ? `The ${ev.name.toLowerCase()}` : n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)}${ev.actor === null ? '' : ` with ${ev.name}`}`;
       const result = ev.crit ? 'Critical hit!' : ev.hit ? 'Hit.' : 'Miss.';
       // A monster's roll stays behind the DM's screen: players get the outcome only.
       if (!ev.rolls) return [`${how}${ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : ''}. ${result}`];
@@ -82,6 +82,8 @@ function describe(ev) {
     case 'spawned': return [`${n(ev.id)} appears.`];
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
+    case 'triggered': return [`${n(ev.id)} sets off a ${ev.name.toLowerCase()}!`];
+    case 'fell': return [`${n(ev.id)} falls ${ev.feet} ft.`];
     case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];

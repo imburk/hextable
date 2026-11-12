@@ -65,14 +65,23 @@ export function moveOptions(s, e) {
   const enc = s.encounter, fighting = inFight(s, e.id);
   if (fighting && current(s) !== e.id) return new Map();
   const occ = occupancy(s), B = barriers(s.map);
+  // Traps this creature knows of: the party knows the ones it has spotted; everyone else knows them all.
+  const hazards = new Set();
+  for (const o of s.map.objects) {
+    const def = objectDef(o);
+    if (def.triggers?.some((t) => t.on === 'enter' && t.effects && t.from.includes(o.state)) && (e.side !== 'party' || !def.states[o.state].hidden)) hazards.add(`${o.level}|${H.col(o.at)}`);
+  }
   // One step: onto a surface in a neighbouring column, if the rise or drop can be walked.
   const reach = H.reachable(e.pos, fighting ? enc.budget.move : EXPLORE_BUDGET, (from) => {
     const out = [], here = ground(s.map, from)?.level;
+    // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
+    if (here && from !== e.pos && hazards.has(`${here.id}|${H.col(from)}`)) return out;
     for (const n of H.neighbors(from)) {
       if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
       for (const sf of surfaces(s.map, n)) {
         const rise = Math.abs(sf.z - from.z), terrain = TILES[sf.tile.t].cost;
         if (rise > STEP_MAX || terrain === Infinity || B.solid(sf.level.id, n)) continue;
+        if (e.side !== 'party' && hazards.has(`${sf.level.id}|${H.col(n)}`)) continue;     // a lair's own never step on its traps
         if (here && (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n)))) continue;   // a wall or a shut door
         const h = { q: n.q, r: n.r, z: sf.z };
         if ((occ.get(H.key(h)) || []).some((o) => hostile(o, e) && up(o))) continue;
@@ -138,7 +147,7 @@ function showPlace(s, e, ev) {
 
 // ---------- objects ----------
 // May players know about this object? It must touch a hex they have been shown.
-export const objectShown = (map, o) => objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && shown(map, o.level, h));
+export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && shown(map, o.level, h));
 const objectOf = (s, id, ctx = null) => {
   const o = s.map.objects.find((x) => x.id === id);
   return (o && (!ctx || ctx.role === 'dm' || objectShown(s.map, o)) && o) || fail('No such object.');
@@ -152,15 +161,108 @@ function nearObject(s, e, o) {
   return seg ? distToSegment(center(e.pos), seg) <= FT + 1e-9 : H.dist(e.pos, o.at) <= 1;     // within 5 ft
 }
 const hasKey = (e, key) => e.gear.some((g) => String(g).toLowerCase() === key.toLowerCase());
+const objectZ = (s, o) => { const level = s.map.levels.find((l) => l.id === o.level); return level.z + (level.tiles[H.col(o.at)]?.h ?? 0); };
+// Put an object into a state, and whatever it is linked to into theirs. The whole chain is
+// worked out and checked before anything changes.
 function setObject(s, o, state, ev, by = null, verb = null) {
-  const def = objectDef(o);
-  if (!objectSegment(o) && def.states[state].blocks.includes('move')) {
-    const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[H.col(o.at)]?.h ?? 0);
-    !living(s).some((c) => H.col(c.pos) === H.col(o.at) && c.pos.z === z) || fail(`Someone is standing where the ${objectName(o).toLowerCase()} would be.`);
+  const plan = [[o, state]];
+  for (let i = 0; i < plan.length && i < 50; i++) {
+    const [x, st] = plan[i];
+    for (const l of x.links ?? []) {
+      const other = s.map.objects.find((y) => y.id === l.object);
+      if (l.when === st && other && !plan.some(([y]) => y === other) && other.state !== l.sets) plan.push([other, l.sets]);
+    }
   }
-  o.state = state;
-  ev.push({ type: 'object', object: o.id, name: objectName(o), state, stateName: def.states[state].name, ...(by ? { actor: by.id } : {}), ...(verb ? { verb } : {}) });
+  for (const [x, st] of plan) {
+    if (objectSegment(x) || !objectDef(x).states[st].blocks.includes('move')) continue;
+    !living(s).some((c) => H.col(c.pos) === H.col(x.at) && c.pos.z === objectZ(s, x)) || fail(`Someone is standing where the ${objectName(x).toLowerCase()} would be.`);
+  }
+  plan.forEach(([x, st], i) => {
+    x.state = st;
+    ev.push({ type: 'object', object: x.id, name: objectName(x), state: st, stateName: objectDef(x).states[st].name, ...(by && i === 0 ? { actor: by.id } : {}), ...(verb && i === 0 ? { verb } : {}) });
+  });
   lookAround(s, ev);                                    // an opened door shows what is behind it
+}
+// A stand-in for a thing on the map when one of its effects needs a source: where it is, what it is called.
+function objectActor(s, id) {
+  const o = s.map.objects.find((x) => x.id === id);
+  return o ? { id: null, object: true, name: objectName(o), side: 'object', pos: { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, hp: 1, maxHp: 1, dead: false,
+    cond: {}, features: {}, attacks: [], gear: [], abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, prof: 0, resist: [], vuln: [], immune: [] } : null;
+}
+// Run a list of effect steps that come from a thing on the map against some creatures.
+function objectEffects(s, o, steps, targets, ev) {
+  if (!targets.length) return;
+  begin(s, { steps, actor: null, targets: targets.map((t) => t.id), shared: targets.length > 1 ? sharedRolls(s, steps) : null,
+    src: { name: objectName(o), object: o.id, dc: o.dc?.save ?? objectDef(o).dc?.save ?? 10, range: 1000 } });
+  run(s, ev, KIT);
+}
+// A `set` or `reveal` step: work the thing itself or what it is linked to. False if there is nothing to work.
+function objectStep(s, id, of, state, ev) {
+  const self = s.map.objects.find((x) => x.id === id);
+  const all = of === 'link' ? (self?.links ?? []).map((l) => s.map.objects.find((x) => x.id === l.object)).filter(Boolean) : [self].filter(Boolean);
+  let did = false;
+  for (const o of all) {
+    const def = objectDef(o), to = state ?? (def.states[o.state].hidden ? def.find?.to : null);
+    if (!to || !Object.hasOwn(def.states, to)) continue;
+    did = true;
+    if (o.state !== to) setObject(s, o, to, ev);
+  }
+  return did;
+}
+// A creature has just stepped from `prev` to where it stands now: whatever that sets off, goes
+// off. Returns true if something did, which ends the creature's movement there.
+function trip(s, e, prev, ev, before) {
+  let fired = false;
+  if (!ground(s.map, e.pos)) return false;                             // nothing on the floor notices what is not on it
+  for (const o of s.map.objects) {
+    const def = objectDef(o);
+    if (!def.triggers?.length || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) continue;
+    const was = H.dist(prev, o.at), now = H.dist(e.pos, o.at);
+    const t = def.triggers.find((x) => x.from.includes(o.state) && (x.who !== 'party' || e.side === 'party') &&
+      (x.on === 'enter' ? now === 0 && was > 0 : x.on === 'leave' ? was === 0 && now > 0 : now * FT <= x.feet && was * FT > x.feet));
+    if (!t) continue;
+    if (t.effects) {
+      before();
+      ev.push({ type: 'triggered', object: o.id, name: objectName(o), id: e.id });
+      fired = true;
+    }
+    if (t.to && t.to !== o.state) setObject(s, o, t.to, ev);
+    if (t.effects) objectEffects(s, o, t.effects, t.area ? living(s).filter((c) => H.dist(c.pos, o.at) * FT <= t.area && Math.abs(c.pos.z - objectZ(s, o)) <= STEP_MAX) : [e], ev);
+  }
+  return fired;
+}
+// Falling: 1d6 Bludgeoning for every 10 feet, 20d6 at most, and Prone on landing unless it took no damage.
+function fall(s, t, feet, ev) {
+  const dice = Math.min(20, Math.floor(feet / 10));
+  ev.push({ type: 'fell', id: t.id, feet });
+  if (!dice) return;
+  const mark = ev.length;
+  damage(s, t, roll(s, `${dice}d6`).total, 'bludgeoning', ev);
+  if (ev.slice(mark).some((x) => x.type === 'damage' && x.amount > 0)) condition(s, t, 'prone', ev);
+}
+// Forced movement: shove a creature so many feet straight away from a point, or toward it. It
+// stops at a wall, a drop, or anything in the way. It provokes nothing and sets nothing off.
+function push(s, t, feet, dir, from, ev) {
+  const B = barriers(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = H.toWorld(from);
+  for (let i = 0; i < Math.floor(feet / FT); i++) {
+    const here = ground(s.map, t.pos), d0 = H.dist(t.pos, from), w = H.toWorld(t.pos);
+    if (!here) break;
+    let best = null;
+    for (const n of H.neighbors(t.pos)) {
+      if (H.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[H.col(n)])) continue;
+      const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
+      if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
+      const h = { q: n.q, r: n.r, z: sf.z };
+      if (living(s).some((c) => c.id !== t.id && H.key(c.pos) === H.key(h))) continue;
+      const nw = H.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
+      if (!best || straight > best.straight + 1e-9) best = { h, straight };
+    }
+    if (!best) break;
+    t.pos = best.h; path.push(best.h);
+  }
+  if (!path.length) return;
+  ev.push({ type: 'moved', id: t.id, path, forced: true });
+  lookAround(s, ev, [t]);
 }
 // What this creature could do right now with the objects in reach: [{ object, name, verb, label, time, why }].
 export function usesFor(s, e) {
@@ -345,7 +447,7 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= 1 && clear(s, o.pos, e.pos))) dis.push('enemy within 5 ft');
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= 1 && clear(s, o.pos, e.pos))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
@@ -484,7 +586,7 @@ export function targetsFor(s, e, { attack, spell }) {
 // ---------- actions ----------
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, heal, condition, modifier, judge };
+const KIT = { rollToHit, savingThrow, damage, heal, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -530,8 +632,10 @@ const handlers = {
       }
       const k = H.key(step);
       if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
+      const was = e.pos;
       e.pos = step; seg.push(step); prev = step;
       lookAround(s, ev, [e], flush);
+      if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
       for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
@@ -712,6 +816,7 @@ const handlers = {
       return;
     }
     if (u.to) setObject(s, o, u.to, ev, e, u.id);
+    if (u.effects) objectEffects(s, o, u.effects, [e], ev);
   },
 
   // ----- table management -----

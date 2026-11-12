@@ -23,7 +23,7 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'condition', 'modifier', 'move', 'resource', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'manual'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
@@ -37,6 +37,7 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
 export const OBJECT_BLOCKS = ['move', 'sight'];
 export const USE_TIMES = ['free', 'action'];
+export const TRIGGERS = ['enter', 'leave', 'near'];   // a creature steps onto a thing's hex, steps off it, or comes within so many feet
 export const SKILLS = { acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int',
   insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha',
   persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis' };
@@ -103,6 +104,16 @@ function lintSteps(steps, say, seen = { manual: false }) {
       }
     }
     if (kind === 'modifier') lintModifier(step.modifier ?? {}, say);
+    if (kind === 'move') {
+      if (!(isInt(step.move) && step.move > 0 && step.move % 5 === 0)) say('`move` must be a distance in feet, a multiple of 5');
+      if (!['away', 'toward'].includes(step.dir)) say('a move step needs `dir`: away or toward');
+    }
+    if (kind === 'fall' && !(step.fall === 'surface' || (isInt(step.fall) && step.fall > 0))) say('`fall` must be a number of feet or "surface"');
+    if (kind === 'set') {
+      if (!ID.test(step.set ?? '')) say('`set` must name a state');
+      if (step.of !== undefined && !['self', 'link'].includes(step.of)) say('`of` must be self or link');
+    }
+    if (kind === 'reveal' && !['self', 'link', 'target'].includes(step.reveal)) say('`reveal` must be self, link or target');
     if (kind === 'manual') { seen.manual = true; if (!isText(step.manual)) say('a manual step needs text saying what the DM applies'); }
     for (const branch of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (step[branch]) lintSteps(step[branch], say, seen);
   }
@@ -215,6 +226,23 @@ function lintObject(e, say) {
     if (v?.hidden !== undefined && typeof v.hidden !== 'boolean') say(`state "${st}": hidden must be true or false`);
   }
   if (!states.includes(e.initial)) say('`initial` must be one of its states');
+  if (e.dc !== undefined && !(e.dc && typeof e.dc === 'object' && Object.entries(e.dc).every(([k, n]) => ['save', 'find'].includes(k) && isInt(n) && n > 0))) say('`dc` may give whole numbers for save and find');
+  const anyHidden = states.some((st) => e.states[st]?.hidden);
+  if (anyHidden && !(e.find && states.includes(e.find.to) && !e.states[e.find.to]?.hidden && isInt(e.dc?.find))) say('something with a hidden state needs `find: { to }` naming the state it is found in, and `dc.find`');
+  if (!anyHidden && e.find !== undefined) say('`find` is only for something with a hidden state');
+  let manual = false;
+  for (const [i, t] of (e.triggers ?? []).entries()) {
+    const sub = (m) => say(`trigger ${i}: ${m}`);
+    if (e.kind !== 'thing') sub('only a thing in a hex can have triggers');
+    if (!TRIGGERS.includes(t?.on)) { sub(`\`on\` must be one of ${TRIGGERS.join(', ')}`); continue; }
+    if (!(Array.isArray(t.from) && t.from.length && t.from.every((x) => states.includes(x)))) sub('`from` must list the states it fires in');
+    if (t.to !== undefined && !states.includes(t.to)) sub('`to` must be one of its states');
+    if (t.on === 'near' && !(isInt(t.feet) && t.feet > 0 && t.feet % 5 === 0)) sub('a near trigger needs `feet`, a multiple of 5');
+    if (t.who !== undefined && !['any', 'party'].includes(t.who)) sub('`who` must be any or party');
+    if (t.area !== undefined && !(isInt(t.area) && t.area > 0 && t.area % 5 === 0)) sub('`area` must be a radius in feet, a multiple of 5');
+    if (t.effects !== undefined) manual ||= lintSteps(t.effects, sub).manual;
+    if (t.effects === undefined && t.to === undefined) sub('needs effects or a state to go to');
+  }
   if (!Array.isArray(e.use)) return say('needs a `use` list (it may be empty)');
   const ids = new Set();
   for (const u of e.use) {
@@ -227,7 +255,10 @@ function lintObject(e, say) {
     if (!USE_TIMES.includes(u.time)) sub(`time must be one of ${USE_TIMES.join(', ')}`);
     if (u.key !== undefined && typeof u.key !== 'boolean') sub('key must be true or false');
     if (u.check !== undefined) lintCheck(u.check, sub);
+    if (u.effects !== undefined) manual ||= lintSteps(u.effects, sub).manual;
+    if (u.to === undefined && u.effects === undefined) sub('needs effects or a state to go to');
   }
+  if (e.tier === 'auto' && manual) say('marked auto but contains a manual step');
 }
 
 export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [] }) {

@@ -12,7 +12,7 @@
 import * as H from './hex.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
 import { concealed, shown } from './space.js';
-import { barriers, center, objectHexes } from './walls.js';
+import { barriers, center, objectBlocks, objectDef, objectHexes, objectSegment } from './walls.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -104,6 +104,7 @@ export function clipWall(w, centres) {
   const whole = merged.length === 1 && merged[0][0] === 0 && merged[0][1] === 1;
   return merged.map(([t0, t1], i) => ({ id: whole ? w.id : `${w.id}~${i}`, level: w.level, kind: w.kind, a: [ax + dx * t0, ay + dy * t0], b: [ax + dx * t1, ay + dy * t1] }));
 }
+const hiddenState = (o) => !!objectDef(o)?.states[o.state]?.hidden;
 const mapCache = new WeakMap();
 function shownMap(map) {
   const sig = `${barriers(map).sig}|${map.regions.map((r) => `${r.id}:${r.revealed ? 1 : 0}:${r.hexes.length}`).join()}|${map.levels.map((l) => Object.keys(l.tiles).length).join()}`;
@@ -118,8 +119,15 @@ function shownMap(map) {
   const has = (levelId, h) => !!levels.find((l) => l.id === levelId)?.tiles[H.col(h)];
   const doc = {
     format: map.format, id: map.id, name: map.name, hexFeet: map.hexFeet, levels,
-    walls: map.walls.flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : [])),
-    objects: map.objects.filter((o) => objectHexes(o).some((h) => has(o.level, h))).map(({ dc, link, ...o }) => structuredClone(o)),     // never a DC
+    // An undiscovered door is sent as the wall it passes for. Walls are sorted and renumbered so
+    // that nothing about a wall's name or place in the list says which one is not a wall.
+    walls: [...map.walls, ...map.objects.filter((o) => hiddenState(o) && objectSegment(o) && objectBlocks(o, 'move') && objectBlocks(o, 'sight'))
+      .map((o) => ({ id: o.id, level: o.level, kind: 'wall', a: objectSegment(o)[0], b: objectSegment(o)[1] }))]
+      .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : []))
+      .sort((p, q) => p.a[0] - q.a[0] || p.a[1] - q.a[1] || p.b[0] - q.b[0] || p.b[1] - q.b[1] || (p.kind < q.kind ? -1 : p.kind > q.kind ? 1 : 0))
+      .map((w, i) => ({ ...w, id: `w${i}` })),
+    // Objects in a hidden state are not sent at all. Never a DC, and never what an object is wired to.
+    objects: map.objects.filter((o) => !hiddenState(o) && objectHexes(o).some((h) => has(o.level, h))).map(({ dc, links, ...o }) => structuredClone(o)),
     regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: [...r.hexes], revealed: true })),
     starts: [],
   };
@@ -158,7 +166,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
@@ -170,7 +178,7 @@ export function viewEvents(events, state, viewer) {
   for (const ev of events) {
     out.ev = ev;
     if (ev.type === 'cast') caster = ev.actor;
-    if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && cls(id) === 'hidden')) continue;
+    if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
 
     switch (ev.type) {
       case 'attack': {
@@ -225,7 +233,8 @@ export function viewEvents(events, state, viewer) {
         // the engine left out of a spell it did apply are for the DM alone.
         if (!ev.partial) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
         break;
-      case 'object':                                   // something on the map changed state, if it is somewhere they can see
+      case 'triggered':
+      case 'object':                                   // something on the map changed state or went off, if they can see it
         if (shownMap(state.map).doc.objects.some((o) => o.id === ev.object)) out.push(structuredClone(ev));
         break;
       case 'chronicle':

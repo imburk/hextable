@@ -60,14 +60,15 @@ test("a map starts with only the party's own region revealed, and players are se
 
 test("a wall is sent only where it runs beside what has been shown", () => {
   const { s } = delve();
-  const pieces = view(s, PAT).map.walls.filter((w) => w.id.startsWith("north"));
+  const north = (w) => w.a[1] === -6.5 && w.b[1] === -6.5;
+  const pieces = view(s, PAT).map.walls.filter(north);
   assert.equal(pieces.length, 4);                                         // one stretch beside each hall hex of the top row
   for (const w of pieces) assert.ok(Math.max(w.a[0], w.b[0]) < 0, JSON.stringify(w));
   assert.deepEqual(clipWall({ id: "w", level: "g", kind: "wall", a: [-10, 0], b: [10, 0] }, [[0, 1]]).map((w) => [w.id, Math.round(w.a[0] * 100) / 100, Math.round(w.b[0] * 100) / 100]), [["w~0", -2.73, 2.73]]);
   assert.deepEqual(clipWall({ id: "w", level: "g", kind: "wall", a: [-1, 0], b: [1, 0] }, [[0, 1]]), [{ id: "w", level: "g", kind: "wall", a: [-1, 0], b: [1, 0] }]);
   assert.deepEqual(clipWall({ id: "w", level: "g", kind: "wall", a: [-1, 0], b: [1, 0] }, [[0, 9]]), []);
   ok(apply(s, { type: "revealRegion", region: "vault" }, DM));
-  assert.ok(view(s, PAT).map.walls.some((w) => w.id.startsWith("north") && Math.max(w.a[0], w.b[0]) > 5));
+  assert.ok(view(s, PAT).map.walls.some((w) => north(w) && Math.max(w.a[0], w.b[0]) > 5));
 });
 
 test("standing beside an open way into a region reveals it; a shut door does not", () => {

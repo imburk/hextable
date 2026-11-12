@@ -94,7 +94,7 @@ export function spellProfile(def) {
   let harmful = false, heals = false, healStep = null;
   walk(def.effects, (st) => {
     const k = stepKind(st);
-    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'condition') harmful = true;
+    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'condition' || k === 'fall') harmful = true;
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
   const t = def.target;
@@ -154,7 +154,7 @@ export function run(s, ev, kit) {
 }
 
 function exec(s, ev, kit, f, step, at) {
-  const e = s.entities[f.actor], t = f.target === null ? null : s.entities[f.target];
+  const t = f.target === null ? null : s.entities[f.target];
   const kind = stepKind(step);
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
@@ -163,6 +163,8 @@ function exec(s, ev, kit, f, step, at) {
   };
 
   if (kind === 'manual') return handOver(step.manual);
+  // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
+  const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
   if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. The DM applies it.`);
   for (const tag of step.when ?? []) {
@@ -197,6 +199,13 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f)) return;
     return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
+  }
+  if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
+  if (kind === 'move') return kit.push(s, t, step.move, step.dir, e.pos, ev);
+  if (kind === 'set' || kind === 'reveal') {
+    if (kind === 'reveal' && step.reveal === 'target') return kit.reveal(s, t, ev);
+    if (kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev)) return;
+    return handOver(`Part of ${f.src.name} works something on the map, but the engine found nothing for it to work. The DM applies it.`);
   }
   handOver(`The engine cannot apply this part of ${f.src.name} yet (${kind}). The DM applies it.`);
 }
