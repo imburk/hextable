@@ -449,7 +449,7 @@ function deathSave(s, e, ev) {
   else if (d >= 10) e.death.s++;
   else e.death.f++;
   if (e.death.f >= 3) e.dead = true;
-  else if (e.death.s >= 3) e.cond.stable = {};
+  else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
 
@@ -487,12 +487,13 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   let n = amount;
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(dtype) || own.includes(dtype);
+  // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
+  const resisted = applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
   if (applies(m.immune, t.immune)) n = 0;
-  else if (applies(m.resist, t.resist)) n = Math.floor(n / 2);
-  else if (applies(m.vulnerable, t.vuln)) n *= 2;
-  const note = n === 0 && amount > 0 ? 'immune' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
+  else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
+  const note = n === 0 && amount > 0 ? 'immune' : resisted && vulnerable && amount > 0 ? 'resisted and vulnerable' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
   if (t.hp <= 0) {                                        // already dying
-    if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3) t.dead = true; }
+    if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || n >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     ev.push({ type: 'damage', target: t.id, amount: n, dtype, hp: 0, note });
     if (t.dead) ev.push({ type: 'died', id: t.id });
     return;
@@ -534,7 +535,8 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
+  // Only an enemy who can see the attacker and is not Incapacitated counts. Until there is sight, "can see" is "not Blinded"; sight will refine it.
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && !o.cond.blinded && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
@@ -640,6 +642,8 @@ export function checkBonus(e, { ability, skill, tool }) {
 function abilityCheck(s, e, what) {
   const m = modifiers(s, e, 'check', { target: e }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
+  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
+  if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
@@ -1259,9 +1263,19 @@ const handlers = {
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');
     !s.encounter || fail("You can't rest in the middle of a fight.");
-    for (const e of Object.values(s.entities).filter((x) => x.side === 'party')) {
-      Object.assign(e, { hp: e.maxHp, dead: false, cond: {}, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
+    // SRD Long Rest: all Hit Points back, Exhaustion down one level, features recharge. The dead stay
+    // dead, other conditions stay, and a creature at 0 Hit Points can't start one.
+    for (const e of Object.values(s.entities).filter((x) => x.side === 'party' && !x.dead)) {
+      if (e.hp <= 0) {
+        if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
+        else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
+        continue;
+      }
+      Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
+      const ex = e.cond.exhaustion;
+      if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
+      else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
     }
     s.clock += 480;
     ev.push({ type: 'rest' });

@@ -103,7 +103,8 @@ test("a lock needs its key, or tools and a check against a DC players never see"
   const failed = tryIt(false), picked = tryIt(true);
   assert.equal(door(failed.c).state, "locked");
   assert.deepEqual(failed.r.events.map((e) => e.type), ["check"]);
-  assert.equal(failed.r.events[0].total, failed.r.events[0].roll + 5);                      // Dexterity +3, proficient with the tools +2
+  assert.equal(failed.r.events[0].total, failed.r.events[0].roll + 7);                      // Dexterity (Sleight of Hand): +3, and +4 for Expertise
+  assert.equal(failed.r.events[0].mode, "adv");                                              // proficient with the tools and in the skill: Advantage
   assert.equal(failed.r.events[0].dc, 18);
   assert.equal(JSON.stringify(viewEvents(failed.r.events, failed.c, PAT)).includes("18"), false);      // players never see the DC
   assert.equal(viewEvents(failed.r.events, failed.c, PAT)[0].success, false);

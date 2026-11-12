@@ -11,15 +11,16 @@ players are sent). **any** can be handed to any agent.
 
 | # | What | Who |
 |---|---|---|
-| W1 | A long rest clears all Exhaustion and revives the dead | engine |
-| W2 | No instant death when damage at 0 Hit Points reaches the Hit Point maximum; death-save counts are not reset when a creature is stabilised | engine |
-| W3 | Resistance and Vulnerability to the same damage only halves it | engine |
-| W4 | Ranged attacks beside an enemy have Disadvantage even if that enemy cannot see the attacker or is Incapacitated | engine |
-| W5 | Dodge ignores "can see the attacker" | engine (with sight) |
+| W1 | ~~A long rest clears all Exhaustion and revives the dead~~ (#65) | engine |
+| W2 | ~~No instant death when damage at 0 Hit Points reaches the Hit Point maximum; death-save counts are not reset when a creature is stabilised~~ (#65) | engine |
+| W3 | ~~Resistance and Vulnerability to the same damage only halves it~~ (#65) | engine |
+| W4 | ~~Ranged attacks beside an enemy have Disadvantage even if that enemy cannot see the attacker or is Incapacitated~~ (#65) | engine |
+| W5 | Dodge ignores "can see the attacker" (left for the sight work: with no `canSee` there is nothing to test; W4 stands in "not Blinded" for it, and both should move to the sight check together) | engine (with sight) |
 | W6 | Every standing enemy blocks movement outright; the SRD allows passing some | engine |
-| W7 | A tool used with a skill the creature is proficient in should give Advantage | engine |
+| W7 | ~~A tool used with a skill the creature is proficient in should give Advantage~~ (#65) | engine |
 | W8 | A `condition` step is always treated as hostile, so a helpful one (Invisibility) is refused on oneself and starts a fight on an ally | engine |
 | W9 | Size limits on Prone, Grappled and pushes are not applied; any size is affected | engine |
+| W10 | Death Saving Throws are rolled only in a fight, and a Stable creature's 1 Hit Point after 1d4 hours happens only across a Long Rest; a dying creature at a Long Rest is handed to the DM (#65) | engine |
 
 ## Monsters
 
