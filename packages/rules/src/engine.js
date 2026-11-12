@@ -15,6 +15,7 @@ import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, e
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
 import { EDITS, lintMap } from './map.js';
+import { COVER, coverOf, inSight } from './sight.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
@@ -190,20 +191,9 @@ function threatsAt(s, e, pos) {
 
 // Is there nothing solid between two positions? A wall or a shut door stops attacks, spells and
 // notice. This is the straight line between hex centres; cover and light come with the sight spec.
-export function clear(s, a, b) {
-  const lo = a.z <= b.z ? a : b, hi = lo === a ? b : a;
-  // A floor between them: one over the head of the lower, where the higher is not simply standing on its own edge.
-  if (hi.z > lo.z && surfaces(s.map, lo).some((sf) => sf.z > lo.z && sf.z <= hi.z && !(H.col(lo) === H.col(hi) && sf.z === hi.z && !ground(s.map, hi)))) return false;
-  if (H.col(a) === H.col(b)) return true;
-  // A wall counts only if neither of them is above its top.
-  const B = barriers(s.map);
-  return !wallsAt(s.map, lo.z).some((l) => hi.z < l.z + WALL_HEIGHT && B.blocked(l.id, a, b, 'both'));
-}
+export function clear(s, a, b) { return inSight(s.map, a, b); }
 // Between two creatures: is any part of one in the clear from any part of the other?
-export function unblocked(s, a, b) {
-  if (shapeOf(a).length === 1 && shapeOf(b).length === 1) return clear(s, a.pos, b.pos);
-  return footprint(a).some((fa) => footprint(b).some((fb) => clear(s, fa, fb)));
-}
+export function unblocked(s, a, b) { return coverOf(s, a, b) !== 'total'; }
 const walled = (s, e, t) => unblocked(s, e, t) || fail(`There is a wall between ${e.name} and ${t.name}.`);
 
 // ---------- regions ----------
@@ -554,11 +544,12 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const bonus = atk.bonus + add;
-  const ac = acOf(s, t);
+  // Cover adds to Armor Class: 2 for half, 5 for three-quarters.
+  const cover = e.object ? 'none' : coverOf(s, e, t, living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
   const hit = nat !== 1 && (nat === 20 || nat + bonus >= ac);
   const crit = hit && (nat === 20 || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...extra });
+    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...extra });
   return { hit, crit, mode };
 }
 
@@ -617,8 +608,11 @@ function modifier(s, t, mod_, ev, f) {
 }
 
 // `extra` names a second hook to gather modifiers from, such as 'concentration'.
-function savingThrow(s, t, abil, dc, extra = null) {
+// `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
+function savingThrow(s, t, abil, dc, extra = null, from = null) {
   const m = modifiers(s, t, `save.${abil}`, { target: t }, '');
+  const cover = abil === 'dex' && from && !from.object ? coverOf(s, from, t, living(s)) : 'none';
+  m.add += COVER[cover] ?? 0;
   if (extra) {
     const x = modifiers(s, t, extra, { target: t }, '');
     m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage);
@@ -630,7 +624,7 @@ function savingThrow(s, t, abil, dc, extra = null) {
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add;
-  return { roll: r, total, success: total >= dc, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
+  return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
 }
 
 // ---------- ability checks ----------
@@ -831,7 +825,7 @@ const handlers = {
     if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
 
     // Who or what it is aimed at.
-    let targets = [], hexes = null;
+    let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
       const shape = sp.area.shape;
       if (shape === 'cone') (a.hex && H.dist(a.hex, e.pos) > 0) || fail(`Pick a direction for ${sp.name}.`);
@@ -844,6 +838,7 @@ const handlers = {
       const keys = new Set(hexes.map(H.key));
       // Where it goes off: the caster for a cone or an emanation, else the spot aimed at (in the air if a height was given).
       const origin = shape === 'cone' || shape === 'emanation' ? e.pos : a.hex.z !== undefined ? { q: a.hex.q, r: a.hex.r, z: a.hex.z } : landing(s.map, a.hex, e.pos.z) ?? e.pos;
+      areaOrigin = origin === e.pos ? null : origin;
       const size = sp.area.size / FT, tall = sp.area.height ?? sp.area.size;
       const high = (t) => (shape === 'cylinder' ? t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : gap(s, origin, t.pos) <= size);     // areas have height too
       targets = living(s).filter((t) => footprint(t).some((f) => keys.has(H.col(f))) && high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
@@ -890,7 +885,7 @@ const handlers = {
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : targets.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) },
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}) },
       shared: sp.aim === 'area' ? sharedRolls(s, steps) : null,
     });
     run(s, ev, KIT);
@@ -1260,7 +1255,7 @@ function gravity(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'] };
+export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];

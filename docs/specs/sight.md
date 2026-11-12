@@ -1,6 +1,6 @@
 # Spec: sight
 
-Status: design proposed, not built. Owner of the design: Claude (Fable).
+Status: proposed. Built so far: S1 (line of sight by centre and corners) and S2 (cover). Owner of the design: Claude (Fable).
 
 Covers line of sight, cover, light and darkness, special senses, hiding and
 finding hidden creatures, and what players are sent as a result. It builds on
@@ -264,3 +264,23 @@ is judged by corners instead of one line.
 
 S1 and S2 are worth having on their own and change nothing a table must opt
 into. S4 to S7 are the dark-cave work and depend on each other in that order.
+
+## Build notes
+
+- **Corners sit a little inside the hex** (S1), at nine tenths of the way out, so
+  a wall on a hex's own far edge is not counted as in front of it. A corner
+  counts only if it is on the target's own side of any wall that cuts through
+  its hex, which matters for traced walls that do not follow hex edges.
+- **Lines run at mid-body height** (S1), 2.5 ft above each creature's feet. A
+  wall stops a line if the line is below the wall's top, 10 ft, where they meet.
+- **Solid hexes (rock) do not block sight yet** (S1). Only walls, shut doors and
+  floors do.
+- **Cover is added directly** (S2) to Armor Class in the attack roll and to a
+  Dexterity save, and the attack or save event carries `cover` so the log can
+  say why. The two cover tags are in the vocabulary and judged, for content that
+  will later ignore cover.
+- **A trap's own attack ignores cover** (S2): it has no place to be judged from
+  that would be fair.
+- **Creature cover** (S2) is given by a creature whose hex centre lies within
+  1.5 ft of the line between attacker and target, and not by one next to the
+  attacker's own hex end or the target's.

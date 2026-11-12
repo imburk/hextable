@@ -31,7 +31,7 @@ export const HOOKS = ['check', 'attack.roll', 'attack.received', 'damage.dealt',
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
-  'attacker.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range'];
+  'attacker.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover'];
 
 // Things on a map (docs/specs/maps-and-objects.md).
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
