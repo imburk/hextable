@@ -87,6 +87,8 @@ function lintModifier(m, say) {
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
   // against the spell's target (Hex, Hunter's Mark).
   if (m.against !== undefined && m.against !== 'target') say('`against` is "target" or left out');
+  // `uses: 1`: the first roll it applies to uses it up (Guiding Bolt, Vicious Mockery).
+  if (m.uses !== undefined && m.uses !== 1) say('`uses` is 1 or left out');
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
   if (m.once !== undefined && !(m.once === 'turn' && m.on === 'damage.taken' && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken');
   lintWhen(m.when, say);
@@ -137,8 +139,10 @@ function lintSteps(steps, say, seen = { manual: false }) {
     if (kind === 'heal' && !isDice(step.heal)) say(`heal "${step.heal}" is not dice like 2d8`);
     if (kind === 'tempHp' && !isDice(step.tempHp)) say(`tempHp "${step.tempHp}" is not dice like 2d4+4`);
     if ((kind === 'heal' || kind === 'tempHp') && step.addMod !== undefined && step.addMod !== true) say('`addMod` is true or left out');
-    if (kind === 'condition') {
-      if (!CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+    if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+    // What ends a condition or a modifier on its own: a turn boundary of the target or the source
+    // ("until the end of your next turn"), or a repeat save.
+    if (kind === 'condition' || kind === 'modifier') {
       const ends = step.ends;
       if (ends !== undefined) {
         if (!['turnStart', 'turnEnd', 'save'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd or save');

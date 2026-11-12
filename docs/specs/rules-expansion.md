@@ -593,6 +593,19 @@ entry names what was added to `schema.js` and what the engine does with it.
   target (Hex, Hunter's Mark). `save.death` was wired with the `save` hook (above). `carry`
   is still unread: there is no encumbrance yet.
 
+- **Turn boundaries** (S5). A `modifier` step may carry `ends` as a `condition` step does
+  (`turnStart` or `turnEnd` of the target, or of the source with `of: 'source'`, or a repeat
+  `save`). A part records the turn it was made in (`born`), and a `turnEnd` boundary of that
+  same turn does not end it, which is what "until the end of your next turn" means (and "its
+  next turn" for a creature affected during its own turn). When an effect's time runs out, a
+  part with its own turn boundary keeps to it and the effect stays until it ends (Guiding
+  Bolt: "1 round", but "before the end of your next turn"). Something with no duration of its
+  own whose steps end at a turn boundary or on a save (Ray of Frost, a mephit's Blinding
+  Breath) gets an effect `bound` to its parts, which ends when they do; it is announced only
+  if it put something on someone. Monster actions get one too, so their timed conditions are
+  timed instead of handed to the DM. A modifier with `uses: 1` is used up by the first roll it
+  applies to (Guiding Bolt's Advantage, Vicious Mockery's Disadvantage).
+
 ### A class
 
 ```js

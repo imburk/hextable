@@ -56,7 +56,7 @@ many monsters each one touches:
 
 ## Spells
 
-339 are entered; 31 play fully, 79 partly, 229 are applied by the DM. What the vocabulary
+339 are entered; 36 play fully, 74 partly, 229 are applied by the DM. What the vocabulary
 cannot say, by how much it would unlock:
 
 | # | What | Who |
@@ -65,7 +65,7 @@ cannot say, by how much it would unlock:
 | S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks | engine |
 | S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall) and several cubes arranged by the caster (Fire Storm); creatures of the caster's choice in an area were done with S2 | engine |
 | S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
-| S5 | ~~Temporary Hit Points~~ (#82), ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), "until the end of your next turn" | engine |
+| S5 | ~~Temporary Hit Points~~ (#82), ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), ~~"until the end of your next turn"~~ (#89) | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |
 | S7 | ~~The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `save.death`; the `check` hook cannot be limited to one skill~~ (#80, #86). `carry` is still unread (no encumbrance) | engine |
 | S8 | Ritual casting times are not stored | any |
