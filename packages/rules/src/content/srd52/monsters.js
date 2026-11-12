@@ -1,6 +1,6 @@
 // Monsters from the SRD 5.2.1. Data only. Format: docs/specs/rules-expansion.md.
 // `text` is a plain-words description written for this project.
-// `checked: false` means nobody has yet compared the entry against the SRD text.
+// `checked: true` means every field was compared against the SRD 5.2.1 stat block.
 export const monsters = [
   {
     id: "goblin-warrior", name: "Goblin Warrior", source: "SRD 5.2.1",
@@ -23,7 +23,7 @@ export const monsters = [
           onHit: [{ damage: "1d6+2", type: "piercing" }, { damage: "1d4", type: "piercing", when: ["attack.advantage"] }] }],
         text: "A ranged attack that deals extra damage when the attack roll had Advantage." },
     ],
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "A small, quick skirmisher that slips away from melee.",
   },
   {
@@ -31,6 +31,7 @@ export const monsters = [
     size: "medium", type: "beast", cr: 0.25, xp: 50, pb: 2,
     ac: 12, hp: 11, speed: { walk: 40 },
     abilities: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
+    skills: { perception: 5, stealth: 4 },
     resist: [], vulnerable: [], immune: [],
     traits: [
       { id: "pack-tactics", name: "Pack Tactics",
@@ -43,7 +44,7 @@ export const monsters = [
           onHit: [{ damage: "1d6+2", type: "piercing" }, { condition: "prone" }] }],
         text: "A melee attack that knocks the target Prone. The SRD limits this by the target's size; the engine does not apply that limit yet." },
     ],
-    tier: "assist", checked: false,
+    tier: "assist", checked: true,
     text: "A pack hunter that drags prey down.",
   },
   {
@@ -52,7 +53,10 @@ export const monsters = [
     ac: 14, hp: 13, speed: { walk: 30 },
     abilities: { str: 10, dex: 16, con: 15, int: 6, wis: 8, cha: 5 },
     resist: [], vulnerable: ["bludgeoning"], immune: ["poison"],
-    traits: [],
+    traits: [
+      { id: "condition-immunities", name: "Condition Immunities", modifiers: [],
+        text: "Immune to the Exhaustion and Poisoned condition(s). The engine has no field for condition immunities yet." },
+    ],
     actions: [
       { id: "shortsword", name: "Shortsword", target: { creature: { reach: 5 } },
         effects: [{ attack: "melee", kind: "weapon", bonus: 5, onHit: [{ damage: "1d6+3", type: "piercing" }] }],
@@ -61,7 +65,7 @@ export const monsters = [
         effects: [{ attack: "ranged", kind: "weapon", bonus: 5, onHit: [{ damage: "1d6+3", type: "piercing" }] }],
         text: "A ranged attack." },
     ],
-    tier: "auto", checked: false,
+    tier: "assist", checked: true,
     text: "An animated set of bones, brittle against crushing blows.",
   },
 ];

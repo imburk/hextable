@@ -71,3 +71,61 @@ test("two monsters from the batch play several full rounds against the heroes", 
     assert.ok(res.ok, res.error);
   }
 });
+
+// Every stat block the SRD 5.2.1 index lists under A, B or C is in the pack, plus the young dragons of the
+// five colours whose wyrmlings sort here. (Young Gold, Green, Red, Silver and White sort under Y.)
+const SRD_A_TO_C = [
+  "Aboleth", "Adult Black Dragon", "Adult Blue Dragon", "Adult Brass Dragon", "Adult Bronze Dragon", "Adult Copper Dragon",
+  "Adult Gold Dragon", "Adult Green Dragon", "Adult Red Dragon", "Adult Silver Dragon", "Adult White Dragon", "Air Elemental",
+  "Allosaurus", "Ancient Black Dragon", "Ancient Blue Dragon", "Ancient Brass Dragon", "Ancient Bronze Dragon", "Ancient Copper Dragon",
+  "Ancient Gold Dragon", "Ancient Green Dragon", "Ancient Red Dragon", "Ancient Silver Dragon", "Ancient White Dragon",
+  "Animated Armor", "Animated Flying Sword", "Animated Rug of Smothering", "Ankheg", "Ape", "Archelon", "Archmage",
+  "Assassin", "Awakened Shrub", "Awakened Tree", "Axe Beak", "Azer Sentinel", "Baboon", "Badger", "Balor", "Bandit",
+  "Bandit Captain", "Barbed Devil", "Basilisk", "Bat", "Bearded Devil", "Behir", "Berserker", "Black Bear", "Black Dragon Wyrmling",
+  "Black Pudding", "Blink Dog", "Blood Hawk", "Blue Dragon Wyrmling", "Boar", "Bone Devil", "Brass Dragon Wyrmling",
+  "Bronze Dragon Wyrmling", "Brown Bear", "Bugbear Stalker", "Bugbear Warrior", "Bulette", "Camel", "Cat", "Centaur Trooper",
+  "Chain Devil", "Chimera", "Chuul", "Clay Golem", "Cloaker", "Cloud Giant", "Cockatrice", "Commoner", "Constrictor Snake",
+  "Copper Dragon Wyrmling", "Couatl", "Crab", "Crocodile", "Cultist", "Cultist Fanatic", "Young Black Dragon", "Young Blue Dragon",
+  "Young Brass Dragon", "Young Bronze Dragon", "Young Copper Dragon",
+];
+
+test("every SRD monster named A to C is in the pack, and every entry has been compared with the SRD text", () => {
+  const have = new Set(PACKS[0].monsters.map((m) => m.name));
+  assert.deepEqual(SRD_A_TO_C.filter((n) => !have.has(n)), []);
+  for (const m of batch) assert.equal(m.checked, true, `${m.id} is not checked`);
+  for (const id of ["goblin-warrior", "wolf", "skeleton"]) assert.equal(CONTENT.monsters[id].checked, true, `${id} is not checked`);
+});
+
+test("corrections and additions from the SRD check", () => {
+  assert.deepEqual(MONSTERS.wolf.skillBonus, { perception: 5, stealth: 4 });
+  assert.ok(CONTENT.monsters.skeleton.traits.some((t) => t.id === "condition-immunities"));
+  assert.ok(CONTENT.monsters.bulette.actions.some((a) => a.id === "leap"));
+  const stalker = CONTENT.monsters["bugbear-stalker"];
+  assert.deepEqual([stalker.cr, stalker.ac, stalker.hp, stalker.pb], [3, 15, 65, 2]);
+  assert.deepEqual(stalker.actions.map((a) => a.id), ["javelin", "javelin-thrown", "morningstar", "quick-grapple"]);
+  const archmage = CONTENT.monsters.archmage;
+  assert.deepEqual([archmage.cr, archmage.xp, archmage.ac, archmage.hp], [12, 8000, 17, 170]);
+  assert.deepEqual(archmage.actions.map((a) => a.effects[0].bonus), [9, 9]);
+  const red = MONSTERS["ancient-red-dragon"];
+  assert.deepEqual([red.size, red.hp, red.ac, red.speeds], ["gargantuan", 507, 22, { climb: 40, fly: 80 }]);
+  assert.deepEqual(red.immune, ["fire"]);
+  assert.equal(CONTENT.monsters["adult-green-dragon"].traits.some((t) => /Poisoned/.test(t.text)), true);
+  assert.equal(CONTENT.monsters["adult-silver-dragon"].actions.find((a) => a.id === "cold-breath").effects[0].dc, 20);
+});
+
+// Arithmetic that every dragon's stat block obeys: the Rend attack is Strength plus proficiency, and a
+// breath weapon's save is 8 plus proficiency plus Constitution.
+test("each A to C dragon's Rend bonus and breath save DCs follow from its ability scores", () => {
+  const mod = (n) => Math.floor((n - 10) / 2);
+  const dragons = batch.filter((m) => m.type === "dragon");
+  assert.equal(dragons.length, 5 + 5 + 20);
+  for (const m of dragons) {
+    const rend = m.actions.find((a) => a.id === "rend");
+    assert.equal(rend.effects[0].bonus, mod(m.abilities.str) + m.pb, `${m.id} Rend`);
+    for (const a of m.actions) {
+      const save = a.effects[0].save;
+      if (save && /breath/.test(a.id)) assert.equal(a.effects[0].dc, 8 + m.pb + mod(m.abilities.con), `${m.id} ${a.id}`);
+    }
+    assert.equal(m.immune.length, 1, m.id);
+  }
+});
