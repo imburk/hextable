@@ -220,7 +220,7 @@ export const monsters = [
         text: "A melee attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A fungus with rotting, reaching tendrils."
   },
@@ -270,8 +270,8 @@ export const monsters = [
       {
         id: "blurred-form",
         name: "Blurred Form",
-        modifiers: [],
-        text: "Attack rolls against it have Disadvantage unless it is Incapacitated. The DM applies this."
+        modifiers: [{ on: "attack.received", op: "disadvantage", when: ["self.notIncapacitated"] }],
+        text: "Attack rolls against it have Disadvantage unless it is Incapacitated."
       },
       {
         id: "death-burst",
@@ -328,13 +328,11 @@ export const monsters = [
                 damage: "2d4",
                 type: "fire"
               },
-              {
-                manual: "The target's Speed decreases by 10 feet until the end of the mephit's next turn. Being underwater does not grant Resistance to this fire damage."
-              }
+              { modifier: { on: "speed", op: "add", value: -10 }, ends: { on: "turnEnd", of: "source" } }
             ]
           }
         ],
-        text: "Constitution save (DC 10) or take 2d4 fire damage, half on a success. Recharge 6."
+        text: "Constitution save (DC 10) or take 2d4 fire damage, half on a success; a failure also takes 10 feet off the target's Speed until the end of the mephit's next turn. Recharge 6. Being underwater does not grant Resistance to this fire damage, which the engine does not model."
       }
     ],
     tier: "assist",
@@ -622,7 +620,7 @@ export const monsters = [
         text: "Wisdom save (DC 12) or Charmed until the start of the pirate's next turn."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A rough sailor who fights with daggers and charm."
   },
@@ -1908,7 +1906,7 @@ export const monsters = [
         text: "Dexterity save (DC 13) or take 7d6 fire damage, half on a success. Recharge 5-6."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A young fire-breathing dragon."
   },
@@ -2010,7 +2008,7 @@ export const monsters = [
         text: "Dexterity save (DC 17) or take 16d6 fire damage, half on a success. Recharge 5-6."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A young dragon that breathes fire."
   },
@@ -2864,7 +2862,7 @@ export const monsters = [
         text: "A ranged attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A skilled wilderness spy with sword and longbow."
   },
@@ -8389,16 +8387,14 @@ export const monsters = [
                 damage: "1d8+3",
                 type: "piercing"
               },
-              {
-                manual: "The next attack roll made against the target before the start of the worg's next turn has Advantage."
-              }
+              { modifier: { on: "attack.received", op: "advantage", uses: 1 }, ends: { on: "turnStart", of: "source" } }
             ]
           }
         ],
         text: "A melee attack that gives the next attack against the target Advantage."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A large evil wolf."
   },
@@ -8606,7 +8602,7 @@ export const monsters = [
         text: "A melee attack with extra poison damage that Poisons the target until the start of the wyvern's next turn."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A two-legged dragonkin with a venomous tail stinger."
   },
@@ -9080,7 +9076,7 @@ export const monsters = [
         text: "A melee attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A large, cold-country bear."
   },
