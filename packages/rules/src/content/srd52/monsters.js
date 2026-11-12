@@ -6,6 +6,7 @@ export const monsters = [
     id: "goblin-warrior", name: "Goblin Warrior", source: "SRD 5.2.1",
     size: "small", type: "fey", cr: 0.25, xp: 50, pb: 2,
     ac: 15, hp: 10, speed: { walk: 30 },
+    senses: { darkvision: 60 },
     abilities: { str: 8, dex: 15, con: 10, int: 10, wis: 8, cha: 8 },
     skills: { stealth: 6 },
     resist: [], vulnerable: [], immune: [],
@@ -30,6 +31,7 @@ export const monsters = [
     id: "wolf", name: "Wolf", source: "SRD 5.2.1",
     size: "medium", type: "beast", cr: 0.25, xp: 50, pb: 2,
     ac: 12, hp: 11, speed: { walk: 40 },
+    senses: { darkvision: 60 },
     abilities: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
     skills: { perception: 5, stealth: 4 },
     resist: [], vulnerable: [], immune: [],
@@ -51,6 +53,7 @@ export const monsters = [
     id: "skeleton", name: "Skeleton", source: "SRD 5.2.1",
     size: "medium", type: "undead", cr: 0.25, xp: 50, pb: 2,
     ac: 14, hp: 13, speed: { walk: 30 },
+    senses: { darkvision: 60 },
     abilities: { str: 10, dex: 16, con: 15, int: 6, wis: 8, cha: 5 },
     resist: [], vulnerable: ["bludgeoning"], immune: ["poison"],
     traits: [

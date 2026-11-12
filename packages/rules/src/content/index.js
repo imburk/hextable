@@ -7,15 +7,19 @@ import { pack } from './srd52/pack.js';
 import { spells as spellsStarter } from './srd52/spells.js';
 import { spells0 } from './srd52/spells-0.js';
 import { spells1 } from './srd52/spells-1.js';
+import { spells2 } from './srd52/spells-2.js';
+import { spells3 } from './srd52/spells-3.js';
 import { monsters as monstersStarter } from './srd52/monsters.js';
 import { monsters as monstersAC } from './srd52/monsters-a-c.js';
+import { monsters as monstersDG } from './srd52/monsters-d-g.js';
+import { monsters as monstersHO } from './srd52/monsters-h-o.js';
 import { pregens } from './srd52/pregens.js';
 import { conditions } from './srd52/conditions.js';
 import { objects } from './srd52/objects.js';
 
 // A new content file is added in two places: an import above, and its list here.
-const spells = [...spellsStarter, ...spells0, ...spells1];
-const monsters = [...monstersStarter, ...monstersAC];
+const spells = [...spellsStarter, ...spells0, ...spells1, ...spells2, ...spells3];
+const monsters = [...monstersStarter, ...monstersAC, ...monstersDG, ...monstersHO];
 
 export { TILES };
 export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects }];
@@ -48,7 +52,7 @@ function legacyMonster(m) {
   const features = {};
   for (const t of m.traits) if (LEGACY_FEATURES[t.id]) features[LEGACY_FEATURES[t.id]] = true;
   return {
-    name: m.name, size: m.size, ac: m.ac, hp: m.hp, speed: m.speed.walk ?? 0, speeds: Object.fromEntries(Object.entries(m.speed).filter(([k]) => k !== 'walk')), ...(m.hover ? { hover: true } : {}), abil: { ...m.abilities }, prof: m.pb,
+    name: m.name, size: m.size, ac: m.ac, hp: m.hp, speed: m.speed.walk ?? 0, speeds: Object.fromEntries(Object.entries(m.speed).filter(([k]) => k !== 'walk')), ...(m.hover ? { hover: true } : {}), ...(m.senses ? { senses: { ...m.senses } } : {}), abil: { ...m.abilities }, prof: m.pb,
     ...(Object.keys(features).length ? { features } : {}),
     ...(m.vulnerable.length ? { vuln: [...m.vulnerable] } : {}),
     ...(m.immune.length ? { immune: [...m.immune] } : {}),

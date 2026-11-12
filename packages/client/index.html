@@ -16,6 +16,7 @@
 <header id="top">
   <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
   <nav id="tools">
+    <button type="button" id="btn-undo" hidden disabled>Undo</button>
     <button type="button" id="btn-tracker" aria-controls="tracker" aria-expanded="false">Tracker</button>
     <button type="button" id="btn-log" aria-controls="log">Log</button>
     <button type="button" id="btn-look" title="Change the look">Look</button>
@@ -53,6 +54,10 @@
   <button type="button" class="close" data-close="dm">Close</button>
   <h2>Dungeon Master</h2>
   <div id="dm-table"></div>
+  <section><h3>Take back</h3>
+    <div class="row"><button type="button" id="dm-undo" class="undo" disabled><span>Undo</span><small></small></button><button type="button" id="dm-redo" class="undo" disabled><span>Redo</span><small></small></button></div>
+    <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
+  </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
   <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div></section>
   <section><h3>Fight</h3>
@@ -61,6 +66,8 @@
     <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when enemies come within 10 ft</label>
     <label class="assign">Noticing hidden things in passing (passive Perception) <select id="dm-passive"><option value="off">Off: only a Search finds them</option><option value="traps">Traps only</option><option value="all">Everything</option></select></label>
     <label class="assign">Distance when one creature is higher than another <select id="dm-vertical"><option value="max">The longer of across and up (a diagonal counts once)</option><option value="sum">Across plus up</option><option value="true">Straight line</option></select></label>
+    <label class="assign">Cover from walls and objects <select id="dm-cover"><option value="on">On</option><option value="off">Off</option></select></label>
+    <label class="check"><input type="checkbox" id="dm-creature-cover" checked> Creatures give cover to those behind them</label>
     <label class="check"><input type="checkbox" id="dm-climb" checked> Creatures can climb faces too high to step up</label>
   </section>
   <section><h3>Creatures</h3>
