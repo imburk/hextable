@@ -15,7 +15,7 @@ players are sent). **any** can be handed to any agent.
 | W2 | ~~No instant death when damage at 0 Hit Points reaches the Hit Point maximum; death-save counts are not reset when a creature is stabilised~~ (#65) | engine |
 | W3 | ~~Resistance and Vulnerability to the same damage only halves it~~ (#65) | engine |
 | W4 | ~~Ranged attacks beside an enemy have Disadvantage even if that enemy cannot see the attacker or is Incapacitated~~ (#65) | engine |
-| W5 | ~~Dodge ignores "can see the attacker" (left for the sight work: with no `canSee` there is nothing to test; W4 stands in "not Blinded" for it, and both should move to the sight check together)~~ (#S5PR: Dodge, close combat and Opportunity Attacks all use `canSee`; Dodge also ends while Incapacitated or at Speed 0) | engine (with sight) |
+| W5 | ~~Dodge ignores "can see the attacker" (left for the sight work: with no `canSee` there is nothing to test; W4 stands in "not Blinded" for it, and both should move to the sight check together)~~ (#85: Dodge, close combat and Opportunity Attacks all use `canSee`; Dodge also ends while Incapacitated or at Speed 0) | engine (with sight) |
 | W6 | ~~Every standing enemy blocks movement outright; the SRD allows passing some~~ (#68) | engine |
 | W7 | ~~A tool used with a skill the creature is proficient in should give Advantage~~ (#65) | engine |
 | W8 | ~~A `condition` step is always treated as hostile, so a helpful one (Invisibility) is refused on oneself and starts a fight on an ally~~ (#68) | engine |
@@ -75,7 +75,7 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#S5PR); hiding, and sending players only what they can see (sight tasks S6 and S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
+| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); hiding, and sending players only what they can see (sight tasks S6 and S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
 | P2 | Rock does not block sight | engine |
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
