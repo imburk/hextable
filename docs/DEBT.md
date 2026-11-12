@@ -47,11 +47,11 @@ many monsters each one touches:
 | # | What | Who |
 |---|---|---|
 | C1 | ~~**Extra Attack** (the characters' Multiattack: Fighter, Paladin, Ranger, Barbarian and Monk at level 5). Not built. A typed-in level 5 fighter attacks once~~ (#71: `features.extraAttack`, also in quick entry) | engine (with M1) |
-| C2 | Only Second Wind and Sneak Attack exist as features. Everything else on a sheet (Action Surge, Rage, Channel Divinity, Cunning Action, Wild Shape...) is not there | engine (R7) |
+| C2 | ~~Only Second Wind and Sneak Attack exist as features. Everything else on a sheet (Action Surge, Rage, Channel Divinity, Cunning Action, Wild Shape...) is not there~~ (#99 classes as data, #108 features from their data). What each class still lacks is listed under C8 | engine (R7) |
 | C3 | No levelling or derived sheets: numbers are typed in (R7, R8) | engine, then any |
 | C4 | Equipment states, attunement, encumbrance, spell materials (R10) | engine |
-| C5 | Short rests and Hit Dice; ~~Temporary Hit Points~~ (#82) | engine |
-| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #88). Cunning Action (the rogue's Bonus Action Hide) is not built | engine |
+| C5 | ~~Short rests and Hit Dice~~ (#108: `shortRest`, for built characters; a hand-typed record has no Hit Die, so it spends none); ~~Temporary Hit Points~~ (#82) | engine |
+| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #88). ~~Cunning Action (the rogue's Bonus Action Hide) is not built~~ (#108) | engine |
 | C7 | Reactions: Shield, Counterspell, choosing whether to take an opportunity attack (R6) | engine |
 
 ## Spells
