@@ -7,6 +7,7 @@ import { newGame } from './shared/scenario.js';
 import { createReceiver } from './shared/patch.js';
 import { migrate, VERSION } from './shared/migrate.js';
 import { createHistory, describeStep, mark, undoable } from './shared/history.js';
+import { capTimeline, TIMELINE_CAP } from './shared/timeline.js';
 import { localAssets, serverAssets } from './assets.js';
 
 const store = {
@@ -24,9 +25,10 @@ export function downloadTable(table) {
 }
 
 // Solo: the engine runs here and you are the DM and every hero.
-export function localTransport() {
+export function localTransport({ timelineCap = TIMELINE_CAP } = {}) {
   let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
   if (!state || state.version !== VERSION) state = newGame((Math.random() * 1e9) | 0);
+  capTimeline(state.timeline, timelineCap);       // a game saved before the cap, or under a larger one
   // The undo history lives in this tab only: a reload starts it afresh.
   const history = createHistory();
   const told = () => { t.undoInfo = { undo: history.list(), redo: history.listRedo() }; t.on.undoable?.(t.undoInfo); };
@@ -44,7 +46,7 @@ export function localTransport() {
       const before = undoable(action) ? mark(state) : null;
       const res = apply(state, action, { role: 'dm', userId: 'local' });
       if (!res.ok) return t.on.error(res.error);
-      if (before) { history.record(before, state, describeStep(action, res.events, before, state)); told(); }
+      if (before) { history.record(before, state, describeStep(action, res.events, before, state), capTimeline(state.timeline, timelineCap)); told(); }
       store.set('hextable.solo', state);
       t.on.update(state, res.events);
     },
