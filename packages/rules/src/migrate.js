@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 
-export const VERSION = 10;
+export const VERSION = 11;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -52,5 +52,7 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);
   // Also version 10: condition immunities, from the template.
   for (const e of Object.values(state.entities)) if (!e.conditionImmune && MONSTERS[e.tpl]?.conditionImmune) e.conditionImmune = [...MONSTERS[e.tpl].conditionImmune];
+  // Version 11: a monster's saving throw bonuses, from the template.
+  for (const e of Object.values(state.entities)) e.saveBonus ??= structuredClone(MONSTERS[e.tpl]?.saveBonus ?? {});
   return state;
 }
