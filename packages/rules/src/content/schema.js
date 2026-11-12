@@ -637,8 +637,34 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
 // character. Only the fields listed here are accepted, so a record can never carry anything
 // else into the game (an owner, a side, a hidden flag). Returns a list of problems.
 const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
-  'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look'];
-const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse'];
+  'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look',
+  // Made by derive() from a sheet (derive.js): features as the engine plays them, the Hit Die, what is worn.
+  'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact'];
+// `abil` (the ability it uses), `weapon` (its equipment id) and `time: 'bonus'` (a Bonus Action
+// attack, the Monk's Unarmed Strike) come from derive().
+const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
+// A feature in a record: what derive() made of a class feature, its numbers put in.
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover'];
+function lintFeat(f, say) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
+  for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
+  if (!ID.test(f.id ?? '') || !isText(f.name) || f.name.length > 60) say('A feature needs a kebab-case id and a name.');
+  if (!TIERS.includes(f.tier)) say(`Feature ${f.name}: its tier is auto, assist or manual.`);
+  if (f.text !== undefined && !(typeof f.text === 'string' && f.text.length <= 1200)) say(`Feature ${f.name}: its text is up to 1200 letters.`);
+  const sub = (m) => say(`Feature ${f.name}: ${m}`);
+  if (f.uses !== undefined && !(f.uses && Number.isInteger(f.uses.max) && f.uses.max >= 0 && f.uses.max <= 200 && RESTS.includes(f.uses.recharge) && (f.uses.short === undefined || (Number.isInteger(f.uses.short) && f.uses.short > 0)))) sub('its uses are { max, recharge: short | long, short? }.');
+  if (f.modifiers !== undefined) { if (!Array.isArray(f.modifiers) || f.modifiers.length > 10) sub('its modifiers are a list.'); else for (const m of f.modifiers) lintModifier(m, sub); }
+  if (f.action !== undefined) {
+    const a = f.action;
+    if (!a || !ACTION_TIMES.includes(a.time)) sub('its action has a time.');
+    else if (!a.gain && !a.pool) { lintTarget(a.target, sub); lintSteps(a.effects, sub); }
+    if (a?.cost !== undefined && !(a.cost && ID.test(a.cost.resource ?? '') && (a.cost.n === undefined || (isInt(a.cost.n) && a.cost.n > 0)))) sub('its cost is { resource, n? }.');
+    if (a?.gain?.attacks !== undefined && !(ID.test(a.gain.attacks.with ?? '') && isInt(a.gain.attacks.n) && a.gain.attacks.n > 0 && a.gain.attacks.n <= 5)) sub('it gains attacks { with, n }.');
+    if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
+  }
+  if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
+  if (findFunction(f)) sub('it is data only.');
+}
 // extraAttack: the Attack action makes 1 + n attacks (Extra Attack at Fighter 5 is 1, at 11 is 2, at 20 is 3).
 const FEATURES = { secondWind: (v) => isInt(v) && v >= 0 && v <= 10, sneak: isDice, extraAttack: (v) => isInt(v) && v >= 1 && v <= 3 };
 export function lintRecord(r, { spells = {} } = {}) {
@@ -680,6 +706,9 @@ export function lintRecord(r, { spells = {} } = {}) {
     if (a.type === 'melee' && !(within(a.reach, 5, 30) && a.reach % 5 === 0)) sub('a melee attack needs a reach in feet.');
     if (a.type === 'ranged' && !(Array.isArray(a.range) && a.range.length === 2 && a.range.every((n) => within(n, 5, 2000)) && a.range[0] <= a.range[1])) sub('a ranged attack needs a range of [normal, long] in feet.');
     if (a.finesse !== undefined && typeof a.finesse !== 'boolean') sub('finesse is true or false.');
+    if (a.abil !== undefined && !['str', 'dex'].includes(a.abil)) sub('it uses Strength or Dexterity.');
+    if (a.weapon !== undefined && !ID.test(a.weapon)) sub('its weapon is an id.');
+    if (a.time !== undefined && a.time !== 'bonus') sub('its time is "bonus" or left out.');
   }
   if ((r.attacks?.length ?? 0) > 12) say('Twelve attacks at most.');
   if (r.castAbil !== undefined && !ABILITIES.includes(r.castAbil)) say('Its spellcasting ability is an ability.');
@@ -689,6 +718,17 @@ export function lintRecord(r, { spells = {} } = {}) {
   if (r.features !== undefined && !(r.features && typeof r.features === 'object' && Object.entries(r.features).every(([k, v]) => Object.hasOwn(FEATURES, k) && FEATURES[k](v)))) say(`Its features can be: ${Object.keys(FEATURES).join(', ')}.`);
   if (r.gear !== undefined && !list(r.gear, (x) => typeof x === 'string' && x.length > 0 && x.length <= 60, 60)) say('Its gear is a list of short names.');
   for (const k of ['resist', 'vuln', 'immune']) if (r[k] !== undefined && !list(r[k], oneOf(DAMAGE_TYPES))) say(`${k} must be damage types.`);
+  if (r.feats !== undefined) {
+    if (!Array.isArray(r.feats) || r.feats.length > 60) say('Its features are a list.');
+    else { const seen = new Set(); for (const f of r.feats) { lintFeat(f, say); if (seen.has(f?.id)) say(`Feature ${f?.name} is listed twice.`); seen.add(f?.id); } }
+    const pools = new Set((Array.isArray(r.feats) ? r.feats : []).filter((f) => f?.uses).map((f) => f.id));
+    for (const f of Array.isArray(r.feats) ? r.feats : []) if (f?.action?.cost && !pools.has(f.action.cost.resource)) say(`Feature ${f.name} costs "${f.action.cost.resource}", which it does not have.`);
+  }
+  if (r.hitDie !== undefined && ![6, 8, 10, 12].includes(r.hitDie)) say('Its Hit Die is d6, d8, d10 or d12.');
+  if (r.armour !== undefined && !['none', 'light', 'medium', 'heavy'].includes(r.armour)) say('What it wears is none, light, medium or heavy armour.');
+  for (const k of ['shield', 'pact']) if (r[k] !== undefined && r[k] !== true) say(`${k} is true or left out.`);
+  if (r.critOn !== undefined && !within(r.critOn, 15, 19)) say('Its Critical Hit range starts at 15 to 19.');
+  if (r.bonusActs !== undefined && !(Array.isArray(r.bonusActs) && r.bonusActs.every((x) => BONUS_ACTS.includes(x)))) say(`Its Bonus Action options are ${BONUS_ACTS.join(', ')}.`);
   if (r.look !== undefined && !(r.look && Object.keys(r.look).every((k) => k === 'color') && /^#[0-9a-fA-F]{6}$/.test(r.look.color ?? ''))) say('Its look is a colour like #c8553d.');
   return bad;
 }

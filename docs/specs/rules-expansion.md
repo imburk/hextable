@@ -682,6 +682,15 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
 - A feature at tier `manual` may still grant an action whose only steps are `manual`: the engine
   enforces its cost (the action, the use) and shows the text. A feature at tier `auto` must grant
   something, have uses, or be Spellcasting.
+- **`derive(sheet)` and `validate(sheet)`** are in `packages/rules/src/derive.js`. The sheet as
+  built: `{ name, class, subclass?, level, abilities, skills, extraSkills?, expertise?, choices?,
+  armour?, shield?, weapons?, spells?, size?, speed?, senses?, tools?, gear?, look? }`. Ability
+  scores are entered as they stand after background and feats (species, backgrounds and feats are
+  not entered yet); `extraSkills` are the background's or species' skills. Hit Points use the fixed
+  value per level. A Shield takes a hand, so a Versatile weapon's two-handed attack is listed only
+  without one; a Thrown melee weapon is listed twice (melee and thrown). The record gains `feats`
+  (each feature with its numbers put in), `hitDie`, `armour` (the category worn), `shield`,
+  `critOn`, `bonusActs` and `pact`, and attacks gain `abil`, `weapon` and `time`.
 - **Three situation tags** were added: `attack.str` (an attack using Strength: Rage, Reckless
   Attack), `attack.spell` (a spell's attack roll: Innate Sorcery), `self.notIncapacitated` (Danger
   Sense, Aura of Protection).
