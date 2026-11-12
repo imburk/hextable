@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { aiStep } from "../../rules/src/ai.js";
 import { current, moveOptions } from "../../rules/src/engine.js";
@@ -507,4 +508,18 @@ test("an ordinary move is a small message, and patches leak nothing a full view 
   dm.say({ t: "act", action: { type: "reveal", actor: "m1", hidden: true } });
   assert.deepEqual(player.raw.at(-1).patch, { entities: { m1: null } });
   assert.deepEqual(player.raw.at(-1).events, []);
+});
+
+test("the server upgrades tables saved by the previous version when it loads them", () => {
+  const saved = JSON.parse(readFileSync(new URL("../../rules/test/fixtures/table-v1.json", import.meta.url), "utf8"));
+  saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
+  const tables = createTables({ load: () => [saved] });
+  const state = tables.get("FIXTR1").state;
+  assert.equal(state.version, 2);
+  assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
+  const dm = client(tables);
+  dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });
+  assert.equal(dm.last("update").state.encounter.round, 2);
+  dm.say({ t: "act", action: { type: "endTurn", actor: "wizard" } });
+  assert.equal(dm.last("update").events.at(-1).type, "turn");
 });

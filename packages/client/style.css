@@ -114,3 +114,6 @@ button.leave.sure { outline: 2px solid currentColor; }
 
 /* a creature the players can't see yet (only the DM is ever sent one) */
 .label.unseen { opacity: .6; } .label.unseen span::after { content: ' (hidden)'; font-weight: 400; }
+
+/* DM: conditions */
+.cond-row select { min-height: 40px; flex: 1; min-width: 8em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, #222); color: inherit; font: inherit; }

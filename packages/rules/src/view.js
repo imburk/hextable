@@ -9,6 +9,7 @@
 // the game state later stays private until someone lists it.
 //
 // The engine never reads a view and never produces one. Design: docs/specs/hidden-information.md
+import { conditionDef, visibleConditions } from './modifiers.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -25,11 +26,10 @@ export const healthOf = (e) =>
   e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy';
 const seenHp = (e) => (!e.dead && e.hp > 0 ? 1 : 0);      // keeps up(e) true or false without the number
 
-const VISIBLE_CONDITIONS = ['prone', 'unconscious', 'dodging'];
 
 function seenRecord(e) {
   const cond = {};
-  for (const c of VISIBLE_CONDITIONS) if (e.cond?.[c]) cond[c] = true;
+  for (const c of visibleConditions(e)) cond[c] = true;         // which conditions show is decided by their data
   return {
     id: e.id, name: e.name, kind: e.kind, side: e.side, tpl: e.tpl,
     pos: { q: e.pos.q, r: e.pos.r }, look: e.look ? structuredClone(e.look) : undefined,
@@ -87,7 +87,7 @@ const pick = (ev, keys) => {
 };
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
-const AS_IS = new Set(['moved', 'turn', 'stood', 'cond', 'std', 'note', 'down', 'died', 'claimed', 'released',
+const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
   'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed']);
 
 export function viewEvents(events, state, viewer) {
@@ -136,6 +136,10 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'joined':
         out.push(cls(ev.id) === 'open' ? { ...ev } : { type: ev.type, id: ev.id });
+        break;
+      case 'cond':
+      case 'condEnd':                                  // gaining or losing a condition, if it is one you could see
+        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) out.push(structuredClone(ev));
         break;
       case 'manual':                                   // what the DM must apply by hand
         // Everyone sees what a spell does when the engine cannot apply it. Notes about what

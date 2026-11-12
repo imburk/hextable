@@ -164,7 +164,7 @@ test("a revived creature stays prone during a fight but gets up once it is free 
   assert.ok(pip.cond.prone && pip.cond.unconscious);
   apply(s, { type: "setHp", actor: "rogue", hp: 4 }, DM);
   assert.equal(pip.cond.unconscious, undefined);
-  assert.equal(pip.cond.prone, true);
+  assert.ok(pip.cond.prone);
 
   // When the fight ends, everyone still standing a chance stands up.
   assert.ok(apply(s, { type: "endEncounter" }, DM).ok);
@@ -172,7 +172,7 @@ test("a revived creature stays prone during a fight but gets up once it is free 
 
   // Knocked out and healed with no fight on: up straight away.
   apply(s, { type: "setHp", actor: "rogue", hp: 0 }, DM);
-  assert.equal(pip.cond.prone, true);
+  assert.ok(pip.cond.prone);
   const res = apply(s, { type: "setHp", actor: "rogue", hp: 4 }, DM);
   assert.equal(pip.cond.prone, undefined);
   assert.ok(res.events.some((e) => e.type === "stood"));

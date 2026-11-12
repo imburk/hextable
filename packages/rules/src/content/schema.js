@@ -27,7 +27,7 @@ export const HOOKS = ['check', 'attack.roll', 'attack.received', 'damage.dealt',
   'spell.dc', 'spell.attack', 'hp.max', 'carry'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
-export const TAGS = ['within5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
+export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range'];
 
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -53,7 +53,10 @@ function lintWhen(when, say) {
 function lintModifier(m, say) {
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
-  if (['add', 'set', 'min', 'max'].includes(m.op) && typeof m.value !== 'number') say(`modifier op "${m.op}" needs a number in \`value\``);
+  // A value is a number, or { perLevel: n } for conditions that stack in levels.
+  const numeric = typeof m.value === 'number' || (m.value && typeof m.value.perLevel === 'number');
+  if (['add', 'set', 'min', 'max'].includes(m.op) && !numeric) say(`modifier op "${m.op}" needs a number in \`value\``);
+  if (m.types !== undefined && !(Array.isArray(m.types) && m.types.every((t) => DAMAGE_TYPES.includes(t)))) say('`types` must be a list of damage types');
   lintWhen(m.when, say);
 }
 function lintSteps(steps, say, seen = { manual: false }) {
@@ -156,10 +159,27 @@ function lintMonster(e, say) {
   }
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [] }) {
+function lintCondition(e, say) {
+  if (!CONDITIONS.includes(e.id)) say(`"${e.id}" is not one of the conditions`);
+  if (!isText(e.name) || !isText(e.source) || !isText(e.text)) say('needs a name, a source and text');
+  if (typeof e.visible !== 'boolean') say('needs `visible: true` or `visible: false`');
+  if (typeof e.checked !== 'boolean') say('needs `checked: true` or `checked: false`');
+  if (e.also !== undefined && !isText(e.also)) say('`also` must be text saying what the engine does not apply');
+  if (e.levels !== undefined && !(isInt(e.levels) && e.levels > 1)) say('`levels` must be a whole number above 1');
+  if (e.includes !== undefined && !allOf(CONDITIONS)(e.includes)) say('`includes` must be a list of conditions');
+  if (!Array.isArray(e.modifiers)) say('needs a modifiers list (it may be empty)');
+  else for (const m of e.modifiers) {
+    lintModifier(m, say);
+    if (m.value?.perLevel !== undefined && !e.levels) say('a perLevel value needs the condition to have `levels`');
+  }
+  const fn = findFunction(e);
+  if (fn) say(`contains a function at ${fn}; content is data only`);
+}
+
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [] }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
-  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster]]) {
+  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);
@@ -185,7 +205,11 @@ export function coverage(kinds) {
   const out = {};
   for (const [kind, list] of Object.entries(kinds)) {
     out[kind] = { total: list.length, auto: 0, assist: 0, manual: 0, unchecked: 0 };
-    for (const e of list) { if (TIERS.includes(e.tier)) out[kind][e.tier]++; if (e.checked !== true) out[kind].unchecked++; }
+    for (const e of list) {
+      if (TIERS.includes(e.tier)) out[kind][e.tier]++;
+      else if (kind === 'conditions') out[kind][e.also ? 'assist' : 'auto']++;      // a condition with a leftover is partly applied
+      if (e.checked !== true) out[kind].unchecked++;
+    }
   }
   return out;
 }
