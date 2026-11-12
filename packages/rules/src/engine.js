@@ -15,6 +15,7 @@ import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, e
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
 import { EDITS, lintMap } from './map.js';
+import { handoutActions } from './handouts.js';
 import { COVER, coverOf, inSight } from './sight.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
@@ -1489,6 +1490,8 @@ const handlers = {
     String(a.title || '').trim() || fail('Give the event a title.');
     ev.push({ type: 'chronicle', title: String(a.title).trim(), text: a.text || '', tags: a.tags || [] });
   },
+  // Handouts and notes to one player: handout, showHandout, hideHandout, removeHandout, note (handouts.js).
+  ...handoutActions(fail),
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');

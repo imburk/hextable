@@ -12,6 +12,7 @@
 import * as H from './hex.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
 import { concealed, shown } from './space.js';
+import { shownTo } from './handouts.js';
 import { barriers, center, objectBlocks, objectDef, objectHexes, objectSegment } from './walls.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
@@ -82,7 +83,14 @@ export function view(state, viewer) {
     entities,
     encounter: viewEncounter(state),
     effects: viewEffects(state),
+    handouts: viewHandouts(state, viewer),
   };
+}
+
+// Handouts shown to this viewer, without the list of who else has them.
+function viewHandouts(state, viewer) {
+  return (state.handouts ?? []).filter((h) => shownTo(h, viewer?.userId))
+    .map((h) => ({ id: h.id, title: h.title, ...(h.text !== undefined && { text: h.text }), ...(h.asset !== undefined && { asset: h.asset }) }));
 }
 
 // ---------- the map ----------
@@ -110,14 +118,15 @@ export function clipWall(w, centres) {
 const hiddenState = (o) => !!objectDef(o)?.states[o.state]?.hidden;
 const mapCache = new WeakMap();
 function shownMap(map) {
-  const sig = `${barriers(map).sig}|${map.regions.map((r) => `${r.id}:${r.revealed ? 1 : 0}:${r.hexes.length}`).join()}|${map.levels.map((l) => Object.keys(l.tiles).length).join()}`;
+  const sig = `${barriers(map).sig}|${map.regions.map((r) => `${r.id}:${r.revealed ? 1 : 0}:${r.hexes.length}`).join()}|${map.levels.map((l) => `${Object.keys(l.tiles).length}:${l.name}:${l.z}:${l.image ? JSON.stringify(l.image) : ''}`).join()}`;
   const had = mapCache.get(map);
   if (had?.sig === sig) return had;
   const cols = new Set(), levels = [], centres = new Map();
   for (const l of map.levels) {
     const tiles = {}, cs = [];
     for (const k in l.tiles) { const h = H.parse(k); if (shown(map, l.id, h)) { tiles[k] = { ...l.tiles[k] }; cols.add(k); cs.push(center(h)); } }
-    if (cs.length) { levels.push({ id: l.id, name: l.name, z: l.z, tiles }); centres.set(l.id, cs); }     // a level with nothing shown is not mentioned
+    // A level with nothing shown is not mentioned, and neither is its background picture.
+    if (cs.length) { levels.push({ id: l.id, name: l.name, z: l.z, tiles, ...(l.image && { image: { asset: l.image.asset, feet: [...l.image.feet], origin: [...l.image.origin] } }) }); centres.set(l.id, cs); }
   }
   const has = (levelId, h) => !!levels.find((l) => l.id === levelId)?.tiles[H.col(h)];
   const doc = {
@@ -246,6 +255,12 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'chronicle':
         if (ev.public === true) out.push(structuredClone(ev));
+        break;
+      case 'privateNote':                              // a note is between the two people it names, and the DM
+        if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
+        break;
+      case 'handoutShown':                             // that a handout was shown, to those it was shown to; never who else
+        if (ev.to === 'all' || (Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId))) out.push(pick(ev, ['type', 'handout', 'title']));
         break;
       default:
         if (AS_IS.has(ev.type)) out.push(structuredClone(ev));

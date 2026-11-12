@@ -1,0 +1,30 @@
+/* Handouts, the full-screen viewer and private notes (handouts.js). */
+#ho-badge { position: absolute; top: -6px; right: -6px; background: var(--accent); color: #111; border-radius: 999px; font-size: 11px; min-width: 18px; height: 18px; line-height: 18px; text-align: center; padding: 0 4px; }
+.ho-form { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+.ho-form textarea { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; color: inherit; font: inherit; resize: vertical; min-height: 44px; }
+.ho-file { display: flex; align-items: center; gap: 8px; }
+.ho-file input { font: inherit; color: inherit; min-height: 44px; flex: 1; min-width: 0; background: transparent; border: 0; padding: 0; }
+.ho-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.ho-list > li[data-id] { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; display: grid; gap: 8px; }
+.ho-list select { min-height: 40px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; }
+.ho-head { display: flex; gap: 10px; align-items: center; }
+.ho-head span { display: grid; } .ho-head small { color: var(--muted); }
+.ho-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; background: var(--panel-2); flex: none; }
+.ho-textonly { display: grid; place-items: center; font-weight: 700; color: var(--muted); }
+.ho-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; min-height: 60px; }
+.ho-item.new { border-color: var(--accent); }
+#viewer { position: fixed; inset: 0; z-index: 15; background: #000e; display: flex; flex-direction: column; color: #fff; }
+#viewer header { display: flex; gap: 8px; align-items: center; padding: max(10px, env(safe-area-inset-top)) 12px 10px; }
+#viewer header strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#viewer-zoom button { min-width: 44px; }
+#viewer-stage { flex: 1; min-height: 0; overflow: hidden; display: grid; touch-action: none; }
+#viewer-stage img { width: 100%; height: 100%; object-fit: contain; transform-origin: center; user-select: none; -webkit-user-drag: none; image-rendering: auto; }
+#viewer-text { margin: 0; padding: 12px 16px max(16px, env(safe-area-inset-bottom)); max-height: 40vh; overflow-y: auto; white-space: pre-wrap; background: #0008; font-size: 16px; }
+#viewer-stage:empty { display: none; }
+#viewer-stage:empty + #viewer-text { flex: 1; max-height: none; font-size: 18px; }
+#log-list li.private { border-left-color: var(--accent); font-style: italic; }
+#log-list li.private::before { content: "Private · "; font-style: normal; font-weight: 700; color: var(--accent); }
+#note-form { margin-top: 12px; position: sticky; bottom: 0; background: var(--panel); padding: 8px 0; flex-wrap: nowrap; }
+#note-form select { min-height: 40px; max-width: 8em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; }
+.ho-form input:not([type=file]), .ho-form textarea { width: 100%; box-sizing: border-box; }
+#viewer header { background: #000; }

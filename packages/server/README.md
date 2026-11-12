@@ -15,6 +15,9 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 | `LIMIT_HOSTS` / `LIMIT_HOST_WINDOW_MS` | `5` / `3600000` | `host` messages per address per window |
 | `LIMIT_JOINS` / `LIMIT_JOIN_WINDOW_MS` | `20` / `600000` | `join` messages per address per window |
 | `LIMIT_BURST` / `LIMIT_RATE` | `20` / `5` | Messages a connection may send at once, and per second sustained |
+| `LIMIT_UPLOADS` / `LIMIT_UPLOAD_WINDOW_MS` | `30` / `600000` | File uploads and deletions per address per window |
+| `LIMIT_ASSET_BYTES` | `5242880` | Largest file a DM may upload (5 MB) |
+| `LIMIT_TABLE_ASSET_BYTES` / `LIMIT_TABLE_ASSETS` | `52428800` / `200` | All the files of one table: bytes (50 MB) and count |
 
 ## How a table works
 
@@ -37,11 +40,17 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
   network code, so the tests drive it directly.
 - `src/limits.js` — the per-address and per-connection limits, with an injectable clock.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
-- `src/index.js` — HTTP, static files, `/api/ping`, `/ws`, and saving to disk.
+- `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
+- `src/assets-http.js` — the `/assets` routes: who may upload, fetch and delete.
+- `src/index.js` — HTTP, static files, `/api/ping`, `/assets`, `/ws`, and saving to disk.
 
 ## Protocol
 
 JSON messages over the WebSocket at `/ws`.
+
+Notes to one player and handouts are ordinary actions (`note`, `handout`, `showHandout`,
+`hideHandout`, `removeHandout`). Before a DM's `note` reaches the engine the server checks that its
+`to` is a player let in at this table.
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
@@ -78,8 +87,10 @@ same way as live events. On joining or rejoining, each client is sent its last
   must pass the original one through.
 - **Headers.** Every HTTP response carries `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and a `Content-Security-Policy`:
-  scripts and connections only from this origin, Google Fonts for styles and fonts, and inline
-  style attributes (the UI sets colours that way).
+  scripts and connections only from this origin, Google Fonts for styles and fonts, inline
+  style attributes (the UI sets colours that way), and pictures from this origin, `data:` and
+  `blob:` (table files are shown from blob: URLs, see Table files). A table file gets a stricter
+  CSP of its own.
 - **Sizes.** An action over 4 KB of JSON is refused with `That action is too large.` The one
   exception is the DM's `loadMap` and `mapEdit`, which carry a whole map document and may
   be up to 1 MiB. A player sending those is held to 4 KB. WebSocket frames are capped to match:
@@ -90,6 +101,58 @@ same way as live events. On joining or rejoining, each client is sent its last
   deleted: its DM or players can still resume it, and it counts again from then. The stamp
   (`active`, milliseconds) is saved with the table; tables saved before it existed start the
   clock when the server loads them.
+
+## Table files (assets)
+
+Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/maps-and-objects.md`,
+"Images and other files".
+
+- **Where.** `DATA_DIR/assets/<table code>/<id>` holds the bytes and `<id>.json` the record
+  `{ id, kind: "image", mime, bytes, name, when }`. The id is 16 bytes from `crypto.randomBytes`
+  (base64url, 22 characters), never derived from the file name; the name is a cleaned label only.
+  When the server starts, a folder whose table no longer exists is deleted with everything in it,
+  so deleting a table's file deletes its pictures. (There is no "delete table" message yet; if one
+  is added it should call `assets.removeTable(code)`.)
+- **Who.** Requests carry the session token from the socket's `welcome` in the `X-Hextable-Token`
+  header. A token belongs to one table and works only once its holder has been let in.
+
+| Request | Who | Answer |
+|---|---|---|
+| `POST /assets/<code>`, body = the raw bytes, `Content-Type: image/png`, `image/jpeg` or `image/webp`; optional `X-Asset-Name` (URI-encoded) | the DM | `201 {asset}`; `403` anyone else; `415` not one of the three types *by its bytes*; `413` too big or the table is full; `429` over the upload limit |
+| `GET /assets/<code>` | the DM | `200 {assets, usage, limits}` |
+| `GET /assets/<code>/<id>` | the DM: any file of the table. A player: only a file named by something in *their own view* of the game (a handout shown to them, the background of a level they are sent), worked out on the server for each request | `200` the bytes |
+| `DELETE /assets/<code>/<id>` | the DM | `204` |
+
+  Every refusal to read is the same `404 {"error":"Not found"}`: no token, a wrong token, another
+  table's token, a file not shown to you, a guessed id, a malformed id and a missing file all look
+  alike. Routes are matched on the raw path, before any decoding, against the strict shapes of a
+  code and an id; `..`, encoded slashes and absolute paths cannot match, and the file path is built
+  only from a matched code and id and checked to lie inside the folder.
+- **How a browser shows one.** `<img>` cannot send a header, and a token in a URL would end up in
+  history, logs and screenshots. So the client fetches the file with the header and shows it from a
+  `blob:` URL (`packages/client/assets.js`). The page's CSP allows `img-src 'self' data: blob:`. No
+  signed URLs, so there is no server secret to keep and nothing to expire.
+- **Serving.** `Content-Type` from the stored record (one of the three), `X-Content-Type-Options:
+  nosniff`, `Content-Disposition: inline`, `Cache-Control: private, no-cache`,
+  `Cross-Origin-Resource-Policy: same-origin`, and a CSP of its own (`default-src 'none'; sandbox`)
+  so that a file opened on its own can never run anything.
+- **Uploads** must come from this site: a request with an `Origin` header for another host is
+  refused. Bodies are read into memory only up to the per-file limit (cut off as they arrive, or
+  refused at once by `Content-Length`), and at most 8 uploads are read at a time.
+- **Solo play** keeps files in the browser's IndexedDB, at most 2 MB a file, 20 MB and 50 files.
+
+### Threat model for table files
+
+1. Attacker: anyone on the internet, a player at the table, or a player of another table. The DM of a table is trusted with that table only.
+2. Assets protected: the pictures (they can give away plot), the server's disk, and the game page's origin.
+3. A file must never run as code in our origin: the type comes from the bytes (PNG, JPEG, WebP only; never SVG or HTML), is served with `nosniff`, its own sandboxing CSP, and only ever shown in `<img>`.
+4. A request must never reach a path outside `DATA_DIR/assets/<code>/`: ids are server-made, routes are matched raw against strict patterns, paths are re-checked.
+5. A player must get only files that something already sent to them names; the check runs on the server from that player's view, on every request, so hiding a handout takes the file back.
+6. Existence must not leak: every refusal to read is one identical 404, and ids (128 random bits) cannot be guessed.
+7. Disk and memory must not be exhausted: per-file, per-table and per-address limits, a cap on uploads read at once, and orphaned folders cleared at start.
+8. Another site must not upload or read with a visitor's session: the token is in a header (not a cookie, not a URL), so cross-site requests carry none, and uploads with a foreign `Origin` are refused.
+9. Tokens are compared in constant time and only seated, let-in members count.
+10. Not covered: a malformed image that exploits the browser's own decoder, a player who saves a picture they were shown, and per-address limits behind no proxy (see Address above).
 
 ## Exporting a table
 

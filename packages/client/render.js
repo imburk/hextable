@@ -281,19 +281,40 @@ export class Renderer {
   #buildTerrain() {
     const b = new Builder(), sb = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6, sh = th.shadow ?? { a: 0.4 };
     const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;      // a floor above whoever is being followed
+    // Rooms, not hexes (theme flag `floors: 'rooms'`, docs/specs/renderer.md): on a level with walls or regions, the
+    // tiles at one height are drawn as one flat floor with one edge round it, and the hexes as a faint grid. Rooms that
+    // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
+    const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
+    const patch = (level, h) => { const t = level.tiles[H.col(h)]; return t ? surfY(level.z + (t.h ?? 0), t).toFixed(3) : null; };
     for (const h of allTiles(map)) {
       if (h.z > this.ceiling) continue;
-      const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t);
+      const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
       const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
-      const j = 0.94 + jitter(h.q, h.r) * 0.12;
+      const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;              // a room's floor is one even colour, not a patchwork
       let c = th.tiles[t.t].map((v) => v * j);
       if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
       if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
-      b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
-      b.flatHex(w.x, w.z, y, 0.86, 1, rim);
-      const top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
-      for (let i = 0; i < 6; i++) { const n = (i + 1) % 6; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
+      if (room) {
+        // The floor reaches to the hex's edge; the grid is a thin, faint line inside it (stronger inside a fight's area).
+        const line = enc && !locked ? 0.9 : 0.955, grid = enc && !locked ? rim : shade(c, th.grid ?? 0.92);
+        b.flatHex(w.x, w.z, y, 0, line, [...c, 1]);
+        b.flatHex(w.x, w.z, y, line, 1, grid);
+        const me = patch(h.level, h), top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
+        const lip = b.ring(w.x, w.z, 1, y + 0.03, 6, R), inner = b.ring(w.x, w.z, 0.9, y + 0.03, 6, R), foot = b.ring(w.x, w.z, 0.9, y, 6, R);
+        for (let i = 0; i < 6; i++) {
+          const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
+          if (patch(h.level, out) === me) continue;                      // the same floor goes on: no edge here
+          b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side));
+          b.quad(lip[n], lip[i], inner[i], inner[n], shade(c, th.rim));      // the floor's one edge: a low kerb along its outline
+          b.quad(inner[n], inner[i], foot[i], foot[n], shade(c, th.rim * 0.9));
+        }
+      } else {
+        b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
+        b.flatHex(w.x, w.z, y, 0.86, 1, rim);
+        const top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
+        for (let i = 0; i < 6; i++) { const n = (i + 1) % 6; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
+      }
       if (t.t === 'forest') {
         const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
         for (let i = 0; i < 2; i++) {
