@@ -8,7 +8,7 @@ that whoever builds a piece, on whatever model, builds the same thing.
 | [Hidden information](hidden-information.md) | Built: players no longer receive the dice seed, monster numbers, the timeline or hidden creatures, and updates carry only what changed |
 | [Rules expansion](rules-expansion.md): characters, levelling, conditions, the SRD data format, size and height, equipment states, forms, table rules, the combat tracker | Agreed, not built |
 | [Rules coverage review](rules-coverage.md): would the design support the full current rules and common house rules? | Review, done |
-| [Maps and objects](maps-and-objects.md): buildings and caves, walls, doors, floors and height, size, traps and secret doors, room-by-room reveal, handouts, scenes, and how maps get into the game | Proposed, not built |
+| [Maps and objects](maps-and-objects.md): buildings and caves, walls, doors, floors and height, size, traps and secret doors, room-by-room reveal, handouts, scenes, and how maps get into the game | Agreed, being built |
 | Sight: line of sight, cover, light, hiding | To write |
 | Prompts: reactions and decisions made after a roll | To write |
 | Companions and summons | To write |

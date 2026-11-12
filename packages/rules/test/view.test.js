@@ -181,7 +181,7 @@ test("views and redacted events are copies: changing one cannot touch the game",
   const s = newGame(5);
   const before = structuredClone(s);
   const v = view(s, PLAYER);
-  v.entities.fighter.hp = 999; v.entities.m1.pos.q = 99; v.map.tiles["0,0"].t = "water"; v.settings.autoEngage = false;
+  v.entities.fighter.hp = 999; v.entities.m1.pos.q = 99; v.map.levels[0].tiles["0,0"].t = "water"; v.settings.autoEngage = false;
   const events = [{ type: "moved", id: "fighter", path: [{ q: 1, r: 1 }] }];
   viewEvents(events, s, PLAYER)[0].path[0].q = 42;
   assert.deepEqual(s, before);

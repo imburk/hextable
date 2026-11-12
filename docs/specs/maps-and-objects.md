@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: design proposed, not built. Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions). Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),

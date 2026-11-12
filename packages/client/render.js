@@ -5,6 +5,11 @@
 // engine, because the engine only ever emits events ("moved", "attack", "damage").
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
 import * as H from './shared/hex.js';
+import { allTiles, ground, surfaces } from './shared/space.js';
+
+const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
+const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
+const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
 const VS = `
 attribute vec3 aPos; attribute vec3 aNor; attribute vec4 aCol;
@@ -153,7 +158,7 @@ export class Renderer {
 
   setState(state, events = []) {
     this.state = state;
-    const tk = `${state.encounter?.id ?? 0}:${Object.keys(state.map.tiles).length}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
@@ -203,25 +208,26 @@ export class Renderer {
   }
 
   // ---------- building ----------
-  #stand(h) { const w = H.toWorld(h), t = this.state.map.tiles[H.key(h)]; return { x: w.x, y: t ? t.h : 0, z: w.z }; }
+  #stand(h) { const w = H.toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(this.state.map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
 
   #buildTerrain() {
-    const b = new Builder(), th = this.theme, { tiles } = this.state.map, enc = this.state.encounter, R = Math.PI / 6;
-    for (const k in tiles) {
-      const h = H.parse(k), t = tiles[k], w = H.toWorld(h), locked = enc && !enc.arena[k];
+    const b = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6;
+    for (const h of allTiles(map)) {
+      const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t);
+      const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
       const j = 0.94 + jitter(h.q, h.r) * 0.12;
       let c = th.tiles[t.t].map((v) => v * j);
       if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
-      b.flatHex(w.x, w.z, t.h, 0, 0.86, [...c, 1]);
-      b.flatHex(w.x, w.z, t.h, 0.86, 1, rim);
-      const top = b.ring(w.x, w.z, 1, t.h, 6, R), bot = b.ring(w.x, w.z, 1, -1.5, 6, R);
+      b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
+      b.flatHex(w.x, w.z, y, 0.86, 1, rim);
+      const top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
       for (let i = 0; i < 6; i++) { const n = (i + 1) % 6; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
       if (t.t === 'forest') {
         const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
         for (let i = 0; i < 2; i++) {
           const a = jitter(h.q + i * 7, h.r - i * 3) * 6.28, d = 0.28 + 0.2 * i, hh = 0.9 + jitter(h.r, h.q + i) * 0.7;
-          b.lathe(w.x + Math.cos(a) * d, w.z + Math.sin(a) * d, t.h, [[0.1, 0], [0.1, 0.25], [0.42, 0.25], [0, hh + 0.25]], 6, a, (s) => (s === 0 ? shade(tc, 0.5) : tc));
+          b.lathe(w.x + Math.cos(a) * d, w.z + Math.sin(a) * d, y, [[0.1, 0], [0.1, 0.25], [0.42, 0.25], [0, hh + 0.25]], 6, a, (s) => (s === 0 ? shade(tc, 0.5) : tc));
         }
       }
     }
@@ -230,7 +236,7 @@ export class Renderer {
 
   #buildOverlay() {
     const b = new Builder(), s = this.state, hl = this.hl, c = this.theme.hl;
-    const top = (k) => (s.map.tiles[k]?.h ?? 0) + 0.03;
+    const top = (k) => this.#stand(H.parse(k)).y + 0.03;
     const at = (k) => H.toWorld(H.parse(k));
     for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
     for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
@@ -328,12 +334,15 @@ export class Renderer {
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
       for (const [id, a] of acts) if (y > a.y && y < a.y + 1.7 && Math.hypot(x - a.x, z - a.z) < 0.5) return { id, hex: this.state.entities[id].pos };
-      const h = H.fromWorld(x, z), tile = this.state.map.tiles[H.key(h)];
-      if (tile && y <= tile.h) {
-        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.q === h.q && e.pos.r === h.r);
-        return { hex: h, id: occ?.id ?? null };
+      const h = H.fromWorld(x, z), column = surfaces(this.state.map, h);
+      for (let i = column.length - 1; i >= 0; i--) {
+        const top = surfY(column[i].z, column[i].tile);
+        if (y > top || (i > 0 && y < top - SLAB)) continue;               // above this floor, or under it in the room below
+        const hex = { q: h.q, r: h.r, z: column[i].z };
+        const occ = Object.values(this.state.entities).find((e) => !e.dead && H.key(e.pos) === H.key(hex));
+        return { hex, id: occ?.id ?? null };
       }
-      if (y < -1.5) break;
+      if (y < -60) break;
     }
     return null;
   }

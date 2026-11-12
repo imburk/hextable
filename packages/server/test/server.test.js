@@ -48,7 +48,7 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
   assert.equal(welcome.role, "dm");
   // About 31 KB: exercises WebSocket frames with a 16-bit length.
   assert.ok(JSON.stringify(update).length > 20000);
-  assert.ok(Object.keys(update.state.map.tiles).length > 400);
+  assert.ok(Object.keys(update.state.map.levels[0].tiles).length > 400);
 
   // The lobby message that follows hosting may still be in flight; wait for the next update.
   const next = new Promise((resolve) => {
