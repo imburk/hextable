@@ -57,8 +57,9 @@ many monsters each one touches:
 
 ## Spells
 
-339 are entered; 36 play fully, 76 partly, 227 are applied by the DM. What the vocabulary
-cannot say, by how much it would unlock:
+339 are entered; 36 play fully, 86 partly, 217 are applied by the DM (after the re-tiering pass
+below: levels 0 to 5, and a second look at levels 1 to 3). What the vocabulary cannot say, by how much
+it would unlock:
 
 | # | What | Who |
 |---|---|---|
@@ -94,16 +95,15 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 | A reaction with a trigger | | feather fall (assist: hellish rebuke, shield) |
 | What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship, which also needs a type restriction) |
 | Light or obscurement on a creature or an area, and a negative tag ("if the attacker can see it") | starry wisp (assist) | faerie fire, fog cloud |
-| Staged or forced behaviour | | sleep (a second failed save makes it Unconscious), command |
+| Forced behaviour | | command |
 | A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
 | A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
 
 **Levels 2 and 3** (#107): 1 moved from manual to assist: Zone of Truth (a zone with a Charisma save on
 entering or starting a turn there, once a turn; the DM is told who failed and holds them to it).
-Level 2 was 4 auto, 14 assist, 39 manual and is now 4 / 15 / 38; level 3 is unchanged (3 / 11 / 28).
-Considered and left: Pass without Trace (the +10 holds only while inside the aura, and a modifier cannot
-say that), Ray of Enfeeblement (one repeat save ends all its parts; the engine rolls one save per part),
-Sleet Storm and Stinking Cloud (losing Concentration; a Poisoned that also bars actions). Still missing:
+Level 2 was 4 auto, 14 assist, 39 manual and is now 4 / 15 / 38 (before the second look); level 3 is unchanged (3 / 11 / 28).
+(Pass without Trace, Ray of Enfeeblement and Sleet Storm were moved in the second look below, and are
+no longer in the table.) Stinking Cloud stays: a Poisoned that also bars actions. Still missing:
 
 | Kind | Level 2 | Level 3 |
 |---|---|---|
@@ -113,14 +113,13 @@ Sleet Storm and Stinking Cloud (losing Concentration; a Poisoned that also bars 
 | Forms and size | alter self, enlarge/reduce | |
 | Movement modes, teleporting, traversal | levitate, spider climb, misty step | fly, water breathing, water walk, blink, meld into stone |
 | Light, obscurement and senses | continual flame, darkness, darkvision, see invisibility | daylight |
-| An effect that holds only while inside an area, or a trigger per 5 feet moved | pass without trace, silence, spike growth | |
+| An effect that holds only while inside an area, or a trigger per 5 feet moved | silence, spike growth | |
 | An object or a weapon as the target | heat metal, magic weapon | |
 | Removing a condition, ending an effect, raising the dead | lesser restoration | dispel magic, remove curse, revivify |
 | A trigger on a hit (smites, duplicates that take hits), or a reaction | shining smite, mirror image | counterspell |
-| Several parts ended by one repeat save | ray of enfeeblement | |
 | A choice among effects, or creatures of the caster's choice with no count | calm emotions, enthrall | bestow curse (four effects, duration by slot) |
 | Barriers by creature type, glyphs | | glyph of warding, magic circle, tiny hut |
-| Obscurement with a rider no hook can say (Concentration lost, no actions) | | sleet storm, stinking cloud |
+| Obscurement with a rider no hook can say (a Poisoned that also bars actions) | | stinking cloud |
 | Assist spells held at assist by: Speed doubled and an extra action, healing from damage dealt, a wall of free shape, a later action | | haste, vampiric touch, wind wall, call lightning |
 
 **Levels 4 and 5** (#110): 3 moved from manual to assist: Conjure Woodland Beings (an emanation zone that
@@ -147,6 +146,27 @@ Aura of Life (effects while inside an aura). Still missing:
 | An aura with a rider (extra damage to attacks against creatures in it) | conjure minor elementals | |
 | Random behaviour | confusion | |
 | Assist spells held at assist by: Difficult Terrain, a Plant creature that auto-fails, an escape check, forced obedience, a banishment that leaves play, a sphere that moves | black tentacles, blight, compulsion, dominate beast, banishment | cloudkill, insect plague, dominate person, geas |
+
+**A second look at levels 1 to 3** (PR_NUM). The first pass held back spells where the vocabulary could not
+say all of the SRD. The brief's own rule is that what it cannot say becomes a manual step and the tier is
+set honestly, so four spells in which the engine can do the numbers and the DM only a rider moved from
+manual to assist (the tables above were corrected):
+- **Sleep** (1): a Wisdom save for each creature of the caster's choice in the sphere, Incapacitated until the
+  end of its next turn (`ends: turnEnd`). The DM runs the second save and the Unconscious condition, wakes
+  a creature that is hurt or shaken, and applies the automatic successes (elves, immune to Exhaustion).
+- **Ray of Enfeeblement** (2): the success and the failure effects as modifiers (one disadvantaged attack
+  roll until the start of the caster's next turn; Disadvantage on Strength attack rolls, checks and saves,
+  and -1d8 on damage dealt). The repeat save at the end of each of its turns, and ending the effect on a
+  success, are the DM's (the engine rolls one save per part, so it cannot end all parts on one save).
+- **Pass without Trace** (2): +10 on Stealth checks (`scope: stealth`) to the caster and chosen creatures in
+  the emanation. That it holds only while inside the aura, and the tracks, are the DM's.
+- **Sleet Storm** (3): a zone (cylinder, enter or start of turn, once a turn), Dexterity save or Prone. Losing
+  Concentration, the obscurement, flames and Difficult Terrain are the DM's.
+Counts: spells 36 / 86 / 217. Level 1 is now 14 auto, 14 assist, 29 manual; level 2 is 4 / 17 / 36; level 3
+is 3 / 12 / 27. The same rule applies to the next two passes. Not done: Heroism (the Temporary Hit Points
+are granted at the start of each turn, which a cast-time grant would get wrong), Faerie Fire (Advantage only
+if the attacker can see the creature, and no negative tag), Stinking Cloud (a Poisoned that lasts to the end
+of the current turn but starts at the start of it, which the turn-boundary rule would carry one turn too far).
 
 ## Maps, sight and movement
 
