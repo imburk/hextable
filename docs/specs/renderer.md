@@ -163,7 +163,8 @@ by a new pure module, `packages/client/floors.js`, that takes a map document
 and returns plain arrays of triangles and lines in map feet with a colour key
 per vertex. It imports only from `./shared/`. It is the same whichever
 renderer draws it (decision 7), and because it is pure it can be tested with
-Node's runner like the rules, which is the first client code to get tests.
+Node's runner like the rules, which gives the client its first unit tests
+(today it has a page smoke test, `npm run smoke`).
 
 ### Decision 2: the renderer plays events in order, on a timeline in seconds
 
@@ -447,7 +448,7 @@ shadows, many lights, and instancing.
 | Rewrite of today's 553 lines | None; it grows by 2,000 to 3,000 lines over the plan | About 30 % (the matrix kit, shader, buffer, setup and draw code, about 150 lines) replaced by Three objects. Terrain building, overlay, picking, input, camera, labels kept and moved into the shared modules |
 | WebGL version | WebGL 1, every phone | Current Three.js needs WebGL 2: every current phone browser has it (iOS Safari since 15). Very old devices lose 3D |
 | Change upstream | None | Three.js breaks its API often between releases. Pin one version, record it and its hash, upgrade on purpose |
-| Who can work on it | Agents have done well on it so far, but GPU code has no tests (debt T4), and its bugs are the kind tests do not catch | Agents and people know Three.js widely; most problems have a known answer |
+| Who can work on it | Agents have done well on it so far, but GPU code has only a page smoke test (`npm run smoke`), and its bugs are the kind tests do not catch | Agents and people know Three.js widely; most problems have a known answer |
 | Licence | Ours (MIT) | MIT, compatible |
 
 **Recommendation: move to Three.js, at the start of the model work, not
