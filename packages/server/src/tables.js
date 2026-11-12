@@ -22,6 +22,11 @@ const cleanName = (name) => String(name ?? "").replace(/[\u0000-\u001f]/g, "").t
 
 export const MAX_TABLES = 500;
 export const MAX_MEMBERS = 12;
+// The most an action may weigh as JSON. Everyone is held to the small cap, except that the DM
+// may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes.
+export const MAX_ACTION_BYTES = 4 * 1024;
+export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
+const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
 export function createTables({ load = () => [], save = () => {}, seed = () => randomInt(1e9) } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
@@ -158,6 +163,8 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         if (!me.approved) return error("Waiting for the DM to let you in.");
         const action = msg.action;
         if (!action || typeof action !== "object" || typeof action.type !== "string") return error("That isn't an action.");
+        const cap = me.role === "dm" && MAP_ACTIONS.has(action.type) ? MAX_MAP_ACTION_BYTES : MAX_ACTION_BYTES;
+        if (Buffer.byteLength(JSON.stringify(action)) > cap) return error("That action is too large.");
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
         let res;
