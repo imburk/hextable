@@ -6,7 +6,7 @@ import { current, moveOptions } from "../../rules/src/engine.js";
 import * as H from "../../rules/src/hex.js";
 import { createReceiver } from "../../rules/src/patch.js";
 import { view } from "../../rules/src/view.js";
-import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "../src/tables.js";
+import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_TABLES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -596,4 +596,44 @@ test("export: the DM gets the whole table, a player is refused, and no member or
   const stranger = client(tables);
   stranger.say({ t: "export" });
   assert.deepEqual(stranger.got, [{ t: "error", error: "Join a table first." }]);
+});
+
+test("tables idle for 30 days do not count against the cap, and are kept", () => {
+  let t = 1e12;
+  const tables = createTables({ seed: () => 1, now: () => t });
+  const old = client(tables), busy = client(tables);
+  old.say({ t: "host", name: "Old" });
+  busy.say({ t: "host", name: "Busy" });
+  const oldWelcome = old.last("welcome"), busyCode = busy.last("welcome").code;
+  old.session.disconnect();
+  t += IDLE_MS - 1000;
+  busy.session.disconnect();
+  t += 2000;                                             // "Old" is now past 30 days, "Busy" is not
+  assert.equal(tables.size(), 2);
+  assert.equal(tables.activeSize(), 1);
+  for (let i = 0; i < MAX_TABLES - 1; i++) client(tables).say({ t: "host", name: "D" + i });
+  assert.equal(tables.activeSize(), MAX_TABLES);         // full again: Busy plus 499 new ones
+  const refused = client(tables);
+  refused.say({ t: "host", name: "Late" });
+  assert.equal(refused.last("error")?.expired, true);
+  assert.equal(tables.size(), MAX_TABLES + 1);           // the idle table was kept, not deleted
+  const back = client(tables);                           // its DM can still come back, and it counts again
+  back.say({ t: "resume", code: oldWelcome.code, token: oldWelcome.token });
+  assert.equal(back.last("welcome")?.role, "dm");
+  assert.equal(tables.activeSize(), MAX_TABLES + 1);
+  assert.ok(tables.get(busyCode));
+});
+
+test("saved tables without an activity stamp start the idle clock at load", () => {
+  let t = 1e12;
+  const saved = createTables({ seed: () => 1, now: () => t });
+  const dm = client(saved);
+  dm.say({ t: "host", name: "Dana" });
+  const rec = structuredClone(saved.get(dm.last("welcome").code));
+  delete rec.active;
+  const tables = createTables({ load: () => [rec], now: () => t });
+  assert.equal(tables.activeSize(), 1);
+  t += IDLE_MS + 1;
+  assert.equal(tables.activeSize(), 0);
+  assert.equal(tables.size(), 1);
 });

@@ -22,16 +22,24 @@ const cleanName = (name) => String(name ?? "").replace(/[\u0000-\u001f]/g, "").t
 
 export const MAX_TABLES = 500;
 export const MAX_MEMBERS = 12;
+// A table nobody has touched for this long no longer counts against MAX_TABLES. It is kept, not
+// deleted: the next person to resume it makes it count again.
+export const IDLE_MS = 30 * 24 * 3600 * 1000;
+const SAVE_STALE_MS = 3600 * 1000;      // sitting down only rewrites the file when its stamp is this old
 // The most an action may weigh as JSON. Everyone is held to the small cap, except that the DM
 // may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes.
 export const MAX_ACTION_BYTES = 4 * 1024;
 export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, seed = () => randomInt(1e9) } = {}) {
+export function createTables({ load = () => [], save = () => {}, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
-  for (const t of load()) { migrate(t.state); tables.set(t.code, t); }     // saved tables may predate the current content ids
+  // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
+  const touch = (t) => { t.active = now(); };
+  const isActive = (t) => now() - (t.active ?? 0) < idleMs;
+  const activeCount = () => { let n = 0; for (const t of tables.values()) if (isActive(t)) n++; return n; };
+  for (const t of load()) { migrate(t.state); t.active ??= now(); tables.set(t.code, t); }     // saved tables may predate the current content ids
   // member id -> Set of live connections (the same person may have two tabs open)
   const online = new Map();
 
@@ -90,6 +98,9 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
 
     function sit(t, m) {
       table = t; me = m;
+      const stale = now() - (t.active ?? 0) > SAVE_STALE_MS;
+      touch(t);
+      if (stale) save(t);
       if (!online.has(m.id)) online.set(m.id, new Set());
       online.get(m.id).add(conn);
       conn.send(welcome(t, m));
@@ -102,10 +113,10 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
 
     const handlers = {
       host(msg) {
-        if (tables.size >= MAX_TABLES) return error("This server is full. Try again later.", true);
+        if (activeCount() >= MAX_TABLES) return error("This server is full. Try again later.", true);
         let code = makeCode();
         while (tables.has(code)) code = makeCode();
-        const t = { code, state: newGame(seed()), members: [] };
+        const t = { code, state: newGame(seed()), members: [], active: now() };
         const m = { id: makeId(), token: makeToken(), name: cleanName(msg.name), role: "dm", approved: true };
         t.members.push(m);
         tables.set(code, t);
@@ -174,6 +185,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) return error(res.error);
+        touch(table);
         save(table);
         broadcast(table, res.events);
       },
@@ -206,6 +218,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       },
       disconnect() {
         if (!me) return;
+        touch(table);
         const set = online.get(me.id);
         set?.delete(conn);
         if (set && !set.size) online.delete(me.id);
@@ -219,5 +232,5 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     };
   }
 
-  return { connect, get: (code) => tables.get(code), size: () => tables.size };
+  return { connect, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
 }
