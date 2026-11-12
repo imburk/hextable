@@ -79,7 +79,10 @@ cannot say, by how much it would unlock:
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
 | P5 | Hidden creatures are not found by Search | engine (sight S6) |
-| P6 | Uploads and handouts (M9), tracing a map image (M10), scenes and private notes (M11), generating a map (M14) | M9 any with security review; M10 any; M11 engine for the view |
+| P6 | ~~Uploads and handouts (M9)~~ (PR #70), tracing a map image (M10), scenes (M11; ~~private notes~~ PR #70), generating a map (M14) | M10 any; M11 engine for the view |
+| P9 | The renderer does not draw a level's background picture (`level.image`), and the editor cannot set one | any |
+| P10 | Handouts: no shared pointer on an open handout; undo of a handout or note action is labelled "handout (an action)" and the like (`history.js` has no labels for them), and undoing a note takes it off the record but not off the screens it reached | any |
+| P11 | Exporting a table or a map does not carry its files: the state names asset ids whose bytes stay on the server | any |
 | P7 | The Universal VTT import has only been tried on a hand-made file | any, with a real export |
 | P8 | The editor cannot rename a map, and shows no numbers for tile heights | any |
 | P9 | Walking together: a follower brought up when a fight starts is set down, not walked, so a hidden trap on the way it would have come is not set off; a follower whose way back to the column is longer than 300 ft is dropped as not keeping up; the undo list names follow actions only by their type | engine |

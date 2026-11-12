@@ -37,6 +37,8 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) e.senses ??= structuredClone(MONSTERS[e.tpl]?.senses ?? {});
   // Version 9: a table rule for how close the party comes to an enemy before a fight starts.
   if (state.settings) state.settings.engageRange ??= 10;
+  // Handouts (no version of their own: a state without them simply has none yet).
+  if (!Array.isArray(state.handouts)) state.handouts = [];
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

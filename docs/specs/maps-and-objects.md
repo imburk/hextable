@@ -546,6 +546,25 @@ Where the build settled a detail the design left open, or changed it.
 - The DM's `setSize` action changes a creature's size where it stands, if there
   is room. Forms (R11) will use the same check.
 
+- **Assets** (M9). Files live on the table server under `DATA_DIR/assets/<code>/`, with server-made
+  random ids; only PNG, JPEG and WebP, decided from the bytes. A player may fetch a file only if their
+  own view of the game names it (a handout shown to them, the background of a level they are sent);
+  the server works this out from `view()` on each request, so nothing else has to keep a list of who
+  may see what. Requests carry the session token in a header, never in a URL; the browser fetches
+  the bytes and shows them from a `blob:` URL. Every refusal to read is one identical 404. Limits,
+  routes and the threat model are in `packages/server/README.md`. Solo play keeps files in IndexedDB.
+- **Handouts** (M9) are `state.handouts: [{ id, title, text?, asset?, shown: [userIds] | 'all' }]`,
+  changed by the DM actions `handout`, `showHandout`, `hideHandout` and `removeHandout`
+  (`packages/rules/src/handouts.js`). Players are sent the handouts shown to them without `shown`.
+  "Point at it, and everyone sees the pointer" is not built.
+- **Notes to one player** (M9, ahead of M11) are the action `note { to, text }`, DM to a player or a
+  player to the DM. The event is `privateNote { from, to, text }`, not `note`: the engine already had
+  a public `note` event. It goes on the timeline; players are sent it, live or from the record, only
+  if it is from or to them. The server checks a DM's note is addressed to a player at the table.
+- **A level's background** (M9) is `level.image: { asset, feet: [w, h], origin: [x, y] }`, in the
+  feet that walls use, set or cleared (`image: null`) with the `level` edit. Players get it only with
+  a level they are sent. The renderer does not draw it yet.
+
 ## Sources
 
 - [Universal VTT (Dungeondraft guide)](https://dungeondraft-encyclopaedia.gitbook.io/guide/final-steps/exporting-your-map/universal-vtt)

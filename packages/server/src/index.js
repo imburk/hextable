@@ -3,7 +3,8 @@
 //
 //   PORT       port to listen on (default 8080)
 //   DATA_DIR   where tables are saved between restarts (default ./data)
-//   LIMIT_*    abuse limits, see limits.js and the README (defaults are the production values)
+//   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
+//   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -11,6 +12,8 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLimits, limitsFromEnv, LIMIT_MESSAGE } from "./limits.js";
 import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
+import { createAssets } from "./assets.js";
+import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
@@ -33,6 +36,8 @@ const addressOf = (req) => String(req.headers["x-forwarded-for"] ?? "").split(",
 
 // Scripts and connections only from this origin; Google Fonts for styles and fonts. Inline
 // styles are allowed because the UI sets style attributes (colours of tokens and swatches).
+// Pictures from this origin, data: and blob: (table files are fetched with the session token and
+// shown from a blob: URL, since an <img> cannot send a header).
 function securityHeaders(req) {
   const host = /^[\w.\-:\[\]]+$/.test(req.headers.host ?? "") ? req.headers.host : "";
   const sockets = host ? ` ws://${host} wss://${host}` : "";
@@ -43,7 +48,7 @@ function securityHeaders(req) {
     "content-security-policy": [
       "default-src 'self'", "script-src 'self'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src https://fonts.gstatic.com", "img-src 'self' data:",
+      "font-src https://fonts.gstatic.com", "img-src 'self' data: blob:",
       `connect-src 'self'${sockets}`,
       "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
     ].join("; "),
@@ -91,9 +96,18 @@ function save(t) {
 
 const tables = createTables({ load, save, loadHistory });
 
+// Table files. A folder whose table is gone (its file deleted) is cleared away at start.
+const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
+for (const code of assets.codes()) if (!tables.get(code)) assets.removeTable(code);
+
 // ---------- http ----------
 const server = createServer(async (req, res) => {
   for (const [k, v] of Object.entries(securityHeaders(req))) res.setHeader(k, v);
+  const route = assetRoute(/^https?:/i.test(req.url) ? new URL(req.url).pathname : req.url);
+  if (route) {
+    try { return handleAssets(req, res, route, { assets, tables, limits, addr: addressOf(req) }); }
+    catch (err) { console.error(`Asset request failed: ${err.stack}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
+  }
   let path;
   try { path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)); }
   catch { res.writeHead(400).end(); return; }
