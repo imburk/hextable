@@ -182,7 +182,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'save') {
     const dc = step.dc ?? f.src.dc;
-    const sv = kit.savingThrow(s, t, step.save, dc);
+    const sv = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     if (!sv.success) return branch('onFail', { half: false });
     if (step.half && step.onFail) return branch('onFail', { half: true });      // same effect, half the damage

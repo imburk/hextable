@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, PREGENS } from './content/index.js';
 
-export const VERSION = 6;
+export const VERSION = 7;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -29,6 +29,8 @@ export function migrate(state) {
   // Version 5: ways of moving other than walking, and table rules for height.
   for (const e of Object.values(state.entities)) e.speeds ??= {};
   if (state.settings) { state.settings.vertical ??= 'max'; state.settings.climbing ??= 'on'; }
+  // Version 7: table rules for cover.
+  if (state.settings) { state.settings.cover ??= 'on'; state.settings.creatureCover ??= 'on'; }
   // Version 6: creatures have a size.
   for (const e of Object.values(state.entities)) e.size ??= MONSTERS[e.tpl]?.size ?? 'medium';
   if (!(state.version >= VERSION)) state.version = VERSION;

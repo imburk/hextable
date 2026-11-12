@@ -166,7 +166,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
@@ -188,7 +188,7 @@ export function viewEvents(events, state, viewer) {
           if (!targetOpen) delete e.ac;
           out.push(e);
         } else {
-          out.push(pick(ev, ['type', 'actor', 'target', 'name', 'hit', 'crit', 'mode', 'why', 'opportunity', ...(targetOpen ? ['ac'] : [])]));
+          out.push(pick(ev, ['type', 'actor', 'target', 'name', 'hit', 'crit', 'mode', 'why', 'opportunity', 'cover', ...(targetOpen ? ['ac'] : [])]));
         }
         break;
       }
