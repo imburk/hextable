@@ -527,7 +527,8 @@ function rollDice(s, list) {
 // (one hit that does slashing and fire): each part is resisted on its own and logged on its own,
 // but the creature takes them as one instance of damage, so a dying creature fails one death
 // save for it (two on a critical hit), and Concentration is tested once, against the total.
-function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
+// Temporary Hit Points are lost first (SRD); `raw` (the DM setting Hit Points) leaves them alone.
+function damage(s, t, amount, dtype, ev, { crit = false, raw = false } = {}) {
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const dying = t.hp <= 0, before = t.hp;
@@ -544,7 +545,7 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
     const r = typeof x.value === 'string' ? rollDice(s, [{ dice: x.value, name: x.name }]).total : x.value;
     adjust[i] += r; noted[i].push({ name: x.name, ...(typeof x.value === 'string' ? { dice: x.value } : {}), roll: r });
   }
-  let total = 0;
+  let total = 0, lost = 0;
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
@@ -554,16 +555,20 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
     const note = n === 0 && p.amount > 0 ? 'immune' : resisted && vulnerable && p.amount > 0 ? 'resisted and vulnerable' : n < p.amount ? 'resisted' : n > p.amount ? 'vulnerable' : undefined;
     total += n;
-    if (!dying) t.hp = Math.max(0, t.hp - n);
-    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}) });
+    const soak = raw ? 0 : Math.min(t.tempHp ?? 0, n);
+    if (soak) t.tempHp -= soak;
+    lost += n - soak;
+    if (!dying) t.hp = Math.max(0, t.hp - (n - soak));
+    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}) });
   }
+  if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   if (dying) {                                            // already dying
     if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     if (t.dead) ev.push({ type: 'died', id: t.id });
     return;
   }
   if (t.hp > 0) return total > 0 ? concentrationCheck(s, ev, t, total, KIT) : undefined;
-  if (t.kind === 'pc' && total - before < t.maxHp) {      // otherwise: instant death from massive damage
+  if (t.kind === 'pc' && lost - before < t.maxHp) {       // otherwise: instant death from massive damage
     t.cond.unconscious = {}; t.cond.prone = {}; t.death = { s: 0, f: 0 };
     ev.push({ type: 'down', id: t.id });
   } else { t.dead = true; ev.push({ type: 'died', id: t.id }); }
@@ -584,6 +589,19 @@ function checkRange(s, e, t, atk) {
   if (atk.type === 'melee') {
     if (d * FT > atk.reach) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.reach} ft.`);
   } else if (d * FT > atk.range[1]) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.range[1]} ft.`);
+}
+
+// Temporary Hit Points: they do not add up. A creature keeps the larger of what it has and what
+// it is given (the SRD lets it choose; nobody would choose fewer). From a lasting effect, they
+// vanish when it ends. They never wake a creature at 0 Hit Points.
+function tempHp(s, t, amount, ev, f = null) {
+  if (t.dead) return;
+  const had = t.tempHp ?? 0;
+  if (amount <= had) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true });
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  t.tempHp = amount;
+  if (fx) { t.tempFx = fx.id; fx.parts.push({ target: t.id, temp: true }); } else delete t.tempFx;
+  ev.push({ type: 'tempHp', id: t.id, amount, tempHp: amount });
 }
 
 // Advantage and Disadvantage for an attack, with the reasons. Any of each cancels to a normal roll.
@@ -1171,7 +1189,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 // ---------- actions ----------
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, heal, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
+const KIT = { rollToHit, savingThrow, damage, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -1757,15 +1775,22 @@ const handlers = {
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');
     const e = ent(s, a.actor), hp = Math.max(0, Math.min(e.maxHp, a.hp | 0));
-    if (hp > e.hp) { e.dead = false; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev);
+    if (hp > e.hp) { e.dead = false; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');
     !s.encounter || fail("You can't rest in the middle of a fight.");
     // SRD Long Rest: all Hit Points back, Exhaustion down one level, features recharge. The dead stay
-    // dead, other conditions stay, and a creature at 0 Hit Points can't start one.
-    for (const e of Object.values(s.entities).filter((x) => x.side === 'party' && !x.dead)) {
+    // dead, other conditions stay, and a creature at 0 Hit Points can't start one. Temporary Hit
+    // Points end. The party rests; `ids` names who rests instead (the DM resting monsters too),
+    // and a monster's uses per day and spent recharges come back.
+    let who = Object.values(s.entities).filter((x) => x.side === 'party' && !x.dead);
+    if (a.ids !== undefined) {
+      (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= 500) || fail('Name who rests.');
+      who = [...new Set(a.ids)].map((id) => ent(s, id)).filter((x) => !x.dead);
+    }
+    for (const e of who) {
       if (e.hp <= 0) {
         if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
         else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
@@ -1773,6 +1798,8 @@ const handlers = {
       }
       Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
+      if (e.tempHp) { e.tempHp = 0; delete e.tempFx; }
+      delete e.charges; delete e.spent;                                    // a monster's daily uses and spent recharges
       const ex = e.cond.exhaustion;
       if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
       else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }

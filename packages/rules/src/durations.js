@@ -5,7 +5,7 @@
 //   until: null (only the DM ends it) | { clock } (world time, in minutes)
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
-//          { target, cond, ends?, dc? } or { target, modifier }
+//          { target, cond, ends?, dc? }, { target, modifier } or { target, temp: true }
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { incapacitated } from './modifiers.js';
 
@@ -41,6 +41,8 @@ function endPart(s, ev, fx, p) {
   p.ended = true;
   const t = s.entities[p.target];
   if (p.cond && t?.cond[p.cond]?.effect === fx.id) { delete t.cond[p.cond]; ev.push({ type: 'condEnd', id: t.id, cond: p.cond }); }
+  // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
+  if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }
 const targetsOf = (fx) => [...new Set(fx.parts.map((p) => p.target))];
 

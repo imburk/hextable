@@ -32,7 +32,7 @@ many monsters each one touches:
 |---|---|---|
 | M1 | ~~**Multiattack.** Stored as text on about 180 monsters. The AI makes one attack a turn, so most monsters hit far below their strength.~~ Built (#71): 146 monsters have a working Multiattack. 32 stay text: 18 adult and ancient dragons whose Multiattack may swap an attack for a spell, 8 with spellcasting or "if available" (aboleth, clay golem, cloud giant, doppelganger, dryad, glabrezu, hydra, oni), 5 with a part the DM applies (roper, rust monster, young silver dragon, sphinx of valor, succubus), and the chimera (a recharge breath as an alternative) | engine |
 | M2 | ~~Monster attacks still go through the old flat bridge: only the first damage of an attack is rolled (the Ankheg's acid is lost), and save-based actions (breath weapons, Constrict) are never used by the AI~~ (#71) | engine |
-| M3 | ~~Recharge, uses per day, bonus actions~~ (#71: 75 recharges, 6 daily uses, 7 Bonus Actions entered) and reactions have no fields. Daily uses of monsters are never restored (a long rest restores the party only) | engine |
+| M3 | ~~Recharge, uses per day, bonus actions~~ (#71: 75 recharges, 6 daily uses, 7 Bonus Actions entered) and reactions have no fields. ~~Daily uses of monsters are never restored (a long rest restores the party only)~~ (PR_D: the DM's Long Rest names who rests) | engine |
 | M4 | ~~Condition immunities have no field (the Skeleton cannot be Poisoned)~~ (#71: 96 monsters). Two conditional ones stay text: the archmage (Mind Blank) and the vampire familiar (except from its master) | engine |
 | M5 | Legendary actions and lair-free legendary resistance | engine |
 | M6 | Monster spellcasting (a list of spells with uses) | engine |
@@ -50,13 +50,13 @@ many monsters each one touches:
 | C2 | Only Second Wind and Sneak Attack exist as features. Everything else on a sheet (Action Surge, Rage, Channel Divinity, Cunning Action, Wild Shape...) is not there | engine (R7) |
 | C3 | No levelling or derived sheets: numbers are typed in (R7, R8) | engine, then any |
 | C4 | Equipment states, attunement, encumbrance, spell materials (R10) | engine |
-| C5 | Short rests and Hit Dice; Temporary Hit Points | engine |
+| C5 | Short rests and Hit Dice; ~~Temporary Hit Points~~ (PR_D) | engine |
 | C6 | Grapple and shove; Help, Study, Influence, Hide actions | engine |
 | C7 | Reactions: Shield, Counterspell, choosing whether to take an opportunity attack (R6) | engine |
 
 ## Spells
 
-339 are entered; 27 play fully, 77 partly, 235 are applied by the DM. What the vocabulary
+339 are entered; 28 play fully, 77 partly, 234 are applied by the DM. What the vocabulary
 cannot say, by how much it would unlock:
 
 | # | What | Who |
@@ -65,11 +65,12 @@ cannot say, by how much it would unlock:
 | S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks | engine |
 | S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall) and several cubes arranged by the caster (Fire Storm); creatures of the caster's choice in an area were done with S2 | engine |
 | S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
-| S5 | Temporary Hit Points, ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), "until the end of your next turn" | engine |
+| S5 | ~~Temporary Hit Points~~ (PR_D), ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), "until the end of your next turn" | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |
 | S7 | The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `carry`, ~~`save.death`~~ (#80); ~~the `check` hook cannot be limited to one skill~~ (#80: `scope`) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
+| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #PR_D. The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone; a DM damage action would spend them first. The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
 
 ## Maps, sight and movement
 
