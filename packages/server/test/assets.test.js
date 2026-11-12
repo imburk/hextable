@@ -291,3 +291,20 @@ test("the page may show pictures from blob: URLs, and files of a table that is g
   assert.ok(!existsSync(orphan), "the orphan folder is gone");
   assert.ok(existsSync(join(data, "assets", code)), "the live table's files are kept");
 });
+
+test("pack: files for an export as base64 with their records, those the game uses first, within a limit", () => {
+  const a = createAssets({ dir: tempDir() });
+  const one = a.put("ABCDEF", PNG, { name: "one" }).record, two = a.put("ABCDEF", JPEG, { name: "two" }).record, three = a.put("ABCDEF", WEBP, { name: "three" }).record;
+  const all = a.pack("ABCDEF");
+  assert.deepEqual(all.assets.map((x) => x.record), [one, two, three].sort((x, y) => String(x.when).localeCompare(String(y.when))));
+  assert.deepEqual(all.skipped, []);
+  assert.ok(Buffer.from(all.assets.find((x) => x.record.id === two.id).data, "base64").equals(JPEG));
+  // The one the game refers to goes first, and a file that would pass the limit is left out while a later, smaller one still goes in.
+  const tight = a.pack("ABCDEF", { limit: JPEG.length + PNG.length, first: new Set([two.id]) });
+  assert.equal(tight.assets[0].record.id, two.id);
+  assert.equal(tight.assets.reduce((n, x) => n + Buffer.from(x.data, "base64").length, 0) <= JPEG.length + PNG.length, true);
+  assert.deepEqual([...tight.assets.map((x) => x.record.id), ...tight.skipped.map((r) => r.id)].sort(), [one.id, two.id, three.id].sort());
+  assert.ok(tight.skipped.length >= 1);
+  // Not a table of ours: nothing, and no path from the code.
+  assert.deepEqual(a.pack("../etc"), { assets: [], skipped: [], limit: a.pack("../etc").limit });
+});

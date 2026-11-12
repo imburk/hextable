@@ -8,6 +8,9 @@
 // What a player is sent of all this is decided in view.js.
 import { ASSET_ID } from './map.js';
 
+// The most file bytes (before base64) a table export carries. A table may keep 50 MB; the export is one
+// JSON message, so it takes files up to this much and lists the rest by record only.
+export const EXPORT_ASSET_BYTES = 24 * 1024 * 1024;
 export const HANDOUT_LIMITS = { handouts: 200, title: 80, text: 2000, note: 1000, shownTo: 50 };
 const USER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 

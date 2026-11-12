@@ -176,6 +176,20 @@ async function solo(browser, url, label, opts) {
         await waitShown(page, '#tracker', false);
       });
 
+      // Before the fight on purpose: a character who is down after the fight cannot roll a check ("X is down"),
+      // so rolling after it would depend on the dice. Here the party is whole, whatever the seed.
+      await run.do('open the character sheet and roll a skill', async () => {
+        await closePanels(page);
+        await page.click('#party button:has-text("Brenna")');
+        await page.click('#btn-sheet');
+        await waitShown(page, '#sheet');
+        const n = await state(page, (S) => S.timeline.length);
+        await page.click('#sheet-body [data-skill="athletics"]');
+        try { await wait(page, (k) => window.hextable.state.timeline.length > k && window.hextable.state.timeline.at(-1).type === 'check', n); }
+        catch { throw new Error(`the skill roll did not happen; the game said: "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); }
+        await page.click('#sheet .close');
+      });
+
       await run.do('start a fight in the middle of the field', async () => {
         await page.click('#btn-dm');
         await waitShown(page, '#dm');
@@ -268,16 +282,6 @@ async function solo(browser, url, label, opts) {
         await closePanels(page);
       });
 
-      await run.do('open the character sheet and roll a skill', async () => {
-        await closePanels(page);
-        await page.click('#party button:has-text("Brenna")');
-        await page.click('#btn-sheet');
-        await waitShown(page, '#sheet');
-        const n = await state(page, (S) => S.timeline.length);
-        await page.click('#sheet-body [data-skill="athletics"]');
-        await wait(page, (k) => window.hextable.state.timeline.length > k && window.hextable.state.timeline.at(-1).type === 'check', n);
-        await page.click('#sheet .close');
-      });
     } finally { await ctx.close(); }
   });
 }

@@ -8,6 +8,7 @@ import { createReceiver } from './shared/patch.js';
 import { migrate, VERSION } from './shared/migrate.js';
 import { createHistory, describeStep, mark, undoable } from './shared/history.js';
 import { capTimeline, TIMELINE_CAP } from './shared/timeline.js';
+import { EXPORT_ASSET_BYTES, assetRefs } from './shared/handouts.js';
 import { localAssets, serverAssets } from './assets.js';
 
 const store = {
@@ -52,7 +53,12 @@ export function localTransport({ timelineCap = TIMELINE_CAP } = {}) {
     },
     undo: () => step('undo', 'undone'),
     redo: () => step('redo', 'redone'),
-    export: async () => ({ code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state) }),   // nothing leaves this tab
+    // The state and the files this tab keeps, as the server's export has them. Nothing leaves this tab.
+    export: async () => {
+      let files = { assets: [], skipped: [], limit: EXPORT_ASSET_BYTES };
+      try { files = await t.assets.pack({ first: assetRefs(state) }); } catch { /* this browser keeps no files: the export has the game only */ }
+      return { code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state), assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit };
+    },
     reset() { state = newGame((Math.random() * 1e9) | 0); history.clear(); told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
   };
   return t;

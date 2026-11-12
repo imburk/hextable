@@ -3,8 +3,8 @@
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
-import { actionProfile } from './shared/effects.js';
-import { SKILLS } from './shared/content/schema.js';
+import { actionProfile, targetCount } from './shared/effects.js';
+import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
 import { aiStep } from './shared/ai.js';
@@ -105,6 +105,7 @@ function describe(ev) {
     case 'chronicle': return [`Chronicle: ${ev.title}`, 'head'];
     case 'time': return [`Time passes. It is now ${clockText(ev.t ?? S.clock)}.`];
     case 'rest': return ['The party finishes a Long Rest.', 'good'];
+    case 'tempHp': return ev.kept ? [`${n(ev.id)} keeps ${ev.tempHp} Temporary Hit Points.`, ''] : ev.amount > 0 ? [`${n(ev.id)} gains ${ev.amount} Temporary Hit Points.`, 'good'] : [`${n(ev.id)} loses their Temporary Hit Points.`, ''];
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
@@ -216,6 +217,26 @@ function actionButtons(e, bar) {
     bar.append(button(def.name, sub, armed ? 'armed' : '', why, go));
   }
 }
+// A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
+const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+const choicesOf = (sp) => (sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null);
+function chosen(sp) {
+  const list = choicesOf(sp);
+  if (!list) return {};
+  if (!list.includes(mode.choice)) mode.choice = list[0];
+  return { choice: mode.choice };
+}
+function showPick() {
+  const sel = $('hint-pick'), sp = mode.kind === 'spell' ? SPELLS[mode.id] : null, list = choicesOf(sp);
+  sel.hidden = !list || $('hint').hidden;
+  if (sel.hidden) return;
+  const key = `${sp.id}|${list.join()}`;
+  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = list.map((v) => `<option value="${v}">${esc(choiceLabel(sp.def.choice.of, v))}</option>`).join(''); }
+  if (!list.includes(mode.choice)) mode.choice = list[0];
+  sel.value = mode.choice;
+}
+$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
+
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
   const what = `${area.size} ft ${area.shape}${area.shape === 'line' && area.width > 5 ? ` (${area.width} ft wide)` : ''}`;
@@ -277,7 +298,7 @@ function refresh() {
     $('c-sub').textContent = e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
     $('c-hp').querySelector('i').style.width = `${hpFraction(e) * 100}%`;
     const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
-    $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
+    $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
     $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
     $('btn-sheet').hidden = !showNumbers;
     $('btn-end').hidden = !(my && enc && cur === e.id);
@@ -314,7 +335,7 @@ function refresh() {
             (sp.level > 0 && enc?.flags.slot && 'Only one spell slot can be spent per turn.') || '';
           const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
           // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
-          const pick = () => (sp.aim === 'self' || sp.aim === 'none' ? act({ type: 'cast', actor: e.id, spell: id }) : setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area }));
+          const pick = () => (sp.aim === 'self' || sp.aim === 'none' ? act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) }) : setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }));
           bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
             pick));
         }
@@ -365,13 +386,21 @@ function refresh() {
           hl.area = hexes.map(H.key);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(H.col(x.pos)));
           const how = aimHow(sp.area, sp.range);
-          hint = aimed ? `${sp.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
+          // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
+          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, targetCount(sp.def, e.level)).map((x) => x.id);
+          const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
+          hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
         } else {
           const ids = targetsFor(S, e, { spell: mode.id });
           if (!sp.harmful) hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
-          hint = (hl.allies || hl.targets).length ? `${sp.name}: tap a target${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
+          // Several targets (Magic Missile's darts, Bless): each tap adds one until there are enough, or Cast.
+          const most = targetCount(sp.def, e.level), picked = mode.picked ?? [];
+          if (most > 1 && picked.length) {
+            hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
+            go = true;
+          } else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -381,6 +410,7 @@ function refresh() {
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  showPick();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   R.setHighlights(ED.on ? ED.marks() : hl);
   R.inset = $('dock').offsetHeight * 0.85;
@@ -406,7 +436,7 @@ function renderSheet() {
   $('sheet-body').innerHTML = `
     <h2>${esc(e.name)}</h2>
     <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}</p>
-    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
+    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
     <div class="stats">${abil}</div>
     <p class="note">Saving throws: ${saves}</p>
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
@@ -528,8 +558,17 @@ R.onTap = ({ hex, id }) => {
     return tapped && tapped.id !== selId ? act({ type: 'act', actor: selId, action: mode.id, target: id }) : setMode(MOVE);
   }
   if (mode.kind === 'spell') {
-    if (SPELLS[mode.id].area) { mode.aim = hex; return refresh(); }
-    return tapped ? act({ type: 'cast', actor: selId, spell: mode.id, target: id }) : setMode(MOVE);
+    const sp = SPELLS[mode.id];
+    if (sp.area) { mode.aim = hex; return refresh(); }
+    if (!tapped) return setMode(MOVE);
+    if (!targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
+    const most = targetCount(sp.def, e.level);
+    if (most <= 1) return act({ type: 'cast', actor: selId, spell: mode.id, target: id, ...chosen(sp) });
+    const picked = mode.picked ?? (mode.picked = []);
+    if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
+    else picked.push(id);
+    if (picked.length >= most) return act({ type: 'cast', actor: selId, spell: mode.id, targets: picked, ...chosen(sp) });
+    return refresh();
   }
   if (tapped) {
     const myTurn = e && mine(e) && S.encounter && current(S) === e.id;
@@ -561,7 +600,12 @@ R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (
 // ---------- controls ----------
 $('btn-end').onclick = () => act({ type: 'endTurn', actor: selId });
 $('hint-cancel').onclick = () => setMode(MOVE);
-$('hint-go').onclick = () => { act(mode.kind === 'action' ? { type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined } : { type: 'cast', actor: selId, spell: mode.id, hex: mode.aim }); mode = MOVE; };
+$('hint-go').onclick = () => {
+  if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
+  else if (SPELLS[mode.id].area) act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim, ...(SPELLS[mode.id].area.choose ? { targets: mode.picked ?? [] } : {}), ...chosen(SPELLS[mode.id]) });
+  else act({ type: 'cast', actor: selId, spell: mode.id, targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) });
+  mode = MOVE;
+};
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 const tracker = createTracker({ root: $('tracker'), button: $('btn-tracker'), dock: $('dock'), state: () => S, isDM, mine, act, toast, pick: (id) => { select(id); R.focus(id); refresh(); } });
@@ -579,6 +623,7 @@ $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
 $('dm-rest').onclick = () => act({ type: 'rest' });
+$('dm-rest-all').onclick = () => act({ type: 'rest', ids: Object.values(S.entities).filter((e) => !e.dead).map((e) => e.id) });
 $('c-res').onclick = (ev) => { const b = ev.target.closest('[data-fx]'); if (b) act({ type: 'endEffect', effect: b.dataset.fx }); };
 // Conditions: pick one, then put it on the selected creature or take it off.
 $('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
@@ -603,7 +648,11 @@ $('dm-engage-range').onchange = (ev) => act({ type: 'setting', key: 'engageRange
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();
-$('dm-export').onclick = () => T.export().then(downloadTable, (e) => toast(e.message));
+$('dm-export').onclick = () => T.export().then((table) => {
+  downloadTable(table);
+  const n = table.assetsSkipped?.length ?? 0;
+  if (n) toast(`Saved. ${n} picture${n === 1 ? ' was' : 's were'} too much to include (the limit is ${Math.round(table.assetLimit / 1048576)} MB of pictures).`);
+}, (e) => toast(e.message));
 // Leaving takes two taps, so a stray one can't drop you from the table.
 let leaveTimer = null;
 function leaveTable(btn) {

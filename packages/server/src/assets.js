@@ -7,12 +7,14 @@
 //   assets.put(code, bytes, { name })  -> { ok: true, record } | { ok: false, status, error }
 //   assets.get(code, id)               -> { record, path } | null
 //   assets.list(code) / assets.remove(code, id) / assets.removeTable(code)
+//   assets.pack(code, { limit, first }) -> { assets: [{ record, data }], skipped: [record], limit }   (for a table export)
 //
 // On disk: <dir>/<code>/<id> holds the bytes and <dir>/<code>/<id>.json the record
 // { id, kind, mime, bytes, name, when }.
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { EXPORT_ASSET_BYTES } from "../../rules/src/handouts.js";
 import { DEFAULT_LIMITS } from "./limits.js";
 
 export const ASSET_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -108,6 +110,25 @@ export function createAssets({ dir, limits = {} }) {
       if (!d) return;
       rmSync(d, { recursive: true, force: true });
       index.delete(code);
+    },
+    // The table's files as base64 with their records, for the DM's export, up to `limit` bytes of
+    // files. Those in `first` (the ids the game refers to) are taken first, then the rest oldest
+    // first; a file that would pass the limit is left out (its record is returned in `skipped`, with
+    // no bytes) and later, smaller ones may still go in. A file that cannot be read is skipped too.
+    pack(code, { limit = EXPORT_ASSET_BYTES, first = new Set() } = {}) {
+      const recs = tableDir(code) ? [...records(code).values()] : [];
+      recs.sort((a, b) => (first.has(b.id) - first.has(a.id)) || String(a.when).localeCompare(String(b.when)));
+      const assets = [], skipped = [];
+      let bytes = 0;
+      for (const record of recs) {
+        if (bytes + record.bytes > limit) { skipped.push(record); continue; }
+        let buf;
+        try { buf = readFileSync(fileOf(code, record.id)); } catch { skipped.push(record); continue; }
+        if (bytes + buf.length > limit) { skipped.push(record); continue; }
+        bytes += buf.length;
+        assets.push({ record, data: buf.toString("base64") });
+      }
+      return { assets, skipped, limit };
     },
     // Table codes that have a folder of files, for clearing away those of tables that are gone.
     codes: () => readdirSync(root).filter((n) => CODE.test(n)),

@@ -23,9 +23,9 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'manual'];
 // Where a modifier can attach.
-export const HOOKS = ['check', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
+export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
   'spell.dc', 'spell.attack', 'hp.max', 'carry'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
@@ -63,14 +63,51 @@ function lintWhen(when, say) {
   if (!Array.isArray(when)) return say('`when` must be a list of tags');
   for (const t of when) if (!TAGS.includes(t)) say(`unknown situation tag "${t}"`);
 }
+// A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES };
 function lintModifier(m, say) {
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
-  // A value is a number, or { perLevel: n } for conditions that stack in levels.
+  // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
+  // dice ("1d4", "-1d4") rolled each time the modifier applies.
   const numeric = typeof m.value === 'number' || (m.value && typeof m.value.perLevel === 'number');
-  if (['add', 'set', 'min', 'max'].includes(m.op) && !numeric) say(`modifier op "${m.op}" needs a number in \`value\``);
-  if (m.types !== undefined && !(Array.isArray(m.types) && m.types.every((t) => DAMAGE_TYPES.includes(t)))) say('`types` must be a list of damage types');
+  const dice = m.op === 'add' && typeof m.value === 'string' && /^[+-]?\d+d\d+([+-]\d+)?$/.test(m.value);
+  if (['add', 'set', 'min', 'max'].includes(m.op) && !numeric && !dice) say(`modifier op "${m.op}" needs a number in \`value\`${m.op === 'add' ? ' (or dice like 1d4)' : ''}`);
+  if (m.types !== undefined && !(Array.isArray(m.types) && m.types.every((t) => DAMAGE_TYPES.includes(t) || t === 'chosen'))) say('`types` must be a list of damage types (or "chosen")');
+  // `scope` limits a check or a save to one skill or ability; "chosen" is the caster's choice.
+  if (m.scope !== undefined) {
+    const sc = m.scope;
+    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => k !== 'skill' && k !== 'ability')) say('`scope` gives a skill or an ability');
+    else {
+      if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
+      if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
+      if (!['check', 'save'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
+    }
+  }
+  // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
+  if (m.once !== undefined && !(m.once === 'turn' && m.on === 'damage.taken' && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken');
   lintWhen(m.when, say);
+}
+// Every "chosen" in a spell's steps needs a `choice` of the right kind.
+function lintChoice(e, say) {
+  const used = new Set();
+  walkSteps(e.effects, (st) => {
+    const m = st.modifier;
+    if (!m) return;
+    if (m.scope?.skill === 'chosen') used.add('skill');
+    if (m.scope?.ability === 'chosen') used.add('ability');
+    if (m.types?.includes('chosen')) used.add('damageType');
+  });
+  const c = e.choice;
+  if (c !== undefined) {
+    if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
+    if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && c.from.every((x) => CHOICES[c.of].includes(x)))) say(`\`choice.from\` lists ${c.of} values`);
+    if (!used.has(c.of)) say('a choice that no step uses');
+  }
+  for (const k of used) if (c?.of !== k) say(`a step uses the chosen ${k}, but the spell has no \`choice: { of: "${k}" }\``);
+}
+function walkSteps(steps, visit) {
+  for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) walkSteps(st[b], visit); }
 }
 function lintSteps(steps, say, seen = { manual: false }) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
@@ -95,6 +132,8 @@ function lintSteps(steps, say, seen = { manual: false }) {
       if (step.times !== undefined && !(isInt(step.times) && step.times > 0)) say('`times` must be a positive whole number');
     }
     if (kind === 'heal' && !isDice(step.heal)) say(`heal "${step.heal}" is not dice like 2d8`);
+    if (kind === 'tempHp' && !isDice(step.tempHp)) say(`tempHp "${step.tempHp}" is not dice like 2d4+4`);
+    if ((kind === 'heal' || kind === 'tempHp') && step.addMod !== undefined && step.addMod !== true) say('`addMod` is true or left out');
     if (kind === 'condition') {
       if (!CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
       const ends = step.ends;
@@ -138,6 +177,12 @@ function lintTarget(target, say) {
   }
   if (target.creature) {
     const c = target.creature;
+    // `count`: up to so many creatures (1 if not given). `repeat`: the count is of rays, darts or
+    // beams, and one creature may take several. `within`: every target after the first is within
+    // so many feet of the first (Chain Lightning).
+    if (c.count !== undefined && !(isInt(c.count) && c.count >= 1 && c.count <= 20)) say('`count` is a whole number from 1 to 20');
+    if (c.repeat !== undefined && c.repeat !== true) say('`repeat` is true or left out');
+    if (c.within !== undefined && !(isInt(c.within) && c.within > 0 && c.within % 5 === 0)) say('`within` is feet, a multiple of 5');
     if (c.reach !== undefined && !(c.reach > 0)) say('reach must be a number of feet');
     if (c.range !== undefined && !(Array.isArray(c.range) && c.range.length === 2 && c.range.every((n) => n > 0) && c.range[0] <= c.range[1])) say('range must be [normal, long] in feet');
   }
@@ -164,9 +209,30 @@ function lintSpell(e, say) {
   if (typeof e.concentration !== 'boolean' || typeof e.ritual !== 'boolean') say('concentration and ritual must be true or false');
   if (!Array.isArray(e.classes)) say('classes must be a list');
   lintTarget(e.target, say);
+  lintHigher(e, say);
+  lintChoice(e, say);
   const seen = lintSteps(e.effects, say);
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
+}
+// What grows when a spell is cast higher: `level` (a cantrip's damage dice by character level),
+// `targets` (how many it aims at by character level), and `slot`, per slot level above its own:
+// `damage` or `heal` dice added, `times` more damage rolls, `targets` more creatures.
+function lintHigher(e, say) {
+  const h = e.higher;
+  if (h === undefined) return;
+  if (!h || typeof h !== 'object') return say('`higher` must be an object');
+  for (const k of Object.keys(h)) if (!['level', 'targets', 'slot'].includes(k)) say(`\`higher.${k}\` is not something a spell can grow by`);
+  const byLevel = (x, ok) => x && typeof x === 'object' && Object.entries(x).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= 20 && ok(v));
+  if (h.level !== undefined && !byLevel(h.level, isDice)) say('`higher.level` gives dice by character level');
+  if (h.targets !== undefined && !byLevel(h.targets, (v) => isInt(v) && v >= 1 && v <= 20)) say('`higher.targets` gives a number of targets by character level');
+  if (h.targets !== undefined && !e.target?.creature) say('`higher.targets` is for a spell aimed at creatures');
+  if (h.slot !== undefined) {
+    for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'tempHp', 'times', 'targets'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
+    for (const k of ['damage', 'heal', 'tempHp']) if (h.slot[k] !== undefined && !isDice(h.slot[k])) say(`\`higher.slot.${k}\` must be dice`);
+    for (const k of ['times', 'targets']) if (h.slot[k] !== undefined && !(isInt(h.slot[k]) && h.slot[k] > 0)) say(`\`higher.slot.${k}\` must be a positive whole number`);
+    if (h.slot.targets !== undefined && !e.target?.creature && !e.target?.area?.choose) say('`higher.slot.targets` is for a spell aimed at creatures');
+  }
 }
 const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
 // A senses map gives a range in feet, a multiple of 5, for some of the four special senses.

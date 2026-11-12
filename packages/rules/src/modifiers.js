@@ -77,7 +77,7 @@ export function judge(tag, sit, s) {
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1 };
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id };
   }
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
@@ -86,21 +86,39 @@ function* sources(s, e) {
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
 }
 
+// Dice in a modifier's value: "1d4" (Bless) or "-1d4" (Bane). Rolled each time it applies, by the
+// caller that makes the roll; never here, so that asking what applies changes nothing.
+export const DICE_VALUE = /^[+-]?\d+d\d+([+-]\d+)?$/;
+// Does a modifier's `scope` hold for this roll? `scope.skill` or `scope.ability` limits a check
+// (or a save) to one skill or ability; `sit.skill` and `sit.ability` say what the roll is.
+function inScope(m, sit) {
+  if (!m.scope) return true;
+  if (m.scope.skill !== undefined && m.scope.skill !== sit.skill) return false;
+  if (m.scope.ability !== undefined && m.scope.ability !== sit.ability) return false;
+  return true;
+}
+
 // Everything that applies to creature `e` at `hook` in this situation, added up:
 //   { add, set, advantage: [reasons], disadvantage: [reasons], autoFail, autoSucceed, crit,
-//     resist, vulnerable, immune }   (the last three: true for all damage, or a list of types)
+//     resist, vulnerable, immune,   (the last three: true for all damage, or a list of types)
+//     dice: [{ dice, name }],       dice to roll and add when the roll is made
+//     taken: [{ value, types, name, once, key }] }   for damage.taken: an amount (or dice) added
+//                                   to damage of those types (all, if none), at most once a turn if `once`
 // `side` says which end of an attack `e` is on, for wording the reasons as the log always has
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [] };
   for (const src of sources(s, e)) {
     for (const m of src.modifiers) {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
+      if (!inScope(m, sit)) continue;
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
-      if (m.op === 'add') out.add += value;
+      if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
+      else if (m.op === 'add' && typeof value === 'string') out.dice.push({ dice: value, name: src.name });
+      else if (m.op === 'add') out.add += value;
       else if (m.op === 'set') out.set = out.set === null ? value : Math.min(out.set, value);
       else if (m.op === 'advantage') out.advantage.push(reason);
       else if (m.op === 'disadvantage') out.disadvantage.push(reason);

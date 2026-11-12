@@ -100,8 +100,8 @@ test("a cube with a range is placed within it, and Entangle spares its caster", 
   assert.deepEqual(cast.targets, [g.id]);
 });
 
-test("areas the caster arranges or picks from are still the DM's: Fire Storm, Slow, Wind Wall", () => {
-  for (const id of ["fire-storm", "slow", "wind-wall"]) assert.equal(SPELLS[id].aim, "none", id);
+test("areas the caster arranges are still the DM's: Fire Storm, Wind Wall", () => {
+  for (const id of ["fire-storm", "wind-wall"]) assert.equal(SPELLS[id].aim, "none", id);
 });
 
 test("a dragon's line breath is aimed and resolved; an ancient black dragon's is 10 feet wide", () => {

@@ -34,7 +34,7 @@ export const MAX_ACTION_BYTES = 4 * 1024;
 export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
   // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
@@ -198,10 +198,12 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         lobby(table);
       },
       // The DM keeps their own copy of the table. Everything in the game state, and nothing about
-      // who is sitting there: no members, no tokens.
+      // who is sitting there: no members, no tokens. The table's files come with it as base64 beside
+      // their records (`assets`), up to a size limit; what did not fit is listed in `assetsSkipped`.
       export() {
         if (me.role !== "dm") return error("Only the DM can export the table.");
-        conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state } });
+        const files = exportAssets(table.code, table.state);
+        conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state, assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit } });
       },
       // The client noticed it missed an update and wants the whole view again.
       sync() {
