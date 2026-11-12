@@ -1259,9 +1259,19 @@ const handlers = {
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');
     !s.encounter || fail("You can't rest in the middle of a fight.");
-    for (const e of Object.values(s.entities).filter((x) => x.side === 'party')) {
-      Object.assign(e, { hp: e.maxHp, dead: false, cond: {}, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
+    // SRD Long Rest: all Hit Points back, Exhaustion down one level, features recharge. The dead stay
+    // dead, other conditions stay, and a creature at 0 Hit Points can't start one.
+    for (const e of Object.values(s.entities).filter((x) => x.side === 'party' && !x.dead)) {
+      if (e.hp <= 0) {
+        if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
+        else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
+        continue;
+      }
+      Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
+      const ex = e.cond.exhaustion;
+      if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
+      else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
     }
     s.clock += 480;
     ev.push({ type: 'rest' });
