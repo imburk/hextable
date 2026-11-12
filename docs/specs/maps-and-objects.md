@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding). Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding), M6 (height in play). Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),
@@ -499,6 +499,36 @@ Where the build settled a detail the design left open, or changed it.
   check with Thieves' Tools once the trap has been spotted.
 - Still to come from decision 6: hidden *creatures* found by a search. That
   needs Stealth against Perception and belongs with the sight spec.
+
+- **Ways of moving** (M6). A creature has `speed` (walking) and `speeds`
+  (`climb`, `swim`, `fly`, `burrow`), and may `hover`. In a fight the ways of
+  moving share the turn: what is left of each is its Speed less everything moved
+  so far, so `budget.move` (walking feet left) can go below zero after flying.
+- **Climbing** (M6). A rise or drop of more than 5 ft between neighbouring hexes
+  is a climb: 5 ft for the hex plus the height, doubled without a Climb Speed.
+  The way must be open above the lower place, and only a wall at the top blocks
+  it. The table rule `climbing` turns it off. No check is asked for.
+- **Ladders** (M6). An object whose definition has `connects: true` joins its hex
+  to the place named in its `to`. Going along it costs the height as a climb.
+- **Flying** (M6). A flyer moves in 5 ft steps in any of the six directions,
+  level, rising or dropping, or straight up or down, each costing 5 ft. It
+  cannot pass through a floor, passes over rails, and is stopped by walls up to
+  10 ft above their level's floor. Things on the floor do not notice it. The
+  engine looks for routes up to 40 ft above the highest floor or the flyer.
+- **Falling** (M6). After every action, whatever has nothing under it and cannot
+  stay up drops to the surface below and takes falling damage. A flyer stays up
+  with a Fly Speed above 0 unless it is Prone or Incapacitated and cannot hover
+  **(check)**. This is also what happens when a floor is removed under someone.
+- **Distance** (M6) counts height by the table rule `vertical`: `max` (the
+  default: a diagonal counts once), `sum`, or `true` (straight line). Under 5 ft
+  of height counts as none. Areas have height: a cone, sphere or emanation
+  reaches as far up as across; a cylinder as high as its size unless its data
+  gives a `height`.
+- **Floors block** (M6). An attack or spell is refused if a floor lies between
+  the two creatures. A wall blocks only if neither is above its top. Both are
+  centre to centre and are replaced by the sight spec.
+- Not built from decision 2: swimming and burrowing have speeds but no rules of
+  their own yet, and two creatures landing in one hex are left for the DM.
 
 ## Sources
 

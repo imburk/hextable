@@ -12,7 +12,7 @@ import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { ABILITIES, SKILLS } from './content/schema.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
-import { FT, STEP_FREE, STEP_MAX, concealed, ground, hasColumn, landing, regionAt, shown, surfaces, under, unseenAt } from './space.js';
+import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, concealed, gap, ground, hasColumn, landing, overlaps, regionAt, shown, surfaces, under, unseenAt } from './space.js';
 import { EDITS, lintMap } from './map.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
@@ -21,6 +21,7 @@ export { FT };                       // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
 export const ENGAGE_RANGE = 2;       // walking this close to a hostile starts the fight
 export const EXPLORE_BUDGET = 300;   // feet per tap while free roaming
+export const FLY_CEILING = 40;       // how far above the highest floor (or itself) the engine looks for a flyer's routes, in feet
 export const mod = (score) => Math.floor((score - 10) / 2);
 
 class RuleError extends Error {}
@@ -45,7 +46,7 @@ export function makeEntity(tpl, over = {}) {
   const t = structuredClone(tpl);
   if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
-    kind: 'npc', side: 'foe', owner: null, level: 0, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
+    kind: 'npc', side: 'foe', owner: null, level: 0, speeds: {}, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0 },
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
@@ -54,60 +55,124 @@ export function makeEntity(tpl, over = {}) {
 
 // ---------- movement ----------
 
-function occupancy(s) {
-  const occ = new Map();
-  for (const e of living(s)) { const k = H.key(e.pos); occ.set(k, [...(occ.get(k) || []), e]); }
-  return occ;
+// Can this creature stay up without anything under it? It needs a Fly Speed that is not 0, and
+// must not be Prone or Incapacitated unless it can hover.
+export const aloft = (s, e) => up(e) && speedOf(s, e, 'fly') > 0 && (!!e.hover || !(e.cond.prone || incapacitated(e)));
+// Would a creature fit at this position? Not inside the ground, not with its head through a floor,
+// and not hanging just above one. `landed` says whether it would be standing.
+function airspace(map, h, column = surfaces(map, h)) {
+  if (!column.length || h.z < column[0].z) return null;
+  for (const sf of column) {
+    if (sf.z === h.z) return TILES[sf.tile.t].cost === Infinity ? null : { landed: sf };
+    if ((sf.z > h.z && sf.z < h.z + HEADROOM) || (sf.z < h.z && sf.z > h.z - FT)) return null;
+  }
+  return { landed: null };
 }
+// The levels whose walls stand at this height.
+const wallsAt = (map, z) => map.levels.filter((l) => l.z <= z && z < l.z + WALL_HEIGHT);
 
-// Map of hex key -> {cost, prev, canStop} that this creature can move to right now.
+// Map of position key -> {cost, prev, canStop, h} that this creature can move to right now.
+// Walking steps onto surfaces in neighbouring columns; a bigger rise or drop is a climb; a ladder
+// or the like joins two places; and a creature that can fly moves through the air in 5 ft steps.
 export function moveOptions(s, e) {
-  if (!e || !up(e) || speedOf(s, e) === 0) return new Map();
+  const walk = e && up(e) ? speedOf(s, e) : 0, flying = !!e && aloft(s, e), flySpeed = flying ? speedOf(s, e, 'fly') : 0;
+  if (!e || !up(e) || (walk === 0 && !flying)) return new Map();
   const enc = s.encounter, fighting = inFight(s, e.id);
   if (fighting && current(s) !== e.id) return new Map();
-  const occ = occupancy(s), B = barriers(s.map);
+  const map = s.map, B = barriers(map), others = living(s).filter((o) => o.id !== e.id);
+  // The surfaces of each column are looked up many times over; keep them for the length of this search.
+  const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
+  const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
+  const inWay = (h, test) => others.some((o) => overlaps(o.pos, h) && test(o));
+  const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
+  // What each way of moving has left this turn. A creature that changes from one to another has
+  // already used, of the new one, whatever it has moved so far.
+  const left = (speed) => (fighting ? enc.budget.move + (speed - walk) * (1 + (enc.budget.dashes | 0)) : EXPLORE_BUDGET);
+  const limit = { walk: left(walk), climb: left(climbSpeed > 0 ? climbSpeed : walk), fly: fighting ? left(flySpeed) : Math.max(60, flySpeed) };
+  const budget = Math.max(limit.walk, limit.climb, flying ? limit.fly : 0);
   // Traps this creature knows of: the party knows the ones it has spotted; everyone else knows them all.
   const hazards = new Set();
-  for (const o of s.map.objects) {
+  for (const o of map.objects) {
     const def = objectDef(o);
     if (def.triggers?.some((t) => t.on === 'enter' && t.effects && t.from.includes(o.state)) && (e.side !== 'party' || !def.states[o.state].hidden)) hazards.add(`${o.level}|${H.col(o.at)}`);
   }
-  // One step: onto a surface in a neighbouring column, if the rise or drop can be walked.
-  const reach = H.reachable(e.pos, fighting ? enc.budget.move : EXPLORE_BUDGET, (from) => {
-    const out = [], here = ground(s.map, from)?.level;
+  const reach = H.reachable(e.pos, budget, (from) => {
+    const out = [], here = ground(map, from)?.level;
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
     if (here && from !== e.pos && hazards.has(`${here.id}|${H.col(from)}`)) return out;
-    for (const n of H.neighbors(from)) {
-      if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
-      for (const sf of surfaces(s.map, n)) {
-        const rise = Math.abs(sf.z - from.z), terrain = TILES[sf.tile.t].cost;
-        if (rise > STEP_MAX || terrain === Infinity || B.solid(sf.level.id, n)) continue;
-        if (e.side !== 'party' && hazards.has(`${sf.level.id}|${H.col(n)}`)) continue;     // a lair's own never step on its traps
-        if (here && (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n)))) continue;   // a wall or a shut door
-        const h = { q: n.q, r: n.r, z: sf.z };
-        if ((occ.get(H.key(h)) || []).some((o) => hostile(o, e) && up(o))) continue;
-        out.push({ h, cost: Math.max(terrain, rise > STEP_FREE ? 2 : 1) * FT });   // Difficult Terrain does not stack
+    if (here && walk > 0) {
+      for (const n of H.neighbors(from)) {
+        if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
+        const column = columnOf(n);
+        for (const sf of column) {
+          const dz = sf.z - from.z, up_ = Math.abs(dz), terrain = TILES[sf.tile.t].cost;
+          if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
+          if (e.side !== 'party' && hazards.has(`${sf.level.id}|${H.col(n)}`)) continue;     // a lair's own never step on its traps
+          const h = { q: n.q, r: n.r, z: sf.z };
+          if (inWay(h, (o) => hostile(o, e) && up(o))) continue;
+          if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
+            if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
+            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
+          } else if (climbs) {
+            // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
+            // of the two places, and only a wall at the top counts: a wall below is what is climbed.
+            const lowCol = dz > 0 ? columnOf(from) : column, lowZ = Math.min(sf.z, from.z), highZ = Math.max(sf.z, from.z);
+            if (lowCol.some((x) => x.z > lowZ && x.z < highZ + HEADROOM)) continue;
+            const top = dz > 0 ? sf.level : here;
+            if (B.blocked(top.id, from, n)) continue;
+            out.push({ h, cost: terrain * FT + up_ * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
+          }
+        }
+      }
+      // A ladder, a rope, a climbable tree: something that joins this place to another.
+      for (const o of map.objects) {
+        if (!o.to || !objectDef(o).connects) continue;
+        const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
+        const h = H.key(a) === H.key(from) ? b : b && H.key(b) === H.key(from) ? a : null;
+        if (!h || (fighting && !enc.arena[H.col(h)]) || inWay(h, (x) => hostile(x, e) && up(x))) continue;
+        out.push({ h, cost: Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
+      }
+    }
+    if (flying) {
+      // Through the air: any of the six directions, level, up or down 5 ft, or straight up or down.
+      const around = H.neighbors(from), top = Math.max(tiers.at(-1), ...tiers, e.pos.z) + FLY_CEILING;
+      for (const dz of [0, FT, -FT]) for (let i = dz ? -1 : 0; i < 6; i++) {
+        const n = i < 0 ? from : around[i];
+        if (from.z + dz > top || (fighting && !enc.arena[H.col(n)])) continue;
+        const h = { q: n.q, r: n.r, z: from.z + dz }, column = columnOf(n), room = airspace(map, h, column);
+        if (!room) continue;
+        // No passing through a floor on the way up or down.
+        if (dz > 0 && column.some((sf) => sf.z > from.z && sf.z <= h.z)) continue;
+        if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
+        if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${H.col(n)}`)))) continue;
+        if (walled_ && n !== from && [from.z, h.z].some((z) => wallsAt(map, z).some((l) => B.blocked(l.id, from, n, z - l.z >= FT ? 'tall' : 'move')))) continue;
+        if (inWay(h, (o) => hostile(o, e) && up(o))) continue;
+        out.push({ h, cost: FT, max: limit.fly });
       }
     }
     return out;
   });
-  const here = H.key(e.pos);
-  for (const [k, v] of reach) v.canStop = k !== here && !(occ.get(k) || []).some((o) => o.id !== e.id);
+  const start = H.key(e.pos);
+  for (const [k, v] of reach) v.canStop = k !== start && !inWay(v.h, () => true);
   return reach;
 }
 
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
-    o.attacks.some((a) => a.type === 'melee') && H.dist(o.pos, pos) <= 1 && clear(s, o.pos, pos));
+    o.attacks.some((a) => a.type === 'melee') && gap(s, o.pos, pos) <= 1 && clear(s, o.pos, pos));
 }
 
 // Is there nothing solid between two positions? A wall or a shut door stops attacks, spells and
 // notice. This is the straight line between hex centres; cover and light come with the sight spec.
 export function clear(s, a, b) {
+  const lo = a.z <= b.z ? a : b, hi = lo === a ? b : a;
+  // A floor between them: one over the head of the lower, where the higher is not simply standing on its own edge.
+  if (hi.z > lo.z && surfaces(s.map, lo).some((sf) => sf.z > lo.z && sf.z <= hi.z && !(H.col(lo) === H.col(hi) && sf.z === hi.z && !ground(s.map, hi)))) return false;
   if (H.col(a) === H.col(b)) return true;
-  const B = barriers(s.map), la = ground(s.map, a)?.level, lb = ground(s.map, b)?.level;
-  return !((la && B.blocked(la.id, a, b, 'both')) || (lb && lb !== la && B.blocked(lb.id, a, b, 'both')));
+  // A wall counts only if neither of them is above its top.
+  const B = barriers(s.map);
+  return !wallsAt(s.map, lo.z).some((l) => hi.z < l.z + WALL_HEIGHT && B.blocked(l.id, a, b, 'both'));
 }
 const walled = (s, e, t) => clear(s, e.pos, t.pos) || fail(`There is a wall between ${e.name} and ${t.name}.`);
 
@@ -324,7 +389,7 @@ function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
 
 // Start a fight big enough to hold both the attacker and a distant target.
 function engage(s, e, t, ev) {
-  const a = H.toWorld(e.pos), b = H.toWorld(t.pos), d = H.dist(e.pos, t.pos);
+  const a = H.toWorld(e.pos), b = H.toWorld(t.pos), d = apart(s, e, t);
   startEncounter(s, H.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1));
 }
 
@@ -381,7 +446,7 @@ function advanceTurn(s, ev) {
     enc.flags = {};
     turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
     const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
-    enc.budget = { move: speed, action: can, bonus: can };
+    enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
     e.reactionUsed = false;
     delete e.cond.dodging;
     ev.push({ type: 'turn', id: e.id, round: enc.round });
@@ -431,8 +496,8 @@ function heal(s, t, amount, ev) {
   if (t.cond.prone && !inFight(s, t.id)) { delete t.cond.prone; ev.push({ type: 'stood', id: t.id }); }
 }
 
-function checkRange(e, t, atk) {
-  const d = H.dist(e.pos, t.pos);
+function checkRange(s, e, t, atk) {
+  const d = apart(s, e, t);
   if (atk.type === 'melee') {
     if (d * FT > atk.reach) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.reach} ft.`);
   } else if (d * FT > atk.range[1]) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.range[1]} ft.`);
@@ -443,12 +508,12 @@ function checkRange(e, t, atk) {
 // belong to ranged attacks themselves. Also returns `add` (a bonus or penalty to the roll) and
 // `crit` (a hit is critical whatever the die shows).
 export function rollMode(s, e, t, atk) {
-  const d = H.dist(e.pos, t.pos), ranged = atk.type === 'ranged';
+  const d = apart(s, e, t), ranged = atk.type === 'ranged';
   const sit = { attacker: e, target: t, ranged };
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= 1 && clear(s, o.pos, e.pos))) dis.push('enemy within 5 ft');
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= 1 && clear(s, o.pos, e.pos))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
@@ -476,7 +541,7 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   if (atk.bonusOnAdv && mode === 'adv') total += roll(s, atk.bonusOnAdv, { crit }).total;
   const sneakKey = `sneak:${e.id}`;
   if (e.features.sneak && !atk.spell && (atk.finesse || atk.type === 'ranged') && !s.encounter?.flags[sneakKey] && mode !== 'dis') {
-    const flank = living(s).some((o) => o.id !== e.id && up(o) && hostile(o, t) && H.dist(o.pos, t.pos) <= 1);
+    const flank = living(s).some((o) => o.id !== e.id && up(o) && hostile(o, t) && apart(s, o, t) <= 1);
     if (mode === 'adv' || flank) {
       total += roll(s, e.features.sneak, { crit }).total;
       if (s.encounter) s.encounter.flags[sneakKey] = true;
@@ -623,7 +688,7 @@ export function targetsFor(s, e, { attack, spell }) {
   const out = [];
   for (const t of living(s)) {
     if (!clear(s, e.pos, t.pos)) continue;
-    const d = H.dist(e.pos, t.pos) * FT;
+    const d = apart(s, e, t) * FT;
     if (attack) {
       const atk = e.attacks.find((a) => a.id === attack);
       if (t.id !== e.id && d <= (atk.type === 'melee' ? atk.reach : atk.range[1])) out.push(t.id);
@@ -645,21 +710,21 @@ const handlers = {
   move(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     up(e) || fail(`${e.name} can't move.`);
-    speedOf(s, e) > 0 || fail(`${e.name} can't move: its Speed is 0.`);
+    (speedOf(s, e) > 0 || aloft(s, e)) || fail(`${e.name} can't move: its Speed is 0.`);
     const fighting = inFight(s, e.id);
     if (fighting && current(s) !== e.id) fail(`It isn't ${e.name}'s turn.`);
     const reach = moveOptions(s, e);
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
     const column = [...reach.values()].filter((n) => H.col(n.h) === H.col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
-    const to = column?.h ?? landing(s.map, a.to, e.pos.z);
+    const to = column?.h ?? (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z));
     to || fail("There's nothing there to stand on.");
     let tk = H.key(to), node = reach.get(tk);
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
     const lurker = fighting ? null : living(s).find((o) => o.hidden && hostile(o, e) && H.key(o.pos) === tk);
     if (lurker) {
-      if (H.dist(e.pos, lurker.pos) <= 1) return reveal(s, lurker, ev);      // already beside it: no move, but it is found
+      if (apart(s, e, lurker) <= 1) return reveal(s, lurker, ev);      // already beside it: no move, but it is found
       const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && H.dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
         .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
       if (!beside) fail("Can't get there.");
@@ -676,7 +741,7 @@ const handlers = {
     for (const step of H.pathTo(reach, tk)) {
       if (fighting && s.encounter && !e.cond.disengaged) {
         for (const o of threatsAt(s, e, prev)) {
-          if (H.dist(o.pos, step) <= 1) continue;
+          if (gap(s, o.pos, step) <= 1) continue;
           flush();
           o.reactionUsed = true;
           resolveAttack(s, o, e, o.attacks.find((x) => x.type === 'melee'), ev, { opportunity: true });
@@ -693,11 +758,11 @@ const handlers = {
       if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
-      for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
+      for (const o of living(s)) if (o.hidden && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
       const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
       if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
       if (!s.encounter && s.settings.autoEngage && free &&
-          living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos) && !unseenAt(s.map, o.pos))) {
+          living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && clear(s, o.pos, e.pos) && !unseenAt(s.map, o.pos))) {
         flush(); startEncounter(s, e.pos, ev); break;
       }
     }
@@ -713,7 +778,7 @@ const handlers = {
     able(e);
     !t.dead || fail(`${t.name} is already dead.`);
     e.id !== t.id || fail("A creature can't attack itself.");
-    checkRange(e, t, atk);
+    checkRange(s, e, t, atk);
     walled(s, e, t);
     showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
@@ -741,18 +806,21 @@ const handlers = {
       if (shape === 'cone') (a.hex && H.dist(a.hex, e.pos) > 0) || fail(`Pick a direction for ${sp.name}.`);
       else if (shape !== 'emanation') {
         a.hex || fail(`Pick where ${sp.name} goes off.`);
-        const d = H.dist(a.hex, e.pos);
+        const d = gap(s, a.hex.z !== undefined ? a.hex : landing(s.map, a.hex, e.pos.z) ?? a.hex, e.pos);
         if (d * FT > sp.range) fail(`That is ${ft(d)} away. ${sp.name} reaches ${sp.range} ft.`);
       }
       hexes = areaHexes(s, e, sp, a.hex);
       const keys = new Set(hexes.map(H.key));
-      const origin = shape === 'cone' || shape === 'emanation' ? e.pos : landing(s.map, a.hex, e.pos.z) ?? e.pos;
-      targets = living(s).filter((t) => keys.has(H.col(t.pos)) && clear(s, origin, t.pos));      // a wall shelters what is behind it
+      // Where it goes off: the caster for a cone or an emanation, else the spot aimed at (in the air if a height was given).
+      const origin = shape === 'cone' || shape === 'emanation' ? e.pos : a.hex.z !== undefined ? { q: a.hex.q, r: a.hex.r, z: a.hex.z } : landing(s.map, a.hex, e.pos.z) ?? e.pos;
+      const size = sp.area.size / FT, tall = sp.area.height ?? sp.area.size;
+      const high = (t) => (shape === 'cylinder' ? t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : gap(s, origin, t.pos) <= size);     // areas have height too
+      targets = living(s).filter((t) => keys.has(H.col(t.pos)) && high(t) && clear(s, origin, t.pos));      // a wall shelters what is behind it
     } else if (sp.aim === 'creature') {
       const t = ent(s, a.target);
       !t.dead || fail(`${t.name} is dead.`);
       if (sp.harmful && t.id === e.id) fail(`${sp.name} needs another target.`);
-      const d = H.dist(e.pos, t.pos);
+      const d = apart(s, e, t);
       if (d * FT > sp.range) fail(`${t.name} is ${ft(d)} away. ${sp.name} reaches ${sp.range === 5 ? 'touch (5 ft)' : sp.range + ' ft'}.`);
       walled(s, e, t);
       targets = [t];
@@ -809,7 +877,7 @@ const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
     need(s, e, 'action');
-    s.encounter.budget.action--; s.encounter.budget.move += speedOf(s, e);
+    s.encounter.budget.action--; s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
     ev.push({ type: 'std', id: e.id, action: 'Dash' });
   },
   disengage(s, a, ctx, ev) {
@@ -936,7 +1004,7 @@ const handlers = {
     const tpl = MONSTERS[a.monster] || fail('Unknown monster.');
     const at = landing(s.map, a.at);
     (at && TILES[ground(s.map, at).tile.t].cost < Infinity) || fail("A creature can't stand there.");
-    !living(s).some((o) => H.key(o.pos) === H.key(at)) || fail('That hex is occupied.');
+    !living(s).some((o) => overlaps(o.pos, at)) || fail('That hex is occupied.');
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
@@ -946,8 +1014,9 @@ const handlers = {
   place(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can place creatures.');
     const e = ent(s, a.actor);
-    const to = landing(s.map, a.to, e.pos.z) || fail("There's nothing there to stand on.");
-    !living(s).some((o) => o.id !== e.id && H.key(o.pos) === H.key(to)) || fail('That hex is occupied.');
+    // On the nearest floor, or exactly where asked if a height is given and there is room there (in the air, say).
+    const to = (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z)) || fail("There's nothing there to stand on.");
+    !living(s).some((o) => o.id !== e.id && overlaps(o.pos, to)) || fail('That hex is occupied.');
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
@@ -990,13 +1059,23 @@ const handlers = {
     const problems = lintMap(map);
     problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
     const B = barriers(map);
-    for (const e of living(s)) {
-      const sf = ground(map, e.pos);
-      (sf && !B.solid(sf.level.id, e.pos)) || fail(`${e.name} would be left with nowhere to stand.`);
+    for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
+      const sf = under(map, e.pos);
+      (sf && !(sf.z === e.pos.z && B.solid(sf.level.id, e.pos))) || fail(`${e.name} would be left with nowhere to stand.`);
     }
     s.map = map;
     ev.push({ type: 'mapEdit', count: a.ops.length });
     lookAround(s, ev);
+  },
+  // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
+  setSpeed(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change how a creature moves.');
+    const e = ent(s, a.actor);
+    ['walk', 'climb', 'swim', 'fly', 'burrow'].includes(a.mode) || fail('Unknown way of moving.');
+    (Number.isInteger(a.feet) && a.feet >= 0 && a.feet <= 300 && a.feet % FT === 0) || fail('A Speed is a multiple of 5 feet.');
+    if (a.mode === 'walk') e.speed = a.feet; else if (a.feet) e.speeds[a.mode] = a.feet; else delete e.speeds[a.mode];
+    if (a.mode === 'fly') { if (a.hover && a.feet) e.hover = true; else delete e.hover; }
+    ev.push({ type: 'speed', id: e.id, mode: a.mode, feet: a.feet });
   },
   // Hand a creature an item, or take one away. { type: 'give', actor, item, take? }
   give(s, a, ctx, ev) {
@@ -1118,8 +1197,26 @@ const handlers = {
   },
 };
 
+// Whatever has nothing under it and no way to stay up, falls. Run after every action, so that a
+// flyer knocked Prone, a floor that gives way and a creature set down in mid-air all come out the same.
+function gravity(s, ev) {
+  let any = false;
+  for (const e of Object.values(s.entities)) {
+    if (ground(s.map, e.pos) || aloft(s, e)) continue;
+    const sf = under(s.map, e.pos);
+    if (!sf) continue;                                   // nothing below at all: the DM's to sort out
+    const feet = e.pos.z - sf.z;
+    e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
+    if (e.dead) continue;
+    any = true;
+    fall(s, e, feet, ev);
+    lookAround(s, ev, [e]);
+  }
+  if (any) checkEnd(s, ev);
+}
+
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'] };
+export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];
@@ -1134,6 +1231,7 @@ export function apply(s, action, ctx = { role: 'dm' }) {
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
   }
+  try { gravity(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
   for (const e of ev) if (e.type !== 'moved') s.timeline.push({ t: s.clock, ...e });
   return { ok: true, events: ev };
 }

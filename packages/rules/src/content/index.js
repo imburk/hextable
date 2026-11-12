@@ -45,7 +45,7 @@ function legacyMonster(m) {
   const features = {};
   for (const t of m.traits) if (LEGACY_FEATURES[t.id]) features[LEGACY_FEATURES[t.id]] = true;
   return {
-    name: m.name, ac: m.ac, hp: m.hp, speed: m.speed.walk, abil: { ...m.abilities }, prof: m.pb,
+    name: m.name, ac: m.ac, hp: m.hp, speed: m.speed.walk ?? 0, speeds: Object.fromEntries(Object.entries(m.speed).filter(([k]) => k !== 'walk')), ...(m.hover ? { hover: true } : {}), abil: { ...m.abilities }, prof: m.pb,
     ...(Object.keys(features).length ? { features } : {}),
     ...(m.vulnerable.length ? { vuln: [...m.vulnerable] } : {}),
     ...(m.immune.length ? { immune: [...m.immune] } : {}),

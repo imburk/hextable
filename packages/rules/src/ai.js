@@ -3,6 +3,7 @@
 // an action (a script, an LLM-driven DM, an AI character) plugs in the same way.
 import * as H from './hex.js';
 import { moveOptions, current, up, hostile, inFight, clear, FT } from './engine.js';
+import { gap } from './space.js';
 
 export function aiStep(s, id) {
   const e = s.entities[id], end = { type: 'endTurn', actor: id };
@@ -11,20 +12,21 @@ export function aiStep(s, id) {
   const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id));
   if (!foes.length) return end;
   const open = (t) => clear(s, e.pos, t.pos);                    // no wall or shut door in the way
-  const near = (pos) => Math.min(...foes.map((f) => H.dist(pos, f.pos)));
-  const target = foes.reduce((a, f) => (H.dist(e.pos, f.pos) < H.dist(e.pos, a.pos) || (H.dist(e.pos, f.pos) === H.dist(e.pos, a.pos) && f.hp < a.hp) ? f : a));
+  const dist = (a, b) => gap(s, a, b);
+  const near = (pos) => Math.min(...foes.map((f) => dist(pos, f.pos)));
+  const target = foes.reduce((a, f) => (dist(e.pos, f.pos) < dist(e.pos, a.pos) || (dist(e.pos, f.pos) === dist(e.pos, a.pos) && f.hp < a.hp) ? f : a));
   const melee = e.attacks.find((a) => a.type === 'melee'), ranged = e.attacks.find((a) => a.type === 'ranged');
-  const d = H.dist(e.pos, target.pos);
+  const d = dist(e.pos, target.pos);
 
   if (b.action > 0 && melee && d <= 1 && open(target)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
   if (melee && d > 1 && b.move >= FT) {
     let best = null;
     for (const [k, v] of moveOptions(s, e)) {
       if (!v.canStop) continue;
-      const nd = near(H.parse(k));
-      if (!best || nd < best.nd || (nd === best.nd && v.cost < best.cost)) best = { k, nd, cost: v.cost };
+      const nd = near(v.h);
+      if (!best || nd < best.nd || (nd === best.nd && v.cost < best.cost)) best = { k, nd, cost: v.cost, h: v.h };
     }
-    if (best && best.nd < near(e.pos)) return { type: 'move', actor: id, to: H.parse(best.k) };
+    if (best && best.nd < near(e.pos)) return { type: 'move', actor: id, to: best.h };
   }
   if (b.action > 0 && ranged && d * FT <= ranged.range[1] && open(target)) return { type: 'attack', actor: id, target: target.id, attack: ranged.id };
   if (b.action > 0 && melee && d > 1 && b.move < FT) return { type: 'dash', actor: id };

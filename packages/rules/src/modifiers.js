@@ -7,6 +7,7 @@
 // Design: docs/specs/rules-expansion.md, decision 3.
 import { CONTENT } from './content/index.js';
 import * as H from './hex.js';
+import { apart } from './space.js';
 
 // Things a creature can be that are not SRD conditions but work the same way.
 const STATUSES = {
@@ -44,7 +45,7 @@ const upright = (e) => !e.dead && e.hp > 0;
 // `sit` is { attacker, target, ranged, mode } with whatever is known.
 export function judge(tag, sit, s) {
   const { attacker: a, target: t } = sit;
-  const near = a && t ? H.dist(a.pos, t.pos) <= 1 : null;
+  const near = a && t ? apart(s, a, t) <= 1 : null;
   switch (tag) {
     case 'within5': return near;
     case 'beyond5': return near === null ? null : !near;
@@ -55,9 +56,9 @@ export function judge(tag, sit, s) {
     case 'target.prone': return t ? has(t, 'prone') : null;
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     case 'ally.adjacentToTarget':
-      return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && o.side === a.side && H.dist(o.pos, t.pos) <= 1) : null;
+      return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
     case 'enemy.adjacent':
-      return a ? Object.values(s.entities).some((o) => upright(o) && o.side !== a.side && H.dist(o.pos, a.pos) <= 1) : null;
+      return a ? Object.values(s.entities).some((o) => upright(o) && o.side !== a.side && apart(s, o, a) <= 1) : null;
     default: return null;
   }
 }
@@ -104,7 +105,8 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
 }
 
 // A creature's Speed after everything that changes it. Never below 0.
-export function speedOf(s, e) {
-  const m = modifiers(s, e, 'speed');
-  return Math.max(0, m.set !== null ? m.set : (e.speed ?? 0) + m.add);
+// `mode` is walk (the default), climb, swim, fly or burrow; a creature without that way of moving has 0.
+export function speedOf(s, e, mode = 'walk') {
+  const base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0, m = modifiers(s, e, 'speed');
+  return base > 0 ? Math.max(0, m.set !== null ? m.set : base + m.add) : 0;
 }

@@ -2,8 +2,9 @@
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
-import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, FT } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT } from './shared/engine.js';
 import { SKILLS } from './shared/content/schema.js';
+import { gap, under } from './shared/space.js';
 import { aiStep } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
@@ -15,6 +16,10 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const MOVE = { kind: 'move' };
+// How high above the floor each flyer's next move will end, in feet. Chosen with the Higher and Lower buttons.
+const flyAlt = {};
+const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
+const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
 
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null;
 let themeId = THEMES[prefs.get('hextable.theme')] ? prefs.get('hextable.theme') : 'classic';
@@ -92,6 +97,7 @@ function describe(ev) {
     case 'noticed': return [`${n(ev.id)} notices a ${ev.name.toLowerCase()}.`];
     case 'triggered': return [`${n(ev.id)} sets off a ${ev.name.toLowerCase()}!`];
     case 'fell': return [`${n(ev.id)} falls ${ev.feet} ft.`];
+    case 'speed': return [ev.feet ? `${n(ev.id)} now has a ${ev.mode === 'walk' ? '' : `${ev.mode[0].toUpperCase()}${ev.mode.slice(1)} `}Speed of ${ev.feet} ft.` : `${n(ev.id)} no longer has a ${ev.mode} speed.`];
     case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
@@ -243,6 +249,11 @@ function refresh() {
           bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
             blocked(S, e, 'bonus') || (!e.uses.secondWind && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '',
             () => act({ type: 'secondWind', actor: e.id })));
+        if (aloft(S, e)) {
+          const alt = altOf(e);
+          bar.append(button('Higher', `Fly at ${alt + FT} ft`, '', '', () => { flyAlt[e.id] = alt + FT; refresh(); }));
+          bar.append(button(alt ? 'Lower' : 'On the ground', alt ? `Fly at ${alt - FT} ft${alt === FT ? ' (land)' : ''}` : 'Tap Higher to take off', '', alt ? '' : 'Already as low as it goes.', () => { flyAlt[e.id] = alt - FT; refresh(); }));
+        }
         bar.append(button('Search', `${enc ? 'Action · ' : ''}Perception ${signed(checkBonus(e, { skill: 'perception' }))} · 15 ft`, '', blocked(S, e, 'action'), () => act({ type: 'search', actor: e.id })));
         // Doors and other things within reach.
         for (const u of usesFor(S, e)) bar.append(button(`${u.label}`, `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, '', u.why, () => act({ type: 'use', actor: e.id, object: u.object, verb: u.verb })));
@@ -254,7 +265,8 @@ function refresh() {
         }
       }
       // highlights and hint for the armed action
-      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(S, e)].filter(([, v]) => v.canStop).map(([k]) => k);
+      // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
+      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(S, e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
@@ -283,6 +295,7 @@ function refresh() {
   if (mode.kind === 'place') hint = `Tap a hex to place ${name(selId)}`;
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  R.setCeiling(S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   R.setHighlights(hl);
   R.inset = $('dock').offsetHeight * 0.85;
 
@@ -322,9 +335,11 @@ function renderSheet() {
 function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off';
+  $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-climb').checked = S.settings.climbing !== 'off';
   const picked = S.entities[selId], hideable = picked && picked.side !== 'party' && !picked.dead;
   $('dm-hide').disabled = !hideable || (!picked.hidden && inFight(S, picked.id));
   $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
+  $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   $('dm-badge').hidden = !lb.pending.length; $('dm-badge').textContent = lb.pending.length;
@@ -384,14 +399,21 @@ R.onTap = ({ hex, id }) => {
   if (tapped) {
     const myTurn = e && mine(e) && S.encounter && current(S) === e.id;
     if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead) {         // tap an enemy on your turn: attack with whatever reaches
-      const d = H.dist(e.pos, tapped.pos) * FT;
+      const d = gap(S, e.pos, tapped.pos) * FT;
       const a = e.attacks.find((x) => (x.type === 'melee' ? d <= x.reach : d <= x.range[1] && d > 5)) || e.attacks.find((x) => x.type === 'ranged' && d <= x.range[1]);
       if (a) return act({ type: 'attack', actor: e.id, target: tapped.id, attack: a.id });
       return toast(`${tapped.name} is ${d} ft away. Move closer, or pick a spell.`);
     }
     select(tapped.id); return refresh();
   }
-  if (e && mine(e) && hex) act({ type: 'move', actor: e.id, to: hex });
+  if (e && mine(e) && hex) {
+    // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
+    if (aloft(S, e) && altOf(e) > 0) {
+      const spot = [...moveOptions(S, e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
+      return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
+    }
+    act({ type: 'move', actor: e.id, to: hex });
+  }
 };
 R.onHover = (hex) => { if (mode.kind === 'spell' && SPELLS[mode.id].area && hex && !mode.pinned && H.key(hex) !== (mode.aim && H.key(mode.aim))) { mode.aim = hex; refresh(); } };
 
@@ -428,6 +450,9 @@ $('dm-cond-set').onclick = () => {
 $('dm-cond-clear').onclick = () => { const e = S.entities[selId], id = $('dm-cond').value; if (e?.cond[id]) act({ type: 'condition', actor: e.id, condition: id, on: false }); else toast(e ? `${e.name} doesn't have that condition.` : 'Select a creature first.'); };
 $('dm-hide').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'reveal', actor: e.id, hidden: !e.hidden }); };
 $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', value: ev.target.checked });
+$('dm-vertical').onchange = (ev) => act({ type: 'setting', key: 'vertical', value: ev.target.value });
+$('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
+$('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setSpeed', actor: e.id, mode: 'fly', feet: e.speeds?.fly ? 0 : 60 }); };
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();

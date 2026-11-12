@@ -28,6 +28,7 @@ export function onTower() {
   const r = apply(s, { type: "loadMap", map: tower() }, DM);
   assert.ok(r.ok, r.error);
   apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  apply(s, { type: "setting", key: "climbing", value: "off" }, DM);          // these tests are about floors and stairs; climbing has its own
   return s;
 }
 

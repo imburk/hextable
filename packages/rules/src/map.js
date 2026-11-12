@@ -98,6 +98,8 @@ export function lintMap(doc, extra = []) {
       else if (!Object.hasOwn(def.states, l.when) || !Object.hasOwn(odef.states, l.sets)) bad.push(`Object "${o.id}" has a link naming a state that does not exist.`);
     }
     if (o.links !== undefined && !Array.isArray(o.links)) bad.push(`Object "${o.id}": links must be a list.`);
+    if (o.to !== undefined && !(def.connects && o.to && Number.isInteger(o.to.q) && Number.isInteger(o.to.r) && doc.levels.some((l) => l.tiles?.[H.col(o.to)]))) bad.push(`Object "${o.id}" leads to a place that is not on the map, or is not something that joins places.`);
+    if (def.connects && o.to === undefined) bad.push(`Object "${o.id}" joins two places and needs \`to\`.`);
     if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
   }
   const taken = new Set();

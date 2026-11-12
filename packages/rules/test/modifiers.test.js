@@ -137,7 +137,7 @@ test("Paralyzed, Stunned and Unconscious stop a creature acting; Paralyzed is hi
   assert.equal(s.encounter, null);
 
   fight(s); turnOf(s, goblin.id);
-  assert.deepEqual(s.encounter.budget, { move: 0, action: 0, bonus: 0 });
+  assert.deepEqual(s.encounter.budget, { move: 0, action: 0, bonus: 0, dashes: 0 });
   assert.match(apply(s, { type: "attack", actor: goblin.id, target: "fighter", attack: "scimitar" }, DM).error, /Paralyzed and can't act/);
   assert.match(apply(s, { type: "dodge", actor: goblin.id }, DM).error, /can't act/);
 

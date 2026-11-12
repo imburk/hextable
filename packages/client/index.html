@@ -56,12 +56,14 @@
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
     <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when enemies come within 10 ft</label>
     <label class="assign">Noticing hidden things in passing (passive Perception) <select id="dm-passive"><option value="off">Off: only a Search finds them</option><option value="traps">Traps only</option><option value="all">Everything</option></select></label>
+    <label class="assign">Distance when one creature is higher than another <select id="dm-vertical"><option value="max">The longer of across and up (a diagonal counts once)</option><option value="sum">Across plus up</option><option value="true">Straight line</option></select></label>
+    <label class="check"><input type="checkbox" id="dm-climb" checked> Creatures can climb faces too high to step up</label>
   </section>
   <section><h3>Creatures</h3>
     <div class="row" id="dm-spawn"></div>
     <label class="check"><input type="checkbox" id="dm-hidden"> Add them hidden from the players</label>
     <div class="row cond-row"><select id="dm-cond" aria-label="Condition"></select><button type="button" id="dm-cond-set">Apply to selected</button><button type="button" id="dm-cond-clear">Remove</button></div>
-    <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-hide" disabled>Hide selected</button><button type="button" id="dm-rest">Long rest</button></div>
+    <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-hide" disabled>Hide selected</button><button type="button" id="dm-fly" disabled>Give selected flight</button><button type="button" id="dm-rest">Long rest</button></div>
   </section>
   <section><h3>World clock</h3>
     <div class="row"><button type="button" data-time="10">+10 min</button><button type="button" data-time="60">+1 hour</button><button type="button" data-time="480">+8 hours</button></div>

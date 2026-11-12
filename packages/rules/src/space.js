@@ -63,3 +63,19 @@ export const shown = (map, levelId, h) => { const r = regionAt(map, levelId, h);
 export const unseenAt = (map, pos) => { const sf = under(map, pos); return !!sf && !shown(map, sf.level.id, pos); };
 // A creature the players are not told about: the DM hid it, or it is somewhere they have not seen.
 export const concealed = (map, e) => !!e && e.side !== 'party' && (!!e.hidden || unseenAt(map, e.pos));
+
+// ---------- distance ----------
+// How many hexes of height a difference in feet counts as: under 5 ft is none.
+export const rise = (dz) => Math.floor((Math.abs(dz) + 2.49) / FT);
+// Distance between two positions in hexes, counting height. How the two combine is a table rule
+// (settings.vertical): 'max' counts a diagonal as one, 'sum' adds them, 'true' measures the straight line.
+export function gap(s, a, b) {
+  const h = H.dist(a, b), v = rise((a.z ?? 0) - (b.z ?? 0)), rule = s?.settings?.vertical ?? 'max';
+  return rule === 'sum' ? h + v : rule === 'true' ? Math.round(Math.hypot(h, v)) : Math.max(h, v);
+}
+// Distance between two creatures.
+export const apart = (s, a, b) => gap(s, a.pos, b.pos);
+// Do two creatures a hex apart or less in the same column get in each other's way?
+export const overlaps = (a, b) => a.q === b.q && a.r === b.r && Math.abs((a.z ?? 0) - (b.z ?? 0)) < FT;
+// How high a wall stands above the floor of its level, and how tall a creature is, in feet.
+export const WALL_HEIGHT = 10, HEADROOM = 5;
