@@ -107,7 +107,8 @@ function summarise(def) {
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
-    const text = m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}` : `${m.op} on ${what}`;
+    const text = m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
+      : m.op === 'add' && typeof m.value === 'string' ? `${m.value.startsWith('-') ? '' : '+'}${m.value} ${what}` : `${m.op} on ${what}`;
     return { short: text, long: `${text} for ${def.duration}${def.concentration ? ', Concentration' : ''}` };
   }
   return { short: 'DM applies', long: 'The DM applies the effect' };
