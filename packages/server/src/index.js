@@ -62,11 +62,24 @@ function load() {
   }
   return out;
 }
+// The DM's undo history sits beside the table: ABC123.undo.json. Missing or unreadable, the table
+// loads all the same with an empty history.
+const historyFile = (code) => join(DATA, `${code}.undo.json`);
+function loadHistory(code) {
+  let text;
+  try { text = readFileSync(historyFile(code), "utf8"); } catch { return null; }      // none saved
+  try { return JSON.parse(text); }
+  catch (err) { console.error(`Ignoring unreadable undo history for table ${code}: ${err.message}`); return null; }
+}
 const dirty = new Map();
 function flush() {
   for (const [code, t] of dirty) {
     try { writeFileSync(file(code) + ".tmp", JSON.stringify(t)); renameSync(file(code) + ".tmp", file(code)); }
     catch (err) { console.error(`Could not save table ${code}: ${err.message}`); }
+    try {
+      const h = tables.exportHistory(code);
+      if (h) { writeFileSync(historyFile(code) + ".tmp", JSON.stringify(h)); renameSync(historyFile(code) + ".tmp", historyFile(code)); }
+    } catch (err) { console.error(`Could not save undo history for table ${code}: ${err.message}`); }
   }
   dirty.clear();
 }
@@ -76,7 +89,7 @@ function save(t) {
   timer ??= setTimeout(() => { timer = null; flush(); }, 1000);
 }
 
-const tables = createTables({ load, save });
+const tables = createTables({ load, save, loadHistory });
 
 // ---------- http ----------
 const server = createServer(async (req, res) => {
