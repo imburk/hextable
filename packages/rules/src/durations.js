@@ -147,5 +147,7 @@ export function concentrationCheck(s, ev, t, amount, kit) {
 }
 // Anything that stops a creature acting also ends what it was concentrating on.
 export function concentrationLost(s, ev, t, why) {
-  if (t.dead || t.hp <= 0 || incapacitated(t)) breakConcentration(s, ev, t.id, why);
+  if (!(t.dead || t.hp <= 0 || incapacitated(t))) return;
+  breakConcentration(s, ev, t.id, why);
+  for (const fx of effectsOf(s).filter((x) => x.fragile && x.source === t.id)) endEffect(s, ev, fx, why);   // Rage ends on being Incapacitated
 }

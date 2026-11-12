@@ -127,6 +127,8 @@ export const barbarian = {
           "duration": "10 minutes",
           "renew": true,
           "noSpells": true,
+          "unless": "heavy",
+          "endsWhenIncapacitated": true,
           "effects": [
             {
               "modifier": {
