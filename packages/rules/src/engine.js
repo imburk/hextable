@@ -9,7 +9,7 @@
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
-import { ABILITIES, SKILLS } from './content/schema.js';
+import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
@@ -1109,6 +1109,58 @@ const handlers = {
     if (a.mode === 'walk') e.speed = a.feet; else if (a.feet) e.speeds[a.mode] = a.feet; else delete e.speeds[a.mode];
     if (a.mode === 'fly') { if (a.hover && a.feet) e.hover = true; else delete e.hover; }
     ev.push({ type: 'speed', id: e.id, mode: a.mode, feet: a.feet });
+  },
+  // Add a character typed in by hand. { type: 'addCharacter', record, at? }
+  // The record is a finished sheet (see lintRecord in content/schema.js). It joins the party
+  // beside whoever is already there, or at `at`.
+  addCharacter(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can add a character.');
+    const problems = lintRecord(a.record, { spells: SPELLS });
+    problems.length === 0 || fail(`That character can't be added. ${problems[0]}`);
+    Object.values(s.entities).filter((e) => e.kind === 'pc').length < 12 || fail('A table holds twelve characters at most.');
+    const body = { size: a.record.size ?? 'medium' }, B = barriers(s.map);
+    const near = a.at ?? Object.values(s.entities).find((e) => e.side === 'party' && !e.dead)?.pos ?? s.map.starts[0] ?? H.parse(Object.keys(s.map.levels[0].tiles)[0]);
+    const centre = landing(s.map, near, near.z ?? 0) || fail("There's nowhere there to stand.");
+    let spot = null;
+    for (let n = 0; n < 8 && !spot; n++) for (const h of H.range(centre, n)) {
+      const p = H.dist(h, centre) === n ? landing(s.map, h, centre.z) : null;
+      if (!spot && p && Math.abs(p.z - centre.z) <= STEP_MAX && TILES[ground(s.map, p).tile.t].cost < Infinity && !B.solid(ground(s.map, p).level.id, p) &&
+          fitsOn(s.map, body, p, B) && !living(s).some((o) => overlapAt(o, o.pos, body, p))) spot = p;
+    }
+    spot || fail('There is no room for another character there.');
+    const id = `pc${++s.seq}`;
+    s.entities[id] = makeEntity(a.record, { id, kind: 'pc', side: 'party', pos: spot });
+    ev.push({ type: 'spawned', id });
+    lookAround(s, ev, [s.entities[id]]);
+    if (s.encounter?.arena[H.col(spot)]) joinEncounter(s, s.entities[id], ev);
+  },
+  // Replace a character's sheet with a corrected one, keeping who plays it, where it stands and
+  // how hurt it is. { type: 'editCharacter', actor, record }
+  editCharacter(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change a character.');
+    const e = ent(s, a.actor);
+    e.kind === 'pc' || fail(`${e.name} is not a character.`);
+    const problems = lintRecord(a.record, { spells: SPELLS });
+    problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
+    const body = { size: a.record.size ?? 'medium' };
+    (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+    const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
+    const lost = e.maxHp - e.hp;
+    Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed });
+    for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots already spent stay spent
+    if (e.look && !a.record.look) fresh.look = e.look;
+    s.entities[e.id] = fresh;
+    ev.push({ type: 'edited', id: e.id });
+  },
+  // Take a creature out of the game. { type: 'remove', actor }
+  remove(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can remove a creature.');
+    const e = ent(s, a.actor);
+    !inFight(s, e.id) || fail(`${e.name} is in the fight. End the fight first.`);
+    for (const fx of [...effectsOf(s)]) if (fx.source === e.id || fx.parts.some((p) => p.target === e.id)) endEffect(s, ev, fx, `${e.name} left`);
+    ev.push({ type: 'removed', id: e.id, name: e.name });
+    delete s.entities[e.id];
   },
   // Change how big a creature is. { type: 'setSize', actor, size }
   setSize(s, a, ctx, ev) {
