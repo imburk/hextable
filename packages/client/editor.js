@@ -22,7 +22,7 @@ const HINTS = {
   stairs: 'Tap the hex at the bottom, then the hex at the top, in a straight line. The tiles between become even steps. They can be on different levels.',
   props: 'Tap a door or thing to set its state, name, key, DCs and links.',
   start: 'Tap the hex where the party starts.',
-  level: 'Add a level above or below, or pick which one to edit at the top.',
+  level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
   file: 'Start a blank map, save this one to a file, or open one.',
 };
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
@@ -40,6 +40,7 @@ export class Editor {
     this.def = Object.keys(CONTENT.objects)[0]; this.region = ''; this.levelId = null; this.showAll = false;
     this.pending = null;          // the first hex of a two-tap edit: { q, r, level }
     this.armed = null;            // a button that needs a second tap
+    this.scaling = null;          // the scale tool: { pts: [[x, y], ...] } in map feet, two taps on the picture
     this.hmode = 'up'; this.lastH = null; this.props = null; this.stroke = null; this.areaOver = null;   // height tool, properties form, a drag in progress
     this.#build();
     $('dm-edit').onclick = () => this.start();
@@ -61,7 +62,7 @@ export class Editor {
   stop() {
     if (!this.on) return;
     this.on = false; this.pending = null;
-    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null;
+    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.R.setPins([]); this.pinSig = '';
     document.body.classList.remove('editing'); $('editor').hidden = true;
     if (this.S) this.refresh();
   }
@@ -111,12 +112,14 @@ export class Editor {
     const hint = this.tool === 'object' ? (d.kind === 'door' ? 'door' : d.connects ? 'ladder' : 'thing') : this.tool;
     $('ed-hint').textContent = this.pending ? (this.tool === 'object' && d.connects ? 'Now tap where it leads.' : 'Now tap a neighbouring hex.') : HINTS[hint];
     this.#syncMore(room);
+    this.#syncBackground(l);
     this.R.inset = $('editor').offsetHeight * 0.85;
   }
 
   // ---------- taps ----------
   #tap(px, py) {
     if (!this.S) return;
+    if (this.scaling && this.tool === 'level') return this.#scaleTap(px, py);
     const l = this.level(), h = this.R.planeHex(px, py, l.z);
     if (!h) return;
     const k = H.col(h), tile = l.tiles[k], map = this.S.map, area = this.areaOver ?? H.range(h, this.brush);
@@ -411,6 +414,101 @@ export class Editor {
     if (this.tool === 'props') $('ed-hint').textContent = this.props?.pick === 'to' ? 'Tap the tile it leads to (change level first if it goes up or down).' : this.props?.pick === 'link' ? 'Tap the other object.' : HINTS.props;
   }
 
+  // ---------- a level's background picture ----------
+  // The picture is an asset (the table's file store, or this browser's in solo play) named by
+  // `level.image: { asset, feet: [w, h], origin: [x, y] }`. Every change is one `level` edit.
+  #buildBackground() {
+    $('ed-opts').insertAdjacentHTML('beforeend', `
+      <div class="ed-row" data-for="level" id="ed-bg"><span id="ed-bgstate"></span>
+        <button type="button" id="ed-setbg">Set background</button><select id="ed-bgpick" aria-label="Use a picture already uploaded"></select>
+        <input type="file" id="ed-bgfile" accept="image/png,image/jpeg,image/webp" hidden></div>
+      <div class="ed-row" data-for="level" id="ed-bgscale"><button type="button" id="ed-scale">Set scale</button>
+        <span id="ed-scalehint"></span>
+        <span id="ed-scaleask" hidden><input id="ed-dist" type="number" inputmode="decimal" min="0.1" step="any" class="feet" aria-label="Distance between the two points in feet" placeholder="feet"> ft
+          <button type="button" id="ed-scaleok">Apply</button></span></div>
+      <div class="ed-row" data-for="level" id="ed-bgnudge"><span>Nudge</span>
+        <button type="button" data-nudge="left" aria-label="Nudge left">&larr;</button><button type="button" data-nudge="up" aria-label="Nudge up">&uarr;</button><button type="button" data-nudge="down" aria-label="Nudge down">&darr;</button><button type="button" data-nudge="right" aria-label="Nudge right">&rarr;</button>
+        <select id="ed-nudgestep" aria-label="How far"><option value="1">1 ft</option><option value="5">5 ft</option><option value="0.25">3 in</option></select>
+        <button type="button" id="ed-clearbg">Clear background</button></div>`);
+    $('ed-setbg').onclick = () => $('ed-bgfile').click();
+    $('ed-bgfile').onchange = async (ev) => {
+      const f = ev.target.files[0]; ev.target.value = '';
+      const store = this.assets?.();
+      if (!f) return;
+      if (!store) return this.toast('There is nowhere to keep the picture.');
+      try { await this.#useAsset((await store.upload(f)).id); this.#listPictures(); } catch (err) { this.toast(err.message); }
+    };
+    $('ed-bgpick').onchange = async (ev) => { const id = ev.target.value; ev.target.value = ''; if (id) try { await this.#useAsset(id); } catch (err) { this.toast(err.message); } };
+    $('ed-scale').onclick = () => { this.scaling = this.scaling ? null : { pts: [] }; this.pending = null; this.refresh(); };
+    $('ed-scaleok').onclick = () => this.#applyScale();
+    $('ed-dist').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); this.#applyScale(); } };
+    $('ed-bgnudge').onclick = (ev) => { const b = ev.target.closest('[data-nudge]'); if (b) this.#nudge(b.dataset.nudge); };
+    $('ed-clearbg').onclick = (ev) => this.#sure(ev.currentTarget, () => { this.scaling = null; this.edit([{ op: 'level', level: { id: this.level().id, image: null } }]); });
+  }
+  // The pictures already in the store, to pick from (a handout's picture, an earlier upload).
+  async #listPictures() {
+    const store = this.assets?.(), sel = $('ed-bgpick');
+    let list = [];
+    try { list = store ? (await store.list()).assets.filter((a) => a.kind === 'image') : []; } catch { /* a player's table, or no store: only upload is offered */ }
+    sel.innerHTML = `<option value="">Use an uploaded picture…</option>${list.map((a) => `<option value="${esc(a.id)}">${esc(a.name || a.id)}</option>`).join('')}`;
+    sel.hidden = !list.length;
+  }
+  // Lay the picture on the level, centred on the middle of the map, at 70 pixels to a 5 ft square until the DM sets the scale.
+  async #useAsset(id) {
+    const store = this.assets();
+    const img = new Image();
+    img.src = await store.url(id);
+    await img.decode().catch(() => { throw new Error('That picture could not be read.'); });
+    const fw = Math.max(5, Math.min(90000, Math.round((img.naturalWidth / 70) * 5 * 100) / 100)), fh = Math.max(5, Math.min(90000, Math.round((img.naturalHeight / 70) * 5 * 100) / 100));
+    this.scaling = null;
+    this.edit([{ op: 'level', level: { id: this.level().id, image: { asset: id, feet: [fw, fh], origin: [Math.round((-fw / 2) * 100) / 100, Math.round((-fh / 2) * 100) / 100] } } }]);
+    this.toast('Background set. Use Set scale to match it to the grid.', true);
+  }
+  #scaleTap(px, py) {
+    const l = this.level(), p = this.R.planePoint(px, py, l.z);
+    if (!p) return;
+    if (this.scaling.pts.length >= 2) this.scaling.pts = [];
+    this.scaling.pts.push(p);
+    $('ed-dist').value = '';
+    this.refresh();
+    if (this.scaling.pts.length === 2) $('ed-dist').focus?.({ preventScroll: true });
+  }
+  #applyScale() {
+    const l = this.level(), img = l.image, pts = this.scaling?.pts ?? [];
+    if (!img || pts.length < 2) return;
+    const [p, q] = pts, gap = Math.hypot(q[0] - p[0], q[1] - p[1]), want = Number($('ed-dist').value);
+    if (!(want > 0)) return this.toast('Type the distance between the two points, in feet.');
+    if (gap < 0.5) return this.toast('Those two points are too close together. Tap two points far apart.');
+    const k = want / gap, r2 = (n) => Math.round(n * 100) / 100, feet = [r2(img.feet[0] * k), r2(img.feet[1] * k)];
+    if (feet.some((n) => !(n >= 1 && n <= 100000))) return this.toast('That would make the picture too big or too small.');
+    const origin = [r2(p[0] + (img.origin[0] - p[0]) * k), r2(p[1] + (img.origin[1] - p[1]) * k)];     // the first point stays where it is
+    this.scaling = null;
+    this.edit([{ op: 'level', level: { id: l.id, image: { ...img, feet, origin } } }]);
+    this.toast(`The picture is now ${feet[0]} by ${feet[1]} ft.`, true);
+  }
+  #nudge(dir) {
+    const l = this.level(), img = l.image;
+    if (!img) return;
+    const step = Number($('ed-nudgestep').value) || 1, ax = this.R.screenAxes(), s = { left: [ax.right, -1], right: [ax.right, 1], up: [ax.up, 1], down: [ax.up, -1] }[dir];
+    const origin = [Math.round((img.origin[0] + s[0][0] * s[1] * step) * 100) / 100, Math.round((img.origin[1] + s[0][1] * s[1] * step) * 100) / 100];
+    this.edit([{ op: 'level', level: { id: l.id, image: { ...img, origin } } }]);
+  }
+  #syncBackground(l) {
+    const img = l.image;
+    $('ed-bgstate').textContent = img ? `Picture ${img.feet[0]} by ${img.feet[1]} ft${this.R.hasPicture(l.id) ? '' : ' (not loaded)'}` : 'No background picture.';
+    $('ed-setbg').textContent = img ? 'Change background' : 'Set background';
+    for (const id of ['ed-scale', 'ed-clearbg']) $(id).disabled = !img;
+    for (const b of $('ed-bgnudge').querySelectorAll('[data-nudge]')) b.disabled = !img;
+    if (!img) this.scaling = null;
+    $('ed-scale').classList.toggle('sel', !!this.scaling);
+    const n = this.scaling?.pts.length ?? 0;
+    $('ed-scalehint').textContent = this.scaling ? (n < 2 ? `Tap ${n ? 'the second' : 'the first'} point of a distance you know.` : 'Type the distance between them.') : '';
+    $('ed-scaleask').hidden = n < 2;
+    const sig = JSON.stringify([this.scaling?.pts ?? [], l.z]);
+    if (this.on && sig !== this.pinSig) { this.pinSig = sig; this.R.setPins(this.scaling?.pts ?? [], l.z); }
+    if (this.tool === 'level' && this.scaling) $('ed-hint').textContent = n < 2 ? 'Tap two points on the picture that are a known distance apart (the ends of a 30 ft room, say).' : 'Now type how many feet apart they are, and Apply.';
+  }
+
   // ---------- map files ----------
   blank() {
     const tiles = {};
@@ -476,10 +574,11 @@ export class Editor {
       </div>
       <p id="ed-hint"></p>`;
     this.#buildMore();
+    this.#buildBackground();
     const again = () => this.refresh();
     $('ed-done').onclick = () => this.stop();
-    $('ed-level').onchange = (ev) => { this.levelId = ev.target.value; again(); };     // a ladder's second tap may be on another level
-    $('ed-tools').onclick = (ev) => { const b = ev.target.closest('[data-tool]'); if (b) { this.tool = b.dataset.tool; this.pending = null; again(); } };
+    $('ed-level').onchange = (ev) => { this.levelId = ev.target.value; this.scaling = null; again(); };     // a ladder's second tap may be on another level
+    $('ed-tools').onclick = (ev) => { const b = ev.target.closest('[data-tool]'); if (b) { this.tool = b.dataset.tool; this.pending = null; this.scaling = null; if (this.tool === 'level') this.#listPictures(); again(); } };
     $('ed-terrain').onclick = (ev) => { const b = ev.target.closest('[data-t]'); if (b) { this.terrain = b.dataset.t; again(); } };
     $('ed-brush').onclick = (ev) => { const b = ev.target.closest('[data-b]'); if (b) { this.brush = +b.dataset.b; again(); } };
     $('ed-kinds').onclick = (ev) => { const b = ev.target.closest('[data-k]'); if (b) { this.kind = b.dataset.k; again(); } };
