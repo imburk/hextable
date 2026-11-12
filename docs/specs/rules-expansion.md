@@ -407,8 +407,8 @@ above its own: `{ damage: "1d6" }`, `{ heal: "2d8" }` or `{ times: 1 }`.
 What the engine does with a spell today (task R2):
 
 - Aims it: one creature in range, the caster, or an area. Cones, spheres,
-  cylinders and emanations are laid out on the hexes. Lines and cubes are
-  not yet, so those spells are handed to the DM.
+  cylinders, emanations, lines and cubes are laid out on the hexes (see the
+  build notes on the vocabulary below for lines and cubes).
 - Charges for it: the action or Bonus Action, the slot, the range. Spells
   cast as a Reaction are refused for now; spells that take longer than a
   turn can only be cast outside a fight.
@@ -488,8 +488,8 @@ Settled when monster actions were made to run from their data (DEBT M1 to M4, C1
   `recharge` event), `uses: { per: 'day', n }` (counted in `creature.charges`;
   nothing restores it yet), and `time: 'bonus'` (costs the Bonus Action).
 - **Areas** of monster actions: `target.area.range` (feet) says how far away a
-  sphere or cylinder may be centred. Without it, or for a line or cube, the
-  engine has nothing to aim and the DM applies the action.
+  sphere or cylinder may be centred. Without it the engine has nothing to aim
+  and the DM applies the action. Lines and cubes: see below.
 - **Condition immunities:** `conditionImmune: [conditions]` on a monster. The
   engine refuses those conditions (a `note` says so) and the DM cannot set them.
 - **Views.** A monster's actions are never sent to players (the seen record is
@@ -500,6 +500,32 @@ Settled when monster actions were made to run from their data (DEBT M1 to M4, C1
   monster's action text carries its numbers.
 - **State version 10:** `migrate()` gives a creature with a pack template its
   actions and condition immunities.
+
+#### Build notes: the vocabulary, extended (amendment)
+
+Settled while widening what spells and monster actions can say (DEBT S1 to S7, M11). Each
+entry names what was added to `schema.js` and what the engine does with it.
+
+- **Lines and cubes** (S3, M11). `area.shape: 'line'` takes `size` (its length) and `width`
+  (feet, 5 when not given). It starts at the edge of the caster's space, so a Large or larger
+  creature's line starts at its front, and runs toward the hex aimed at; the hexes in it are
+  those whose centres lie inside the strip (a centre exactly on its edge counts on one side
+  only, so a 5-foot line is one hex wide in every direction). Aimed at a height (`hex.z`), or
+  at a hex whose ground is higher or lower, it tilts: its length is measured along the tilt,
+  and it catches a creature whose body it passes through. A line with a range (Wind Wall: a
+  wall of any shape placed at a distance) is not laid out; the DM places it.
+  `area.shape: 'cube'`: the SRD puts a cube's point of origin on one of its faces, outside it.
+  A Self cube (Thunderwave) starts at the edge of the caster's space and extends `size` feet
+  the way it is aimed, as wide, from the caster's height up. A cube with a range (Entangle,
+  Hypnotic Pattern) is placed by its near face: the hex aimed at must be within range, is in
+  the cube, and the cube extends away from the caster, rising `size` feet from the ground (or
+  the height) aimed at. A 20-foot square on the ground is entered as a 20-foot cube.
+  Three more area fields: `exceptCaster: true` ("each creature other than you", Entangle);
+  `choose: n` (up to n creatures of the caster's choice in the area, Slow) and `count: n` (n
+  such shapes arranged by the caster, Fire Storm's ten cubes), both of which keep the spell
+  with the DM until the engine can take the choice. One situation tag, `target.seesSource`
+  (the target can see the effect's source), which the engine cannot judge until sight is
+  built: a step under it is handed to the DM for each creature, as any unjudged tag is.
 
 ### A class
 
