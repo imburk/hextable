@@ -8,8 +8,9 @@
 // an AI DM or AI character is just another caller of apply().
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
-import { SPELLS, TILES, MONSTERS } from './content/index.js';
+import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
+import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export const FT = 5;                 // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
@@ -55,7 +56,7 @@ function occupancy(s) {
 
 // Map of hex key -> {cost, prev, canStop} that this creature can move to right now.
 export function moveOptions(s, e) {
-  if (!e || !up(e)) return new Map();
+  if (!e || !up(e) || speedOf(s, e) === 0) return new Map();
   const enc = s.encounter, fighting = inFight(s, e.id);
   if (fighting && current(s) !== e.id) return new Map();
   const occ = occupancy(s);
@@ -73,7 +74,7 @@ export function moveOptions(s, e) {
 
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
-    o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed &&
+    o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
     o.attacks.some((a) => a.type === 'melee') && H.dist(o.pos, pos) <= 1);
 }
 
@@ -89,7 +90,12 @@ function reveal(s, e, ev) {
 // ---------- encounters ----------
 
 const initiativeSort = (order) => order.sort((a, b) => b.init - a.init || b.dex - a.dex);
-const rollInit = (s, e) => ({ id: e.id, init: die(s, 20) + mod(e.abil.dex), dex: e.abil.dex });
+function rollInit(s, e) {
+  const m = modifiers(s, e, 'initiative'), two = (m.advantage.length > 0) !== (m.disadvantage.length > 0);
+  const r1 = die(s, 20), r2 = two ? die(s, 20) : null;
+  const d = !two ? r1 : m.advantage.length ? Math.max(r1, r2) : Math.min(r1, r2);
+  return { id: e.id, init: d + mod(e.abil.dex) + m.add, dex: e.abil.dex };
+}
 
 function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
   const arena = {};
@@ -145,7 +151,7 @@ function deathSave(s, e, ev) {
   else if (d >= 10) e.death.s++;
   else e.death.f++;
   if (e.death.f >= 3) e.dead = true;
-  else if (e.death.s >= 3) e.cond.stable = true;
+  else if (e.death.s >= 3) e.cond.stable = {};
   ev.push({ type: 'deathSave', id: e.id, roll: d, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
 
@@ -161,13 +167,14 @@ function advanceTurn(s, ev) {
       if (e.hp <= 0) continue;
     }
     enc.flags = {};
-    enc.budget = { move: e.speed, action: 1, bonus: 1 };
+    const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
+    enc.budget = { move: speed, action: can, bonus: can };
     e.reactionUsed = false;
     delete e.cond.dodging;
     ev.push({ type: 'turn', id: e.id, round: enc.round });
-    if (e.cond.prone) {
+    if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
       delete e.cond.prone;
-      enc.budget.move -= Math.floor(e.speed / 2 / FT) * FT;
+      enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
       ev.push({ type: 'stood', id: e.id });
     }
     return;
@@ -179,9 +186,11 @@ function advanceTurn(s, ev) {
 
 function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   let n = amount;
-  if (t.immune.includes(dtype)) n = 0;
-  else if (t.resist.includes(dtype)) n = Math.floor(n / 2);
-  else if (t.vuln.includes(dtype)) n *= 2;
+  const m = modifiers(s, t, 'damage.taken', { target: t });
+  const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(dtype) || own.includes(dtype);
+  if (applies(m.immune, t.immune)) n = 0;
+  else if (applies(m.resist, t.resist)) n = Math.floor(n / 2);
+  else if (applies(m.vulnerable, t.vuln)) n *= 2;
   const note = n === 0 && amount > 0 ? 'immune' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
   if (t.hp <= 0) {                                        // already dying
     if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3) t.dead = true; }
@@ -194,7 +203,7 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   ev.push({ type: 'damage', target: t.id, amount: n, dtype, hp: t.hp, note });
   if (t.hp > 0) return;
   if (t.kind === 'pc' && n - before < t.maxHp) {          // otherwise: instant death from massive damage
-    t.cond.unconscious = true; t.cond.prone = true; t.death = { s: 0, f: 0 };
+    t.cond.unconscious = {}; t.cond.prone = {}; t.death = { s: 0, f: 0 };
     ev.push({ type: 'down', id: t.id });
   } else { t.dead = true; ev.push({ type: 'died', id: t.id }); }
 }
@@ -215,29 +224,30 @@ function checkRange(e, t, atk) {
   } else if (d * FT > atk.range[1]) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.range[1]} ft.`);
 }
 
-// Advantage and Disadvantage from the situation. Any of each cancels to a normal roll.
+// Advantage and Disadvantage for an attack, with the reasons. Any of each cancels to a normal roll.
+// Conditions and traits supply theirs as data (modifiers.js); the two rules written out here
+// belong to ranged attacks themselves. Also returns `add` (a bonus or penalty to the roll) and
+// `crit` (a hit is critical whatever the die shows).
 export function rollMode(s, e, t, atk) {
-  const d = H.dist(e.pos, t.pos), ranged = atk.type === 'ranged', adv = [], dis = [];
-  if (t.cond.unconscious) adv.push('target unconscious');
-  if (t.cond.prone) (d <= 1 ? adv : dis).push('target prone');
-  if (e.features.packTactics && living(s).some((o) => o.id !== e.id && up(o) && !hostile(o, e) && H.dist(o.pos, t.pos) <= 1))
-    adv.push('Pack Tactics');
-  if (t.cond.dodging) dis.push('target dodging');
-  if (e.cond.prone) dis.push('attacker prone');
+  const d = H.dist(e.pos, t.pos), ranged = atk.type === 'ranged';
+  const sit = { attacker: e, target: t, ranged };
+  const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
+  const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
   if (ranged && living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= 1)) dis.push('enemy within 5 ft');
-  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis };
+  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 function rollToHit(s, e, t, atk, ev, extra = {}) {
-  const { mode, adv, dis } = rollMode(s, e, t, atk);
+  const { mode, adv, dis, add, crit: sureCrit } = rollMode(s, e, t, atk);
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
-  const hit = nat !== 1 && (nat === 20 || nat + atk.bonus >= t.ac);
-  const crit = hit && (nat === 20 || (!!t.cond.unconscious && H.dist(e.pos, t.pos) <= 1));
+  const bonus = atk.bonus + add;
+  const hit = nat !== 1 && (nat === 20 || nat + bonus >= t.ac);
+  const crit = hit && (nat === 20 || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + atk.bonus, ac: t.ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...extra });
+    total: nat + bonus, ac: t.ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...extra });
   return { hit, crit, mode };
 }
 
@@ -263,21 +273,28 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
 }
 
-// Conditions whose rules the engine applies today. Any other is recorded on the creature and
-// the DM is told to apply it, until conditions become data (task R3).
-const ENFORCED = ['prone', 'unconscious'];
-function condition(s, t, id, ev, f = null) {
+// Put a condition on a creature. What the condition does is data (content/srd52/conditions.js).
+// Whatever part of it the engine does not apply, and the fact that nothing ends it yet, goes
+// to the DM as a note. `f` is the effect frame that caused it, if any.
+function condition(s, t, id, ev, f = null, level = undefined) {
   if (!up(t) || t.cond[id]) return;
-  t.cond[id] = true;
+  t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}) };
   ev.push({ type: 'cond', id: t.id, cond: id });
-  if (!ENFORCED.includes(id)) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? id, partial: true,
-    text: `${t.name} is ${id}. The engine records that but does not apply its effects yet; the DM does, and removes it when it ends.` });
+  if (id === 'prone') return;                                           // fully applied, and ended by standing up
+  const def = conditionDef(id), name = conditionName(id);
+  ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true,
+    text: `${t.name} ${conditionPhrase(id)}.${def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : ''} Nothing ends it yet: the DM removes it.` });
 }
 
 function savingThrow(s, t, abil, dc) {
-  if (t.cond.unconscious && (abil === 'str' || abil === 'dex')) return { roll: 0, total: 0, success: false };
-  const r = die(s, 20), total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
-  return { roll: r, total, success: total >= dc };
+  const m = modifiers(s, t, `save.${abil}`, { target: t }, '');
+  if (m.autoFail) return { roll: 0, total: 0, success: false };
+  if (m.autoSucceed) return { roll: 0, total: dc, success: true };
+  const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
+  const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
+  const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
+  const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add;
+  return { roll: r, total, success: total >= dc, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
 }
 
 // Hexes an area spell would cover if aimed at `aim`.
@@ -297,6 +314,8 @@ export function areaHexes(s, e, sp, aim) {
 // Why this creature can't take an action/bonus action right now ('' if it can).
 export function blocked(s, e, time = 'action') {
   if (!up(e)) return `${e.name} is down.`;
+  const stopped = incapacitatedBy(e);
+  if (stopped) return `${e.name} is ${stopped} and can't act.`;
   if (!s.encounter) return '';
   if (!inFight(s, e.id)) return `${e.name} is outside the battle. Move into the arena to join.`;
   if (current(s) !== e.id) return `It isn't ${e.name}'s turn.`;
@@ -304,6 +323,8 @@ export function blocked(s, e, time = 'action') {
   return '';
 }
 const need = (s, e, time) => { const why = blocked(s, e, time); if (why) fail(why); };
+// Refuse if a condition stops this creature acting at all, in or out of a fight.
+const able = (e) => { const by = incapacitatedBy(e); if (by) fail(`${e.name} is ${by} and can't act.`); };
 
 // Creature ids a given attack or spell could legally target right now (range only).
 export function targetsFor(s, e, { attack, spell }) {
@@ -325,12 +346,13 @@ export function targetsFor(s, e, { attack, spell }) {
 // ---------- actions ----------
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, heal, condition, dist: H.dist };
+const KIT = { rollToHit, savingThrow, damage, heal, condition, judge };
 
 const handlers = {
   move(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     up(e) || fail(`${e.name} can't move.`);
+    speedOf(s, e) > 0 || fail(`${e.name} can't move: its Speed is 0.`);
     const fighting = inFight(s, e.id);
     if (fighting && current(s) !== e.id) fail(`It isn't ${e.name}'s turn.`);
     const reach = moveOptions(s, e);
@@ -386,6 +408,7 @@ const handlers = {
     const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
     const atk = e.attacks.find((x) => x.id === a.attack) || fail('Unknown attack.');
     up(e) || fail(`${e.name} is down.`);
+    able(e);
     !t.dead || fail(`${t.name} is already dead.`);
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(e, t, atk);
@@ -403,6 +426,7 @@ const handlers = {
     const sp = SPELLS[a.spell];
     (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     up(e) || fail(`${e.name} is down.`);
+    able(e);
     if (sp.time === 'reaction') fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
     if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
 
@@ -472,7 +496,7 @@ const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
     need(s, e, 'action');
-    s.encounter.budget.action--; s.encounter.budget.move += e.speed;
+    s.encounter.budget.action--; s.encounter.budget.move += speedOf(s, e);
     ev.push({ type: 'std', id: e.id, action: 'Dash' });
   },
   disengage(s, a, ctx, ev) {
@@ -480,14 +504,14 @@ const handlers = {
     s.encounter || fail('Disengage only matters in a fight.');
     const time = e.features.nimbleEscape ? 'bonus' : 'action';
     need(s, e, time);
-    s.encounter.budget[time]--; e.cond.disengaged = true;
+    s.encounter.budget[time]--; e.cond.disengaged = {};
     ev.push({ type: 'std', id: e.id, action: 'Disengage' });
   },
   dodge(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Dodge only matters in a fight.');
     need(s, e, 'action');
-    s.encounter.budget.action--; e.cond.dodging = true;
+    s.encounter.budget.action--; e.cond.dodging = {};
     ev.push({ type: 'std', id: e.id, action: 'Dodge' });
   },
   secondWind(s, a, ctx, ev) {
@@ -572,6 +596,27 @@ const handlers = {
       e.hidden || fail(`${e.name} isn't hidden.`);
       reveal(s, e, ev);
     }
+  },
+  // Put a condition on a creature or take it off. { type: 'condition', actor, condition, on: true|false, level? }
+  condition(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can set conditions.');
+    const e = ent(s, a.actor), def = conditionDef(a.condition);
+    (def && CONTENT.conditions[a.condition]) || fail('Unknown condition.');
+    if (a.on === false) {
+      e.cond[a.condition] || fail(`${e.name} isn't ${def.name}.`);
+      delete e.cond[a.condition];
+      ev.push({ type: 'condEnd', id: e.id, cond: a.condition });
+      return;
+    }
+    up(e) || fail(`${e.name} is down.`);
+    const level = def.levels ? Math.max(1, Math.min(def.levels, a.level | 0 || 1)) : undefined;
+    if (e.cond[a.condition]) {
+      (def.levels && e.cond[a.condition].level !== level) || fail(`${e.name} is already ${def.name}.`);
+      e.cond[a.condition].level = level;
+      ev.push({ type: 'cond', id: e.id, cond: a.condition, level });
+      return;
+    }
+    condition(s, e, a.condition, ev, null, level);
   },
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');

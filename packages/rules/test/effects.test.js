@@ -171,13 +171,13 @@ test("a condition the engine does not enforce yet is recorded and flagged; one i
   let res = cast(s, hold, { target: goblin.id });
   assert.ok(res.ok, res.error);
   if (!res.events.find((e) => e.type === "save").success) {
-    assert.equal(goblin.cond.paralyzed, true);
-    assert.match(res.events.find((e) => e.type === "manual").text, /does not apply its effects yet/);
+    assert.ok(goblin.cond.paralyzed);
+    assert.match(res.events.find((e) => e.type === "manual").text, /Nothing ends it yet/);
   }
   apply(s, { type: "endTurn", actor: "wizard" }, DM); wizardsTurn(s);
   res = cast(s, trip, { target: goblin.id });
   if (!res.events.find((e) => e.type === "save").success) {
-    assert.equal(goblin.cond.prone, true);
+    assert.ok(goblin.cond.prone);
     assert.equal(res.events.some((e) => e.type === "manual"), false);
   }
   // Either way the dice were against a goblin with a -5 modifier and DC 13: at least one of the two landed.

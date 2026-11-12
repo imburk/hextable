@@ -122,18 +122,6 @@ export function sharedRolls(s, steps) {
   return shared;
 }
 
-// Situation tags a step can be conditional on. Returns true, false, or null if the engine
-// cannot tell yet (the step is then handed to the DM, never guessed).
-function holds(tag, f, s, kit) {
-  const e = s.entities[f.actor], t = s.entities[f.target];
-  if (tag === 'attack.advantage') return f.mode === 'adv';
-  if (tag === 'attack.disadvantage') return f.mode === 'dis';
-  if (tag === 'target.prone') return !!t?.cond.prone;
-  if (tag === 'target.unconscious') return !!t?.cond.unconscious;
-  if (tag === 'within5') return !!(e && t) && kit.dist(e.pos, t.pos) <= 1;
-  return null;
-}
-
 // Begin resolving `steps` from `actor` against each of `targets` in turn. `src` is
 // { name, dc, attack, healMod } for events and rolls; `shared` comes from sharedRolls().
 export function begin(s, { steps, actor, targets, src, shared = null }) {
@@ -143,7 +131,7 @@ export function begin(s, { steps, actor, targets, src, shared = null }) {
 }
 
 // Run until the stack is empty. `kit` is the engine's own machinery: rollToHit, savingThrow,
-// damage, heal, condition, dist. Passing it in keeps this file free of the engine's internals.
+// damage, heal, condition, judge. Passing it in keeps this file free of the engine's internals.
 export function run(s, ev, kit) {
   const stack = s.stack ?? [];
   while (stack.length) {
@@ -173,7 +161,7 @@ function exec(s, ev, kit, f, step, at) {
   if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
   if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. The DM applies it.`);
   for (const tag of step.when ?? []) {
-    const ok = holds(tag, f, s, kit);
+    const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s);
     if (ok === null) return handOver(`Part of ${f.src.name} depends on "${tag}", which the engine cannot judge yet. The DM applies it if it holds.`);
     if (!ok) return;
   }

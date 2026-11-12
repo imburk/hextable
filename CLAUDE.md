@@ -15,7 +15,8 @@ by the engine. Must work on PC, phone and tablet.
 - `packages/rules/src` — the rules engine. `apply(state, action, ctx)` is the
   only way game state changes. Also hex maths, seeded dice, monster AI, the
   starter scenario, views and patches. `effects.js` runs a spell's effect
-  steps from its data on a stack kept in the game state.
+  steps from its data on a stack kept in the game state. `modifiers.js`
+  gathers what conditions and traits change about a roll or a number.
 - `packages/rules/src/content` — rules content. `srd52/` is a pack of data
   files; `schema.js` is the closed vocabulary they may use and the linter
   that enforces it; `index.js` loads packs. `npm run content` prints what is

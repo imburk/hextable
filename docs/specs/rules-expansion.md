@@ -138,7 +138,7 @@ thing. Today each is an `if` in the engine. They become data:
   `autoFail`, `autoSucceed`, `resist`, `vulnerable`, `immune`, `crit`.
 - `when` is a list of named situation tags the engine knows how to test
   (`within5`, `target.prone`, `attacker.unseen`, `ranged`, `ally.adjacent`).
-  All must hold.
+  All must hold. `beyond5` was added to the list with R3, for Prone.
 
 One engine function, `modifiers(state, creature, hook, situation)`, collects
 every modifier that applies from four sources: the creature's features and
@@ -539,7 +539,14 @@ The fifteen conditions **(check the list)** are entries in `conditions.js`:
 
 Flags cover what modifiers cannot: `incapacitated: true` (no actions, bonus
 actions or reactions), `includes: ["incapacitated", "prone"]` for conditions
-that imply others. `visible` decides whether players see it on a creature
+that imply others, and `levels` for one that stacks. `also` holds, in plain
+words, the part of a condition the engine does not apply; the DM is shown it
+when the condition is put on a creature. A modifier whose `when` the engine
+cannot judge is not applied.
+
+The DM can put any condition on a creature or take it off
+(`{type:"condition", actor, condition, on, level?}`). Until durations exist
+(R4), nothing else ends a condition except standing up from Prone. `visible` decides whether players see it on a creature
 that is not theirs; the view layer reads it instead of its current fixed list.
 
 On a creature, `cond` changes from booleans to instances:
@@ -582,9 +589,9 @@ higher, to a maximum of 30 **(check)**). The save is automatic and logged.
 ## State version and saved tables
 
 The game state's `version` goes from 1 to 2. `migrate(state)` upgrades a
-version 1 state in place: creatures become `{ ...record, sheet: { mode:
-"manual" }, state }`, boolean conditions become instances, ids become
-kebab-case, `effects: []` is added. The server runs it when loading a table
+version 1 state in place: boolean conditions become records and ids become
+kebab-case. Later tasks extend it: `state.effects` arrives with R4, and
+creatures become `{ ...record, sheet, state }` with R7. The server runs it when loading a table
 and solo play runs it when loading from browser storage. A test keeps a saved
 version 1 table and checks it still loads and plays.
 
@@ -641,7 +648,7 @@ each other and with the engine tasks.
 |---|---|---|---|---|
 | R1 (built) | Content pack layout, loader, and linter; move the existing 6 spells, 3 monsters and 4 pregens into `srd52/` in the new format | Fable | `content/**`, new linter, `scenario.js` | Linter passes; all existing tests pass unchanged apart from ids |
 | R2 (built) | Effect steps: resolve `attack`, `save`, `damage`, `heal`, `condition`, `manual` from data on a resumable stack; delete the four hard-coded spell kinds. `modifier`, `move` and `resource` steps are handed to the DM until R3 and R4. Weapon attacks stay flat records until R3 and R10 | Fable | `engine.js`, new `effects.js` | The six spells play identically from data; a `manual` spell enforces its costs and shows its text |
-| R3 | Modifier system and the fifteen conditions as data; state version 2 and `migrate()` | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
+| R3 (built) | Modifier system and the fifteen conditions as data; state version 2 and `migrate()`. Version 2 makes conditions records; the split of a creature into record, sheet and state moves to R7, where `derive()` needs it | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
 | R4 | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
 | R5 | Quick entry: form, manual sheets, DM adds a character to the table | any agent, reviewed | `app.js`, `index.html`, small engine action | A level 5 character typed from a paper sheet can be claimed and played |
 | R6 | Standing-instruction reactions | Fable | `engine.js` | Opportunity Attack honours always / never; one spell reaction works |

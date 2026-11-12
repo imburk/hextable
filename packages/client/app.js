@@ -4,7 +4,8 @@
 import * as H from './shared/hex.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, FT } from './shared/engine.js';
 import { aiStep } from './shared/ai.js';
-import { SPELLS, MONSTERS } from './shared/content/index.js';
+import { conditionName, conditionPhrase } from './shared/modifiers.js';
+import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { Renderer, hpFraction } from './render.js';
 import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
@@ -66,7 +67,8 @@ function describe(ev) {
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
     case 'std': return [`${n(ev.id)} uses ${ev.action}.`];
     case 'note': return [`${n(ev.id)}: ${ev.text}.`];
-    case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} is ${ev.cond}.`];
+    case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
+    case 'condEnd': return [`${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
     case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
     case 'stood': return [`${n(ev.id)} stands up (half their Speed).`];
     case 'chronicle': return [`Chronicle: ${ev.title}`, 'head'];
@@ -90,7 +92,7 @@ function floaters(events) {
     else if (ev.type === 'save' && ev.success) f(ev.id, 'Saved', 'miss');
     else if (ev.type === 'note') f(ev.id, ev.text, 'crit');
     else if (ev.type === 'std') f(ev.id, ev.action, '');
-    else if (ev.type === 'cond') f(ev.id, ev.cond[0].toUpperCase() + ev.cond.slice(1), '');
+    else if (ev.type === 'cond') f(ev.id, conditionName(ev.cond), '');
     else if (ev.type === 'down') f(ev.id, 'Down!', 'dmg');
     else if (ev.type === 'revealed') f(ev.id, 'Spotted!', 'crit');
     else if (ev.type === 'cast') f(ev.actor, ev.name, '');
@@ -185,7 +187,9 @@ function refresh() {
     $('btn-end').hidden = !(my && enc && cur === e.id);
     const myTurn = enc && cur === e.id && up(e), b = enc?.budget;
     const pip = (label, have) => `<span class="${have ? 'have' : 'spent'}">${label}</span>`;
-    const conds = [e.dead && 'Dead', !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`), e.hidden && 'Hidden from players', e.cond.prone && 'Prone', e.cond.dodging && 'Dodging', e.cond.disengaged && 'Disengaged'].filter(Boolean);
+    const dying = !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`);
+    const named = Object.keys(e.cond).filter((c) => e.cond[c] && c !== 'stable').map((c) => conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : ''));
+    const conds = [e.dead && 'Dead', dying, e.hidden && 'Hidden from players', ...named].filter(Boolean);
     $('c-res').innerHTML =
       (myTurn && full ? pip('Action', b.action > 0) + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
       (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
@@ -371,6 +375,17 @@ $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
 $('dm-rest').onclick = () => act({ type: 'rest' });
+// Conditions: pick one, then put it on the selected creature or take it off.
+$('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+$('dm-cond-set').onclick = () => {
+  const e = S.entities[selId], id = $('dm-cond').value;
+  if (!e) return toast('Select a creature first.');
+  const def = CONTENT.conditions[id], level = e.cond[id]?.level ?? 0;
+  if (!e.cond[id]) act({ type: 'condition', actor: e.id, condition: id, on: true });
+  else if (def.levels && level < def.levels) act({ type: 'condition', actor: e.id, condition: id, on: true, level: level + 1 });   // tap again to stack a level
+  else act({ type: 'condition', actor: e.id, condition: id, on: false });
+};
+$('dm-cond-clear').onclick = () => { const e = S.entities[selId], id = $('dm-cond').value; if (e?.cond[id]) act({ type: 'condition', actor: e.id, condition: id, on: false }); else toast(e ? `${e.name} doesn't have that condition.` : 'Select a creature first.'); };
 $('dm-hide').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'reveal', actor: e.id, hidden: !e.hidden }); };
 $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', value: ev.target.checked });
 $('dm-auto').onchange = () => S && onUpdate(S, []);

@@ -2,6 +2,7 @@
 import * as H from './hex.js';
 import { makeEntity } from './engine.js';
 import { MONSTERS, PREGENS } from './content/index.js';
+import { VERSION } from './migrate.js';
 
 const hash = (q, r, seed) => {
   let h = (q * 374761393 + r * 668265263 + seed * 2147483647) | 0;
@@ -24,7 +25,7 @@ export function newGame(seed = 7) {
   const flat = (h) => { if (tiles[H.key(h)]) tiles[H.key(h)] = { t: 'grass', h: 0.6 }; };
 
   const s = {
-    version: 1, rng: seed | 0, seq: 0, clock: 8 * 60, map: { radius: 13, tiles },
+    version: VERSION, rng: seed | 0, seq: 0, clock: 8 * 60, map: { radius: 13, tiles },
     entities: {}, encounter: null, timeline: [], settings: { autoEngage: true },
   };
   const add = (tpl, over) => { flat(over.pos); s.entities[over.id] = makeEntity(tpl, over); };
