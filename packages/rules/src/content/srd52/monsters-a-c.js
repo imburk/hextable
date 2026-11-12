@@ -364,7 +364,7 @@ export const monsters = [
         text: "A melee attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A suit of armor that moves on its own."
   },
@@ -436,7 +436,7 @@ export const monsters = [
         text: "A melee attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A sword that hovers and fights by itself."
   },
@@ -2435,7 +2435,7 @@ export const monsters = [
         text: "Recharge 5-6. A line 30 feet long and 5 feet wide."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A young desert dragon with a lightning breath."
   },
@@ -4567,7 +4567,7 @@ export const monsters = [
         text: "Recharge 6. A thrown rock."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A strong climber that throws rocks."
   },
@@ -4906,7 +4906,7 @@ export const monsters = [
         text: "A melee attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A forest bear that climbs and swims."
   },
@@ -8821,7 +8821,7 @@ export const monsters = [
         text: "Recharge 5-6. A line 60 feet long and 5 feet wide."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A large young blue dragon, a desert dragon that breathes lightning."
   },
