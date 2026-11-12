@@ -47,6 +47,12 @@ function perspective(fovy, aspect, near, far) {
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+// A short fingerprint of every tile's terrain and height, so the ground is rebuilt when the editor changes either.
+function tileSig(map) {
+  let n = 0;
+  for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + 17) | 0; }
+  return n;
+}
 const norm = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 function lookAt(eye, at) {
   const f = norm(sub(at, eye)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
@@ -150,6 +156,7 @@ export class Renderer {
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;   // px of screen bottom covered by UI
     this.onTap = () => {}; this.onHover = () => {};
     this.onPoint = null;                      // when set, a tap reports its screen point here instead of picking (the map editor)
+    this.onDrag = null;                       // when set: { down(x, y, event) -> true to take the stroke, move(x, y), end(), cancel() }; a stroke it takes does not move the camera (the map editor)
     this.#input();
     new ResizeObserver(() => this.#resize()).observe(canvas);
     this.#resize();
@@ -164,7 +171,7 @@ export class Renderer {
 
   setState(state, events = []) {
     this.state = state;
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
@@ -415,18 +422,20 @@ export class Renderer {
   }
   #input() {
     const el = this.canvas, pts = new Map(), c = this.cam;
-    let moved = 0, downAt = 0, pinch = null;
+    let moved = 0, downAt = 0, pinch = null, stroke = false;
     const xy = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('pointerdown', (e) => {
       el.setPointerCapture(e.pointerId); pts.set(e.pointerId, xy(e));
-      if (pts.size === 1) { moved = 0; downAt = performance.now(); }
+      if (pts.size === 1) { moved = 0; downAt = performance.now(); stroke = !!this.onDrag?.down(...xy(e), e); }
+      else if (stroke) { stroke = false; moved = 99; this.onDrag.cancel(); }      // a second finger: the camera again
       pinch = null;
     });
     el.addEventListener('pointermove', (e) => {
       const p = xy(e), old = pts.get(e.pointerId);
       if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.onHover(hit?.hex ?? null); } return; }
       pts.set(e.pointerId, p);
+      if (stroke && pts.size === 1) { this.onDrag.move(...p); return; }
       const dx = p[0] - old[0], dy = p[1] - old[1];
       if (pts.size === 1) {
         moved += Math.abs(dx) + Math.abs(dy);
@@ -445,6 +454,7 @@ export class Renderer {
     });
     const up = (e) => {
       const p = pts.get(e.pointerId); pts.delete(e.pointerId); pinch = null;
+      if (stroke) { stroke = false; if (e.type === 'pointerup') this.onDrag.end(); else this.onDrag.cancel(); return; }
       if (p && e.type === 'pointerup' && !pts.size && moved < 8 && performance.now() - downAt < 600 && e.button !== 2) {
         if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
         const hit = this.#pick(...p); if (hit) this.onTap(hit);

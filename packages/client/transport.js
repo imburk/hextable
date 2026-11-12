@@ -1,10 +1,12 @@
 // How the client reaches a game. Both transports expose the same shape, so the UI
 // doesn't know whether the rules engine is running in this tab or on a server.
-//   { you, send(action), on: { update(state, events), error(msg), lobby(info), welcome(you) } }
+//   { you, send(action), undo(), redo(), undoInfo: { undo, redo },
+//     on: { update(state, events), error(msg), lobby(info), welcome(you), undoable(info) } }
 import { apply } from './shared/engine.js';
 import { newGame } from './shared/scenario.js';
 import { createReceiver } from './shared/patch.js';
 import { migrate, VERSION } from './shared/migrate.js';
+import { createHistory, describeStep, mark, undoable } from './shared/history.js';
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -24,24 +26,38 @@ export function downloadTable(table) {
 export function localTransport() {
   let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
   if (!state || state.version !== VERSION) state = newGame((Math.random() * 1e9) | 0);
+  // The undo history lives in this tab only: a reload starts it afresh.
+  const history = createHistory();
+  const told = () => { t.undoInfo = { undo: history.list(), redo: history.listRedo() }; t.on.undoable?.(t.undoInfo); };
+  const step = (kind, done) => {
+    const s = history[kind](state);
+    if (!s) return t.on.error(`Nothing to ${kind}.`);
+    store.set('hextable.solo', state);
+    told();
+    t.on.update(state, [{ type: done, label: s.label }]);
+  };
   const t = {
-    solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {},
-    start() { t.on.update(state, []); },
+    solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {}, undoInfo: { undo: [], redo: [] },
+    start() { told(); t.on.update(state, []); },
     send(action) {
+      const before = undoable(action) ? mark(state) : null;
       const res = apply(state, action, { role: 'dm', userId: 'local' });
       if (!res.ok) return t.on.error(res.error);
+      if (before) { history.record(before, state, describeStep(action, res.events, before, state)); told(); }
       store.set('hextable.solo', state);
       t.on.update(state, res.events);
     },
+    undo: () => step('undo', 'undone'),
+    redo: () => step('redo', 'redone'),
     export: async () => ({ code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state) }),   // nothing leaves this tab
-    reset() { state = newGame((Math.random() * 1e9) | 0); store.set('hextable.solo', state); t.on.update(state, [], true); },
+    reset() { state = newGame((Math.random() * 1e9) | 0); history.clear(); told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
   };
   return t;
 }
 
 // Online: a table server owns the state. `first` is {t:'host'|'join'|'resume', ...}.
 export function serverTransport(first) {
-  const t = { solo: false, you: null, on: {}, lobby: { members: [], pending: [] } };
+  const t = { solo: false, you: null, on: {}, lobby: { members: [], pending: [] }, undoInfo: { undo: [], redo: [] } };
   let ws, retry = 0, hello = first;
   // After the first full state the server sends only what changed. The receiver keeps our copy
   // up to date and asks for everything again if an update ever goes missing.
@@ -61,6 +77,7 @@ export function serverTransport(first) {
       else if (msg.t === 'export') { pendingExport?.resolve(msg.table); }
       else if (msg.t === 'error' && pendingExport && !msg.expired) pendingExport.reject(new Error(msg.error));
       else if (msg.t === 'history') t.on.history?.(msg);
+      else if (msg.t === 'undoable') { t.undoInfo = { undo: msg.undo, redo: msg.redo }; t.on.undoable?.(t.undoInfo); }
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
     };
@@ -82,6 +99,9 @@ export function serverTransport(first) {
     pendingExport.resolve = done(resolve); pendingExport.reject = done(reject);
     ws.send(JSON.stringify({ t: 'export' }));
   });
+  // The DM takes back the last action, or does it again. The server answers with a fresh update.
+  t.undo = () => (ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'undo' })) : t.on.error('Reconnecting to the table…'));
+  t.redo = () => (ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'redo' })) : t.on.error('Reconnecting to the table…'));
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
 }

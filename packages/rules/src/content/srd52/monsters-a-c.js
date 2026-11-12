@@ -1,8 +1,8 @@
 // Monsters A to C from the SRD 5.2.1 (2024 rules). Data only. Format: docs/specs/rules-expansion.md.
 // `text` is a plain-words description written for this project.
-// Every entry here has `checked: false`: the numbers were read from a text-extraction of the SRD 5.2.1
-// stat blocks, and each was sanity-checked (hit dice, attack bonus = ability + proficiency), but no entry
-// was compared against the SRD page itself.
+// Every entry here has been compared field by field against the SRD 5.2.1 stat block (size, type, AC, HP, speeds,
+// ability scores, proficiency bonus, CR and XP, skills, resistances, vulnerabilities, immunities, and every trait and
+// action: attack bonus, reach or range, damage dice and types, save DC and effect), and is `checked: true`.
 // Multiattack, recharge, condition immunities, spellcasting and legendary actions have no fields yet, so
 // they sit in a trait's `text` or a `manual` step and the monster is `assist`.
 export const monsters = [
@@ -59,7 +59,7 @@ export const monsters = [
         id: "mucus-cloud",
         name: "Mucus Cloud",
         modifiers: [],
-        text: "At the end of its turn, creatures in a 5 foot emanation make a Constitution save (DC 14) or are cursed with slimy skin; see the SRD for the curse."
+        text: "While underwater, each creature in a 5 foot emanation at the end of its turn makes a Constitution save (DC 14) or is cursed: slimy skin, can breathe air and water, cannot regain Hit Points unless underwater, and takes 6 (1d12) acid damage every 10 minutes out of water unless its skin is wetted. The DM applies the curse."
       },
       {
         id: "probing-telepathy",
@@ -77,7 +77,7 @@ export const monsters = [
         id: "legendary-actions",
         name: "Legendary Actions",
         modifiers: [],
-        text: "Has legendary actions (Lash, Psychic Drain). The engine has no field for them; the DM runs them from the SRD."
+        text: "3 uses (4 in its lair). Lash: one Tentacle attack. Psychic Drain: if it has a creature Charmed or Grappled, it uses Consume Memories and regains 1d10 Hit Points. The engine has no field for legendary actions; the DM runs them."
       }
     ],
     actions: [
@@ -154,7 +154,7 @@ export const monsters = [
                 condition: "charmed"
               },
               {
-                manual: "The target obeys the aboleth while within 60 feet, repeating the save when it takes damage; usable 2 times a day."
+                manual: "The target is Charmed until the aboleth dies or they are on different planes, and obeys it while within 60 feet; they can talk telepathically at any distance. The target repeats the save whenever it takes damage and after every 24 hours spent at least a mile away. Usable 2 times a day."
               }
             ]
           }
@@ -163,7 +163,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A vast, ancient lake horror that enslaves minds."
   },
   {
@@ -277,7 +277,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A roaring whirl of wind that flies without a pause."
   },
   {
@@ -348,7 +348,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A suit of armor that moves on its own."
   },
   {
@@ -415,7 +415,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A sword that hovers and fights by itself."
   },
   {
@@ -489,7 +489,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A rug that wraps and smothers whoever steps on it."
   },
   {
@@ -583,7 +583,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A burrowing insectoid that spits acid."
   },
   {
@@ -705,7 +705,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A professional killer who strikes with poison."
   },
   {
@@ -764,7 +764,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A shrub that has woken up and can move."
   },
   {
@@ -824,7 +824,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A tree that has woken up and can walk."
   },
   {
@@ -879,7 +879,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A tall flightless bird with a sharp beak."
   },
   {
@@ -960,7 +960,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A fire-wreathed dwarf-like guard of brass and flame."
   },
   {
@@ -1105,7 +1105,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A towering demon of fire and lightning."
   },
   {
@@ -1254,7 +1254,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A spiny devil that holds its victims fast."
   },
   {
@@ -1369,7 +1369,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A devil with a wounding glaive and a poisonous beard."
   },
   {
@@ -1514,7 +1514,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A huge serpentine hunter that breathes lightning."
   },
   {
@@ -1609,7 +1609,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A hungry, acidic ooze that splits when cut."
   },
   {
@@ -1681,7 +1681,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A dog that teleports in and out of sight."
   },
   {
@@ -1808,7 +1808,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A skeletal devil with a venomous stinging tail."
   },
   {
@@ -1889,7 +1889,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A common outlaw."
   },
   {
@@ -1987,7 +1987,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "The leader of a band of outlaws."
   },
   {
@@ -2077,7 +2077,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A reptile whose gaze turns creatures to stone."
   },
   {
@@ -2139,7 +2139,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A frenzied warrior who fights without fear."
   },
   {
@@ -2243,7 +2243,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A young swamp dragon with an acid breath."
   },
   {
@@ -2341,7 +2341,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A young desert dragon with a lightning breath."
   },
   {
@@ -2442,7 +2442,12 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated"
+                condition: "incapacitated",
+                ends: {
+                  on: "save",
+                  save: "con",
+                  at: "turnEnd"
+                }
               },
               {
                 manual: "A target that fails a second save falls Unconscious for 1 minute; the effect ends if it takes damage or someone within 5 feet wakes it."
@@ -2454,7 +2459,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A young desert dragon that likes to talk."
   },
   {
@@ -2577,11 +2582,11 @@ export const monsters = [
             ]
           }
         ],
-        text: "A 30 foot cone that pushes targets away. The SRD text on Prone should be rechecked."
+        text: "A 30 foot cone that pushes targets up to 30 feet away and knocks them Prone."
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A young coastal dragon with a repelling breath."
   },
   {
@@ -2684,7 +2689,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A young hill dragon that loves jokes."
   },
   {
@@ -2721,7 +2726,7 @@ export const monsters = [
         id: "abduct",
         name: "Abduct",
         modifiers: [],
-        text: "Can move a creature it is grappling at its full speed."
+        text: "Moving a creature it is grappling costs it no extra movement."
       }
     ],
     actions: [
@@ -2802,7 +2807,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A hulking goblinoid ambusher."
   },
   {
@@ -2892,10 +2897,23 @@ export const monsters = [
           }
         ],
         text: "The bulette jumps up to 15 feet and lands on Large or smaller creatures. On a success the target takes half damage and is pushed 5 feet instead of knocked Prone; the DM applies that."
+      },
+      {
+        id: "leap",
+        name: "Leap",
+        target: {
+          self: true
+        },
+        effects: [
+          {
+            manual: "Bonus Action: the bulette jumps up to 30 feet by spending 10 feet of movement."
+          }
+        ],
+        text: "A bonus-action jump."
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A burrowing land-shark that leaps from the earth."
   },
   {
@@ -3011,7 +3029,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A centaur soldier with a pike and a bow."
   },
   {
@@ -3143,7 +3161,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A devil wrapped in animate hooked chains."
   },
   {
@@ -3289,7 +3307,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A three-headed flying beast of lion, goat and dragon."
   },
   {
@@ -3408,7 +3426,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A crustacean horror that drags prey into the water."
   },
   {
@@ -3461,7 +3479,7 @@ export const monsters = [
         id: "berserk",
         name: "Berserk",
         modifiers: [],
-        text: "When Bloodied it may go berserk (1d6 each turn). The DM applies this."
+        text: "If it starts its turn Bloodied, roll 1d6: on a 6 it goes berserk and attacks the nearest creature (or an object) each turn until destroyed or no longer Bloodied. The DM applies this."
       },
       {
         id: "immutable-form",
@@ -3521,7 +3539,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A hulking figure of enchanted clay."
   },
   {
@@ -3657,7 +3675,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A manta-like ambusher that wraps its prey."
   },
   {
@@ -3764,7 +3782,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A giant of the clouds who hurls thunder."
   },
   {
@@ -3830,7 +3848,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A chicken-like monster whose bite petrifies."
   },
   {
@@ -3892,7 +3910,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "An ordinary villager or labourer."
   },
   {
@@ -4010,7 +4028,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A feathered celestial serpent."
   },
   {
@@ -4073,7 +4091,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A follower of a dark power."
   },
   {
@@ -4144,7 +4162,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A zealous cult leader with dark magic."
   },
   {
@@ -4228,7 +4246,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A large pouncing predator dinosaur."
   },
   {
@@ -4293,7 +4311,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "An armored, club-tailed dinosaur."
   },
   {
@@ -4386,7 +4404,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A strong climber that throws rocks."
   },
   {
@@ -4458,7 +4476,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A giant sea turtle."
   },
   {
@@ -4529,7 +4547,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A small climbing monkey that fights in troops."
   },
   {
@@ -4590,7 +4608,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A tiny burrowing animal."
   },
   {
@@ -4646,7 +4664,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A small flying animal."
   },
   {
@@ -4713,7 +4731,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A forest bear that climbs and swims."
   },
   {
@@ -4779,15 +4797,18 @@ export const monsters = [
               {
                 damage: "1d4+2",
                 type: "piercing"
+              },
+              {
+                manual: "If the target is Bloodied, the hit deals 1d8+2 piercing damage instead of 1d4+2."
               }
             ]
           }
         ],
-        text: "A melee attack. The SRD gives 1d8+2 against a Bloodied target; the engine cannot test for Bloodied yet."
+        text: "A melee attack that hits harder against a Bloodied target; the engine cannot test for Bloodied yet, so the DM applies the bigger die."
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A fierce hawk that hunts in flocks."
   },
   {
@@ -4852,7 +4873,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A wild pig with tusks."
   },
   {
@@ -4944,7 +4965,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A big, strong bear."
   },
   {
@@ -4999,7 +5020,7 @@ export const monsters = [
       }
     ],
     tier: "auto",
-    checked: false,
+    checked: true,
     text: "A desert pack animal."
   },
   {
@@ -5066,7 +5087,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A house cat."
   },
   {
@@ -5152,7 +5173,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A heavy snake that squeezes prey."
   },
   {
@@ -5218,7 +5239,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A small shore crab."
   },
   {
@@ -5290,7 +5311,3520 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A river predator that drags prey underwater."
+  },
+  {
+    id: "adult-black-dragon",
+    name: "Adult Black Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 14,
+    xp: 11500,
+    pb: 5,
+    ac: 19,
+    hp: 195,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 23,
+      dex: 14,
+      con: 21,
+      int: 14,
+      wis: 13,
+      cha: 19
+    },
+    skills: {
+      perception: 11,
+      stealth: 7
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "acid"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Acid Arrow (level 3 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 17, +9 to hit with spells, no Material components. At will: Acid Arrow (level 3 version), Detect Magic, Fear. 1 a day each: Speak with Dead, Vitriolic Sphere. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloud of Insects (a creature it sees within 120 feet makes a Dexterity save (DC 17) or takes 4d10 poison damage and has Disadvantage on Concentration saves until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 11,
+            onHit: [
+              {
+                damage: "2d6+6",
+                type: "slashing"
+              },
+              {
+                damage: "1d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "acid-breath",
+        name: "Acid Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 18,
+            half: true,
+            onFail: [
+              {
+                damage: "12d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 60 feet long and 5 feet wide."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult black dragon, a swamp-dwelling dragon that spits acid."
+  },
+  {
+    id: "adult-blue-dragon",
+    name: "Adult Blue Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 16,
+    xp: 15000,
+    pb: 5,
+    ac: 19,
+    hp: 212,
+    speed: {
+      walk: 40,
+      burrow: 30,
+      fly: 80
+    },
+    abilities: {
+      str: 25,
+      dex: 10,
+      con: 23,
+      int: 16,
+      wis: 15,
+      cha: 20
+    },
+    skills: {
+      perception: 12,
+      stealth: 5
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "lightning"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Shatter."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 18, no Material components. At will: Detect Magic, Invisibility, Mage Hand, Shatter. 1 a day each: Scrying, Sending. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloaked Flight (casts Invisibility on itself and flies up to half its Fly Speed; not again before its next turn). Sonic Boom (casts Shatter using Spellcasting; not again before its next turn). Tail Swipe (makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 12,
+            onHit: [
+              {
+                damage: "2d8+7",
+                type: "slashing"
+              },
+              {
+                damage: "1d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "lightning-breath",
+        name: "Lightning Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 19,
+            half: true,
+            onFail: [
+              {
+                damage: "11d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 90 feet long and 5 feet wide."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult blue dragon, a desert dragon that breathes lightning."
+  },
+  {
+    id: "adult-brass-dragon",
+    name: "Adult Brass Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 13,
+    xp: 10000,
+    pb: 5,
+    ac: 18,
+    hp: 172,
+    speed: {
+      walk: 40,
+      burrow: 30,
+      fly: 80
+    },
+    abilities: {
+      str: 23,
+      dex: 10,
+      con: 21,
+      int: 14,
+      wis: 13,
+      cha: 17
+    },
+    skills: {
+      history: 7,
+      perception: 11,
+      persuasion: 8,
+      stealth: 5
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Sleep Breath or by casting Scorching Ray."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 16, no Material components. At will: Detect Magic, Minor Illusion, Scorching Ray, Shapechange (beast or humanoid form only), Speak with Animals. 1 a day each: Detect Thoughts, Control Weather. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Blazing Light (casts Scorching Ray using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Scorching Sands (a creature it sees within 120 feet makes a Dexterity save (DC 16) or takes 6d8 fire damage and has its Speed halved until the end of its next turn; not again before its next turn). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 11,
+            onHit: [
+              {
+                damage: "2d10+6",
+                type: "slashing"
+              },
+              {
+                damage: "1d8",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 18,
+            half: true,
+            onFail: [
+              {
+                damage: "10d8",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 60 feet long and 5 feet wide."
+      },
+      {
+        id: "sleep-breath",
+        name: "Sleep Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 18,
+            half: false,
+            onFail: [
+              {
+                condition: "incapacitated",
+                ends: {
+                  on: "save",
+                  save: "con",
+                  at: "turnEnd"
+                }
+              },
+              {
+                manual: "A target that fails the repeat save falls Unconscious for 10 minutes; the effect ends if it takes damage or someone within 5 feet uses an action to wake it."
+              }
+            ]
+          }
+        ],
+        text: "A 60 foot cone of sleep."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult brass dragon, a talkative desert dragon that breathes fire and sleep."
+  },
+  {
+    id: "adult-bronze-dragon",
+    name: "Adult Bronze Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 15,
+    xp: 13000,
+    pb: 5,
+    ac: 18,
+    hp: 212,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 25,
+      dex: 10,
+      con: 23,
+      int: 16,
+      wis: 15,
+      cha: 20
+    },
+    skills: {
+      insight: 7,
+      perception: 12,
+      stealth: 5
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "lightning"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Repulsion Breath or by casting Guiding Bolt (level 2 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 17, +10 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 2 version), Shapechange (beast or humanoid form only), Speak with Animals, Thaumaturgy. 1 a day each: Detect Thoughts, Water Breathing. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Guiding Light (casts Guiding Bolt (level 2 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Thunderclap (each creature in a 20-foot-radius sphere centred on a point it sees within 90 feet makes a Constitution save (DC 17) or takes 3d6 thunder damage and is Deafened until the end of its next turn). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 12,
+            onHit: [
+              {
+                damage: "2d8+7",
+                type: "slashing"
+              },
+              {
+                damage: "1d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "lightning-breath",
+        name: "Lightning Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 19,
+            half: true,
+            onFail: [
+              {
+                damage: "10d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 90 feet long and 5 feet wide."
+      },
+      {
+        id: "repulsion-breath",
+        name: "Repulsion Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 30
+          }
+        },
+        effects: [
+          {
+            save: "str",
+            dc: 19,
+            half: false,
+            onFail: [
+              {
+                move: 60,
+                dir: "away"
+              },
+              {
+                condition: "prone"
+              }
+            ]
+          }
+        ],
+        text: "A 30 foot cone that pushes targets away and knocks them Prone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult bronze dragon, a coastal dragon that breathes lightning and repulsion."
+  },
+  {
+    id: "adult-copper-dragon",
+    name: "Adult Copper Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 14,
+    xp: 11500,
+    pb: 5,
+    ac: 18,
+    hp: 184,
+    speed: {
+      walk: 40,
+      climb: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 23,
+      dex: 12,
+      con: 21,
+      int: 18,
+      wis: 15,
+      cha: 18
+    },
+    skills: {
+      deception: 9,
+      perception: 12,
+      stealth: 6
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "acid"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Slowing Breath or by casting Mind Spike (level 4 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 17, no Material components. At will: Detect Magic, Mind Spike (level 4 version), Minor Illusion, Shapechange (beast or humanoid form only). 1 a day each: Greater Restoration, Major Image. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Giggling Magic (a creature it sees within 90 feet makes a Charisma save (DC 17) or takes 7d6 psychic damage and, until the end of its next turn, subtracts 1d6 from its ability checks and attack rolls; not again before its next turn). Mind Jolt (casts Mind Spike (level 4 version) using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 11,
+            onHit: [
+              {
+                damage: "2d10+6",
+                type: "slashing"
+              },
+              {
+                damage: "1d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "acid-breath",
+        name: "Acid Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 18,
+            half: true,
+            onFail: [
+              {
+                damage: "12d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 60 feet long and 5 feet wide."
+      },
+      {
+        id: "slowing-breath",
+        name: "Slowing Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 18,
+            half: false,
+            onFail: [
+              {
+                manual: "The target cannot take Reactions, its Speed is halved, and it can take either an action or a Bonus Action, not both, until the end of its next turn."
+              }
+            ]
+          }
+        ],
+        text: "A 60 foot cone that slows targets."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult copper dragon, a prankster dragon of the hills that breathes acid and slowing gas."
+  },
+  {
+    id: "adult-gold-dragon",
+    name: "Adult Gold Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 17,
+    xp: 18000,
+    pb: 6,
+    ac: 19,
+    hp: 243,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 27,
+      dex: 14,
+      con: 25,
+      int: 16,
+      wis: 15,
+      cha: 24
+    },
+    skills: {
+      insight: 8,
+      perception: 14,
+      persuasion: 13,
+      stealth: 8
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Guiding Bolt (level 2 version) or by Weakening Breath."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 21, +13 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 2 version), Shapechange (beast or humanoid form only). 1 a day each: Flame Strike, Zone of Truth. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Banish (a creature it sees within 120 feet makes a Charisma save (DC 21) or takes 3d6 force damage, is Incapacitated and is sent to a harmless demiplane until the start of the dragon's next turn, then returns within 120 feet of it; not again before its next turn). Guiding Light (casts Guiding Bolt (level 2 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 14,
+            onHit: [
+              {
+                damage: "2d8+8",
+                type: "slashing"
+              },
+              {
+                damage: "1d8",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 21,
+            half: true,
+            onFail: [
+              {
+                damage: "12d10",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 60 foot cone."
+      },
+      {
+        id: "weakening-breath",
+        name: "Weakening Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "str",
+            dc: 21,
+            half: false,
+            onFail: [
+              {
+                manual: "A creature not already affected has Disadvantage on Strength-based D20 Tests and subtracts 1d6 from its damage rolls, repeating the save at the end of each of its turns; a success ends it, and it ends by itself after 1 minute."
+              }
+            ]
+          }
+        ],
+        text: "A 60 foot cone that saps strength."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult gold dragon, a wise, radiant dragon that breathes fire and weakening gas."
+  },
+  {
+    id: "adult-green-dragon",
+    name: "Adult Green Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 15,
+    xp: 13000,
+    pb: 5,
+    ac: 19,
+    hp: 207,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 23,
+      dex: 12,
+      con: 21,
+      int: 18,
+      wis: 15,
+      cha: 18
+    },
+    skills: {
+      deception: 9,
+      perception: 12,
+      persuasion: 9,
+      stealth: 6
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "poison"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "condition-immunities",
+        name: "Condition Immunities",
+        modifiers: [],
+        text: "Immune to the Poisoned condition(s). The engine has no field for condition immunities yet."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Mind Spike (level 3 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 17, no Material components. At will: Detect Magic, Mind Spike (level 3 version). 1 a day: Geas. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Mind Invasion (casts Mind Spike (level 3 version) using Spellcasting). Noxious Miasma (each creature in a 20-foot-radius sphere centred on a point it sees within 90 feet makes a Constitution save (DC 17) or takes 2d6 poison damage and has -2 AC until the end of its next turn; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 11,
+            onHit: [
+              {
+                damage: "2d8+6",
+                type: "slashing"
+              },
+              {
+                damage: "2d6",
+                type: "poison"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "poison-breath",
+        name: "Poison Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 18,
+            half: true,
+            onFail: [
+              {
+                damage: "16d6",
+                type: "poison"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 60 foot cone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult green dragon, a scheming forest dragon that breathes poison."
+  },
+  {
+    id: "adult-red-dragon",
+    name: "Adult Red Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 17,
+    xp: 18000,
+    pb: 6,
+    ac: 19,
+    hp: 256,
+    speed: {
+      walk: 40,
+      climb: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 27,
+      dex: 10,
+      con: 25,
+      int: 16,
+      wis: 13,
+      cha: 23
+    },
+    skills: {
+      perception: 13,
+      stealth: 6
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Scorching Ray."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 20, +12 to hit with spells, no Material components. At will: Command (level 2 version), Detect Magic, Scorching Ray. 1 a day: Fireball. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Commanding Presence (casts Command (level 2 version) using Spellcasting; not again before its next turn). Fiery Rays (casts Scorching Ray using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 14,
+            onHit: [
+              {
+                damage: "1d10+8",
+                type: "slashing"
+              },
+              {
+                damage: "2d4",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 21,
+            half: true,
+            onFail: [
+              {
+                damage: "17d6",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 60 foot cone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult red dragon, a proud, fearsome dragon that breathes fire."
+  },
+  {
+    id: "adult-silver-dragon",
+    name: "Adult Silver Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 16,
+    xp: 15000,
+    pb: 5,
+    ac: 19,
+    hp: 216,
+    speed: {
+      walk: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 27,
+      dex: 10,
+      con: 25,
+      int: 16,
+      wis: 13,
+      cha: 22
+    },
+    skills: {
+      history: 8,
+      perception: 11,
+      stealth: 5
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "cold"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Paralyzing Breath or by casting Ice Knife."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 19, +11 to hit with spells, no Material components. At will: Detect Magic, Hold Monster, Ice Knife, Shapechange (beast or humanoid form only). 1 a day each: Ice Storm (level 5 version), Zone of Truth. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Chill (casts Hold Monster using Spellcasting; not again before its next turn). Cold Gale (a line 60 feet long and 10 feet wide: Dexterity save (DC 19) or 4d6 cold damage and pushed up to 30 feet away (half damage, no push on a success); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 13,
+            onHit: [
+              {
+                damage: "2d8+8",
+                type: "slashing"
+              },
+              {
+                damage: "1d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "cold-breath",
+        name: "Cold Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 20,
+            half: true,
+            onFail: [
+              {
+                damage: "12d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 60 foot cone."
+      },
+      {
+        id: "paralyzing-breath",
+        name: "Paralyzing Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 20,
+            half: false,
+            onFail: [
+              {
+                condition: "incapacitated",
+                ends: {
+                  on: "save",
+                  save: "con",
+                  at: "turnEnd"
+                }
+              },
+              {
+                manual: "A target that fails the repeat save is Paralyzed instead, repeating the save at the end of each of its turns; a success ends it, and it ends by itself after 1 minute."
+              }
+            ]
+          }
+        ],
+        text: "A 60 foot cone that can paralyze."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult silver dragon, a noble mountain dragon that breathes cold and paralysis."
+  },
+  {
+    id: "adult-white-dragon",
+    name: "Adult White Dragon",
+    source: "SRD 5.2.1",
+    size: "huge",
+    type: "dragon",
+    cr: 13,
+    xp: 10000,
+    pb: 5,
+    ac: 18,
+    hp: 200,
+    speed: {
+      walk: 40,
+      burrow: 30,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 22,
+      dex: 10,
+      con: 22,
+      int: 8,
+      wis: 12,
+      cha: 12
+    },
+    skills: {
+      perception: 11,
+      stealth: 5
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "cold"
+    ],
+    traits: [
+      {
+        id: "ice-walk",
+        name: "Ice Walk",
+        modifiers: [],
+        text: "Moves across and climbs icy surfaces without ability checks, and ice or snow Difficult Terrain costs it no extra movement."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Freezing Burst (each creature in a 30-foot-radius sphere centred on a point it sees within 120 feet makes a Constitution save (DC 14) or takes 2d6 cold damage and has Speed 0 until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear (spell save DC 14, Charisma); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 11,
+            onHit: [
+              {
+                damage: "2d6+6",
+                type: "slashing"
+              },
+              {
+                damage: "1d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "cold-breath",
+        name: "Cold Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 19,
+            half: true,
+            onFail: [
+              {
+                damage: "12d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 60 foot cone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A huge adult white dragon, a primal arctic dragon that breathes frost."
+  },
+  {
+    id: "ancient-black-dragon",
+    name: "Ancient Black Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 21,
+    xp: 33000,
+    pb: 7,
+    ac: 22,
+    hp: 367,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 27,
+      dex: 14,
+      con: 25,
+      int: 16,
+      wis: 15,
+      cha: 22
+    },
+    skills: {
+      perception: 16,
+      stealth: 9
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "acid"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Acid Arrow (level 4 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 21, +13 to hit with spells, no Material components. At will: Acid Arrow (level 4 version), Detect Magic, Fear. 1 a day each: Create Undead, Speak with Dead, Vitriolic Sphere (level 5 version). The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloud of Insects (a creature it sees within 120 feet makes a Dexterity save (DC 21) or takes 6d10 poison damage and has Disadvantage on Concentration saves until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 15,
+            onHit: [
+              {
+                damage: "2d8+8",
+                type: "slashing"
+              },
+              {
+                damage: "2d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "acid-breath",
+        name: "Acid Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 22,
+            half: true,
+            onFail: [
+              {
+                damage: "15d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 90 feet long and 10 feet wide."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient black dragon, a swamp-dwelling dragon that spits acid."
+  },
+  {
+    id: "ancient-blue-dragon",
+    name: "Ancient Blue Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 23,
+    xp: 50000,
+    pb: 7,
+    ac: 22,
+    hp: 481,
+    speed: {
+      walk: 40,
+      burrow: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 29,
+      dex: 10,
+      con: 27,
+      int: 18,
+      wis: 17,
+      cha: 25
+    },
+    skills: {
+      perception: 17,
+      stealth: 7
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "lightning"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Shatter (level 3 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 22, no Material components. At will: Detect Magic, Invisibility, Mage Hand, Shatter (level 3 version). 1 a day each: Scrying, Sending. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Cloaked Flight (casts Invisibility on itself and flies up to half its Fly Speed; not again before its next turn). Sonic Boom (casts Shatter (level 3 version) using Spellcasting; not again before its next turn). Tail Swipe (makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 16,
+            onHit: [
+              {
+                damage: "2d8+9",
+                type: "slashing"
+              },
+              {
+                damage: "2d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "lightning-breath",
+        name: "Lightning Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 120
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 23,
+            half: true,
+            onFail: [
+              {
+                damage: "16d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 120 feet long and 5 feet wide."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient blue dragon, a desert dragon that breathes lightning."
+  },
+  {
+    id: "ancient-brass-dragon",
+    name: "Ancient Brass Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 20,
+    xp: 25000,
+    pb: 6,
+    ac: 20,
+    hp: 332,
+    speed: {
+      walk: 40,
+      burrow: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 27,
+      dex: 10,
+      con: 25,
+      int: 16,
+      wis: 15,
+      cha: 22
+    },
+    skills: {
+      history: 9,
+      perception: 14,
+      persuasion: 12,
+      stealth: 6
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Sleep Breath or by casting Scorching Ray (level 3 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 20, no Material components. At will: Detect Magic, Minor Illusion, Scorching Ray (level 3 version), Shapechange (beast or humanoid form only), Speak with Animals. 1 a day each: Control Weather, Detect Thoughts. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Blazing Light (casts Scorching Ray (level 3 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Scorching Sands (a creature it sees within 120 feet makes a Dexterity save (DC 20) or takes 8d8 fire damage and has its Speed halved until the end of its next turn; not again before its next turn). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 14,
+            onHit: [
+              {
+                damage: "2d10+8",
+                type: "slashing"
+              },
+              {
+                damage: "2d6",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 21,
+            half: true,
+            onFail: [
+              {
+                damage: "13d8",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 90 feet long and 5 feet wide."
+      },
+      {
+        id: "sleep-breath",
+        name: "Sleep Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 21,
+            half: false,
+            onFail: [
+              {
+                condition: "incapacitated",
+                ends: {
+                  on: "save",
+                  save: "con",
+                  at: "turnEnd"
+                }
+              },
+              {
+                manual: "A target that fails the repeat save falls Unconscious for 10 minutes; the effect ends if it takes damage or someone within 5 feet uses an action to wake it."
+              }
+            ]
+          }
+        ],
+        text: "A 90 foot cone of sleep."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient brass dragon, a talkative desert dragon that breathes fire and sleep."
+  },
+  {
+    id: "ancient-bronze-dragon",
+    name: "Ancient Bronze Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 22,
+    xp: 41000,
+    pb: 7,
+    ac: 22,
+    hp: 444,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 29,
+      dex: 10,
+      con: 27,
+      int: 18,
+      wis: 17,
+      cha: 25
+    },
+    skills: {
+      insight: 10,
+      perception: 17,
+      stealth: 7
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "lightning"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Repulsion Breath or by casting Guiding Bolt (level 2 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 22, +14 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 2 version), Shapechange (beast or humanoid form only), Speak with Animals, Thaumaturgy. 1 a day each: Detect Thoughts, Control Water, Scrying, Water Breathing. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Guiding Light (casts Guiding Bolt (level 2 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). Thunderclap (each creature in a 20-foot-radius sphere centred on a point it sees within 120 feet makes a Constitution save (DC 22) or takes 3d8 thunder damage and is Deafened until the end of its next turn). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 16,
+            onHit: [
+              {
+                damage: "2d8+9",
+                type: "slashing"
+              },
+              {
+                damage: "2d8",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "lightning-breath",
+        name: "Lightning Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 120
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 23,
+            half: true,
+            onFail: [
+              {
+                damage: "15d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 120 feet long and 5 feet wide."
+      },
+      {
+        id: "repulsion-breath",
+        name: "Repulsion Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 30
+          }
+        },
+        effects: [
+          {
+            save: "str",
+            dc: 23,
+            half: false,
+            onFail: [
+              {
+                move: 60,
+                dir: "away"
+              },
+              {
+                condition: "prone"
+              }
+            ]
+          }
+        ],
+        text: "A 30 foot cone that pushes targets away and knocks them Prone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient bronze dragon, a coastal dragon that breathes lightning and repulsion."
+  },
+  {
+    id: "ancient-copper-dragon",
+    name: "Ancient Copper Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 21,
+    xp: 33000,
+    pb: 7,
+    ac: 21,
+    hp: 367,
+    speed: {
+      walk: 40,
+      climb: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 27,
+      dex: 12,
+      con: 25,
+      int: 20,
+      wis: 17,
+      cha: 22
+    },
+    skills: {
+      deception: 13,
+      perception: 17,
+      stealth: 8
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "acid"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Slowing Breath or by casting Mind Spike (level 5 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 21, no Material components. At will: Detect Magic, Mind Spike (level 5 version), Minor Illusion, Shapechange (beast or humanoid form only). 1 a day each: Greater Restoration, Major Image, Project Image. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Giggling Magic (a creature it sees within 120 feet makes a Charisma save (DC 21) or takes 9d6 psychic damage and, until the end of its next turn, subtracts 1d8 from its ability checks and attack rolls; not again before its next turn). Mind Jolt (casts Mind Spike (level 5 version) using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 15,
+            onHit: [
+              {
+                damage: "2d10+8",
+                type: "slashing"
+              },
+              {
+                damage: "2d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "acid-breath",
+        name: "Acid Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 22,
+            half: true,
+            onFail: [
+              {
+                damage: "14d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 90 feet long and 10 feet wide."
+      },
+      {
+        id: "slowing-breath",
+        name: "Slowing Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 22,
+            half: false,
+            onFail: [
+              {
+                manual: "The target cannot take Reactions, its Speed is halved, and it can take either an action or a Bonus Action, not both, until the end of its next turn."
+              }
+            ]
+          }
+        ],
+        text: "A 90 foot cone that slows targets."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient copper dragon, a prankster dragon of the hills that breathes acid and slowing gas."
+  },
+  {
+    id: "ancient-gold-dragon",
+    name: "Ancient Gold Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 24,
+    xp: 62000,
+    pb: 7,
+    ac: 22,
+    hp: 546,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 30,
+      dex: 14,
+      con: 29,
+      int: 18,
+      wis: 17,
+      cha: 28
+    },
+    skills: {
+      insight: 10,
+      perception: 17,
+      persuasion: 16,
+      stealth: 9
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Guiding Bolt (level 4 version) or by Weakening Breath."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 24, +16 to hit with spells, no Material components. At will: Detect Magic, Guiding Bolt (level 4 version), Shapechange (beast or humanoid form only). 1 a day each: Flame Strike (level 6 version), Word of Recall, Zone of Truth. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Banish (a creature it sees within 120 feet makes a Charisma save (DC 24) or takes 7d6 force damage, is Incapacitated and is sent to a harmless demiplane until the start of the dragon's next turn, then returns within 120 feet of it; not again before its next turn). Guiding Light (casts Guiding Bolt (level 4 version) using Spellcasting). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 17,
+            onHit: [
+              {
+                damage: "2d8+10",
+                type: "slashing"
+              },
+              {
+                damage: "2d8",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 24,
+            half: true,
+            onFail: [
+              {
+                damage: "13d10",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 90 foot cone."
+      },
+      {
+        id: "weakening-breath",
+        name: "Weakening Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "str",
+            dc: 24,
+            half: false,
+            onFail: [
+              {
+                manual: "A creature not already affected has Disadvantage on Strength-based D20 Tests and subtracts 1d10 from its damage rolls, repeating the save at the end of each of its turns; a success ends it, and it ends by itself after 1 minute."
+              }
+            ]
+          }
+        ],
+        text: "A 90 foot cone that saps strength."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient gold dragon, a wise, radiant dragon that breathes fire and weakening gas."
+  },
+  {
+    id: "ancient-green-dragon",
+    name: "Ancient Green Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 22,
+    xp: 41000,
+    pb: 7,
+    ac: 21,
+    hp: 402,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 27,
+      dex: 12,
+      con: 25,
+      int: 20,
+      wis: 17,
+      cha: 22
+    },
+    skills: {
+      deception: 13,
+      perception: 17,
+      persuasion: 13,
+      stealth: 8
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "poison"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "condition-immunities",
+        name: "Condition Immunities",
+        modifiers: [],
+        text: "Immune to the Poisoned condition(s). The engine has no field for condition immunities yet."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Mind Spike (level 5 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 21, no Material components. At will: Detect Magic, Mind Spike (level 5 version). 1 a day each: Geas, Modify Memory. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Mind Invasion (casts Mind Spike (level 5 version) using Spellcasting). Noxious Miasma (each creature in a 30-foot-radius sphere centred on a point it sees within 90 feet makes a Constitution save (DC 21) or takes 5d6 poison damage and has -2 AC until the end of its next turn; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 15,
+            onHit: [
+              {
+                damage: "2d8+8",
+                type: "slashing"
+              },
+              {
+                damage: "3d6",
+                type: "poison"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "poison-breath",
+        name: "Poison Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 22,
+            half: true,
+            onFail: [
+              {
+                damage: "22d6",
+                type: "poison"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 90 foot cone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient green dragon, a scheming forest dragon that breathes poison."
+  },
+  {
+    id: "ancient-red-dragon",
+    name: "Ancient Red Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 24,
+    xp: 62000,
+    pb: 7,
+    ac: 22,
+    hp: 507,
+    speed: {
+      walk: 40,
+      climb: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 30,
+      dex: 10,
+      con: 29,
+      int: 18,
+      wis: 15,
+      cha: 27
+    },
+    skills: {
+      perception: 16,
+      stealth: 7
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by casting Scorching Ray (level 3 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 23, +15 to hit with spells, no Material components. At will: Command (level 2 version), Detect Magic, Scorching Ray (level 3 version). 1 a day each: Fireball (level 6 version), Scrying. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Commanding Presence (casts Command (level 2 version) using Spellcasting; not again before its next turn). Fiery Rays (casts Scorching Ray (level 3 version) using Spellcasting; not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 17,
+            onHit: [
+              {
+                damage: "2d8+10",
+                type: "slashing"
+              },
+              {
+                damage: "3d6",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 24,
+            half: true,
+            onFail: [
+              {
+                damage: "26d6",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 90 foot cone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient red dragon, a proud, fearsome dragon that breathes fire."
+  },
+  {
+    id: "ancient-silver-dragon",
+    name: "Ancient Silver Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 23,
+    xp: 50000,
+    pb: 7,
+    ac: 22,
+    hp: 468,
+    speed: {
+      walk: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 30,
+      dex: 10,
+      con: 29,
+      int: 18,
+      wis: 15,
+      cha: 26
+    },
+    skills: {
+      history: 11,
+      perception: 16,
+      stealth: 7
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "cold"
+    ],
+    traits: [
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Paralyzing Breath or by casting Ice Knife (level 2 version)."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Charisma, spell save DC 23, +15 to hit with spells, no Material components. At will: Detect Magic, Hold Monster, Ice Knife (level 2 version), Shapechange (beast or humanoid form only). 1 a day each: Control Weather, Ice Storm (level 7 version), Teleport, Zone of Truth. The DM casts these."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Chill (casts Hold Monster using Spellcasting; not again before its next turn). Cold Gale (a line 60 feet long and 10 feet wide: Dexterity save (DC 23) or 4d6 cold damage and pushed up to 30 feet away (half damage, no push on a success); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 17,
+            onHit: [
+              {
+                damage: "2d8+10",
+                type: "slashing"
+              },
+              {
+                damage: "2d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "cold-breath",
+        name: "Cold Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 24,
+            half: true,
+            onFail: [
+              {
+                damage: "15d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 90 foot cone."
+      },
+      {
+        id: "paralyzing-breath",
+        name: "Paralyzing Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 24,
+            half: false,
+            onFail: [
+              {
+                condition: "incapacitated",
+                ends: {
+                  on: "save",
+                  save: "con",
+                  at: "turnEnd"
+                }
+              },
+              {
+                manual: "A target that fails the repeat save is Paralyzed instead, repeating the save at the end of each of its turns; a success ends it, and it ends by itself after 1 minute."
+              }
+            ]
+          }
+        ],
+        text: "A 90 foot cone that can paralyze."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient silver dragon, a noble mountain dragon that breathes cold and paralysis."
+  },
+  {
+    id: "ancient-white-dragon",
+    name: "Ancient White Dragon",
+    source: "SRD 5.2.1",
+    size: "gargantuan",
+    type: "dragon",
+    cr: 20,
+    xp: 25000,
+    pb: 6,
+    ac: 20,
+    hp: 333,
+    speed: {
+      walk: 40,
+      burrow: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 26,
+      dex: 10,
+      con: 26,
+      int: 10,
+      wis: 13,
+      cha: 18
+    },
+    skills: {
+      perception: 13,
+      stealth: 6
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "cold"
+    ],
+    traits: [
+      {
+        id: "ice-walk",
+        name: "Ice Walk",
+        modifiers: [],
+        text: "Moves across and climbs icy surfaces without ability checks, and ice or snow Difficult Terrain costs it no extra movement."
+      },
+      {
+        id: "legendary-resistance",
+        name: "Legendary Resistance",
+        modifiers: [],
+        text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks."
+      },
+      {
+        id: "legendary-actions",
+        name: "Legendary Actions",
+        modifiers: [],
+        text: "3 uses (4 in its lair), regained at the start of each of its turns; one action can be taken after another creature's turn. Freezing Burst (each creature in a 30-foot-radius sphere centred on a point it sees within 120 feet makes a Constitution save (DC 20) or takes 4d6 cold damage and has Speed 0 until the end of its next turn; not again before its next turn). Frightful Presence (casts Fear (spell save DC 18, Charisma); not again before its next turn). Pounce (moves up to half its Speed and makes one Rend attack). The engine has no field for legendary actions; the DM runs them."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 15
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 14,
+            onHit: [
+              {
+                damage: "2d8+8",
+                type: "slashing"
+              },
+              {
+                damage: "2d6",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "cold-breath",
+        name: "Cold Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 90
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 22,
+            half: true,
+            onFail: [
+              {
+                damage: "14d8",
+                type: "cold"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A 90 foot cone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A gargantuan ancient white dragon, a primal arctic dragon that breathes frost."
+  },
+  {
+    id: "archmage",
+    name: "Archmage",
+    source: "SRD 5.2.1",
+    size: "medium",
+    type: "humanoid",
+    cr: 12,
+    xp: 8000,
+    pb: 4,
+    ac: 17,
+    hp: 170,
+    speed: {
+      walk: 30
+    },
+    abilities: {
+      str: 10,
+      dex: 14,
+      con: 12,
+      int: 20,
+      wis: 15,
+      cha: 16
+    },
+    skills: {
+      arcana: 13,
+      history: 9,
+      perception: 6
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "psychic"
+    ],
+    traits: [
+      {
+        id: "condition-immunities",
+        name: "Condition Immunities",
+        modifiers: [],
+        text: "Immune to the Charmed condition while Mind Blank is on it (it casts Mind Blank before combat). The engine has no field for condition immunities yet."
+      },
+      {
+        id: "magic-resistance",
+        name: "Magic Resistance",
+        modifiers: [],
+        text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Four Arcane Burst attacks."
+      },
+      {
+        id: "spellcasting",
+        name: "Spellcasting",
+        modifiers: [],
+        text: "Intelligence, spell save DC 17, no Material components. At will: Detect Magic, Detect Thoughts, Disguise Self, Invisibility, Light, Mage Armor (included in AC), Mage Hand, Prestidigitation. 2 a day each: Fly, Lightning Bolt (level 7 version). 1 a day each: Cone of Cold (level 9 version), Mind Blank (cast before combat), Scrying, Teleport. The DM casts these."
+      },
+      {
+        id: "misty-step",
+        name: "Misty Step",
+        modifiers: [],
+        text: "Bonus Action, 3 a day: casts Misty Step. The DM applies this."
+      },
+      {
+        id: "protective-magic",
+        name: "Protective Magic",
+        modifiers: [],
+        text: "Reaction, 3 a day: casts Counterspell or Shield in response to its trigger. The DM applies this."
+      }
+    ],
+    actions: [
+      {
+        id: "arcane-burst",
+        name: "Arcane Burst",
+        target: {
+          creature: {
+            reach: 5
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 9,
+            onHit: [
+              {
+                damage: "4d10+5",
+                type: "force"
+              }
+            ]
+          }
+        ],
+        text: "A melee force attack."
+      },
+      {
+        id: "arcane-burst-ranged",
+        name: "Arcane Burst (ranged)",
+        target: {
+          creature: {
+            range: [
+              150,
+              150
+            ]
+          }
+        },
+        effects: [
+          {
+            attack: "ranged",
+            kind: "weapon",
+            bonus: 9,
+            onHit: [
+              {
+                damage: "4d10+5",
+                type: "force"
+              }
+            ]
+          }
+        ],
+        text: "The same burst as a ranged attack."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A master wizard who bursts foes with force and counters spells."
+  },
+  {
+    id: "bugbear-stalker",
+    name: "Bugbear Stalker",
+    source: "SRD 5.2.1",
+    size: "medium",
+    type: "fey",
+    cr: 3,
+    xp: 700,
+    pb: 2,
+    ac: 15,
+    hp: 65,
+    speed: {
+      walk: 30
+    },
+    abilities: {
+      str: 17,
+      dex: 14,
+      con: 14,
+      int: 11,
+      wis: 12,
+      cha: 11
+    },
+    skills: {
+      stealth: 6,
+      survival: 3
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [],
+    traits: [
+      {
+        id: "abduct",
+        name: "Abduct",
+        modifiers: [],
+        text: "Moving a creature it is grappling costs it no extra movement."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Two attacks, in any mix of Javelin and Morningstar."
+      }
+    ],
+    actions: [
+      {
+        id: "javelin",
+        name: "Javelin",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 5,
+            onHit: [
+              {
+                damage: "3d6+3",
+                type: "piercing"
+              }
+            ]
+          }
+        ],
+        text: "A reach melee attack."
+      },
+      {
+        id: "javelin-thrown",
+        name: "Javelin (thrown)",
+        target: {
+          creature: {
+            range: [
+              30,
+              120
+            ]
+          }
+        },
+        effects: [
+          {
+            attack: "ranged",
+            kind: "weapon",
+            bonus: 5,
+            onHit: [
+              {
+                damage: "3d6+3",
+                type: "piercing"
+              }
+            ]
+          }
+        ],
+        text: "The same javelin thrown."
+      },
+      {
+        id: "morningstar",
+        name: "Morningstar",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 5,
+            onHit: [
+              {
+                damage: "2d8+3",
+                type: "piercing"
+              }
+            ]
+          }
+        ],
+        text: "A reach melee attack, with Advantage if the target is Grappled by the bugbear."
+      },
+      {
+        id: "quick-grapple",
+        name: "Quick Grapple",
+        target: {
+          creature: {
+            range: [
+              10,
+              10
+            ]
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 13,
+            half: false,
+            onFail: [
+              {
+                condition: "grappled"
+              }
+            ]
+          }
+        ],
+        text: "Bonus Action. Grapples a Medium or smaller creature within 10 feet it can see (escape DC 13)."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A sneaky bugbear hunter that snatches victims and stabs them with a morningstar."
+  },
+  {
+    id: "young-black-dragon",
+    name: "Young Black Dragon",
+    source: "SRD 5.2.1",
+    size: "large",
+    type: "dragon",
+    cr: 7,
+    xp: 2900,
+    pb: 3,
+    ac: 18,
+    hp: 127,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 19,
+      dex: 14,
+      con: 17,
+      int: 12,
+      wis: 11,
+      cha: 15
+    },
+    skills: {
+      perception: 6,
+      stealth: 5
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "acid"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 7,
+            onHit: [
+              {
+                damage: "2d4+4",
+                type: "slashing"
+              },
+              {
+                damage: "1d6",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "acid-breath",
+        name: "Acid Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 30
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 14,
+            half: true,
+            onFail: [
+              {
+                damage: "14d6",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 30 feet long and 5 feet wide."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A large young black dragon, a swamp-dwelling dragon that spits acid."
+  },
+  {
+    id: "young-blue-dragon",
+    name: "Young Blue Dragon",
+    source: "SRD 5.2.1",
+    size: "large",
+    type: "dragon",
+    cr: 9,
+    xp: 5000,
+    pb: 4,
+    ac: 18,
+    hp: 152,
+    speed: {
+      walk: 40,
+      burrow: 20,
+      fly: 80
+    },
+    abilities: {
+      str: 21,
+      dex: 10,
+      con: 19,
+      int: 14,
+      wis: 13,
+      cha: 17
+    },
+    skills: {
+      perception: 9,
+      stealth: 4
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "lightning"
+    ],
+    traits: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 9,
+            onHit: [
+              {
+                damage: "2d6+5",
+                type: "slashing"
+              },
+              {
+                damage: "1d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "lightning-breath",
+        name: "Lightning Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 16,
+            half: true,
+            onFail: [
+              {
+                damage: "10d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 60 feet long and 5 feet wide."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A large young blue dragon, a desert dragon that breathes lightning."
+  },
+  {
+    id: "young-brass-dragon",
+    name: "Young Brass Dragon",
+    source: "SRD 5.2.1",
+    size: "large",
+    type: "dragon",
+    cr: 6,
+    xp: 2300,
+    pb: 3,
+    ac: 17,
+    hp: 110,
+    speed: {
+      walk: 40,
+      burrow: 20,
+      fly: 80
+    },
+    abilities: {
+      str: 19,
+      dex: 10,
+      con: 17,
+      int: 12,
+      wis: 11,
+      cha: 15
+    },
+    skills: {
+      perception: 6,
+      persuasion: 5,
+      stealth: 3
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "fire"
+    ],
+    traits: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. Two of them can be replaced by Sleep Breath."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 7,
+            onHit: [
+              {
+                damage: "2d10+4",
+                type: "slashing"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "fire-breath",
+        name: "Fire Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 40
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 14,
+            half: true,
+            onFail: [
+              {
+                damage: "11d6",
+                type: "fire"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 40 feet long and 5 feet wide."
+      },
+      {
+        id: "sleep-breath",
+        name: "Sleep Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 30
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 14,
+            half: false,
+            onFail: [
+              {
+                condition: "incapacitated",
+                ends: {
+                  on: "save",
+                  save: "con",
+                  at: "turnEnd"
+                }
+              },
+              {
+                manual: "A target that fails the repeat save falls Unconscious for 1 minute; the effect ends if it takes damage or someone within 5 feet uses an action to wake it."
+              }
+            ]
+          }
+        ],
+        text: "A 30 foot cone of sleep."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A large young brass dragon, a talkative desert dragon that breathes fire and sleep."
+  },
+  {
+    id: "young-bronze-dragon",
+    name: "Young Bronze Dragon",
+    source: "SRD 5.2.1",
+    size: "large",
+    type: "dragon",
+    cr: 8,
+    xp: 3900,
+    pb: 3,
+    ac: 17,
+    hp: 142,
+    speed: {
+      walk: 40,
+      fly: 80,
+      swim: 40
+    },
+    abilities: {
+      str: 21,
+      dex: 10,
+      con: 19,
+      int: 14,
+      wis: 13,
+      cha: 17
+    },
+    skills: {
+      insight: 4,
+      perception: 7,
+      stealth: 3
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "lightning"
+    ],
+    traits: [
+      {
+        id: "amphibious",
+        name: "Amphibious",
+        modifiers: [],
+        text: "Breathes air and water."
+      },
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Repulsion Breath."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 8,
+            onHit: [
+              {
+                damage: "2d10+5",
+                type: "slashing"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "lightning-breath",
+        name: "Lightning Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 60
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 15,
+            half: true,
+            onFail: [
+              {
+                damage: "9d10",
+                type: "lightning"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 60 feet long and 5 feet wide."
+      },
+      {
+        id: "repulsion-breath",
+        name: "Repulsion Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 30
+          }
+        },
+        effects: [
+          {
+            save: "str",
+            dc: 15,
+            half: false,
+            onFail: [
+              {
+                move: 40,
+                dir: "away"
+              },
+              {
+                condition: "prone"
+              }
+            ]
+          }
+        ],
+        text: "A 30 foot cone that pushes targets away and knocks them Prone."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A large young bronze dragon, a coastal dragon that breathes lightning and repulsion."
+  },
+  {
+    id: "young-copper-dragon",
+    name: "Young Copper Dragon",
+    source: "SRD 5.2.1",
+    size: "large",
+    type: "dragon",
+    cr: 7,
+    xp: 2900,
+    pb: 3,
+    ac: 17,
+    hp: 119,
+    speed: {
+      walk: 40,
+      climb: 40,
+      fly: 80
+    },
+    abilities: {
+      str: 19,
+      dex: 12,
+      con: 17,
+      int: 16,
+      wis: 13,
+      cha: 15
+    },
+    skills: {
+      deception: 5,
+      perception: 7,
+      stealth: 4
+    },
+    resist: [],
+    vulnerable: [],
+    immune: [
+      "acid"
+    ],
+    traits: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        modifiers: [],
+        text: "Three Rend attacks. One of them can be replaced by Slowing Breath."
+      }
+    ],
+    actions: [
+      {
+        id: "rend",
+        name: "Rend",
+        target: {
+          creature: {
+            reach: 10
+          }
+        },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: 7,
+            onHit: [
+              {
+                damage: "2d10+4",
+                type: "slashing"
+              }
+            ]
+          }
+        ],
+        text: "A melee attack with extra elemental damage."
+      },
+      {
+        id: "acid-breath",
+        name: "Acid Breath",
+        target: {
+          area: {
+            shape: "line",
+            size: 40
+          }
+        },
+        effects: [
+          {
+            save: "dex",
+            dc: 14,
+            half: true,
+            onFail: [
+              {
+                damage: "9d8",
+                type: "acid"
+              }
+            ]
+          }
+        ],
+        text: "Recharge 5-6 (not tracked). A line 40 feet long and 5 feet wide."
+      },
+      {
+        id: "slowing-breath",
+        name: "Slowing Breath",
+        target: {
+          area: {
+            shape: "cone",
+            size: 30
+          }
+        },
+        effects: [
+          {
+            save: "con",
+            dc: 14,
+            half: false,
+            onFail: [
+              {
+                manual: "The target cannot take Reactions, its Speed is halved, and it can take either an action or a Bonus Action, not both, until the end of its next turn."
+              }
+            ]
+          }
+        ],
+        text: "A 30 foot cone that slows targets."
+      }
+    ],
+    tier: "assist",
+    checked: true,
+    text: "A large young copper dragon, a prankster dragon of the hills that breathes acid and slowing gas."
   }
 ];
