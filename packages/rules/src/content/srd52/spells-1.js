@@ -228,9 +228,10 @@ export const spells1 = [
     time: "action", range: "self", components: ["v", "s", "m"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"manual": "False Life: the caster gains 2d4 + 4 Temporary Hit Points (+5 per slot level above 1). The engine cannot grant temporary hit points, so the DM rolls and records them."}],
-    tier: "manual", checked: true,
-    text: "The caster gains temporary hit points: 2d4+4, and 5 more per slot level above 1.",
+    effects: [{"tempHp": "2d4+4"}],
+    higher: {"slot": {"tempHp": "+5"}},
+    tier: "auto", checked: true,
+    text: "The caster gains 2d4+4 Temporary Hit Points, and 5 more per slot level above 1.",
   },
   {
     id: "feather-fall", name: "Feather Fall", source: "SRD 5.2.1",

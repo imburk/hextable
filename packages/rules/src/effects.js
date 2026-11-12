@@ -65,7 +65,7 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
   }
   const up = slot - def.level, bySlot = def.higher?.slot;
   if (up > 0 && bySlot) {
-    for (const key of ['damage', 'heal']) {
+    for (const key of ['damage', 'heal', 'tempHp']) {
       if (!bySlot[key]) continue;
       const st = first(key), sum = st && addDice(st[key], bySlot[key], up);
       if (sum) st[key] = sum; else unscaled = `the extra ${bySlot[key]} per slot level above ${def.level}`;
@@ -104,6 +104,7 @@ function summarise(def) {
   }
   if (kind === 'damage') return { short: dmg([step]), long: `${dmg([step])}, always hits` };
   if (kind === 'heal') return { short: `heal ${step.heal}`, long: `Heal ${step.heal}` };
+  if (kind === 'tempHp') return { short: `${step.tempHp} temp HP`, long: `${step.tempHp} Temporary Hit Points` };
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
@@ -267,6 +268,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal') return kit.heal(s, t, roll(s, step.heal).total + (step.addMod ? f.src.healMod : 0), ev);
+  if (kind === 'tempHp') return kit.tempHp(s, t, roll(s, step.tempHp).total + (step.addMod ? f.src.healMod : 0), ev, f);
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f)) return;

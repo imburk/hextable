@@ -564,6 +564,20 @@ entry names what was added to `schema.js` and what the engine does with it.
   recorded in the turn's flags (the Resistance cantrip). The damage event says so in
   `adjusted`, which players are not sent.
 
+- **Temporary Hit Points** (C5, S5). A creature's `tempHp` (none when absent). Damage takes
+  them first and the rest goes to Hit Points; the damage event says how much they soaked
+  (`temp`, sent to the DM only). They do not add up: a creature given some keeps the larger
+  amount (the SRD lets it choose, and the engine chooses the larger). Healing never restores
+  them, they never wake a creature at 0 Hit Points, and the massive-damage rule counts only
+  what reached Hit Points. They last until spent or a Long Rest; from a lasting effect
+  (`tempFx`, a part `{ target, temp: true }`) they vanish when it ends. A `tempHp` step
+  (dice, `addMod` for the spellcasting modifier) grants them; `higher.slot.tempHp` adds per
+  slot level. The DM setting Hit Points leaves them alone. Event `tempHp` (DM only until the
+  view sends it). Shown on the sheet, the dock and the tracker.
+- **A Long Rest for monsters** (M3). The `rest` action takes `ids`, who rests (the party when
+  not given). A monster that rests gets its Hit Points back, its uses per day
+  (`creature.charges`) and its spent recharges. The DM panel has "Long rest (everyone)".
+
 ### A class
 
 ```js

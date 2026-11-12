@@ -39,7 +39,7 @@ export function createTracker(ctx) {
   function rowHTML(S, e, cur, dm) {
     const enc = S.encounter, full = !!e.abil && typeof e.maxHp === 'number', numbers = full && (ctx.mine(e) || e.side === 'party');
     const word = e.health ?? (e.dead ? 'dead' : typeof e.maxHp === 'number' ? (e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy') : null);
-    const hp = numbers ? `${e.hp} / ${e.maxHp}` : WORD[word] ?? '';
+    const hp = numbers ? `${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` +${e.tempHp}` : ''}` : WORD[word] ?? '';
     const tags = [];
     if (e.size && e.size !== 'medium') tags.push(e.size[0].toUpperCase() + e.size.slice(1));
     let sf = null; try { sf = e.pos && S.map ? under(S.map, e.pos) : null; } catch { /* no surface: say nothing */ }
