@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
-import { apply, current, moveOptions } from "../src/engine.js";
+import { ACTION_TYPES, apply, current, moveOptions } from "../src/engine.js";
 import * as H from "../src/hex.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
@@ -137,4 +137,35 @@ test("steps are named in plain words; players are told only of steps they could 
   assert.deepEqual(hidden, { label: "Greyjaw was added", shown: null });
   const seen = step({ type: "advanceTime", minutes: 10 });
   assert.deepEqual(seen, { label: "10 minutes passed", shown: "10 minutes passed" });
+});
+
+test("every action the engine handles has a label of its own", () => {
+  assert.ok(ACTION_TYPES.length > 40 && ACTION_TYPES.includes("follow") && ACTION_TYPES.includes("showHandout"), "the handler table is enumerated");
+  const s = newGame(5);
+  for (const type of ACTION_TYPES) {
+    const action = { type, actor: "fighter", target: "rogue", entity: "cleric", leader: "rogue", action: "x", minutes: 5, title: "t", handout: "h1", item: "torch" };
+    const { label } = describeStep(action, [], mark(s), s);
+    assert.ok(label && !/\(an action\)/.test(label), `${type} falls through to the generic label: "${label}"`);
+  }
+  assert.match(describeStep({ type: "nonsense" }, [], mark(s), s).label, /\(an action\)/, "an unknown type still gets the generic one");
+});
+
+test("following, marching, handouts, notes and monster actions read in plain words", () => {
+  const s = newGame(5);
+  const label = (action, ctx = DM) => { const before = mark(s), res = apply(s, action, ctx); assert.ok(res.ok, res.error); return describeStep(action, res.events, before, s); };
+  const { name: pip } = s.entities.rogue, { name: brenna } = s.entities.fighter;
+  assert.equal(label({ type: "follow", actor: "rogue", leader: "fighter" }).label, `${pip} started following ${brenna}`);
+  assert.equal(label({ type: "follow", actor: "rogue", leader: null }).label, `${pip} stopped following`);
+  assert.equal(label({ type: "partyFollow", leader: "fighter" }).label, `The party fell in behind ${brenna}`);
+  assert.equal(label({ type: "marchingOrder", order: ["rogue", "fighter"] }).label, "The marching order was set");
+  assert.equal(label({ type: "handout", handout: { title: "The rune wall", text: "Speak" } }).label, "A handout was made");
+  assert.equal(label({ type: "handout", handout: { id: "h1", text: "Speak, friend" } }).label, "A handout was changed");
+  assert.equal(label({ type: "showHandout", handout: "h1", to: "all" }).label, "A handout was shown");
+  assert.equal(label({ type: "hideHandout", handout: "h1" }).label, "A handout was taken back");
+  assert.equal(label({ type: "note", to: "pat", text: "Psst" }).label, "A note was sent");
+  assert.equal(label({ type: "removeHandout", handout: "h1" }).label, "A handout was removed");
+  const wolf = Object.values(s.entities).find((e) => e.tpl === "wolf");
+  const near = H.neighbors(s.entities.fighter.pos).find((n) => apply(structuredClone(s), { type: "place", actor: wolf.id, to: n }, DM).ok);
+  assert.ok(apply(s, { type: "place", actor: wolf.id, to: near }, DM).ok);
+  assert.equal(label({ type: "act", actor: wolf.id, action: "bite", target: "fighter" }).label.replace(wolf.name, "Wolf"), "Wolf used Bite");
 });

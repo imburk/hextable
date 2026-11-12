@@ -1804,6 +1804,9 @@ const handlers = {
   },
 };
 
+// Every action type the engine handles (history.js is tested to have a label for each).
+export const ACTION_TYPES = Object.keys(handlers);
+
 // Whatever has nothing under it and no way to stay up, falls. Run after every action, so that a
 // flyer knocked Prone, a floor that gives way and a creature set down in mid-air all come out the same.
 function gravity(s, ev) {
