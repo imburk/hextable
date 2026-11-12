@@ -188,7 +188,7 @@ export function viewEvents(events, state, viewer) {
           if (!targetOpen) delete e.ac;
           out.push(e);
         } else {
-          out.push(pick(ev, ['type', 'actor', 'target', 'name', 'hit', 'crit', 'mode', 'why', 'opportunity', ...(targetOpen ? ['ac'] : [])]));
+          out.push(pick(ev, ['type', 'actor', 'target', 'name', 'hit', 'crit', 'mode', 'why', 'opportunity', 'cover', ...(targetOpen ? ['ac'] : [])]));
         }
         break;
       }
