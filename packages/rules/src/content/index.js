@@ -23,16 +23,32 @@ import { monsters as monstersHO } from './srd52/monsters-h-o.js';
 import { pregens } from './srd52/pregens.js';
 import { conditions } from './srd52/conditions.js';
 import { objects } from './srd52/objects.js';
+import { weapons, armour } from './srd52/equipment.js';
+import { barbarian } from './srd52/classes/barbarian.js';
+import { bard } from './srd52/classes/bard.js';
+import { cleric } from './srd52/classes/cleric.js';
+import { druid } from './srd52/classes/druid.js';
+import { fighter } from './srd52/classes/fighter.js';
+import { monk } from './srd52/classes/monk.js';
+import { paladin } from './srd52/classes/paladin.js';
+import { ranger } from './srd52/classes/ranger.js';
+import { rogue } from './srd52/classes/rogue.js';
+import { sorcerer } from './srd52/classes/sorcerer.js';
+import { warlock } from './srd52/classes/warlock.js';
+import { wizard } from './srd52/classes/wizard.js';
 
 // A new content file is added in two places: an import above, and its list here.
 const spells = [...spellsStarter, ...spells0, ...spells1, ...spells4, ...spells5, ...spells6, ...spells7, ...spells8, ...spells9, ...spells2, ...spells3];
 const monsters = [...monstersStarter, ...monstersAC, ...monstersPZ, ...monstersDG, ...monstersHO];
+// The twelve classes, one file each (srd52/classes/).
+const classes = [barbarian, bard, cleric, druid, fighter, monk, paladin, ranger, rogue, sorcerer, warlock, wizard];
 
 export { TILES };
-export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects }];
+export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects, classes, weapons, armour }];
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
-export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects) };
+export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
+  classes: byId(classes), weapons: byId(weapons), armour: byId(armour) };
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));

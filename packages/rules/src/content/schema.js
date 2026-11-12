@@ -32,7 +32,7 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
-  'target.seesSource', 'attack.hit', 'attack.weapon'];
+  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated'];
 
 // Things on a map (docs/specs/maps-and-objects.md).
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
@@ -415,10 +415,186 @@ function lintObject(e, say) {
   if (e.tier === 'auto' && manual) say('marked auto but contains a manual step');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [] }) {
+// ---------- equipment: weapons and armour (content/srd52/equipment.js) ----------
+export const WEAPON_PROPERTIES = ['ammunition', 'finesse', 'heavy', 'light', 'loading', 'reach', 'thrown', 'two-handed', 'versatile'];
+export const MASTERIES = ['cleave', 'graze', 'nick', 'push', 'sap', 'slow', 'topple', 'vex'];
+export const ARMOUR_CATEGORIES = ['light', 'medium', 'heavy', 'shield'];
+function lintWeapon(e, say) {
+  if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source)) say('needs a kebab-case id, a name and a source');
+  if (typeof e.checked !== 'boolean') say('needs `checked: true` or `checked: false`');
+  if (!['simple', 'martial'].includes(e.category)) say('category is simple or martial');
+  if (!['melee', 'ranged'].includes(e.kind)) say('kind is melee or ranged');
+  if (!(isDice(e.damage) || /^\d+$/.test(e.damage ?? ''))) say(`damage "${e.damage}" is not dice`);
+  if (!DAMAGE_TYPES.includes(e.type)) say(`unknown damage type "${e.type}"`);
+  if (!allOf(WEAPON_PROPERTIES)(e.properties)) say(`properties are drawn from ${WEAPON_PROPERTIES.join(', ')}`);
+  const has = (p) => e.properties?.includes(p);
+  if ((has('thrown') || has('ammunition') || e.kind === 'ranged') !== (Array.isArray(e.range) && e.range.length === 2 && e.range.every((n) => isInt(n) && n > 0) && e.range[0] <= e.range[1])) say('a ranged, thrown or ammunition weapon has a range [normal, long], and no other has');
+  if (has('versatile') !== isDice(e.versatile ?? '')) say('a versatile weapon gives its two-handed damage in `versatile`, and no other does');
+  if (!MASTERIES.includes(e.mastery)) say(`mastery is one of ${MASTERIES.join(', ')}`);
+  if (findFunction(e)) say('content is data only');
+}
+function lintArmour(e, say) {
+  if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source)) say('needs a kebab-case id, a name and a source');
+  if (typeof e.checked !== 'boolean') say('needs `checked: true` or `checked: false`');
+  if (!ARMOUR_CATEGORIES.includes(e.category)) say(`category is one of ${ARMOUR_CATEGORIES.join(', ')}`);
+  if (!(isInt(e.ac) && e.ac > 0 && e.ac <= 20)) say('ac is a whole number');
+  if (e.dex !== undefined && !(e.dex === 'full' || (isInt(e.dex) && e.dex >= 0))) say('dex is "full" or the most Dexterity adds');
+  if (e.category === 'shield' && e.dex !== undefined) say('a shield adds no Dexterity');
+  if (e.strength !== undefined && !(isInt(e.strength) && e.strength > 0)) say('strength is the score needed');
+  if (e.stealth !== undefined && e.stealth !== 'disadvantage') say('stealth is "disadvantage" or left out');
+  if (findFunction(e)) say('content is data only');
+}
+
+// ---------- classes (content/srd52/classes/*.js) ----------
+// A class is its table and its features, level 1 to 20, with one subclass. A feature says what it
+// does in `text` and, where the vocabulary can say it exactly, in `grants`. Those `derive()` turns
+// into the record the engine plays (content/derive.js). Design: docs/specs/rules-expansion.md, R7.
+export const RESTS = ['short', 'long'];
+export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
+export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
+export const GRANTS = ['modifiers', 'action', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
+  'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists'];
+const LEVELS = 20;
+// A number that grows with the class: a plain number, a column of the class table, an ability
+// modifier with a least value, or so many times the class level.
+function lintAmount(x, cls, say, what) {
+  if (isInt(x)) return;
+  if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel'].includes(k))) {
+    if (x.column !== undefined && !Object.hasOwn(cls.table ?? {}, x.column)) say(`${what}: no column "${x.column}" in the class table`);
+    if (x.mod !== undefined && !ABILITIES.includes(x.mod)) say(`${what}: mod is an ability`);
+    if (x.perLevel !== undefined && !isInt(x.perLevel)) say(`${what}: perLevel is a whole number`);
+    if (x.min !== undefined && !isInt(x.min)) say(`${what}: min is a whole number`);
+    if ([x.column, x.mod, x.perLevel].filter((v) => v !== undefined).length !== 1) say(`${what}: give one of column, mod, perLevel`);
+    return;
+  }
+  say(`${what} is a number, { column }, { mod, min } or { perLevel }`);
+}
+// A modifier's value in a class feature may grow with the class ({ column }) or be an ability
+// modifier ({ mod, min }); derive() puts in the number. For the linter it stands for a number.
+// A heal or tempHp step may add the class level (`addLevel`), which derive() also bakes in.
+function bakeValues(list, cls, say) {
+  const out = structuredClone(list);
+  const fix = (m) => { if (m && typeof m.value === 'object' && m.value !== null && (m.value.column !== undefined || m.value.mod !== undefined)) { lintAmount(m.value, cls, say, 'modifier value'); m.value = 1; } };
+  for (const x of out) { fix(x); fix(x.modifier); if (x.addLevel !== undefined && x.addLevel !== true) say('addLevel is true or left out'); }
+  return out;
+}
+function lintGrants(g, cls, say) {
+  if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
+  for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
+  if (g.modifiers !== undefined) { if (!Array.isArray(g.modifiers) || !g.modifiers.length) say('modifiers is a list'); else for (const m of bakeValues(g.modifiers, cls, say)) lintModifier(m, say); }
+  if (g.action !== undefined) {
+    const a = g.action;
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
+    if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
+    if (a?.cost !== undefined && !(a.cost && ID.test(a.cost.resource ?? '') && (a.cost.n === undefined || (isInt(a.cost.n) && a.cost.n > 0)))) say('cost is { resource, n? }');
+    if (a?.gain !== undefined) {
+      const gn = a.gain;
+      if (!gn || !Object.keys(gn).every((k) => ['action', 'attacks'].includes(k))) say('gain gives an action or attacks');
+      if (gn?.action !== undefined && gn.action !== 1) say('gain.action is 1');
+      if (gn?.attacks !== undefined) { if (!ID.test(gn.attacks.with ?? '')) say('gain.attacks is { with: attack id, n }'); lintAmount(gn.attacks.n, cls, say, 'gain.attacks.n'); }
+    } else if (a?.pool) {
+      if (!a.target?.creature) say('a pool of healing is aimed at a creature');
+    } else if (a) {
+      lintTarget(a.target, say);
+      lintSteps(bakeValues(a.effects, cls, say), say);
+    }
+    for (const k of ['renew', 'noSpells', 'pool', 'firstAttack']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
+  }
+  if (g.ac !== undefined && !(g.ac && isInt(g.ac.base) && allOf(ABILITIES)(g.ac.abilities) && typeof g.ac.shield === 'boolean')) say('ac is { base, abilities, shield }');
+  for (const k of ['armouredAc', 'rangedAttack', 'extraAttack', 'expertise', 'cantrips']) if (g[k] !== undefined && !(isInt(g[k]) && g[k] > 0 && g[k] <= 5)) say(`${k} is a small whole number`);
+  if (g.speed !== undefined) { lintAmount(g.speed.add, cls, say, 'speed.add'); if (!['heavy', 'armour', undefined].includes(g.speed.unless)) say('speed.unless is heavy or armour'); }
+  if (g.speeds !== undefined && !(allOf(['climb', 'swim'])(g.speeds) && g.speeds.length)) say('speeds lists climb and/or swim (equal to Speed)');
+  if (g.senses !== undefined && !validSenses(g.senses)) say('senses gives feet for special senses');
+  if (g.saves !== undefined && !(g.saves === 'all' || allOf(ABILITIES)(g.saves))) say('saves lists abilities, or is "all"');
+  for (const k of ['sneak', 'martialArts']) if (g[k] !== undefined) lintAmount(g[k], cls, say, k);
+  if (g.spells !== undefined && !(Array.isArray(g.spells) && g.spells.every((x) => ID.test(x)))) say('spells lists spell ids');
+  if (g.hp !== undefined) lintAmount(g.hp, cls, say, 'hp');
+  if (g.bonusActs !== undefined && !(allOf(BONUS_ACTS)(g.bonusActs) && g.bonusActs.length)) say(`bonusActs lists ${BONUS_ACTS.join(', ')}`);
+  if (g.skills !== undefined && !(g.skills && isInt(g.skills.n) && g.skills.n > 0 && ['class', 'any'].includes(g.skills.from))) say('skills is { n, from: class | any }');
+  if (g.abilityBonus !== undefined && !(g.abilityBonus && Object.entries(g.abilityBonus).every(([k, v]) => (ABILITIES.includes(k) && isInt(v)) || (k === 'max' && isInt(v))))) say('abilityBonus gives numbers for abilities and a max');
+  if (g.proficiency !== undefined && !(g.proficiency && Object.keys(g.proficiency).every((k) => ['weapons', 'armour'].includes(k)) && allOf(['martial'])(g.proficiency.weapons ?? []) && allOf(ARMOUR_CATEGORIES)(g.proficiency.armour ?? []))) say('proficiency gives weapons (martial) and armour categories');
+  if (g.recover !== undefined && !(g.recover && g.recover.levels === 'half-up' && isInt(g.recover.max))) say('recover is { levels: "half-up", max }');
+  if (g.resist !== undefined && !allOf(DAMAGE_TYPES)(g.resist)) say('resist lists damage types');
+  if (g.spellLists !== undefined && !(Array.isArray(g.spellLists) && g.spellLists.length && g.spellLists.every((x) => ID.test(x)))) say('spellLists names classes whose spell lists it opens');
+  if (g.critOn !== undefined && !(isInt(g.critOn) && g.critOn >= 15 && g.critOn <= 19)) say('critOn is the lowest d20 roll that is a Critical Hit');
+}
+function lintFeature(f, cls, say, ids) {
+  const sub = (m) => say(`feature ${f?.id}: ${m}`);
+  if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
+  ids.add(f.id);
+  if (!isText(f.name) || !isText(f.text)) sub('needs a name and text');
+  if (!(isInt(f.level) && f.level >= 1 && f.level <= LEVELS)) sub('level is 1 to 20');
+  if (!TIERS.includes(f.tier)) sub(`tier is one of ${TIERS.join(', ')}`);
+  if (typeof f.checked !== 'boolean') sub('needs `checked`');
+  if (f.uses !== undefined) {
+    const u = f.uses;
+    if (!u || typeof u !== 'object') sub('uses is { max, recharge, short? }');
+    else {
+      lintAmount(u.max, cls, sub, 'uses.max');
+      const rest = (x) => RESTS.includes(x);
+      if (!(rest(u.recharge) || (u.recharge && typeof u.recharge === 'object' && Object.entries(u.recharge).every(([l, r]) => isInt(+l) && +l >= 1 && +l <= LEVELS && rest(r))))) sub('uses.recharge is short or long, or by level');
+      if (u.short !== undefined && !(isInt(u.short) && u.short > 0)) sub('uses.short is how many come back on a Short Rest');
+    }
+  }
+  if (f.grants !== undefined) lintGrants(f.grants, cls, sub);
+  if (f.grants?.action?.cost && !f.grants.action.cost.resource) sub('a cost names a resource');
+  if (f.options !== undefined) {
+    if (!Array.isArray(f.options) || f.options.length < 2) sub('options lists two or more choices');
+    else for (const o of f.options) {
+      const os = (m) => sub(`option ${o?.id}: ${m}`);
+      if (!ID.test(o?.id ?? '') || !isText(o.name) || !isText(o.text) || !TIERS.includes(o.tier)) os('needs an id, a name, text and a tier');
+      if (o?.grants !== undefined) lintGrants(o.grants, cls, os);
+    }
+  }
+  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !['spellcasting', 'pact-magic'].includes(f.id)) sub('marked auto but grants nothing');
+  // A manual feature may still have its cost enforced: an action whose only steps are manual.
+  const costOnly = (g) => Object.keys(g).length === 1 && g.action?.effects?.every((st) => 'manual' in st);
+  if (f.tier === 'manual' && f.grants && !costOnly(f.grants)) sub('marked manual but grants something');
+}
+const tableRow = (row) => Array.isArray(row) && row.length === LEVELS;
+function lintClass(e, say) {
+  if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source) || !isText(e.text)) say('needs a kebab-case id, a name, a source and text');
+  if (typeof e.checked !== 'boolean') say('needs `checked`');
+  if (![6, 8, 10, 12].includes(e.hitDie)) say('hitDie is 6, 8, 10 or 12');
+  if (!(allOf(ABILITIES)(e.saves) && e.saves.length === 2)) say('saves lists two abilities');
+  if (!allOf(ABILITIES)(e.primary)) say('primary lists abilities');
+  if (!allOf(ARMOUR_CATEGORIES)(e.armour)) say('armour lists armour categories');
+  if (!allOf(['simple', 'martial', 'martial-light', 'martial-finesse-or-light'])(e.weapons) || !e.weapons.length) say('weapons lists simple, martial, martial-light or martial-finesse-or-light');
+  if (e.tools !== undefined && !isText(e.tools)) say('tools is text');
+  const sk = e.skills;
+  if (!(sk && isInt(sk.choose) && sk.choose > 0 && (sk.from === 'any' || (Array.isArray(sk.from) && sk.from.every((x) => Object.hasOwn(SKILLS, x)) && sk.from.length >= sk.choose)))) say('skills is { choose, from: [skills] | "any" }');
+  for (const [k, row] of Object.entries(e.table ?? {})) {
+    if (!ID.test(k)) say(`table column "${k}" must be kebab-case`);
+    if (!tableRow(row) || !row.every((v) => v === null || isInt(v) || isDice(v))) say(`table column "${k}" has 20 entries, numbers, dice or null`);
+  }
+  const c = e.casting;
+  if (c !== null) {
+    if (!c || !ABILITIES.includes(c.ability) || !['prepared', 'pact'].includes(c.kind)) say('casting is null or { ability, kind: prepared | pact, ... }');
+    else {
+      if (!tableRow(c.cantrips) || !c.cantrips.every((n) => isInt(n) && n >= 0)) say('casting.cantrips has 20 numbers');
+      if (!tableRow(c.prepared) || !c.prepared.every((n) => isInt(n) && n >= 0)) say('casting.prepared has 20 numbers');
+      if (c.kind === 'prepared' && !(tableRow(c.slots) && c.slots.every((r) => Array.isArray(r) && r.length <= 9 && r.every((n) => isInt(n) && n > 0)))) say('casting.slots has 20 rows of slots by spell level');
+      if (c.kind === 'pact' && !(tableRow(c.slots) && tableRow(c.slotLevel) && c.slots.every((n) => isInt(n) && n > 0) && c.slotLevel.every((n) => isInt(n) && n >= 1 && n <= 5))) say('pact casting has 20 slot counts and 20 slot levels');
+      if (c.from !== undefined && !isInt(c.from)) say('casting.from is the level spellcasting starts');
+    }
+  }
+  const ids = new Set();
+  if (!Array.isArray(e.features) || !e.features.length) say('needs features');
+  for (const f of e.features ?? []) lintFeature(f, e, say, ids);
+  const sc = e.subclass;
+  if (!sc || !ID.test(sc.id ?? '') || !isText(sc.name) || !isText(sc.text) || typeof sc.checked !== 'boolean') say('needs a subclass with an id, a name, text and `checked`');
+  else {
+    for (const f of sc.features ?? []) lintFeature(f, e, (m) => say(`subclass ${sc.id}: ${m}`), ids);
+    if (sc.spells !== undefined && !Object.entries(sc.spells).every(([l, list]) => isInt(+l) && +l >= 1 && +l <= LEVELS && Array.isArray(list) && list.every((x) => ID.test(x)))) say('subclass spells are lists of spell ids by class level');
+  }
+  if (findFunction(e)) say('content is data only');
+}
+
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [] }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
-  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject]]) {
+  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);
@@ -429,6 +605,16 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
     }
   }
   const spellIds = new Set(spells.map((s) => s.id));
+  // Spells a class always has prepared must be in the pack, and a cost must name a feature with uses.
+  for (const c of classes) {
+    const say = (m) => problems.push(`classes/${c?.id ?? '?'}: ${m}`);
+    const all = [...(c.features ?? []), ...(c.subclass?.features ?? [])], grants = [];
+    for (const f of all) { if (f.grants) grants.push(f.grants); for (const o of f.options ?? []) if (o.grants) grants.push(o.grants); }
+    for (const g of grants) for (const id of g.spells ?? []) if (!spellIds.has(id)) say(`grants a spell that is not in the pack: "${id}"`);
+    for (const list of Object.values(c.subclass?.spells ?? {})) for (const id of list) if (!spellIds.has(id)) say(`subclass spell not in the pack: "${id}"`);
+    const pools = new Set(all.filter((f) => f.uses).map((f) => f.id));
+    for (const g of grants) if (g.action?.cost && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
+  }
   for (const p of pregens) {
     const say = (m) => problems.push(`pregens/${p?.id ?? '?'}: ${m}`);
     if (!ID.test(p.id ?? '')) say('id must be kebab-case');
@@ -513,6 +699,17 @@ export function coverage(kinds) {
       else if (kind === 'conditions') out[kind][e.also ? 'assist' : 'auto']++;      // a condition with a leftover is partly applied
       if (e.checked !== true) out[kind].unchecked++;
     }
+  }
+  return out;
+}
+
+// How many of each class's features (its subclass's included) work fully, partly, or are text for
+// the DM. A feature with options counts as its own tier.
+export function featureCoverage(classes) {
+  const out = {};
+  for (const c of classes) {
+    const row = out[c.id] = { auto: 0, assist: 0, manual: 0, unchecked: 0, total: 0 };
+    for (const f of [...c.features, ...(c.subclass?.features ?? [])]) { row[f.tier]++; row.total++; if (f.checked !== true) row.unchecked++; }
   }
   return out;
 }

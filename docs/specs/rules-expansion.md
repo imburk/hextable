@@ -650,6 +650,42 @@ species and feats. A feature is a name, text, optional modifiers, optional
 resource (`uses: 2, recover: "short"`), and optional action built from effect
 steps.
 
+#### Build notes: classes as data (amendment, R7)
+
+Settled when the twelve classes were entered (`content/srd52/classes/`, one file each; linted by
+`lintClass` in `schema.js`; equipment in `content/srd52/equipment.js`, `lintWeapon`, `lintArmour`):
+
+- **A class** is `{ id, name, hitDie, primary, saves, armour, weapons, tools?, skills: { choose, from },
+  table, casting, features, subclass }`. `table` holds the class table's own columns as 20 entries
+  each (`rages`, `sneak-attack`, `channel-divinity`; `null` before a column starts). `casting` is
+  `null` or `{ ability, kind: 'prepared' | 'pact', cantrips, prepared, slots }` (20 rows; a pact
+  caster's `slots` is a count per level with `slotLevel`). The Proficiency Bonus is the same for
+  every class and is worked out (2 + (level - 1) / 4, rounded down), not repeated per class.
+  `weapons` uses four words: `simple`, `martial`, `martial-light` (Monk), `martial-finesse-or-light` (Rogue).
+- **A feature** is `{ id, name, level, text, tier, checked, uses?, grants?, options? }`. Features
+  shared by several levels of a class (Ability Score Improvement) are entered once per level.
+  `uses` is the feature's own resource: `{ max, recharge: 'short' | 'long' | { level: rest }, short? }`,
+  where `short` is how many come back on a Short Rest when the rest come back on a Long Rest.
+  `options` are choices made on the sheet (`choices[feature id]`), each with its own tier and grants.
+- **An amount** that grows with the class is a number, `{ column }` (the class table),
+  `{ mod, min }` (an ability modifier, at least `min`) or `{ perLevel }` (times the class level). A
+  modifier's `value` may be one of these in class content; `derive()` puts the number in. A heal
+  step may say `addLevel: true` (Second Wind's 1d10 + Fighter level), also baked by `derive()`.
+- **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
+  action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
+  another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and
+  `noSpells` for Rage, `firstAttack` for Reckless Attack); and numbers `derive()` folds into the
+  record: `ac` (an Unarmored Defense formula), `armouredAc`, `rangedAttack`, `speed`, `speeds`,
+  `senses`, `saves`, `extraAttack`, `sneak`, `martialArts`, `hp`, `bonusActs`, `expertise`,
+  `skills`, `abilityBonus`, `cantrips`, `proficiency`, `recover` (Arcane Recovery),
+  `resist`, `critOn`, `spellLists`, `spells` (always prepared).
+- A feature at tier `manual` may still grant an action whose only steps are `manual`: the engine
+  enforces its cost (the action, the use) and shows the text. A feature at tier `auto` must grant
+  something, have uses, or be Spellcasting.
+- **Three situation tags** were added: `attack.str` (an attack using Strength: Rage, Reckless
+  Attack), `attack.spell` (a spell's attack roll: Innate Sorcery), `self.notIncapacitated` (Danger
+  Sense, Aura of Protection).
+
 ## Characters
 
 ### Quick entry first

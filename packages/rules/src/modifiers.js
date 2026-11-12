@@ -58,6 +58,9 @@ export function judge(tag, sit, s) {
     case 'target.prone': return t ? has(t, 'prone') : null;
     case 'attack.hit': return sit.hit === undefined ? null : sit.hit;              // the damage comes from an attack roll that hit
     case 'attack.weapon': return sit.weapon === undefined ? null : sit.weapon;     // ... made with a weapon
+    case 'attack.str': return sit.str === undefined ? null : sit.str;              // an attack using Strength (Rage, Reckless Attack)
+    case 'attack.spell': return sit.spell === undefined ? null : sit.spell;        // the attack roll of a spell (Innate Sorcery)
+    case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
     // sees its target, and whether its target sees it changes nothing.
