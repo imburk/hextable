@@ -18,7 +18,8 @@ by the engine. Must work on PC, phone and tablet.
   steps from its data on a stack kept in the game state. `modifiers.js`
   gathers what conditions, traits and lasting effects change about a roll
   or a number. `durations.js` keeps lasting effects, ends them, and handles
-  Concentration.
+  Concentration. `zones.js` is areas that last (Moonbeam, Web) and what they
+  do to a creature that enters them or starts or ends its turn there.
   `space.js` is where things can stand: levels, heights, surfaces. `map.js`
   is the map document: its format, its linter, its migration and its edits.
   `walls.js` works out what walls and doors block.

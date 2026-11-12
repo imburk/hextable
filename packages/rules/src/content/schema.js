@@ -87,10 +87,28 @@ function lintModifier(m, say) {
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
   // against the spell's target (Hex, Hunter's Mark).
   if (m.against !== undefined && m.against !== 'target') say('`against` is "target" or left out');
+  // `uses: 1`: the first roll it applies to uses it up (Guiding Bolt, Vicious Mockery).
+  if (m.uses !== undefined && m.uses !== 1) say('`uses` is 1 or left out');
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
   if (m.once !== undefined && !(m.once === 'turn' && m.on === 'damage.taken' && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken');
   lintWhen(m.when, say);
 }
+// A zone: the spell's area stays for its duration and its steps go off on a creature that enters
+// it (`enter`), or starts or ends its turn there; `once: 'turn'` at most once a turn for each
+// creature; `atCast` also on everyone in it as it appears; `spare` lets the caster name creatures
+// it leaves alone. An Emanation moves with its caster; other shapes stay where they were laid out.
+function lintZone(e, say) {
+  const z = e.zone;
+  if (z === undefined) return;
+  if (!z || typeof z !== 'object') return say('`zone` must be an object');
+  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd');
+  if (z.once !== undefined && z.once !== 'turn') say('`zone.once` is "turn" or left out');
+  for (const k of ['atCast', 'spare']) if (z[k] !== undefined && z[k] !== true) say(`\`zone.${k}\` is true or left out`);
+  if (!e.target?.area || e.target.area.count || e.target.area.choose) say('a zone needs a single area to lay out');
+  if (e.duration === 'instant') say('a zone needs a duration');
+}
+
 // Every "chosen" in a spell's steps needs a `choice` of the right kind.
 function lintChoice(e, say) {
   const used = new Set();
@@ -101,6 +119,7 @@ function lintChoice(e, say) {
     if (m.scope?.ability === 'chosen') used.add('ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
+  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); });
   const c = e.choice;
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
@@ -131,14 +150,16 @@ function lintSteps(steps, say, seen = { manual: false }) {
     }
     if (kind === 'damage') {
       if (!isDice(step.damage)) say(`damage "${step.damage}" is not dice like 2d6+3`);
-      if (!DAMAGE_TYPES.includes(step.type)) say(`unknown damage type "${step.type}"`);
+      if (!DAMAGE_TYPES.includes(step.type) && step.type !== 'chosen') say(`unknown damage type "${step.type}"`);
       if (step.times !== undefined && !(isInt(step.times) && step.times > 0)) say('`times` must be a positive whole number');
     }
     if (kind === 'heal' && !isDice(step.heal)) say(`heal "${step.heal}" is not dice like 2d8`);
     if (kind === 'tempHp' && !isDice(step.tempHp)) say(`tempHp "${step.tempHp}" is not dice like 2d4+4`);
     if ((kind === 'heal' || kind === 'tempHp') && step.addMod !== undefined && step.addMod !== true) say('`addMod` is true or left out');
-    if (kind === 'condition') {
-      if (!CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+    if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+    // What ends a condition or a modifier on its own: a turn boundary of the target or the source
+    // ("until the end of your next turn"), or a repeat save.
+    if (kind === 'condition' || kind === 'modifier') {
       const ends = step.ends;
       if (ends !== undefined) {
         if (!['turnStart', 'turnEnd', 'save'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd or save');
@@ -218,6 +239,7 @@ function lintSpell(e, say) {
   lintTarget(e.target, say);
   lintHigher(e, say);
   lintChoice(e, say);
+  lintZone(e, say);
   const seen = lintSteps(e.effects, say);
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');

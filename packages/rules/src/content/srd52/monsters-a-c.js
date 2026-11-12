@@ -5424,12 +5424,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Acid Arrow (level 3 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -5443,6 +5437,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Acid Arrow (level 3 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -5542,12 +5542,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Shatter."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -5561,6 +5555,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Shatter with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -5662,12 +5662,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Sleep Breath or by casting Scorching Ray."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -5681,6 +5675,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "sleep-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Sleep Breath. One attack can instead be replaced by casting Scorching Ray with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -5818,12 +5823,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Repulsion Breath or by casting Guiding Bolt (level 2 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -5837,6 +5836,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "repulsion-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Repulsion Breath. One attack can instead be replaced by casting Guiding Bolt (level 2 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -5964,12 +5974,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Slowing Breath or by casting Mind Spike (level 4 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -5983,6 +5987,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "slowing-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Slowing Breath. One attack can instead be replaced by casting Mind Spike (level 4 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -6113,12 +6128,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Guiding Bolt (level 2 version) or by Weakening Breath."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -6132,6 +6141,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "weakening-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Weakening Breath. One attack can instead be replaced by casting Guiding Bolt (level 2 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -6269,12 +6289,6 @@ export const monsters = [
         text: "Immune to the Poisoned condition(s). The engine applies this."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Mind Spike (level 3 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -6288,6 +6302,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Mind Spike (level 3 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -6387,12 +6407,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Scorching Ray."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -6406,6 +6420,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Scorching Ray with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -6505,12 +6525,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Paralyzing Breath or by casting Ice Knife."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -6524,6 +6538,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "paralyzing-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Paralyzing Breath. One attack can instead be replaced by casting Ice Knife with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -6779,12 +6804,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Acid Arrow (level 4 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -6798,6 +6817,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Acid Arrow (level 4 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -6898,12 +6923,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Shatter (level 3 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -6917,6 +6936,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Shatter (level 3 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7018,12 +7043,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Sleep Breath or by casting Scorching Ray (level 3 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7037,6 +7056,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "sleep-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Sleep Breath. One attack can instead be replaced by casting Scorching Ray (level 3 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7174,12 +7204,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Repulsion Breath or by casting Guiding Bolt (level 2 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7193,6 +7217,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "repulsion-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Repulsion Breath. One attack can instead be replaced by casting Guiding Bolt (level 2 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7320,12 +7355,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Slowing Breath or by casting Mind Spike (level 5 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7339,6 +7368,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "slowing-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Slowing Breath. One attack can instead be replaced by casting Mind Spike (level 5 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7470,12 +7510,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Guiding Bolt (level 4 version) or by Weakening Breath."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7489,6 +7523,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "weakening-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Weakening Breath. One attack can instead be replaced by casting Guiding Bolt (level 4 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7626,12 +7671,6 @@ export const monsters = [
         text: "Immune to the Poisoned condition(s). The engine applies this."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Mind Spike (level 5 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7645,6 +7684,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Mind Spike (level 5 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7744,12 +7789,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by casting Scorching Ray (level 3 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7763,6 +7802,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Three Rend attacks. One can instead be replaced by casting Scorching Ray (level 3 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7862,12 +7907,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 4 times a day, or 5 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Three Rend attacks. One of them can be replaced by Paralyzing Breath or by casting Ice Knife (level 2 version)."
-      },
-      {
         id: "spellcasting",
         name: "Spellcasting",
         modifiers: [],
@@ -7881,6 +7920,17 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: {
+          or: [
+            [{ action: "rend", times: 3 }],
+            [{ action: "rend", times: 2 }, { action: "paralyzing-breath", times: 1 }]
+          ]
+        },
+        text: "Three Rend attacks, or two and Paralyzing Breath. One attack can instead be replaced by casting Ice Knife (level 2 version) with Spellcasting, which the DM applies in place of one Rend."
+      },
       {
         id: "rend",
         name: "Rend",

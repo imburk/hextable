@@ -616,7 +616,12 @@ $('btn-end').onclick = () => act({ type: 'endTurn', actor: selId });
 $('hint-cancel').onclick = () => setMode(MOVE);
 $('hint-go').onclick = () => {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
-  else if (SPELLS[mode.id].area) act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim, ...(SPELLS[mode.id].area.choose ? { targets: mode.picked ?? [] } : {}), ...chosen(SPELLS[mode.id]) });
+  else if (SPELLS[mode.id].area) {
+    const sp = SPELLS[mode.id], me = S.entities[selId];
+    // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.
+    const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
+    act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) });
+  }
   else act({ type: 'cast', actor: selId, spell: mode.id, targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) });
   mode = MOVE;
 };

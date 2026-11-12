@@ -80,7 +80,7 @@ export function judge(tag, sit, s) {
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
     // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against };
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, part: p };
   }
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
@@ -107,13 +107,14 @@ function inScope(m, sit) {
 //     dice: [{ dice, name }],       dice to roll and add when the roll is made
 //     min, max,                     the least and the most the number may be (Barkskin: AC at least 17)
 //     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
+//     used: [parts]                 single-use modifiers that applied, for the roll's maker to use up
 //     taken: [{ value, types, name, once, key }] }   for damage.taken: an amount (or dice) added
 //                                   to damage of those types (all, if none), at most once a turn if `once`
 // `side` says which end of an attack `e` is on, for wording the reasons as the log always has
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [] };
   for (const src of sources(s, e)) {
     if (src.against && sit.target?.id !== src.against) continue;
     for (const m of src.modifiers) {
@@ -122,6 +123,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (!inScope(m, sit)) continue;
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
+      if (m.uses && src.part) out.used.push(src.part);         // one use: the roll that takes it ends it (durations.useUp)
       if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name });
       else if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
       else if (m.op === 'add' && typeof value === 'string') out.dice.push({ dice: value, name: src.name });
