@@ -8,6 +8,8 @@
 //
 // Online, files are fetched with the session token in a header, never in a URL, and shown from a
 // blob: URL (an <img> cannot send a header). Solo, they are kept in IndexedDB with smaller limits.
+// Solo also has pack(), the files for a table export (online, the server packs them).
+import { EXPORT_ASSET_BYTES } from './shared/handouts.js';
 export const TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 export const SOLO_LIMITS = { file: 2 * 1024 * 1024, table: 20 * 1024 * 1024, files: 50 };
 
@@ -110,5 +112,21 @@ export function localAssets() {
       return { assets: have, usage: { files: have.length, bytes: have.reduce((n, r) => n + r.bytes, 0) }, limits: SOLO_LIMITS };
     },
     forget: (id) => cache.drop(id),
+    // The files as base64 with their records for a table export, up to `limit` bytes, those the game
+    // refers to (`first`) before the rest, as the server does it. What does not fit is listed by record.
+    async pack({ limit = EXPORT_ASSET_BYTES, first = new Set() } = {}) {
+      const recs = (await all()).sort((a, b) => (first.has(b.id) - first.has(a.id)) || String(a.when).localeCompare(String(b.when)));
+      const assets = [], skipped = [];
+      let bytes = 0;
+      for (const { blob, ...record } of recs) {
+        if (bytes + record.bytes > limit) { skipped.push(record); continue; }
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+        bytes += buf.length;
+        assets.push({ record, data: btoa(bin) });
+      }
+      return { assets, skipped, limit };
+    },
   };
 }

@@ -157,12 +157,18 @@ Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/ma
 ## Exporting a table
 
 Tables live on one disk, so the DM can keep their own copy. **Export table** in the DM panel
-sends `{t:"export"}`; the reply is `{t:"export", table:{code, exportedAt, state}}` and the
+sends `{t:"export"}`; the reply is `{t:"export", table:{code, exportedAt, state, assets, assetsSkipped, assetLimit}}` and the
 browser saves it as `hextable-<code>-<yyyy-mm-dd>.json`. Only the DM gets it; a player (or
 anyone not yet let in) is answered with an error. `state` is the whole game state, including
 the dice seed, hidden creatures and the timeline, which is why it is DM only. It holds no
-`members` and no tokens. In solo play the same button saves the local state without
-contacting a server. There is no import yet: loading a file back means accepting game state
+`members` and no tokens. `assets` is the table's files, `[{record, data}]` with `data` the file's
+bytes in base64 and `record` as the store keeps it (`id, kind, mime, bytes, name, when`): the
+files the game refers to first (handouts, level pictures), then the rest oldest first, up to
+`assetLimit` bytes of files (24 MB, `EXPORT_ASSET_BYTES` in `handouts.js`; a table may keep 50 MB
+but an export is one message). A file that would pass the limit is left out and its record is
+listed in `assetsSkipped`, so nothing is dropped unseen; the client says how many in a toast.
+In solo play the same button saves the local state without
+contacting a server, with the files kept in the tab. There is no import yet: loading a file back means accepting game state
 from a browser, which needs validation designed first.
 
 ## Undo

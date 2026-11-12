@@ -6,6 +6,10 @@ import { current, moveOptions } from "../../rules/src/engine.js";
 import * as H from "../../rules/src/hex.js";
 import { createReceiver } from "../../rules/src/patch.js";
 import { view } from "../../rules/src/view.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createAssets } from "../src/assets.js";
 import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_TABLES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
@@ -568,7 +572,8 @@ test("export: the DM gets the whole table, a player is refused, and no member or
 
   dm.say({ t: "export" });
   const reply = dm.last("export");
-  assert.deepEqual(Object.keys(reply.table).sort(), ["code", "exportedAt", "state"]);
+  assert.deepEqual(Object.keys(reply.table).sort(), ["assetLimit", "assets", "assetsSkipped", "code", "exportedAt", "state"]);
+  assert.deepEqual(reply.table.assets, []);
   assert.equal(reply.table.code, code);
   assert.ok(Math.abs(Date.parse(reply.table.exportedAt) - Date.now()) < 5000);
   // The real state, not a view: it has the dice seed and the timeline that views leave out.
@@ -913,4 +918,28 @@ test("a table saved with a longer timeline is cut when loaded, and its old histo
   // With the cap left alone the history loads as before.
   const third = d.open();
   assert.equal(sitDM(third, code, dm.last("welcome").token).last("undoable").undo.length, 12);
+});
+
+test("export carries the table's files as base64 with their records, within a size limit; players cannot have it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hextable-export-"));
+  try {
+    const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+    const assets = createAssets({ dir });
+    const tables = createTables({ seed: () => 5, exportAssets: (code, state) => assets.pack(code, { limit: PNG.length * 2 + 1 }) });
+    const { dm, player, code } = seated(tables);
+    const a = assets.put(code, PNG, { name: "map.png" }).record, b = assets.put(code, PNG, { name: "keep.png" }).record, c = assets.put(code, PNG, { name: "late.png" }).record;
+
+    dm.say({ t: "export" });
+    const table = dm.last("export").table;
+    assert.equal(table.assetLimit, PNG.length * 2 + 1);
+    assert.deepEqual(table.assets.map((x) => x.record.id), [a.id, b.id], "oldest first, up to the limit");
+    for (const x of table.assets) assert.ok(Buffer.from(x.data, "base64").equals(PNG), "the bytes come back exactly");
+    assert.deepEqual(table.assetsSkipped.map((r) => r.id), [c.id], "what did not fit is listed by record, without bytes");
+    assert.ok(!("data" in table.assetsSkipped[0]));
+
+    player.say({ t: "export" });
+    assert.equal(player.last("export"), undefined);
+    assert.deepEqual(player.got.at(-1), { t: "error", error: "Only the DM can export the table." });
+    assert.ok(!JSON.stringify(player.raw).includes(PNG.toString("base64")), "no file bytes reached the player");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

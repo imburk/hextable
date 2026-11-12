@@ -646,7 +646,11 @@ $('dm-engage-range').onchange = (ev) => act({ type: 'setting', key: 'engageRange
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();
-$('dm-export').onclick = () => T.export().then(downloadTable, (e) => toast(e.message));
+$('dm-export').onclick = () => T.export().then((table) => {
+  downloadTable(table);
+  const n = table.assetsSkipped?.length ?? 0;
+  if (n) toast(`Saved. ${n} picture${n === 1 ? ' was' : 's were'} too much to include (the limit is ${Math.round(table.assetLimit / 1048576)} MB of pictures).`);
+}, (e) => toast(e.message));
 // Leaving takes two taps, so a stray one can't drop you from the table.
 let leaveTimer = null;
 function leaveTable(btn) {
