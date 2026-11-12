@@ -21,7 +21,7 @@ export const spells6 = [
     target: {"creature":{"count":4,"within":30}},
     effects: [{"save":"dex","half":true,"onFail":[{"damage":"10d8","type":"lightning"}]}],
     higher: {"slot":{"targets":1}},
-    tier: "auto", checked: true,
+    tier: "assist", checked: true,
     text: "A bolt strikes one target, then leaps to as many as three other targets within 30 feet of the first, each struck by one bolt only. Each makes a Dexterity save, taking 10d8 lightning damage on a failure or half on a success, rolled once for all. One more bolt per slot level above 6. A bolt can also strike an object, which the DM applies.",
   },
   {
