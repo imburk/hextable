@@ -34,9 +34,10 @@ many monsters each one touches:
 | M4 | Condition immunities have no field (the Skeleton cannot be Poisoned) | engine |
 | M5 | Legendary actions and lair-free legendary resistance | engine |
 | M6 | Monster spellcasting (a list of spells with uses) | engine |
-| M7 | Senses, saving throw bonuses, languages and initiative bonuses are not entered for most monsters; the format now takes senses | any |
-| M8 | 49 monsters are not marked checked (mostly D to G entries with text not compared line by line) | any |
+| ~~M7~~ | ~~Senses are not entered for most monsters~~ Entered from the SRD for every monster (PRs #59, #61, #63, #64) | any |
+| M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
 | M9 | The monster AI uses only the first melee and first ranged attack, treats height only as distance, and does not hide | engine |
+| M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
 
 ## Characters
 
