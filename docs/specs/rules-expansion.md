@@ -1,7 +1,8 @@
 # Spec: rules expansion
 
-Status: design agreed by the project owner, not built. Owner of the design:
-Claude (Fable). Reviewed against the full current rules and common house
+Status: design agreed by the project owner, partly built (R1 to R4 are marked in the
+task table; quick entry and space are in the game too; see `docs/DEBT.md` for the rest).
+Owner of the design: Claude (Fable). Reviewed against the full current rules and common house
 rules in `rules-coverage.md`.
 Covers characters, levelling, conditions, durations, reactions, and the data
 format for all SRD 5.2.1 content. Tasks at the end are sized for one pull
@@ -577,6 +578,20 @@ entry names what was added to `schema.js` and what the engine does with it.
 - **A Long Rest for monsters** (M3). The `rest` action takes `ids`, who rests (the party when
   not given). A monster that rests gets its Hit Points back, its uses per day
   (`creature.charges`) and its spent recharges. The DM panel has "Long rest (everyone)".
+
+- **`min` and `max`, and the hooks nothing read** (S7). `modifiers()` returns the largest
+  `min` and the smallest `max`; Armor Class, Speed, the spell save DC and the spell attack
+  bonus are kept within them (Barkskin: AC at least 17). `spell.dc` and `spell.attack` are
+  read when a spell is cast. `hp.max` with `add` moves the Hit Point maximum and current Hit
+  Points together (Aid), and back when the effect ends, current Hit Points staying within
+  the maximum; the part records `hpMax`; event `maxHp`. `higher.slot.value` adds to the first
+  modifier's number per slot level above. `damage.dealt` with `add`: with `types`, an extra
+  part of damage of that type; without, added to the first part; dice are doubled on a
+  critical hit. Two tags for it: `attack.hit` (the damage comes from an attack roll that hit)
+  and `attack.weapon` (made with a weapon). A modifier step with `to: 'caster'` puts the
+  modifier on the caster, and `against: 'target'` makes it hold only against the spell's
+  target (Hex, Hunter's Mark). `save.death` was wired with the `save` hook (above). `carry`
+  is still unread: there is no encumbrance yet.
 
 ### A class
 

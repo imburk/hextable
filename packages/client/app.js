@@ -320,6 +320,8 @@ function refresh() {
       conds.map((c) => `<span>${c}</span>`).join('') + lasting;
 
     const bar = $('actions'); bar.textContent = '';
+    bar.classList.remove('many');
+    if (bar.dataset.for !== e.id) { bar.scrollLeft = 0; bar.dataset.for = e.id; }        // another creature starts at the left
     if (my && up(e)) {
       if (enc && inFight(S, e.id) && cur !== e.id) bar.innerHTML = `<span class="wait">Waiting for ${esc(name(cur))}…</span>`;
       else {
@@ -368,6 +370,7 @@ function refresh() {
           bar.append(button('Disengage', `${nimble ? 'Bonus' : 'Action'} · no Opportunity Attacks`, nimble ? 'bonus' : '', blocked(S, e, nimble ? 'bonus' : 'action'), () => act({ type: 'disengage', actor: e.id })));
           bar.append(button('Dodge', 'Action · attackers roll with Disadvantage', '', blocked(S, e, 'action'), () => act({ type: 'dodge', actor: e.id })));
         }
+        bar.classList.toggle('many', bar.querySelectorAll('button').length > 6);       // on a phone, two rows (see style.css)
       }
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
@@ -430,7 +433,7 @@ function renderLog() {
 
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
-  const st = e.castAbil ? spellStats(e) : null;
+  const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
   $('sheet-body').innerHTML = `
