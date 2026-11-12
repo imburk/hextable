@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;800&family=Silkscreen&family=Source+Sans+3:wght@400;600;700&family=Vollkorn+SC:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./quickentry.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -65,6 +66,7 @@
     <div class="row cond-row"><select id="dm-cond" aria-label="Condition"></select><button type="button" id="dm-cond-set">Apply to selected</button><button type="button" id="dm-cond-clear">Remove</button></div>
     <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-hide" disabled>Hide selected</button><button type="button" id="dm-fly" disabled>Give selected flight</button><select id="dm-size" disabled aria-label="Size of the selected creature"><option value="tiny">Tiny</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="huge">Huge</option><option value="gargantuan">Gargantuan</option></select><button type="button" id="dm-rest">Long rest</button></div>
   </section>
+  <section id="dm-qe"></section>
   <section><h3>World clock</h3>
     <div class="row"><button type="button" data-time="10">+10 min</button><button type="button" data-time="60">+1 hour</button><button type="button" data-time="480">+8 hours</button></div>
   </section>
