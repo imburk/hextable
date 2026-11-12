@@ -1,0 +1,27 @@
+/* Quick entry form (quickentry.js). One column, inputs at 16px so phones do not zoom. */
+#dm-qe .qe-sure { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border: 1px solid var(--bad); border-radius: var(--radius); padding: 8px; }
+#dm-qe .qe-sure span { flex: 1 1 100%; }
+.panel.qe { width: min(560px, 100%); z-index: 7; overflow-x: hidden; }
+.qe-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; } .qe-head h2 { margin: 0; }
+.qe .close { float: none; }
+.qe h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.qe input[type="text"], .qe select, .qe textarea { font-size: 16px; width: 100%; min-width: 0; min-height: 40px; padding: 6px 8px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel-2); color: inherit; font-family: inherit; }
+.qe textarea { resize: vertical; }
+.qe input[type="color"] { width: 100%; min-height: 40px; padding: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.qe-f { display: grid; gap: 2px; min-width: 0; } .qe-f > span { font-size: 12px; color: var(--muted); }
+.qe-grid { display: grid; gap: 8px; } .qe-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .qe-2 .wide { grid-column: 1 / -1; }
+.qe-abil { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.qe-ab { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; }
+.qe-mod { text-align: center; font: 700 18px var(--display); color: var(--accent); font-variant-numeric: tabular-nums; }
+.qe-skills { display: grid; grid-template-columns: 1fr; gap: 0; }
+.qe-sk { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 40px; }
+.qe-sk .check, .qe-tick { margin: 0; min-height: 40px; } .qe-exp { color: var(--accent); font-size: 13px; }
+.qe-tick input { width: 22px; height: 22px; }
+.qe-ticks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0 8px; }
+.qe-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+.qe-atk { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; margin-bottom: 8px; } .qe-atk-foot { align-items: center; margin: 6px 0 0; }
+.qe-atk-foot .note { margin: 0; flex: 1; }
+.qe-problems { margin: 0 0 8px; padding: 0 0 0 18px; color: var(--bad); font-size: 14px; } .qe-problems:empty { display: none; }
+.qe-foot { position: sticky; bottom: -24px; margin: 16px -16px -24px; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); background: var(--panel-2); border-top: 1px solid var(--line); }
+.qe-foot .row { margin: 0; } .qe-save { flex: 1; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+@media (min-width: 560px) { .qe-abil { grid-template-columns: repeat(6, minmax(0, 1fr)); } .qe-skills { grid-template-columns: 1fr 1fr; column-gap: 12px; } }

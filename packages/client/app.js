@@ -9,8 +9,10 @@ import { aiStep } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { Renderer, hpFraction } from './render.js';
+import { createTracker } from './tracker.js';
 import { THEMES } from './themes.js';
 import { Editor } from './editor.js';
+import { initQuickEntry } from './quickentry.js';
 import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
 
 const $ = (id) => document.getElementById(id);
@@ -134,6 +136,7 @@ function onUpdate(state, events, fresh) {
     log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false;
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
+  QE.events(events);
   for (const ev of events) {
     const d = describe(ev); if (d) log.push(d);
     if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
@@ -305,6 +308,7 @@ function refresh() {
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
+  tracker.render();
   if (isDM()) renderDM();
 }
 
@@ -345,6 +349,7 @@ function renderDM() {
   $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
   $('dm-size').disabled = !picked; if (picked) $('dm-size').value = picked.size ?? 'medium';
   $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
+  QE.sync(S, selId);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   $('dm-badge').hidden = !lb.pending.length; $('dm-badge').textContent = lb.pending.length;
@@ -428,6 +433,8 @@ $('hint-cancel').onclick = () => setMode(MOVE);
 $('hint-go').onclick = () => { act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim }); mode = MOVE; };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
+const tracker = createTracker({ root: $('tracker'), button: $('btn-tracker'), dock: $('dock'), state: () => S, isDM, mine, act, toast, pick: (id) => { select(id); R.focus(id); refresh(); } });
+$('btn-tracker').onclick = tracker.toggle;
 const panels = ['sheet', 'log', 'dm'];
 const openPanel = (id) => { for (const p of panels) $(p).hidden = p !== id || !$(p).hidden; refresh(); };
 $('btn-sheet').onclick = () => openPanel('sheet'); $('btn-log').onclick = () => openPanel('log'); $('btn-dm').onclick = () => openPanel('dm');
@@ -491,6 +498,8 @@ addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') setMode(MOVE);
   if (ev.key === 'q') R.rotate(-Math.PI / 12); if (ev.key === 'e') R.rotate(Math.PI / 12);
 });
+
+const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
 
 // For the browser console, tests and future automation.
 window.hextable = { R, act, get state() { return S; }, get mode() { return mode; } };

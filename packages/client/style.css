@@ -142,3 +142,22 @@ body.editing #dock, body.editing #hint { display: none !important; }
 #editor button.sure { outline: 2px solid currentColor; }
 .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #0006; }
 .sw-grass { background: #6f8f55; } .sw-forest { background: #4f7446; } .sw-stone { background: #9a978c; } .sw-water { background: #3f6f8c; } .sw-rock { background: #77736a; }
+/* combat tracker: floats above the dock so the action bar stays free */
+#tracker { position: fixed; z-index: 4; left: 12px; top: calc(max(10px, env(safe-area-inset-top)) + 100px); bottom: calc(var(--dock-h, 120px) + 18px); width: min(360px, calc(100% - 24px)); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; backdrop-filter: blur(6px); }
+.tr-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.tr-head strong { font-size: 17px; } .tr-head button { min-height: 34px; padding: 4px 10px; }
+.tr-dm { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); } .tr-dm input { width: 5.5em; flex: none; min-height: 36px; } .tr-dm button { flex: 1; min-height: 36px; padding: 4px 6px; }
+#tr-list { margin: 0; padding: 4px 6px; list-style: none; overflow-y: auto; flex: 1; display: grid; gap: 4px; align-content: start; }
+#tr-list li { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; border: 1px solid var(--line); border-left: 4px solid var(--good); border-radius: var(--radius); padding: 2px; }
+#tr-list li[data-side="foe"] { border-left-color: var(--bad); } #tr-list li.out { opacity: .55; }
+#tr-list li.now { background: var(--accent); color: var(--accent-ink); } #tr-list li.now .tr-tags span { border-color: currentColor; }
+.tr-tick { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin: 0 2px; } .tr-nobox { width: 4px; }
+.tr-main { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; background: transparent; border: 0; padding: 4px 6px; min-height: 44px; color: inherit; }
+.tr-name { font-weight: 700; overflow-wrap: anywhere; } .tr-turn { font-size: 11px; background: var(--accent-ink); color: var(--accent); border-radius: 3px; padding: 0 4px; margin-right: 6px; }
+.tr-hp { display: flex; align-items: center; gap: 8px; font-size: 13px; font-variant-numeric: tabular-nums; } .tr-hp .bar { width: 70px; flex: none; }
+.tr-tags { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; } .tr-tags span { border: 1px solid var(--line); border-radius: 20px; padding: 0 7px; }
+.tr-ctl { display: flex; gap: 4px; margin-left: auto; padding-right: 2px; } .tr-ctl button { min-height: 40px; min-width: 40px; padding: 4px 8px; }
+.tr-empty { border: 0 !important; color: var(--muted); }
+@media (max-width: 700px) { #tracker { top: auto; bottom: calc(var(--dock-h, 120px) + 18px); height: min(44vh, 360px); left: 8px; width: calc(100% - 16px); } }
+#tr-list li.now button { color: var(--ink); }
+@media (max-width: 480px) { #tools { gap: 4px; } #tools button { padding: 8px 8px; } }

@@ -55,6 +55,8 @@ export function judge(tag, sit, s) {
     case 'attack.disadvantage': return sit.mode === undefined ? null : sit.mode === 'dis';
     case 'target.prone': return t ? has(t, 'prone') : null;
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
+    case 'target.halfCover': return sit.cover === undefined ? null : sit.cover === 'half';
+    case 'target.threeQuartersCover': return sit.cover === undefined ? null : sit.cover === 'threeQuarters';
     case 'ally.adjacentToTarget':
       return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
     case 'enemy.adjacent':
