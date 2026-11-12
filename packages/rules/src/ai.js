@@ -5,14 +5,27 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets } from './engine.js';
+import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem } from './engine.js';
 import { actionProfile } from './effects.js';
-import { apart, apartAt } from './space.js';
+import { apart, apartAt, ground } from './space.js';
+import { hiddenFrom } from './sight.js';
+
+// Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
+// pinpoints it: both on the ground and within range (it is still unseen, so attacks at it have Disadvantage).
+export function aware(s, e, o) {
+  if (!hiddenFrom(o, e)) return true;
+  const t = e.senses?.tremorsense ?? 0;
+  return t > 0 && apart(s, e, o) * FT <= t && !!ground(s.map, e.pos) && !!ground(s.map, o.pos);
+}
 
 export function aiStep(s, id) {
   const e = s.entities[id], end = { type: 'endTurn', actor: id };
   if (!e || current(s) !== id || !up(e)) return null;
-  const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id));
+  // It does not act on creatures it has not found.
+  const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id) && aware(s, e, o));
+  // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
+  const b = s.encounter.budget;
+  if (s.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(s, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
   return e.actions ? withActions(s, e, foes) : withAttacks(s, e, foes);
 }

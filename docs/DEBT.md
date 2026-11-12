@@ -30,7 +30,7 @@ many monsters each one touches:
 
 | # | What | Who |
 |---|---|---|
-| M1 | ~~**Multiattack.** Stored as text on about 180 monsters. The AI makes one attack a turn, so most monsters hit far below their strength.~~ Built (#71): 146 monsters have a working Multiattack. 32 stay text: 18 adult and ancient dragons whose Multiattack may swap an attack for a spell, 8 with spellcasting or "if available" (aboleth, clay golem, cloud giant, doppelganger, dryad, glabrezu, hydra, oni), 5 with a part the DM applies (roper, rust monster, young silver dragon, sphinx of valor, succubus), and the chimera (a recharge breath as an alternative) | engine |
+| M1 | ~~**Multiattack.** Stored as text on about 180 monsters. The AI makes one attack a turn, so most monsters hit far below their strength.~~ Built (#71): 146 monsters have a working Multiattack. 32 stayed text; ~~18 adult and ancient dragons whose Multiattack may swap an attack for a spell~~ (#90: three Rends, or two and a breath where the SRD offers one; the spell swap is a note for the DM, tiers unchanged); 14 remain: 8 with spellcasting or "if available" (aboleth, clay golem, cloud giant, doppelganger, dryad, glabrezu, hydra, oni), 5 with a part the DM applies (roper, rust monster, young silver dragon, sphinx of valor, succubus), and the chimera (a recharge breath as an alternative) | engine |
 | M2 | ~~Monster attacks still go through the old flat bridge: only the first damage of an attack is rolled (the Ankheg's acid is lost), and save-based actions (breath weapons, Constrict) are never used by the AI~~ (#71) | engine |
 | M3 | ~~Recharge, uses per day, bonus actions~~ (#71: 75 recharges, 6 daily uses, 7 Bonus Actions entered) and reactions have no fields. ~~Daily uses of monsters are never restored (a long rest restores the party only)~~ (#82: the DM's Long Rest names who rests) | engine |
 | M4 | ~~Condition immunities have no field (the Skeleton cannot be Poisoned)~~ (#71: 96 monsters). Two conditional ones stay text: the archmage (Mind Blank) and the vampire familiar (except from its master) | engine |
@@ -38,8 +38,8 @@ many monsters each one touches:
 | M6 | Monster spellcasting (a list of spells with uses) | engine |
 | ~~M7~~ | ~~Senses are not entered for most monsters~~ Entered from the SRD for every monster (PRs #59, #61, #63, #64) | any |
 | M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
-| M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, does not hide, and uses no Bonus Action but an area one | engine |
-| M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
+| M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, hides only to open a fight (#88), and uses no Bonus Action but an area one or Nimble Escape's Hide | engine |
+| ~~M10~~ | ~~Saving throw bonuses~~ (#93: `saves` on the monster, 122 monsters list one; used by the engine as `saveBonus`); ~~initiative bonuses~~ (#95: `initiative` on the monster, `initBonus` on the creature, used by `rollInit`; the SRD prints two inconsistent bracketed totals, Gray Ooze and Invisible Stalker, the modifier was kept); ~~languages~~ (#98: `languages` on the monster, 329 entered, data only). Nothing of M10 is left | any |
 | M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
 
 ## Characters
@@ -51,12 +51,12 @@ many monsters each one touches:
 | C3 | No levelling or derived sheets: numbers are typed in (R7, R8) | engine, then any |
 | C4 | Equipment states, attunement, encumbrance, spell materials (R10) | engine |
 | C5 | Short rests and Hit Dice; ~~Temporary Hit Points~~ (#82) | engine |
-| C6 | Grapple and shove; Help, Study, Influence, Hide actions | engine |
+| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #88). Cunning Action (the rogue's Bonus Action Hide) is not built | engine |
 | C7 | Reactions: Shield, Counterspell, choosing whether to take an opportunity attack (R6) | engine |
 
 ## Spells
 
-339 are entered; 31 play fully, 79 partly, 229 are applied by the DM. What the vocabulary
+339 are entered; 36 play fully, 76 partly, 227 are applied by the DM. What the vocabulary
 cannot say, by how much it would unlock:
 
 | # | What | Who |
@@ -64,23 +64,23 @@ cannot say, by how much it would unlock:
 | S1 | ~~Dice-valued modifiers (Bless, Bane, Guidance)~~ (#80) | engine |
 | S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks | engine |
 | S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall) and several cubes arranged by the caster (Fire Storm); creatures of the caster's choice in an area were done with S2 | engine |
-| S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
-| S5 | ~~Temporary Hit Points~~ (#82), ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), "until the end of your next turn" | engine |
+| S4 | ~~Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them~~ (#91: Moonbeam, Spirit Guardians, Web). Left: moving a zone after casting (Moonbeam), what a zone changes while a creature is inside (halved Speed, Difficult Terrain, obscurement), walls of free shape (Wall of Fire, Wind Wall), "until the end of the current turn" (Stinking Cloud), and drawing zones on the map for anyone | engine |
+| S5 | ~~Temporary Hit Points~~ (#82), ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step came with #91; Chromatic Orb, Sorcerous Burst and Dragon's Breath still need their leaping, exploding dice and breath from another creature), ~~"until the end of your next turn"~~ (#89) | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |
 | S7 | ~~The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `save.death`; the `check` hook cannot be limited to one skill~~ (#80, #86). `carry` is still unread (no encumbrance) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
-| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82. The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone; a DM damage action would spend them first. The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82. ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
 
 ## Maps, sight and movement
 
 | # | What | Who |
 |---|---|---|
-| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); hiding, and sending players only what they can see (sight tasks S6 and S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
+| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); ~~hiding (S6)~~ (#88); ~~sending players only what they can see (S7)~~ (#92). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
 | P2 | Rock does not block sight | engine |
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
-| P5 | Hidden creatures are not found by Search | engine (sight S6) |
+| P5 | ~~Hidden creatures are not found by Search~~ (#88: a creature that took the Hide action is; one the DM hid with the `hidden` switch is the DM's to reveal) | engine (sight S6) |
 | P6 | ~~Uploads and handouts (M9)~~ (PR #70), ~~tracing a map image (M10)~~ (PR #76), scenes (M11; ~~private notes~~ PR #70), generating a map (M14) | M10 any; M11 engine for the view |
 | P7 | The Universal VTT import (the editor's Map file > Import Universal VTT, PR #79) has only been tried on the hand-made test file, not a real export | any, with a real export |
 | P8 | The editor cannot rename a map, and shows no numbers for tile heights | any |
@@ -88,6 +88,10 @@ cannot say, by how much it would unlock:
 | P10 | ~~The renderer does not draw a level's background picture (`level.image`), and the editor cannot set one~~ (PR #73) | any |
 | P11 | Handouts: no shared pointer on an open handout; ~~undo of a handout or note action is labelled "handout (an action)"~~ (#81), and undoing a note takes it off the record but not off the screens it reached | any |
 | P12 | ~~Exporting a table does not carry its files~~ (#83: base64 with records, up to 24 MB, the rest listed). Still open: exporting a map from the editor carries no files, and there is no import of a table export | any |
+
+| P13 | A creature that cannot be seen cannot be targeted by players even where the SRD allows attacking a guessed location (with Disadvantage); a party member's path may go around a creature the players cannot see, which shows that something is there | engine |
+| P14 | Under the `light` sight rule each newly seen tile resends the whole map document to players (patches are per top-level field), which is a few tens of KB a step in a big dark place; tile memory is found by a flood that can miss a tile seen only through a sliver; sight is followed across tiles 40 hexes at most | engine |
+| P15 | Under the los and light sight rules, players see the fight order without an unseen creature and its turn as nobody's; a creature walking into view is sent with only the hexes of its path in view | any |
 
 ## Table and server
 

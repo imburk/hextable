@@ -170,11 +170,11 @@ export const spells0 = [
     target: { creature: { count: 1 } },
     effects: [{ attack: "ranged", kind: "spell", onHit: [
       { damage: "1d8", type: "cold" },
-      { manual: "Ray of Frost: the target's Speed is reduced by 10 feet until the start of the caster's next turn." },
+      { modifier: { on: "speed", op: "add", value: -10 }, ends: { on: "turnStart", of: "source" } },
     ] }],
     higher: { level: { 5: "2d8", 11: "3d8", 17: "4d8" } },
-    tier: "assist", checked: true,
-    text: "A ranged spell attack for cold damage, growing at higher character levels. A target that is hit loses 10 feet of Speed until the start of the caster's next turn; the DM applies the slowing.",
+    tier: "auto", checked: true,
+    text: "A ranged spell attack for cold damage, growing at higher character levels. A target that is hit loses 10 feet of Speed until the start of the caster's next turn.",
   },
   {
     id: "resistance", name: "Resistance", source: "SRD 5.2.1",
@@ -273,10 +273,10 @@ export const spells0 = [
     target: { creature: { count: 1 } },
     effects: [{ save: "wis", half: false, onFail: [
       { damage: "1d6", type: "psychic" },
-      { manual: "Vicious Mockery: the target has Disadvantage on the next attack roll it makes before the end of its next turn." },
+      { modifier: { on: "attack.roll", op: "disadvantage", uses: 1 }, ends: { on: "turnEnd" } },
     ] }],
     higher: { level: { 5: "2d6", 11: "3d6", 17: "4d6" } },
-    tier: "assist", checked: true,
-    text: "One creature the caster can see or hear makes a Wisdom save or takes psychic damage, growing at higher character levels. On a failure it also has Disadvantage on its next attack roll; the DM applies that.",
+    tier: "auto", checked: true,
+    text: "One creature the caster can see or hear makes a Wisdom save or takes psychic damage, growing at higher character levels, and has Disadvantage on the next attack roll it makes before the end of its next turn.",
   },
 ];

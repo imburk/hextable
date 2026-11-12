@@ -11,6 +11,27 @@ const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargan
 const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 
+// Lasting zones (a spell's area that stays): tinted by the damage type of the spell's steps, neutral if it has none.
+// A theme may replace any of these with its own `zones: { fire: [r, g, b], neutral: [r, g, b] }`.
+const ZONE_TINT = { acid: [0.55, 0.85, 0.2], cold: [0.45, 0.78, 0.95], fire: [0.98, 0.45, 0.12], force: [0.75, 0.55, 0.95], lightning: [0.4, 0.55, 1], necrotic: [0.45, 0.3, 0.55],
+  poison: [0.45, 0.75, 0.3], psychic: [0.9, 0.45, 0.8], radiant: [1, 0.9, 0.5], thunder: [0.65, 0.7, 0.85], bludgeoning: [0.7, 0.6, 0.5], piercing: [0.7, 0.6, 0.5], slashing: [0.7, 0.6, 0.5], neutral: [0.7, 0.75, 0.85] };
+const zoneType = (steps) => {
+  const walk = (v) => {
+    if (Array.isArray(v)) { for (const x of v) { const t = walk(x); if (t) return t; } return null; }
+    if (v && typeof v === 'object') { if ('damage' in v && ZONE_TINT[v.type] && v.type !== 'neutral') return v.type; for (const x of Object.values(v)) { const t = walk(x); if (t) return t; } }
+    return null;
+  };
+  return walk(steps);
+};
+// The hexes a zone covers now, as [{ q, r }] with the height it lies at: laid out ones as they were, an Emanation around whoever it follows.
+export function zoneHexes(state, fx) {
+  const z = fx.zone; if (!z) return null;
+  if (z.follows) {
+    const c = state.entities[z.follows]; if (!c || c.dead) return null;
+    return { at: c.pos.z ?? 0, hexes: H.range(c.pos, z.area.size / 5) };
+  }
+  return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => H.parse(k)) };
+}
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
 // Light through the day, by hour: [hour, light colour that multiplies the scene, how much of the sky colour is left].
@@ -72,6 +93,14 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 // A short fingerprint of every tile's terrain and height, so the ground is rebuilt when the editor changes either.
+// What a player's view says the party sees now (state.sight, under the los and light table rules), as a short key.
+function sightSig(sight) {
+  if (!sight) return '';
+  const t = JSON.stringify(sight);
+  let n = t.length;
+  for (let i = 0; i < t.length; i++) n = (Math.imul(n, 31) + t.charCodeAt(i)) | 0;
+  return String(n);
+}
 function tileSig(map) {
   let n = 0;
   for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + 17) | 0; }
@@ -222,7 +251,7 @@ export class Renderer {
     this.state = state;
     const want = lightAt(state.clock ?? 480);
     this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}:${this.#pictureSig()}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}:${this.#pictureSig()}:${sightSig(state.sight)}`;
     this.#fetchPictures();
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
@@ -308,6 +337,11 @@ export class Renderer {
     const l = this.state?.map.levels.find((x) => x.id === levelId);
     return !!l?.image && this.images.get(l.image.asset)?.state === 'ready';
   }
+  // The names of the lasting zones that cover a hex, for hover and tap.
+  zonesAt(hex) {
+    if (!hex || !this.state) return [];
+    return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
+  }
   screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
   rotate(d) { this.cam.yaw += d; }
   zoom(f) { this.cam.dist = Math.max(7, Math.min(48, this.cam.dist * f)); }
@@ -380,6 +414,10 @@ export class Renderer {
     // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
     const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
     const patch = (level, h) => { const t = level.tiles[H.col(h)]; return t ? surfY(level.z + (t.h ?? 0), t).toFixed(3) : null; };
+    // Players under the los and light rules: a place remembered but not in view now is dimmed, one in view in
+    // Dim Light or Darkness darkened (docs/specs/sight.md, decision 6). Colour only; the renderer plan owns more.
+    const sight = this.state.sight, now = new Map(Object.entries(sight?.now ?? {}).map(([l, cols]) => [l, new Set(cols)]));
+    const seenShade = (levelId, k) => (!sight ? 1 : !now.get(levelId)?.has(k) ? 0.5 : sight.light?.[levelId]?.[k] === 'dark' ? 0.38 : sight.light?.[levelId]?.[k] === 'dim' ? 0.7 : 1);
     // A level with a picture that has arrived is floored by the picture: its hexes are only a faint outline.
     const gb = new Builder(), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
     this.pics = []; const pv = [];
@@ -403,6 +441,8 @@ export class Renderer {
       let c = th.tiles[t.t].map((v) => v * j);
       if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
       if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
+      const f = seenShade(h.level.id, H.col(h));
+      if (f !== 1) c = c.map((v) => v * f);
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
       if (room) {
         // The floor reaches to the hex's edge; the grid is a thin, faint line inside it (stronger inside a fight's area).
@@ -497,6 +537,15 @@ export class Renderer {
     const b = new Builder(), s = this.state, hl = this.hl, c = this.theme.hl;
     const top = (k) => this.#stand(H.parse(k)).y + 0.03;
     const at = (k) => H.toWorld(H.parse(k));
+    for (const fx of s.effects ?? []) {            // lasting zones, under everything else: a soft patch, fainter toward its outer edge
+      const zh = zoneHexes(s, fx); if (!zh?.hexes.length) continue;
+      const t = zoneType(fx.zone.steps), rgb = this.theme.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(H.col));
+      for (const h of zh.hexes) {
+        const w = H.toWorld(h), y = this.#stand({ q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = H.neighbors(h).some((n) => !have.has(H.col(n)));
+        b.flatHex(w.x, w.z, y, 0, rim ? 0.8 : 1.02, [...rgb, 0.3]);
+        if (rim) b.flatHex(w.x, w.z, y, 0.8, 0.98, [...rgb, 0.12]);
+      }
+    }
     for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
     for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
     // Whatever is in the air has a mark on the floor beneath it.
@@ -684,7 +733,7 @@ export class Renderer {
     });
     el.addEventListener('pointermove', (e) => {
       const p = xy(e), old = pts.get(e.pointerId);
-      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.onHover(hit?.hex ?? null); } return; }
+      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null); } return; }
       pts.set(e.pointerId, p);
       if (stroke && pts.size === 1) { this.onDrag.move(...p); return; }
       const dx = p[0] - old[0], dy = p[1] - old[1];

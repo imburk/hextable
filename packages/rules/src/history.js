@@ -149,8 +149,8 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
 // one event must have reached them. Otherwise `shown` is null and they are told nothing.
 const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind',
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
-  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set',
-  condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed' };
+  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
+  condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide' };
 
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;

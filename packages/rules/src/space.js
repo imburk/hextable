@@ -62,8 +62,9 @@ export function regionAt(map, levelId, h) {
 export const shown = (map, levelId, h) => { const r = regionAt(map, levelId, h); return !r || !!r.revealed; };
 // Is this position somewhere the players have not seen yet?
 export const unseenAt = (map, pos) => { const sf = under(map, pos); return !!sf && !shown(map, sf.level.id, pos); };
-// A creature the players are not told about: the DM hid it, or it is somewhere they have not seen.
-export const concealed = (map, e) => !!e && e.side !== 'party' && (!!e.hidden || unseenAt(map, e.pos));
+// A creature the players are not told about: the DM hid it, it took the Hide action and nobody in
+// the party has found it, or it is somewhere they have not seen.
+export const concealed = (map, e) => !!e && e.side !== 'party' && (!!e.hidden || !!e.hiding || unseenAt(map, e.pos));
 
 // ---------- distance ----------
 // How many hexes of height a difference in feet counts as: under 5 ft is none.

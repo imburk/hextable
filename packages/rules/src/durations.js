@@ -5,7 +5,12 @@
 //   until: null (only the DM ends it) | { clock } (world time, in minutes)
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
-//          { target, cond, ends?, dc? }, { target, modifier } or { target, temp: true }
+//          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
+//          or { target, temp: true }. `born` names the turn it was made in (turnKey).
+// A part with its own turn boundary (`ends.on` turnStart or turnEnd) keeps to it: "until the end
+// of your next turn" outlasts a spell's "1 round" (Guiding Bolt), and the effect stays until it
+// ends. A spell with no duration of its own whose parts carry such an ending (Ray of Frost) gets
+// an effect anyway, `bound`, that ends when its parts do.
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { incapacitated } from './modifiers.js';
 
@@ -57,28 +62,40 @@ export function endEffect(s, ev, fx, why) {
 // An effect whose every part has ended has nothing left to do.
 const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended);
 
+// The turn now being taken, as a part records it: a part made in a creature's turn does not end
+// at the end of that same turn ("until the end of its next turn").
+export const turnKey = (s) => (s.encounter ? `${s.encounter.id}:${s.encounter.round}:${s.encounter.turn}` : null);
+const ownTiming = (p) => !p.ended && (p.ends?.on === 'turnStart' || p.ends?.on === 'turnEnd');
+
+// An effect's time ran out: it ends, except parts that keep their own turn boundary.
+function expire(s, ev, fx) {
+  if (!fx.parts.some(ownTiming)) return endEffect(s, ev, fx, 'its time ran out');
+  for (const p of fx.parts) if (!ownTiming(p)) endPart(s, ev, fx, p);
+  fx.until = null; fx.bound = true;
+}
+
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
-  for (const fx of [...effectsOf(s)]) if (fx.until?.clock !== undefined && fx.until.clock <= s.clock + EPS) endEffect(s, ev, fx, 'its time ran out');
+  for (const fx of [...effectsOf(s)]) if (fx.until?.clock !== undefined && fx.until.clock <= s.clock + EPS) expire(s, ev, fx);
 }
 
 // A new round began. Effects timed in rounds normally end on their source's turn; this catches
 // those whose source no longer takes turns.
 export function roundStarted(s, ev) {
   const enc = s.encounter;
-  for (const fx of [...effectsOf(s)]) if (fx.until?.enc === enc.id && enc.round > fx.until.round) endEffect(s, ev, fx, 'its time ran out');
+  for (const fx of [...effectsOf(s)]) if (fx.until?.enc === enc.id && enc.round > fx.until.round) expire(s, ev, fx);
   tick(s, ev);
 }
 
 const whose = (fx, p) => (p.ends.of === 'source' ? fx.source : p.target);
 
 function boundary(s, ev, e, kit, when) {
-  const enc = s.encounter;
+  const enc = s.encounter, now = turnKey(s);
   for (const fx of [...effectsOf(s)]) {
-    if (when === 'turnStart' && fx.until?.enc === enc?.id && fx.source === e.id && enc.round >= fx.until.round) { endEffect(s, ev, fx, 'its time ran out'); continue; }
+    if (when === 'turnStart' && fx.until?.enc === enc?.id && fx.source === e.id && enc.round >= fx.until.round) { expire(s, ev, fx); if (!effectsOf(s).includes(fx)) continue; }
     for (const p of fx.parts) {
       if (p.ended || !p.ends) continue;
-      if (p.ends.on === when && whose(fx, p) === e.id) endPart(s, ev, fx, p);
+      if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && p.born === now)) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
         const sv = kit.savingThrow(s, e, p.ends.save, p.dc);
         ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name });
@@ -101,6 +118,16 @@ export function fightOver(s, ev) {
     if (spent(fx)) endEffect(s, ev, fx, 'the fight ended');
   }
   tick(s, ev);
+}
+
+// Parts used up (a modifier with `uses: 1` that has just applied: Guiding Bolt's Advantage).
+export function useUp(s, ev, parts) {
+  for (const p of parts) {
+    const fx = effectsOf(s).find((x) => x.parts.includes(p));
+    if (!fx || p.ended) continue;
+    endPart(s, ev, fx, p);
+    if (spent(fx)) endEffect(s, ev, fx, 'it was used');
+  }
 }
 
 // ---------- Concentration ----------

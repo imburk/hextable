@@ -593,6 +593,40 @@ entry names what was added to `schema.js` and what the engine does with it.
   target (Hex, Hunter's Mark). `save.death` was wired with the `save` hook (above). `carry`
   is still unread: there is no encumbrance yet.
 
+- **Turn boundaries** (S5). A `modifier` step may carry `ends` as a `condition` step does
+  (`turnStart` or `turnEnd` of the target, or of the source with `of: 'source'`, or a repeat
+  `save`). A part records the turn it was made in (`born`), and a `turnEnd` boundary of that
+  same turn does not end it, which is what "until the end of your next turn" means (and "its
+  next turn" for a creature affected during its own turn). When an effect's time runs out, a
+  part with its own turn boundary keeps to it and the effect stays until it ends (Guiding
+  Bolt: "1 round", but "before the end of your next turn"). Something with no duration of its
+  own whose steps end at a turn boundary or on a save (Ray of Frost, a mephit's Blinding
+  Breath) gets an effect `bound` to its parts, which ends when they do; it is announced only
+  if it put something on someone. Monster actions get one too, so their timed conditions are
+  timed instead of handed to the DM. A modifier with `uses: 1` is used up by the first roll it
+  applies to (Guiding Bolt's Advantage, Vicious Mockery's Disadvantage).
+
+- **Lasting zones** (S4), in `zones.js`. A spell with `zone: { on, once?, atCast?, spare? }`
+  leaves its area in place for its duration as `fx.zone` on its effect: the hexes it was laid
+  out on (and its height), or, for an Emanation, the caster it moves with. Its own effect steps,
+  scaled and with the caster's choices made, are stored with the caster's DC and attack as they
+  were when cast, and run against one creature when it enters the zone (walking in, being
+  pushed in, or the zone moving onto it: before and after every step of a walk or a push the
+  engine compares which zones hold whom), or when its turn starts or ends there (`on`).
+  `once: 'turn'` is "a creature makes this save only once per turn" (recorded by turn).
+  `atCast`: it also works on everyone in it as it appears (Moonbeam); otherwise appearing is
+  not entering (Web, Spirit Guardians). `spare`: the `cast` action names creatures it leaves
+  alone (`spare: [ids]`; the client spares the caster's side). A walk stops where a zone goes
+  off on the walker, as it does at a trap. A zone that goes off while another effect is being
+  resolved (pushed in by Thunderwave) waits in `s.zoneQueue` until that effect is done, so the
+  stack is never run from inside itself. Whatever a zone's steps put on a creature is a part
+  of its effect and ends with it (Web's Restrained ends with the spell). Event `zone` (DM
+  only); players are not sent `fx.zone`. A `damage` step may say `type: 'chosen'` with a
+  `choice` of damage type (Spirit Guardians' radiant or necrotic).
+  Not built: moving a zone after it is cast (Moonbeam's Magic action), a zone that changes
+  something while a creature is inside it (Spirit Guardians' halved Speed, Difficult Terrain),
+  walls of free shape (Wall of Fire). The renderer draws each zone in the state it is given (a tinted patch by damage type, name on hover or tap); players are not sent zones yet.
+
 ### A class
 
 ```js
@@ -615,6 +649,42 @@ Features (`second-wind`) live in a `features` table shared by classes,
 species and feats. A feature is a name, text, optional modifiers, optional
 resource (`uses: 2, recover: "short"`), and optional action built from effect
 steps.
+
+#### Build notes: classes as data (amendment, R7)
+
+Settled when the twelve classes were entered (`content/srd52/classes/`, one file each; linted by
+`lintClass` in `schema.js`; equipment in `content/srd52/equipment.js`, `lintWeapon`, `lintArmour`):
+
+- **A class** is `{ id, name, hitDie, primary, saves, armour, weapons, tools?, skills: { choose, from },
+  table, casting, features, subclass }`. `table` holds the class table's own columns as 20 entries
+  each (`rages`, `sneak-attack`, `channel-divinity`; `null` before a column starts). `casting` is
+  `null` or `{ ability, kind: 'prepared' | 'pact', cantrips, prepared, slots }` (20 rows; a pact
+  caster's `slots` is a count per level with `slotLevel`). The Proficiency Bonus is the same for
+  every class and is worked out (2 + (level - 1) / 4, rounded down), not repeated per class.
+  `weapons` uses four words: `simple`, `martial`, `martial-light` (Monk), `martial-finesse-or-light` (Rogue).
+- **A feature** is `{ id, name, level, text, tier, checked, uses?, grants?, options? }`. Features
+  shared by several levels of a class (Ability Score Improvement) are entered once per level.
+  `uses` is the feature's own resource: `{ max, recharge: 'short' | 'long' | { level: rest }, short? }`,
+  where `short` is how many come back on a Short Rest when the rest come back on a Long Rest.
+  `options` are choices made on the sheet (`choices[feature id]`), each with its own tier and grants.
+- **An amount** that grows with the class is a number, `{ column }` (the class table),
+  `{ mod, min }` (an ability modifier, at least `min`) or `{ perLevel }` (times the class level). A
+  modifier's `value` may be one of these in class content; `derive()` puts the number in. A heal
+  step may say `addLevel: true` (Second Wind's 1d10 + Fighter level), also baked by `derive()`.
+- **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
+  action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
+  another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and
+  `noSpells` for Rage, `firstAttack` for Reckless Attack); and numbers `derive()` folds into the
+  record: `ac` (an Unarmored Defense formula), `armouredAc`, `rangedAttack`, `speed`, `speeds`,
+  `senses`, `saves`, `extraAttack`, `sneak`, `martialArts`, `hp`, `bonusActs`, `expertise`,
+  `skills`, `abilityBonus`, `cantrips`, `proficiency`, `recover` (Arcane Recovery),
+  `resist`, `critOn`, `spellLists`, `spells` (always prepared).
+- A feature at tier `manual` may still grant an action whose only steps are `manual`: the engine
+  enforces its cost (the action, the use) and shows the text. A feature at tier `auto` must grant
+  something, have uses, or be Spellcasting.
+- **Three situation tags** were added: `attack.str` (an attack using Strength: Rage, Reckless
+  Attack), `attack.spell` (a spell's attack roll: Innate Sorcery), `self.notIncapacitated` (Danger
+  Sense, Aura of Protection).
 
 ## Characters
 

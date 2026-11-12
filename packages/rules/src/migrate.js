@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 
-export const VERSION = 10;
+export const VERSION = 11;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -37,6 +37,8 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) e.senses ??= structuredClone(MONSTERS[e.tpl]?.senses ?? {});
   // Version 9: a table rule for how close the party comes to an enemy before a fight starts.
   if (state.settings) state.settings.engageRange ??= 10;
+  // The table rule for what players are sent by sight (no version of its own: 'rooms' is how it always was).
+  if (state.settings) state.settings.sight ??= 'rooms';
   // Handouts (no version of their own: a state without them simply has none yet).
   if (!Array.isArray(state.handouts)) state.handouts = [];
   if (!(state.version >= VERSION)) state.version = VERSION;
@@ -50,5 +52,9 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);
   // Also version 10: condition immunities, from the template.
   for (const e of Object.values(state.entities)) if (!e.conditionImmune && MONSTERS[e.tpl]?.conditionImmune) e.conditionImmune = [...MONSTERS[e.tpl].conditionImmune];
+  // Version 11: a monster's saving throw bonuses, from the template.
+  for (const e of Object.values(state.entities)) e.saveBonus ??= structuredClone(MONSTERS[e.tpl]?.saveBonus ?? {});
+  // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
+  for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
 }

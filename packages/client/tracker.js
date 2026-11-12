@@ -1,6 +1,6 @@
 // The combat tracker: a panel over the game state. It lists the fight in initiative order (or the
 // party, outside a fight) with health, conditions and lasting effects. It only reads state and
-// sends existing actions (setHp, endTurn, reveal); it never changes anything itself, and it shows
+// sends existing actions (harm, mend, setHp for the dead, endTurn, reveal); it never changes anything itself, and it shows
 // only what the state it is given holds, so a player's panel shows exactly what their view sent.
 import { current, inFight, clockText, FT } from './shared/engine.js';
 import { under } from './shared/space.js';
@@ -27,7 +27,9 @@ export function createTracker(ctx) {
     const e = ctx.state().entities[id], n = amount();
     if (!n) return ctx.toast('Type an amount first.');
     if (typeof e?.maxHp !== 'number') return;
-    ctx.act({ type: 'setHp', actor: id, hp: Math.max(0, Math.min(e.maxHp, e.hp + sign * n)) });
+    // By the rules: Temporary Hit Points first, Resistance, Concentration, death saves. Raising the dead is a DM ruling, so that alone sets Hit Points.
+    if (e.dead) return ctx.act({ type: 'setHp', actor: id, hp: sign > 0 ? Math.min(e.maxHp, n) : 0 });
+    ctx.act(sign < 0 ? { type: 'harm', actor: id, amount: n } : { type: 'mend', actor: id, amount: n });
   }
 
   function rows(S) {

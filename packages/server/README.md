@@ -37,7 +37,10 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 ## Files
 
 - `src/tables.js` — who is at which table and what each person is told. No
-  network code, so the tests drive it directly.
+  network code, so the tests drive it directly. The players' view is built once per change of
+  the table and shared by every player (each copy adds only their own handouts): the party sees as
+  one (`docs/specs/sight.md`). Under the `sight` table rules `los` and `light` a player's view also
+  carries `sight: { rule, now, light? }`, the tiles the party sees now and the light on them.
 - `src/limits.js` — the per-address and per-connection limits, with an injectable clock.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
 - `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
