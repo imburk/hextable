@@ -535,7 +535,8 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
+  // Only an enemy who can see the attacker and is not Incapacitated counts. Until there is sight, "can see" is "not Blinded"; sight will refine it.
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && !o.cond.blinded && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 

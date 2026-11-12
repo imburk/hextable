@@ -1,7 +1,7 @@
 // Rules the engine got wrong (docs/DEBT.md, W1 to W9), each checked against the SRD 5.2 text.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, current } from "../src/engine.js";
+import { apply, current, rollMode } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -128,4 +128,20 @@ test("W3: Resistance and Vulnerability to the same type halve (rounding down) an
   assert.ok(halved.amount > 0);
   assert.equal(both.amount, halved.amount * 2);
   assert.equal(both.note, "resisted and vulnerable");
+});
+
+// ---------- W4: ranged attacks in close combat ----------
+
+test("W4: an enemy beside an archer imposes Disadvantage only if it is not Incapacitated and can see (is not Blinded)", () => {
+  const { s, goblin } = field();
+  apply(s, { type: "place", actor: goblin.id, to: { q: 1, r: 0 } }, DM);
+  const far = s.entities[ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 } }, DM)).events[0].id];
+  const bow = { name: "Shortbow", type: "ranged", range: [80, 320], bonus: 5 };
+  const wizard = s.entities.wizard;
+  assert.ok(rollMode(s, wizard, far, bow).dis.includes("enemy within 5 ft"));
+  ok(apply(s, { type: "condition", actor: goblin.id, condition: "stunned" }, DM));
+  assert.equal(rollMode(s, wizard, far, bow).dis.includes("enemy within 5 ft"), false);
+  ok(apply(s, { type: "condition", actor: goblin.id, condition: "stunned", on: false }, DM));
+  ok(apply(s, { type: "condition", actor: goblin.id, condition: "blinded" }, DM));
+  assert.equal(rollMode(s, wizard, far, bow).dis.includes("enemy within 5 ft"), false);
 });
