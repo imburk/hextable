@@ -38,7 +38,7 @@ many monsters each one touches:
 | M6 | Monster spellcasting (a list of spells with uses) | engine |
 | ~~M7~~ | ~~Senses are not entered for most monsters~~ Entered from the SRD for every monster (PRs #59, #61, #63, #64) | any |
 | M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
-| M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, hides only to open a fight (#S6PR), and uses no Bonus Action but an area one or Nimble Escape's Hide | engine |
+| M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, hides only to open a fight (#88), and uses no Bonus Action but an area one or Nimble Escape's Hide | engine |
 | M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
 | M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
 
@@ -51,7 +51,7 @@ many monsters each one touches:
 | C3 | No levelling or derived sheets: numbers are typed in (R7, R8) | engine, then any |
 | C4 | Equipment states, attunement, encumbrance, spell materials (R10) | engine |
 | C5 | Short rests and Hit Dice; ~~Temporary Hit Points~~ (#82) | engine |
-| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #S6PR). Cunning Action (the rogue's Bonus Action Hide) is not built | engine |
+| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #88). Cunning Action (the rogue's Bonus Action Hide) is not built | engine |
 | C7 | Reactions: Shield, Counterspell, choosing whether to take an opportunity attack (R6) | engine |
 
 ## Spells
@@ -76,11 +76,11 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); ~~hiding (S6)~~ (#S6PR); sending players only what they can see (sight task S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
+| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); ~~hiding (S6)~~ (#88); sending players only what they can see (sight task S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
 | P2 | Rock does not block sight | engine |
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
-| P5 | ~~Hidden creatures are not found by Search~~ (#S6PR: a creature that took the Hide action is; one the DM hid with the `hidden` switch is the DM's to reveal) | engine (sight S6) |
+| P5 | ~~Hidden creatures are not found by Search~~ (#88: a creature that took the Hide action is; one the DM hid with the `hidden` switch is the DM's to reveal) | engine (sight S6) |
 | P6 | ~~Uploads and handouts (M9)~~ (PR #70), ~~tracing a map image (M10)~~ (PR #76), scenes (M11; ~~private notes~~ PR #70), generating a map (M14) | M10 any; M11 engine for the view |
 | P7 | The Universal VTT import (the editor's Map file > Import Universal VTT, PR #79) has only been tried on the hand-made test file, not a real export | any, with a real export |
 | P8 | The editor cannot rename a map, and shows no numbers for tile heights | any |
