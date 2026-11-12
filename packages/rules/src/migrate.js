@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, PREGENS } from './content/index.js';
 
-export const VERSION = 8;
+export const VERSION = 9;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -35,6 +35,8 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) e.size ??= MONSTERS[e.tpl]?.size ?? 'medium';
   // Version 8: creatures have senses (darkvision and the like), taken from their template if they have one.
   for (const e of Object.values(state.entities)) e.senses ??= structuredClone(MONSTERS[e.tpl]?.senses ?? {});
+  // Version 9: a table rule for how close the party comes to an enemy before a fight starts.
+  if (state.settings) state.settings.engageRange ??= 10;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

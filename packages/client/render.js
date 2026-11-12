@@ -23,7 +23,7 @@ export function lightAt(clock) {
   const [h0, c0, s0] = DAY[i - 1], [h1, c1, s1] = DAY[i], k = (h - h0) / (h1 - h0 || 1);
   return { light: c0.map((v, j) => v + (c1[j] - v) * k), sky: s0 + (s1 - s0) * k };
 }
-const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging' };
+const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5;                     // seconds a hit flash and a critical shake last
 const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
@@ -214,7 +214,7 @@ export class Renderer {
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
       a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
-      const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging'].filter(Boolean);      // small badges over the pawn's head
+      const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);      // small badges over the pawn's head
       const mk = marks.join();
       if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
