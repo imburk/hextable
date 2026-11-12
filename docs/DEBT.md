@@ -193,6 +193,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | T3 | Per-address limits can be dodged without a proxy in front of the server (documented) | any |
 | ~~T4~~ | ~~No client tests: UI work is checked by hand in a headless browser each time~~ `npm run smoke` drives the page in headless Chromium (PR #60). It is a smoke test, not a unit suite | any |
 | T5 | The pack's labels say SRD 5.2.1; the file it was checked against is SRD 5.2 | any |
+| T6 | Under `diceThrow: 'throw'` a player throws only the rolls of actions they send. A roll inside someone else's action (a save against a monster's spell, an opportunity attack, a Concentration save) is thrown on their behalf and labelled; letting them throw it needs the prompts system (docs/specs/dice.md section 4) | engine (prompts), then client |
 
 ## Specs still to write
 
