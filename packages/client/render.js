@@ -153,7 +153,7 @@ export class Renderer {
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.blobMesh = new Mesh(gl); this.#makeBlob();
+    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -303,7 +303,28 @@ export class Renderer {
         this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);
       }
     }
-    this.terrain.set(b); this.shadows.set(sb);
+    this.terrain.set(b); this.shadows.set(sb); this.#buildEdge();
+  }
+  // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
+  #buildEdge() {
+    const eb = new Builder(), map = this.state.map, enc = this.state.encounter, th = this.theme;
+    if (enc) {
+      const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
+      const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
+      for (const h of allTiles(map)) {
+        if (h.z > this.ceiling || !enc.arena[H.col(h)]) continue;
+        const w = H.toWorld(h), y = surfY(h.z, h.tile) + 0.03, R = Math.PI / 6;
+        const top = eb.ring(w.x, w.z, 1.02, y, 6, R), inner = eb.ring(w.x, w.z, 0.86, y, 6, R);
+        for (let i = 0; i < 6; i++) {
+          const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
+          if (enc.arena[H.col(out)]) continue;                                        // inside the area on that side: no edge
+          const lo = [...glow, 0.85], hi = [...glow, 0];
+          quad2(top[i], top[n], [top[n][0], y + tall, top[n][2]], [top[i][0], y + tall, top[i][2]], lo, lo, hi, hi);
+          quad2(inner[i], inner[n], top[n], top[i], [...glow, 0.35], [...glow, 0.35], [...glow.map((v) => v * 0.5 + 0.5), 1], [...glow.map((v) => v * 0.5 + 0.5), 1]);       // a bright line on the floor
+        }
+      }
+    }
+    this.edge.set(eb);
   }
   // An upright slab along a line given in map feet.
   #slab(b, p, q, y0, height, half, col) {
@@ -410,6 +431,14 @@ export class Renderer {
     }
     gl.disable(gl.POLYGON_OFFSET_FILL);
     this.overlay.draw(this.loc, ident(), [1, 1, 1, 1], 0);
+    const enc = this.state.encounter;                                     // the edge fades in when a fight starts, flashes once, then breathes
+    const eid = enc ? enc.id ?? 0 : null;
+    if (eid !== this.edgeId) { this.edgeId = eid; this.edgeAge = 0; }
+    this.edgeAge += dt; this.anim += dt;
+    if (enc) {
+      const k = Math.min(1, this.edgeAge / 1.2), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), burst = Math.max(0, 1 - this.edgeAge / 1.6) * 0.8;
+      this.edge.draw(this.loc, ident(), [1 + burst, 1 + burst, 1 + burst, k * k * pulse], 0);
+    }
     gl.depthMask(true);
 
     for (const a of this.actors.values()) {
