@@ -276,6 +276,8 @@ function lintMonster(e, say) {
   if (!e.abilities || !ABILITIES.every((a) => isInt(e.abilities[a]))) say('abilities must give all six scores');
   for (const k of ['resist', 'vulnerable', 'immune']) if (!allOf(DAMAGE_TYPES)(e[k])) say(`${k} must be a list of damage types`);
   if (e.senses !== undefined && !validSenses(e.senses)) say(`senses must give whole feet, in multiples of 5, for only: ${SENSES.join(', ')}`);
+  // `saves` is the SAVE column of the stat block: a whole-number bonus for the abilities whose saving throw differs from the plain modifier.
+  if (e.saves !== undefined && !(e.saves && typeof e.saves === 'object' && !Array.isArray(e.saves) && Object.keys(e.saves).length > 0 && Object.entries(e.saves).every(([k, v]) => ABILITIES.includes(k) && isInt(v) && v >= -10 && v <= 30))) say(`saves must give a whole-number bonus for one or more of: ${ABILITIES.join(', ')}`);
   if (e.skills !== undefined && !(e.skills && Object.entries(e.skills).every(([k, v]) => Object.hasOwn(SKILLS, k) && isInt(v)))) say('skills must give a whole-number bonus for each skill named');
   const ids = new Set();
   for (const t of e.traits ?? []) {

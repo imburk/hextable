@@ -157,7 +157,7 @@ test("a spotted trap can be disarmed with tools; a failed try leaves it armed", 
 test("a table saved before checks existed gets its characters' skills and the new table rule", () => {
   const saved = JSON.parse(readFileSync(new URL("./fixtures/table-v1.json", import.meta.url), "utf8")).state;
   const s = migrate(structuredClone(saved));
-  assert.equal(s.version, 10);
+  assert.equal(s.version, 11);
   assert.deepEqual(s.entities.rogue.expertise, ["sleight-of-hand", "stealth"]);
   assert.deepEqual(s.entities.rogue.tools, ["thieves-tools"]);
   assert.ok(s.entities.fighter.skills.includes("perception"));

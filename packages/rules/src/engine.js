@@ -57,7 +57,7 @@ export function makeEntity(tpl, over = {}) {
   if (!t.actions && over.tpl && MONSTER_ACTIONS[over.tpl]) t.actions = structuredClone(MONSTER_ACTIONS[over.tpl]);
   if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
-    kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, senses: {}, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
+    kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, senses: {}, saveProf: [], saveBonus: {}, skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0 },
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
@@ -810,7 +810,9 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, m.dice);
-  const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add + more.total;
+  // A monster's stat block gives its save outright (`saveBonus`); anyone else adds Proficiency to the modifier for a saving throw they are proficient in.
+  const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
+  const total = r + base + m.add + more.total;
   return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}) };
 }
 

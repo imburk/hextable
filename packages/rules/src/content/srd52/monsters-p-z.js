@@ -356,6 +356,7 @@ export const monsters = [
       wis: 15,
       cha: 13
     },
+    saves: { dex: 4, con: 5, wis: 4, cha: 3 },
     skills: {
       perception: 6
     },
@@ -516,6 +517,7 @@ export const monsters = [
       wis: 12,
       cha: 14
     },
+    saves: { dex: 5, cha: 4 },
     resist: [],
     vulnerable: [],
     immune: [],
@@ -632,6 +634,7 @@ export const monsters = [
       wis: 14,
       cha: 17
     },
+    saves: { str: 3, dex: 7, wis: 5, cha: 6 },
     skills: {
       acrobatics: 7,
       perception: 5
@@ -740,6 +743,7 @@ export const monsters = [
       wis: 18,
       cha: 24
     },
+    saves: { dex: 8, wis: 10 },
     senses: { truesight: 120 },
     skills: {
       perception: 10,
@@ -915,6 +919,7 @@ export const monsters = [
       wis: 22,
       cha: 25
     },
+    saves: { str: 12, con: 12, wis: 11, cha: 12 },
     senses: { truesight: 120 },
     hover: true,
     skills: {
@@ -1385,6 +1390,7 @@ export const monsters = [
       wis: 8,
       cha: 4
     },
+    saves: { con: 11, wis: 4 },
     senses: { blindsight: 30, tremorsense: 60 },
     resist: [],
     vulnerable: [],
@@ -1796,6 +1802,7 @@ export const monsters = [
       wis: 11,
       cha: 15
     },
+    saves: { dex: 2, wis: 2 },
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -1895,6 +1902,7 @@ export const monsters = [
       wis: 11,
       cha: 19
     },
+    saves: { dex: 4, wis: 4 },
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       perception: 8,
@@ -2079,6 +2087,7 @@ export const monsters = [
       wis: 10,
       cha: 9
     },
+    saves: { dex: 4, wis: 4 },
     skills: {
       perception: 8
     },
@@ -3272,6 +3281,7 @@ export const monsters = [
       wis: 11,
       cha: 15
     },
+    saves: { dex: 2, wis: 2 },
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -3382,6 +3392,7 @@ export const monsters = [
       wis: 11,
       cha: 19
     },
+    saves: { dex: 4, wis: 4 },
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       history: 6,
@@ -4080,6 +4091,7 @@ export const monsters = [
       wis: 23,
       cha: 18
     },
+    saves: { dex: 6, con: 11, int: 9, wis: 12 },
     senses: { truesight: 120 },
     skills: {
       arcana: 9,
@@ -4263,6 +4275,7 @@ export const monsters = [
       wis: 15,
       cha: 16
     },
+    saves: { dex: 6, con: 5, wis: 5, cha: 6 },
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -4681,6 +4694,7 @@ export const monsters = [
       wis: 12,
       cha: 9
     },
+    saves: { dex: 5, con: 8, wis: 4 },
     senses: { darkvision: 60 },
     skills: {
       athletics: 12,
@@ -4907,6 +4921,7 @@ export const monsters = [
       wis: 20,
       cha: 18
     },
+    saves: { str: 14, con: 10, wis: 10, cha: 9 },
     senses: { darkvision: 120, truesight: 30 },
     hover: true,
     skills: {
@@ -5200,6 +5215,7 @@ export const monsters = [
       wis: 11,
       cha: 11
     },
+    saves: { dex: 9, int: 5, wis: 9, cha: 9 },
     senses: { blindsight: 120 },
     skills: {
       perception: 9
@@ -5509,6 +5525,7 @@ export const monsters = [
       wis: 10,
       cha: 11
     },
+    saves: { str: 5, con: 5, cha: 2 },
     resist: [],
     vulnerable: [],
     immune: [],
@@ -6014,6 +6031,7 @@ export const monsters = [
       wis: 10,
       cha: 14
     },
+    saves: { dex: 5, wis: 2 },
     senses: { darkvision: 60 },
     skills: {
       perception: 4,
@@ -6142,6 +6160,7 @@ export const monsters = [
       wis: 10,
       cha: 12
     },
+    saves: { dex: 6, wis: 3 },
     senses: { darkvision: 60 },
     skills: {
       perception: 3,
@@ -6284,6 +6303,7 @@ export const monsters = [
       wis: 15,
       cha: 18
     },
+    saves: { dex: 9, con: 9, wis: 7, cha: 9 },
     senses: { darkvision: 120 },
     skills: {
       perception: 7,
@@ -6454,6 +6474,7 @@ export const monsters = [
       wis: 13,
       cha: 8
     },
+    saves: { dex: 5, wis: 4, cha: 2 },
     senses: { darkvision: 120 },
     resist: [
       "cold",
@@ -7631,6 +7652,7 @@ export const monsters = [
       wis: 10,
       cha: 11
     },
+    saves: { dex: 2, wis: 2 },
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -7738,6 +7760,7 @@ export const monsters = [
       wis: 11,
       cha: 12
     },
+    saves: { dex: 3, wis: 3 },
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       perception: 6,
@@ -8581,6 +8604,7 @@ export const monsters = [
       wis: 6,
       cha: 5
     },
+    saves: { wis: 0 },
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -8924,6 +8948,7 @@ export const monsters = [
       wis: 11,
       cha: 7
     },
+    saves: { str: 4 },
     resist: [],
     vulnerable: [],
     immune: [],
@@ -9372,6 +9397,7 @@ export const monsters = [
       wis: 12,
       cha: 8
     },
+    saves: { str: 6, dex: 5 },
     senses: { darkvision: 60 },
     skills: {
       perception: 5,
@@ -9901,6 +9927,7 @@ export const monsters = [
       wis: 10,
       cha: 3
     },
+    saves: { dex: 2 },
     senses: { darkvision: 30 },
     resist: [
       "bludgeoning",
@@ -10304,6 +10331,7 @@ export const monsters = [
       wis: 12,
       cha: 9
     },
+    saves: { str: 10, wis: 4 },
     skills: {
       perception: 4
     },
@@ -10538,6 +10566,7 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    saves: { wis: 3 },
     resist: [],
     vulnerable: [],
     immune: [],
