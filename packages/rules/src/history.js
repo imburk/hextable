@@ -176,6 +176,19 @@ export function describeStep(action, events, before, after) {
     case 'advanceTime': label = `${a.minutes} minutes passed`; break;
     case 'chronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
     case 'setting': label = 'A table rule was changed'; break;
+    case 'act': label = `${who} used ${after.entities[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? prior?.entities?.[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? 'an action'}`; break;
+    case 'follow': label = a.leader === null || a.leader === undefined ? `${who} stopped following` : `${who} started following ${name(a.leader)}`; break;
+    case 'partyFollow': label = `The party fell in behind ${name(a.leader)}`; break;
+    case 'marchingOrder': label = 'The marching order was set'; break;
+    // Handouts and notes name no creature. Their titles and words are left out: a step is shown to
+    // players who may not hold that handout.
+    case 'handout': label = ev('handout')?.edited ? 'A handout was changed' : 'A handout was made'; break;
+    case 'showHandout': label = 'A handout was shown'; break;
+    case 'hideHandout': label = 'A handout was taken back'; break;
+    case 'removeHandout': label = 'A handout was removed'; break;
+    case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
+    case 'release': label = `${name(a.entity)} was given up by their player`; break;
+    case 'note': label = 'A note was sent'; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
   const named = ['actor', 'target', 'entity'].map((k) => a[k]).filter((id) => typeof id === 'string');
