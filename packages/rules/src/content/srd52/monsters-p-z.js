@@ -4,8 +4,10 @@
 // `checked: true` means every number, dice expression, DC, attack bonus, damage type, condition and distance in the entry was
 // compared with the SRD 5.2.1 stat block text and every hand-written line was read against it; `checked: false` marks the
 // entry where the SRD allows a choice the engine cannot hold (Swarm of Insects: climb or fly, the GM's choice).
-// Multiattack, recharge, daily uses, condition immunities, spellcasting, legendary actions, bonus actions and
-// reactions have no fields yet, so they sit in a trait's `text` or a `manual` step and the monster is `assist`
+// Multiattack (`multiattack`), recharge, daily uses, Bonus Actions and condition immunities have fields now and were
+// filled in by script where the SRD's wording is plain; a Multiattack that involves spellcasting, "if available" or
+// something the DM applies stays a trait's `text`.
+// Spellcasting, legendary actions and reactions have no fields yet, so they sit in a trait's `text` or a `manual` step and the monster is `assist`
 // (or `manual` when none of its actions can be played by the engine).
 export const monsters = [
   {
@@ -42,12 +44,13 @@ export const monsters = [
       "necrotic",
       "poison"
     ],
+    conditionImmune: ["charmed", "exhaustion", "frightened", "grappled", "incapacitated", "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Frightened, Grappled, Incapacitated, Paralyzed, Petrified, Poisoned, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Frightened, Grappled, Incapacitated, Paralyzed, Petrified, Poisoned, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "swarm",
@@ -117,12 +120,13 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["blinded", "charmed", "deafened", "frightened"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Blinded, Charmed, Deafened, Frightened condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Blinded, Charmed, Deafened, Frightened condition(s). The engine applies this."
       }
     ],
     actions: [
@@ -170,21 +174,22 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["blinded", "charmed", "deafened", "frightened"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Blinded, Charmed, Deafened, Frightened condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Blinded, Charmed, Deafened, Frightened condition(s). The engine applies this."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Rotting Touch attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rotting-touch", times: 2 }],
+        text: "Makes two Rotting Touch attacks.",
+      },
       {
         id: "rotting-touch",
         name: "Rotting Touch",
@@ -246,12 +251,13 @@ export const monsters = [
       "fire",
       "poison"
     ],
+    conditionImmune: ["exhaustion", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Poisoned condition(s). The engine applies this."
       },
       {
         id: "blurred-form",
@@ -297,6 +303,7 @@ export const monsters = [
       {
         id: "steam-breath",
         name: "Steam Breath",
+        recharge: [6, 6],
         target: {
           area: {
             shape: "cone",
@@ -319,7 +326,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Constitution save (DC 10) or take 2d4 fire damage, half on a success. Recharge 6 (not tracked)."
+        text: "Constitution save (DC 10) or take 2d4 fire damage, half on a success. Recharge 6."
       }
     ],
     tier: "assist",
@@ -439,12 +446,6 @@ export const monsters = [
         text: "Ignores movement limits from webs and knows where any creature touching the same web is."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Bite attacks."
-      },
-      {
         id: "ethereal-jaunt",
         name: "Ethereal Jaunt",
         modifiers: [],
@@ -452,6 +453,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "bite", times: 2 }],
+        text: "Makes two Bite attacks.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -512,15 +519,14 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Dagger attacks. It can replace one attack with a use of Enthralling Panache."
-      }
-    ],
-    actions: [
+        multiattack: { or: [[{ action: ["dagger", "dagger-thrown"], times: 2 }], [{ action: ["dagger", "dagger-thrown"], times: 1 }, { action: "enthralling-panache", times: 1 }]] },
+        text: "Makes two Dagger attacks. It can replace one attack with a use of Enthralling Panache.",
+      },
       {
         id: "dagger",
         name: "Dagger",
@@ -635,12 +641,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes three attacks, using Rapier or Pistol in any combination."
-      },
-      {
         id: "captains-charm",
         name: "Captain’s Charm",
         modifiers: [],
@@ -654,6 +654,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: ["rapier", "pistol"], times: 3 }],
+        text: "Makes three attacks, using Rapier or Pistol in any combination.",
+      },
       {
         id: "rapier",
         name: "Rapier",
@@ -747,12 +753,13 @@ export const monsters = [
       "fire",
       "poison"
     ],
+    conditionImmune: ["poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Poisoned condition(s). The engine applies this."
       },
       {
         id: "diabolical-restoration",
@@ -778,14 +785,14 @@ export const monsters = [
         modifiers: [],
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Bite attack, two Devilish Claw attacks, and one Fiery Mace attack."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "bite", times: 1 }, { action: "devilish-claw", times: 2 }, { action: "fiery-mace", times: 1 }],
+        text: "Makes one Bite attack, two Devilish Claw attacks, and one Fiery Mace attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -869,6 +876,7 @@ export const monsters = [
       {
         id: "hellfire-spellcasting",
         name: "Hellfire Spellcasting",
+        recharge: [4, 6],
         target: {
           self: true
         },
@@ -877,7 +885,7 @@ export const monsters = [
             manual: "Recharge 4-6: casts Fireball (level 5 version) twice, with no Material components, using Charisma (spell save DC 21). It can replace one Fireball with Hold Monster (level 7 version) or Wall of Fire."
           }
         ],
-        text: "Casts Fireball twice, or swaps one for Hold Monster or Wall of Fire; Recharge 4-6 (not tracked)."
+        text: "Casts Fireball twice, or swaps one for Hold Monster or Wall of Fire; Recharge 4-6."
       }
     ],
     tier: "assist",
@@ -917,12 +925,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "exhaustion", "frightened"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Frightened condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Frightened condition(s). The engine applies this."
       },
       {
         id: "divine-awareness",
@@ -943,12 +952,6 @@ export const monsters = [
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Radiant Sword attacks or uses Holy Burst twice."
-      },
-      {
         id: "divine-aid",
         name: "Divine Aid",
         modifiers: [],
@@ -956,6 +959,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: "radiant-sword", times: 3 }], [{ action: "holy-burst", times: 2 }]] },
+        text: "Makes three Radiant Sword attacks or uses Holy Burst twice.",
+      },
       {
         id: "radiant-sword",
         name: "Radiant Sword",
@@ -1166,12 +1175,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Mace or Radiant Flame in any combination."
-      },
-      {
         id: "divine-aid",
         name: "Divine Aid",
         modifiers: [],
@@ -1179,6 +1182,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: ["mace", "radiant-flame"], times: 2 }],
+        text: "Makes two attacks, using Mace or Radiant Flame in any combination.",
+      },
       {
         id: "mace",
         name: "Mace",
@@ -1288,14 +1297,14 @@ export const monsters = [
         modifiers: [],
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Bite attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "bite", times: 2 }],
+        text: "Makes two Bite attacks.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -1388,12 +1397,6 @@ export const monsters = [
         text: "Burrows through solid rock at half its Burrow speed, leaving a 10-foot-wide tunnel."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Bite attack and one Tail Stinger attack."
-      },
-      {
         id: "swallow",
         name: "Swallow",
         modifiers: [],
@@ -1401,6 +1404,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "bite", times: 1 }, { action: "tail-stinger", times: 1 }],
+        text: "Makes one Bite attack and one Tail Stinger attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -1500,12 +1509,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Poisoned condition(s). The engine applies this."
       },
       {
         id: "magic-resistance",
@@ -1561,6 +1571,7 @@ export const monsters = [
       {
         id: "scare",
         name: "Scare",
+        uses: { per: "day", n: 1 },
         target: {
           creature: {
             range: [
@@ -1589,7 +1600,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Wisdom save (DC 10) or Frightened, repeating the save each turn; 1 a day.1/Day"
+        text: "Wisdom save (DC 10) or Frightened, repeating the save each turn; 1 a day."
       },
       {
         id: "shape-shift",
@@ -1640,12 +1651,13 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened condition(s). The engine applies this."
       },
       {
         id: "conditional-vulnerability",
@@ -1665,14 +1677,14 @@ export const monsters = [
         modifiers: [],
         text: "If it dies outside the Nine Hells, it gets a new body at once, with all its Hit Points, somewhere in the Nine Hells."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Cursed Touch attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "cursed-touch", times: 3 }],
+        text: "Makes three Cursed Touch attacks.",
+      },
       {
         id: "cursed-touch",
         name: "Cursed Touch",
@@ -1706,6 +1718,7 @@ export const monsters = [
       {
         id: "baleful-command",
         name: "Baleful Command",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "emanation",
@@ -1739,7 +1752,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Enemies within 30 feet make a Wisdom save (DC 18) or take psychic damage and are Frightened and Incapacitated until the start of the rakshasa's next turn. Recharge 5-6 (not tracked)."
+        text: "Enemies within 30 feet make a Wisdom save (DC 18) or take psychic damage and are Frightened and Incapacitated until the start of the rakshasa's next turn. Recharge 5-6."
       },
       {
         id: "spellcasting",
@@ -1793,15 +1806,14 @@ export const monsters = [
     immune: [
       "fire"
     ],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Rend attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rend", times: 2 }],
+        text: "Makes two Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -1832,6 +1844,7 @@ export const monsters = [
       {
         id: "fire-breath",
         name: "Fire Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -1851,7 +1864,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Dexterity save (DC 13) or take 7d6 fire damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Dexterity save (DC 13) or take 7d6 fire damage, half on a success. Recharge 5-6."
       }
     ],
     tier: "assist",
@@ -1892,15 +1905,14 @@ export const monsters = [
     immune: [
       "fire"
     ],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Rend attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Makes three Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -1931,6 +1943,7 @@ export const monsters = [
       {
         id: "fire-breath",
         name: "Fire Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -1950,7 +1963,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Dexterity save (DC 17) or take 16d6 fire damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Dexterity save (DC 17) or take 16d6 fire damage, half on a success. Recharge 5-6."
       }
     ],
     tier: "assist",
@@ -2074,12 +2087,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Beak attacks. It can replace one attack with a Talons attack."
-      },
-      {
         id: "swoop",
         name: "Swoop",
         modifiers: [],
@@ -2087,6 +2094,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: "beak", times: 2 }], [{ action: "beak", times: 1 }, { action: "talons", times: 1 }]] },
+        text: "Makes two Beak attacks. It can replace one attack with a Talons attack.",
+      },
       {
         id: "beak",
         name: "Beak",
@@ -2416,12 +2429,6 @@ export const monsters = [
         text: "Controls sharks within 120 feet by a special telepathy."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Claw attacks."
-      },
-      {
         id: "aquatic-charge",
         name: "Aquatic Charge",
         modifiers: [],
@@ -2429,6 +2436,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "claw", times: 2 }],
+        text: "Makes two Claw attacks.",
+      },
       {
         id: "claw",
         name: "Claw",
@@ -2495,14 +2508,14 @@ export const monsters = [
         modifiers: [],
         text: "At the end of each of its turns, creatures of its choice within 5 feet take 7 (2d6) fire damage. The DM applies this."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Flame Spear attacks. It can replace one attack with a use of Constrict."
-      }
-    ],
-    actions: [
+        multiattack: { or: [[{ action: ["flame-spear", "flame-spear-thrown"], times: 2 }], [{ action: ["flame-spear", "flame-spear-thrown"], times: 1 }, { action: "constrict", times: 1 }]] },
+        text: "Makes two Flame Spear attacks. It can replace one attack with a use of Constrict.",
+      },
       {
         id: "flame-spear",
         name: "Flame Spear",
@@ -2732,15 +2745,14 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Shortsword and Longbow in any combination."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: ["shortsword", "longbow"], times: 2 }],
+        text: "Makes two attacks, using Shortsword and Longbow in any combination.",
+      },
       {
         id: "shortsword",
         name: "Shortsword",
@@ -2869,6 +2881,7 @@ export const monsters = [
       {
         id: "death-glare",
         name: "Death Glare",
+        recharge: [5, 6],
         target: {
           creature: {
             range: [
@@ -2893,7 +2906,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A Frightened creature within 30 feet makes a Wisdom save (DC 11) or takes psychic damage; Recharge 5-6 (not tracked)."
+        text: "A Frightened creature within 30 feet makes a Wisdom save (DC 11) or takes psychic damage; Recharge 5-6."
       },
       {
         id: "illusory-appearance",
@@ -2953,12 +2966,13 @@ export const monsters = [
       "necrotic",
       "poison"
     ],
+    conditionImmune: ["exhaustion", "frightened", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Frightened, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Frightened, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine applies this."
       },
       {
         id: "amorphous",
@@ -3046,12 +3060,13 @@ export const monsters = [
     immune: [
       "lightning"
     ],
+    conditionImmune: ["deafened", "exhaustion"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Deafened, Exhaustion condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Deafened, Exhaustion condition(s). The engine applies this."
       },
       {
         id: "lightning-absorption",
@@ -3059,14 +3074,14 @@ export const monsters = [
         modifiers: [],
         text: "When it takes lightning damage, it regains that many Hit Points. The DM applies this."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Charged Tendril attacks. It can replace one attack with a use of Engulf."
-      }
-    ],
-    actions: [
+        multiattack: { or: [[{ action: "charged-tendril", times: 3 }], [{ action: "charged-tendril", times: 2 }, { action: "engulf", times: 1 }]] },
+        text: "Makes three Charged Tendril attacks. It can replace one attack with a use of Engulf.",
+      },
       {
         id: "charged-tendril",
         name: "Charged Tendril",
@@ -3162,12 +3177,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["charmed", "exhaustion", "frightened", "paralyzed", "petrified", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Frightened, Paralyzed, Petrified, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Frightened, Paralyzed, Petrified, Poisoned condition(s). The engine applies this."
       },
       {
         id: "bound",
@@ -3188,12 +3204,6 @@ export const monsters = [
         text: "The amulet's wearer can store one spell of level 4 or lower in it by casting it on the guardian within 5 feet; the guardian can later cast it with the original settings and the caster's ability, and the spell is then lost. The DM applies this."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Fist attacks."
-      },
-      {
         id: "protection",
         name: "Protection",
         modifiers: [],
@@ -3201,6 +3211,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "fist", times: 2 }],
+        text: "Makes two Fist attacks.",
+      },
       {
         id: "fist",
         name: "Fist",
@@ -3266,15 +3282,14 @@ export const monsters = [
     immune: [
       "cold"
     ],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Rend attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rend", times: 2 }],
+        text: "Makes two Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -3301,6 +3316,7 @@ export const monsters = [
       {
         id: "cold-breath",
         name: "Cold Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -3320,7 +3336,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Constitution save (DC 13) or take 4d8 cold damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Constitution save (DC 13) or take 4d8 cold damage, half on a success. Recharge 5-6."
       },
       {
         id: "paralyzing-breath",
@@ -3412,6 +3428,7 @@ export const monsters = [
       {
         id: "cold-breath",
         name: "Cold Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -3431,7 +3448,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Constitution save (DC 17) or take 11d8 cold damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Constitution save (DC 17) or take 11d8 cold damage, half on a success. Recharge 5-6."
       },
       {
         id: "paralyzing-breath",
@@ -3484,12 +3501,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["exhaustion", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Poisoned condition(s). The engine applies this."
       }
     ],
     actions: [
@@ -3558,12 +3576,13 @@ export const monsters = [
       "poison",
       "radiant"
     ],
+    conditionImmune: ["charmed", "exhaustion", "frightened", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Frightened, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Frightened, Poisoned condition(s). The engine applies this."
       },
       {
         id: "divine-awareness",
@@ -3590,12 +3609,6 @@ export const monsters = [
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Flying Sword attacks. It can replace one attack with a use of Slaying Bow."
-      },
-      {
         id: "divine-aid",
         name: "Divine Aid",
         modifiers: [],
@@ -3609,6 +3622,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: ["flying-sword", "flying-sword-thrown"], times: 2 }], [{ action: ["flying-sword", "flying-sword-thrown"], times: 1 }, { action: "slaying-bow", times: 1 }]] },
+        text: "Makes two Flying Sword attacks. It can replace one attack with a use of Slaying Bow.",
+      },
       {
         id: "flying-sword",
         name: "Flying Sword",
@@ -3757,12 +3776,13 @@ export const monsters = [
       "necrotic",
       "poison"
     ],
+    conditionImmune: ["charmed", "exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine applies this."
       },
       {
         id: "incorporeal-movement",
@@ -3930,12 +3950,13 @@ export const monsters = [
     immune: [
       "psychic"
     ],
+    conditionImmune: ["charmed", "frightened"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened condition(s). The engine applies this."
       },
       {
         id: "inscrutable",
@@ -3950,12 +3971,6 @@ export const monsters = [
         text: "Can turn a failed saving throw into a success, 3 times a day, or 4 in its lair. The DM tracks the uses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Claw attacks."
-      },
-      {
         id: "legendary-actions",
         name: "Legendary Actions",
         modifiers: [],
@@ -3963,6 +3978,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "claw", times: 3 }],
+        text: "Makes three Claw attacks.",
+      },
       {
         id: "claw",
         name: "Claw",
@@ -3989,6 +4010,7 @@ export const monsters = [
       {
         id: "mind-rending-roar",
         name: "Mind-Rending Roar",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "emanation",
@@ -4015,7 +4037,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Enemies within 300 feet make a Wisdom save (DC 16) or take psychic damage and are Incapacitated until the start of the sphinx's next turn. Recharge 5-6 (not tracked)."
+        text: "Enemies within 300 feet make a Wisdom save (DC 16) or take psychic damage and are Incapacitated until the start of the sphinx's next turn. Recharge 5-6."
       },
       {
         id: "spellcasting",
@@ -4072,12 +4094,13 @@ export const monsters = [
     immune: [
       "psychic"
     ],
+    conditionImmune: ["charmed", "frightened"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened condition(s). The engine applies this."
       },
       {
         id: "inscrutable",
@@ -4131,6 +4154,7 @@ export const monsters = [
       {
         id: "roar",
         name: "Roar",
+        uses: { per: "day", n: 3 },
         target: {
           self: true
         },
@@ -4245,12 +4269,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["charmed", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Poisoned condition(s). The engine applies this."
       },
       {
         id: "fiendish-restoration",
@@ -4258,14 +4283,14 @@ export const monsters = [
         modifiers: [],
         text: "If it dies, it returns to life in 1d6 days with all its Hit Points; only a Wish spell prevents this."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes three attacks, using Bite or Necrotic Ray in any combination."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: ["bite", "necrotic-ray"], times: 3 }],
+        text: "Makes three attacks, using Bite or Necrotic Ray in any combination.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -4667,12 +4692,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Stone Club or Boulder in any combination."
-      },
-      {
         id: "deflect-missile",
         name: "Deflect Missile",
         modifiers: [],
@@ -4680,6 +4699,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: ["stone-club", "boulder"], times: 2 }],
+        text: "Makes two attacks, using Stone Club or Boulder in any combination.",
+      },
       {
         id: "stone-club",
         name: "Stone Club",
@@ -4766,12 +4791,13 @@ export const monsters = [
       "poison",
       "psychic"
     ],
+    conditionImmune: ["charmed", "exhaustion", "frightened", "paralyzed", "petrified", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Frightened, Paralyzed, Petrified, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Frightened, Paralyzed, Petrified, Poisoned condition(s). The engine applies this."
       },
       {
         id: "immutable-form",
@@ -4786,12 +4812,6 @@ export const monsters = [
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Slam or Force Bolt in any combination."
-      },
-      {
         id: "slow",
         name: "Slow",
         modifiers: [],
@@ -4799,6 +4819,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: ["slam", "force-bolt"], times: 2 }],
+        text: "Makes two attacks, using Slam or Force Bolt in any combination.",
+      },
       {
         id: "slam",
         name: "Slam",
@@ -4904,14 +4930,14 @@ export const monsters = [
         modifiers: [],
         text: "Breathes air and water."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Storm Sword or Thunderbolt in any combination."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: ["storm-sword", "thunderbolt"], times: 2 }],
+        text: "Makes two attacks, using Storm Sword or Thunderbolt in any combination.",
+      },
       {
         id: "storm-sword",
         name: "Storm Sword",
@@ -4982,6 +5008,7 @@ export const monsters = [
       {
         id: "lightning-storm",
         name: "Lightning Storm",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cylinder",
@@ -5002,7 +5029,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A 10-foot-radius, 40-foot-high cylinder centered on a point within 500 feet: Dexterity save (DC 18) or lightning damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "A 10-foot-radius, 40-foot-high cylinder centered on a point within 500 feet: Dexterity save (DC 18) or lightning damage, half on a success. Recharge 5-6."
       },
       {
         id: "spellcasting",
@@ -5187,12 +5214,13 @@ export const monsters = [
       "fire",
       "poison"
     ],
+    conditionImmune: ["charmed", "deafened", "frightened", "paralyzed", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Deafened, Frightened, Paralyzed, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Deafened, Frightened, Paralyzed, Poisoned condition(s). The engine applies this."
       },
       {
         id: "legendary-resistance",
@@ -5219,12 +5247,6 @@ export const monsters = [
         text: "Deals double damage to objects and structures."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Bite attack and three other attacks, using Claw or Tail in any combination."
-      },
-      {
         id: "swallow",
         name: "Swallow",
         modifiers: [],
@@ -5238,6 +5260,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "bite", times: 1 }, { action: ["claw", "tail"], times: 3 }],
+        text: "Makes one Bite attack and three other attacks, using Claw or Tail in any combination.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -5322,6 +5350,7 @@ export const monsters = [
       {
         id: "thunderous-bellow",
         name: "Thunderous Bellow",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -5355,7 +5384,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A 150-foot cone: Constitution save (DC 27) or thunder damage plus Deafened and Frightened until the end of its next turn. It also hits unattended objects. Recharge 5-6 (not tracked)."
+        text: "A 150-foot cone: Constitution save (DC 27) or thunder damage plus Deafened and Frightened until the end of its next turn. It also hits unattended objects. Recharge 5-6."
       }
     ],
     tier: "assist",
@@ -5498,14 +5527,14 @@ export const monsters = [
         ],
         text: "Advantage on an attack roll against a creature that has one of its allies within 5 feet, if that ally can act."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Warhammer or Heavy Crossbow in any combination."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: ["warhammer", "heavy-crossbow"], times: 2 }],
+        text: "Makes two attacks, using Warhammer or Heavy Crossbow in any combination.",
+      },
       {
         id: "warhammer",
         name: "Warhammer",
@@ -5601,14 +5630,14 @@ export const monsters = [
         modifiers: [],
         text: "Deals double damage to objects and structures."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Slam attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "slam", times: 2 }],
+        text: "Makes two Slam attacks.",
+      },
       {
         id: "slam",
         name: "Slam",
@@ -5661,6 +5690,7 @@ export const monsters = [
       {
         id: "animate-trees",
         name: "Animate Trees",
+        uses: { per: "day", n: 1 },
         target: {
           self: true
         },
@@ -5719,12 +5749,6 @@ export const monsters = [
         text: "Regains 15 Hit Points at the start of each of its turns. Acid or fire damage switches this off for its next turn. It dies only if it starts a turn at 0 Hit Points and does not regenerate. The DM applies this."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Rend attacks."
-      },
-      {
         id: "charge",
         name: "Charge",
         modifiers: [],
@@ -5732,6 +5756,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Makes three Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -5857,12 +5887,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["charmed", "paralyzed", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Paralyzed, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Paralyzed, Poisoned condition(s). The engine applies this."
       },
       {
         id: "legendary-resistance",
@@ -5875,12 +5906,6 @@ export const monsters = [
         name: "Magic Resistance",
         modifiers: [],
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
-      },
-      {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Hooves attack and one Radiant Horn attack."
       },
       {
         id: "unicorns-blessing",
@@ -5896,6 +5921,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "hooves", times: 1 }, { action: "radiant-horn", times: 1 }],
+        text: "Makes one Hooves attack and one Radiant Horn attack.",
+      },
       {
         id: "hooves",
         name: "Hooves",
@@ -6008,12 +6039,6 @@ export const monsters = [
         text: "While on the same plane as its vampire master, the vampire can speak to it telepathically and perceive through its senses."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Umbral Dagger attacks."
-      },
-      {
         id: "deathless-agility",
         name: "Deathless Agility",
         modifiers: [],
@@ -6021,6 +6046,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: ["umbral-dagger", "umbral-dagger-thrown"], times: 2 }],
+        text: "Makes two Umbral Dagger attacks.",
+      },
       {
         id: "umbral-dagger",
         name: "Umbral Dagger",
@@ -6153,12 +6184,6 @@ export const monsters = [
         text: "Takes 20 radiant damage if it starts its turn in sunlight, and has Disadvantage on attack rolls and ability checks while in it. The DM applies this."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Claw attacks and uses Bite."
-      },
-      {
         id: "deathless-agility",
         name: "Deathless Agility",
         modifiers: [],
@@ -6166,6 +6191,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "claw", times: 2 }, { action: "bite", times: 1 }],
+        text: "Makes two Claw attacks and uses Bite.",
+      },
       {
         id: "claw",
         name: "Claw",
@@ -6307,12 +6338,6 @@ export const monsters = [
         text: "Takes 20 radiant damage if it starts its turn in sunlight, and has Disadvantage on attack rolls and ability checks while in it. The DM applies this."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Grave Strike attacks and uses Bite."
-      },
-      {
         id: "charm",
         name: "Charm",
         modifiers: [],
@@ -6332,6 +6357,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "grave-strike", times: 2 }, { action: "bite", times: 1 }],
+        text: "Makes two Grave Strike attacks and uses Bite.",
+      },
       {
         id: "grave-strike",
         name: "Grave Strike",
@@ -6433,12 +6464,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Poisoned condition(s). The engine applies this."
       },
       {
         id: "demonic-restoration",
@@ -6452,14 +6484,14 @@ export const monsters = [
         modifiers: [],
         text: "Advantage on saving throws against spells and other magical effects. The engine has no tag for this yet; the DM applies it."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Shred attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "shred", times: 2 }],
+        text: "Makes two Shred attacks.",
+      },
       {
         id: "shred",
         name: "Shred",
@@ -6490,6 +6522,7 @@ export const monsters = [
       {
         id: "spores",
         name: "Spores",
+        recharge: [6, 6],
         target: {
           area: {
             shape: "emanation",
@@ -6516,11 +6549,12 @@ export const monsters = [
             ]
           }
         ],
-        text: "Creatures within 20 feet make a Constitution save (DC 15) or are Poisoned and take poison damage each turn. Recharge 6 (not tracked)."
+        text: "Creatures within 20 feet make a Constitution save (DC 15) or are Poisoned and take poison damage each turn. Recharge 6."
       },
       {
         id: "stunning-screech",
         name: "Stunning Screech",
+        uses: { per: "day", n: 1 },
         target: {
           area: {
             shape: "emanation",
@@ -6550,7 +6584,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Creatures within 20 feet make a Constitution save (DC 15) or take thunder damage and are Stunned until the end of the vrock's next turn; 1 a day (not tracked).1/Day"
+        text: "Creatures within 20 feet make a Constitution save (DC 15) or take thunder damage and are Stunned until the end of the vrock's next turn; 1 a day."
       }
     ],
     tier: "assist",
@@ -6684,12 +6718,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Greatsword or Heavy Crossbow attacks."
-      },
-      {
         id: "parry",
         name: "Parry",
         modifiers: [],
@@ -6697,6 +6725,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: ["greatsword", "heavy-crossbow"], times: 2 }],
+        text: "Makes two Greatsword or Heavy Crossbow attacks.",
+      },
       {
         id: "greatsword",
         name: "Greatsword",
@@ -6783,12 +6817,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine applies this."
       },
       {
         id: "freeze",
@@ -6802,14 +6837,14 @@ export const monsters = [
         modifiers: [],
         text: "Can enter an enemy's space and stop there, and squeeze through spaces 1 inch wide at no extra movement cost."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Slam attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "slam", times: 2 }],
+        text: "Makes two Slam attacks.",
+      },
       {
         id: "slam",
         name: "Slam",
@@ -6839,6 +6874,7 @@ export const monsters = [
       {
         id: "whelm",
         name: "Whelm",
+        recharge: [4, 6],
         target: {
           self: true
         },
@@ -6847,7 +6883,7 @@ export const monsters = [
             manual: "Recharge 4-6: each creature in the elemental's space makes a Strength save (DC 15). Failure: 22 (4d8 + 4) bludgeoning damage, and a Large or smaller creature is Grappled (escape DC 14). Until the grapple ends the target is Restrained, cannot breathe unless it can breathe water, and takes 9 (2d8) bludgeoning damage at the start of each of the elemental's turns. It can hold one Large or up to two Medium or smaller creatures this way. A creature within 5 feet can use an action to pull one out with a DC 14 Strength (Athletics) check. Success: half damage only."
           }
         ],
-        text: "Engulfs creatures in its space; Recharge 4-6 (not tracked)."
+        text: "Engulfs creatures in its space; Recharge 4-6."
       }
     ],
     tier: "assist",
@@ -6891,12 +6927,6 @@ export const monsters = [
         text: "Speed 40 and Climb 30 apply in bear form only; the entry gives the 30-foot walking speed."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Handaxe or Rend in any combination. It can replace one attack with a Bite attack."
-      },
-      {
         id: "shape-shift",
         name: "Shape-Shift",
         modifiers: [],
@@ -6904,6 +6934,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: ["handaxe", "handaxe-thrown", "rend"], times: 2 }], [{ action: ["handaxe", "handaxe-thrown", "rend"], times: 1 }, { action: "bite", times: 1 }]] },
+        text: "Makes two attacks, using Handaxe or Rend in any combination. It can replace one attack with a Bite attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -7043,12 +7079,6 @@ export const monsters = [
         text: "Speed 40 applies in boar form only; the entry gives the 30-foot walking speed."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Javelin or Tusk in any combination. It can replace one attack with a Gore attack."
-      },
-      {
         id: "shape-shift",
         name: "Shape-Shift",
         modifiers: [],
@@ -7056,6 +7086,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: ["javelin", "javelin-thrown", "tusk"], times: 2 }], [{ action: ["javelin", "javelin-thrown", "tusk"], times: 1 }, { action: "gore", times: 1 }]] },
+        text: "Makes two attacks, using Javelin or Tusk in any combination. It can replace one attack with a Gore attack.",
+      },
       {
         id: "gore",
         name: "Gore",
@@ -7195,12 +7231,6 @@ export const monsters = [
     immune: [],
     traits: [
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Scratch or Hand Crossbow in any combination. It can replace one attack with a Bite attack."
-      },
-      {
         id: "shape-shift",
         name: "Shape-Shift",
         modifiers: [],
@@ -7208,6 +7238,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: ["scratch", "hand-crossbow"], times: 2 }], [{ action: ["scratch", "hand-crossbow"], times: 1 }, { action: "bite", times: 1 }]] },
+        text: "Makes two attacks, using Scratch or Hand Crossbow in any combination. It can replace one attack with a Bite attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -7326,12 +7362,6 @@ export const monsters = [
         text: "Speed 40 applies in tiger form only; the entry gives the 30-foot walking speed."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Scratch or Longbow in any combination. It can replace one attack with a Bite attack."
-      },
-      {
         id: "prowl",
         name: "Prowl",
         modifiers: [],
@@ -7345,6 +7375,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: ["scratch", "longbow"], times: 2 }], [{ action: ["scratch", "longbow"], times: 1 }, { action: "bite", times: 1 }]] },
+        text: "Makes two attacks, using Scratch or Longbow in any combination. It can replace one attack with a Bite attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -7477,12 +7513,6 @@ export const monsters = [
         text: "Advantage on an attack roll against a creature that has one of its allies within 5 feet, if that ally can act."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Scratch or Longbow in any combination. It can replace one attack with a Bite attack."
-      },
-      {
         id: "shape-shift",
         name: "Shape-Shift",
         modifiers: [],
@@ -7490,6 +7520,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: { or: [[{ action: ["scratch", "longbow"], times: 2 }], [{ action: ["scratch", "longbow"], times: 1 }, { action: "bite", times: 1 }]] },
+        text: "Makes two attacks, using Scratch or Longbow in any combination. It can replace one attack with a Bite attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -7612,14 +7648,14 @@ export const monsters = [
         modifiers: [],
         text: "Crosses and climbs icy surfaces without ability checks; ice and snow Difficult Terrain costs it no extra movement."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Rend attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rend", times: 2 }],
+        text: "Makes two Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7650,6 +7686,7 @@ export const monsters = [
       {
         id: "cold-breath",
         name: "Cold Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -7669,7 +7706,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Constitution save (DC 12) or take 5d8 cold damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Constitution save (DC 12) or take 5d8 cold damage, half on a success. Recharge 5-6."
       }
     ],
     tier: "assist",
@@ -7718,14 +7755,14 @@ export const monsters = [
         modifiers: [],
         text: "Crosses and climbs icy surfaces without ability checks; ice and snow Difficult Terrain costs it no extra movement."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes three Rend attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rend", times: 3 }],
+        text: "Makes three Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -7756,6 +7793,7 @@ export const monsters = [
       {
         id: "cold-breath",
         name: "Cold Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -7775,7 +7813,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Constitution save (DC 15) or take 9d8 cold damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Constitution save (DC 15) or take 9d8 cold damage, half on a success. Recharge 5-6."
       }
     ],
     tier: "assist",
@@ -7816,12 +7854,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["exhaustion", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Poisoned condition(s). The engine applies this."
       },
       {
         id: "sunlight-sensitivity",
@@ -7829,14 +7868,14 @@ export const monsters = [
         modifiers: [],
         text: "Has Disadvantage on ability checks and attack rolls while in sunlight. The DM applies this."
       },
+    ],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two attacks, using Necrotic Sword or Necrotic Bow in any combination. It can replace one attack with a use of Life Drain."
-      }
-    ],
-    actions: [
+        multiattack: { or: [[{ action: ["necrotic-sword", "necrotic-bow"], times: 2 }], [{ action: ["necrotic-sword", "necrotic-bow"], times: 1 }, { action: "life-drain", times: 1 }]] },
+        text: "Makes two attacks, using Necrotic Sword or Necrotic Bow in any combination. It can replace one attack with a use of Life Drain.",
+      },
       {
         id: "necrotic-sword",
         name: "Necrotic Sword",
@@ -7964,12 +8003,13 @@ export const monsters = [
       "lightning",
       "poison"
     ],
+    conditionImmune: ["exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine applies this."
       },
       {
         id: "ephemeral",
@@ -8108,6 +8148,7 @@ export const monsters = [
       {
         id: "cold-breath",
         name: "Cold Breath",
+        recharge: [5, 6],
         target: {
           area: {
             shape: "cone",
@@ -8127,7 +8168,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "Constitution save (DC 12) or take 4d8 cold damage, half on a success. Recharge 5-6 (not tracked)."
+        text: "Constitution save (DC 12) or take 4d8 cold damage, half on a success. Recharge 5-6."
       }
     ],
     tier: "assist",
@@ -8234,12 +8275,13 @@ export const monsters = [
       "necrotic",
       "poison"
     ],
+    conditionImmune: ["charmed", "exhaustion", "grappled", "paralyzed", "petrified", "poisoned", "prone", "restrained", "unconscious"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Exhaustion, Grappled, Paralyzed, Petrified, Poisoned, Prone, Restrained, Unconscious condition(s). The engine applies this."
       },
       {
         id: "incorporeal-movement",
@@ -8329,15 +8371,14 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Bite attack and one Sting attack."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "bite", times: 1 }, { action: "sting", times: 1 }],
+        text: "Makes one Bite attack and one Sting attack.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -8433,12 +8474,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["paralyzed", "petrified", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Paralyzed, Petrified, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Paralyzed, Petrified, Poisoned condition(s). The engine applies this."
       },
       {
         id: "earth-glide",
@@ -8453,12 +8495,6 @@ export const monsters = [
         text: "Pinpoints precious metals and stones within 60 feet."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Bite attack and three Claw attacks."
-      },
-      {
         id: "charge",
         name: "Charge",
         modifiers: [],
@@ -8466,6 +8502,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "bite", times: 1 }, { action: "claw", times: 3 }],
+        text: "Makes one Bite attack and three Claw attacks.",
+      },
       {
         id: "bite",
         name: "Bite",
@@ -8545,12 +8587,13 @@ export const monsters = [
     immune: [
       "poison"
     ],
+    conditionImmune: ["exhaustion", "poisoned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Exhaustion, Poisoned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Exhaustion, Poisoned condition(s). The engine applies this."
       },
       {
         id: "undead-fortitude",
@@ -8823,15 +8866,14 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Rend attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "rend", times: 2 }],
+        text: "Makes two Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -9346,12 +9388,6 @@ export const monsters = [
         text: "With a 10-foot running start, it can Long Jump up to 25 feet."
       },
       {
-        id: "multiattack",
-        name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Rend attacks."
-      },
-      {
         id: "nimble-escape",
         name: "Nimble Escape",
         modifiers: [],
@@ -9359,6 +9395,12 @@ export const monsters = [
       }
     ],
     actions: [
+      {
+        id: "multiattack",
+        name: "Multiattack",
+        multiattack: [{ action: "rend", times: 2 }],
+        text: "Makes two Rend attacks.",
+      },
       {
         id: "rend",
         name: "Rend",
@@ -9612,12 +9654,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened", "grappled", "paralyzed", "petrified", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "swarm",
@@ -9689,12 +9732,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened", "grappled", "paralyzed", "petrified", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "speed-notes",
@@ -9778,12 +9822,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened", "grappled", "paralyzed", "petrified", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "swarm",
@@ -9864,12 +9909,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened", "grappled", "paralyzed", "petrified", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "swarm",
@@ -9943,12 +9989,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened", "grappled", "paralyzed", "petrified", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "swarm",
@@ -9987,6 +10034,7 @@ export const monsters = [
       {
         id: "cacophony",
         name: "Cacophony",
+        recharge: [6, 6],
         target: {
           creature: {
             reach: 5
@@ -10011,7 +10059,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A creature in the swarm's space makes a Wisdom save (DC 10) or is Deafened until the start of the swarm's next turn. Recharge 6 (not tracked)."
+        text: "A creature in the swarm's space makes a Wisdom save (DC 10) or is Deafened until the start of the swarm's next turn. Recharge 6."
       }
     ],
     tier: "assist",
@@ -10049,12 +10097,13 @@ export const monsters = [
     ],
     vulnerable: [],
     immune: [],
+    conditionImmune: ["charmed", "frightened", "grappled", "paralyzed", "petrified", "prone", "restrained", "stunned"],
     traits: [
       {
         id: "condition-immunities",
         name: "Condition Immunities",
         modifiers: [],
-        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine has no field for condition immunities yet."
+        text: "Immune to the Charmed, Frightened, Grappled, Paralyzed, Petrified, Prone, Restrained, Stunned condition(s). The engine applies this."
       },
       {
         id: "swarm",
@@ -10194,15 +10243,14 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes two Gore attacks."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "gore", times: 2 }],
+        text: "Makes two Gore attacks.",
+      },
       {
         id: "gore",
         name: "Gore",
@@ -10262,15 +10310,14 @@ export const monsters = [
     resist: [],
     vulnerable: [],
     immune: [],
-    traits: [
+    traits: [],
+    actions: [
       {
         id: "multiattack",
         name: "Multiattack",
-        modifiers: [],
-        text: "Makes one Bite attack and one Tail attack."
-      }
-    ],
-    actions: [
+        multiattack: [{ action: "bite", times: 1 }, { action: "tail", times: 1 }],
+        text: "Makes one Bite attack and one Tail attack.",
+      },
       {
         id: "bite",
         name: "Bite",

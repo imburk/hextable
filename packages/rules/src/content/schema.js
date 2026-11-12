@@ -126,6 +126,8 @@ function lintTarget(target, say) {
   if (target.area) {
     if (!AREA_SHAPES.includes(target.area.shape)) say(`unknown area shape "${target.area.shape}"`);
     if (!(target.area.size > 0)) say('an area needs a size in feet');
+    // How far away a monster's sphere or cylinder may be centred (a spell's range says it for a spell).
+    if (target.area.range !== undefined && !(isInt(target.area.range) && target.area.range > 0 && target.area.range % 5 === 0)) say('an area\'s range is feet, a multiple of 5');
   }
   if (target.creature) {
     const c = target.creature;
@@ -181,6 +183,7 @@ function lintMonster(e, say) {
     if (!Array.isArray(t.modifiers)) sub('needs a modifiers list (it may be empty)');
     else for (const m of t.modifiers) lintModifier(m, sub);
   }
+  if (e.conditionImmune !== undefined && !(allOf(CONDITIONS)(e.conditionImmune) && e.conditionImmune.length > 0)) say('conditionImmune must be a list of conditions');
   if (!Array.isArray(e.actions) || !e.actions.length) say('needs one or more actions');
   for (const a of e.actions ?? []) {
     const sub = (m) => say(`action ${a.id}: ${m}`);
@@ -188,9 +191,48 @@ function lintMonster(e, say) {
     if (ids.has(a.id)) sub('duplicate action id');
     ids.add(a.id);
     if (!isText(a.name) || !isText(a.text)) sub('needs a name and text');
+    lintUses(a, sub);
+    if (a.multiattack !== undefined) {
+      // Multiattack: an action whose effect is to make other actions of the same creature.
+      if (a.effects !== undefined || a.target !== undefined) sub('a multiattack action has no target and no effects of its own');
+      if (a.recharge !== undefined || a.uses !== undefined) sub('a multiattack action has no recharge or uses');
+      lintMultiattack(a.multiattack, e.actions, a.id, sub);
+      continue;
+    }
     lintTarget(a.target, sub);
     const seen = lintSteps(a.effects, sub);
     if (e.tier === 'auto' && seen.manual) sub('the monster is marked auto but this action has a manual step');
+  }
+}
+// How often an action can be used: `recharge: [min, 6]` (rolled at the start of each of its turns
+// once spent) or `uses: { per: 'day', n }`. `time: 'bonus'` makes it a Bonus Action.
+function lintUses(a, say) {
+  if (a.time !== undefined && !['action', 'bonus'].includes(a.time)) say('time must be "action" or "bonus"');
+  if (a.recharge !== undefined && !(Array.isArray(a.recharge) && a.recharge.length === 2 && isInt(a.recharge[0]) && a.recharge[0] >= 2 && a.recharge[0] <= 6 && a.recharge[1] === 6)) say('recharge must be [min, 6] with min 2 to 6');
+  if (a.uses !== undefined && !(a.uses && a.uses.per === 'day' && isInt(a.uses.n) && a.uses.n > 0 && a.uses.n <= 10 && Object.keys(a.uses).length === 2)) say('uses must be { per: "day", n } with n 1 to 10');
+  if (a.recharge !== undefined && a.uses !== undefined) say('an action has recharge or uses, not both');
+}
+// `multiattack` is a list of { action, times }, where `action` is the id of another action of
+// the same creature or a list of ids ("any of these"); or { or: [list, list, ...] }, alternatives
+// of which the creature makes one.
+export function lintMultiattack(ma, actions, self, say) {
+  const lists = Array.isArray(ma) ? [ma] : ma && Array.isArray(ma.or) && Object.keys(ma).length === 1 ? ma.or : null;
+  if (!lists || !lists.length || (!Array.isArray(ma) && lists.length < 2)) return say('multiattack must be a list of { action, times } or { or: [list, list, ...] }');
+  for (const list of lists) {
+    if (!Array.isArray(list) || !list.length) { say('each multiattack list needs one or more entries'); continue; }
+    for (const entry of list) {
+      if (!entry || typeof entry !== 'object' || Object.keys(entry).some((k) => k !== 'action' && k !== 'times')) { say('a multiattack entry is { action, times }'); continue; }
+      if (!(isInt(entry.times) && entry.times > 0 && entry.times <= 10)) say('`times` must be a whole number from 1 to 10');
+      const ids = Array.isArray(entry.action) ? entry.action : [entry.action];
+      if (!ids.length) say('a multiattack entry names an action');
+      for (const id of ids) {
+        const other = actions.find((x) => x.id === id);
+        if (!other) say(`multiattack names "${id}", which is not one of this creature's actions`);
+        else if (id === self || other.multiattack) say(`multiattack cannot name another multiattack ("${id}")`);
+        else if (other.time === 'bonus') say(`multiattack cannot name "${id}", which is a Bonus Action`);
+        else if (other.recharge || other.uses) say(`multiattack cannot name "${id}", which has a recharge or uses: the SRD says "if available" there, which stays text`);
+      }
+    }
   }
 }
 
@@ -302,7 +344,8 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
 const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
   'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look'];
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse'];
-const FEATURES = { secondWind: (v) => isInt(v) && v >= 0 && v <= 10, sneak: isDice };
+// extraAttack: the Attack action makes 1 + n attacks (Extra Attack at Fighter 5 is 1, at 11 is 2, at 20 is 3).
+const FEATURES = { secondWind: (v) => isInt(v) && v >= 0 && v <= 10, sneak: isDice, extraAttack: (v) => isInt(v) && v >= 1 && v <= 3 };
 export function lintRecord(r, { spells = {} } = {}) {
   const bad = [], say = (m) => bad.push(m);
   if (!r || typeof r !== 'object' || Array.isArray(r)) return ['A character is a record.'];

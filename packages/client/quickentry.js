@@ -31,7 +31,7 @@ function blank() {
   return {
     name: '', cls: '', level: '1', size: 'medium', ac: '10', hp: '', speed: '30', prof: '2', profTouched: false,
     abil: Object.fromEntries(ABILITIES.map((a) => [a, '10'])), saveProf: [], skills: [], expertise: [], thieves: false, tools: [],
-    attacks: [], castAbil: '', spells: [], slots: {}, secondWind: '', sneak: '', gear: '', color: DEFAULT_COLOR, extra: {},
+    attacks: [], castAbil: '', spells: [], slots: {}, secondWind: '', sneak: '', extraAttack: '', gear: '', color: DEFAULT_COLOR, extra: {},
   };
 }
 function fromRecord(r) {
@@ -44,7 +44,7 @@ function fromRecord(r) {
     reach: s(a.reach ?? 5), near: s(a.range?.[0] ?? 80), far: s(a.range?.[1] ?? 320), finesse: !!a.finesse }));
   m.castAbil = r.castAbil ?? ''; m.spells = [...(r.spells ?? [])];
   m.slots = Object.fromEntries(Object.entries(r.slots ?? {}).map(([l, n]) => [l, s(n)]));
-  m.secondWind = s(r.features?.secondWind); m.sneak = s(r.features?.sneak);
+  m.secondWind = s(r.features?.secondWind); m.sneak = s(r.features?.sneak); m.extraAttack = s(r.features?.extraAttack);
   m.gear = (r.gear ?? []).join('\n'); m.color = r.look?.color ?? DEFAULT_COLOR;
   m.extra = Object.fromEntries(KEEP.filter((k) => r[k] !== undefined).map((k) => [k, structuredClone(r[k])]));
   return m;
@@ -80,6 +80,7 @@ function toRecord(m) {
   const features = {};
   if (m.secondWind.trim() !== '') features.secondWind = num(m.secondWind);
   if (m.sneak.trim() !== '') features.sneak = m.sneak.trim();
+  if (String(m.extraAttack ?? '').trim() !== '') features.extraAttack = num(m.extraAttack);
   if (Object.keys(features).length) r.features = features;
   const gear = m.gear.split('\n').map((g) => g.trim()).filter(Boolean);
   if (gear.length) r.gear = gear;
@@ -98,6 +99,7 @@ function recordOf(e) {
   const f = {};
   if (e.features?.secondWind !== undefined) f.secondWind = e.features.secondWind;
   if (e.features?.sneak !== undefined) f.sneak = e.features.sneak;
+  if (e.features?.extraAttack !== undefined) f.extraAttack = e.features.extraAttack;
   if (Object.keys(f).length) r.features = f;
   return r;
 }
@@ -210,7 +212,8 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
     // Features, gear
     const gear = el('textarea', { id: 'qe-gear', rows: 4, value: m.gear, placeholder: 'One item per line', autocomplete: 'off', oninput: (ev) => { m.gear = ev.target.value; changed(); } });
     const more = el('section', {}, el('h3', { text: 'Features' }), el('div', { class: 'qe-grid qe-2' },
-      field('Second Wind uses (0 to 10)', 'secondWind', 'secondWind', { max: 2 }), field('Sneak Attack dice (like 3d6)', 'sneak', 'sneak', { mode: 'text', max: 8 })),
+      field('Second Wind uses (0 to 10)', 'secondWind', 'secondWind', { max: 2 }), field('Sneak Attack dice (like 3d6)', 'sneak', 'sneak', { mode: 'text', max: 8 }),
+      field('Extra Attack (1 to 3 more)', 'extraAttack', 'extraAttack', { max: 1 })),
       el('h3', { text: 'Gear' }), gear);
     // Copy and paste
     const text = el('textarea', { id: 'qe-text', rows: 6, spellcheck: false, autocomplete: 'off', placeholder: 'The character as text appears here. Paste a saved character here and press Paste from text.' });

@@ -448,6 +448,59 @@ Multiattack is an action whose effect is a list of other action ids.
 Recharge, legendary actions and lair actions are fields the format reserves
 now and the engine treats as `manual` until built.
 
+#### Build notes: monster actions, Multiattack, Extra Attack (amendment)
+
+Settled when monster actions were made to run from their data (DEBT M1 to M4, C1):
+
+- **Actions run like spells.** A creature made from a pack monster carries its
+  actions (everything but `text`). The engine action `{ type: 'act', actor,
+  action, target? | hex? }` runs the action's effect steps through the effect
+  runner: a weapon attack step uses its own `bonus`, a save its own `dc`, reach
+  and range come from `target.creature`, and areas are aimed as a spell's are.
+  It costs the action. The old `attack` action, given the id of one of a
+  monster's actions, does the same; for a creature with flat attack records
+  (characters, and creatures saved without a template) nothing changed. A
+  creature's Opportunity Attack is its first melee attack action. The flat
+  `attacks` summary of a monster stays, for screens and old saves; the engine
+  does not use it for a creature that has actions.
+- **Multiattack** is an action with `multiattack` and no `target` or `effects`:
+  a list of `{ action, times }`, where `action` is the id of another action of
+  the same creature or a list of ids ("any of these", for "in any
+  combination"); or `{ or: [list, list, ...] }`, alternatives ("it can replace
+  one attack with..."). An entry may not name a Multiattack, a Bonus Action, or
+  an action with a recharge or uses: the SRD's "if available" stays text.
+  Using it spends the action and puts the attacks in `encounter.budget.attacks`
+  as alternatives of `{ action, left }`. Each later `act` that one of them
+  allows spends from every alternative that allows it (its narrowest entry) and
+  drops those that do not, so the choice between alternatives is made attack by
+  attack, each at a target chosen then, with movement in between. Whatever is
+  left when the turn ends is lost: the budget is rebuilt at every turn.
+- **Extra Attack** is `features.extraAttack: n` on a character record (1 to 3).
+  The first `attack` of a turn spends the action and leaves
+  `[[{ action: null, left: n }]]` in the same budget; `null` allows any attack.
+  Sneak Attack is still once a turn.
+- **One hit, one instance of damage.** Damage steps that follow one another in a
+  list land together (`damage()` takes a list of parts): each part is resisted
+  and logged on its own, but a dying creature fails one death save for the hit
+  (two on a critical hit) and Concentration is tested once, against the total.
+- **Recharge, uses, Bonus Actions:** an action may have `recharge: [min, 6]`
+  (spent on use, rolled for at the start of each of the creature's turns,
+  `recharge` event), `uses: { per: 'day', n }` (counted in `creature.charges`;
+  nothing restores it yet), and `time: 'bonus'` (costs the Bonus Action).
+- **Areas** of monster actions: `target.area.range` (feet) says how far away a
+  sphere or cylinder may be centred. Without it, or for a line or cube, the
+  engine has nothing to aim and the DM applies the action.
+- **Condition immunities:** `conditionImmune: [conditions]` on a monster. The
+  engine refuses those conditions (a `note` says so) and the DM cannot set them.
+- **Views.** A monster's actions are never sent to players (the seen record is
+  an allow list), nor what a Multiattack left (`budget` is sent only for one of
+  their own). The `act` event is sent as its name, hexes and targets. Saves
+  after an `act` or an attack are redacted as after a cast. A `manual` event
+  from a creature that is not one of theirs goes to the DM only, because a
+  monster's action text carries its numbers.
+- **State version 10:** `migrate()` gives a creature with a pack template its
+  actions and condition immunities.
+
 ### A class
 
 ```js
