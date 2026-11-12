@@ -13,19 +13,29 @@ import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
+// Light through the day, by hour: [hour, light colour that multiplies the scene, how much of the sky colour is left].
+// Daytime is left exactly as it always looked; dusk is warm, night is blue and dimmer but never dark enough to hide a hex.
+const DAY = [[0, [0.56, 0.63, 0.86], 0.34], [4.5, [0.58, 0.64, 0.86], 0.36], [6, [1.1, 0.84, 0.74], 0.78], [8, [1, 1, 1], 1], [17, [1, 1, 1], 1],
+  [18.5, [1.12, 0.82, 0.66], 0.8], [20, [0.74, 0.64, 0.8], 0.5], [21.5, [0.56, 0.63, 0.86], 0.34], [24, [0.56, 0.63, 0.86], 0.34]];
+export function lightAt(clock) {
+  const h = (((clock % 1440) + 1440) % 1440) / 60;
+  let i = 1; while (i < DAY.length - 1 && DAY[i][0] < h) i++;
+  const [h0, c0, s0] = DAY[i - 1], [h1, c1, s1] = DAY[i], k = (h - h0) / (h1 - h0 || 1);
+  return { light: c0.map((v, j) => v + (c1[j] - v) * k), sky: s0 + (s1 - s0) * k };
+}
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging' };
 const FLASH = 0.45, SHAKE = 0.5;                     // seconds a hit flash and a critical shake last
 const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
 const VS = `
 attribute vec3 aPos; attribute vec3 aNor; attribute vec4 aCol;
-uniform mat4 uVP, uM; uniform vec3 uLight; uniform vec4 uTint; uniform float uLit; uniform vec2 uFog;
+uniform mat4 uVP, uM; uniform vec3 uLight, uGrade; uniform vec4 uTint; uniform float uLit; uniform vec2 uFog;
 varying vec4 vCol; varying float vFog;
 void main() {
   vec4 w = uM * vec4(aPos, 1.0);
   vec3 n = normalize(mat3(uM) * aNor);
   float l = mix(1.0, 0.56 + 0.5 * max(dot(n, uLight), 0.0), uLit);
-  vCol = vec4(aCol.rgb * l * uTint.rgb, aCol.a * uTint.a);
+  vCol = vec4(aCol.rgb * l * uTint.rgb * uGrade, aCol.a * uTint.a);
   gl_Position = uVP * w;
   vFog = clamp((gl_Position.w - uFog.x) / uFog.y, 0.0, 1.0);
 }`;
@@ -150,7 +160,7 @@ export class Renderer {
     gl.useProgram(prog);
     this.loc = {};
     for (const a of ['aPos', 'aNor', 'aCol']) { this.loc[a] = gl.getAttribLocation(prog, a); gl.enableVertexAttribArray(this.loc[a]); }
-    for (const u of ['uVP', 'uM', 'uLight', 'uTint', 'uLit', 'uFog', 'uSky']) this.loc[u] = gl.getUniformLocation(prog, u);
+    for (const u of ['uVP', 'uM', 'uLight', 'uTint', 'uLit', 'uFog', 'uSky', 'uGrade']) this.loc[u] = gl.getUniformLocation(prog, u);
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
@@ -176,6 +186,8 @@ export class Renderer {
 
   setState(state, events = []) {
     this.state = state;
+    const want = lightAt(state.clock ?? 480);
+    this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
     const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
@@ -413,11 +425,15 @@ export class Renderer {
       a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;                                            // drawn only; where it stands does not change
     }
     const C = (this.C = this.#camera());
-    gl.clearColor(...th.sky, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const td = this.tod, k = Math.min(1, dt * 1.5);
+    if (td) { const n = td.now, g = td.goal; td.now = { light: n.light.map((v, i) => v + (g.light[i] - v) * k), sky: n.sky + (g.sky - n.sky) * k }; }
+    const lt = td?.now ?? { light: [1, 1, 1], sky: 1 }, sky = th.sky.map((v, i) => v * lt.sky * (0.5 + 0.5 * lt.light[i]));       // the sky and the fog follow the light
+    gl.clearColor(...sky, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (!this.state) return;
     gl.uniformMatrix4fv(this.loc.uVP, false, C.vp);
     gl.uniform3fv(this.loc.uLight, norm([0.45, 0.8, 0.35]));
-    gl.uniform3fv(this.loc.uSky, th.sky);
+    gl.uniform3fv(this.loc.uSky, sky);
+    gl.uniform3fv(this.loc.uGrade, lt.light);
     gl.uniform2f(this.loc.uFog, c.dist + th.fog[0] * 0.5, th.fog[1]);
     gl.disable(gl.BLEND);
     this.terrain.draw(this.loc, ident());
@@ -427,6 +443,7 @@ export class Renderer {
         f ? [1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, 1] : [1, 1, 1, 1]);
     }
     gl.enable(gl.BLEND); gl.depthMask(false);
+    gl.uniform3f(this.loc.uGrade, 1, 1, 1);                                // highlights, the arena edge and shadows are not tinted by the hour
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
     this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
     for (const a of this.actors.values()) {
