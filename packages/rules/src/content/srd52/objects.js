@@ -328,23 +328,23 @@ export const objects = [
   },
   {
     id: 'campfire', name: 'Campfire', kind: 'thing', source: 'Hextable', tier: 'auto', checked: false,
-    states: { lit: { name: 'burning', blocks: [] }, out: { name: 'out', blocks: [] } },
+    states: { lit: { name: 'burning', blocks: [], light: { bright: 20, dim: 20 } }, out: { name: 'out', blocks: [] } },
     initial: 'lit',
     use: [
       { id: 'douse', name: 'Put out', from: ['lit'], to: 'out', time: 'action' },
       { id: 'light', name: 'Light', from: ['out'], to: 'lit', time: 'action' },
     ],
-    text: 'A campfire. It lights the camp and warms it. The engine does nothing with it; the DM rules on standing in the flames.',
+    text: 'A campfire. It lights the camp as a torch does (Bright Light for 20 feet, Dim Light for 20 more) and warms it. The DM rules on standing in the flames.',
   },
   {
     id: 'brazier', name: 'Brazier', kind: 'thing', source: 'Hextable', tier: 'auto', checked: false,
-    states: { lit: { name: 'burning', blocks: [] }, out: { name: 'out', blocks: [] } },
+    states: { lit: { name: 'burning', blocks: [], light: { bright: 20, dim: 20 } }, out: { name: 'out', blocks: [] } },
     initial: 'lit',
     use: [
       { id: 'douse', name: 'Put out', from: ['lit'], to: 'out', time: 'action' },
       { id: 'light', name: 'Light', from: ['out'], to: 'lit', time: 'action' },
     ],
-    text: 'A bowl of coals on a stand. The engine does nothing with it; the DM rules on touching the flames.',
+    text: 'A bowl of coals on a stand. Burning, it sheds light as a torch does: Bright Light for 20 feet and Dim Light for 20 more. The DM rules on touching the flames.',
   },
   {
     id: 'winch', name: 'Winch', kind: 'thing', source: 'Hextable', tier: 'auto', checked: false,

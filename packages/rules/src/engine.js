@@ -14,6 +14,7 @@ import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls } from './eff
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
+import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
 import { COVER, coverOf, inSight } from './sight.js';
@@ -1544,6 +1545,23 @@ const handlers = {
       e.gear.splice(i, 1);
     } else e.gear.push(item);
     ev.push({ type: 'gear', id: e.id, item, ...(a.take ? { taken: true } : {}) });
+  },
+  // Hand a creature a light to carry, or take it away. { type: 'setLight', actor, item } with an item
+  // from content/lights.js (a torch, a lamp), or { light: { bright, dim } } in feet; `item: null` puts it out.
+  setLight(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can hand out light.');
+    const e = ent(s, a.actor);
+    if (a.item === null || a.light === null) {
+      e.light || fail(`${e.name} carries no light.`);
+      delete e.light;
+      return ev.push({ type: 'light', id: e.id, bright: 0, dim: 0 });
+    }
+    const item = a.item === undefined ? null : (typeof a.item === 'string' && Object.hasOwn(LIGHTS, a.item) && a.item) || fail('Unknown light.');
+    const l = item ? LIGHTS[item] : a.light ?? fail('Name a light or give its radii.');
+    const feet = (n) => Number.isInteger(n) && n >= 0 && n <= 600 && n % FT === 0;
+    (l && typeof l === 'object' && feet(l.bright) && feet(l.dim) && l.bright + l.dim > 0) || fail('A light is Bright and Dim radii in feet, multiples of 5.');
+    e.light = { bright: l.bright, dim: l.dim, ...(item ? { item } : {}) };
+    ev.push({ type: 'light', id: e.id, bright: l.bright, dim: l.dim, ...(item ? { item, name: LIGHTS[item].name } : {}) });
   },
   // Play on a different map. The party is set down at its start; the creatures of the old
   // place stay behind with it. { type: 'loadMap', map }

@@ -4,6 +4,7 @@ import * as H from './hex.js';
 import { TILES } from './content/terrain.js';
 import { CONTENT } from './content/index.js';
 import { WALL_KINDS } from './walls.js';
+import { AMBIENT } from './content/lights.js';
 
 export const MAP_FORMAT = 1;
 export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500 };
@@ -62,6 +63,7 @@ export function lintMap(doc, extra = []) {
     ids.add(l.id);
     if (!num(l.z)) bad.push(`Level "${l.id}" has no height.`);
     if (l.image !== undefined) { const p = imageProblem(l.image, `Level "${l.id}"`); if (p) bad.push(p); }
+    if (l.light !== undefined && !AMBIENT.includes(l.light)) bad.push(`Level "${l.id}" has light "${l.light}"; it can be ${AMBIENT.join(', ')}.`);
     if (!l.tiles || typeof l.tiles !== 'object' || Array.isArray(l.tiles)) { bad.push(`Level "${l.id}" has no tiles.`); continue; }
     for (const [k, t] of Object.entries(l.tiles)) {
       count++;
@@ -129,6 +131,7 @@ export function lintMap(doc, extra = []) {
       taken.add(`${r.level}|${k}`);
     }
     if (r.revealed !== undefined && typeof r.revealed !== 'boolean') bad.push(`Region "${r.id}": revealed must be true or false.`);
+    if (r.light !== undefined && !AMBIENT.includes(r.light)) bad.push(`Region "${r.id}" has light "${r.light}"; it can be ${AMBIENT.join(', ')}.`);
   }
   for (const check of extra) bad.push(...check(doc));
   return bad;
@@ -161,8 +164,13 @@ export const EDITS = {
     const had = map.levels.find((x) => x.id === level.id);
     // `image: null` takes a level's background away; leaving `image` out keeps what it had.
     const image = level.image === null ? undefined : level.image !== undefined ? structuredClone(level.image) : had?.image;
-    if (had) { Object.assign(had, { name: level.name ?? had.name, z: level.z ?? had.z }); if (image === undefined) delete had.image; else had.image = image; }
-    else map.levels.push({ id: level.id, name: level.name ?? level.id, z: level.z, tiles: structuredClone(level.tiles ?? {}), ...(image !== undefined && { image }) });
+    // Light likewise: `light: null` goes back to the default (bright); leaving it out keeps what it had.
+    const light = level.light === null ? undefined : level.light !== undefined ? level.light : had?.light;
+    if (had) {
+      Object.assign(had, { name: level.name ?? had.name, z: level.z ?? had.z });
+      if (image === undefined) delete had.image; else had.image = image;
+      if (light === undefined) delete had.light; else had.light = light;
+    } else map.levels.push({ id: level.id, name: level.name ?? level.id, z: level.z, tiles: structuredClone(level.tiles ?? {}), ...(image !== undefined && { image }), ...(light !== undefined && { light }) });
   },
   unlevel(map, { id }) {
     if (map.levels.length < 2) return 'A map needs one level or more.';
