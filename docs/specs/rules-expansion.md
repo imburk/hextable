@@ -479,6 +479,10 @@ Settled when monster actions were made to run from their data (DEBT M1 to M4, C1
   The first `attack` of a turn spends the action and leaves
   `[[{ action: null, left: n }]]` in the same budget; `null` allows any attack.
   Sneak Attack is still once a turn.
+- **One hit, one instance of damage.** Damage steps that follow one another in a
+  list land together (`damage()` takes a list of parts): each part is resisted
+  and logged on its own, but a dying creature fails one death save for the hit
+  (two on a critical hit) and Concentration is tested once, against the total.
 - **Recharge, uses, Bonus Actions:** an action may have `recharge: [min, 6]`
   (spent on use, rolled for at the start of each of the creature's turns,
   `recharge` event), `uses: { per: 'day', n }` (counted in `creature.charges`;
@@ -494,7 +498,7 @@ Settled when monster actions were made to run from their data (DEBT M1 to M4, C1
   after an `act` or an attack are redacted as after a cast. A `manual` event
   from a creature that is not one of theirs goes to the DM only, because a
   monster's action text carries its numbers.
-- **State version 9:** `migrate()` gives a creature with a pack template its
+- **State version 10:** `migrate()` gives a creature with a pack template its
   actions and condition immunities.
 
 ### A class

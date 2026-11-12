@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 
-export const VERSION = 9;
+export const VERSION = 10;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -35,16 +35,18 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) e.size ??= MONSTERS[e.tpl]?.size ?? 'medium';
   // Version 8: creatures have senses (darkvision and the like), taken from their template if they have one.
   for (const e of Object.values(state.entities)) e.senses ??= structuredClone(MONSTERS[e.tpl]?.senses ?? {});
+  // Version 9: a table rule for how close the party comes to an enemy before a fight starts.
+  if (state.settings) state.settings.engageRange ??= 10;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
     if (MONSTER_IDS[e.tpl]) e.tpl = MONSTER_IDS[e.tpl];
   }
   for (const entry of state.timeline ?? []) if (SPELL_IDS[entry.spell]) entry.spell = SPELL_IDS[entry.spell];
-  // Version 9: a creature made from a pack monster plays from its actions (Multiattack, breath
+  // Version 10: a creature made from a pack monster plays from its actions (Multiattack, breath
   // weapons, saves), carried on the creature. One saved before then takes them from its template.
   for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);
-  // Also version 9: condition immunities, from the template.
+  // Also version 10: condition immunities, from the template.
   for (const e of Object.values(state.entities)) if (!e.conditionImmune && MONSTERS[e.tpl]?.conditionImmune) e.conditionImmune = [...MONSTERS[e.tpl].conditionImmune];
   return state;
 }

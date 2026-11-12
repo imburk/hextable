@@ -210,8 +210,8 @@ export const spells4 = [
     time: "action", range: "touch", components: ["v","s"],
     duration: "1 minute", concentration: true, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"manual":"Greater Invisibility: a creature the caster touches has the Invisible condition until the spell ends (up to 1 minute). The engine counts every condition step as hostile, so it would refuse the caster as target and start a fight when cast on an ally; the DM applies the Invisible condition instead."}],
-    tier: "manual", checked: true,
+    effects: [{"condition":"invisible"}],
+    tier: "auto", checked: true,
     text: "A creature the caster touches is invisible for up to a minute while the caster concentrates.",
   },
   {

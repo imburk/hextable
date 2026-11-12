@@ -89,12 +89,15 @@ function summarise(def) {
   return { short: 'DM applies', long: 'The DM applies the effect' };
 }
 
+// Conditions the SRD treats as a benefit to whoever has them: putting one on a creature is not hostile.
+export const BENEFICIAL_CONDITIONS = ['invisible'];
+
 // Everything the engine and the UI need to know about a spell, worked out once from its data.
 export function spellProfile(def) {
   let harmful = false, heals = false, healStep = null;
   walk(def.effects, (st) => {
     const k = stepKind(st);
-    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'condition' || k === 'fall') harmful = true;
+    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
   const t = def.target;
@@ -216,9 +219,19 @@ function exec(s, ev, kit, f, step, at) {
     return branch('onSuccess', { half: false });
   }
   if (kind === 'damage') {
-    let total = f.shared?.[at] ?? rollDamage(s, step, !!f.crit);
-    if (f.half) total = Math.floor(total / 2);
-    return kit.damage(s, t, total, step.type, ev, { crit: !!f.crit });
+    // Damage steps that follow one another land together: a hit's slashing and its fire are one
+    // instance of damage (one death-save failure, one Concentration save). A later step whose
+    // `when` cannot be judged is left to run on its own, which hands it to the DM.
+    const amount = (st, path) => { const n = f.shared?.[path] ?? rollDamage(s, st, !!f.crit); return f.half ? Math.floor(n / 2) : n; };
+    const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
+    const parts = [{ amount: amount(step, at), type: step.type }];
+    while (f.i < f.steps.length && stepKind(f.steps[f.i]) === 'damage') {
+      const next = f.steps[f.i], ok = holds(next);
+      if (ok === null) break;
+      if (ok) parts.push({ amount: amount(next, `${f.path}${f.i}`), type: next.type });
+      f.i++;
+    }
+    return kit.damage(s, t, parts, null, ev, { crit: !!f.crit });
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal') return kit.heal(s, t, roll(s, step.heal).total + (step.addMod ? f.src.healMod : 0), ev);

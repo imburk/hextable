@@ -249,7 +249,7 @@ test("an old saved table loads, its goblins get their actions, and they can stil
   const saved = JSON.parse(readFileSync(new URL("./fixtures/table-v1.json", import.meta.url), "utf8")).state;
   migrate(saved);
   assert.equal(saved.version, VERSION);
-  assert.equal(VERSION, 9);
+  assert.equal(VERSION, 10);
   const goblins = Object.values(saved.entities).filter((e) => e.tpl === "goblin-warrior");
   assert.ok(goblins.length > 0);
   for (const g of goblins) assert.deepEqual(g.actions.map((a) => a.id), ["scimitar", "shortbow"]);
@@ -410,4 +410,50 @@ test("condition immunities: a Skeleton cannot be Poisoned, by a spell, an attack
   migrate(saved);
   assert.deepEqual(saved.entities[skel.id].conditionImmune, ["exhaustion", "poisoned"]);
   assert.ok(PACKS[0].monsters.filter((m) => m.conditionImmune).length >= 90);
+});
+
+test("one hit that does two kinds of damage is one instance: one death-save failure (two on a crit), one Concentration save", () => {
+  const s = field(); tough(s);
+  const dragon = spawn(s, "red-dragon-wyrmling", 0, 0); tough(s);
+  put(s, "fighter", 1, 0); put(s, "wizard", 0, 1);
+  s.entities.fighter.ac = 1;
+  fight(s); turnOf(s, dragon.id);
+  // A dying fighter: a hit within 5 ft is a critical hit, so two failures, not four.
+  const f = s.entities.fighter;
+  f.hp = 0; f.cond.unconscious = {}; f.cond.prone = {}; f.death = { s: 0, f: 0 };
+  let r = null;
+  for (let i = 0; i < 20; i++) {
+    const c = clone(s);
+    const res = ok(apply(c, { type: "act", actor: dragon.id, action: "rend", target: "fighter" }, DM));
+    if (res.events.some((e) => e.type === "attack" && e.hit)) { r = { c, res }; break; }
+    s.rng = c.rng;
+  }
+  assert.ok(r, "no hit in twenty tries");
+  assert.equal(r.res.events.filter((e) => e.type === "damage").length, 2);
+  assert.equal(r.c.entities.fighter.death.f, 2);
+  // A concentrating wizard hit by both parts makes one Concentration save, against the total.
+  const w = s.entities.wizard;
+  w.ac = 1; w.hp = w.maxHp = 300;
+  ok(apply(s, { type: "endTurn", actor: dragon.id }, DM));
+  turnOf(s, "wizard");
+  let tested = false;
+  w.spells.push("detect-magic");                                      // a Concentration spell on itself
+  {
+    ok(apply(s, { type: "cast", actor: "wizard", spell: "detect-magic" }, DM));
+    assert.ok(s.effects.some((fx) => fx.source === "wizard" && fx.conc));
+    turnOf(s, dragon.id);
+    for (let i = 0; i < 20; i++) {
+      const res = ok(apply(clone(s), { type: "act", actor: dragon.id, action: "rend", target: "wizard" }, DM));
+      if (res.events.some((e) => e.type === "attack" && e.hit)) {
+        const dmg = res.events.filter((e) => e.type === "damage").reduce((n, e) => n + e.amount, 0);
+        const saves = res.events.filter((e) => e.type === "concentration");
+        assert.equal(saves.length, 1);
+        assert.equal(saves[0].dc, Math.max(10, Math.floor(dmg / 2)));
+        tested = true;
+        break;
+      }
+      s.rng += 1;
+    }
+    assert.ok(tested, "no hit in twenty tries");
+  }
 });

@@ -129,3 +129,16 @@ test("each A to C dragon's Rend bonus and breath save DCs follow from its abilit
     assert.equal(m.immune.length, 1, m.id);
   }
 });
+
+// Senses as the SRD stat blocks give them: only the four special senses, in feet. Passive Perception is not one.
+test("A to C monsters carry their SRD senses", () => {
+  assert.deepEqual(MONSTERS["adult-red-dragon"].senses, { blindsight: 60, darkvision: 120 });
+  assert.deepEqual(MONSTERS["ancient-black-dragon"].senses, { blindsight: 60, darkvision: 120 });
+  assert.deepEqual(MONSTERS["young-blue-dragon"].senses, { blindsight: 30, darkvision: 120 });
+  assert.deepEqual(MONSTERS["blue-dragon-wyrmling"].senses, { blindsight: 10, darkvision: 60 });
+  assert.deepEqual(MONSTERS["bat"].senses, { blindsight: 60 });
+  assert.deepEqual(MONSTERS["balor"].senses, { truesight: 120 });
+  assert.deepEqual(MONSTERS["barbed-devil"].senses, { darkvision: 120 });
+  assert.equal(MONSTERS["bandit"].senses, undefined);
+  assert.equal(CONTENT.monsters["ape"].senses, undefined);
+});
