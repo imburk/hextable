@@ -572,6 +572,11 @@ Where the build settled a detail the design left open, or changed it.
   floor lays stone on every empty hex whose centre is inside the picture, in one edit (at most 2000
   hexes). The amber bars show each step between neighbouring tiles that `barriers(map).blocked`
   stops, so the DM can see where a square-grid picture and the hexes disagree and nudge a wall.
+- **Import Universal VTT in the editor** (M12): Map file > Import Universal VTT reads the file, runs
+  `importUvtt`, and shows its notes with Load, Load without the picture, and Cancel; nothing changes
+  until Load. Load uploads the picture as an asset (one too big for the store is shrunk and saved as
+  WebP), sets it as the ground level's background and sends `loadMap`; the editor then opens Trace.
+  A refusal shows the importer's message.
 
 ## Sources
 
