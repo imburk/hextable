@@ -1,11 +1,32 @@
 // Rules the engine got wrong (docs/DEBT.md, W1 to W9), each checked against the SRD 5.2 text.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply } from "../src/engine.js";
+import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
+
+// The party on open grass with no monsters, one goblin added; as in durations.test.js.
+function field(seed = 5) {
+  const s = newGame(seed);
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM);
+  apply(s, { type: "place", actor: "fighter", to: { q: 0, r: 1 } }, DM);
+  const goblin = s.entities[apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 2, r: 0 } }, DM).events[0].id];
+  Object.assign(goblin, { hp: 500, maxHp: 500 });
+  return { s, goblin };
+}
+const fight = (s) => ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+const turnOf = (s, id) => { for (let i = 0; i < 40 && current(s) !== id; i++) apply(s, { type: "endTurn", actor: current(s) }, DM); assert.equal(current(s), id); };
+// Try an action on copies of the state with different dice until `want` holds.
+function until(s, act, want) {
+  for (let seed = 1; seed < 500; seed++) { const c = structuredClone(s); c.rng = seed; const r = act(c); if (want(r, c)) return { s: c, r }; }
+  throw new Error("no seed gave the wanted outcome");
+}
+const dying = (e, death = { s: 0, f: 0 }) => Object.assign(e, { hp: 0, cond: { unconscious: {}, prone: {} }, death });
 
 // ---------- W1: Long Rest ----------
 
@@ -43,4 +64,50 @@ test("W1: the dead stay dead, and a creature at 0 Hit Points can't take a Long R
   assert.equal(cleric.hp, 0);                                   // dying: left to the DM
   assert.equal(cleric.slots[1], 0);
   assert.ok(r.events.some((e) => e.type === "manual" && e.actor === "cleric"));
+});
+
+// ---------- W2: death ----------
+
+test("W2: damage taken at 0 Hit Points that equals the Hit Point maximum kills outright", () => {
+  const { s, goblin } = field();
+  const brenna = s.entities.fighter;
+  fight(s);
+  brenna.maxHp = 3; dying(brenna);
+  apply(s, { type: "place", actor: goblin.id, to: { q: 1, r: 1 } }, DM);
+  turnOf(s, goblin.id);
+  goblin.attacks[0].bonus = 50;
+  const { s: after, r } = until(s, (c) => apply(c, { type: "attack", actor: goblin.id, target: "fighter", attack: goblin.attacks[0].id }, DM),
+    (r) => r.ok && r.events.some((e) => e.type === "attack" && e.hit));
+  const hurt = r.events.find((e) => e.type === "damage");
+  assert.ok(hurt.amount >= 3);
+  assert.equal(after.entities.fighter.dead, true);           // a crit at 0 HP would only be two failures
+  assert.ok(r.events.some((e) => e.type === "died" && e.id === "fighter"));
+});
+
+test("W2: smaller damage at 0 Hit Points is still one failure, or two for a critical hit", () => {
+  const { s, goblin } = field();
+  const brenna = s.entities.fighter;
+  fight(s);
+  brenna.maxHp = 100; dying(brenna);
+  apply(s, { type: "place", actor: goblin.id, to: { q: 1, r: 1 } }, DM);
+  turnOf(s, goblin.id);
+  goblin.attacks[0].bonus = 50;
+  const { s: after } = until(s, (c) => apply(c, { type: "attack", actor: goblin.id, target: "fighter", attack: goblin.attacks[0].id }, DM),
+    (r) => r.ok && r.events.some((e) => e.type === "attack" && e.hit));
+  assert.equal(after.entities.fighter.dead, false);
+  assert.equal(after.entities.fighter.death.f, 2);            // within 5 ft of an Unconscious creature every hit is a critical hit
+});
+
+test("W2: becoming Stable resets both death-save counts", () => {
+  const { s, goblin } = field();
+  fight(s);
+  turnOf(s, goblin.id);
+  dying(s.entities.fighter, { s: 2, f: 2 });
+  // The fighter's next Death Saving Throw: a 10 to 19 is the third success.
+  const { s: after, r } = until(s, (c) => { const out = []; for (let i = 0; i < 10 && !out.some((e) => e.type === "deathSave"); i++) out.push(...apply(c, { type: "endTurn", actor: current(c) }, DM).events); return out; },
+    (ev) => { const d = ev.find((e) => e.type === "deathSave"); return d && d.roll >= 10 && d.roll < 20; });
+  const brenna = after.entities.fighter;
+  assert.ok(brenna.cond.stable);
+  assert.deepEqual(brenna.death, { s: 0, f: 0 });
+  assert.equal(r.find((e) => e.type === "deathSave").stable, true);
 });

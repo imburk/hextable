@@ -449,7 +449,7 @@ function deathSave(s, e, ev) {
   else if (d >= 10) e.death.s++;
   else e.death.f++;
   if (e.death.f >= 3) e.dead = true;
-  else if (e.death.s >= 3) e.cond.stable = {};
+  else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
 
@@ -492,7 +492,7 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   else if (applies(m.vulnerable, t.vuln)) n *= 2;
   const note = n === 0 && amount > 0 ? 'immune' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
   if (t.hp <= 0) {                                        // already dying
-    if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3) t.dead = true; }
+    if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || n >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     ev.push({ type: 'damage', target: t.id, amount: n, dtype, hp: 0, note });
     if (t.dead) ev.push({ type: 'died', id: t.id });
     return;
