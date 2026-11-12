@@ -16,6 +16,7 @@
 <header id="top">
   <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
   <nav id="tools">
+    <button type="button" id="btn-undo" hidden disabled>Undo</button>
     <button type="button" id="btn-tracker" aria-controls="tracker" aria-expanded="false">Tracker</button>
     <button type="button" id="btn-log" aria-controls="log">Log</button>
     <button type="button" id="btn-look" title="Change the look">Look</button>
@@ -53,6 +54,10 @@
   <button type="button" class="close" data-close="dm">Close</button>
   <h2>Dungeon Master</h2>
   <div id="dm-table"></div>
+  <section><h3>Take back</h3>
+    <div class="row"><button type="button" id="dm-undo" class="undo" disabled><span>Undo</span><small></small></button><button type="button" id="dm-redo" class="undo" disabled><span>Redo</span><small></small></button></div>
+    <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
+  </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
   <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div></section>
   <section><h3>Fight</h3>

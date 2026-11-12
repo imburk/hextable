@@ -44,11 +44,13 @@ JSON messages over the WebSocket at `/ws`.
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
-`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`, `{t:"export"}` (DM only).
+`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`, `{t:"export"}` (DM only),
+`{t:"undo"}` and `{t:"redo"}` (DM only).
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",seq,events,state}` or `{t:"update",seq,events,patch}`, `{t:"lobby",members,pending}`,
-`{t:"error",error,expired?}`, `{t:"history",entries,recent?}`, `{t:"export",table}`.
+`{t:"error",error,expired?}`, `{t:"history",entries,recent?}`, `{t:"export",table}`,
+`{t:"undoable",undo,redo}` (DM only).
 
 An update's `state` is the receiver's view of the game and never includes the
 timeline. The first update a connection gets carries the whole view; later
@@ -98,6 +100,30 @@ the dice seed, hidden creatures and the timeline, which is why it is DM only. It
 `members` and no tokens. In solo play the same button saves the local state without
 contacting a server. There is no import yet: loading a file back means accepting game state
 from a browser, which needs validation designed first.
+
+## Undo
+
+The DM can take back the last actions and take them again. Every action that
+succeeds is recorded (by anyone, the monster AI included) except `claim` and
+`release`, which are about who sits where, and letting players in. The history is
+kept by `packages/rules/src/history.js` as reverse patches: undoing restores the
+whole game exactly, the dice seed, the clock and the timeline entries included.
+
+- `{t:"undo"}` / `{t:"redo"}` from the DM. Anyone else gets `Only the DM can undo.`
+  (or redo); with nothing to take back, `Nothing to undo.`
+- After one, every member is sent a whole view (`{t:"update",seq,state,events}`),
+  built through the same view as every other update. The DM's events are
+  `[{type:"undone"|"redone", label}]`. Players get the same event only if they could
+  see the step: every creature it names is one they know of, and at least one of its
+  events reached them. Otherwise their update has no events.
+- After every recorded action, undo and redo, the DM's connections get
+  `{t:"undoable", undo:[labels], redo:[labels]}`, newest first. Players never do.
+- Redo does not re-roll: the seed comes back with everything else, so the same
+  action gives the same result. A new action after an undo clears what could be redone.
+- The history is in memory only, per table. It is not saved with the table and is
+  gone after a server restart. It keeps the last 30 steps, and drops the oldest
+  sooner if the steps of one table pass 8 MB (a map edit keeps the parts of the map
+  it changed; a big edit or `loadMap` can be large).
 
 ## Hosting
 

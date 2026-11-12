@@ -10,6 +10,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { apply, recall } from "../../rules/src/engine.js";
 import { diff, snapshot } from "../../rules/src/patch.js";
+import { createHistory, describeStep, mark, undoable } from "../../rules/src/history.js";
 import { migrate } from "../../rules/src/migrate.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { view, viewEvents } from "../../rules/src/view.js";
@@ -52,6 +53,14 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
   const stateFor = (t, m) => ({ ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined });
   const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
 
+  // The DM's undo history, per table. In memory only: it is not saved with the table and is
+  // gone after a restart. Never part of the game state, never sent to a player.
+  const undos = new WeakMap();
+  const undoOf = (t) => { if (!undos.has(t)) undos.set(t, createHistory()); return undos.get(t); };
+  // What the DM's Undo and Redo buttons would do, newest first.
+  const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
+  const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
+
   // What each connection was last sent, so the next update can be only what changed.
   const sent = new WeakMap();
   // The whole view, to one connection: on sitting down, on being let in, and on request.
@@ -71,6 +80,20 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         sent.set(c, next);
         if (prev) c.send({ t: "update", seq: t.seq, events: seen, patch: diff(prev, next, state) });
         else c.send({ t: "update", seq: t.seq, state, events: seen });
+      }
+    }
+  }
+  // The game was put back (undo) or forward (redo): everyone gets their whole view again, built
+  // the usual way, so nothing a view would leave out can reach a player through a patch. `told`
+  // is { dm, players }: the event each is given, or null for none.
+  function resend(t, told) {
+    t.seq = (t.seq ?? 0) + 1;
+    for (const m of t.members) {
+      if (!m.approved || !conns(m).size) continue;
+      const state = stateFor(t, m), ev = m.role === "dm" ? told.dm : told.players;
+      for (const c of conns(m)) {
+        sent.set(c, snapshot(state));
+        c.send({ t: "update", seq: t.seq, state, events: ev ? [ev] : [] });
       }
     }
   }
@@ -107,6 +130,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
       if (m.approved) {
         sendFull(t, m, conn);
         conn.send({ t: "history", entries: history(t, m, { limit: 50 }), recent: true });   // so the log isn't empty
+        if (m.role === "dm") conn.send(undoInfo(t));
       }
       lobby(t);
     }
@@ -179,17 +203,32 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
         let res;
+        const before = undoable(action) ? mark(table.state) : null;        // claiming a seat is not undone
         try {
           res = apply(table.state, action, { role: me.role, userId: me.id });
         } catch {
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) return error(res.error);
+        if (before) undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state));
         touch(table);
         save(table);
+        if (before) tellUndo(table);
         broadcast(table, res.events);
       },
     };
+    // The DM takes back the last action, or takes it again. Everything returns as it was,
+    // the dice seed too, so a redo gives exactly the same result.
+    for (const [kind, done] of [["undo", "undone"], ["redo", "redone"]]) {
+      handlers[kind] = () => {
+        if (me.role !== "dm") return error(`Only the DM can ${kind}.`);
+        const step = undoOf(table)[kind](table.state);
+        if (!step) return error(`Nothing to ${kind}.`);
+        save(table);
+        tellUndo(table);
+        resend(table, { dm: { type: done, label: step.label }, players: step.shown ? { type: done, label: step.shown } : null });
+      };
+    }
 
     // Leaving for good: a player's character is freed for someone else and their seat is removed.
     // The DM's seat is kept, since a table with no DM cannot let anyone in.
@@ -212,7 +251,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "leave", "history", "sync", "export"].includes(msg.t);
+        const seated = ["approve", "act", "undo", "redo", "leave", "history", "sync", "export"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },

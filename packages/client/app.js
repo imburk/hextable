@@ -119,6 +119,8 @@ function describe(ev) {
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
+    case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
+    case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     default: return null;
   }
 }
@@ -170,7 +172,8 @@ function onUpdate(state, events, fresh) {
   refresh();
   clearTimeout(aiTimer);
   const cur = S.entities[current(S)];
-  if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked)
+  const tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
+  if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack)
     aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) act(a); }, 800);
 }
 
@@ -191,6 +194,7 @@ function refresh() {
   $('clock').textContent = clockText(S.clock);
   $('btn-dm').hidden = !isDM();
   $('btn-leave').hidden = isDM() || !!T.solo;
+  showUndo();
 
   // turn order
   $('order').innerHTML = enc ? enc.order.map((o) => {
@@ -406,6 +410,21 @@ function renderDM() {
   $('chron-list').innerHTML = (T.solo ? recall(S, { types: ['chronicle'] }) : chron).slice().reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
 }
 
+// ---------- undo: the DM's Undo and Redo buttons say what they will take back ----------
+function showUndo() {
+  const { undo = [], redo = [] } = T?.undoInfo ?? {}, dm = isDM();
+  for (const [id, list, verb] of [['btn-undo', undo, 'Undo'], ['ed-undo', undo, 'Undo'], ['dm-undo', undo, 'Undo'], ['dm-redo', redo, 'Redo']]) {
+    const b = $(id);
+    b.disabled = !dm || !list.length;
+    b.title = list.length ? `${verb}: ${list[0]}` : `Nothing to ${verb.toLowerCase()}`;
+    b.setAttribute('aria-label', b.title);
+    const sub = b.querySelector('small'); if (sub) sub.textContent = list[0] ?? 'Nothing';
+  }
+  $('btn-undo').hidden = !dm;
+}
+const undo = () => isDM() && T.undo?.(), redo = () => isDM() && T.redo?.();
+$('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick = undo; $('dm-redo').onclick = redo;
+
 // ---------- taps ----------
 R.onTap = ({ hex, id }) => {
   if (!S || !T) return;
@@ -496,7 +515,7 @@ function leaveTable(btn) {
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
   T.leave?.(); T = null; S = null; selId = null; clearTimeout(aiTimer);
   for (const id of ['dm', 'sheet', 'log', 'card']) $(id).hidden = true;
-  $('btn-dm').hidden = $('btn-leave').hidden = true;
+  $('btn-dm').hidden = $('btn-leave').hidden = $('btn-undo').hidden = true;
   lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
 }
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
@@ -510,6 +529,8 @@ for (const b of document.querySelectorAll('[data-time]')) b.onclick = () => act(
 $('dm-chron').onsubmit = (ev) => { ev.preventDefault(); const t = $('chron-title').value.trim(); if (t) { act({ type: 'chronicle', title: t }); $('chron-title').value = ''; } };
 addEventListener('keydown', (ev) => {
   if (ev.target.tagName === 'INPUT') return;
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); return redo(); }
   if (ev.key === 'Escape') setMode(MOVE);
   if (ev.key === 'q') R.rotate(-Math.PI / 12); if (ev.key === 'e') R.rotate(Math.PI / 12);
 });
@@ -530,6 +551,7 @@ function start(transport) {
   T.on.update = onUpdate;
   T.on.error = (msg, expired) => { if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
+  T.on.undoable = () => S && showUndo();
   T.on.history = (msg) => {
     if (!S) return;
     if (msg.recent) {             // what happened before we sat down, so the log has some context

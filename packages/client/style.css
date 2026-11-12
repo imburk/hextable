@@ -161,3 +161,9 @@ body.editing #dock, body.editing #hint { display: none !important; }
 @media (max-width: 700px) { #tracker { top: auto; bottom: calc(var(--dock-h, 120px) + 18px); height: min(44vh, 360px); left: 8px; width: calc(100% - 16px); } }
 #tr-list li.now button { color: var(--ink); }
 @media (max-width: 480px) { #tools { gap: 4px; } #tools button { padding: 8px 8px; } }
+
+/* Undo: the DM's top-bar button and the pair in the DM panel */
+#btn-undo:disabled, button.undo:disabled { opacity: .45; }
+button.undo { display: inline-flex; flex-direction: column; align-items: flex-start; flex: 1 1 10em; min-width: 0; }
+button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 480px) { #btn-undo { font-size: 0; min-width: 40px; } #btn-undo::before { content: "\21B6"; font-size: 18px; line-height: 1; } }

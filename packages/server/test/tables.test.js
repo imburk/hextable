@@ -598,6 +598,148 @@ test("export: the DM gets the whole table, a player is refused, and no member or
   assert.deepEqual(stranger.got, [{ t: "error", error: "Join a table first." }]);
 });
 
+// ---------- the DM's undo ----------
+
+// What a member's client holds now, without the timeline.
+const known = (c) => JSON.stringify(c.receiver.state);
+
+test("undo: the DM takes back a move and both DM and player return to before; redo puts it back", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });   // not undoable
+  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: [] });
+  const dmBefore = known(dm), playerBefore = known(player), whole = JSON.stringify(state);
+
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to: freeHex(state, "rogue") } });
+  assert.deepEqual(dm.last("undoable").undo, ["Pip moved"]);
+  assert.notEqual(known(player), playerBefore);
+
+  dm.say({ t: "undo" });
+  assert.equal(JSON.stringify(state), whole, "the table's state is exactly as before, seed and all");
+  assert.equal(known(dm), dmBefore);
+  assert.equal(known(player), playerBefore);
+  assert.deepEqual(dm.last("update").events, [{ type: "undone", label: "Pip moved" }]);
+  assert.deepEqual(player.last("update").events, [{ type: "undone", label: "Pip moved" }]);
+  assert.ok(player.raw.findLast((m) => m.t === "update").state, "a whole view, not a patch");
+  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: ["Pip moved"] });
+  assert.equal(player.count("undoable"), 0, "players are never sent the history");
+  assert.equal(state.entities.rogue.owner, player.last("welcome").userId, "the seat is not taken back");
+
+  dm.say({ t: "redo" });
+  assert.equal(dm.last("update").events[0].type, "redone");
+  assert.notEqual(known(player), playerBefore);
+  // Patches after an undo still add up to the right view.
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  assert.equal(known(dm), JSON.stringify(expected(tables, code, dm)));
+  assert.deepEqual(dm.last("undoable").redo, []);
+});
+
+test("undo: a player is refused, and nothing to undo is an error", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  dm.say({ t: "undo" });
+  assert.equal(dm.last("error").error, "Nothing to undo.");
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  const clock = tables.get(code).state.clock, updates = player.count("update");
+  player.say({ t: "undo" });
+  assert.equal(player.last("error").error, "Only the DM can undo.");
+  player.say({ t: "redo" });
+  assert.equal(player.last("error").error, "Only the DM can redo.");
+  assert.equal(tables.get(code).state.clock, clock);
+  assert.equal(player.count("update"), updates);
+  const stranger = client(tables);
+  stranger.say({ t: "undo" });
+  assert.equal(stranger.last("error").error, "Join a table first.");
+});
+
+test("undo: a hidden monster's spawn, taken back, reaches no player in any form", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const spot = H.range({ q: 0, r: 0 }, 4).find((h) => state.map.levels[0].tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: spot, hidden: true, name: "Greyjaw" } });
+  const id = dm.last("update").events[0].id;
+  assert.deepEqual(dm.last("undoable").undo, ["Greyjaw was added"]);
+  const n = player.raw.length;
+  dm.say({ t: "undo" });
+  dm.say({ t: "redo" });
+  dm.say({ t: "undo" });
+  assert.equal(id in state.entities, false);
+  const sent = player.raw.slice(n);
+  assert.equal(sent.length, 3);
+  for (const m of sent) {
+    const text = JSON.stringify(m);
+    assert.equal(text.includes(id) || text.includes("Greyjaw"), false, `leaked: ${text}`);
+    assert.deepEqual(m.events, [], "players are not told of a step they never saw");
+  }
+  assert.ok(dm.last("update").events[0].label.includes("Greyjaw"));
+});
+
+test("undo: a region the player never saw stays unseen through undo and redo", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  // A room far from the party, not revealed. Paint it, then make it a region.
+  const far = H.range({ q: 0, r: 0 }, 1).map((h) => ({ q: h.q + 10, r: h.r - 10 }));
+  dm.say({ t: "act", action: { type: "mapEdit", ops: [
+    ...far.map((at) => ({ op: "tile", level: "ground", at, tile: { t: "stone" } })),
+    { op: "region", region: { id: "crypt", name: "The crypt", level: "ground", hexes: far.map(H.col) } },
+  ] } });
+  assert.ok(state.map.regions.some((r) => r.id === "crypt" && !r.revealed), dm.last("error")?.error);
+  const n = player.raw.length;
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  dm.say({ t: "undo" });
+  dm.say({ t: "undo" });                                                // the room itself
+  dm.say({ t: "redo" });
+  for (const m of player.raw.slice(n)) assert.equal(JSON.stringify(m).includes("crypt"), false, "the room is never named to the player");
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+
+  // Shown, then taken back: the player is told what they saw undone, and the room leaves their view.
+  dm.say({ t: "act", action: { type: "revealRegion", region: "crypt" } });
+  assert.ok(known(player).includes("crypt"));
+  dm.say({ t: "undo" });
+  assert.deepEqual(player.last("update").events, [{ type: "undone", label: "The crypt was revealed" }]);
+  assert.equal(known(player).includes("crypt"), false);
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+});
+
+test("undo: taking back a move that revealed a hidden creature hides it from the player again", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  dm.say({ t: "act", action: { type: "setting", key: "autoEngage", value: false } });
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  const pip = state.entities.rogue;
+  const spot = H.range(pip.pos, 5).find((h) => H.dist(h, pip.pos) === 5 && state.map.levels[0].tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: spot, hidden: true, name: "Greyjaw" } });
+  const id = dm.last("update").events[0].id;
+  const steps = [...moveOptions(state, pip)].filter(([k, v]) => v.canStop && H.dist(H.parse(k), spot) === 2).sort((a, b) => a[1].cost - b[1].cost);
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to: H.parse(steps[0][0]) } });
+  assert.ok(id in player.receiver.state.entities, "the move revealed it");
+
+  const n = player.raw.length;
+  dm.say({ t: "undo" });
+  assert.equal(state.entities[id].hidden, true);
+  assert.equal(id in player.receiver.state.entities, false, "hidden again");
+  assert.deepEqual(player.last("update").events, [{ type: "undone", label: "Pip moved" }]);
+  assert.equal(player.raw.slice(n).some((m) => JSON.stringify(m).includes("Greyjaw")), false);
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  // The table's record no longer says it was seen.
+  player.say({ t: "history", limit: 200 });
+  assert.equal(JSON.stringify(player.last("history")).includes(id), false);
+});
+
+test("undo: the history is not saved with the table", () => {
+  const saved = [];
+  const tables = createTables({ seed: () => 5, save: (t) => saved.push(JSON.stringify(t)) });
+  const { dm } = seated(tables);
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  dm.say({ t: "undo" });
+  assert.equal(saved.some((x) => x.includes("minutes passed")), false);
+});
+
 test("tables idle for 30 days do not count against the cap, and are kept", () => {
   let t = 1e12;
   const tables = createTables({ seed: () => 1, now: () => t });
