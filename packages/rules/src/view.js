@@ -9,7 +9,10 @@
 // the game state later stays private until someone lists it.
 //
 // The engine never reads a view and never produces one. Design: docs/specs/hidden-information.md
+import * as H from './hex.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
+import { concealed, shown } from './space.js';
+import { barriers, center, objectHexes } from './walls.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -19,7 +22,7 @@ export function classify(state, id) {
   const e = state.entities[id];
   if (!e) return 'hidden';
   if (e.side === 'party') return 'open';
-  return e.hidden ? 'hidden' : 'seen';
+  return concealed(state.map, e) ? 'hidden' : 'seen';      // hidden by the DM, or somewhere not yet seen
 }
 
 export const healthOf = (e) =>
@@ -50,7 +53,7 @@ function viewEncounter(state) {
   const activeOpen = currentId !== null && classify(state, currentId) === 'open';
   return {
     id: enc.id, center: { q: enc.center.q, r: enc.center.r }, radius: enc.radius,
-    arena: { ...enc.arena }, round: enc.round,
+    arena: Object.fromEntries(Object.keys(enc.arena).filter((k) => shownMap(state.map).cols.has(k)).map((k) => [k, 1])), round: enc.round,
     turn: order.findIndex((o) => o.id === currentId),
     // What the active creature has left is its own business unless it is one of ours.
     // Zeros, not null, so the engine's helpers run on a view without special cases.
@@ -72,11 +75,57 @@ export function view(state, viewer) {
     // No `seq`: it counts creatures as they are added, so it would tick when the DM adds a hidden one.
     version: state.version, clock: state.clock,
     settings: structuredClone(state.settings),
-    map: structuredClone(state.map),
+    map: structuredClone(shownMap(state.map).doc),
     entities,
     encounter: viewEncounter(state),
     effects: viewEffects(state),
   };
+}
+
+// ---------- the map ----------
+// Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
+// those hexes, the objects that touch them, and the regions already revealed. Nothing else: an
+// unrevealed room is simply absent. Built once and kept until the map or what is revealed changes.
+const REACH = 5 / Math.sqrt(3) + 0.02;           // a hex's corner, in feet from its centre
+// The stretches of a wall that lie within REACH of any of these hex centres.
+export function clipWall(w, centres) {
+  const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
+  for (const [cx, cy] of centres) {
+    const fx = ax - cx, fy = ay - cy;
+    if (!len2) { if (fx * fx + fy * fy <= REACH * REACH) spans.push([0, 1]); continue; }
+    const b = 2 * (fx * dx + fy * dy), disc = b * b - 4 * len2 * (fx * fx + fy * fy - REACH * REACH);
+    if (disc < 0) continue;
+    const root = Math.sqrt(disc), t0 = Math.max(0, (-b - root) / (2 * len2)), t1 = Math.min(1, (-b + root) / (2 * len2));
+    if (t0 <= t1) spans.push([t0, t1]);
+  }
+  spans.sort((p, q) => p[0] - q[0]);
+  const merged = [];
+  for (const sp of spans) { const last = merged.at(-1); if (last && sp[0] <= last[1] + 1e-9) last[1] = Math.max(last[1], sp[1]); else merged.push([...sp]); }
+  const whole = merged.length === 1 && merged[0][0] === 0 && merged[0][1] === 1;
+  return merged.map(([t0, t1], i) => ({ id: whole ? w.id : `${w.id}~${i}`, level: w.level, kind: w.kind, a: [ax + dx * t0, ay + dy * t0], b: [ax + dx * t1, ay + dy * t1] }));
+}
+const mapCache = new WeakMap();
+function shownMap(map) {
+  const sig = `${barriers(map).sig}|${map.regions.map((r) => `${r.id}:${r.revealed ? 1 : 0}:${r.hexes.length}`).join()}|${map.levels.map((l) => Object.keys(l.tiles).length).join()}`;
+  const had = mapCache.get(map);
+  if (had?.sig === sig) return had;
+  const cols = new Set(), levels = [], centres = new Map();
+  for (const l of map.levels) {
+    const tiles = {}, cs = [];
+    for (const k in l.tiles) { const h = H.parse(k); if (shown(map, l.id, h)) { tiles[k] = { ...l.tiles[k] }; cols.add(k); cs.push(center(h)); } }
+    if (cs.length) { levels.push({ id: l.id, name: l.name, z: l.z, tiles }); centres.set(l.id, cs); }     // a level with nothing shown is not mentioned
+  }
+  const has = (levelId, h) => !!levels.find((l) => l.id === levelId)?.tiles[H.col(h)];
+  const doc = {
+    format: map.format, id: map.id, name: map.name, hexFeet: map.hexFeet, levels,
+    walls: map.walls.flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : [])),
+    objects: map.objects.filter((o) => objectHexes(o).some((h) => has(o.level, h))).map(({ dc, link, ...o }) => structuredClone(o)),     // never a DC
+    regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: [...r.hexes], revealed: true })),
+    starts: [],
+  };
+  const out = { sig, doc, cols };
+  mapCache.set(map, out);
+  return out;
 }
 
 // A lasting effect is sent to players if it comes from, or sits on, one of their own. Of what
@@ -109,7 +158,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'object']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
@@ -175,6 +224,9 @@ export function viewEvents(events, state, viewer) {
         // Everyone sees what a spell does when the engine cannot apply it. Notes about what
         // the engine left out of a spell it did apply are for the DM alone.
         if (!ev.partial) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
+        break;
+      case 'object':                                   // something on the map changed state, if it is somewhere they can see
+        if (shownMap(state.map).doc.objects.some((o) => o.id === ev.object)) out.push(structuredClone(ev));
         break;
       case 'chronicle':
         if (ev.public === true) out.push(structuredClone(ev));

@@ -81,6 +81,7 @@ function describe(ev) {
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
     case 'map': return [`The scene changes: ${ev.name}.`];
+    case 'region': return [`The party sees ${ev.name}.`];
     case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
@@ -129,6 +130,7 @@ function onUpdate(state, events, fresh) {
   }
   if (first && selId) R.focus(selId, true);
   else if (events.some((e) => e.type === 'moved' && e.id === selId)) R.focus(selId);
+  if (events.some((e) => e.type === 'map')) R.focus(selId ?? Object.values(S.entities).find((e) => e.side === 'party')?.id, true);     // a new place: look at the party
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
   if (mode.kind === 'attack' || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
   refresh();
@@ -324,6 +326,16 @@ function renderDM() {
       yes.onclick = () => T.approve(p.id, true); no.onclick = () => T.approve(p.id, false);
       row.lastChild.append(yes, no); table.append(row);
     }
+  }
+  // Places: the map's regions, and whether the players have been shown each.
+  const places = $('dm-places'); places.textContent = '';
+  $('dm-places-box').hidden = !S.map.regions.length;
+  for (const r of S.map.regions) {
+    const row = document.createElement('div'); row.className = 'req';
+    row.innerHTML = `<span><b>${esc(r.name)}</b> ${r.revealed ? 'revealed' : 'unseen'}</span><span class="row"></span>`;
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = r.revealed ? 'Hide' : 'Reveal';
+    b.onclick = () => act({ type: 'revealRegion', region: r.id, revealed: !r.revealed });
+    row.lastChild.append(b); places.append(row);
   }
   // Who plays whom: the DM can hand any character to any player, or take it back.
   const players = lb.members.filter((m) => m.role === 'player');

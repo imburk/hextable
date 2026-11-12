@@ -5,7 +5,7 @@
 // engine, because the engine only ever emits events ("moved", "attack", "damage").
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
 import * as H from './shared/hex.js';
-import { allTiles, ground, surfaces } from './shared/space.js';
+import { allTiles, ground, shown, surfaces } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
@@ -159,7 +159,7 @@ export class Renderer {
 
   setState(state, events = []) {
     this.state = state;
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
@@ -219,6 +219,7 @@ export class Renderer {
       const j = 0.94 + jitter(h.q, h.r) * 0.12;
       let c = th.tiles[t.t].map((v) => v * j);
       if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
+      if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
       b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
       b.flatHex(w.x, w.z, y, 0.86, 1, rim);
