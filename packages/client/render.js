@@ -13,6 +13,7 @@ import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
+const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging' };
 const FLASH = 0.45, SHAKE = 0.5;                     // seconds a hit flash and a critical shake last
 const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
@@ -183,7 +184,7 @@ export class Renderer {
       const w = this.#spot(e, e.pos);
       if (!a) {
         const el = document.createElement('div');
-        el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div>';
+        el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div><em class="marks"></em>';
         this.labels.append(el);
         a = { mesh: new Mesh(this.gl), ...w, yaw: 0, way: [], el, key: '' };
         this.actors.set(e.id, a);
@@ -194,6 +195,9 @@ export class Renderer {
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
       a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
+      const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging'].filter(Boolean);      // small badges over the pawn's head
+      const mk = marks.join();
+      if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
       const floor = e.dead || ground(state.map, e.pos) ? null : under(state.map, e.pos);
       a.air = floor ? Math.max(0, w.y - this.#stand({ q: e.pos.q, r: e.pos.r, z: floor.z }).y) : 0;      // how far above the floor it hangs: its shadow stays down there
