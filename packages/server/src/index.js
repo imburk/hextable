@@ -3,18 +3,52 @@
 //
 //   PORT       port to listen on (default 8080)
 //   DATA_DIR   where tables are saved between restarts (default ./data)
+//   LIMIT_*    abuse limits, see limits.js and the README (defaults are the production values)
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createTables } from "./tables.js";
+import { createLimits, limitsFromEnv, LIMIT_MESSAGE } from "./limits.js";
+import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
 import { acceptWebSocket } from "./ws.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
 const DATA = process.env.DATA_DIR || join(process.cwd(), "data");
 const PORT = Number(process.env.PORT) || 8080;
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" };
+
+// A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
+// only the DM may send a whole map document.
+const FRAME_MAX = MAX_ACTION_BYTES + 4096;
+const DM_FRAME_MAX = MAX_MAP_ACTION_BYTES + 4096;
+
+const limits = createLimits(limitsFromEnv(process.env));
+setInterval(() => limits.sweep(), 60_000).unref();
+
+// The address of whoever is connecting: the first entry of x-forwarded-for when there is one
+// (the host's proxy puts it there), else the socket's own. Without a proxy in front, a client
+// can forge that header, so only run unproxied if that is acceptable.
+const addressOf = (req) => String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim() || req.socket.remoteAddress || "unknown";
+
+// Scripts and connections only from this origin; Google Fonts for styles and fonts. Inline
+// styles are allowed because the UI sets style attributes (colours of tokens and swatches).
+function securityHeaders(req) {
+  const host = /^[\w.\-:\[\]]+$/.test(req.headers.host ?? "") ? req.headers.host : "";
+  const sockets = host ? ` ws://${host} wss://${host}` : "";
+  return {
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "x-frame-options": "DENY",
+    "content-security-policy": [
+      "default-src 'self'", "script-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src https://fonts.gstatic.com", "img-src 'self' data:",
+      `connect-src 'self'${sockets}`,
+      "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+    ].join("; "),
+  };
+}
 
 // ---------- saving tables: one JSON file each, written shortly after a change ----------
 mkdirSync(DATA, { recursive: true });
@@ -46,6 +80,7 @@ const tables = createTables({ load, save });
 
 // ---------- http ----------
 const server = createServer(async (req, res) => {
+  for (const [k, v] of Object.entries(securityHeaders(req))) res.setHeader(k, v);
   let path;
   try { path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)); }
   catch { res.writeHead(400).end(); return; }
@@ -65,15 +100,43 @@ const server = createServer(async (req, res) => {
 
 server.on("upgrade", (req, socket) => {
   if (new URL(req.url, "http://x").pathname !== "/ws") { socket.end("HTTP/1.1 404 Not Found\r\n\r\n"); return; }
-  const ws = acceptWebSocket(req, socket);
+  // Browsers say where the page came from; refuse a page on another site. No Origin: not a browser.
+  if (req.headers.origin !== undefined) {
+    let from = null;
+    try { from = new URL(req.headers.origin).host; } catch { /* "null" and the like */ }
+    if (from === null || from !== req.headers.host) { socket.end("HTTP/1.1 403 Forbidden\r\n\r\n"); return; }
+  }
+  const ws = acceptWebSocket(req, socket, { maxPayload: FRAME_MAX });
   if (!ws) return;
-  const session = tables.connect({ send: (msg) => ws.send(JSON.stringify(msg)) });
+  const addr = addressOf(req);
+  const release = limits.openConnection(addr);
+  if (!release) {
+    ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
+    ws.close();
+    return;
+  }
+  const bucket = limits.messageBucket();
+  const session = tables.connect({
+    send(msg) {
+      if (msg.t === "welcome" && msg.role === "dm") ws.maxPayload = DM_FRAME_MAX;
+      ws.send(JSON.stringify(msg));
+    },
+  });
   ws.onmessage = (text) => {
+    if (!bucket.take()) {
+      ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
+      ws.close();
+      return;
+    }
     let msg;
     try { msg = JSON.parse(text); } catch { return; }
+    if ((msg?.t === "host" && !limits.allowHost(addr)) || (msg?.t === "join" && !limits.allowJoin(addr))) {
+      ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
+      return;
+    }
     session.receive(msg);
   };
-  ws.onclose = () => session.disconnect();
+  ws.onclose = () => { release(); session.disconnect(); };
 });
 
 server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${PORT} (${tables.size()} saved tables)`));

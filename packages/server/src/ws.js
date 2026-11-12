@@ -3,6 +3,7 @@
 // table protocol uses.
 //
 //   acceptWebSocket(req, socket, { maxPayload }) -> conn | null
+//   conn.maxPayload can be changed while open (the table server raises it for the DM)
 //   conn.send(string), conn.close(), conn.onmessage = (string) => {}, conn.onclose = () => {}
 import { createHash } from "node:crypto";
 
@@ -20,7 +21,7 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
     `Sec-WebSocket-Accept: ${accept}\r\n\r\n`);
   socket.setNoDelay(true);
 
-  const conn = { onmessage: null, onclose: null, open: true };
+  const conn = { onmessage: null, onclose: null, open: true, maxPayload };
   let buf = Buffer.alloc(0), parts = [], partsSize = 0;
 
   const frame = (opcode, payload) => {
@@ -30,16 +31,40 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
       : (() => { const h = Buffer.alloc(10); h[0] = 0x80 | opcode; h[1] = 127; h.writeBigUInt64BE(BigInt(n), 2); return h; })();
     return Buffer.concat([head, payload]);
   };
+  let draining = false;
   const shut = () => {
     if (!conn.open) return;
     conn.open = false;
     socket.destroy();
     conn.onclose?.();
   };
+  // Say goodbye without losing the goodbye. Destroying a socket that still has
+  // unread data makes the kernel send a reset, and a client that is mid-write
+  // of a huge frame then sees 1006 and never reads the close frame. So: write
+  // the close frame, end our side (FIN, not RST), keep reading and discarding
+  // whatever the client is still sending, and destroy only once it hangs up or
+  // after a short grace period.
+  const farewell = (closeFrame) => {
+    if (!conn.open) return;
+    conn.open = false;
+    draining = true;
+    buf = Buffer.alloc(0); parts = []; partsSize = 0;
+    socket.end(closeFrame);
+    const timer = setTimeout(() => socket.destroy(), 2000);
+    timer.unref?.();
+    socket.once("close", () => clearTimeout(timer));
+    conn.onclose?.();
+  };
   conn.send = (text) => { if (conn.open) socket.write(frame(0x1, Buffer.from(String(text)))); };
-  conn.close = () => { if (conn.open) { socket.write(frame(0x8, Buffer.alloc(0))); shut(); } };
+  // Too large: say so with the standard close code (1009) rather than just dropping the line.
+  const tooBig = () => {
+    if (!conn.open) return;
+    farewell(frame(0x8, Buffer.from([0x03, 0xf1])));
+  };
+  conn.close = () => { farewell(frame(0x8, Buffer.alloc(0))); };
 
   socket.on("data", (chunk) => {
+    if (draining) return;                                      // discard until the client hangs up
     buf = Buffer.concat([buf, chunk]);
     for (;;) {
       if (buf.length < 2) return;
@@ -49,10 +74,11 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
       else if (len === 127) {
         if (buf.length < 10) return;
         const big = buf.readBigUInt64BE(2);
-        if (big > BigInt(maxPayload)) return shut();
+        if (big > BigInt(conn.maxPayload)) return tooBig();
         len = Number(big); off = 10;
       }
-      if (!masked || len > maxPayload) return shut();          // clients must mask; refuse oversized frames
+      if (!masked) return shut();                                // clients must mask
+      if (len > conn.maxPayload) return tooBig();
       if (buf.length < off + 4 + len) return;
       const mask = buf.subarray(off, off + 4), payload = Buffer.from(buf.subarray(off + 4, off + 4 + len));
       for (let i = 0; i < len; i++) payload[i] ^= mask[i & 3];
@@ -63,7 +89,7 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
       if (opcode === 0xa) continue;
       if (opcode !== 0x1 && opcode !== 0x0) return shut();      // binary is not part of the protocol
       parts.push(payload); partsSize += len;
-      if (partsSize > maxPayload) return shut();
+      if (partsSize > conn.maxPayload) return tooBig();
       if (!fin) continue;
       const text = Buffer.concat(parts).toString("utf8");
       parts = []; partsSize = 0;
@@ -72,6 +98,6 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
     }
   });
   socket.on("close", shut);
-  socket.on("error", shut);
+  socket.on("error", () => { shut(); socket.destroy(); });
   return conn;
 }

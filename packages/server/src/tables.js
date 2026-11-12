@@ -22,6 +22,11 @@ const cleanName = (name) => String(name ?? "").replace(/[\u0000-\u001f]/g, "").t
 
 export const MAX_TABLES = 500;
 export const MAX_MEMBERS = 12;
+// The most an action may weigh as JSON. Everyone is held to the small cap, except that the DM
+// may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes.
+export const MAX_ACTION_BYTES = 4 * 1024;
+export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
+const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
 export function createTables({ load = () => [], save = () => {}, seed = () => randomInt(1e9) } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
@@ -139,6 +144,12 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         save(table);
         lobby(table);
       },
+      // The DM keeps their own copy of the table. Everything in the game state, and nothing about
+      // who is sitting there: no members, no tokens.
+      export() {
+        if (me.role !== "dm") return error("Only the DM can export the table.");
+        conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state } });
+      },
       // The client noticed it missed an update and wants the whole view again.
       sync() {
         if (!me.approved) return error("Waiting for the DM to let you in.");
@@ -152,6 +163,8 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         if (!me.approved) return error("Waiting for the DM to let you in.");
         const action = msg.action;
         if (!action || typeof action !== "object" || typeof action.type !== "string") return error("That isn't an action.");
+        const cap = me.role === "dm" && MAP_ACTIONS.has(action.type) ? MAX_MAP_ACTION_BYTES : MAX_ACTION_BYTES;
+        if (Buffer.byteLength(JSON.stringify(action)) > cap) return error("That action is too large.");
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
         let res;
@@ -187,7 +200,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "leave", "history", "sync"].includes(msg.t);
+        const seated = ["approve", "act", "leave", "history", "sync", "export"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },

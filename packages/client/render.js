@@ -149,6 +149,7 @@ export class Renderer {
     this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null };
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;   // px of screen bottom covered by UI
     this.onTap = () => {}; this.onHover = () => {};
+    this.onPoint = null;                      // when set, a tap reports its screen point here instead of picking (the map editor)
     this.#input();
     new ResizeObserver(() => this.#resize()).observe(canvas);
     this.#resize();
@@ -204,6 +205,16 @@ export class Renderer {
     const a = this.actors.get(id); if (!a) return;
     const end = a.way.length ? a.way[a.way.length - 1] : a;
     if (snap) { this.cam.x = end.x; this.cam.z = end.z; this.cam.goal = null; } else this.cam.goal = { x: end.x, z: end.z };
+  }
+  // The hex under a screen point on a flat plane `feet` high, ignoring what is drawn: for picking
+  // empty space (the map editor). Null if the point looks at the sky.
+  planeHex(px, py, feet = 0) {
+    const C = this.C; if (!C) return null;
+    const nx = (px / this.canvas.clientWidth) * 2 - 1, ny = 1 - (py / this.canvas.clientHeight) * 2 - C.shift;
+    const d = norm([0, 1, 2].map((i) => C.f[i] + C.r[i] * nx * C.tan * C.aspect + C.u[i] * ny * C.tan));
+    const t = (surfY(feet) - C.eye[1]) / d[1];
+    if (!(t > 0) || t > 400) return null;
+    return H.fromWorld(C.eye[0] + d[0] * t, C.eye[2] + d[2] * t);
   }
   screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
   rotate(d) { this.cam.yaw += d; }
@@ -435,6 +446,7 @@ export class Renderer {
     const up = (e) => {
       const p = pts.get(e.pointerId); pts.delete(e.pointerId); pinch = null;
       if (p && e.type === 'pointerup' && !pts.size && moved < 8 && performance.now() - downAt < 600 && e.button !== 2) {
+        if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
         const hit = this.#pick(...p); if (hit) this.onTap(hit);
       }
     };

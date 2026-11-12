@@ -8,13 +8,14 @@ import { spells as spellsStarter } from './srd52/spells.js';
 import { spells0 } from './srd52/spells-0.js';
 import { spells1 } from './srd52/spells-1.js';
 import { monsters as monstersStarter } from './srd52/monsters.js';
+import { monsters as monstersAC } from './srd52/monsters-a-c.js';
 import { pregens } from './srd52/pregens.js';
 import { conditions } from './srd52/conditions.js';
 import { objects } from './srd52/objects.js';
 
 // A new content file is added in two places: an import above, and its list here.
 const spells = [...spellsStarter, ...spells0, ...spells1];
-const monsters = [...monstersStarter];
+const monsters = [...monstersStarter, ...monstersAC];
 
 export { TILES };
 export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects }];

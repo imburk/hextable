@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Nunito:wght@400;600;800&family=Silkscreen&family=Source+Sans+3:wght@400;600;700&family=Vollkorn+SC:wght@600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./quickentry.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -15,6 +16,7 @@
 <header id="top">
   <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
   <nav id="tools">
+    <button type="button" id="btn-tracker" aria-controls="tracker" aria-expanded="false">Tracker</button>
     <button type="button" id="btn-log" aria-controls="log">Log</button>
     <button type="button" id="btn-look" title="Change the look">Look</button>
     <button type="button" id="btn-dm" aria-controls="dm" hidden>DM<b id="dm-badge" hidden></b></button>
@@ -44,6 +46,7 @@
   </div>
 </footer>
 
+<aside id="tracker" hidden aria-label="Combat tracker"></aside>
 <aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
 <aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2><ol id="log-list"></ol></aside>
 <aside id="dm" class="panel" hidden>
@@ -51,6 +54,7 @@
   <h2>Dungeon Master</h2>
   <div id="dm-table"></div>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
+  <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div></section>
   <section><h3>Fight</h3>
     <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
@@ -65,6 +69,7 @@
     <div class="row cond-row"><select id="dm-cond" aria-label="Condition"></select><button type="button" id="dm-cond-set">Apply to selected</button><button type="button" id="dm-cond-clear">Remove</button></div>
     <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-hide" disabled>Hide selected</button><button type="button" id="dm-fly" disabled>Give selected flight</button><select id="dm-size" disabled aria-label="Size of the selected creature"><option value="tiny">Tiny</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="huge">Huge</option><option value="gargantuan">Gargantuan</option></select><button type="button" id="dm-rest">Long rest</button></div>
   </section>
+  <section id="dm-qe"></section>
   <section><h3>World clock</h3>
     <div class="row"><button type="button" data-time="10">+10 min</button><button type="button" data-time="60">+1 hour</button><button type="button" data-time="480">+8 hours</button></div>
   </section>
@@ -81,6 +86,10 @@
     <p class="note">Leaving forgets this table on this device. Your players stay, but nobody can let new players in.</p>
     <div class="row"><button type="button" id="dm-leave" class="leave">Leave table</button></div>
   </section>
+  <section><h3>Table file</h3>
+    <p class="note">Download the whole table as a file to keep your own copy.</p>
+    <div class="row"><button type="button" id="dm-export">Export table</button></div>
+  </section>
   <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
 </aside>
 
@@ -96,6 +105,7 @@
     <p id="lobby-msg" role="status"></p>
   </form>
 </div>
+<div id="editor" aria-label="Map editor" hidden></div>
 <div id="toast" role="alert" hidden></div>
 <script type="module" src="./app.js"></script>
 </body>
