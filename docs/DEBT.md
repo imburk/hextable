@@ -173,7 +173,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | P5 | ~~Hidden creatures are not found by Search~~ (#88: a creature that took the Hide action is; one the DM hid with the `hidden` switch is the DM's to reveal) | engine (sight S6) |
 | P6 | ~~Uploads and handouts (M9)~~ (PR #70), ~~tracing a map image (M10)~~ (PR #76), scenes (M11; ~~private notes~~ PR #70), generating a map (M14) | M10 any; M11 engine for the view |
 | P7 | The Universal VTT import (the editor's Map file > Import Universal VTT, PR #79) has only been tried on the hand-made test file, not a real export | any, with a real export |
-| P8 | The editor cannot rename a map, and ~~shows no numbers for tile heights~~ (it shows them while the Height tool is active, PR 3) | any |
+| P8 | The editor cannot rename a map, and ~~shows no numbers for tile heights~~ (it shows them while the Height tool is active, #120) | any |
 | P9 | Walking together: a follower brought up when a fight starts is set down, not walked, so a hidden trap on the way it would have come is not set off; a follower whose way back to the column is longer than 300 ft is dropped as not keeping up; ~~the undo list names follow actions only by their type~~ (#81) | engine |
 | P10 | ~~The renderer does not draw a level's background picture (`level.image`), and the editor cannot set one~~ (PR #73) | any |
 | P11 | Handouts: no shared pointer on an open handout; ~~undo of a handout or note action is labelled "handout (an action)"~~ (#81), and undoing a note takes it off the record but not off the screens it reached | any |
