@@ -98,6 +98,31 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 | A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
 | A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
 
+**Levels 2 and 3** (PR_NUM): 1 moved from manual to assist: Zone of Truth (a zone with a Charisma save on
+entering or starting a turn there, once a turn; the DM is told who failed and holds them to it).
+Level 2 was 4 auto, 14 assist, 39 manual and is now 4 / 15 / 38; level 3 is unchanged (3 / 11 / 28).
+Considered and left: Pass without Trace (the +10 holds only while inside the aura, and a modifier cannot
+say that), Ray of Enfeeblement (one repeat save ends all its parts; the engine rolls one save per part),
+Sleet Storm and Stinking Cloud (losing Concentration; a Poisoned that also bars actions). Still missing:
+
+| Kind | Level 2 | Level 3 |
+|---|---|---|
+| Information, utility, wards, locks and triggers with nothing to roll | animal messenger, augury, detect thoughts, find traps, gentle repose, locate animals or plants, locate object, arcane lock, knock, magic mouth, rope trick | clairvoyance, create food and water, nondetection, sending, speak with dead, speak with plants, tongues, plant growth |
+| Illusions | arcanist's magic aura, phantasmal force | major image |
+| Summons, moving objects, and actions the spell grants for later turns | find steed, flame blade, flaming sphere, spiritual weapon, dragon's breath | animate dead, conjure animals, phantom steed |
+| Forms and size | alter self, enlarge/reduce | |
+| Movement modes, teleporting, traversal | levitate, spider climb, misty step | fly, water breathing, water walk, blink, meld into stone |
+| Light, obscurement and senses | continual flame, darkness, darkvision, see invisibility | daylight |
+| An effect that holds only while inside an area, or a trigger per 5 feet moved | pass without trace, silence, spike growth | |
+| An object or a weapon as the target | heat metal, magic weapon | |
+| Removing a condition, ending an effect, raising the dead | lesser restoration | dispel magic, remove curse, revivify |
+| A trigger on a hit (smites, duplicates that take hits), or a reaction | shining smite, mirror image | counterspell |
+| Several parts ended by one repeat save | ray of enfeeblement | |
+| A choice among effects, or creatures of the caster's choice with no count | calm emotions, enthrall | bestow curse (four effects, duration by slot) |
+| Barriers by creature type, glyphs | | glyph of warding, magic circle, tiny hut |
+| Obscurement with a rider no hook can say (Concentration lost, no actions) | | sleet storm, stinking cloud |
+| Assist spells held at assist by: Speed doubled and an extra action, healing from damage dealt, a wall of free shape, a later action | | haste, vampiric touch, wind wall, call lightning |
+
 ## Maps, sight and movement
 
 | # | What | Who |
