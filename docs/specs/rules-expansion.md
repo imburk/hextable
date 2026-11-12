@@ -527,6 +527,22 @@ entry names what was added to `schema.js` and what the engine does with it.
   (the target can see the effect's source), which the engine cannot judge until sight is
   built: a step under it is handed to the DM for each creature, as any unjudged tag is.
 
+- **More than one target** (S2). `target.creature.count` (1 when not given) is how many
+  creatures a spell or action aims at; `repeat: true` makes the count one of rays, darts or
+  beams, so one creature may take several (Magic Missile, Scorching Ray, Eldritch Blast);
+  `within` (feet) keeps every target after the first that near the first (Chain Lightning).
+  `higher.slot.targets` adds so many per slot level above the spell's own, and
+  `higher.targets` gives the count by character level (Eldritch Blast: 2, 3 and 4 beams at 5,
+  11 and 17). The `cast` and `act` actions take `targets: [ids]` (or `target`, one); each entry
+  runs the effect steps once, in the order given, so two darts at one creature are two
+  instances of damage. Damage from steps that are not attack rolls is rolled once for all the
+  targets when they are distinct (SRD "Damage against Multiple Targets"); a ray or dart rolls
+  its own. An area with `choose: n` takes `targets`, those of the creatures it catches the
+  caster picks (Slow, Mass Cure Wounds); without a list it takes everyone caught if that is no
+  more than n. A `manual` step reached for several targets of one effect is shown to the
+  table once. The client adds a target for each tap until the count is reached, with a Cast
+  button to go with fewer.
+
 ### A class
 
 ```js

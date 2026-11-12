@@ -138,6 +138,12 @@ function lintTarget(target, say) {
   }
   if (target.creature) {
     const c = target.creature;
+    // `count`: up to so many creatures (1 if not given). `repeat`: the count is of rays, darts or
+    // beams, and one creature may take several. `within`: every target after the first is within
+    // so many feet of the first (Chain Lightning).
+    if (c.count !== undefined && !(isInt(c.count) && c.count >= 1 && c.count <= 20)) say('`count` is a whole number from 1 to 20');
+    if (c.repeat !== undefined && c.repeat !== true) say('`repeat` is true or left out');
+    if (c.within !== undefined && !(isInt(c.within) && c.within > 0 && c.within % 5 === 0)) say('`within` is feet, a multiple of 5');
     if (c.reach !== undefined && !(c.reach > 0)) say('reach must be a number of feet');
     if (c.range !== undefined && !(Array.isArray(c.range) && c.range.length === 2 && c.range.every((n) => n > 0) && c.range[0] <= c.range[1])) say('range must be [normal, long] in feet');
   }
@@ -164,9 +170,29 @@ function lintSpell(e, say) {
   if (typeof e.concentration !== 'boolean' || typeof e.ritual !== 'boolean') say('concentration and ritual must be true or false');
   if (!Array.isArray(e.classes)) say('classes must be a list');
   lintTarget(e.target, say);
+  lintHigher(e, say);
   const seen = lintSteps(e.effects, say);
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
+}
+// What grows when a spell is cast higher: `level` (a cantrip's damage dice by character level),
+// `targets` (how many it aims at by character level), and `slot`, per slot level above its own:
+// `damage` or `heal` dice added, `times` more damage rolls, `targets` more creatures.
+function lintHigher(e, say) {
+  const h = e.higher;
+  if (h === undefined) return;
+  if (!h || typeof h !== 'object') return say('`higher` must be an object');
+  for (const k of Object.keys(h)) if (!['level', 'targets', 'slot'].includes(k)) say(`\`higher.${k}\` is not something a spell can grow by`);
+  const byLevel = (x, ok) => x && typeof x === 'object' && Object.entries(x).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= 20 && ok(v));
+  if (h.level !== undefined && !byLevel(h.level, isDice)) say('`higher.level` gives dice by character level');
+  if (h.targets !== undefined && !byLevel(h.targets, (v) => isInt(v) && v >= 1 && v <= 20)) say('`higher.targets` gives a number of targets by character level');
+  if (h.targets !== undefined && !e.target?.creature) say('`higher.targets` is for a spell aimed at creatures');
+  if (h.slot !== undefined) {
+    for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'times', 'targets'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
+    for (const k of ['damage', 'heal']) if (h.slot[k] !== undefined && !isDice(h.slot[k])) say(`\`higher.slot.${k}\` must be dice`);
+    for (const k of ['times', 'targets']) if (h.slot[k] !== undefined && !(isInt(h.slot[k]) && h.slot[k] > 0)) say(`\`higher.slot.${k}\` must be a positive whole number`);
+    if (h.slot.targets !== undefined && !e.target?.creature && !e.target?.area?.choose) say('`higher.slot.targets` is for a spell aimed at creatures');
+  }
 }
 const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
 // A senses map gives a range in feet, a multiple of 5, for some of the four special senses.
