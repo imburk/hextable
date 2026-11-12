@@ -2,6 +2,7 @@
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
+import { featureButtons, featuresHtml, initShortRest, hasFeat } from './features.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, hideProblem } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
@@ -63,6 +64,7 @@ const autoMonsters = () => prefs.get('hextable.diceMonsters') !== false;       /
 const autoMine = () => prefs.get('hextable.diceAutoMine') === true;
 function rollsDice(a) {
   if (ROLLING.has(a.type)) return true;
+  if (a.type === 'feature') return /\d+d\d+/.test(JSON.stringify(S.entities[a.actor]?.feats?.find((f) => f.id === a.feature)?.action?.effects ?? ''));
   if (a.type !== 'use') return false;
   const o = S.map.objects.find((x) => x.id === a.object);
   return !!(o && objectDef(o)?.uses?.find((u) => u.id === a.verb)?.check);
@@ -81,6 +83,7 @@ function preview(e, a) {
   if (a.type === 'attack') { const x = e.attacks?.find((y) => y.id === a.attack); dice.push(20); what = x?.name ?? 'Attack'; if (x) sub = `${signed(x.bonus)} to hit, ${x.damage} ${x.dtype} on a hit`; }
   else if (a.type === 'act') { const def = e.actions?.find((d) => d.id === a.action), p = def ? actionProfile(def) : null; what = p?.name ?? 'Action'; if (p?.roll === 'melee' || p?.roll === 'ranged') dice.push(20); from(p?.short); sub = p?.short ?? ''; }
   else if (a.type === 'cast') { const sp = SPELLS[a.spell]; what = sp?.name ?? 'Spell'; if (/spell attack/.test(sp?.long ?? '')) dice.push(20); from(sp?.heal ? sp.heal.dice : sp?.short); sub = sp?.long ?? ''; }
+  else if (a.type === 'feature') { const f = e.feats?.find((y) => y.id === a.feature); what = f?.name ?? 'Feature'; from(JSON.stringify(f?.action?.effects ?? '')); sub = f?.text ?? ''; }
   else if (a.type === 'secondWind') { what = 'Second Wind'; dice.push(10); sub = `heal 1d10+${e.level}`; }
   else { dice.push(20); what = a.type === 'check' ? `${(a.skill ?? a.ability ?? '').replace(/-/g, ' ')} check` : a.type === 'search' ? 'Search' : a.type === 'hide' ? 'Hide' : 'Check'; }
   if (!dice.length) dice.push(20);
@@ -206,7 +209,7 @@ function describe(ev) {
     case 'stood': return [`${n(ev.id)} stands up (half their Speed).`];
     case 'chronicle': return [`Chronicle: ${ev.title}`, 'head'];
     case 'time': return [`Time passes. It is now ${clockText(ev.t ?? S.clock)}.`];
-    case 'rest': return ['The party finishes a Long Rest.', 'good'];
+    case 'rest': return [`The party finishes a ${ev.short ? 'Short' : 'Long'} Rest.`, 'good'];
     case 'tempHp': return ev.kept ? [`${n(ev.id)} keeps ${ev.tempHp} Temporary Hit Points.`, ''] : ev.amount > 0 ? [`${n(ev.id)} gains ${ev.amount} Temporary Hit Points.`, 'good'] : [`${n(ev.id)} loses their Temporary Hit Points.`, ''];
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
@@ -447,7 +450,8 @@ function refresh() {
           bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
             pick));
         }
-        if (e.features.secondWind && (enc || e.hp < e.maxHp))
+        for (const fb of featureButtons(S, e)) bar.append(button(fb.label, fb.sub, fb.cls, fb.why, () => act(fb.send)));
+        if (e.features.secondWind && !hasFeat(e, 'second-wind') && (enc || e.hp < e.maxHp))
           bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
             blocked(S, e, 'bonus') || (!e.uses.secondWind && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '',
             () => act({ type: 'secondWind', actor: e.id })));
@@ -562,7 +566,8 @@ function renderSheet() {
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
       ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${sp.name}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
-    ${Object.keys(e.features).length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
+    ${featuresHtml(e)}
+    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
@@ -570,6 +575,7 @@ function renderSheet() {
 }
 
 function renderDM() {
+  SR.sync(S);
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
   renderMarch();
@@ -751,6 +757,7 @@ const closeDM = () => { if (window.innerWidth < 900) $('dm').hidden = true; };
 $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
+const SR = initShortRest({ host: $('dm-rest-all'), act, getState: () => S });
 $('dm-rest').onclick = () => act({ type: 'rest' });
 $('dm-rest-all').onclick = () => act({ type: 'rest', ids: Object.values(S.entities).filter((e) => !e.dead).map((e) => e.id) });
 $('c-res').onclick = (ev) => { const b = ev.target.closest('[data-fx]'); if (b) act({ type: 'endEffect', effect: b.dataset.fx }); };
