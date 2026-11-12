@@ -249,7 +249,7 @@ test("an old saved table loads, its goblins get their actions, and they can stil
   const saved = JSON.parse(readFileSync(new URL("./fixtures/table-v1.json", import.meta.url), "utf8")).state;
   migrate(saved);
   assert.equal(saved.version, VERSION);
-  assert.equal(VERSION, 10);
+  assert.equal(VERSION, 11);
   const goblins = Object.values(saved.entities).filter((e) => e.tpl === "goblin-warrior");
   assert.ok(goblins.length > 0);
   for (const g of goblins) assert.deepEqual(g.actions.map((a) => a.id), ["scimitar", "shortbow"]);

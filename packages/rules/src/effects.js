@@ -126,6 +126,7 @@ export function spellProfile(def) {
   walk(def.effects, (st) => {
     const k = stepKind(st);
     if (k === 'attack' || k === 'save' || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
+    if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
   const t = def.target;

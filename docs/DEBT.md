@@ -39,7 +39,7 @@ many monsters each one touches:
 | ~~M7~~ | ~~Senses are not entered for most monsters~~ Entered from the SRD for every monster (PRs #59, #61, #63, #64) | any |
 | M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
 | M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, hides only to open a fight (#88), and uses no Bonus Action but an area one or Nimble Escape's Hide | engine |
-| M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
+| ~~M10~~ | ~~Saving throw bonuses~~ (#93: `saves` on the monster, 122 monsters list one; used by the engine as `saveBonus`); ~~initiative bonuses~~ (#95: `initiative` on the monster, `initBonus` on the creature, used by `rollInit`; the SRD prints two inconsistent bracketed totals, Gray Ooze and Invisible Stalker, the modifier was kept); ~~languages~~ (#98: `languages` on the monster, 329 entered, data only). Nothing of M10 is left | any |
 | M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
 
 ## Characters
@@ -70,7 +70,7 @@ cannot say, by how much it would unlock:
 | S7 | ~~The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `save.death`; the `check` hook cannot be limited to one skill~~ (#80, #86). `carry` is still unread (no encumbrance) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
-| S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone; a DM damage action would spend them first. The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+| S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
 
 ## Maps, sight and movement
 

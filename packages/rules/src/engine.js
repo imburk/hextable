@@ -58,7 +58,7 @@ export function makeEntity(tpl, over = {}) {
   if (!t.actions && over.tpl && MONSTER_ACTIONS[over.tpl]) t.actions = structuredClone(MONSTER_ACTIONS[over.tpl]);
   if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
-    kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, senses: {}, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
+    kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, senses: {}, saveProf: [], saveBonus: {}, skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0 },
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
@@ -472,7 +472,8 @@ function rollInit(s, e) {
   const two = (m.advantage.length > 0) !== (m.disadvantage.length > 0);
   const r1 = die(s, 20), r2 = two ? die(s, 20) : null;
   const d = !two ? r1 : m.advantage.length ? Math.max(r1, r2) : Math.min(r1, r2);
-  return { id: e.id, init: d + mod(e.abil.dex) + m.add, dex: e.abil.dex };
+  // A monster's stat block gives its Initiative modifier outright (`initBonus`); anyone else adds their Dexterity modifier.
+  return { id: e.id, init: d + (e.initBonus ?? mod(e.abil.dex)) + m.add, dex: e.abil.dex };
 }
 
 function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
@@ -819,7 +820,9 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, m.dice);
-  const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add + more.total;
+  // A monster's stat block gives its save outright (`saveBonus`); anyone else adds Proficiency to the modifier for a saving throw they are proficient in.
+  const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
+  const total = r + base + m.add + more.total;
   return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
@@ -1970,6 +1973,22 @@ const handlers = {
     const e = ent(s, a.actor), hp = Math.max(0, Math.min(e.maxHp, a.hp | 0));
     if (hp > e.hp) { e.dead = false; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
+  },
+  // The DM's damage and healing, by the rules: Resistance and the like, Temporary Hit Points first, Concentration, death saves.
+  harm(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can do damage this way.');
+    const e = ent(s, a.actor), n = a.amount;
+    (Number.isInteger(n) && n > 0 && n <= 9999) || fail('Damage must be a whole number above 0.');
+    e.dead && fail(`${e.name} is dead.`);
+    damage(s, e, n, a.dtype ?? 'untyped', ev);
+    checkEnd(s, ev);
+  },
+  mend(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can heal this way.');
+    const e = ent(s, a.actor), n = a.amount;
+    (Number.isInteger(n) && n > 0 && n <= 9999) || fail('Healing must be a whole number above 0.');
+    e.dead && fail(`${e.name} is dead; healing does not bring back the dead.`);
+    heal(s, e, n, ev);
   },
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');

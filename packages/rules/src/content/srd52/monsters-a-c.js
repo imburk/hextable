@@ -32,6 +32,9 @@ export const monsters = [
       wis: 15,
       cha: 18
     },
+    saves: { dex: 3, con: 6, int: 8, wis: 6 },
+    initiative: 7,
+    languages: ["Deep Speech", "telepathy 120 ft."],
     senses: { darkvision: 120 },
     skills: {
       history: 12,
@@ -194,6 +197,8 @@ export const monsters = [
       wis: 10,
       cha: 6
     },
+    initiative: 5,
+    languages: ["Primordial (Auran)"],
     senses: { darkvision: 60 },
     hover: true,
     resist: [
@@ -310,6 +315,8 @@ export const monsters = [
       wis: 3,
       cha: 1
     },
+    initiative: 2,
+    languages: [],
     senses: { blindsight: 60 },
     resist: [],
     vulnerable: [],
@@ -384,6 +391,9 @@ export const monsters = [
       wis: 5,
       cha: 1
     },
+    saves: { dex: 4 },
+    initiative: 4,
+    languages: [],
     senses: { blindsight: 60 },
     hover: true,
     resist: [],
@@ -452,6 +462,8 @@ export const monsters = [
       wis: 3,
       cha: 1
     },
+    initiative: 4,
+    languages: [],
     senses: { blindsight: 60 },
     resist: [],
     vulnerable: [],
@@ -529,6 +541,8 @@ export const monsters = [
       wis: 13,
       cha: 6
     },
+    initiative: 0,
+    languages: [],
     senses: { darkvision: 60, tremorsense: 60 },
     resist: [],
     vulnerable: [],
@@ -624,6 +638,9 @@ export const monsters = [
       wis: 11,
       cha: 10
     },
+    saves: { dex: 7, int: 6 },
+    initiative: 10,
+    languages: ["Common", "Thieves’ Cant"],
     skills: {
       acrobatics: 7,
       perception: 6,
@@ -746,6 +763,8 @@ export const monsters = [
       wis: 10,
       cha: 6
     },
+    initiative: -1,
+    languages: ["Common plus one other language"],
     resist: [
       "piercing"
     ],
@@ -805,6 +824,8 @@ export const monsters = [
       wis: 10,
       cha: 7
     },
+    initiative: -2,
+    languages: ["Common plus one other language"],
     resist: [
       "bludgeoning",
       "piercing"
@@ -865,6 +886,8 @@ export const monsters = [
       wis: 10,
       cha: 5
     },
+    initiative: 1,
+    languages: [],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -920,6 +943,9 @@ export const monsters = [
       wis: 13,
       cha: 10
     },
+    saves: { con: 4 },
+    initiative: 1,
+    languages: ["Primordial (Ignan)"],
     resist: [],
     vulnerable: [],
     immune: [
@@ -1003,6 +1029,9 @@ export const monsters = [
       wis: 16,
       cha: 22
     },
+    saves: { con: 12, wis: 9 },
+    initiative: 14,
+    languages: ["Abyssal", "telepathy 120 ft."],
     senses: { truesight: 120 },
     skills: {
       perception: 9
@@ -1150,6 +1179,9 @@ export const monsters = [
       wis: 14,
       cha: 14
     },
+    saves: { str: 6, con: 7, wis: 5, cha: 5 },
+    initiative: 3,
+    languages: ["Infernal", "telepathy 120 ft."],
     senses: { darkvision: 120 },
     skills: {
       deception: 5,
@@ -1300,6 +1332,9 @@ export const monsters = [
       wis: 11,
       cha: 14
     },
+    saves: { str: 5, con: 4, cha: 4 },
+    initiative: 2,
+    languages: ["Infernal", "telepathy 120 ft."],
     senses: { darkvision: 120 },
     resist: [
       "cold"
@@ -1418,6 +1453,8 @@ export const monsters = [
       wis: 14,
       cha: 12
     },
+    initiative: 3,
+    languages: ["Draconic"],
     senses: { darkvision: 90 },
     skills: {
       perception: 6,
@@ -1565,6 +1602,8 @@ export const monsters = [
       wis: 6,
       cha: 1
     },
+    initiative: -3,
+    languages: [],
     senses: { blindsight: 60 },
     resist: [],
     vulnerable: [],
@@ -1661,6 +1700,8 @@ export const monsters = [
       wis: 13,
       cha: 11
     },
+    initiative: 3,
+    languages: ["Blink Dog", "understands Elvish and Sylvan but can’t speak them"],
     senses: { darkvision: 60 },
     skills: {
       perception: 5,
@@ -1735,6 +1776,9 @@ export const monsters = [
       wis: 14,
       cha: 16
     },
+    saves: { str: 8, int: 5, wis: 6, cha: 7 },
+    initiative: 7,
+    languages: ["Infernal", "telepathy 120 ft."],
     senses: { darkvision: 120 },
     skills: {
       deception: 7,
@@ -1863,6 +1907,8 @@ export const monsters = [
       wis: 10,
       cha: 10
     },
+    initiative: 1,
+    languages: ["Common", "Thieves’ Cant"],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -1944,6 +1990,9 @@ export const monsters = [
       wis: 11,
       cha: 14
     },
+    saves: { str: 4, dex: 5, wis: 2 },
+    initiative: 3,
+    languages: ["Common", "Thieves’ Cant"],
     skills: {
       athletics: 4,
       deception: 4
@@ -2042,6 +2091,8 @@ export const monsters = [
       wis: 8,
       cha: 7
     },
+    initiative: -1,
+    languages: [],
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -2135,6 +2186,8 @@ export const monsters = [
       wis: 11,
       cha: 9
     },
+    initiative: 1,
+    languages: ["Common"],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -2199,6 +2252,9 @@ export const monsters = [
       wis: 11,
       cha: 13
     },
+    saves: { dex: 4, wis: 2 },
+    initiative: 4,
+    languages: ["Draconic"],
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -2305,6 +2361,9 @@ export const monsters = [
       wis: 11,
       cha: 15
     },
+    saves: { dex: 2, wis: 2 },
+    initiative: 2,
+    languages: ["Draconic"],
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -2404,6 +2463,9 @@ export const monsters = [
       wis: 11,
       cha: 13
     },
+    saves: { dex: 2, wis: 2 },
+    initiative: 2,
+    languages: ["Draconic"],
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -2524,6 +2586,9 @@ export const monsters = [
       wis: 11,
       cha: 15
     },
+    saves: { dex: 2, wis: 2 },
+    initiative: 2,
+    languages: ["Draconic"],
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -2653,6 +2718,9 @@ export const monsters = [
       wis: 11,
       cha: 13
     },
+    saves: { dex: 3, wis: 2 },
+    initiative: 3,
+    languages: ["Draconic"],
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       perception: 4,
@@ -2756,6 +2824,8 @@ export const monsters = [
       wis: 11,
       cha: 9
     },
+    initiative: 2,
+    languages: ["Common", "Goblin"],
     senses: { darkvision: 60 },
     skills: {
       stealth: 6,
@@ -2876,6 +2946,8 @@ export const monsters = [
       wis: 10,
       cha: 5
     },
+    initiative: 0,
+    languages: [],
     senses: { darkvision: 60, tremorsense: 120 },
     skills: {
       perception: 6
@@ -2981,6 +3053,8 @@ export const monsters = [
       wis: 13,
       cha: 11
     },
+    initiative: 2,
+    languages: ["Elvish", "Sylvan"],
     skills: {
       athletics: 6,
       perception: 3
@@ -3098,6 +3172,9 @@ export const monsters = [
       wis: 12,
       cha: 14
     },
+    saves: { con: 7, wis: 4 },
+    initiative: 5,
+    languages: ["Infernal", "telepathy 120 ft."],
     senses: { darkvision: 120 },
     resist: [
       "bludgeoning",
@@ -3233,6 +3310,8 @@ export const monsters = [
       wis: 14,
       cha: 10
     },
+    initiative: 0,
+    languages: ["Understands Draconic but can’t speak"],
     senses: { darkvision: 60 },
     skills: {
       perception: 8
@@ -3381,6 +3460,8 @@ export const monsters = [
       wis: 11,
       cha: 5
     },
+    initiative: 0,
+    languages: ["Understands Deep Speech but can’t speak"],
     senses: { darkvision: 60 },
     skills: {
       perception: 4
@@ -3501,6 +3582,8 @@ export const monsters = [
       wis: 8,
       cha: 1
     },
+    initiative: 3,
+    languages: ["Common plus one other language"],
     senses: { darkvision: 60 },
     resist: [
       "bludgeoning",
@@ -3617,6 +3700,8 @@ export const monsters = [
       wis: 14,
       cha: 7
     },
+    initiative: 5,
+    languages: ["Deep Speech", "Undercommon"],
     senses: { darkvision: 120 },
     skills: {
       stealth: 5
@@ -3755,6 +3840,9 @@ export const monsters = [
       wis: 16,
       cha: 16
     },
+    saves: { con: 10, wis: 7 },
+    initiative: 4,
+    languages: ["Common", "Giant"],
     hover: true,
     skills: {
       insight: 7,
@@ -3862,6 +3950,8 @@ export const monsters = [
       wis: 13,
       cha: 5
     },
+    initiative: 1,
+    languages: [],
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -3929,6 +4019,8 @@ export const monsters = [
       wis: 10,
       cha: 10
     },
+    initiative: 0,
+    languages: ["Common"],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -3992,6 +4084,9 @@ export const monsters = [
       wis: 20,
       cha: 18
     },
+    saves: { con: 5, wis: 7 },
+    initiative: 5,
+    languages: ["All", "telepathy 120 ft."],
     senses: { truesight: 120 },
     resist: [
       "bludgeoning",
@@ -4110,6 +4205,9 @@ export const monsters = [
       wis: 11,
       cha: 10
     },
+    saves: { wis: 2 },
+    initiative: 1,
+    languages: ["Common"],
     skills: {
       deception: 2,
       religion: 2
@@ -4173,6 +4271,9 @@ export const monsters = [
       wis: 14,
       cha: 13
     },
+    saves: { wis: 4 },
+    initiative: 2,
+    languages: ["Common"],
     skills: {
       deception: 3,
       persuasion: 3,
@@ -4244,6 +4345,8 @@ export const monsters = [
       wis: 12,
       cha: 5
     },
+    initiative: 1,
+    languages: [],
     skills: {
       perception: 5
     },
@@ -4328,6 +4431,9 @@ export const monsters = [
       wis: 12,
       cha: 5
     },
+    saves: { str: 6 },
+    initiative: 0,
+    languages: [],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -4393,6 +4499,8 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    initiative: 2,
+    languages: [],
     skills: {
       athletics: 5,
       perception: 3
@@ -4486,6 +4594,8 @@ export const monsters = [
       wis: 14,
       cha: 6
     },
+    initiative: 3,
+    languages: [],
     skills: {
       stealth: 5
     },
@@ -4558,6 +4668,8 @@ export const monsters = [
       wis: 12,
       cha: 6
     },
+    initiative: 2,
+    languages: [],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -4629,6 +4741,8 @@ export const monsters = [
       wis: 12,
       cha: 5
     },
+    initiative: 0,
+    languages: [],
     senses: { darkvision: 30 },
     skills: {
       perception: 3
@@ -4691,6 +4805,8 @@ export const monsters = [
       wis: 12,
       cha: 4
     },
+    initiative: 2,
+    languages: [],
     senses: { blindsight: 60 },
     resist: [],
     vulnerable: [],
@@ -4749,6 +4865,8 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    initiative: 1,
+    languages: [],
     senses: { darkvision: 60 },
     skills: {
       perception: 5
@@ -4815,6 +4933,8 @@ export const monsters = [
       wis: 14,
       cha: 5
     },
+    initiative: 2,
+    languages: [],
     skills: {
       perception: 6
     },
@@ -4891,6 +5011,8 @@ export const monsters = [
       wis: 9,
       cha: 5
     },
+    initiative: 0,
+    languages: [],
     resist: [],
     vulnerable: [],
     immune: [],
@@ -4957,6 +5079,8 @@ export const monsters = [
       wis: 13,
       cha: 7
     },
+    initiative: 1,
+    languages: [],
     senses: { darkvision: 60 },
     skills: {
       perception: 3
@@ -5048,6 +5172,9 @@ export const monsters = [
       wis: 11,
       cha: 5
     },
+    saves: { con: 5 },
+    initiative: -1,
+    languages: [],
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -5105,6 +5232,9 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    saves: { dex: 4 },
+    initiative: 2,
+    languages: [],
     senses: { darkvision: 60 },
     skills: {
       perception: 3,
@@ -5173,6 +5303,8 @@ export const monsters = [
       wis: 10,
       cha: 3
     },
+    initiative: 2,
+    languages: [],
     senses: { blindsight: 10 },
     skills: {
       perception: 2,
@@ -5260,6 +5392,8 @@ export const monsters = [
       wis: 8,
       cha: 2
     },
+    initiative: 0,
+    languages: [],
     senses: { blindsight: 30 },
     skills: {
       stealth: 2
@@ -5327,6 +5461,9 @@ export const monsters = [
       wis: 10,
       cha: 5
     },
+    saves: { con: 3 },
+    initiative: 0,
+    languages: [],
     skills: {
       stealth: 2
     },
@@ -5400,6 +5537,9 @@ export const monsters = [
       wis: 13,
       cha: 19
     },
+    saves: { dex: 7, wis: 6 },
+    initiative: 12,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 11,
@@ -5524,6 +5664,9 @@ export const monsters = [
       wis: 15,
       cha: 20
     },
+    saves: { dex: 5, wis: 7 },
+    initiative: 10,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 12,
@@ -5642,6 +5785,9 @@ export const monsters = [
       wis: 13,
       cha: 17
     },
+    saves: { dex: 5, wis: 6 },
+    initiative: 10,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       history: 7,
@@ -5798,6 +5944,9 @@ export const monsters = [
       wis: 15,
       cha: 20
     },
+    saves: { dex: 5, wis: 7 },
+    initiative: 10,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       insight: 7,
@@ -5955,6 +6104,9 @@ export const monsters = [
       wis: 15,
       cha: 18
     },
+    saves: { dex: 6, wis: 7 },
+    initiative: 11,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       deception: 9,
@@ -6102,6 +6254,9 @@ export const monsters = [
       wis: 15,
       cha: 24
     },
+    saves: { dex: 8, wis: 8 },
+    initiative: 14,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       insight: 8,
@@ -6256,6 +6411,9 @@ export const monsters = [
       wis: 15,
       cha: 18
     },
+    saves: { dex: 6, wis: 7 },
+    initiative: 11,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       deception: 9,
@@ -6389,6 +6547,9 @@ export const monsters = [
       wis: 13,
       cha: 23
     },
+    saves: { dex: 6, wis: 7 },
+    initiative: 12,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 13,
@@ -6506,6 +6667,9 @@ export const monsters = [
       wis: 13,
       cha: 22
     },
+    saves: { dex: 5, wis: 6 },
+    initiative: 10,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       history: 8,
@@ -6662,6 +6826,9 @@ export const monsters = [
       wis: 12,
       cha: 12
     },
+    saves: { dex: 5, wis: 6 },
+    initiative: 10,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 11,
@@ -6780,6 +6947,9 @@ export const monsters = [
       wis: 15,
       cha: 22
     },
+    saves: { dex: 9, wis: 9 },
+    initiative: 16,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 16,
@@ -6905,6 +7075,9 @@ export const monsters = [
       wis: 17,
       cha: 25
     },
+    saves: { dex: 7, wis: 10 },
+    initiative: 14,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 17,
@@ -7023,6 +7196,9 @@ export const monsters = [
       wis: 15,
       cha: 22
     },
+    saves: { dex: 6, wis: 8 },
+    initiative: 12,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       history: 9,
@@ -7179,6 +7355,9 @@ export const monsters = [
       wis: 17,
       cha: 25
     },
+    saves: { dex: 7, wis: 10 },
+    initiative: 14,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       insight: 10,
@@ -7336,6 +7515,9 @@ export const monsters = [
       wis: 17,
       cha: 22
     },
+    saves: { dex: 8, wis: 10 },
+    initiative: 15,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       deception: 13,
@@ -7484,6 +7666,9 @@ export const monsters = [
       wis: 17,
       cha: 28
     },
+    saves: { dex: 9, wis: 10 },
+    initiative: 16,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       insight: 10,
@@ -7638,6 +7823,9 @@ export const monsters = [
       wis: 17,
       cha: 22
     },
+    saves: { dex: 8, wis: 10 },
+    initiative: 15,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       deception: 13,
@@ -7771,6 +7959,9 @@ export const monsters = [
       wis: 15,
       cha: 27
     },
+    saves: { dex: 7, wis: 9 },
+    initiative: 14,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 16,
@@ -7888,6 +8079,9 @@ export const monsters = [
       wis: 15,
       cha: 26
     },
+    saves: { dex: 7, wis: 9 },
+    initiative: 14,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       history: 11,
@@ -8044,6 +8238,9 @@ export const monsters = [
       wis: 13,
       cha: 18
     },
+    saves: { dex: 6, wis: 7 },
+    initiative: 12,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 60, darkvision: 120 },
     skills: {
       perception: 13,
@@ -8160,6 +8357,9 @@ export const monsters = [
       wis: 15,
       cha: 16
     },
+    saves: { int: 9, wis: 6 },
+    initiative: 7,
+    languages: ["Common plus five other languages"],
     skills: {
       arcana: 13,
       history: 9,
@@ -8285,6 +8485,9 @@ export const monsters = [
       wis: 12,
       cha: 11
     },
+    saves: { con: 4, wis: 3 },
+    initiative: 2,
+    languages: ["Common", "Goblin"],
     senses: { darkvision: 60 },
     skills: {
       stealth: 6,
@@ -8435,6 +8638,9 @@ export const monsters = [
       wis: 11,
       cha: 15
     },
+    saves: { dex: 5, wis: 3 },
+    initiative: 5,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       perception: 6,
@@ -8541,6 +8747,9 @@ export const monsters = [
       wis: 13,
       cha: 17
     },
+    saves: { dex: 4, wis: 5 },
+    initiative: 4,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       perception: 9,
@@ -8640,6 +8849,9 @@ export const monsters = [
       wis: 11,
       cha: 15
     },
+    saves: { dex: 3, wis: 3 },
+    initiative: 3,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       perception: 6,
@@ -8767,6 +8979,9 @@ export const monsters = [
       wis: 13,
       cha: 17
     },
+    saves: { dex: 3, wis: 4 },
+    initiative: 3,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       insight: 4,
@@ -8897,6 +9112,9 @@ export const monsters = [
       wis: 13,
       cha: 15
     },
+    saves: { dex: 4, wis: 4 },
+    initiative: 4,
+    languages: ["Common", "Draconic"],
     senses: { blindsight: 30, darkvision: 120 },
     skills: {
       deception: 5,
