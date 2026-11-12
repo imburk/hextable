@@ -25,7 +25,7 @@ players are sent). **any** can be handed to any agent.
 
 ## Monsters
 
-329 are entered; 34 play fully by the rules (tiers were not raised by #71; monster-saves re-tiered the files one by one, see M12). The rest are held back by these, in order of how
+329 are entered; 34 play fully by the rules (tiers were not raised by #71; #102 and the pull requests after it re-tiered the files one by one, see M12). The rest are held back by these, in order of how
 many monsters each one touches:
 
 | # | What | Who |
