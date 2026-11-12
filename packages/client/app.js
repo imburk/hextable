@@ -15,6 +15,7 @@ import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
+import { initHandouts } from './handouts.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -121,7 +122,7 @@ function describe(ev) {
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
-    default: return null;
+    default: return HO.describe(ev);       // handouts and private notes
   }
 }
 function floaters(events) {
@@ -326,6 +327,7 @@ function refresh() {
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
   tracker.render();
   if (isDM()) renderDM();
+  HO.refresh();
 }
 
 function renderLog() {
@@ -466,7 +468,7 @@ $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 const tracker = createTracker({ root: $('tracker'), button: $('btn-tracker'), dock: $('dock'), state: () => S, isDM, mine, act, toast, pick: (id) => { select(id); R.focus(id); refresh(); } });
 $('btn-tracker').onclick = tracker.toggle;
-const panels = ['sheet', 'log', 'dm'];
+const panels = ['sheet', 'log', 'dm', 'handouts'];
 const openPanel = (id) => { for (const p of panels) $(p).hidden = p !== id || !$(p).hidden; refresh(); };
 $('btn-sheet').onclick = () => openPanel('sheet'); $('btn-log').onclick = () => openPanel('log'); $('btn-dm').onclick = () => openPanel('dm');
 for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => ($(b.dataset.close).hidden = true);
@@ -514,7 +516,7 @@ function leaveTable(btn) {
   }
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
   T.leave?.(); T = null; S = null; selId = null; clearTimeout(aiTimer);
-  for (const id of ['dm', 'sheet', 'log', 'card']) $(id).hidden = true;
+  for (const id of ['dm', 'sheet', 'log', 'card', 'handouts', 'viewer']) $(id).hidden = true;
   $('btn-dm').hidden = $('btn-leave').hidden = $('btn-undo').hidden = true;
   lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
 }
@@ -536,6 +538,7 @@ addEventListener('keydown', (ev) => {
 });
 
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
+const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 
 // For the browser console, tests and future automation.
 window.hextable = { R, act, get state() { return S; }, get mode() { return mode; } };

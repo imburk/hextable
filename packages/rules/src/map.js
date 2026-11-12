@@ -28,6 +28,18 @@ export function migrateMap(doc) {
 }
 
 const COL = /^-?\d+,-?\d+$/;
+// An asset id: what the table server (or the browser, in solo play) gave an uploaded file.
+export const ASSET_ID = /^[A-Za-z0-9_-]{8,64}$/;
+// A picture laid under a level: which asset, how many feet wide and deep it covers, and where its
+// top-left corner sits, in the same feet as walls. Returns a sentence if it is not that.
+export function imageProblem(img, where) {
+  if (!img || typeof img !== 'object' || Array.isArray(img)) return `${where} has a background that is not a record.`;
+  if (Object.keys(img).some((k) => !['asset', 'feet', 'origin'].includes(k))) return `${where} has a background with something other than asset, feet and origin.`;
+  if (typeof img.asset !== 'string' || !ASSET_ID.test(img.asset)) return `${where} has a background that names no file.`;
+  const pair = (p, pos) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 100000 && (!pos || n > 0));
+  if (!pair(img.feet, true)) return `${where} has a background whose size is not two positive numbers of feet.`;
+  if (!pair(img.origin, false)) return `${where} has a background whose corner is not two numbers.`;
+}
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const text = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
 
@@ -49,6 +61,7 @@ export function lintMap(doc, extra = []) {
     if (!text(l.id) || ids.has(l.id)) bad.push(`Level id "${l.id}" is missing or used twice.`);
     ids.add(l.id);
     if (!num(l.z)) bad.push(`Level "${l.id}" has no height.`);
+    if (l.image !== undefined) { const p = imageProblem(l.image, `Level "${l.id}"`); if (p) bad.push(p); }
     if (!l.tiles || typeof l.tiles !== 'object' || Array.isArray(l.tiles)) { bad.push(`Level "${l.id}" has no tiles.`); continue; }
     for (const [k, t] of Object.entries(l.tiles)) {
       count++;
@@ -146,8 +159,10 @@ export const EDITS = {
   level(map, { level }) {
     if (!level || typeof level !== 'object') return 'A level needs a record.';
     const had = map.levels.find((x) => x.id === level.id);
-    if (had) Object.assign(had, { name: level.name ?? had.name, z: level.z ?? had.z });
-    else map.levels.push({ id: level.id, name: level.name ?? level.id, z: level.z, tiles: structuredClone(level.tiles ?? {}) });
+    // `image: null` takes a level's background away; leaving `image` out keeps what it had.
+    const image = level.image === null ? undefined : level.image !== undefined ? structuredClone(level.image) : had?.image;
+    if (had) { Object.assign(had, { name: level.name ?? had.name, z: level.z ?? had.z }); if (image === undefined) delete had.image; else had.image = image; }
+    else map.levels.push({ id: level.id, name: level.name ?? level.id, z: level.z, tiles: structuredClone(level.tiles ?? {}), ...(image !== undefined && { image }) });
   },
   unlevel(map, { id }) {
     if (map.levels.length < 2) return 'A map needs one level or more.';

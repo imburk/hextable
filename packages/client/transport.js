@@ -7,6 +7,7 @@ import { newGame } from './shared/scenario.js';
 import { createReceiver } from './shared/patch.js';
 import { migrate, VERSION } from './shared/migrate.js';
 import { createHistory, describeStep, mark, undoable } from './shared/history.js';
+import { localAssets, serverAssets } from './assets.js';
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -37,7 +38,7 @@ export function localTransport() {
     t.on.update(state, [{ type: done, label: s.label }]);
   };
   const t = {
-    solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {}, undoInfo: { undo: [], redo: [] },
+    solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {}, undoInfo: { undo: [], redo: [] }, assets: localAssets(),
     start() { told(); t.on.update(state, []); },
     send(action) {
       const before = undoable(action) ? mark(state) : null;
@@ -59,6 +60,8 @@ export function localTransport() {
 export function serverTransport(first) {
   const t = { solo: false, you: null, on: {}, lobby: { members: [], pending: [] }, undoInfo: { undo: [], redo: [] } };
   let ws, retry = 0, hello = first;
+  // Table files are fetched over HTTP with the session token in a header (never in a URL).
+  t.assets = serverAssets(() => (hello?.t === 'resume' ? { code: hello.code, token: hello.token } : null));
   // After the first full state the server sends only what changed. The receiver keeps our copy
   // up to date and asks for everything again if an update ever goes missing.
   const receiver = createReceiver(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'sync' })); });

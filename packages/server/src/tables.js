@@ -7,7 +7,7 @@
 //   const session = tables.connect(conn);     // one per connection
 //   session.receive(message);                 // a parsed client message
 //   session.disconnect();
-import { randomBytes, randomInt } from "node:crypto";
+import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { apply, recall } from "../../rules/src/engine.js";
 import { diff, snapshot } from "../../rules/src/patch.js";
 import { createHistory, describeStep, mark, undoable } from "../../rules/src/history.js";
@@ -202,6 +202,8 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         if (Buffer.byteLength(JSON.stringify(action)) > cap) return error("That action is too large.");
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
+        // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
+        if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;
         const before = undoable(action) ? mark(table.state) : null;        // claiming a seat is not undone
         try {
@@ -271,5 +273,15 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     };
   }
 
-  return { connect, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
+  // Who holds this session token at this table, if they have been let in: for requests that do not
+  // come over the socket (fetching and uploading files). Compared in constant time.
+  function member(code, token) {
+    const t = typeof code === "string" ? tables.get(code) : undefined;
+    if (!t || typeof token !== "string" || token.length < 16 || token.length > 64) return null;
+    const want = Buffer.from(token);
+    const m = t.members.find((x) => { const have = Buffer.from(x.token); return have.length === want.length && timingSafeEqual(have, want); });
+    return m?.approved ? { table: t, member: m } : null;
+  }
+
+  return { connect, get: (code) => tables.get(code), member, size: () => tables.size, activeSize: activeCount };
 }
