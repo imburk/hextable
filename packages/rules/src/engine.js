@@ -18,6 +18,7 @@ import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
+import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
@@ -230,7 +231,14 @@ function revealRegion(s, r, ev) {
 }
 // Party members see the region they stand in and any region they stand beside with nothing
 // to block the view. `before` runs first if anything is found (to close a stretch of movement).
+// Under the los and light table rules, instead: any region a party member has a line of sight into.
 function lookAround(s, ev, who = living(s), before = null) {
+  if (sightRule(s) !== 'rooms') {
+    const seen = regionsInSight(s, who);
+    if (seen.size && before) before();
+    for (const r of seen) revealRegion(s, r, ev);
+    return;
+  }
   const B = barriers(s.map), found = new Set();
   const note = (levelId, h) => { const r = regionAt(s.map, levelId, h); if (r && !r.revealed) found.add(r); };
   for (const e of who) {
@@ -257,7 +265,7 @@ function showPlace(s, e, ev) {
 export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && shown(map, o.level, h));
 const objectOf = (s, id, ctx = null) => {
   const o = s.map.objects.find((x) => x.id === id);
-  return (o && (!ctx || ctx.role === 'dm' || objectShown(s.map, o)) && o) || fail('No such object.');
+  return (o && (!ctx || ctx.role === 'dm' || (sightRule(s) === 'rooms' ? objectShown(s.map, o) : objectKnown(s, o))) && o) || fail('No such object.');
 };
 export const objectName = (o) => o.name ?? objectDef(o).name;
 // Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
@@ -1157,7 +1165,7 @@ function walk(s, e, reach, tk, ev, fighting) {
     if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
     // The table's engage distance: the walker stops this far from the first enemy it has a clear line to.
     const foe = !s.encounter && s.settings.autoEngage && free &&
-      living(s).find((o) => up(o) && hostile(o, e) && apart(s, o, e) <= range && unblocked(s, o, e) && !unseenAt(s.map, o.pos) && !o.hiding && !e.hiding);
+      living(s).find((o) => up(o) && hostile(o, e) && apart(s, o, e) <= range && unblocked(s, o, e) && !unseenAt(s.map, o.pos) && !o.hiding && !e.hiding && !(e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o)));
     if (foe) {
       flush();
       const trail = { id: e.id, path: walked.slice().reverse() };
@@ -1307,7 +1315,8 @@ const handlers = {
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
     // That is a creature the DM hid (never in a fight) or one hiding from it.
-    const lurker = living(s).find((o) => ((!fighting && o.hidden) || hiddenFrom(o, e)) && hostile(o, e) && H.key(o.pos) === tk);
+    // Under the los and light rules, for a party member, also one the party cannot see.
+    const lurker = living(s).find((o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e) && H.key(o.pos) === tk);
     if (lurker) {
       if (apart(s, e, lurker) <= 1) return bumped(s, lurker, e, ev);   // already beside it: no move, but it is found
       const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && H.dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
@@ -1977,15 +1986,23 @@ function gravity(s, ev) {
   if (any) checkEnd(s, ev);
 }
 
+// After every action under the los and light rules: whatever region the party now has in sight is
+// revealed, and what it makes out is remembered (vision.js).
+function look(s, ev) {
+  if (sightRule(s) === 'rooms') return;
+  lookAround(s, ev);
+  remember(s);
+}
+
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60] };
+export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];
   try {
     // To anyone but the DM a hidden creature does not exist. Answering "it's 40 ft away" or
     // "it isn't yours" to a guessed id would confirm that it does.
-    if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (concealed(s.map, s.entities[action[k]])) fail('No such creature.');
+    if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (unknown(s, s.entities[action[k]])) fail('No such creature.');
     const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
     h(s, action, ctx, ev);
   } catch (err) {
@@ -1993,10 +2010,10 @@ export function apply(s, action, ctx = { role: 'dm' }) {
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
   }
-  try { gravity(s, ev); watch(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
+  try { gravity(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
   // The record keeps, with each entry, the creatures the party did not know of when it happened,
   // so that reading the record later never tells players about what they could not see then.
-  const unseen = (x) => typeof x === 'string' && concealed(s.map, s.entities[x]);
+  const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved') continue;
     const ids = [e.id, e.actor, e.target, e.by, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);

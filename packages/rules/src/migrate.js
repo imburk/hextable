@@ -37,6 +37,8 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) e.senses ??= structuredClone(MONSTERS[e.tpl]?.senses ?? {});
   // Version 9: a table rule for how close the party comes to an enemy before a fight starts.
   if (state.settings) state.settings.engageRange ??= 10;
+  // The table rule for what players are sent by sight (no version of its own: 'rooms' is how it always was).
+  if (state.settings) state.settings.sight ??= 'rooms';
   // Handouts (no version of their own: a state without them simply has none yet).
   if (!Array.isArray(state.handouts)) state.handouts = [];
   if (!(state.version >= VERSION)) state.version = VERSION;

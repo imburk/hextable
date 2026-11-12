@@ -2,7 +2,7 @@
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
-import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, hideProblem } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
@@ -112,7 +112,7 @@ function describe(ev) {
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
     case 'check': {
-      const what = ev.search ? 'searches' : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
+      const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
       const how = ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : '';
       const end = ev.search ? (ev.found ? ` and finds ${ev.found === 1 ? 'something' : `${ev.found} things`}.` : ' and finds nothing.') : ev.success === true ? ' Success.' : ev.success === false ? ' Failed.' : '';
       return [`${n(ev.id)} ${what}${how}: ${ev.total}${ev.dc !== undefined ? ` vs DC ${ev.dc}` : ''}${ev.search ? '' : '.'}${end}`];
@@ -126,6 +126,9 @@ function describe(ev) {
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
+    case 'hid': return [`${n(ev.id)} is hidden.`];
+    case 'unhidden': return [ev.why === 'found' ? `${n(ev.id)} has been found${ev.by ? ` by ${n(ev.by)}` : ''}!` : ev.why === 'attack' ? `${n(ev.id)} gives itself away by attacking!` : ev.why === 'spell' ? `${n(ev.id)} gives itself away by casting!` : `${n(ev.id)} is heard and no longer hidden.`, 'head'];
+    case 'light': return [ev.bright || ev.dim ? `${n(ev.id)} carries ${ev.name ? `a ${ev.name.toLowerCase()}` : 'a light'}.` : `${n(ev.id)}'s light goes out.`];
     case 'follow': return [ev.leader ? `${n(ev.id)} follows ${n(ev.leader)}.` : ev.why ? `${n(ev.id)} couldn't keep up with ${n(ev.was)} and stops following.` : `${n(ev.id)} stops following ${n(ev.was)}.`];
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
@@ -362,6 +365,11 @@ function refresh() {
           if (isDM() && !enc) bar.append(button('Lead the party', 'Everyone follows; then tap where to go', '', '', () => act({ type: 'partyFollow', leader: e.id })));
         }
         bar.append(button('Search', `${enc ? 'Action · ' : ''}Perception ${signed(checkBonus(e, { skill: 'perception' }))} · 15 ft`, '', blocked(S, e, 'action'), () => act({ type: 'search', actor: e.id })));
+        // The Hide action (DC 15 Stealth). Whether it may be tried is judged against the enemies this creature can see, as the engine does.
+        const hideTime = e.features.nimbleEscape ? 'bonus' : 'action';
+        if (e.hiding) bar.append(button('Hidden', `Stealth ${e.hiding.dc} to find`, 'armed', 'Already hidden: an attack, a spoken spell or a noise gives it away.', () => {}));
+        else bar.append(button('Hide', `${enc ? (hideTime === 'bonus' ? 'Bonus · ' : 'Action · ') : ''}Stealth ${signed(checkBonus(e, { skill: 'stealth' }))} · DC 15`, hideTime === 'bonus' ? 'bonus' : '',
+          (enc && inFight(S, e.id) ? blocked(S, e, hideTime) : '') || hideProblem(S, e), () => act({ type: 'hide', actor: e.id })));
         // Doors and other things within reach.
         for (const u of usesFor(S, e)) bar.append(button(`${u.label}`, `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, '', u.why, () => act({ type: 'use', actor: e.id, object: u.object, verb: u.verb })));
         if (myTurn) {
@@ -459,6 +467,9 @@ function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
   renderMarch();
+  $('dm-sight').value = S.settings.sight ?? 'rooms';
+  const lvl = dmLevel(); $('dm-ambient').value = lvl?.light ?? 'bright'; $('dm-ambient-level').textContent = lvl ? lvl.name : '';
+  const lit = S.entities[selId]?.light; $('dm-torch').disabled = !S.entities[selId]; $('dm-torch').textContent = lit ? 'Put out selected\'s light' : 'Give selected a torch';
   $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-cover').value = S.settings.cover ?? 'on'; $('dm-creature-cover').checked = S.settings.creatureCover !== 'off'; $('dm-climb').checked = S.settings.climbing !== 'off';
   const picked = S.entities[selId], hideable = picked && picked.side !== 'party' && !picked.dead;
   $('dm-hide').disabled = !hideable || (!picked.hidden && inFight(S, picked.id));
@@ -649,6 +660,11 @@ $('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', 
 $('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setSpeed', actor: e.id, mode: 'fly', feet: e.speeds?.fly ? 0 : 60 }); };
 $('dm-engage-range').onchange = (ev) => act({ type: 'setting', key: 'engageRange', value: +ev.target.value });
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
+// Sight and light (docs/specs/sight.md). Ambient light is set on the level the selected creature stands on, or the first level.
+function dmLevel() { const e = S?.entities[selId]; return (e && under(S.map, e.pos)?.level) || S?.map.levels[0] || null; }
+$('dm-sight').onchange = (ev) => act({ type: 'setting', key: 'sight', value: ev.target.value });
+$('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
+$('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();
 $('dm-export').onclick = () => T.export().then((table) => {

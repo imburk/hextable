@@ -72,6 +72,14 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 // A short fingerprint of every tile's terrain and height, so the ground is rebuilt when the editor changes either.
+// What a player's view says the party sees now (state.sight, under the los and light table rules), as a short key.
+function sightSig(sight) {
+  if (!sight) return '';
+  const t = JSON.stringify(sight);
+  let n = t.length;
+  for (let i = 0; i < t.length; i++) n = (Math.imul(n, 31) + t.charCodeAt(i)) | 0;
+  return String(n);
+}
 function tileSig(map) {
   let n = 0;
   for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + 17) | 0; }
@@ -222,7 +230,7 @@ export class Renderer {
     this.state = state;
     const want = lightAt(state.clock ?? 480);
     this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}:${this.#pictureSig()}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}:${this.#pictureSig()}:${sightSig(state.sight)}`;
     this.#fetchPictures();
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
@@ -380,6 +388,10 @@ export class Renderer {
     // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
     const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
     const patch = (level, h) => { const t = level.tiles[H.col(h)]; return t ? surfY(level.z + (t.h ?? 0), t).toFixed(3) : null; };
+    // Players under the los and light rules: a place remembered but not in view now is dimmed, one in view in
+    // Dim Light or Darkness darkened (docs/specs/sight.md, decision 6). Colour only; the renderer plan owns more.
+    const sight = this.state.sight, now = new Map(Object.entries(sight?.now ?? {}).map(([l, cols]) => [l, new Set(cols)]));
+    const seenShade = (levelId, k) => (!sight ? 1 : !now.get(levelId)?.has(k) ? 0.5 : sight.light?.[levelId]?.[k] === 'dark' ? 0.38 : sight.light?.[levelId]?.[k] === 'dim' ? 0.7 : 1);
     // A level with a picture that has arrived is floored by the picture: its hexes are only a faint outline.
     const gb = new Builder(), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
     this.pics = []; const pv = [];
@@ -403,6 +415,8 @@ export class Renderer {
       let c = th.tiles[t.t].map((v) => v * j);
       if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
       if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
+      const f = seenShade(h.level.id, H.col(h));
+      if (f !== 1) c = c.map((v) => v * f);
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
       if (room) {
         // The floor reaches to the hex's edge; the grid is a thin, faint line inside it (stronger inside a fight's area).
