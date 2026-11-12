@@ -50,7 +50,7 @@ test("a check adds the ability, proficiency in the skill or tool, twice for Expe
 test("anyone can roll a check for their character; only the DM sets a DC, and players are told neither it nor the outcome", () => {
   const s = floor();
   const mine = ok(apply(s, { type: "check", actor: "fighter", skill: "athletics" }, PAT));
-  assert.deepEqual(Object.keys(mine.events[0]).sort(), ["ability", "bonus", "id", "roll", "skill", "total", "type"]);
+  assert.deepEqual(Object.keys(mine.events[0]).sort(), ["ability", "bonus", "dice", "id", "roll", "skill", "total", "type"]);
   assert.equal(mine.events[0].total, mine.events[0].roll + 5);
   assert.equal(apply(s, { type: "check", actor: "fighter", skill: "athletics", dc: 12 }, PAT).error, "Only the DM sets a DC.");
   assert.equal(apply(s, { type: "check", actor: "fighter", skill: "juggling" }, PAT).error, "Unknown skill.");
@@ -157,7 +157,7 @@ test("a spotted trap can be disarmed with tools; a failed try leaves it armed", 
 test("a table saved before checks existed gets its characters' skills and the new table rule", () => {
   const saved = JSON.parse(readFileSync(new URL("./fixtures/table-v1.json", import.meta.url), "utf8")).state;
   const s = migrate(structuredClone(saved));
-  assert.equal(s.version, 11);
+  assert.equal(s.version, 12);
   assert.deepEqual(s.entities.rogue.expertise, ["sleight-of-hand", "stealth"]);
   assert.deepEqual(s.entities.rogue.tools, ["thieves-tools"]);
   assert.ok(s.entities.fighter.skills.includes("perception"));
