@@ -567,7 +567,7 @@ Ordered so that the first three each give a visible improvement on their own.
 
 | # | Task | Who | Touches | Done when |
 |---|---|---|---|---|
-| R1 | Rooms, not hexes, in today's renderer: floor patches by region and height with one edge, faint grid overlay, behind a theme flag | any agent | `render.js`, `themes.js` | A walled two-room map looks like two rooms; the valley is unchanged |
+| R1 | Rooms, not hexes, in today's renderer: one floor per height with one edge, faint grid overlay, behind a theme flag. Prototype built (see build notes); left: turning it on | design owner decides; any agent | `themes.js` | The owner has looked at `?rooms` and the flag is on by default, or it is dropped |
 | R2 | Floors module: patches, clip and fill to walls, outlines, wall posts and cutaways, as a pure module with tests; R1 drawn from it | any agent | new `client/floors.js`, its test, `render.js`, `package.json` test script | A traced diagonal wall gives a straight floor edge; a corridor between two traced walls is filled; tests pass in Node |
 | R3 | Timeline and pace: beats, grouping, the shown state, skip, catch-up, `onBeat`, `onIdle`; log lines and floaters moved onto beats; the AI waits for idle; the `pace` setting | any agent; the one-line `SETTINGS` change by the design owner | new `client/timeline.js`, `render.js`, `app.js`, `engine.js` (one line) | A goblin's attack, damage and fall play in order before the player's buttons wake; a tap skips; an `instant` table plays as today |
 | R4 | Beats in today's renderer: doors swing, falls, deaths and Prone, region fade-in, fade in and out, the arena rising | any agent | `render.js` | Each row of the event table that needs no model has its animation |
@@ -587,4 +587,18 @@ can run in parallel after R2. R10 decides the rest.
 
 ## Build notes
 
-None yet.
+- **R1 prototype** (landed with this spec). The theme flag `floors` is `'hex'`
+  in every theme unless the page address has `?rooms`, so nobody's game
+  changes until the owner turns it on. With it, a level that has walls or
+  regions draws every tile at one height as one floor: even colour (no
+  per-hex shading), a grid line about a tenth as wide as today's rim and only
+  slightly darker than the floor (`grid` in the theme), and side faces and a
+  low kerb only where the floor ends or changes height. Rooms at the same
+  height with no wall between run on into each other, which is what an
+  archway looks like; this is simpler than the patches of decision 1, which
+  also split by region and terrain. Inside a fight's arena the grid is drawn
+  wider in the arena colour. Levels without walls or regions, such as the
+  valley, are drawn by the old code and are pixel for pixel the same.
+  Picking, highlights, levels above, objects, sizes and the DM's dimming are
+  untouched. Not done: clipping and filling to walls, so a room's outline still
+  follows hex edges (R2).

@@ -92,5 +92,5 @@ cannot say, by how much it would unlock:
 
 ## Specs still to write
 
-Prompts (decisions after a roll), companions and summons, the renderer plan, the persistent
-world and the AI DM interface.
+Prompts (decisions after a roll), companions and summons, ~~the renderer plan~~ (drafted in
+`docs/specs/renderer.md`, to be reviewed), the persistent world and the AI DM interface.
