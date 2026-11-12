@@ -430,7 +430,7 @@ function renderLog() {
 
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
-  const st = e.castAbil ? spellStats(e) : null;
+  const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
   $('sheet-body').innerHTML = `
