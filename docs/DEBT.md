@@ -61,13 +61,13 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| S1 | ~~Dice-valued modifiers (Bless, Bane, Guidance)~~ (PR_C) | engine |
+| S1 | ~~Dice-valued modifiers (Bless, Bane, Guidance)~~ (#80) | engine |
 | S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks | engine |
 | S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall) and several cubes arranged by the caster (Fire Storm); creatures of the caster's choice in an area were done with S2 | engine |
 | S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
-| S5 | Temporary Hit Points, ~~a damage type chosen at casting~~ (PR_C, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), "until the end of your next turn" | engine |
+| S5 | Temporary Hit Points, ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step is not built: Chromatic Orb, Sorcerous Burst, Dragon's Breath), "until the end of your next turn" | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |
-| S7 | The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `carry`, ~~`save.death`~~ (PR_C); ~~the `check` hook cannot be limited to one skill~~ (PR_C: `scope`) | engine |
+| S7 | The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `carry`, ~~`save.death`~~ (#80); ~~the `check` hook cannot be limited to one skill~~ (#80: `scope`) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
 
