@@ -16,6 +16,7 @@
 <header id="top">
   <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
   <nav id="tools">
+    <button type="button" id="btn-tracker" aria-controls="tracker" aria-expanded="false">Tracker</button>
     <button type="button" id="btn-log" aria-controls="log">Log</button>
     <button type="button" id="btn-look" title="Change the look">Look</button>
     <button type="button" id="btn-dm" aria-controls="dm" hidden>DM<b id="dm-badge" hidden></b></button>
@@ -45,6 +46,7 @@
   </div>
 </footer>
 
+<aside id="tracker" hidden aria-label="Combat tracker"></aside>
 <aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
 <aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2><ol id="log-list"></ol></aside>
 <aside id="dm" class="panel" hidden>
