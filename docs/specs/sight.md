@@ -221,6 +221,7 @@ Design points:
 | `creatureCover` | `on`, `off` | `on` |
 | `sight` | `rooms`, `los`, `light` | `rooms` |
 | `passiveFind` (exists) | `off`, `traps`, `all` | `off` |
+| `unseenTurns` (after S7) | `say`, `quiet` | `say` |
 
 `sight: 'rooms'` with `cover: 'off'` is today's game, except that total cover
 is judged by corners instead of one line.
@@ -378,8 +379,8 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
   has a line of sight into it, from any distance, in the walk as it happens and after every action;
   it replaces standing beside it. Under `light` a region revealed in the dark sends nothing until lit.
 - **What players are told** (S7). A creature the party cannot see is concealed exactly like one the
-  DM hid: absent from views, events and the record, out of the fight order players see (whose turn
-  it is shows as nobody), and a guessed id is answered "No such creature." A creature walking into
+  DM hid: absent from views, events and the record, out of the fight order players see (how its
+  turn is shown is under "Unseen turns" below), and a guessed id is answered "No such creature." A creature walking into
   view is sent with the part of its path the party could see; an area's hexes only where tiles are
   sent. The record notes with each entry the creatures players did not know of then (S6), so its
   entries stay as they were seen. A player's view under `los` and `light` carries
@@ -392,6 +393,18 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
   line of sight only); under `light` they are not.
 - **The server** (S7) builds the players' view once per change of a table and gives it to every
   player, each copy adding only that player's handouts, and diffs from one shared snapshot.
+- **Unseen turns** (after S7). When a creature players cannot see takes its turn, they are told what
+  a DM at a table would say, and no more: the order they are sent shows one slot `{ someone: true }`,
+  placed after the last creature they can see that comes before it, and points the turn at it; the
+  `turn` event is `{ type: 'turn', round, someone: true }`. A run of such turns one after another is
+  one slot and one event (an unseen turn is told only if the turn before it, as the record has it, was
+  one players saw), so how many unseen creatures there are is not told. Budget and flags are zeros
+  while it lasts. The table rule `unseenTurns` is `say` (the default) or `quiet`: nothing is said and
+  the order shows no one's turn. What still shows is in DEBT P15.
+- **Several levels** (after S7). The property tests also play a hall of three levels: a gallery
+  10 ft up reached by a stair of rising tiles, a cellar 10 ft down reached by a ladder through a hole
+  in the floor, and a door. The cellar floor is seen down the hole, which reveals the cellar; a
+  creature under the floor beside the hole is not seen from above.
 - **Not built from S7**: last-seen markers (the client's, per the spec); ambient light in the map
   editor's level form (the DM panel sets it on the selected creature's level); the renderer shows
   remembered and dark tiles by colour only (S8 owns the rest).

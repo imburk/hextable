@@ -70,7 +70,7 @@ cannot say, by how much it would unlock:
 | S7 | ~~The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `save.death`; the `check` hook cannot be limited to one skill~~ (#80, #86). `carry` is still unread (no encumbrance) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
-| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82. ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+| S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
 
 ### Re-tiering pass (spells entered before the vocabulary grew)
 
@@ -116,7 +116,8 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 
 | P13 | A creature that cannot be seen cannot be targeted by players even where the SRD allows attacking a guessed location (with Disadvantage); a party member's path may go around a creature the players cannot see, which shows that something is there | engine |
 | P14 | Under the `light` sight rule each newly seen tile resends the whole map document to players (patches are per top-level field), which is a few tens of KB a step in a big dark place; tile memory is found by a flood that can miss a tile seen only through a sliver; sight is followed across tiles 40 hexes at most | engine |
-| P15 | Under the los and light sight rules, players see the fight order without an unseen creature and its turn as nobody's; a creature walking into view is sent with only the hexes of its path in view | any |
+| P15 | ~~Under the los and light sight rules, players see the fight order without an unseen creature and its turn as nobody's~~ (#101: one "someone unseen" slot and one `turn` line for a run of such turns, no id or count; the table rule `unseenTurns: quiet` says nothing). Still told: that some unseen creature is taking a turn (the game waits), whether a run of them spans the end of a round (the round number moves inside it, which shows there are at least two), and, from the server, how many updates the run produced (one per action, empty for players). A creature walking into view is sent with only the hexes of its path in view | any; the update count is the server's |
+| P16 | A single-use modifier spent by an ability check (`abilityCheck` in engine.js) still ends without an `effectEnd` event; saving throws were fixed (#101). No SRD entry has a single-use check modifier yet | engine |
 
 ## Table and server
 

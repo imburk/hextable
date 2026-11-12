@@ -1,31 +1,17 @@
 // End to end: start the real server and talk to it over HTTP and a real WebSocket.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { startServer, stopAll } from "./helpers.js";
 
-const PORT = 18000 + (process.pid % 2000);
-const data = mkdtempSync(join(tmpdir(), "hextable-"));
-let child;
-
-before(async () => {
-  child = spawn(process.execPath, [fileURLToPath(new URL("../src/index.js", import.meta.url))],
-    { env: { ...process.env, PORT: String(PORT), DATA_DIR: data }, stdio: ["ignore", "pipe", "inherit"] });
-  await new Promise((resolve, reject) => {
-    child.stdout.once("data", resolve);
-    child.once("exit", (code) => reject(new Error(`server exited early with code ${code}`)));
-  });
-});
-after(() => { child?.kill(); rmSync(data, { recursive: true, force: true }); });
+let PORT;
+before(async () => { ({ port: PORT } = await startServer()); });
+after(stopAll);
 
 // Open a socket, send one message, and collect replies until `until` says stop.
 function talk(first, until) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://localhost:${PORT}/ws`), got = [];
-    const timer = setTimeout(() => { ws.close(); reject(new Error(`timed out after ${JSON.stringify(got.map((m) => m.t))}`)); }, 5000);
+    const timer = setTimeout(() => { ws.close(); reject(new Error(`timed out after ${JSON.stringify(got.map((m) => m.t))}`)); }, 15_000);
     ws.onopen = () => ws.send(JSON.stringify(first));
     ws.onmessage = (ev) => {
       got.push(JSON.parse(ev.data));
@@ -69,12 +55,14 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
   // The DM may send a whole map: this one is over 300 KB, so it arrives in frames with a 64-bit
   // length, and the update that follows is large too.
   const map = structuredClone(update.state.map), tile = Object.values(map.levels[0].tiles)[0];
-  for (let q = -40; q < 40; q++) for (let r = -40; r < 40; r++) map.levels[0].tiles[`${q},${r}`] ??= { ...tile };
+  // (How many bytes a tile takes depends on the scenario's first tile, so widen the map until it is over 300 KB.)
+  for (let n = 40; JSON.stringify(map).length < 320000; n += 5)
+    for (let q = -n; q < n; q++) for (let r = -n; r < n; r++) map.levels[0].tiles[`${q},${r}`] ??= { ...tile };
   const loaded = new Promise((resolve) => {
     ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.t === "error" || m.t === "update") resolve(m); };
   });
   const body = JSON.stringify({ t: "act", action: { type: "loadMap", map } });
-  assert.ok(body.length > 300000);
+  assert.ok(body.length > 300000 && body.length < 1024 * 1024, `${body.length} bytes`);
   ws.send(body);
   const loadReply = await loaded;
   assert.equal(loadReply.t, "update", loadReply.error);

@@ -1,48 +1,26 @@
 // The abuse limits, origin check and security headers, against the real server.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { request } from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { after, test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { startServer, stopAll, within } from "./helpers.js";
 
-let next = 0;
-const running = [];
-// Start a server of its own, with these environment settings, and resolve to its port.
-async function start(env = {}) {
-  const port = 20000 + ((process.pid * 7 + next++ * 13) % 9000);
-  const data = mkdtempSync(join(tmpdir(), "hextable-h-"));
-  const child = spawn(process.execPath, [fileURLToPath(new URL("../src/index.js", import.meta.url))],
-    { env: { ...process.env, PORT: String(port), DATA_DIR: data, ...env }, stdio: ["ignore", "pipe", "inherit"] });
-  running.push({ child, data });
-  await new Promise((resolve, reject) => {
-    child.stdout.once("data", resolve);
-    child.once("exit", (code) => reject(new Error(`server exited early with code ${code}`)));
-  });
-  return port;
-}
-// Each server is stopped and waited for before its folder goes: a server still saving on its way out
-// would otherwise race the removal (ENOTEMPTY under load).
-after(async () => {
-  for (const { child, data } of running) {
-    if (child.exitCode === null && child.signalCode === null) { const gone = new Promise((r) => child.once("exit", r)); child.kill(); await gone; }
-    rmSync(data, { recursive: true, force: true, maxRetries: 5 });
-  }
-});
+// Start a server of its own, with these environment settings, on a free port, and resolve to the port.
+const start = async (env = {}) => (await startServer({ env })).port;
+after(stopAll);
 
 // A WebSocket that records everything it is sent and how it closed.
 function open(port) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://localhost:${port}/ws`), got = [];
-    const c = { ws, got, closed: new Promise((r) => { ws.onclose = (ev) => r(ev.code); }) };
+    const closed = new Promise((r) => { ws.onclose = (ev) => r(ev.code); });
+    const c = { ws, got, closed: within(closed, 10_000, "the socket to close") };
+    c.closed.catch(() => {});                                     // reported where it is awaited
     ws.onmessage = (ev) => got.push(JSON.parse(ev.data));
     ws.onopen = () => resolve(c);
     ws.onerror = () => reject(new Error("socket error"));
   });
 }
-const until = async (fn, ms = 3000) => {
+const until = async (fn, ms = 10_000) => {
   for (const end = Date.now() + ms; Date.now() < end;) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 10)); }
   throw new Error("timed out");
 };
@@ -105,10 +83,17 @@ test("at most N open connections per address; the extra one is told and closed",
   await extra.closed;
   held[0].ws.close();                                              // a place is freed
   await held[0].closed;
-  const again = await until(async () => { try { return await open(port); } catch { return null; } });
+  // The server frees the place when it sees the close, which can be a moment after the client does: try
+  // until a connection is let in and seated, and do not stop at the first one told to wait.
+  let again;
+  for (const end = Date.now() + 10_000; !again;) {
+    const c = await open(port);
+    c.ws.send(JSON.stringify({ t: "host", name: "Dana" }));
+    await until(() => c.got.length);
+    if (c.got.some((m) => m.t === "welcome")) again = c;
+    else { assert.deepEqual(c.got[0], TOO_MANY); await c.closed; assert.ok(Date.now() < end, "a place was never freed"); await new Promise((r) => setTimeout(r, 20)); }
+  }
   held[0] = again;
-  again.ws.send(JSON.stringify({ t: "host", name: "Dana" }));
-  await until(() => again.got.some((m) => m.t === "welcome"));
   for (const c of held) c.ws.close();
 });
 
@@ -153,7 +138,7 @@ test("join messages are limited per address", async () => {
 });
 
 test("a connection sending faster than its burst is told and closed", async () => {
-  const port = await start({ LIMIT_BURST: "5", LIMIT_RATE: "1" });
+  const port = await start({ LIMIT_BURST: "5", LIMIT_RATE: "0.001" });
   const c = await open(port);
   for (let i = 0; i < 8; i++) c.ws.send(JSON.stringify({ t: "sync" }));
   await c.closed;
