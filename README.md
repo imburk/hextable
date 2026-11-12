@@ -25,7 +25,7 @@ To run your own table server, see [packages/server](packages/server/README.md).
   Extra Attack, opportunity attacks, cover, rests. What the engine cannot apply it hands to the DM
   as a note, and says so; it does not guess.
 - **Content as data.** 339 spells, 329 monsters (with their actions, recharges and Multiattack)
-  and 24 map objects are entered. Not all play by the rules yet: 28 spells and 34 monsters do, most
+  and 24 map objects are entered. Not all play by the rules yet: 28 spells and 40 monsters do, most
   of the rest are partly applied and partly left to the DM. `npm run content` lists them by tier.
 - **Monsters play themselves** (the DM can switch that off): they use every action, area attacks and
   Multiattack.
