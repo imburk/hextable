@@ -10,6 +10,7 @@
   "scripts": {
     "test": "node --test \"packages/*/test/*.test.js\"",
     "build": "node scripts/build.mjs",
-    "start": "node scripts/build.mjs && node packages/server/src/index.js"
+    "start": "node scripts/build.mjs && node packages/server/src/index.js",
+    "content": "node scripts/content-report.mjs"
   }
 }

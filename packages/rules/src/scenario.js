@@ -1,7 +1,7 @@
 // Starter world: a small valley with a pond, woods, a ruin, a goblin camp and four heroes.
 import * as H from './hex.js';
 import { makeEntity } from './engine.js';
-import { MONSTERS, PREGENS } from './content/srd52.js';
+import { MONSTERS, PREGENS } from './content/index.js';
 
 const hash = (q, r, seed) => {
   let h = (q * 374761393 + r * 668265263 + seed * 2147483647) | 0;
@@ -31,7 +31,7 @@ export function newGame(seed = 7) {
   const colors = { fighter: '#c8553d', rogue: '#4a7c59', cleric: '#d9a441', wizard: '#5b6fb5' };
   [['fighter', -6, 2], ['rogue', -7, 3], ['cleric', -7, 2], ['wizard', -8, 3]].forEach(([k, q, r]) =>
     add(PREGENS[k], { id: k, kind: 'pc', side: 'party', pos: { q, r }, look: { color: colors[k] } }));
-  [['goblin', 4, -1], ['goblin', 5, -2], ['goblin', 5, 0], ['wolf', 6, -1], ['skeleton', 0, -9], ['skeleton', 1, -10]].forEach(([k, q, r], i) => {
+  [['goblin-warrior', 4, -1], ['goblin-warrior', 5, -2], ['goblin-warrior', 5, 0], ['wolf', 6, -1], ['skeleton', 0, -9], ['skeleton', 1, -10]].forEach(([k, q, r], i) => {
     const n = Object.values(s.entities).filter((o) => o.tpl === k).length + 1;
     add(MONSTERS[k], { id: `m${i + 1}`, tpl: k, name: `${MONSTERS[k].name} ${n}`, pos: { q, r } });
   });

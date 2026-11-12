@@ -8,7 +8,7 @@
 // an AI DM or AI character is just another caller of apply().
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
-import { SPELLS, TILES, MONSTERS } from './content/srd52.js';
+import { SPELLS, TILES, MONSTERS } from './content/index.js';
 
 export const FT = 5;                 // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight

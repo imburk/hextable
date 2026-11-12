@@ -4,7 +4,7 @@
 import * as H from './shared/hex.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, FT } from './shared/engine.js';
 import { aiStep } from './shared/ai.js';
-import { SPELLS, MONSTERS } from './shared/content/srd52.js';
+import { SPELLS, MONSTERS } from './shared/content/index.js';
 import { Renderer, hpFraction } from './render.js';
 import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs } from './transport.js';

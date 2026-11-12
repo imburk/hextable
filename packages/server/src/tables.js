@@ -10,6 +10,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 import { apply, recall } from "../../rules/src/engine.js";
 import { diff, snapshot } from "../../rules/src/patch.js";
+import { migrate } from "../../rules/src/migrate.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { view, viewEvents } from "../../rules/src/view.js";
 
@@ -25,7 +26,7 @@ export const MAX_MEMBERS = 12;
 export function createTables({ load = () => [], save = () => {}, seed = () => randomInt(1e9) } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
-  for (const t of load()) tables.set(t.code, t);
+  for (const t of load()) { migrate(t.state); tables.set(t.code, t); }     // saved tables may predate the current content ids
   // member id -> Set of live connections (the same person may have two tabs open)
   const online = new Map();
 

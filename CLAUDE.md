@@ -14,7 +14,11 @@ by the engine. Must work on PC, phone and tablet.
 
 - `packages/rules/src` — the rules engine. `apply(state, action, ctx)` is the
   only way game state changes. Also hex maths, seeded dice, monster AI, the
-  starter scenario and SRD content.
+  starter scenario, views and patches.
+- `packages/rules/src/content` — rules content. `srd52/` is a pack of data
+  files; `schema.js` is the closed vocabulary they may use and the linter
+  that enforces it; `index.js` loads packs. `npm run content` prints what is
+  entered and at which tier.
 - `packages/client` — the browser app: WebGL renderer, table UI, themes, and
   the transport that talks to either an in-tab engine (solo) or a server.
 - `packages/server` — the table server: serves the built game and runs
@@ -32,8 +36,11 @@ by the engine. Must work on PC, phone and tablet.
   `Math.random`: dice come from the seed stored in game state, so any game
   replays exactly.
 - **A rejected action changes nothing.** Validate before mutating.
-- **Content is data.** Spells, monsters and characters are entries in
-  `packages/rules/src/content`; code implements mechanics, data uses them.
+- **Content is data.** Spells, monsters and characters are entries in a pack
+  under `packages/rules/src/content`. Pack files hold no functions and no
+  imports. Code implements mechanics; data uses them. A new effect step,
+  hook, op or tag is an engine change with a spec amendment, never part of a
+  content change.
 - **Only SRD 5.2 content.** Nothing from non-SRD books goes in the repo.
 - **Presentation is swappable.** The renderer draws whatever state it is given;
   themes change styling only, never rules.
