@@ -5,6 +5,7 @@ import * as H from './shared/hex.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT } from './shared/engine.js';
 import { SKILLS } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
+import { coverOf } from './shared/sight.js';
 import { aiStep } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
@@ -51,6 +52,15 @@ const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refr
 function select(id) { selId = id; mode = MOVE; }
 
 // ---------- events -> log lines and floating numbers ----------
+// For the hint line: which of these targets the attacker would find behind cover.
+function coverHint(e, ids) {
+  const all = Object.values(S.entities), tags = [];
+  for (const id of ids) { const c = COVER_NAME[coverOf(S, e, S.entities[id], all)]; if (c) tags.push(`${name(id)}: ${c}`); }
+  return tags.length ? ` (${tags.join(', ')})` : '';
+}
+const COVER_NAME = { half: 'half cover', threeQuarters: 'three-quarters cover' };
+const behind = (c) => (COVER_NAME[c] ? ` behind ${COVER_NAME[c]}` : '');
+
 function describe(ev) {
   const n = name;
   switch (ev.type) {
@@ -59,7 +69,7 @@ function describe(ev) {
     case 'turn': return [`Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
     case 'joined': return [`${n(ev.id)} joins the fight${ev.init === undefined ? '' : ` (initiative ${ev.init})`}.`];
     case 'attack': {
-      const how = `${ev.actor === null ? `The ${ev.name.toLowerCase()}` : n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)}${ev.actor === null ? '' : ` with ${ev.name}`}`;
+      const how = `${ev.actor === null ? `The ${ev.name.toLowerCase()}` : n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)}${behind(ev.cover)}${ev.actor === null ? '' : ` with ${ev.name}`}`;
       const result = ev.crit ? 'Critical hit!' : ev.hit ? 'Hit.' : 'Miss.';
       // A monster's roll stays behind the DM's screen: players get the outcome only.
       if (!ev.rolls) return [`${how}${ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : ''}. ${result}`];
@@ -69,9 +79,11 @@ function describe(ev) {
     case 'damage': return [`${n(ev.target)} takes ${ev.amount} ${ev.dtype} damage${ev.note ? ` (${ev.note})` : ''}.`, 'bad'];
     case 'heal': return [`${n(ev.target)} regains ${ev.amount} Hit Points.`, 'good'];
     case 'cast': return [`${n(ev.actor)} casts ${ev.name}.`];
-    case 'save':
-      if (!('roll' in ev)) return [`${n(ev.id)} makes a ${ev.abil.toUpperCase()} save${ev.dc === undefined ? '' : ` against DC ${ev.dc}`}. ${ev.success ? 'Saved.' : 'Failed.'}`];
-      return [`${n(ev.id)} ${ev.roll ? `rolls a ${ev.abil.toUpperCase()} save: ${ev.total} vs DC ${ev.dc}.` : `automatically fails the ${ev.abil.toUpperCase()} save.`} ${ev.success ? 'Saved.' : 'Failed.'}`];
+    case 'save': {
+      const cv = behind(ev.cover);       // half or three-quarters cover helps a Dexterity save
+      if (!('roll' in ev)) return [`${n(ev.id)} makes a ${ev.abil.toUpperCase()} save${ev.dc === undefined ? '' : ` against DC ${ev.dc}`}${cv}. ${ev.success ? 'Saved.' : 'Failed.'}`];
+      return [`${n(ev.id)} ${ev.roll ? `rolls a ${ev.abil.toUpperCase()} save: ${ev.total} vs DC ${ev.dc}${cv}.` : `automatically fails the ${ev.abil.toUpperCase()} save.`} ${ev.success ? 'Saved.' : 'Failed.'}`];
+    }
     case 'down': return [`${n(ev.id)} drops to 0 Hit Points and is dying.`, 'bad'];
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
@@ -276,7 +288,7 @@ function refresh() {
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
-        hint = hl.targets.length ? `${a.name}: tap a target` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
+        hint = hl.targets.length ? `${a.name}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
@@ -292,7 +304,7 @@ function refresh() {
           const ids = targetsFor(S, e, { spell: mode.id });
           if (!sp.harmful) hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
-          hint = (hl.allies || hl.targets).length ? `${sp.name}: tap a target` : `${sp.name}: nobody within ${sp.range} ft`;
+          hint = (hl.allies || hl.targets).length ? `${sp.name}: tap a target${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -343,7 +355,7 @@ function renderSheet() {
 function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off';
-  $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-climb').checked = S.settings.climbing !== 'off';
+  $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-cover').value = S.settings.cover ?? 'on'; $('dm-creature-cover').checked = S.settings.creatureCover !== 'off'; $('dm-climb').checked = S.settings.climbing !== 'off';
   const picked = S.entities[selId], hideable = picked && picked.side !== 'party' && !picked.dead;
   $('dm-hide').disabled = !hideable || (!picked.hidden && inFight(S, picked.id));
   $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
@@ -463,6 +475,8 @@ $('dm-cond-clear').onclick = () => { const e = S.entities[selId], id = $('dm-con
 $('dm-hide').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'reveal', actor: e.id, hidden: !e.hidden }); };
 $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', value: ev.target.checked });
 $('dm-vertical').onchange = (ev) => act({ type: 'setting', key: 'vertical', value: ev.target.value });
+$('dm-cover').onchange = (ev) => act({ type: 'setting', key: 'cover', value: ev.target.value });
+$('dm-creature-cover').onchange = (ev) => act({ type: 'setting', key: 'creatureCover', value: ev.target.checked ? 'on' : 'off' });
 $('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
 $('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', actor: selId, size: ev.target.value }); };
 $('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setSpeed', actor: e.id, mode: 'fly', feet: e.speeds?.fly ? 0 : 60 }); };
