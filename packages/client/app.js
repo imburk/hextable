@@ -443,11 +443,11 @@ function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
   const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
-  const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
+  const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(e.saveBonus?.[k] ?? mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
   $('sheet-body').innerHTML = `
     <h2>${esc(e.name)}</h2>
     <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}</p>
-    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
+    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
     <div class="stats">${abil}</div>
     <p class="note">Saving throws: ${saves}</p>
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
@@ -558,6 +558,8 @@ $('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick 
 R.onTap = ({ hex, id }) => {
   if (!S || !T) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
+  const inZone = [...new Set(R.zonesAt(hex))];
+  if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
