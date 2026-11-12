@@ -1,7 +1,8 @@
 # Spec: rules expansion
 
-Status: design agreed by the project owner, not built. Owner of the design:
-Claude (Fable). Reviewed against the full current rules and common house
+Status: design agreed by the project owner, partly built (R1 to R4 are marked in the
+task table; quick entry and space are in the game too; see `docs/DEBT.md` for the rest).
+Owner of the design: Claude (Fable). Reviewed against the full current rules and common house
 rules in `rules-coverage.md`.
 Covers characters, levelling, conditions, durations, reactions, and the data
 format for all SRD 5.2.1 content. Tasks at the end are sized for one pull
