@@ -16,11 +16,12 @@ players are sent). **any** can be handed to any agent.
 | W3 | ~~Resistance and Vulnerability to the same damage only halves it~~ (#65) | engine |
 | W4 | ~~Ranged attacks beside an enemy have Disadvantage even if that enemy cannot see the attacker or is Incapacitated~~ (#65) | engine |
 | W5 | Dodge ignores "can see the attacker" (left for the sight work: with no `canSee` there is nothing to test; W4 stands in "not Blinded" for it, and both should move to the sight check together) | engine (with sight) |
-| W6 | Every standing enemy blocks movement outright; the SRD allows passing some | engine |
+| W6 | ~~Every standing enemy blocks movement outright; the SRD allows passing some~~ (#68) | engine |
 | W7 | ~~A tool used with a skill the creature is proficient in should give Advantage~~ (#65) | engine |
-| W8 | A `condition` step is always treated as hostile, so a helpful one (Invisibility) is refused on oneself and starts a fight on an ally | engine |
-| W9 | Size limits on Prone, Grappled and pushes are not applied; any size is affected | engine |
+| W8 | ~~A `condition` step is always treated as hostile, so a helpful one (Invisibility) is refused on oneself and starts a fight on an ally~~ (#68) | engine |
+| W9 | Size limits on Prone, Grappled and pushes are not applied; any size is affected. Not fixable in the engine alone: no step can say a size limit (the Wolf's `{ condition: "prone" }` carries none), so it needs a vocabulary change first, such as a `when` tag on the target's size or a `maxSize` on condition and move steps (looked at in #68) | engine |
 | W10 | Death Saving Throws are rolled only in a fight, and a Stable creature's 1 Hit Point after 1d4 hours happens only across a Long Rest; a dying creature at a Long Rest is handed to the DM (#65) | engine |
+| W11 | A creature that ends its turn in another creature's space is not knocked Prone (SRD "Moving around Other Creatures"); only reachable today by being pushed or falling there, which the DM handles (P4) | engine |
 
 ## Monsters
 
@@ -54,7 +55,7 @@ many monsters each one touches:
 
 ## Spells
 
-339 are entered; 11 play fully, 85 partly, 243 are applied by the DM. What the vocabulary
+339 are entered; 12 play fully, 86 partly, 241 are applied by the DM. What the vocabulary
 cannot say, by how much it would unlock:
 
 | # | What | Who |
