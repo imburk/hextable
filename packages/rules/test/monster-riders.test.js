@@ -66,3 +66,49 @@ test("a Merfolk Skirmisher's Ocean Spear, thrown or in hand, slows the target by
     assert.ok(CONTENT.monsters["merfolk-skirmisher"].actions.every((a) => !JSON.stringify(a.effects ?? []).includes("manual")));
   }
 });
+
+test("a Worg's Bite gives the next attack roll against the target Advantage, until the worg's next turn starts", () => {
+  const { s, m, t } = hitWith("worg", "bite", { at: { q: 2, r: 0 } });
+  const m1 = modifiers(s, t, "attack.received", {}, "target");
+  assert.equal(m1.advantage.length, 1);
+  assert.equal(m1.used.length, 1, "a single use");
+  assert.equal(modifiers(s, s.entities.wizard, "attack.received", {}, "target").advantage.length, 0);
+  assert.ok(CONTENT.monsters.worg.actions.every((a) => !JSON.stringify(a.effects ?? []).includes("manual")));
+  assert.equal(CONTENT.monsters.worg.tier, "auto");
+  ok(apply(s, { type: "endTurn", actor: m.id }, DM));
+  turnOf(s, m.id);                                                                   // the worg's next turn starts: the Advantage is gone
+  assert.equal(modifiers(s, t, "attack.received", {}, "target").advantage.length, 0);
+});
+
+test("a Steam Mephit's Blurred Form gives Disadvantage against it, unless it is Incapacitated", () => {
+  const s = field();
+  const id = ok(apply(s, { type: "spawn", monster: "steam-mephit", at: { q: 2, r: 0 } }, DM)).events[0].id;
+  const m = s.entities[id];
+  assert.equal(modifiers(s, m, "attack.received", {}, "target").disadvantage.length, 1);
+  m.cond.incapacitated = {};
+  assert.equal(modifiers(s, m, "attack.received", {}, "target").disadvantage.length, 0);
+  assert.equal(modifiers(s, s.entities.fighter, "attack.received", {}, "target").disadvantage.length, 0);
+});
+
+test("a Steam Mephit's Steam Breath slows those who fail the save, until the end of the mephit's next turn", () => {
+  let found = null;
+  for (let seed = 1; seed <= 40 && !found; seed++) {
+    const s = field(seed);
+    const m = s.entities[ok(apply(s, { type: "spawn", monster: "steam-mephit", at: { q: 2, r: 0 } }, DM)).events[0].id];
+    m.hp = m.maxHp = 500;
+    ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 10 }, DM));
+    turnOf(s, m.id);
+    const f = s.entities.fighter;
+    const ev = ok(apply(s, { type: "act", actor: m.id, action: "steam-breath", hex: { q: 1, r: 0 } }, DM)).events;
+    const sv = ev.find((e) => e.type === "save" && e.id === "fighter");
+    if (sv && !sv.success) found = { s, m, f };
+  }
+  assert.ok(found, "a failed save turned up");
+  const { s, m, f } = found;
+  assert.equal(modifiers(s, f, "speed").add, -10);
+  ok(apply(s, { type: "endTurn", actor: m.id }, DM));
+  turnOf(s, m.id);                                                                   // the mephit's next turn starts: still slowed
+  assert.equal(modifiers(s, f, "speed").add, -10);
+  ok(apply(s, { type: "endTurn", actor: m.id }, DM));                                // and its end lifts it
+  assert.equal(modifiers(s, f, "speed").add, 0);
+});

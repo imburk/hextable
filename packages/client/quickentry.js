@@ -3,6 +3,7 @@
 // Every number is checked by lintRecord (the same check the engine runs), so nothing here decides a rule.
 import { ABILITIES, DAMAGE_TYPES, SIZES, SKILLS, lintRecord } from './shared/content/schema.js';
 import { SPELLS } from './shared/content/index.js';
+import { initBuild } from './buildsheet.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -116,7 +117,12 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
   const bEdit = el('button', { type: 'button', id: 'qe-edit', text: 'Edit sheet', disabled: true });
   const bRemove = el('button', { type: 'button', id: 'qe-remove', text: 'Remove selected', disabled: true });
   const sure = el('div', { class: 'qe-sure', id: 'qe-sure', hidden: true });
-  host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bEdit, bRemove), sure);
+  const bBuild = el('button', { type: 'button', id: 'qb-add', text: 'Build from class' });
+  const bLevel = el('button', { type: 'button', id: 'qb-levelup', text: 'Level up', disabled: true });
+  host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bBuild, bEdit, bLevel, bRemove), sure);
+  const B = initBuild({ act, toast, getState, getSelected });
+  bBuild.onclick = () => B.open({ mode: 'add' });
+  bLevel.onclick = () => { const e = getState()?.entities[getSelected()]; if (e?.sheet) B.open({ mode: 'levelup', entity: e }); };
 
   // The form, in a panel of its own.
   const panel = el('aside', { id: 'qe', class: 'panel qe', hidden: true, 'aria-label': 'Quick entry' });
@@ -144,7 +150,8 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
   function build() {
     panel.textContent = '';
     for (const k of Object.keys(refs)) delete refs[k];
-    const head = el('div', { class: 'qe-head' }, el('h2', { text: editing ? `Edit ${editing.name}` : 'Add a character' }), el('button', { type: 'button', class: 'close', id: 'qe-close', text: 'Close', onclick: close }));
+    const head = el('div', { class: 'qe-head' }, el('h2', { text: editing ? `Edit ${editing.name}` : 'Add a character' }), el('button', { type: 'button', class: 'close', id: 'qe-close', text: 'Close', onclick: close }),
+      ...(editing ? [] : [el('button', { type: 'button', id: 'qe-to-build', text: 'Build from class and level instead', onclick: () => { close(); B.open({ mode: 'add' }); } })]));
     // Who
     const who = el('section', {}, el('h3', { text: 'Who' }), el('div', { class: 'qe-grid qe-2' },
       field('Name', 'name', 'name', { mode: 'text', max: 40, cap: 'words', cls: 'wide' }), field('Class', 'cls', 'cls', { mode: 'text', max: 40, cap: 'words' }),
@@ -274,7 +281,7 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
     sure.hidden = false; sure.scrollIntoView({ block: 'nearest' }); sureTimer = setTimeout(() => (sure.hidden = true), 8000);
   }
   bAdd.onclick = () => open(null, null);
-  bEdit.onclick = () => { const e = getState()?.entities[getSelected()]; if (e?.kind === 'pc') open(recordOf(e), e.id); };
+  bEdit.onclick = () => { const e = getState()?.entities[getSelected()]; if (e?.sheet) B.open({ mode: 'edit', entity: e }); else if (e?.kind === 'pc') open(recordOf(e), e.id); };
   bRemove.onclick = () => { const e = getState()?.entities[getSelected()]; if (e) ask(e); };
 
   return {
@@ -282,11 +289,14 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
     sync(state, selId) {
       const e = state?.entities[selId];
       bEdit.disabled = !(e?.kind === 'pc' && e.abil); bRemove.disabled = !e;
+      bLevel.disabled = !(e?.kind === 'pc' && e.sheet && e.sheet.level < 20 && !(state.encounter?.order ?? []).some((o) => o.id === e.id));
+      bLevel.title = bLevel.disabled ? 'Select a built character outside a fight' : '';
       bEdit.title = bEdit.disabled ? 'Select a character first' : ''; bRemove.title = bRemove.disabled ? 'Select a creature first' : '';
       if (!sure.hidden && !e) sure.hidden = true;
     },
     // Called with each batch of events: an added or corrected character closes the form.
     events(events) {
+      B.events(events);
       if (!pending) return;
       const done = events.find((ev) => ev.type === pending);
       if (!done) return;
