@@ -55,10 +55,10 @@ export const monsters = [
     ac: 14, hp: 13, speed: { walk: 30 },
     senses: { darkvision: 60 },
     abilities: { str: 10, dex: 16, con: 15, int: 6, wis: 8, cha: 5 },
-    resist: [], vulnerable: ["bludgeoning"], immune: ["poison"],
+    resist: [], vulnerable: ["bludgeoning"], immune: ["poison"], conditionImmune: ["exhaustion", "poisoned"],
     traits: [
       { id: "condition-immunities", name: "Condition Immunities", modifiers: [],
-        text: "Immune to the Exhaustion and Poisoned condition(s). The engine has no field for condition immunities yet." },
+        text: "Immune to the Exhaustion and Poisoned condition(s). The engine applies this." },
     ],
     actions: [
       { id: "shortsword", name: "Shortsword", target: { creature: { reach: 5 } },

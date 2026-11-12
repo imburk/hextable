@@ -38,8 +38,14 @@ export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));
 
 // ---------- bridge to the engine's current shape, for monsters and pregens ----------
-// Weapon attacks are still flat records. They move to effect steps when modifiers and
-// equipment do (tasks R3 and R10); this bridge goes then.
+// A monster plays from its actions, as data: each one's effect steps run through the effect
+// runner like a spell's (engine action `act`). MONSTER_ACTIONS holds them, minus their text;
+// makeEntity gives a creature made from a pack monster its own copy.
+//
+// The flat `attacks` list below is kept as a summary of the simple weapon attacks, for old
+// saved games whose creatures have no template, and for screens that list attacks. The engine
+// does not use it for a creature that has actions. Characters' attacks are flat records until
+// equipment is built (R10).
 
 const simpleDamage = (steps) => Array.isArray(steps) && steps[0]?.damage !== undefined;
 const LEGACY_FEATURES = { 'nimble-escape': 'nimbleEscape', 'pack-tactics': 'packTactics' };
@@ -54,7 +60,7 @@ function legacyAttack(a) {
     ...(rest.some((x) => x.condition === 'prone') ? { onHit: 'prone' } : {}),
   };
 }
-const playableAction = (a) => a.effects.length === 1 && a.effects[0].attack && a.effects[0].kind === 'weapon' && simpleDamage(a.effects[0].onHit) && !!a.target.creature;
+const playableAction = (a) => !a.multiattack && a.effects.length === 1 && a.effects[0].attack && a.effects[0].kind === 'weapon' && simpleDamage(a.effects[0].onHit) && !!a.target.creature;
 function legacyMonster(m) {
   const features = {};
   for (const t of m.traits) if (LEGACY_FEATURES[t.id]) features[LEGACY_FEATURES[t.id]] = true;
@@ -64,12 +70,16 @@ function legacyMonster(m) {
     ...(m.vulnerable.length ? { vuln: [...m.vulnerable] } : {}),
     ...(m.immune.length ? { immune: [...m.immune] } : {}),
     ...(m.resist.length ? { resist: [...m.resist] } : {}),
+    ...(m.conditionImmune ? { conditionImmune: [...m.conditionImmune] } : {}),
     ...(m.skills ? { skillBonus: { ...m.skills } } : {}),
     attacks: m.actions.filter(playableAction).map(legacyAttack),
   };
 }
 const legacyPregen = ({ id, ...record }) => structuredClone(record);
+// What a creature carries of each action: everything but the text, which stays in the pack.
+const runtimeAction = ({ text, ...a }) => structuredClone(a);
 
 const table = (list, make) => Object.fromEntries(list.map((e) => [e.id, make(e)]));
 export const MONSTERS = table(monsters, legacyMonster);
 export const PREGENS = table(pregens, legacyPregen);
+export const MONSTER_ACTIONS = table(monsters, (m) => m.actions.map(runtimeAction));

@@ -170,5 +170,5 @@ test("the starting valley has the engage distance at 10 ft, and saved tables get
   assert.equal(newGame().settings.engageRange, 10);
   const old = newGame(); delete old.settings.engageRange; old.version = 8;
   assert.equal(migrate(old).settings.engageRange, 10);
-  assert.equal(old.version, 9);
+  assert.equal(old.version, 10);
 });
