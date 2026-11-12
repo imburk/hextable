@@ -192,6 +192,7 @@ export class Renderer {
     this.pics = [];                           // what to draw: { asset, first } (first vertex in picBuf), rebuilt with the terrain
     this.onPicture = null;                    // called when a picture has arrived
     this.assetUrl = null;                     // (asset id) -> Promise<blob: URL>; set by the app (never a token in a URL)
+    this.bars = []; this.barZ = 0;
     this.pins = [];                           // points in map feet to mark (the editor's scale tool)
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -296,8 +297,12 @@ export class Renderer {
     const C = this.C ?? this.#camera(), u = (a) => { const l = Math.hypot(a[0], a[2]) || 1; return [a[0] / l, a[2] / l]; };
     return { right: u(C.r), up: u(C.f) };
   }
-  // Marks on the floor of a level (map feet), for the scale tool: a dot at each point and a line between two.
+  // Marks on the floor of a level (map feet), for the editor's scale and trace tools: a dot at each point and a line along them.
   setPins(points, levelZ = 0) { this.pins = points.map((p) => [...p]); this.pinZ = levelZ; if (this.state) this.#buildOverlay(); }
+  // Short bars across neighbouring hex steps that a wall stops: [[x1, y1, x2, y2], ...] in map feet.
+  setBars(bars, levelZ = 0) { this.bars = bars; this.barZ = levelZ; if (this.state) this.#buildOverlay(); }
+  // Where a point on a level's floor (map feet) is on the screen, in canvas pixels. Null if behind the camera.
+  screenPoint(x, y, feet = 0) { return this.C ? this.#project(this.C, x * UNIT, surfY(feet), y * UNIT) : null; }
   // A level's picture, if there is one and it has arrived (so the floor can be drawn from it).
   hasPicture(levelId) {
     const l = this.state?.map.levels.find((x) => x.id === levelId);
@@ -507,10 +512,18 @@ export class Renderer {
     if (this.pins.length) {
       const y = surfY(this.pinZ ?? 0) + 0.06, red = [0.95, 0.15, 0.15, 0.95];
       for (const [x, z] of this.pins) b.flatHex(x * UNIT, z * UNIT, y, 0, 0.32, red);
-      if (this.pins.length > 1) {
-        const [p, q] = this.pins, ax = p[0] * UNIT, az = p[1] * UNIT, bx = q[0] * UNIT, bz = q[1] * UNIT, len = Math.hypot(bx - ax, bz - az) || 1, nx = (-(bz - az) / len) * 0.06, nz = ((bx - ax) / len) * 0.06;
+      for (let i = 1; i < this.pins.length; i++) {
+        const p = this.pins[i - 1], q = this.pins[i], ax = p[0] * UNIT, az = p[1] * UNIT, bx = q[0] * UNIT, bz = q[1] * UNIT, len = Math.hypot(bx - ax, bz - az) || 1, nx = (-(bz - az) / len) * 0.06, nz = ((bx - ax) / len) * 0.06;
         b.quad([ax + nx, y, az + nz], [ax - nx, y, az - nz], [bx - nx, y, bz - nz], [bx + nx, y, bz + nz], red);
         b.quad([ax - nx, y, az - nz], [ax + nx, y, az + nz], [bx + nx, y, bz + nz], [bx - nx, y, bz - nz], red);
+      }
+    }
+    if (this.bars.length) {                       // a step a wall stops: a short bar across the middle of the line between the two hex centres
+      const y = surfY(this.barZ) + 0.05, amber = [1, 0.62, 0.1, 0.95];
+      for (const [x1, y1, x2, y2] of this.bars) {
+        const mx = ((x1 + x2) / 2) * UNIT, mz = ((y1 + y2) / 2) * UNIT, dx = (x2 - x1) * UNIT, dz = (y2 - y1) * UNIT, len = Math.hypot(dx, dz) || 1, ux = (dx / len) * 0.2, uz = (dz / len) * 0.2, nx = (-uz / 0.2) * 0.04, nz = (ux / 0.2) * 0.04;
+        b.quad([mx - ux + nx, y, mz - uz + nz], [mx - ux - nx, y, mz - uz - nz], [mx + ux - nx, y, mz + uz - nz], [mx + ux + nx, y, mz + uz + nz], amber);
+        b.quad([mx - ux - nx, y, mz - uz - nz], [mx - ux + nx, y, mz - uz + nz], [mx + ux + nx, y, mz + uz + nz], [mx + ux - nx, y, mz + uz - nz], amber);
       }
     }
     this.overlay.set(b);

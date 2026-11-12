@@ -4,16 +4,20 @@
 import * as H from './shared/hex.js';
 import { TILES } from './shared/content/terrain.js';
 import { CONTENT } from './shared/content/index.js';
-import { WALL_KINDS, edgeSegment, objectHexes } from './shared/walls.js';
+import { WALL_KINDS, barriers, center, edgeSegment, objectHexes, objectSegment } from './shared/walls.js';
+import { FT } from './shared/space.js';
 import { newMap, lintMap, migrateMap } from './shared/map.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const TOOLS = { paint: 'Paint', erase: 'Erase', wall: 'Walls', object: 'Doors & things', region: 'Rooms', height: 'Height', props: 'Properties', start: 'Start', level: 'Levels', file: 'Map file' };
+const TOOLS = { paint: 'Paint', erase: 'Erase', wall: 'Walls', trace: 'Trace', object: 'Doors & things', region: 'Rooms', height: 'Height', props: 'Properties', start: 'Start', level: 'Levels', file: 'Map file' };
 const HINTS = {
   paint: 'Tap or drag across hexes to paint them, empty ones too.',
   erase: 'Tap or drag across tiles to remove them, with any door or thing on them.',
   wall: 'Tap two neighbouring hexes to wall the edge between them. Do it again to take the wall away.',
+  trace_wall: 'Tap points along a wall on the picture. Tap the last point again, or Done, to finish the line. Tap the first point to close a room.',
+  trace_door: 'Tap the two ends of a door. Leave a gap in the wall for it, then tap across the gap.',
+  trace_edit: 'Tap a wall or door to pick it, then Delete. Drag a red end to move it (walls that meet there move together). Amber bars are hex steps a wall stops.',
   door: 'Tap two neighbouring hexes to put the door on the edge between them. Again to remove it.',
   thing: 'Tap a hex to put it there. Tap it again to remove it.',
   ladder: 'Tap where it stands, then where it leads (switch level between taps if it goes up or down).',
@@ -40,6 +44,8 @@ export class Editor {
     this.def = Object.keys(CONTENT.objects)[0]; this.region = ''; this.levelId = null; this.showAll = false;
     this.pending = null;          // the first hex of a two-tap edit: { q, r, level }
     this.armed = null;            // a button that needs a second tap
+    this.tmode = 'wall'; this.tdef = Object.values(CONTENT.objects).find((o) => o.kind === 'door')?.id; this.snap = 1;
+    this.traceLine = []; this.sel = null; this.endDrag = null; this.barSig = '';      // the trace tool: a line being drawn, the wall picked, an end being dragged
     this.scaling = null;          // the scale tool: { pts: [[x, y], ...] } in map feet, two taps on the picture
     this.hmode = 'up'; this.lastH = null; this.props = null; this.stroke = null; this.areaOver = null;   // height tool, properties form, a drag in progress
     this.#build();
@@ -62,7 +68,7 @@ export class Editor {
   stop() {
     if (!this.on) return;
     this.on = false; this.pending = null;
-    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.R.setPins([]); this.pinSig = '';
+    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.traceLine = []; this.sel = null; this.endDrag = null; this.R.setPins([]); this.R.setBars([]); this.pinSig = ''; this.barSig = '';
     document.body.classList.remove('editing'); $('editor').hidden = true;
     if (this.S) this.refresh();
   }
@@ -113,6 +119,7 @@ export class Editor {
     $('ed-hint').textContent = this.pending ? (this.tool === 'object' && d.connects ? 'Now tap where it leads.' : 'Now tap a neighbouring hex.') : HINTS[hint];
     this.#syncMore(room);
     this.#syncBackground(l);
+    this.#syncTrace(l);
     this.R.inset = $('editor').offsetHeight * 0.85;
   }
 
@@ -120,6 +127,7 @@ export class Editor {
   #tap(px, py) {
     if (!this.S) return;
     if (this.scaling && this.tool === 'level') return this.#scaleTap(px, py);
+    if (this.tool === 'trace') return this.#traceTap(px, py);
     const l = this.level(), h = this.R.planeHex(px, py, l.z);
     if (!h) return;
     const k = H.col(h), tile = l.tiles[k], map = this.S.map, area = this.areaOver ?? H.range(h, this.brush);
@@ -232,11 +240,13 @@ export class Editor {
     const show = () => this.R.setHighlights(this.marks());
     return {
       down: (x, y, ev) => {
+        if (this.on && this.tool === 'trace' && this.tmode === 'edit' && ev.button !== 2 && !ev.shiftKey) return this.#endDown(x, y);
         if (!this.on || !['paint', 'erase', 'region'].includes(this.tool) || ev.button === 2 || ev.shiftKey) return false;
         this.stroke = { hexes: new Map(), from: [x, y], last: [x, y] };
         add(x, y); return true;
       },
       move: (x, y) => {
+        if (this.endDrag) return this.#endMove(x, y);
         if (!this.stroke) return;
         const [x0, y0] = this.stroke.last, n = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / 6));
         let more = false;
@@ -245,13 +255,14 @@ export class Editor {
         if (more) show();
       },
       end: () => {
+        if (this.endDrag) return this.#endUp();
         const st = this.stroke; this.stroke = null;
         if (!st) return;
         this.areaOver = this.#strokeAreaOf(st);
         try { this.#tap(...st.from); } finally { this.areaOver = null; }
         show();
       },
-      cancel: () => { this.stroke = null; show(); },
+      cancel: () => { this.stroke = null; this.endDrag = null; show(); this.refresh(); },
     };
   }
   #strokeAreaOf(st) { const was = this.stroke; this.stroke = st; const a = this.#strokeArea(); this.stroke = was; return a; }
@@ -414,6 +425,190 @@ export class Editor {
     if (this.tool === 'props') $('ed-hint').textContent = this.props?.pick === 'to' ? 'Tap the tile it leads to (change level first if it goes up or down).' : this.props?.pick === 'link' ? 'Tap the other object.' : HINTS.props;
   }
 
+  // ---------- trace: walls and doors drawn over the picture ----------
+  // Walls are free line segments in feet, so nothing here snaps to hexes. Every gesture is one mapEdit.
+  #pieces(l) {         // everything on this level that is a line: walls and traced doors
+    const map = this.S.map, out = [];
+    for (const w of map.walls) if (w.level === l.id) out.push({ type: 'wall', id: w.id, a: w.a, b: w.b, item: w });
+    for (const o of map.objects) { const seg = o.level === l.id && o.seg && objectSegment(o); if (seg) out.push({ type: 'object', id: o.id, a: seg[0], b: seg[1], item: o }); }
+    return out;
+  }
+  #px(p, l) { return this.R.screenPoint(p[0], p[1], l.z); }
+  #near(p, l, px, py, r = 20) { const s = this.#px(p, l); return !!s && Math.hypot(s.x - px, s.y - py) <= r; }
+  // A tapped point on the floor, pulled to a nearby wall end (so corners meet) or rounded to the snap step.
+  #snapPoint(p, l, px, py, skip = () => false) {
+    let best = null, bd = 18;
+    const ends = [...this.#pieces(l).filter((x) => !skip(x)).flatMap((x) => [x.a, x.b]), ...this.traceLine];
+    for (const e of ends) { const s = this.#px(e, l); if (!s) continue; const d = Math.hypot(s.x - px, s.y - py); if (d < bd) { bd = d; best = e; } }
+    if (best) return [...best];
+    const k = this.snap || 0.01;
+    return [Math.round(p[0] / k) * k, Math.round(p[1] / k) * k].map((n) => Math.round(n * 100) / 100);
+  }
+  #traceTap(px, py) {
+    const l = this.level();
+    if (!l.image) return this.toast('Set a background picture first (Levels tool).');
+    const p = this.R.planePoint(px, py, l.z);
+    if (!p) return;
+    if (this.tmode === 'edit') return this.#pickPiece(px, py, l);
+    const q = this.#snapPoint(p, l, px, py), line = this.traceLine;
+    if (this.tmode === 'door') {
+      if (!line.length) { line.push(q); return this.refresh(); }
+      return this.#placeDoor(l, line.pop(), q);
+    }
+    if (line.length && this.#near(line.at(-1), l, px, py)) return this.#finishLine();
+    if (line.length > 2 && this.#near(line[0], l, px, py)) { line.push([...line[0]]); return this.#finishLine(); }
+    line.push(q);
+    this.refresh();
+  }
+  #finishLine() {
+    const l = this.level(), line = this.traceLine, ops = [];
+    for (let i = 1; i < line.length; i++) if (Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]) >= 0.5) ops.push({ op: 'wall', wall: { level: l.id, a: line[i - 1], b: line[i], kind: this.kind } });
+    this.traceLine = [];
+    if (!ops.length) { this.refresh(); return this.toast('A wall needs two points apart.', true); }
+    this.edit(ops);
+  }
+  // The hex a traced door belongs to is the one nearest its middle; it needs a floor tile, so one is added if it is missing.
+  #doorAt(mid, l) { const at = H.fromWorld(mid[0], mid[1], FT / Math.sqrt(3)); return { at: { q: at.q, r: at.r }, tile: l.tiles[H.col(at)] ? null : { op: 'tile', level: l.id, at: { q: at.q, r: at.r }, tile: { t: 'stone' } } }; }
+  #placeDoor(l, a, b) {
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) { this.refresh(); return this.toast('A door needs two points at least 1 ft apart.', true); }
+    const { at, tile } = this.#doorAt([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], l);
+    this.edit([...(tile ? [tile] : []), { op: 'object', object: { def: this.tdef, level: l.id, at, seg: { a, b } } }]);
+  }
+  #pickPiece(px, py, l) {
+    let best = null, bd = 18;
+    for (const x of this.#pieces(l)) {
+      const a = this.#px(x.a, l), b = this.#px(x.b, l); if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy, t = len ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / len)) : 0;
+      const d = Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
+      if (d < bd) { bd = d; best = x; }
+    }
+    this.sel = best && { type: best.type, id: best.id };
+    this.refresh();
+    if (!best) this.toast('No wall or door there.', true);
+  }
+  #selected(l) { return this.sel && this.#pieces(l).find((x) => x.type === this.sel.type && x.id === this.sel.id); }
+  // Dragging a wall end: every piece that meets at that point moves with it.
+  #endDown(px, py) {
+    const l = this.level(), p = this.R.planePoint(px, py, l.z);
+    if (!l.image || !p) return false;
+    const sel = this.#selected(l);
+    let best = null, bd = 22;
+    for (const x of this.#pieces(l)) for (const end of ['a', 'b']) {
+      const s = this.#px(x[end], l); if (!s) continue;
+      const d = Math.hypot(s.x - px, s.y - py) - (sel && x.id === sel.id && x.type === sel.type ? 4 : 0);       // a tie goes to the picked piece
+      if (d < bd) { bd = d; best = x[end]; }
+    }
+    if (!best) return false;
+    const same = (q) => Math.abs(q[0] - best[0]) < 1e-6 && Math.abs(q[1] - best[1]) < 1e-6;
+    const members = this.#pieces(l).flatMap((x) => ['a', 'b'].filter((e) => same(x[e])).map((end) => ({ ...x, end })));
+    this.endDrag = { from: [px, py], to: null, members, start: best, moved: false };
+    return true;
+  }
+  #endMove(px, py) {
+    const d = this.endDrag, l = this.level(), p = this.R.planePoint(px, py, l.z);
+    if (!d || !p) return;
+    if (!d.moved && Math.hypot(px - d.from[0], py - d.from[1]) < 8) return;
+    d.moved = true;
+    d.to = this.#snapPoint(p, l, px, py, (x) => d.members.some((m) => m.type === x.type && m.id === x.id));
+    const m = d.members[0];
+    this.R.setPins([m[m.end === 'a' ? 'b' : 'a'], d.to], l.z);
+  }
+  #endUp() {
+    const d = this.endDrag; this.endDrag = null;
+    const l = this.level();
+    if (!d.moved || !d.to) { this.#pickPiece(...d.from, l); return; }
+    const ops = [];
+    for (const m of d.members) {
+      const a = m.end === 'a' ? d.to : m.a, b = m.end === 'b' ? d.to : m.b;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.5) { this.refresh(); return this.toast('That would make it too short.', true); }
+      if (m.type === 'wall') ops.push({ op: 'wall', wall: { ...m.item, a, b } });
+      else { const { at, tile } = this.#doorAt([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], l); if (tile) ops.push(tile); ops.push({ op: 'object', object: { ...m.item, at, seg: { a, b } } }); }
+    }
+    this.sel = { type: d.members[0].type, id: d.members[0].id };
+    this.edit(ops);
+  }
+  #deleteSelected() {
+    const x = this.#selected(this.level());
+    if (!x) return;
+    this.sel = null;
+    this.edit([x.type === 'wall' ? { op: 'unwall', id: x.id } : { op: 'unobject', id: x.id }]);
+  }
+  // Lay stone on every hex whose centre is inside the picture and has no tile yet: one edit.
+  #fillFloor() {
+    const l = this.level(), img = l.image;
+    if (!img) return this.toast('Set a background picture first (Levels tool).');
+    const [ox, oy] = img.origin, [fw, fh] = img.feet, row = (FT * Math.sqrt(3)) / 2, ops = [];
+    for (let r = Math.ceil(oy / row); r * row <= oy + fh; r++) {
+      for (let q = Math.ceil(ox / FT - r / 2); ; q++) {
+        const [cx, cy] = center({ q, r });
+        if (cx > ox + fw) break;
+        if (cx >= ox && cy >= oy && cy <= oy + fh && !l.tiles[H.col({ q, r })]) ops.push({ op: 'tile', level: l.id, at: { q, r }, tile: { t: 'stone' } });
+      }
+    }
+    if (!ops.length) return this.toast('Every hex under the picture has a floor already.', true);
+    if (ops.length > 2000) return this.toast(`That needs ${ops.length} hexes and one edit takes at most 2000. Shrink the picture's scale or paint the floor in parts.`);
+    this.edit(ops);
+    this.toast(`Laid ${ops.length} stone hexes.`, true);
+  }
+  #buildTrace() {
+    const doors = Object.values(CONTENT.objects).filter((o) => o.kind === 'door');
+    $('ed-opts').insertAdjacentHTML('beforeend', `
+      <div class="ed-row" data-for="trace" id="ed-tmodes"><button type="button" data-tmode="wall">Wall</button><button type="button" data-tmode="door">Door</button><button type="button" data-tmode="edit">Edit</button></div>
+      <div class="ed-row" data-for="trace" data-tm="door"><select id="ed-tdef" aria-label="Which door">${doors.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select></div>
+      <div class="ed-row" data-for="trace" id="ed-tbtns">
+        <select id="ed-snap" aria-label="Round points to" data-tm="wall door"><option value="0">No rounding</option><option value="1" selected>Round to 1 ft</option><option value="2.5">Round to 2.5 ft</option><option value="5">Round to 5 ft</option></select>
+        <button type="button" id="ed-tdone" data-tm="wall">Done</button><button type="button" id="ed-tback" data-tm="wall door">Back</button>
+        <button type="button" id="ed-tdel" data-tm="edit">Delete</button>
+        <button type="button" id="ed-fill">Fill floor</button><span id="ed-tread"></span></div>`);
+    $('ed-tmodes').onclick = (ev) => { const b = ev.target.closest('[data-tmode]'); if (b) { this.tmode = b.dataset.tmode; this.traceLine = []; this.sel = null; this.refresh(); } };
+    $('ed-tdef').onchange = (ev) => { this.tdef = ev.target.value; this.traceLine = []; this.refresh(); };
+    $('ed-snap').onchange = (ev) => { this.snap = Number(ev.target.value); };
+    $('ed-tdone').onclick = () => this.#finishLine();
+    $('ed-tback').onclick = () => { this.traceLine.pop(); this.refresh(); };
+    $('ed-tdel').onclick = () => this.#deleteSelected();
+    $('ed-fill').onclick = () => this.#fillFloor();
+  }
+  #syncTrace(l) {
+    const on = this.tool === 'trace';
+    if (on) {
+      for (const el of $('ed-opts').querySelectorAll('[data-tm]')) el.hidden = !el.dataset.tm.split(' ').includes(this.tmode);
+      for (const b of $('ed-tmodes').children) b.classList.toggle('sel', b.dataset.tmode === this.tmode);
+      $('ed-tdef').value = this.tdef;
+      if (this.sel && !this.#selected(l)) this.sel = null;
+      $('ed-tdone').disabled = this.traceLine.length < 2; $('ed-tback').disabled = !this.traceLine.length;
+      $('ed-tdel').disabled = !this.sel;
+      $('ed-fill').disabled = !l.image;
+      const x = this.#selected(l);
+      $('ed-tread').textContent = x ? `${x.type === 'wall' ? x.item.kind : CONTENT.objects[x.item.def]?.name}, ${Math.round(Math.hypot(x.b[0] - x.a[0], x.b[1] - x.a[1]) * 10) / 10} ft` : '';
+      $('ed-hint').textContent = !l.image ? 'Trace works over a picture. Set one under Levels first.' : this.pending ? $('ed-hint').textContent : HINTS[`trace_${this.tmode}`];
+    }
+    // The marks on the floor: the line being drawn or the piece picked; amber bars where a wall stops a step.
+    let pins = [];
+    if (this.scaling) pins = this.scaling.pts;
+    else if (on) { const x = this.#selected(l); pins = this.tmode === 'edit' ? (x ? [x.a, x.b] : []) : this.traceLine; }
+    const bars = on && l.image ? this.#stepBars(l) : [];
+    const sig = JSON.stringify([pins, l.z, this.endDrag?.to]);
+    if (this.on && sig !== this.pinSig && !this.endDrag) { this.pinSig = sig; this.R.setPins(pins, l.z); }
+    const bsig = `${l.id}|${l.z}|${bars.length}|${bars[0]}|${bars.at(-1)}`;
+    if (this.on && bsig !== this.barSig) { this.barSig = bsig; this.R.setBars(bars, l.z); }
+  }
+  // Every step between neighbouring tiles of the level that a wall or shut door stops.
+  #stepBars(l) {
+    const map = this.S.map, key = `${barriers(map).sig}|${l.id}|${Object.keys(l.tiles).length}`;
+    if (this.barCache?.key === key) return this.barCache.bars;
+    const B = barriers(map), bars = [];
+    for (const k of Object.keys(l.tiles)) {
+      const h = H.parse(k);
+      for (let e = 0; e < 3; e++) {
+        const n = { q: h.q + H.DIRS[e][0], r: h.r + H.DIRS[e][1] };
+        if (!l.tiles[H.col(n)] || !B.blocked(l.id, h, n, 'move')) continue;
+        bars.push([...center(h), ...center(n)]);
+      }
+    }
+    this.barCache = { key, bars };
+    return bars;
+  }
+
   // ---------- a level's background picture ----------
   // The picture is an asset (the table's file store, or this browser's in solo play) named by
   // `level.image: { asset, feet: [w, h], origin: [x, y] }`. Every change is one `level` edit.
@@ -504,8 +699,6 @@ export class Editor {
     const n = this.scaling?.pts.length ?? 0;
     $('ed-scalehint').textContent = this.scaling ? (n < 2 ? `Tap ${n ? 'the second' : 'the first'} point of a distance you know.` : 'Type the distance between them.') : '';
     $('ed-scaleask').hidden = n < 2;
-    const sig = JSON.stringify([this.scaling?.pts ?? [], l.z]);
-    if (this.on && sig !== this.pinSig) { this.pinSig = sig; this.R.setPins(this.scaling?.pts ?? [], l.z); }
     if (this.tool === 'level' && this.scaling) $('ed-hint').textContent = n < 2 ? 'Tap two points on the picture that are a known distance apart (the ends of a 30 ft room, say).' : 'Now type how many feet apart they are, and Apply.';
   }
 
@@ -563,7 +756,7 @@ export class Editor {
       <div id="ed-opts">
         <div class="ed-row" data-for="paint" id="ed-terrain">${Object.keys(TILES).map((t) => `<button type="button" data-t="${t}"><i class="sw sw-${t}"></i>${t[0].toUpperCase()}${t.slice(1)}</button>`).join('')}</div>
         <div class="ed-row" data-for="paint erase region" id="ed-brush"><button type="button" data-b="0">1 hex</button><button type="button" data-b="1">7 hexes</button></div>
-        <div class="ed-row" data-for="wall" id="ed-kinds">${Object.keys(WALL_KINDS).map((k) => `<button type="button" data-k="${k}">${k[0].toUpperCase()}${k.slice(1)}</button>`).join('')}</div>
+        <div class="ed-row" data-for="wall trace" data-tm="wall" id="ed-kinds">${Object.keys(WALL_KINDS).map((k) => `<button type="button" data-k="${k}">${k[0].toUpperCase()}${k.slice(1)}</button>`).join('')}</div>
         <div class="ed-row" data-for="wall"><button type="button" id="ed-outline">Wall around this level</button></div>
         <div class="ed-row" data-for="object"><select id="ed-def" aria-label="What to place">${objs}</select></div>
         <div class="ed-row" data-for="region"><select id="ed-region" aria-label="Room"></select><input id="ed-rname" maxlength="40" placeholder="Room name" autocomplete="off"></div>
@@ -575,10 +768,11 @@ export class Editor {
       <p id="ed-hint"></p>`;
     this.#buildMore();
     this.#buildBackground();
+    this.#buildTrace();
     const again = () => this.refresh();
     $('ed-done').onclick = () => this.stop();
-    $('ed-level').onchange = (ev) => { this.levelId = ev.target.value; this.scaling = null; again(); };     // a ladder's second tap may be on another level
-    $('ed-tools').onclick = (ev) => { const b = ev.target.closest('[data-tool]'); if (b) { this.tool = b.dataset.tool; this.pending = null; this.scaling = null; if (this.tool === 'level') this.#listPictures(); again(); } };
+    $('ed-level').onchange = (ev) => { this.levelId = ev.target.value; this.scaling = null; this.traceLine = []; this.sel = null; again(); };     // a ladder's second tap may be on another level
+    $('ed-tools').onclick = (ev) => { const b = ev.target.closest('[data-tool]'); if (b) { this.tool = b.dataset.tool; this.pending = null; this.scaling = null; this.traceLine = []; this.sel = null; if (this.tool === 'level') this.#listPictures(); again(); } };
     $('ed-terrain').onclick = (ev) => { const b = ev.target.closest('[data-t]'); if (b) { this.terrain = b.dataset.t; again(); } };
     $('ed-brush').onclick = (ev) => { const b = ev.target.closest('[data-b]'); if (b) { this.brush = +b.dataset.b; again(); } };
     $('ed-kinds').onclick = (ev) => { const b = ev.target.closest('[data-k]'); if (b) { this.kind = b.dataset.k; again(); } };
