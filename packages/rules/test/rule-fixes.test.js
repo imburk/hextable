@@ -111,3 +111,21 @@ test("W2: becoming Stable resets both death-save counts", () => {
   assert.deepEqual(brenna.death, { s: 0, f: 0 });
   assert.equal(r.find((e) => e.type === "deathSave").stable, true);
 });
+
+// ---------- W3: Resistance and Vulnerability ----------
+
+test("W3: Resistance and Vulnerability to the same type halve (rounding down) and then double", () => {
+  const burn = (vuln) => {
+    const { s, goblin } = field();
+    apply(s, { type: "place", actor: goblin.id, to: { q: 1, r: 0 } }, DM);
+    ok(apply(s, { type: "condition", actor: goblin.id, condition: "paralyzed" }, DM));      // fails Dexterity saves: full damage
+    Object.assign(goblin, { resist: ["fire"], vuln });
+    fight(s); turnOf(s, "wizard");
+    const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "burning-hands", hex: goblin.pos }, DM));
+    return r.events.find((e) => e.type === "damage" && e.target === goblin.id);
+  };
+  const halved = burn([]), both = burn(["fire"]);      // same seed, same roll
+  assert.ok(halved.amount > 0);
+  assert.equal(both.amount, halved.amount * 2);
+  assert.equal(both.note, "resisted and vulnerable");
+});

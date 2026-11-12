@@ -487,10 +487,11 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   let n = amount;
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(dtype) || own.includes(dtype);
+  // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
+  const resisted = applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
   if (applies(m.immune, t.immune)) n = 0;
-  else if (applies(m.resist, t.resist)) n = Math.floor(n / 2);
-  else if (applies(m.vulnerable, t.vuln)) n *= 2;
-  const note = n === 0 && amount > 0 ? 'immune' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
+  else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
+  const note = n === 0 && amount > 0 ? 'immune' : resisted && vulnerable && amount > 0 ? 'resisted and vulnerable' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
   if (t.hp <= 0) {                                        // already dying
     if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || n >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     ev.push({ type: 'damage', target: t.id, amount: n, dtype, hp: 0, note });
