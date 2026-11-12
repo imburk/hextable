@@ -86,7 +86,7 @@ test("a door is used from beside it, in a way it allows, by someone who may", ()
   assert.equal(JSON.stringify(s), before);
 });
 
-test("a lock needs its key; picking or forcing it is handed to the DM without telling players the DC", () => {
+test("a lock needs its key, or tools and a check against a DC players never see", () => {
   const s = inHall();
   assert.equal(apply(s, { type: "use", actor: "fighter", object: "door", verb: "lock" }, PAT).error, "The wooden door has no lock.");
   ok(apply(s, { type: "mapEdit", ops: [{ op: "object", object: { ...door(s), key: "Iron key", dc: { pick: 18 } } }] }, DM));
@@ -96,10 +96,19 @@ test("a lock needs its key; picking or forcing it is handed to the DM without te
   assert.equal(door(s).state, "locked");
   assert.equal(apply(s, { type: "use", actor: "fighter", object: "door", verb: "open" }, PAT).error, "The wooden door is locked.");
   assert.ok([...moveOptions(s, s.entities.fighter).values()].every((n) => west(n.h)));
-  const pick = ok(apply(s, { type: "use", actor: "fighter", object: "door", verb: "pick" }, PAT));
-  assert.equal(door(s).state, "locked");                                                    // the engine does not pretend to have rolled
-  assert.match(pick.events.find((e) => e.type === "manual").text, /DEX with thieves-tools check against DC 18/);
-  assert.equal(JSON.stringify(viewEvents(pick.events, s, PAT)).includes("18"), false);
+  // Picking it: the fighter has no tools; the rogue has, and rolls Dexterity with them against the door's DC.
+  assert.equal(apply(s, { type: "use", actor: "fighter", object: "door", verb: "pick" }, PAT).error, "Brenna needs Thieves' Tools for that.");
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: 0, r: -1 } }, DM));
+  const tryIt = (want) => { for (let seed = 1; seed < 200; seed++) { const c = structuredClone(s); c.rng = seed; const r = ok(apply(c, { type: "use", actor: "rogue", object: "door", verb: "pick" }, DM)); if (r.events[0].success === want) return { c, r }; } throw new Error("no such roll"); };
+  const failed = tryIt(false), picked = tryIt(true);
+  assert.equal(door(failed.c).state, "locked");
+  assert.deepEqual(failed.r.events.map((e) => e.type), ["check"]);
+  assert.equal(failed.r.events[0].total, failed.r.events[0].roll + 5);                      // Dexterity +3, proficient with the tools +2
+  assert.equal(failed.r.events[0].dc, 18);
+  assert.equal(JSON.stringify(viewEvents(failed.r.events, failed.c, PAT)).includes("18"), false);      // players never see the DC
+  assert.equal(viewEvents(failed.r.events, failed.c, PAT)[0].success, false);
+  assert.equal(door(picked.c).state, "closed");
+  assert.deepEqual(picked.r.events.map((e) => e.type), ["check", "object"]);
   ok(apply(s, { type: "use", actor: "fighter", object: "door", verb: "unlock" }, PAT));
   ok(apply(s, { type: "give", actor: "fighter", item: "Iron key", take: true }, DM));
   assert.equal(apply(s, { type: "use", actor: "fighter", object: "door", verb: "lock" }, PAT).error, "Brenna doesn't have the key.");

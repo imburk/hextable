@@ -50,6 +50,7 @@ function legacyMonster(m) {
     ...(m.vulnerable.length ? { vuln: [...m.vulnerable] } : {}),
     ...(m.immune.length ? { immune: [...m.immune] } : {}),
     ...(m.resist.length ? { resist: [...m.resist] } : {}),
+    ...(m.skills ? { skillBonus: { ...m.skills } } : {}),
     attacks: m.actions.filter(playableAction).map(legacyAttack),
   };
 }

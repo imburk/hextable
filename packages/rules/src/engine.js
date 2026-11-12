@@ -9,6 +9,7 @@
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
+import { ABILITIES, SKILLS } from './content/schema.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, STEP_FREE, STEP_MAX, concealed, ground, hasColumn, landing, regionAt, shown, surfaces, under, unseenAt } from './space.js';
@@ -44,7 +45,7 @@ export function makeEntity(tpl, over = {}) {
   const t = structuredClone(tpl);
   if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
-    kind: 'npc', side: 'foe', owner: null, level: 0, saveProf: [], features: {}, attacks: [], spells: [],
+    kind: 'npc', side: 'foe', owner: null, level: 0, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0 },
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
@@ -536,6 +537,58 @@ function savingThrow(s, t, abil, dc, extra = null) {
   return { roll: r, total, success: total >= dc, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
 }
 
+// ---------- ability checks ----------
+// What a creature adds to a d20 for a check: its ability modifier, its Proficiency Bonus if it
+// is proficient in the skill or with the tool (twice for Expertise), or a monster's listed bonus.
+export function checkBonus(e, { ability, skill, tool }) {
+  if (skill && e.skillBonus?.[skill] !== undefined) return e.skillBonus[skill];
+  let b = mod(e.abil[ability ?? SKILLS[skill]] ?? 10);
+  if (skill && e.skills?.includes(skill)) b += e.prof * (e.expertise?.includes(skill) ? 2 : 1);
+  else if (tool && e.tools?.includes(tool)) b += e.prof;
+  return b;
+}
+function abilityCheck(s, e, what) {
+  const m = modifiers(s, e, 'check', { target: e }, ''), bonus = checkBonus(e, what) + m.add;
+  if (m.autoFail) return { roll: 0, total: 0, bonus };
+  const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
+  const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
+  const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
+  return { roll: r, total: r + bonus, bonus, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
+}
+// A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
+export function passive(s, e, skill) {
+  const m = modifiers(s, e, 'check', { target: e }, '');
+  return 10 + checkBonus(e, { skill }) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
+}
+const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const hasTool = (e, tool) => e.gear.some((g) => slug(g) === tool);
+const toolName = (tool) => (tool === 'thieves-tools' ? "Thieves' Tools" : tool.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' '));
+
+// ---------- finding hidden things ----------
+export const SEARCH_FEET = 15, NOTICE_FEET = 10;
+// Could this creature find this hidden object from where it stands? It must be within `feet`,
+// on its level, touch a hex the players have been shown, and have nothing solid in between.
+function findable(s, e, o, feet) {
+  const def = objectDef(o);
+  if (!def.states[o.state].hidden || !def.find || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) return false;
+  const level = s.map.levels.find((l) => l.id === o.level);
+  const near = objectHexes(o).filter((h) => level.tiles[H.col(h)] && shown(s.map, o.level, h)).sort((x, y) => H.dist(x, e.pos) - H.dist(y, e.pos))[0];
+  return !!near && H.dist(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[H.col(near)].h ?? 0) });
+}
+const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
+// The table rule for noticing things in passing: a party member's passive Perception against
+// what is hidden within 10 feet. Returns true if anything was noticed.
+function notice(s, e, ev, before) {
+  const rule = s.settings.passiveFind;
+  if (!rule || rule === 'off' || e.side !== 'party' || !up(e)) return false;
+  const score = passive(s, e, 'perception');
+  const found = s.map.objects.filter((o) => (rule === 'all' || objectDef(o).triggers?.some((t) => t.effects)) && findable(s, e, o, NOTICE_FEET) && findDC(o) <= score);
+  if (!found.length) return false;
+  before();
+  for (const o of found) { ev.push({ type: 'noticed', id: e.id, object: o.id, name: objectName(o) }); setObject(s, o, objectDef(o).find.to, ev); }
+  return true;
+}
+
 // Hexes an area spell would cover if aimed at `aim`.
 // A cone opens from the caster toward `aim`. A sphere or cylinder is centred on `aim`, which must
 // be within the spell's range. An emanation surrounds the caster and needs no aim.
@@ -619,6 +672,7 @@ const handlers = {
     }
     let seg = [], prev = e.pos;
     const flush = () => { if (seg.length) ev.push({ type: 'moved', id: e.id, path: seg }); seg = []; };
+    if (notice(s, e, ev, flush)) return;                 // something caught the eye before a step was taken: the walk waits
     for (const step of H.pathTo(reach, tk)) {
       if (fighting && s.encounter && !e.cond.disengaged) {
         for (const o of threatsAt(s, e, prev)) {
@@ -636,6 +690,7 @@ const handlers = {
       e.pos = step; seg.push(step); prev = step;
       lookAround(s, ev, [e], flush);
       if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
+      if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
       for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
@@ -803,6 +858,7 @@ const handlers = {
       o.key || fail(`${the} has no lock.`);
       hasKey(e, o.key) || fail(`${e.name} doesn't have the key.`);
     }
+    if (u.check?.tool) hasTool(e, u.check.tool) || fail(`${e.name} needs ${toolName(u.check.tool)} for that.`);
     // In a fight the first thing handled on a turn is free; anything more, or anything slow, takes the action.
     if (s.encounter && inFight(s, e.id)) {
       current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
@@ -810,13 +866,38 @@ const handlers = {
       else { need(s, e, 'action'); s.encounter.budget.action--; }
     }
     if (u.check) {
-      const c = u.check, dc = o.dc?.[u.id] ?? c.dc, what = `${c.ability.toUpperCase()}${c.skill ? ` (${c.skill})` : ''}${c.tool ? ` with ${c.tool}` : ''}`;
-      ev.push({ type: 'std', id: e.id, action: `${u.name}: ${name}` });
-      ev.push({ type: 'manual', actor: e.id, name, partial: true, text: `${e.name} tries to ${u.name.toLowerCase()} (${name}). That is a ${what} check against DC ${dc}. The engine does not roll checks yet: the DM rolls it and sets the ${name.toLowerCase()}.` });
-      return;
+      const c = u.check, dc = o.dc?.[u.id] ?? c.dc, r = abilityCheck(s, e, c);
+      ev.push({ type: 'check', id: e.id, ability: c.ability, ...(c.skill ? { skill: c.skill } : {}), ...(c.tool ? { tool: c.tool } : {}), ...r, dc, success: r.total >= dc, what: `${u.name}: ${name}` });
+      if (r.total < dc) return;
     }
     if (u.to) setObject(s, o, u.to, ev, e, u.id);
     if (u.effects) objectEffects(s, o, u.effects, [e], ev);
+  },
+
+  // Roll an ability check. { type: 'check', actor, skill | ability, dc? } Only the DM may set a DC,
+  // and players are told neither the DC nor whether the roll met it: the DM says what happens.
+  check(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    const skill = a.skill === undefined ? null : (Object.hasOwn(SKILLS, a.skill) && a.skill) || fail('Unknown skill.');
+    const ability = skill ? SKILLS[skill] : (ABILITIES.includes(a.ability) && a.ability) || fail('Name a skill or an ability.');
+    if (a.dc !== undefined) {
+      ctx.role === 'dm' || fail('Only the DM sets a DC.');
+      (Number.isInteger(a.dc) && a.dc > 0 && a.dc <= 40) || fail('A DC is a whole number from 1 to 40.');
+    }
+    const r = abilityCheck(s, e, { ability, skill });
+    ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
+  },
+  // The Search action: one Wisdom (Perception) check against everything hidden within 15 feet. { type: 'search', actor }
+  search(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    if (s.encounter && inFight(s, e.id)) { need(s, e, 'action'); s.encounter.budget.action--; }
+    const r = abilityCheck(s, e, { skill: 'perception' });
+    const found = s.map.objects.filter((o) => findable(s, e, o, SEARCH_FEET) && findDC(o) <= r.total);
+    ev.push({ type: 'check', id: e.id, ability: 'wis', skill: 'perception', ...r, search: true, found: found.length });
+    for (const o of found) setObject(s, o, objectDef(o).find.to, ev);
   },
 
   // ----- table management -----
@@ -1031,10 +1112,14 @@ const handlers = {
   },
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
-    a.key in s.settings || fail('Unknown setting.');
+    Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
+    SETTINGS[a.key].includes(a.value) || fail(`That setting can be: ${SETTINGS[a.key].join(', ')}.`);
     s.settings[a.key] = a.value;
   },
 };
+
+// Table rules the DM can switch, and what each may be set to.
+export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];

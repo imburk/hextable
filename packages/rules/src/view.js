@@ -233,6 +233,10 @@ export function viewEvents(events, state, viewer) {
         // the engine left out of a spell it did apply are for the DM alone.
         if (!ev.partial) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
         break;
+      case 'check':                                    // a check by one of ours: the roll, never the DC; the outcome only where it will show anyway
+        if (cls(ev.id) === 'open') { const e = structuredClone(ev); delete e.dc; if (e.secret) delete e.success; out.push(e); }
+        break;
+      case 'noticed':
       case 'triggered':
       case 'object':                                   // something on the map changed state or went off, if they can see it
         if (shownMap(state.map).doc.objects.some((o) => o.id === ev.object)) out.push(structuredClone(ev));

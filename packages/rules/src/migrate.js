@@ -7,8 +7,9 @@ const SPELL_IDS = { fireBolt: 'fire-bolt', sacredFlame: 'sacred-flame', magicMis
 const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
+import { PREGENS } from './content/index.js';
 
-export const VERSION = 3;
+export const VERSION = 4;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -19,6 +20,12 @@ export function migrate(state) {
   // Version 3: the map is a document with levels, and every position carries a height.
   if (state.map) state.map = migrateMap(state.map);
   for (const e of Object.values(state.entities)) if (e.pos && e.pos.z === undefined) e.pos.z = 0;
+  // Version 4: creatures have skills and tools, and there is a table rule for noticing things in passing.
+  for (const e of Object.values(state.entities)) {
+    const from = e.skills === undefined && e.kind === 'pc' ? PREGENS[e.id] : null;      // a pregenerated character gets the skills it was given
+    e.skills ??= [...(from?.skills ?? [])]; e.expertise ??= [...(from?.expertise ?? [])]; e.tools ??= [...(from?.tools ?? [])]; e.skillBonus ??= {};
+  }
+  if (state.settings) state.settings.passiveFind ??= 'off';
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
