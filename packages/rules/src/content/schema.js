@@ -280,6 +280,8 @@ function lintMonster(e, say) {
   if (e.saves !== undefined && !(e.saves && typeof e.saves === 'object' && !Array.isArray(e.saves) && Object.keys(e.saves).length > 0 && Object.entries(e.saves).every(([k, v]) => ABILITIES.includes(k) && isInt(v) && v >= -10 && v <= 30))) say(`saves must give a whole-number bonus for one or more of: ${ABILITIES.join(', ')}`);
   // `initiative` is the stat block's Initiative modifier, which can differ from Dexterity (it adds Proficiency for some monsters).
   if (e.initiative !== undefined && !(isInt(e.initiative) && e.initiative >= -10 && e.initiative <= 40)) say('initiative must be a whole number, the stat block\'s Initiative modifier');
+  // `languages` is the stat block's Languages line, one piece of text per language or ability to speak (an empty list: none). Data only: the engine does not use it.
+  if (e.languages !== undefined && !(Array.isArray(e.languages) && e.languages.length <= 12 && e.languages.every((x) => isText(x) && x.length <= 120))) say('languages must be a list of short texts (empty for none)');
   if (e.skills !== undefined && !(e.skills && Object.entries(e.skills).every(([k, v]) => Object.hasOwn(SKILLS, k) && isInt(v)))) say('skills must give a whole-number bonus for each skill named');
   const ids = new Set();
   for (const t of e.traits ?? []) {
