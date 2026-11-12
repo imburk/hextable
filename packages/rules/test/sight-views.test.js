@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
 import { apply, current, moveOptions, rollMode } from "../src/engine.js";
 import * as H from "../src/hex.js";
-import { newMap } from "../src/map.js";
+import { lintMap, newMap } from "../src/map.js";
 import { applyPatch, diff, snapshot } from "../src/patch.js";
 import { newGame } from "../src/scenario.js";
 import { canSee, inViewOf } from "../src/sight.js";
@@ -192,15 +192,15 @@ test("los: things are sent only once seen, and their events only while in view",
   assert.deepEqual(apply(s, { type: "use", actor: "fighter", object: "plate", verb: "x" }, PAT), apply(s, { type: "use", actor: "fighter", object: "nothing", verb: "x" }, PAT));
 });
 
-test("the rules and the monster AI play the same whatever the view rule; players are not told an unseen creature's turn", () => {
+test("the rules and the monster AI play the same whatever the view rule; players are not told whose turn an unseen creature's is", () => {
   const play = (rule) => {
     const { s, add } = crypt({ rule });
     inLine(s);
     const gob = add(2, -2, "Same"), log = [];
     ok(apply(s, { type: "startEncounter", center: at(-1, -2), radius: 6 }, DM));
     for (let i = 0; i < 40 && s.encounter; i++) {
-      const id = current(s), turnShown = view(s, PAT).encounter.turn;
-      if (id === gob.id && rule === "los" && !view(s, PAT).entities[gob.id]) assert.equal(turnShown, -1);
+      const id = current(s), shown = view(s, PAT).encounter;
+      if (id === gob.id && rule === "los" && !view(s, PAT).entities[gob.id]) assert.deepEqual(shown.order[shown.turn], { someone: true });
       const step = s.entities[id].side === "party" ? { type: "endTurn", actor: id } : aiStep(s, id) ?? { type: "endTurn", actor: id };
       const res = apply(s, step, DM);
       log.push([step, res.ok, res.events.map((e) => e.type)]);
@@ -209,6 +209,45 @@ test("the rules and the monster AI play the same whatever the view rule; players
     return log;
   };
   assert.deepEqual(play("los"), play("rooms"));
+});
+
+test("an unseen creature's turn: one slot and one line for a run of them, with no id, name or count; or nothing, by table rule", () => {
+  for (const rule of ["say", "quiet"]) {
+    const { s, add } = crypt();
+    inLine(s);
+    if (rule === "quiet") ok(apply(s, { type: "setting", key: "unseenTurns", value: "quiet" }, DM));
+    const hid = [add(1, -2, "Umbra"), add(2, -2, "Penumbra"), add(3, -2, "Antumbra")], seen = add(1, 1, "Lumen");
+    for (const g of hid) assert.equal(view(s, PAT).entities[g.id], undefined);
+    assert.ok(view(s, PAT).entities[seen.id]);
+    const stream = [];
+    const told = (res) => { const evs = viewEvents(res.events, s, PAT); stream.push(...evs.filter((e) => e.type === "turn")); return evs; };
+    told(ok(apply(s, { type: "startEncounter", center: at(-1, -2), radius: 8 }, DM)));
+    let unseenTurns = 0;
+    for (let i = 0; i < 30; i++) {
+      const id = current(s), v = view(s, PAT), text = JSON.stringify(v);
+      for (const g of hid) assert.equal(text.includes(g.id) || text.includes(g.name), false);
+      assert.ok(v.encounter.order.filter((o) => o.someone).length <= 1);
+      if (hid.some((g) => g.id === id)) {
+        unseenTurns++;
+        if (rule === "say") assert.deepEqual(v.encounter.order[v.encounter.turn], { someone: true });
+        else assert.equal(v.encounter.turn, -1);
+        assert.deepEqual(v.encounter.budget, { move: 0, action: 0, bonus: 0 });
+        assert.deepEqual(v.encounter.flags, {});
+      } else assert.equal(v.encounter.order[v.encounter.turn].id, id);
+      const evs = told(ok(apply(s, { type: "endTurn", actor: id }, DM)));
+      for (const g of hid) assert.equal(JSON.stringify(evs).includes(g.id), false);
+    }
+    assert.ok(unseenTurns >= 6, "the unseen goblins had their turns");
+    const someone = stream.filter((e) => e.someone);
+    for (const e of someone) assert.deepEqual(Object.keys(e).sort(), ["round", "someone", "type"]);
+    if (rule === "quiet") { assert.equal(someone.length, 0); continue; }
+    assert.ok(someone.length > 0);
+    // Never two in a row: a run of unseen turns is one line, so how many there are is not told.
+    stream.forEach((e, i) => { if (i && e.someone) assert.ok(!stream[i - 1].someone, `turn ${i}`); });
+    // The record tells the same turns as the stream did.
+    const record = viewEvents(s.timeline, s, PAT).filter((e) => e.type === "turn").map(({ t, ...e }) => e);
+    assert.deepEqual(record.slice(-stream.length), stream);
+  }
 });
 
 test("an area's hexes are told only where the players are sent the tiles", () => {
@@ -253,6 +292,9 @@ const PLAYERS = [PAT, KIM, LEE];
 const owner = { fighter: PAT, rogue: KIM, cleric: LEE, wizard: DM };
 const NAMES = ["Zorgax", "Keshtel", "Vlimmer", "Drossik"];
 const up = (e) => !e.dead && e.hp > 0;
+// A name no other creature's contains, so that finding it in a message means this one leaked
+// (the dead stay in the state, and a second "Drossik" would be blamed on the first).
+const uniqueName = (s) => { const k = Object.values(s.entities).filter((e) => e.side !== "party").length; return `${NAMES[k % NAMES.length]}${k}q`; };
 
 // What the party can see by the rule, worked out directly (no flood, no cache of vision.js): the oracle.
 function oracle(s) {
@@ -270,10 +312,12 @@ function oracle(s) {
   return { rule, creatures, places };
 }
 // One random action: by a player for their own character, or by the DM.
-function randomAction(s, pick) {
+// `world` names what this map has: places to put things, things to switch, doors, levels, regions.
+const CRYPT_WORLD = { places: TILES, things: ["door", "brazier"], states: ["open", "closed", "lit", "out"], doors: ["door"], levels: ["ground"], regions: ["vault"] };
+function randomAction(s, pick, world = CRYPT_WORLD) {
   const monsters = Object.values(s.entities).filter((e) => e.side !== "party" && !e.dead);
   const any = (list) => list[pick(list.length)];
-  const hexes = TILES;
+  const hexes = world.places;
   const roll = pick(100);
   if (s.encounter && roll < 30) {
     const id = current(s), e = s.entities[id];
@@ -290,28 +334,29 @@ function randomAction(s, pick) {
   }
   if (roll < 57 && monsters.length) return [{ type: "place", actor: any(monsters).id, to: any(hexes) }, DM];
   if (roll < 60) return [{ type: "setLight", actor: any([...PARTY, ...monsters.map((m) => m.id)]), item: any(["torch", "candle", null]) }, DM];
-  if (roll < 64) return [{ type: "setObject", object: any(["door", "brazier"]), state: any(["open", "closed", "lit", "out"]) }, DM];
-  if (roll < 67) return [{ type: "use", actor: any(PARTY), object: "door", verb: any(["open", "close"]) }, PAT];
+  if (roll < 64) return [{ type: "setObject", object: any(world.things), state: any(world.states) }, DM];
+  if (roll < 67) return [{ type: "use", actor: any(PARTY), object: any(world.doors), verb: any(["open", "close"]) }, PAT];
   if (roll < 70 && monsters.length) return [{ type: "hide", actor: any(monsters).id }, DM];
   if (roll < 73) return [{ type: "search", actor: "rogue" }, KIM];
   if (roll < 75) return [{ type: "hide", actor: "rogue" }, KIM];
   if (roll < 78) return [{ type: "condition", actor: any([...PARTY, ...monsters.map((m) => m.id)]), condition: any(["blinded", "invisible"]), on: pick(2) === 0 }, DM];
-  if (roll < 81) return [{ type: "mapEdit", ops: [{ op: "level", level: { id: "ground", light: any(["bright", "dim", "dark", null]) } }] }, DM];
+  if (roll < 81) return [{ type: "mapEdit", ops: [{ op: "level", level: { id: any(world.levels), light: any(["bright", "dim", "dark", null]) } }] }, DM];
   if (roll < 83) return [{ type: "setting", key: "sight", value: any(["los", "light", "light", "los", "rooms"]) }, DM];
-  if (roll < 86 && monsters.length < 4) return [{ type: "spawn", monster: "goblin-warrior", at: any(hexes), name: NAMES[monsters.length], hidden: pick(4) === 0 }, DM];
+  if (roll < 86 && monsters.length < 4) return [{ type: "spawn", monster: "goblin-warrior", at: any(hexes), name: uniqueName(s), hidden: pick(4) === 0 }, DM];
   if (roll < 89 && !s.encounter) return [{ type: "startEncounter", center: s.entities.fighter.pos, radius: 8 }, DM];
   if (roll < 91 && s.encounter) return [{ type: "endEncounter" }, DM];
   if (roll < 94 && monsters.length) return [{ type: "attack", actor: "fighter", target: any(monsters).id, attack: "javelin" }, PAT];
-  if (roll < 96) return [{ type: "revealRegion", region: "vault" }, DM];
+  if (roll < 96) return [{ type: "revealRegion", region: any(world.regions) }, DM];
   if (roll < 97) return [{ type: "mapEdit", ops: [{ op: "forget" }] }, DM];
   return [{ type: "advanceTime", minutes: 1 }, DM];
 }
 
 // Play `steps` random actions and check every message to every player after each one.
-function playChecked(seed, steps, { startRule = "los" } = {}) {
+function playChecked(seed, steps, { startRule = "los", map = "crypt" } = {}) {
   const pick = chooser(seed);
-  const { s } = crypt({ rule: startRule, seed });
+  const { s, world } = map === "hall" ? hall({ rule: startRule, seed }) : { ...crypt({ rule: startRule, seed }), world: CRYPT_WORLD };
   const clients = new Map(PLAYERS.map((p) => [p.userId, null]));
+  const streams = new Map();                                    // per player, the turns told since the fight began
   const knownAt = [];                                           // per timeline entry: the creatures the party could see then
   const wasSeen = new Map();                                    // thing id -> the states it has had while the party saw a tile it touches
   const placesEver = new Set();
@@ -335,6 +380,19 @@ function playChecked(seed, steps, { startRule = "los" } = {}) {
         hiddenChecks++;
       }
       assert.equal(text.includes('"unseen"'), false);
+      // The fight order: only creatures they are sent, and at most one slot that says someone unseen is acting.
+      if (v.encounter) {
+        assert.ok(v.encounter.order.every((o) => (o.someone ? Object.keys(o).length === 1 : !!v.entities[o.id])), `seed ${seed}: an order slot names a creature not sent`);
+        assert.ok(v.encounter.order.filter((o) => o.someone).length <= 1);
+      }
+      const turns = streams.get(who.userId) ?? streams.set(who.userId, []).get(who.userId);
+      for (const ev of evs) {
+        if (ev.type === "encounterStart" || ev.type === "encounterEnd") turns.length = 0;
+        if (ev.type !== "turn") continue;
+        if (ev.someone) assert.ok(!turns.at(-1)?.someone, `seed ${seed}: two unseen turns told in a row`);
+        if (ev.someone) assert.deepEqual(Object.keys(ev).sort(), ["round", "someone", "type"]);
+        turns.push(ev);
+      }
       // Patches: what a client has, built from every patch, is exactly the fresh view.
       const wire = JSON.parse(JSON.stringify(v)), prev = clients.get(who.userId);
       if (prev) { applyPatch(prev.state, JSON.parse(JSON.stringify(diff(prev.snap, snapshot(wire), wire)))); assert.deepEqual(prev.state, wire, `seed ${seed}: patches diverged`); }
@@ -366,15 +424,17 @@ function playChecked(seed, steps, { startRule = "los" } = {}) {
   };
   visit({ events: [] });
   let seenGrows = 0, fights = 0;
+  const heights = new Set();                                    // heights the party has stood at, other than the hall floor
   const rulesSeen = new Set();
   for (let i = 0; i < steps; i++) {
-    const [action, ctx] = randomAction(s, pick);
+    const [action, ctx] = randomAction(s, pick, world);
     const had = JSON.stringify(s.map.seen?.tiles ?? {}).length;
     const res = apply(s, action, ctx);
     if (!res.ok) continue;
     rulesSeen.add(s.settings.sight); if (action.type === "startEncounter") fights++;
     if (!(action.type === "mapEdit" && action.ops[0].op === "forget")) assert.ok(JSON.stringify(s.map.seen?.tiles ?? {}).length >= had, "memory only grows, but by the DM");
     if (JSON.stringify(s.map.seen?.tiles ?? {}).length > had) seenGrows++;
+    for (const id of PARTY) if (s.entities[id].pos.z !== 0) heights.add(s.entities[id].pos.z);
     visit(res);
   }
   // The record, read at the end: an entry names only creatures the party could see when it happened.
@@ -383,14 +443,82 @@ function playChecked(seed, steps, { startRule = "los" } = {}) {
       if (typeof id === "string" && s.entities[id]?.side !== "party" && s.entities[id]) assert.ok(knownAt[i]?.has(id), `seed ${seed}: entry ${i} (${entry.type}) names ${id}, unseen then`);
     }
   });
-  if (process.env.SIGHT_STATS) console.log(JSON.stringify({ seed, checked, hiddenChecks, seenGrows, rules: [...rulesSeen], fights }));
-  return { checked, hiddenChecks, seenGrows };
+  if (process.env.SIGHT_STATS) console.log(JSON.stringify({ seed, checked, hiddenChecks, seenGrows, rules: [...rulesSeen], fights, heights: [...heights] }));
+  return { checked, hiddenChecks, seenGrows, heights };
 }
+
+// The hall: a building of three levels. The hall floor (ground, z 0) with a store room east of a
+// wall and a door; a gallery 10 ft up over the north of the hall (its own level and region) reached
+// by a stair of rising tiles; a cellar 10 ft down under the south-west, its own region, reached by a
+// ladder through a hole in the floor. A brazier lights the gallery; the cellar is dark.
+const HALL = H.range({ q: 0, r: 0 }, 6).filter((h) => Math.abs(h.r) <= 5);
+const GALLERY = HALL.filter((h) => h.r <= -4 && westOf(h));
+const STAIR = [[-1, -3, 7.5], [0, -3, 5], [1, -3, 2.5]];
+const CELLAR = H.range({ q: -3, r: 4 }, 2).filter((h) => HALL.some((x) => H.col(x) === H.col(h)));
+const HOLE = { q: -3, r: 4 };
+function hall({ rule = "los", seed = 7 } = {}) {
+  const ground = Object.fromEntries(HALL.filter((h) => H.col(h) !== H.col(HOLE)).map((h) => [H.col(h), { t: "stone" }]));
+  for (const [q, r, h] of STAIR) ground[`${q},${r}`] = { t: "stone", h };
+  const map = newMap({ id: "hall", name: "The hall", starts: [{ q: -4, r: 0 }],
+    levels: [{ id: "ground", name: "Hall", z: 0, tiles: ground },
+      { id: "gallery", name: "Gallery", z: 10, tiles: Object.fromEntries(GALLERY.map((h) => [H.col(h), { t: "stone" }])) },
+      { id: "cellar", name: "Cellar", z: -10, light: "dark", tiles: Object.fromEntries(CELLAR.map((h) => [H.col(h), { t: "stone" }])) }],
+    walls: [{ id: "wn", level: "ground", a: [12.5, -100], b: [12.5, -E], kind: "wall" }, { id: "ws", level: "ground", a: [12.5, E], b: [12.5, 100], kind: "wall" }],
+    objects: [{ id: "door", def: "door-wooden", level: "ground", at: { q: 2, r: 0 }, edge: 0, state: "closed" },
+      { id: "brazier", def: "brazier", level: "gallery", at: { q: GALLERY[0].q, r: GALLERY[0].r }, state: "lit" },
+      { id: "ladder", def: "ladder", level: "cellar", at: HOLE, state: "there", to: { q: HOLE.q + 1, r: HOLE.r, z: 0 } }],
+    regions: [{ id: "floor", name: "The hall", level: "ground", hexes: Object.keys(ground).filter((k) => westOf(H.parse(k))) },
+      { id: "store", name: "The store", level: "ground", hexes: Object.keys(ground).filter((k) => !westOf(H.parse(k))) },
+      { id: "gallery", name: "The gallery", level: "gallery", hexes: GALLERY.map(H.col) },
+      { id: "cellar", name: "The cellar", level: "cellar", hexes: CELLAR.map(H.col) }] });
+  const s = newGame(seed);
+  ok(apply(s, { type: "loadMap", map }, DM));
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  for (const [id, user] of [["fighter", "pat"], ["rogue", "kim"], ["cleric", "lee"]]) apply(s, { type: "claim", entity: id, user, userName: user }, { role: "player", userId: user });
+  for (const [id, q, r] of [["fighter", -4, 0], ["rogue", -5, 1], ["cleric", -5, 0], ["wizard", -4, -1]]) s.entities[id].pos = at(q, r);
+  if (rule !== "rooms") ok(apply(s, { type: "setting", key: "sight", value: rule }, DM));
+  const places = [...HALL.filter((h) => H.col(h) !== H.col(HOLE)).map((h) => at(h.q, h.r, ground[H.col(h)].h ?? 0)), ...GALLERY.map((h) => at(h.q, h.r, 10)), ...CELLAR.map((h) => at(h.q, h.r, -10))];
+  const world = { places, things: ["door", "brazier"], states: ["open", "closed", "lit", "out"], doors: ["door"], levels: ["ground", "gallery", "cellar"], regions: ["store", "gallery", "cellar"] };
+  const add = (pos, name) => s.entities[ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: pos, name }, DM)).events[0].id];
+  return { s, add, world };
+}
+
+test("the hall: three levels, a stair, a ladder and a door, each of them in play", () => {
+  const { s, add } = hall();
+  assert.deepEqual(lintMap(s.map), []);
+  // Up the stair to the gallery, and down the ladder to the cellar.
+  const up = moveOptions(s, s.entities.fighter);
+  assert.ok([...up.values()].some((o) => o.h.z === 10), "the gallery can be reached from the hall floor");
+  const below = moveOptions(s, s.entities.rogue);
+  assert.ok([...below.values()].some((o) => o.h.z === -10), "and the cellar, by the ladder");
+  // The cellar floor can be seen down the hole, so the cellar is revealed; a goblin in it, under the
+  // floor beside the hole, is not seen from the hall.
+  assert.ok(s.map.regions.find((r) => r.id === "cellar").revealed);
+  const gob = add(at(-2, 4, -10), "Delver");
+  for (const who of PLAYERS) assert.equal(sent(s, null, who).includes("Delver"), false);
+  // The gallery is in sight from the floor, and revealed by it; a goblin up there is seen.
+  const watcher = add(at(GALLERY[2].q, GALLERY[2].r, 10), "Lookout");
+  assert.ok(view(s, PAT).entities[watcher.id], "a goblin on the gallery is in plain view from the hall below");
+  assert.ok(s.map.regions.find((r) => r.id === "gallery").revealed);
+  assert.equal(view(s, PAT).entities[gob.id], undefined);
+  // Down the ladder, it is.
+  ok(apply(s, { type: "place", actor: "rogue", to: at(-3, 4, -10) }, DM));
+  assert.ok(view(s, KIM).entities[gob.id]);
+});
 
 for (const seed of [1, 2, 3, 4]) {
   test(`property: over a long random game (seed ${seed}) nothing the party cannot see reaches any player`, () => {
     const r = playChecked(seed, 220, { startRule: seed % 2 ? "los" : "light" });
     assert.ok(r.checked > 120, `only ${r.checked} actions went through`);
     assert.ok(r.hiddenChecks > 100, `only ${r.hiddenChecks} unseen creatures were checked`);
+  });
+}
+
+for (const seed of [5, 6, 7]) {
+  test(`property: over a long random game in a hall of three levels (seed ${seed}) nothing the party cannot see reaches any player`, () => {
+    const r = playChecked(seed, 220, { startRule: seed % 2 ? "los" : "light", map: "hall" });
+    assert.ok(r.checked > 120, `only ${r.checked} actions went through`);
+    assert.ok(r.hiddenChecks > 60, `only ${r.hiddenChecks} unseen creatures were checked`);
+    assert.ok(r.heights.has(10) && r.heights.has(-10), "the party went up to the gallery and down to the cellar");
   });
 }

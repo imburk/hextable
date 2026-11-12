@@ -70,7 +70,7 @@ function describe(ev) {
   switch (ev.type) {
     case 'encounterStart': return ['Roll initiative! ' + ev.order.map((o) => (o.init === undefined ? n(o.id) : `${n(o.id)} ${o.init}`)).join(', '), 'head'];
     case 'encounterEnd': return [{ victory: 'The fight is won.', defeat: 'The party has fallen.', ended: 'The DM ends the fight.', stalemate: 'The fight ends.' }[ev.result] + ` (${ev.rounds} round${ev.rounds > 1 ? 's' : ''})`, 'head'];
-    case 'turn': return [`Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
+    case 'turn': return [ev.someone ? `Round ${ev.round}: something moves where you cannot see` : `Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
     case 'joined': return [`${n(ev.id)} joins the fight${ev.init === undefined ? '' : ` (initiative ${ev.init})`}.`];
     case 'attack': {
       const how = `${ev.actor === null ? `The ${ev.name.toLowerCase()}` : n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)}${behind(ev.cover)}${ev.actor === null ? '' : ` with ${ev.name}`}`;
@@ -171,7 +171,7 @@ function onUpdate(state, events, fresh) {
   R.setState(S, events);
   floaters(events);
   const turn = events.findLast?.((e) => e.type === 'turn');
-  if (turn) { if (mine(S.entities[turn.id]) && S.entities[turn.id].kind === 'pc') select(turn.id); R.focus(turn.id); }
+  if (turn?.id) { if (mine(S.entities[turn.id]) && S.entities[turn.id].kind === 'pc') select(turn.id); R.focus(turn.id); }
   if (!S.entities[selId]) {
     const own = Object.values(S.entities).find((e) => e.kind === 'pc' && (isDM() ? true : e.owner === T.you.userId));
     selId = own?.id ?? null;
@@ -271,7 +271,8 @@ function refresh() {
   showUndo();
 
   // turn order
-  $('order').innerHTML = enc ? enc.order.map((o) => {
+  $('order').innerHTML = enc ? enc.order.map((o, i) => {
+    if (o.someone) return `<li data-side="unseen" class="${i === enc.turn ? 'now' : ''}">Someone unseen</li>`;
     const x = S.entities[o.id]; if (!x) return '';
     return `<li data-side="${x.side}" class="${o.id === cur ? 'now' : ''} ${up(x) ? '' : 'out'}">${esc(x.name)}</li>`;
   }).join('') : '';
@@ -468,6 +469,7 @@ function renderDM() {
   $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
   renderMarch();
   $('dm-sight').value = S.settings.sight ?? 'rooms';
+  $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
   const lvl = dmLevel(); $('dm-ambient').value = lvl?.light ?? 'bright'; $('dm-ambient-level').textContent = lvl ? lvl.name : '';
   const lit = S.entities[selId]?.light; $('dm-torch').disabled = !S.entities[selId]; $('dm-torch').textContent = lit ? 'Put out selected\'s light' : 'Give selected a torch';
   $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-cover').value = S.settings.cover ?? 'on'; $('dm-creature-cover').checked = S.settings.creatureCover !== 'off'; $('dm-climb').checked = S.settings.climbing !== 'off';
@@ -668,6 +670,7 @@ $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', va
 // Sight and light (docs/specs/sight.md). Ambient light is set on the level the selected creature stands on, or the first level.
 function dmLevel() { const e = S?.entities[selId]; return (e && under(S.map, e.pos)?.level) || S?.map.levels[0] || null; }
 $('dm-sight').onchange = (ev) => act({ type: 'setting', key: 'sight', value: ev.target.value });
+$('dm-unseen-turns').onchange = (ev) => act({ type: 'setting', key: 'unseenTurns', value: ev.target.value });
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
 $('dm-auto').onchange = () => S && onUpdate(S, []);

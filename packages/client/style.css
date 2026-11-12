@@ -52,6 +52,7 @@ body.fight #status { border-color: var(--accent); }
 #order { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 62px); left: 12px; right: 12px; margin: 0; padding: 0; list-style: none; display: flex; gap: 6px; overflow-x: auto; pointer-events: none; scrollbar-width: none; }
 #order li { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 9px; font-size: 13px; white-space: nowrap; border-left: 4px solid var(--good); }
 #order li[data-side="foe"] { border-left-color: var(--bad); } #order li.out { opacity: .4; text-decoration: line-through; }
+#order li[data-side="unseen"] { border-left-color: var(--muted, #888); font-style: italic; }
 #order li.now { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 
 #hint { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; top: calc(max(10px, env(safe-area-inset-top)) + 104px); max-width: calc(100% - 24px); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 6px 6px 6px 12px; display: flex; gap: 8px; align-items: center; font-weight: 600; }

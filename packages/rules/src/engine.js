@@ -796,7 +796,8 @@ function dealt(s, e, t, parts, sit, crit) {
   return out;
 }
 
-// `extra` names a second hook to gather modifiers from, such as 'concentration'.
+// `extra` names a second hook to gather modifiers from, such as 'concentration'. The result carries
+// `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
 function savingThrow(s, t, abil, dc, extra = null, from = null) {
   const sit = { target: t, ability: abil };
@@ -809,17 +810,17 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
     m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage); m.dice.push(...x.dice); m.used.push(...x.used);
     m.autoFail ||= x.autoFail; m.autoSucceed ||= x.autoSucceed;
   }
-  // A single-use modifier is spent by this save (the effect runner has no events list here, so
-  // the ending is recorded silently; the save that used it is in the log).
-  if (m.used.length) useUp(s, [], m.used);
-  if (m.autoFail) return { roll: 0, total: 0, success: false };
-  if (m.autoSucceed) return { roll: 0, total: dc, success: true };
+  // A single-use modifier is spent by this save. `used` goes back to the caller, which records
+  // the save and then ends what it used up (durations.useUp), so the log reads in that order.
+  const used = m.used;
+  if (m.autoFail) return { roll: 0, total: 0, success: false, used };
+  if (m.autoSucceed) return { roll: 0, total: dc, success: true, used };
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, m.dice);
   const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add + more.total;
-  return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}) };
+  return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
 // ---------- ability checks ----------
@@ -2053,7 +2054,7 @@ function look(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60] };
+export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];
