@@ -17,7 +17,7 @@ import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
-import { COVER, canSee, coverOf, inSight, sees } from './sight.js';
+import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
@@ -404,11 +404,61 @@ function reveal(s, e, ev) {
   ev.push({ type: 'revealed', id: e.id });
 }
 
+// ---------- hiding (the SRD's Hide action) ----------
+// `hiding: { dc }` is a creature that took the Hide action: it has the Invisible condition against
+// its enemies (sight.js, hiddenFrom), and `dc` is its Stealth total, the DC to find it. By the SRD it
+// stops being hidden when it makes an attack roll, casts a spell with a Verbal component, makes a
+// sound louder than a whisper (the DM's call, by the `reveal` action) or an enemy finds it.
+// Design: docs/specs/sight.md, decision 5.
+export const HIDE_DC = 15;
+function unhide(s, e, ev, why, by = null) {
+  if (!e.hiding) return;
+  delete e.hiding;
+  ev.push({ type: 'unhidden', id: e.id, why, ...(by ? { by: by.id } : {}) });
+}
+// Why this creature can't take the Hide action where it is ('' if it can). The SRD: it must be
+// Heavily Obscured or behind Three-Quarters or Total Cover, and out of any enemy's line of sight.
+// It is judged against the enemies it can see itself ("if you can see a creature, you can discern
+// whether it can see you"); one it cannot see, but that sees it, finds it at once (spotter).
+export function hideProblem(s, e) {
+  if (e.hiding) return `${e.name} is already hidden.`;
+  for (const o of living(s)) {
+    if (!up(o) || !hostile(o, e) || canSee(s, e, o) === 'no') continue;
+    const cover = coverOf(s, o, e);
+    if (cover === 'threeQuarters' || cover === 'total') continue;
+    const w = sees(s, o, e, { ignoreHiding: true });
+    if (w.see !== 'no') return `${o.name} can see ${e.name}.`;
+    if (w.why !== 'dark' && w.why !== 'out of sight') return `${e.name} is neither Heavily Obscured nor behind cover from ${o.name}.`;
+  }
+  return '';
+}
+// An enemy that can see this creature where it stands, not counting its hiding, with less than Three-Quarters Cover.
+const spotter = (s, e) => living(s).find((o) => up(o) && hostile(o, e) && canSee(s, o, e, { ignoreHiding: true }) !== 'no' && !['threeQuarters', 'total'].includes(coverOf(s, o, e))) ?? null;
+// After every action: an enemy that can see a hiding creature anyway (Blindsight, Truesight) has
+// found it, and with the table rule passiveFind 'all' so has one whose passive Perception meets
+// its DC and that has it in view; Lightly Obscured (Dim Light) costs that 5.
+function watch(s, ev) {
+  for (const h of living(s)) {
+    if (!h.hiding) continue;
+    for (const o of living(s)) {
+      if (!up(o) || !hostile(o, h)) continue;
+      if (canSee(s, o, h) !== 'no') { unhide(s, h, ev, 'found', o); break; }
+      if (s.settings.passiveFind !== 'all') continue;
+      const w = canSee(s, o, h, { ignoreHiding: true });
+      if (w !== 'no' && passive(s, o, 'perception', w === 'dim' ? ['dim light'] : []) >= h.hiding.dc) { unhide(s, h, ev, 'found', o); break; }
+    }
+  }
+}
+// A party member walked into, or tried to step onto, a creature it did not know was there.
+function bumped(s, o, by, ev) { reveal(s, o, ev); unhide(s, o, ev, 'found', by); }
+
 // ---------- encounters ----------
 
 const initiativeSort = (order) => order.sort((a, b) => b.init - a.init || b.dex - a.dex);
 function rollInit(s, e) {
-  const m = modifiers(s, e, 'initiative'), two = (m.advantage.length > 0) !== (m.disadvantage.length > 0);
+  const m = modifiers(s, e, 'initiative');
+  if (e.hiding) m.advantage.push('hidden');                             // hidden is Invisible, and Invisible rolls Initiative with Advantage
+  const two = (m.advantage.length > 0) !== (m.disadvantage.length > 0);
   const r1 = die(s, 20), r2 = two ? die(s, 20) : null;
   const d = !two ? r1 : m.advantage.length ? Math.max(r1, r2) : Math.min(r1, r2);
   return { id: e.id, init: d + mod(e.abil.dex) + m.add, dex: e.abil.dex };
@@ -634,6 +684,7 @@ export function rollMode(s, e, t, atk) {
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 function rollToHit(s, e, t, atk, ev, extra = {}) {
   const { mode, adv, dis, add, dice, crit: sureCrit } = rollMode(s, e, t, atk);
+  unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, dice);
@@ -765,22 +816,28 @@ export function checkBonus(e, { ability, skill, tool }) {
   else if (tool && e.tools?.includes(tool)) b += e.prof;
   return b;
 }
-function abilityCheck(s, e, what) {
+// `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
+// (Search uses it for what it can see only dimly); it is not part of what is shown.
+function abilityCheck(s, e, what, dimToo = false) {
   const ability = what.ability ?? SKILLS[what.skill];
   const m = modifiers(s, e, 'check', { target: e, ability, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
-  const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
-  const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
+  const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
+  const r1 = die(s, 20), r2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
   const more = rollDice(s, m.dice);
-  return { roll: r, total: r + bonus + more.total, bonus, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}) };
+  return { roll: r, total: r + bonus + more.total, bonus, ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+    ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
 // Dice from modifiers (Guidance) are not rolled for a passive score: it is not a roll.
-export function passive(s, e, skill) {
+// `dis` adds reasons for Disadvantage that are not modifiers, such as Dim Light.
+export function passive(s, e, skill, dis = []) {
   const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill] }, '');
+  m.disadvantage = [...m.disadvantage, ...dis];
   return 10 + checkBonus(e, { skill }) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
 }
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -1100,7 +1157,7 @@ function walk(s, e, reach, tk, ev, fighting) {
     if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
     // The table's engage distance: the walker stops this far from the first enemy it has a clear line to.
     const foe = !s.encounter && s.settings.autoEngage && free &&
-      living(s).find((o) => up(o) && hostile(o, e) && apart(s, o, e) <= range && unblocked(s, o, e) && !unseenAt(s.map, o.pos));
+      living(s).find((o) => up(o) && hostile(o, e) && apart(s, o, e) <= range && unblocked(s, o, e) && !unseenAt(s.map, o.pos) && !o.hiding && !e.hiding);
     if (foe) {
       flush();
       const trail = { id: e.id, path: walked.slice().reverse() };
@@ -1249,9 +1306,10 @@ const handlers = {
     let tk = H.key(to), node = reach.get(tk);
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
-    const lurker = fighting ? null : living(s).find((o) => o.hidden && hostile(o, e) && H.key(o.pos) === tk);
+    // That is a creature the DM hid (never in a fight) or one hiding from it.
+    const lurker = living(s).find((o) => ((!fighting && o.hidden) || hiddenFrom(o, e)) && hostile(o, e) && H.key(o.pos) === tk);
     if (lurker) {
-      if (apart(s, e, lurker) <= 1) return reveal(s, lurker, ev);      // already beside it: no move, but it is found
+      if (apart(s, e, lurker) <= 1) return bumped(s, lurker, e, ev);   // already beside it: no move, but it is found
       const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && H.dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
         .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
       if (!beside) fail("Can't get there.");
@@ -1266,7 +1324,7 @@ const handlers = {
     if (!fighting && e.follow) unfollow(s, e, ev);
     const had = !!s.encounter, walked = walk(s, e, reach, tk, ev, fighting);
     if (!walked) return;                                 // something caught the eye before a step was taken: the walk waits
-    if (lurker) reveal(s, lurker, ev);
+    if (lurker) bumped(s, lurker, e, ev);
     // Whoever follows it comes after, unless a fight broke out on the way: then they were brought up when it did.
     if (!fighting && (had || !s.encounter) && walked.length > 1) march(s, e, walked, ev);
     checkEnd(s, ev);
@@ -1362,6 +1420,7 @@ const handlers = {
       if (sp.level > 0) s.encounter.flags.slot = true;
     }
     if (sp.level > 0) e.slots[slot]--;
+    if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
     showPlace(s, e, ev);
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
 
@@ -1479,16 +1538,39 @@ const handlers = {
     const r = abilityCheck(s, e, { ability, skill });
     ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
   },
-  // The Search action: one Wisdom (Perception) check against everything hidden within 15 feet. { type: 'search', actor }
+  // The Search action: one Wisdom (Perception) check against everything hidden within 15 feet, and
+  // against every enemy hiding where the searcher could see it but for its hiding (its Stealth total
+  // is the DC; in Dim Light the check has Disadvantage). { type: 'search', actor }
   search(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (s.encounter && inFight(s, e.id)) { need(s, e, 'action'); s.encounter.budget.action--; }
-    const r = abilityCheck(s, e, { skill: 'perception' });
+    const hiders = living(s).filter((o) => hiddenFrom(o, e)).map((o) => ({ o, w: canSee(s, e, o, { ignoreHiding: true }) })).filter((x) => x.w !== 'no');
+    const r = abilityCheck(s, e, { skill: 'perception' }, hiders.some((x) => x.w === 'dim')), dimTotal = r.dimTotal;
+    delete r.dimTotal;
     const found = s.map.objects.filter((o) => findable(s, e, o, SEARCH_FEET) && findDC(o) <= r.total);
-    ev.push({ type: 'check', id: e.id, ability: 'wis', skill: 'perception', ...r, search: true, found: found.length });
+    const spotted = hiders.filter((x) => (x.w === 'dim' ? dimTotal : r.total) >= x.o.hiding.dc).map((x) => x.o);
+    ev.push({ type: 'check', id: e.id, ability: 'wis', skill: 'perception', ...r, search: true, found: found.length + spotted.length });
     for (const o of found) setObject(s, o, objectDef(o).find.to, ev);
+    for (const o of spotted) unhide(s, o, ev, 'found', e);
+  },
+  // The Hide action: a DC 15 Dexterity (Stealth) check, taken where no enemy it can see can see it.
+  // A creature with Nimble Escape takes it as a Bonus Action. { type: 'hide', actor }
+  hide(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    const why = hideProblem(s, e);
+    if (why) fail(why);
+    if (s.encounter && inFight(s, e.id)) { const time = e.features?.nimbleEscape ? 'bonus' : 'action'; need(s, e, time); s.encounter.budget[time]--; }
+    const r = abilityCheck(s, e, { skill: 'stealth' }), success = r.total >= HIDE_DC;
+    ev.push({ type: 'check', id: e.id, ability: 'dex', skill: 'stealth', ...r, hide: true, success });
+    if (!success) return;
+    e.hiding = { dc: r.total };
+    ev.push({ type: 'hid', id: e.id });
+    const o = spotter(s, e);
+    if (o) unhide(s, e, ev, 'found', o);                                // an enemy it could not see was watching all along
   },
 
   // ----- table management -----
@@ -1781,7 +1863,8 @@ const handlers = {
       e.hidden = true;
       ev.push({ type: 'concealed', id: e.id });
     } else {
-      e.hidden || fail(`${e.name} isn't hidden.`);
+      (e.hidden || e.hiding) || fail(`${e.name} isn't hidden.`);
+      unhide(s, e, ev, 'noise');                                         // one that took the Hide action made itself heard
       reveal(s, e, ev);
     }
   },
@@ -1910,8 +1993,15 @@ export function apply(s, action, ctx = { role: 'dm' }) {
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
   }
-  try { gravity(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
-  for (const e of ev) if (e.type !== 'moved') s.timeline.push({ t: s.clock, ...e });
+  try { gravity(s, ev); watch(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
+  // The record keeps, with each entry, the creatures the party did not know of when it happened,
+  // so that reading the record later never tells players about what they could not see then.
+  const unseen = (x) => typeof x === 'string' && concealed(s.map, s.entities[x]);
+  for (const e of ev) {
+    if (e.type === 'moved') continue;
+    const ids = [e.id, e.actor, e.target, e.by, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
+    s.timeline.push({ t: s.clock, ...e, ...(ids.length ? { unseen: [...new Set(ids)] } : {}) });
+  }
   return { ok: true, events: ev };
 }
 

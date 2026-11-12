@@ -166,13 +166,16 @@ export function lightAt(s, pos, sources = lightSources(s)) {
 // ---------- seeing ----------
 // Can `viewer` see `target`? { see, why } where see is 'yes', 'dim' (seen, but Lightly Obscured)
 // or 'no', and `why` says what stops or dims it: 'blinded' (the viewer), 'out of sight' (something
-// in the way), 'invisible' (the target), 'dark' or 'dim'. Senses by the SRD's Rules Glossary:
+// in the way), 'invisible' or 'hidden' (the target), 'dark' or 'dim'. Senses by the SRD's Rules Glossary:
 // - Blindsight: within range, sees anything not behind Total Cover, even Blinded, in Darkness, or Invisible.
 // - Truesight: within range, sees in Darkness and sees the Invisible.
 // - Darkvision: within range, Dim Light is as Bright and Darkness as Dim.
 // - Tremorsense is not sight, so it plays no part here.
-// Design: docs/specs/sight.md, decision 4.
-export function sees(s, viewer, target, { sources } = {}) {
+// A creature that took the Hide action (S6) has the Invisible condition against its enemies until
+// one finds it; `ignoreHiding` asks what the viewer could see if it were not hiding.
+// Design: docs/specs/sight.md, decisions 4 and 5.
+export const hiddenFrom = (target, viewer) => !!target.hiding && target.side !== viewer.side;
+export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) {
   if (viewer === target || (viewer.id && viewer.id === target.id)) return { see: 'yes' };
   const senses = viewer.senses ?? {}, d = apart(s, viewer, target) * FT;
   if ((senses.blindsight ?? 0) >= d && coverOf(s, viewer, target) !== 'total') return { see: 'yes' };
@@ -180,6 +183,7 @@ export function sees(s, viewer, target, { sources } = {}) {
   if (!inViewOf(s.map, viewer, target)) return { see: 'no', why: 'out of sight' };
   const truesight = (senses.truesight ?? 0) >= d;
   if (!truesight && has(target, 'invisible')) return { see: 'no', why: 'invisible' };
+  if (!truesight && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
   if (truesight) return { see: 'yes' };
   const src = sources ?? lightSources(s);
   let best = Math.max(...(target.pos ? footprint(target) : [target]).map((p) => LEVEL[lightAt(s, p, src)]));

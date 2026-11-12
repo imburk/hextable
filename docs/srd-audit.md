@@ -102,14 +102,16 @@ were to the descriptive `text` and the manual steps only:
 - **Search** (SRD, Actions table and "Search"): a Wisdom check, skill by target (Insight, Medicine, Perception,
   Survival). Hextable: one Perception roll against every hidden object within 15 feet that is in a shown hex
   and in line (`search`). **Differs**: only Perception, only objects, never hidden creatures (S6 not built), and
-  15 ft is a design choice (the SRD only requires searching near the thing).
+  15 ft is a design choice (the SRD only requires searching near the thing). S6: it now also finds creatures that
+  took the Hide action, wherever the searcher could see them.
 - **Study** (Intelligence: Arcana, History, Investigation, Nature, Religion): **not built.** The `check` action
   rolls any skill but takes no action in a fight. Study-found traps (the pits, Rolling Stone) fall back to Search.
 - **Hide** (SRD "Hide"): DC 15 Dexterity (Stealth) while Heavily Obscured or behind three-quarters or total
   cover and out of every enemy's sight; you gain Invisible while hidden; the check total is the DC to find you;
   it ends on a sound louder than a whisper, being found, an attack roll, or a spell with a Verbal component.
   Hextable: **not built**; `hidden` is a DM switch. The sight spec's Decision 5 matches the SRD on all of the above
-  (resolves its `(check)`s at lines 146-164), including DC 15.
+  (resolves its `(check)`s at lines 146-164), including DC 15. **Built** (S6): the `hide` action, Search and passive
+  Perception against the Stealth total, and every ending in the SRD's list. Found by one enemy, hidden from none.
 - **Influence** (SRD): the GM sorts the monster's request into willing, unwilling or hesitant; a hesitant one
   takes a check, default DC the higher of 15 and its Intelligence, modified by Friendly or Hostile attitude.
   Hextable: **not built.** Attitudes are not tracked.
