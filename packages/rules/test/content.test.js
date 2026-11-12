@@ -98,7 +98,7 @@ test("lookups by id, and the bridge to the engine's current shape", () => {
   assert.deepEqual([SPELLS["cure-wounds"].range, SPELLS["cure-wounds"].heals, SPELLS["cure-wounds"].harmful], [5, true, false]);
   assert.equal(SPELLS["healing-word"].time, "bonus");
   assert.deepEqual(MONSTERS.wolf, { name: "Wolf", size: "medium", ac: 12, hp: 11, speed: 40, speeds: {}, senses: { darkvision: 60 }, abil: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 }, prof: 2,
-    features: { packTactics: true }, attacks: [{ id: "bite", name: "Bite", type: "melee", bonus: 4, damage: "1d6+2", dtype: "piercing", reach: 5, onHit: "prone" }] });
+    skillBonus: { perception: 5, stealth: 4 }, features: { packTactics: true }, attacks: [{ id: "bite", name: "Bite", type: "melee", bonus: 4, damage: "1d6+2", dtype: "piercing", reach: 5, onHit: "prone" }] });
   assert.equal(MONSTERS["goblin-warrior"].attacks[1].bonusOnAdv, "1d4");
   assert.deepEqual(MONSTERS.skeleton.vuln, ["bludgeoning"]);
   assert.equal("id" in PREGENS.wizard, false);
