@@ -11,6 +11,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { apply, recall } from "../../rules/src/engine.js";
 import { diff, snapshot } from "../../rules/src/patch.js";
 import { createHistory, describeStep, mark, undoable } from "../../rules/src/history.js";
+import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate } from "../../rules/src/migrate.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { view, viewEvents } from "../../rules/src/view.js";
@@ -33,7 +34,7 @@ export const MAX_ACTION_BYTES = 4 * 1024;
 export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
   // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
@@ -51,8 +52,11 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   for (const t of load()) {
     const was = t.state?.version;
     migrate(t.state); t.active ??= now(); tables.set(t.code, t);     // saved tables may predate the current content ids
+    // A table saved before the cap, or under a larger one, is cut down now. That moves entries the
+    // saved history points at, so the history is not used.
+    const cut = capTimeline(t.state?.timeline, timelineCap).length > 0;
     try {
-      const data = loadHistory(t.code);
+      const data = cut ? null : loadHistory(t.code);
       if (data && data.seq === (t.seq ?? 0) && t.state?.version === was && undoOf(t).restore(data)) kept.set(t.code, data.seq);
       else undoOf(t).clear();
     } catch { undoOf(t).clear(); }         // a damaged history file costs the undo history and nothing else
@@ -64,7 +68,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const tell = (m, msg) => { for (const c of conns(m)) c.send(msg); };
   // Nobody is ever sent the game state itself, only their view of it: the DM's view is
   // everything, a player's has no dice seed and only what their characters could know.
-  // The timeline is the table's permanent record and only grows, so it is never part of
+  // The timeline is the table's record (capped, see timeline.js) and grows, so it is never part of
   // an update, even the DM's. It is read through the history message instead.
   const stateFor = (t, m) => ({ ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined });
   const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
@@ -224,7 +228,12 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) return error(res.error);
-        if (before) { undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state)); dirtyHistory.add(table.code); }
+        if (before) {
+          // The timeline is capped here, not in apply(); what is dropped goes in the undo step so undo is exact.
+          const dropped = capTimeline(table.state.timeline, timelineCap);
+          undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state), dropped);
+          dirtyHistory.add(table.code);
+        }
         touch(table);
         save(table);
         if (before) tellUndo(table);

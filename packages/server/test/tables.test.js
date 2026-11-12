@@ -876,3 +876,41 @@ test("a restored history keeps the cap: older steps beyond the limit are dropped
   assert.equal(h.list().length, UNDO_LIMIT);
   assert.equal(h.list()[0], `s${UNDO_LIMIT + 9}`);
 });
+
+// ---------- the timeline cap ----------
+test("the table keeps every chronicle entry and the newest other entries; undo across the cap is exact", () => {
+  const tables = createTables({ seed: () => 5, timelineCap: 6 });
+  const { dm, code } = seated(tables);
+  for (let i = 0; i < 30; i++) {
+    dm.say({ t: "act", action: i % 8 === 0 ? { type: "chronicle", title: `Note ${i}` } : { type: "check", actor: "fighter", skill: "athletics" } });
+  }
+  const t = tables.get(code).state.timeline;
+  assert.equal(t.filter((e) => e.type !== "chronicle").length, 6);
+  assert.deepEqual(t.filter((e) => e.title?.startsWith("Note")).map((e) => e.title), ["Note 0", "Note 8", "Note 16", "Note 24"]);
+  // The log a client asks for still has them.
+  dm.say({ t: "history", types: ["chronicle"], limit: 200 });
+  assert.ok(dm.last("history").entries.some((e) => e.title === "Note 0"));
+  const snap = JSON.stringify(tables.get(code).state);
+  dm.say({ t: "act", action: { type: "check", actor: "rogue", skill: "stealth" } });
+  dm.say({ t: "undo" });
+  assert.equal(JSON.stringify(tables.get(code).state), snap);
+});
+
+test("a table saved with a longer timeline is cut when loaded, and its old history is not used", () => {
+  const d = disk();
+  const first = d.open();
+  const { dm, code } = seated(first);
+  for (let i = 0; i < 12; i++) dm.say({ t: "act", action: { type: "check", actor: "fighter", skill: "athletics" } });
+  d.flush(first, code);
+  const second = d.open({ timelineCap: 5 });
+  const state = second.get(code).state;
+  assert.equal(state.timeline.filter((e) => e.type !== "chronicle").length, 5);
+  const dm2 = sitDM(second, code, dm.last("welcome").token);
+  assert.deepEqual(dm2.last("undoable").undo, []);
+  dm2.say({ t: "act", action: { type: "check", actor: "fighter", skill: "athletics" } });
+  dm2.say({ t: "undo" });
+  assert.equal(dm2.last("undoable").undo.length, 0);
+  // With the cap left alone the history loads as before.
+  const third = d.open();
+  assert.equal(sitDM(third, code, dm.last("welcome").token).last("undoable").undo.length, 12);
+});

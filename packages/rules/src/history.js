@@ -66,15 +66,22 @@ function applyChanges(state, ops) {
   }
 }
 
+// A step's timeline part is a list of splices { at, remove, insert } applied in order (older steps,
+// and those saved by older servers, hold a single splice instead of a list).
+const splicesOf = (tl) => (Array.isArray(tl) ? tl : [tl]);
+
 // Apply a step and return the step that takes it back.
 function flip(state, step) {
   const before = mark(state);
   applyChanges(state, step.ops);
-  const { at: i, remove, insert } = step.tl;
-  const removed = state.timeline ? state.timeline.splice(i, remove, ...insert) : [];
-  const back = { label: step.label, shown: step.shown, ops: changes(state, before.tree), tl: { at: i, remove: insert.length, insert: removed } };
-  back.bytes = JSON.stringify(back).length;
-  return back;
+  const back = [];
+  for (const { at: i, remove, insert } of splicesOf(step.tl)) {
+    const removed = state.timeline ? state.timeline.splice(i, remove, ...insert) : [];
+    back.unshift({ at: i, remove: insert.length, insert: removed });      // undone in the opposite order
+  }
+  const undo = { label: step.label, shown: step.shown, ops: changes(state, before.tree), tl: back.length === 1 ? back[0] : back };
+  undo.bytes = JSON.stringify(undo).length;
+  return undo;
 }
 
 // Reading a history back from a file. Anything that is not exactly the shape this module writes is
@@ -83,8 +90,8 @@ const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
 const isStep = (s) => isObj(s) && typeof s.label === 'string' && (s.shown === null || typeof s.shown === 'string')
   && Array.isArray(s.ops) && s.ops.every((o) => isObj(o) && Array.isArray(o.p) && o.p.every((k) => (typeof k === 'string' && !BAD_KEY.has(k)) || Number.isInteger(k))
     && ('d' in o || 'o' in o || 'v' in o) && (!('o' in o) || (Array.isArray(o.o) && o.o.every((k) => typeof k === 'string' && !BAD_KEY.has(k)))))
-  && isObj(s.tl) && Number.isInteger(s.tl.at) && s.tl.at >= 0 && Number.isInteger(s.tl.remove) && s.tl.remove >= 0 && Array.isArray(s.tl.insert);
-const rebuild = (s) => { const step = { label: s.label, shown: s.shown, ops: s.ops, tl: { at: s.tl.at, remove: s.tl.remove, insert: s.tl.insert } }; step.bytes = JSON.stringify(step).length; return step; };
+  && splicesOf(s.tl).length > 0 && splicesOf(s.tl).every((t) => isObj(t) && Number.isInteger(t.at) && t.at >= 0 && Number.isInteger(t.remove) && t.remove >= 0 && Array.isArray(t.insert));
+const rebuild = (s) => { const step = { label: s.label, shown: s.shown, ops: s.ops, tl: Array.isArray(s.tl) ? s.tl.map((t) => ({ at: t.at, remove: t.remove, insert: t.insert })) : { at: s.tl.at, remove: s.tl.remove, insert: s.tl.insert } }; step.bytes = JSON.stringify(step).length; return step; };
 
 export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}) {
   let undos = [], redos = [];
@@ -100,11 +107,17 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
   return {
     // `before` is mark(state) taken before the action, or a whole copy of that state.
     // `label` is a string, or { label, shown } where `shown` is what players may be told (null: nothing).
-    record(before, after, label) {
+    // `dropped` is what capTimeline took out of the timeline after the action (see timeline.js): those
+    // entries are kept in the step, so that undoing it puts the timeline back exactly as it was.
+    record(before, after, label, dropped = []) {
       const m = before && 'tree' in before && 'tl' in before ? before : mark(before);
       const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
-      const added = (after.timeline?.length ?? 0) - m.tl;
-      const s = { label: text, shown: shown ?? null, ops: changes(after, m.tree), tl: { at: m.tl, remove: Math.max(0, added), insert: [] } };
+      const added = (after.timeline?.length ?? 0) + dropped.length - m.tl;     // as it was before anything was dropped
+      const last = { at: m.tl, remove: Math.max(0, added), insert: [] };
+      // Undoing runs the action backwards: first the dropped entries go back where they were (lowest
+      // place first), then the ones the action added come off the end.
+      const tl = dropped.length ? [...dropped.map((d) => ({ at: d.i, remove: 0, insert: [d.e] })), last] : last;
+      const s = { label: text, shown: shown ?? null, ops: changes(after, m.tree), tl };
       s.bytes = JSON.stringify(s).length;
       undos.push(s); redos = [];
       trim();

@@ -3,6 +3,7 @@
 //
 //   PORT       port to listen on (default 8080)
 //   DATA_DIR   where tables are saved between restarts (default ./data)
+//   TIMELINE_CAP  timeline entries kept besides chronicle entries (default 5000)
 //   LIMIT_*    abuse limits, see limits.js and the README (defaults are the production values)
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -16,6 +17,9 @@ import { acceptWebSocket } from "./ws.js";
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
 const DATA = process.env.DATA_DIR || join(process.cwd(), "data");
 const PORT = Number(process.env.PORT) || 8080;
+// TIMELINE_CAP: how many timeline entries other than chronicle entries a table keeps (default 5000).
+const capEnv = process.env.TIMELINE_CAP;
+const timelineCap = capEnv !== undefined && /^\d+$/.test(capEnv) ? Number(capEnv) : undefined;
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" };
 
 // A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
@@ -89,7 +93,7 @@ function save(t) {
   timer ??= setTimeout(() => { timer = null; flush(); }, 1000);
 }
 
-const tables = createTables({ load, save, loadHistory });
+const tables = createTables({ load, save, loadHistory, ...(timelineCap !== undefined && { timelineCap }) });
 
 // ---------- http ----------
 const server = createServer(async (req, res) => {

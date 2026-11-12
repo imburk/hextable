@@ -10,6 +10,7 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 |---|---|---|
 | `PORT` | `8080` | Port to listen on |
 | `DATA_DIR` | `./data` | Where tables are saved, one JSON file each |
+| `TIMELINE_CAP` | `5000` | Timeline entries a table keeps besides chronicle entries (see below) |
 | `LIMIT_CONNECTIONS` | `20` | Open WebSocket connections per address |
 | `LIMIT_HOSTS` / `LIMIT_HOST_WINDOW_MS` | `5` / `3600000` | `host` messages per address per window |
 | `LIMIT_JOINS` / `LIMIT_JOIN_WINDOW_MS` | `20` / `600000` | `join` messages per address per window |
@@ -130,6 +131,18 @@ whole game exactly, the dice seed, the clock and the timeline entries included.
   (the server stopped between the two writes, say) it is dropped, because its patches would not
   fit that state. A history file that is missing, cut off, not JSON or not in the exact shape
   `history.js` writes is ignored with a line in the log, and the table loads with an empty history.
+
+## The timeline cap
+
+`state.timeline` is the table's record of events. Every `chronicle` entry is kept forever; of all
+other entries only the newest `TIMELINE_CAP` (default 5000) are kept, and the oldest beyond that are
+dropped. This is done here, right after a successful undoable action and before it is recorded for
+undo, and not inside `apply()`, which stays pure and independent of any setting. The undo step keeps
+what was dropped, so undoing it restores the timeline exactly (after an undo the table may sit a few
+entries over the cap until the next action). `claim` and `release` are not capped; the next recorded
+action does it. A table saved with a longer timeline is cut when it is loaded, and then its saved undo
+history is not used. The solo transport in the browser applies the same cap. See
+`packages/rules/src/timeline.js`.
 
 ## Hosting
 
