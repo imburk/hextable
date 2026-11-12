@@ -126,6 +126,22 @@ button.leave.sure { outline: 2px solid currentColor; }
 .facts .skill { font: inherit; text-transform: capitalize; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, #3a4a44); background: transparent; color: inherit; cursor: pointer; min-height: 32px; }
 .facts .skill.prof { font-weight: 700; border-color: currentColor; }
 
+/* DM: the map editor. It takes the place of the dock while it is open. */
+body.editing #dock, body.editing #hint { display: none !important; }
+#editor { position: fixed; left: 0; right: 0; bottom: 0; max-width: 760px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); display: grid; gap: 6px; z-index: 4; max-height: 55vh; overflow-y: auto; }
+#editor .ed-head { display: flex; gap: 8px; align-items: center; } #editor .ed-head strong { font-family: var(--display); white-space: nowrap; }
+#editor .ed-head select { flex: 1; min-width: 0; }
+#editor select { min-height: 44px; padding: 4px 8px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; max-width: 100%; }
+#ed-done { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#editor .ed-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; align-items: center; }
+#editor .ed-row button { min-height: 44px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 6px; }
+#editor .ed-row input { min-height: 44px; } #editor .ed-row input.feet { flex: 0 0 5.5em; } #editor .ed-row select { flex: 1; }
+#ed-tools button { flex: 1 1 auto; } #ed-tools button.sel, #ed-opts button.sel { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#ed-opts { display: grid; gap: 6px; } #ed-opts .check { margin: 0; min-height: 44px; }
+#ed-hint { margin: 0; color: var(--muted); font-size: 13px; }
+#editor button.sure { outline: 2px solid currentColor; }
+.sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #0006; }
+.sw-grass { background: #6f8f55; } .sw-forest { background: #4f7446; } .sw-stone { background: #9a978c; } .sw-water { background: #3f6f8c; } .sw-rock { background: #77736a; }
 /* combat tracker: floats above the dock so the action bar stays free */
 #tracker { position: fixed; z-index: 4; left: 12px; top: calc(max(10px, env(safe-area-inset-top)) + 100px); bottom: calc(var(--dock-h, 120px) + 18px); width: min(360px, calc(100% - 24px)); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; backdrop-filter: blur(6px); }
 .tr-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); }

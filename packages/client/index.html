@@ -54,6 +54,7 @@
   <h2>Dungeon Master</h2>
   <div id="dm-table"></div>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
+  <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div></section>
   <section><h3>Fight</h3>
     <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
@@ -100,6 +101,7 @@
     <p id="lobby-msg" role="status"></p>
   </form>
 </div>
+<div id="editor" aria-label="Map editor" hidden></div>
 <div id="toast" role="alert" hidden></div>
 <script type="module" src="./app.js"></script>
 </body>

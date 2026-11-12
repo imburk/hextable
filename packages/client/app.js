@@ -11,6 +11,7 @@ import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { Renderer, hpFraction } from './render.js';
 import { createTracker } from './tracker.js';
 import { THEMES } from './themes.js';
+import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
 
@@ -46,6 +47,7 @@ function toast(msg, info = false) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), info ? 1600 : 3200);
 }
 function setMode(m) { mode = m; refresh(); }
+const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh() });     // the DM's map editor
 function select(id) { selId = id; mode = MOVE; }
 
 // ---------- events -> log lines and floating numbers ----------
@@ -299,9 +301,10 @@ function refresh() {
   if (mode.kind === 'place') hint = `Tap a hex to place ${name(selId)}`;
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
-  R.setCeiling(S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
-  R.setHighlights(hl);
+  R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
+  R.setHighlights(ED.on ? ED.marks() : hl);
   R.inset = $('dock').offsetHeight * 0.85;
+  ED.sync();
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
@@ -506,6 +509,7 @@ window.hextable = { R, act, get state() { return S; }, get mode() { return mode;
 const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled = on; };
 function start(transport) {
   T?.close?.();                 // only ever one connection to a table
+  ED.stop();
   T = transport; S = null;
   lobbyBusy(!T.solo);
   T.on.update = onUpdate;
