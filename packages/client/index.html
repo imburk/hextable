@@ -13,6 +13,7 @@
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
 <div id="labels" aria-hidden="true"></div>
+<canvas id="dice" aria-label="Dice: tap to skip" hidden></canvas>
 
 <header id="top">
   <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
@@ -51,7 +52,9 @@
 
 <aside id="tracker" hidden aria-label="Combat tracker"></aside>
 <aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
-<aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2><ol id="log-list"></ol>
+<aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2>
+  <div class="dice-prefs"><label class="assign">Dice on this device <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label><label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label></div>
+  <ol id="log-list"></ol>
   <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
 </aside>
 <aside id="handouts" class="panel" hidden><button type="button" class="close" data-close="handouts">Close</button><h2>Handouts</h2><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></aside>
@@ -68,6 +71,8 @@
   <section><h3>Fight</h3>
     <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
+    <label class="assign">Dice <select id="dm-dice-throw"><option value="auto">Rolled as soon as someone acts</option><option value="throw">Thrown by whoever acts: a tap or flick sends the action</option></select></label>
+    <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me (on this device)</label>
     <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when the party comes near enemies</label>
     <label class="assign">How near the party comes before the fight starts <select id="dm-engage-range"><option value="10">10 ft</option><option value="30">30 ft</option><option value="60">60 ft</option></select></label>
     <label class="assign">Noticing hidden things in passing (passive Perception) <select id="dm-passive"><option value="off">Off: only a Search finds them</option><option value="traps">Traps only</option><option value="all">Everything</option></select></label>

@@ -206,3 +206,22 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 #dm-march li small { opacity: .7; }
 #dm-march button { min-width: 44px; min-height: 40px; }
 .label .marks b.following { background: #b8d8a0; }
+
+/* dice (docs/specs/dice.md): the overlay is there only while dice are moving; a tap on it skips */
+#dice { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 8; touch-action: none; cursor: pointer; }
+#dice[hidden] { display: none; }
+#dice-tray { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-h, 190px) + 24px); z-index: 7; width: max-content; max-width: calc(100% - 24px);
+  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; justify-items: center; box-shadow: 0 6px 24px #0007; backdrop-filter: blur(6px); }
+#dice-tray .dt-words { display: grid; text-align: center; gap: 2px; }
+#dice-tray .dt-words small { color: var(--muted); }
+#dice-tray .dt-dice { touch-action: none; cursor: grab; min-height: 64px; }
+#dice-tray .dt-buttons { display: flex; gap: 8px; }
+#dice-tray .dt-throw { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; min-height: 44px; padding: 6px 18px; }
+#dice-tray .dt-cancel { min-height: 44px; }
+.dice-prefs { display: grid; gap: 4px; margin: 0 0 8px; }
+.dgs { white-space: nowrap; }
+.dg { display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; margin-left: 2px; padding: 0 2px; font-size: 0.75em; font-weight: 700; border: 1px solid var(--line); border-radius: 3px; background: var(--panel-2); vertical-align: middle; }
+.dg[data-s="20"] { clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); border: 0; background: var(--accent); color: var(--accent-ink); min-width: 1.8em; height: 1.8em; }
+.dg[data-s="4"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); border: 0; background: var(--accent); color: var(--accent-ink); padding-top: 0.4em; }
+.dg.drop { opacity: 0.4; text-decoration: line-through; }
+.dg.neg::before { content: '−'; }

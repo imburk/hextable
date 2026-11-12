@@ -17,6 +17,8 @@ import { localTransport, serverTransport, savedSession, prefs, downloadTable } f
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
+import { createDice, MAX_DICE } from './dice.js';
+import { objectDef } from './shared/walls.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,7 +44,6 @@ const R = new Renderer($('gl'), $('labels'), THEMES[themeId]);
 const isDM = () => T?.you?.role === 'dm';
 const mine = (e) => !!e && (isDM() || e.owner === T.you.userId);
 const name = (id) => S.entities[id]?.name ?? 'Someone';
-const act = (action) => T.send(action);
 
 function toast(msg, info = false) {
   const el = $('toast');
@@ -52,6 +53,107 @@ function toast(msg, info = false) {
 function setMode(m) { mode = m; refresh(); }
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
 R.onPicture = () => { if (ED.on) refresh(); };
+const DICE = createDice($('dice'), prefs);
+
+// ---------- dice: who throws, and what is thrown (docs/specs/dice.md) ----------
+// Under the table rule diceThrow 'throw' an action that rolls is armed, a tray shows its dice,
+// and it is sent at the throw: nothing is decided before it. Cancel sends nothing.
+const ROLLING = new Set(['attack', 'cast', 'act', 'check', 'search', 'hide', 'secondWind']);
+const autoMonsters = () => prefs.get('hextable.diceMonsters') !== false;       // per device, on unless turned off
+const autoMine = () => prefs.get('hextable.diceAutoMine') === true;
+function rollsDice(a) {
+  if (ROLLING.has(a.type)) return true;
+  if (a.type !== 'use') return false;
+  const o = S.map.objects.find((x) => x.id === a.object);
+  return !!(o && objectDef(o)?.uses?.find((u) => u.id === a.verb)?.check);
+}
+function toThrow(a) {
+  if (S?.settings?.diceThrow !== 'throw' || !rollsDice(a)) return false;
+  const e = S.entities[a.actor];
+  if (!e) return false;
+  return e.side === 'party' ? !autoMine() : !autoMonsters();
+}
+const colorOf = (state, id) => { const e = state?.entities[id]; return !e ? '#8a8a8a' : e.side === 'party' ? e.look?.color || '#e6dcc0' : '#a8322b'; };
+// The dice an action will roll, as far as the action says: the tray's promise of when, not what.
+function preview(e, a) {
+  const dice = [], from = (text) => { for (const m of String(text ?? '').matchAll(/(\d+)d(\d+)/g)) for (let i = 0; i < Math.min(+m[1], 6); i++) dice.push(+m[2]); };
+  let what = 'Roll', sub = '';
+  if (a.type === 'attack') { const x = e.attacks?.find((y) => y.id === a.attack); dice.push(20); what = x?.name ?? 'Attack'; if (x) sub = `${signed(x.bonus)} to hit, ${x.damage} ${x.dtype} on a hit`; }
+  else if (a.type === 'act') { const def = e.actions?.find((d) => d.id === a.action), p = def ? actionProfile(def) : null; what = p?.name ?? 'Action'; if (p?.roll === 'melee' || p?.roll === 'ranged') dice.push(20); from(p?.short); sub = p?.short ?? ''; }
+  else if (a.type === 'cast') { const sp = SPELLS[a.spell]; what = sp?.name ?? 'Spell'; if (/spell attack/.test(sp?.long ?? '')) dice.push(20); from(sp?.heal ? sp.heal.dice : sp?.short); sub = sp?.long ?? ''; }
+  else if (a.type === 'secondWind') { what = 'Second Wind'; dice.push(10); sub = `heal 1d10+${e.level}`; }
+  else { dice.push(20); what = a.type === 'check' ? `${(a.skill ?? a.ability ?? '').replace(/-/g, ' ')} check` : a.type === 'search' ? 'Search' : a.type === 'hide' ? 'Hide' : 'Check'; }
+  if (!dice.length) dice.push(20);
+  return { dice: dice.slice(0, MAX_DICE), what, sub };
+}
+let flick = null, closeTray = null, armed = null;
+function act(action) {
+  if (!toThrow(action)) return T.send(action);
+  closeTray?.();
+  const e = S.entities[action.actor], p = preview(e, action);
+  armed = action;
+  closeTray = DICE.tray({ dice: p.dice, label: `${e.name}: ${p.what}`, sub: [p.sub, 'flick, tap or click the dice to throw'].filter(Boolean).join(' · '), color: colorOf(S, e.id),
+    onThrow: (f) => { closeTray = null; armed = null; flick = f ?? { x: 0, y: -1 }; T.send(action); },
+    onCancel: () => { closeTray = null; armed = null; if (aiSent === action.actor) aiSent = null; } });
+}
+// What a viewer's events throw: one group a roll, in order. The dice are the faces the events
+// carry, so nothing is shown that this viewer was not sent. Rolls made inside someone else's
+// action (a save, an opportunity attack) are thrown on the roller's behalf and say whose they are.
+function throwsOf(state, events) {
+  const nm = (id) => state.entities[id]?.name ?? 'Someone', groups = [];
+  let actor = null;
+  const behalf = (who) => (state.settings?.diceThrow === 'throw' && who && who !== actor && state.entities[who]?.side === 'party' ? ' (thrown for them)' : '');
+  for (const ev of events) {
+    if (ev.type === 'attack' && !ev.opportunity || ev.type === 'cast' || ev.type === 'act') actor = ev.actor ?? actor;
+    if (ev.type === 'encounterStart') {
+      const ds = ev.order.filter((o) => o.dice).flatMap((o) => o.dice.map((d) => ({ ...d, color: colorOf(state, o.id) })));
+      if (ds.length) groups.push({ type: 'initiative', ids: ev.order.filter((o) => o.dice).map((o) => o.id), dice: ds, label: 'Initiative', sub: ev.order.filter((o) => o.init !== undefined).map((o) => `${nm(o.id)} ${o.init}`).join(', '), from: 'bottom' });
+      continue;
+    }
+    if (!ev.dice?.length) continue;
+    const who = ev.type === 'attack' ? ev.actor : ['damage', 'heal', 'tempHp'].includes(ev.type) ? (ev.by !== undefined ? ev.by : actor) : ev.id;
+    const g = { type: ev.type, side: state.entities[who]?.side ?? null, dice: ev.dice, color: colorOf(state, who), from: state.entities[who]?.side === 'party' ? 'bottom' : 'top', label: who ? nm(who) : 'The dice' };
+    switch (ev.type) {
+      case 'attack': g.label += `${ev.opportunity ? ' · Opportunity Attack' : ''} · ${ev.name}${behalf(ev.opportunity ? who : null)}`; g.sub = `${ev.total}${ev.ac !== undefined ? ` vs AC ${ev.ac}` : ''} · ${ev.crit ? 'Critical hit!' : ev.hit ? 'Hit' : 'Miss'}`; g.mark = ev.crit ? 'crit' : ev.nat === 1 ? 'fumble' : null; break;
+      case 'damage': g.label += ' · damage'; g.sub = `${ev.rolled ?? ev.amount} ${ev.dtype}`; g.key = JSON.stringify([ev.dice, ev.bonus, ev.dtype]); g.to = nm(ev.target); break;
+      case 'heal': g.label += ' · healing'; g.sub = `${ev.rolled ?? ev.amount} Hit Points`; g.key = JSON.stringify([ev.dice, ev.bonus, 'heal']); g.to = nm(ev.target); break;
+      case 'tempHp': g.label += ' · Temporary Hit Points'; g.sub = `${ev.rolled ?? ev.amount}`; break;
+      case 'save': g.label += ` · ${ev.abil.toUpperCase()} save${behalf(who)}`; g.sub = `${ev.total}${ev.dc !== undefined ? ` vs DC ${ev.dc}` : ''} · ${ev.success ? 'Saved' : 'Failed'}`; break;
+      case 'concentration': g.label += ` · Concentration${behalf(who)}`; g.sub = `${ev.total} vs DC ${ev.dc} · ${ev.success ? 'Held' : 'Lost'}`; break;
+      case 'check': g.label += ` · ${ev.search ? 'Search' : ev.hide ? 'Hide' : (ev.skill ?? ev.ability).replace(/-/g, ' ')}`; g.sub = `${ev.total}`; break;
+      case 'deathSave': g.label += ` · Death Save${behalf(who)}`; g.sub = `${ev.roll}`; g.mark = ev.roll === 20 ? 'crit' : ev.roll === 1 ? 'fumble' : null; break;
+      case 'recharge': g.label += ` · ${ev.name}`; g.sub = ev.ready ? 'recharged' : 'not yet'; break;
+      case 'joined': g.label += ' · Initiative'; g.sub = `${ev.init}`; break;
+      default: g.sub = '';
+    }
+    const last = groups.at(-1);
+    if (g.key && last?.key === g.key) { last.n = (last.n ?? 1) + 1; last.sub = `${g.sub} · ${last.n} targets`; continue; }      // one area roll shared by many
+    if (g.to) g.sub += ` to ${g.to}`;
+    groups.push(g);
+  }
+  if (groups.length > 4) {                                    // a long update is summed up: the first three, then the rest together
+    const rest = groups.splice(3);
+    groups.push({ dice: rest.flatMap((g) => g.dice.map((d) => ({ ...d, color: d.color ?? g.color }))), label: `${rest.length} more rolls`, sub: '', from: 'top' });
+  }
+  return groups;
+}
+// Updates wait while dice are in the air on this client, so the log, hit points and floaters do
+// not give the roll away early. The server never waits; with dice off nothing does.
+let waiting = 0, chain = Promise.resolve();
+const thrown = [];          // the last rolls thrown on this device, for tests: window.hextable.thrown
+function received(state, events, fresh) {
+  const groups = !S || fresh || DICE.show === 'off' ? [] : throwsOf(state, events);
+  thrown.push(...groups); thrown.splice(0, Math.max(0, thrown.length - 60));
+  if (groups[0] && flick) groups[0].flick = flick;
+  flick = null;
+  if (!groups.length && !waiting) return onUpdate(state, events, fresh);
+  waiting++;
+  chain = chain.then(() => DICE.play(groups)).then(() => {
+    waiting--;
+    try { onUpdate(state, events, fresh); } catch (e) { setTimeout(() => { throw e; }); }
+  });
+}
+
 const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh(), assets: () => T?.assets });     // the DM's map editor
 function select(id) { selId = id; mode = MOVE; }
 
@@ -164,7 +266,7 @@ function onUpdate(state, events, fresh) {
   }
   QE.events(events);
   for (const ev of events) {
-    const d = describe(ev); if (d) log.push(d);
+    const d = describe(ev); if (d) log.push(ev.dice?.length ? [d[0], d[1], ev.dice] : d);
     if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
   }
   if (log.length > 300) log.splice(0, log.length - 300);
@@ -426,6 +528,7 @@ function refresh() {
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   R.setHighlights(ED.on ? ED.marks() : hl);
   R.inset = $('dock').offsetHeight * 0.85;
+  document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray sits above the dock
   ED.sync();
 
   if (!$('log').hidden) renderLog();
@@ -436,7 +539,9 @@ function refresh() {
 }
 
 function renderLog() {
-  $('log-list').innerHTML = log.slice(-120).map(([t, c]) => `<li class="${c || ''}">${esc(t)}</li>`).join('');
+  // A roll's line ends with small glyphs of the faces this viewer was sent.
+  const glyphs = (dice) => ` <span class="dgs">${dice.slice(0, MAX_DICE).map((d) => `<span class="dg${d.drop ? ' drop' : ''}${d.neg ? ' neg' : ''}" data-s="${d.sides}" title="d${d.sides}">${d.value}</span>`).join('')}</span>`;
+  $('log-list').innerHTML = log.slice(-120).map(([t, c, dice]) => `<li class="${c || ''}">${esc(t)}${dice ? glyphs(dice) : ''}</li>`).join('');
   $('log-list').lastElementChild?.scrollIntoView({ block: 'end' });
 }
 
@@ -470,6 +575,7 @@ function renderDM() {
   renderMarch();
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
+  $('dm-dice-throw').value = S.settings.diceThrow ?? 'auto'; $('dm-dice-monsters').checked = autoMonsters();
   const lvl = dmLevel(); $('dm-ambient').value = lvl?.light ?? 'bright'; $('dm-ambient-level').textContent = lvl ? lvl.name : '';
   const lit = S.entities[selId]?.light; $('dm-torch').disabled = !S.entities[selId]; $('dm-torch').textContent = lit ? 'Put out selected\'s light' : 'Give selected a torch';
   $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-cover').value = S.settings.cover ?? 'on'; $('dm-creature-cover').checked = S.settings.creatureCover !== 'off'; $('dm-climb').checked = S.settings.climbing !== 'off';
@@ -673,6 +779,13 @@ $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', va
 function dmLevel() { const e = S?.entities[selId]; return (e && under(S.map, e.pos)?.level) || S?.map.levels[0] || null; }
 $('dm-sight').onchange = (ev) => act({ type: 'setting', key: 'sight', value: ev.target.value });
 $('dm-unseen-turns').onchange = (ev) => act({ type: 'setting', key: 'unseenTurns', value: ev.target.value });
+$('dm-dice-throw').onchange = (ev) => act({ type: 'setting', key: 'diceThrow', value: ev.target.value });
+$('dm-dice-monsters').onchange = (ev) => prefs.set('hextable.diceMonsters', ev.target.checked);
+// This device's dice: how they are shown, and whether this player's own are thrown at once.
+$('dice-show').value = DICE.show;
+$('dice-show').onchange = (ev) => { DICE.show = ev.target.value; };
+$('dice-auto-mine').checked = autoMine();
+$('dice-auto-mine').onchange = (ev) => prefs.set('hextable.diceAutoMine', ev.target.checked);
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
 $('dm-auto').onchange = () => S && onUpdate(S, []);
@@ -710,7 +823,7 @@ addEventListener('keydown', (ev) => {
   if (ev.target.tagName === 'INPUT') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); return redo(); }
-  if (ev.key === 'Escape') setMode(MOVE);
+  if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (ev.key === 'q') R.rotate(-Math.PI / 12); if (ev.key === 'e') R.rotate(Math.PI / 12);
 });
 
@@ -718,7 +831,7 @@ const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => se
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, ED, act, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, ED, act, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
@@ -728,9 +841,11 @@ function start(transport) {
   ED.stop();
   T = transport; S = null;
   lobbyBusy(!T.solo);
-  T.on.update = onUpdate;
+  T.on.update = received;
+  closeTray?.(); armed = null; DICE.skip();
   T.on.error = (msg, expired) => {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
+    flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
