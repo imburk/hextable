@@ -1,8 +1,9 @@
 // Sight: line of sight and cover, worked out on hexes from the centre and the corners, and light.
 // Design: docs/specs/sight.md, decisions 1 to 3.
 import * as H from './hex.js';
-import { FT, WALL_HEIGHT, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
+import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
 import { barriers, center, objectDef } from './walls.js';
+import { has } from './modifiers.js';
 
 const S3 = Math.sqrt(3), CORNER = (FT / S3) * 0.9;        // a little inside the true corner, so a wall on the hex's own edge is not "in front of" it
 const CORNERS = [0, 1, 2, 3, 4, 5].map((i) => { const a = (Math.PI / 180) * (30 + 60 * i); return [CORNER * Math.cos(a), CORNER * Math.sin(a)]; });
@@ -161,3 +162,28 @@ export function lightAt(s, pos, sources = lightSources(s)) {
   for (const src of sources) { if (best === 2) break; best = Math.max(best, shine(s, src, pos)); }
   return LIGHT[best];
 }
+
+// ---------- seeing ----------
+// Can `viewer` see `target`? { see, why } where see is 'yes', 'dim' (seen, but Lightly Obscured)
+// or 'no', and `why` says what stops or dims it: 'blinded' (the viewer), 'out of sight' (something
+// in the way), 'invisible' (the target), 'dark' or 'dim'. Senses by the SRD's Rules Glossary:
+// - Blindsight: within range, sees anything not behind Total Cover, even Blinded, in Darkness, or Invisible.
+// - Truesight: within range, sees in Darkness and sees the Invisible.
+// - Darkvision: within range, Dim Light is as Bright and Darkness as Dim.
+// - Tremorsense is not sight, so it plays no part here.
+// Design: docs/specs/sight.md, decision 4.
+export function sees(s, viewer, target, { sources } = {}) {
+  if (viewer === target || (viewer.id && viewer.id === target.id)) return { see: 'yes' };
+  const senses = viewer.senses ?? {}, d = apart(s, viewer, target) * FT;
+  if ((senses.blindsight ?? 0) >= d && coverOf(s, viewer, target) !== 'total') return { see: 'yes' };
+  if (has(viewer, 'blinded')) return { see: 'no', why: 'blinded' };
+  if (!inViewOf(s.map, viewer, target)) return { see: 'no', why: 'out of sight' };
+  const truesight = (senses.truesight ?? 0) >= d;
+  if (!truesight && has(target, 'invisible')) return { see: 'no', why: 'invisible' };
+  if (truesight) return { see: 'yes' };
+  const src = sources ?? lightSources(s);
+  let best = Math.max(...(target.pos ? footprint(target) : [target]).map((p) => LEVEL[lightAt(s, p, src)]));
+  if ((senses.darkvision ?? 0) >= d) best = Math.min(2, best + 1);
+  return best === 2 ? { see: 'yes' } : best === 1 ? { see: 'dim', why: 'dim' } : { see: 'no', why: 'dark' };
+}
+export const canSee = (s, viewer, target, opts) => sees(s, viewer, target, opts).see;

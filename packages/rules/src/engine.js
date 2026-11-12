@@ -17,7 +17,7 @@ import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
-import { COVER, coverOf, inSight } from './sight.js';
+import { COVER, canSee, coverOf, inSight, sees } from './sight.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
@@ -197,7 +197,7 @@ export function moveOptions(s, e) {
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
-    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos));
+    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && canSee(s, o, e) !== 'no');     // SRD: a creature it can see
 }
 // What a creature makes an Opportunity Attack with: its first melee attack action, or for a
 // creature with flat attack records, its first melee attack.
@@ -552,6 +552,7 @@ function checkRange(s, e, t, atk) {
   } else if (d * FT > atk.range[1]) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.range[1]} ft.`);
 }
 
+const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'hidden' };
 // Advantage and Disadvantage for an attack, with the reasons. Any of each cancels to a normal roll.
 // Conditions and traits supply theirs as data (modifiers.js); the two rules written out here
 // belong to ranged attacks themselves. Also returns `add` (a bonus or penalty to the roll) and
@@ -562,8 +563,15 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  // Only an enemy who can see the attacker and is not Incapacitated counts. Until there is sight, "can see" is "not Blinded"; sight will refine it.
-  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && !o.cond.blinded && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
+  // SRD Ranged Attacks in Close Combat: only an enemy within 5 feet who can see the attacker and is not Incapacitated counts.
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && apart(s, o, e) <= 1 && canSee(s, o, e) !== 'no')) dis.push('enemy within 5 ft');
+  // SRD Unseen Attackers and Targets. Blinded and Invisible say so in their own data (as "attacker
+  // blinded" and the like); darkness, something in the way, or hiding are said here. A trap has no eyes.
+  if (!e.object) {
+    const mine = sees(s, e, t), theirs = sees(s, t, e), own = ['blinded', 'invisible'];
+    if (mine.see === 'no' && !own.includes(mine.why)) dis.push(`target ${UNSEEN[mine.why]}`);
+    if (theirs.see === 'no' && !own.includes(theirs.why)) adv.push(`attacker ${UNSEEN[theirs.why]}`);
+  }
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 

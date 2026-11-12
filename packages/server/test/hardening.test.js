@@ -23,7 +23,14 @@ async function start(env = {}) {
   });
   return port;
 }
-after(() => { for (const { child, data } of running) { child.kill(); rmSync(data, { recursive: true, force: true }); } });
+// Each server is stopped and waited for before its folder goes: a server still saving on its way out
+// would otherwise race the removal (ENOTEMPTY under load).
+after(async () => {
+  for (const { child, data } of running) {
+    if (child.exitCode === null && child.signalCode === null) { const gone = new Promise((r) => child.once("exit", r)); child.kill(); await gone; }
+    rmSync(data, { recursive: true, force: true, maxRetries: 5 });
+  }
+});
 
 // A WebSocket that records everything it is sent and how it closed.
 function open(port) {
