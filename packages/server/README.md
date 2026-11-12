@@ -8,7 +8,7 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `PORT` | `8080` | Port to listen on |
+| `PORT` | `8080` | Port to listen on (`0`: any free port, printed at start) |
 | `DATA_DIR` | `./data` | Where tables are saved, one JSON file each |
 | `TIMELINE_CAP` | `5000` | Timeline entries a table keeps besides chronicle entries (see below) |
 | `LIMIT_CONNECTIONS` | `20` | Open WebSocket connections per address |

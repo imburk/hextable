@@ -1,7 +1,7 @@
 // The table server: serves the built game, answers /api/ping, and runs tables
 // over a WebSocket at /ws. Start it with `npm start` from the repo root.
 //
-//   PORT       port to listen on (default 8080)
+//   PORT       port to listen on (default 8080; 0 picks a free one, and the start-up line says which)
 //   DATA_DIR   where tables are saved between restarts (default ./data)
 //   TIMELINE_CAP  timeline entries kept besides chronicle entries (default 5000)
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
@@ -20,7 +20,7 @@ import { acceptWebSocket } from "./ws.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
 const DATA = process.env.DATA_DIR || join(process.cwd(), "data");
-const PORT = Number(process.env.PORT) || 8080;
+const PORT = /^\d+$/.test(process.env.PORT ?? "") ? Number(process.env.PORT) : 8080;
 // TIMELINE_CAP: how many timeline entries other than chronicle entries a table keeps (default 5000).
 const capEnv = process.env.TIMELINE_CAP;
 const timelineCap = capEnv !== undefined && /^\d+$/.test(capEnv) ? Number(capEnv) : undefined;
@@ -171,5 +171,5 @@ server.on("upgrade", (req, socket) => {
   ws.onclose = () => { release(); session.disconnect(); };
 });
 
-server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${PORT} (${tables.size()} saved tables)`));
+server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${server.address().port} (${tables.size()} saved tables)`));
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { flush(); process.exit(0); });
