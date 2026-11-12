@@ -12,7 +12,8 @@ import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { ABILITIES, SKILLS } from './content/schema.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
-import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, concealed, gap, ground, hasColumn, landing, overlaps, regionAt, shown, surfaces, under, unseenAt } from './space.js';
+import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
+import { SIZES } from './content/sizes.js';
 import { EDITS, lintMap } from './map.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
@@ -46,7 +47,7 @@ export function makeEntity(tpl, over = {}) {
   const t = structuredClone(tpl);
   if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
-    kind: 'npc', side: 'foe', owner: null, level: 0, speeds: {}, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
+    kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0 },
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
@@ -60,13 +61,27 @@ export function makeEntity(tpl, over = {}) {
 export const aloft = (s, e) => up(e) && speedOf(s, e, 'fly') > 0 && (!!e.hover || !(e.cond.prone || incapacitated(e)));
 // Would a creature fit at this position? Not inside the ground, not with its head through a floor,
 // and not hanging just above one. `landed` says whether it would be standing.
-function airspace(map, h, column = surfaces(map, h)) {
+function airspace(map, h, column = surfaces(map, h), height = HEADROOM) {
   if (!column.length || h.z < column[0].z) return null;
   for (const sf of column) {
     if (sf.z === h.z) return TILES[sf.tile.t].cost === Infinity ? null : { landed: sf };
-    if ((sf.z > h.z && sf.z < h.z + HEADROOM) || (sf.z < h.z && sf.z > h.z - FT)) return null;
+    if ((sf.z > h.z && sf.z < h.z + height) || (sf.z < h.z && sf.z > h.z - FT)) return null;
   }
   return { landed: null };
+}
+// Is there room for the whole of a creature to stand with its anchor at `h`? Every hex of its
+// footprint needs a floor within a step of that height that can be stood on, and no wall may
+// run between two parts of it. A creature of one hex is checked by its caller.
+function fitsOn(map, e, h, B) {
+  const shape = shapeOf(e);
+  if (shape.length === 1) return true;
+  const base = ground(map, h)?.level, parts = footprint(e, h);
+  for (const f of parts.slice(1)) {
+    const sf = surfaces(map, f).find((x) => Math.abs(x.z - h.z) <= STEP_MAX);
+    if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, f)) return false;
+  }
+  if (base) for (const f of parts) for (const n of H.neighbors(f)) if (parts.some((p) => p.q === n.q && p.r === n.r) && B.blocked(base.id, f, n)) return false;
+  return true;
 }
 // The levels whose walls stand at this height.
 const wallsAt = (map, z) => map.levels.filter((l) => l.z <= z && z < l.z + WALL_HEIGHT);
@@ -83,7 +98,11 @@ export function moveOptions(s, e) {
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
-  const inWay = (h, test) => others.some((o) => overlaps(o.pos, h) && test(o));
+  const inWay = (h, test) => others.some((o) => overlapAt(o, o.pos, e, h) && test(o));
+  const big = shapeOf(e).length > 1, tall = sizeOf(e).height;
+  // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
+  const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
+  const onHazard = (levelId, h) => (big ? footprint(e, h) : [h]).some((f) => hazards.has(`${levelId}|${H.col(f)}`));
   const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
@@ -99,7 +118,7 @@ export function moveOptions(s, e) {
   const reach = H.reachable(e.pos, budget, (from) => {
     const out = [], here = ground(map, from)?.level;
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
-    if (here && from !== e.pos && hazards.has(`${here.id}|${H.col(from)}`)) return out;
+    if (here && from !== e.pos && onHazard(here.id, from)) return out;
     if (here && walk > 0) {
       for (const n of H.neighbors(from)) {
         if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
@@ -107,8 +126,9 @@ export function moveOptions(s, e) {
         for (const sf of column) {
           const dz = sf.z - from.z, up_ = Math.abs(dz), terrain = TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
-          if (e.side !== 'party' && hazards.has(`${sf.level.id}|${H.col(n)}`)) continue;     // a lair's own never step on its traps
           const h = { q: n.q, r: n.r, z: sf.z };
+          if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
+          if (!bodyFits(from, h, here.id)) continue;
           if (inWay(h, (o) => hostile(o, e) && up(o))) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
@@ -129,7 +149,7 @@ export function moveOptions(s, e) {
         if (!o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = H.key(a) === H.key(from) ? b : b && H.key(b) === H.key(from) ? a : null;
-        if (!h || (fighting && !enc.arena[H.col(h)]) || inWay(h, (x) => hostile(x, e) && up(x))) continue;
+        if (!h || (fighting && !enc.arena[H.col(h)]) || inWay(h, (x) => hostile(x, e) && up(x)) || !fitsOn(map, e, h, B)) continue;
         out.push({ h, cost: Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
       }
     }
@@ -139,8 +159,8 @@ export function moveOptions(s, e) {
       for (const dz of [0, FT, -FT]) for (let i = dz ? -1 : 0; i < 6; i++) {
         const n = i < 0 ? from : around[i];
         if (from.z + dz > top || (fighting && !enc.arena[H.col(n)])) continue;
-        const h = { q: n.q, r: n.r, z: from.z + dz }, column = columnOf(n), room = airspace(map, h, column);
-        if (!room) continue;
+        const h = { q: n.q, r: n.r, z: from.z + dz }, column = columnOf(n), room = airspace(map, h, column, tall);
+        if (!room || (big && footprint(e, h).some((f, i) => i > 0 && !airspace(map, f, columnOf(f), tall)))) continue;
         // No passing through a floor on the way up or down.
         if (dz > 0 && column.some((sf) => sf.z > from.z && sf.z <= h.z)) continue;
         if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
@@ -153,14 +173,19 @@ export function moveOptions(s, e) {
     return out;
   });
   const start = H.key(e.pos);
-  for (const [k, v] of reach) v.canStop = k !== start && !inWay(v.h, () => true);
+  // Nobody stops in another creature's space, except that a few Tiny ones can share a hex.
+  const share = sizeOf(e).shares;
+  for (const [k, v] of reach) {
+    const there = others.filter((o) => overlapAt(o, o.pos, e, v.h));
+    v.canStop = k !== start && (!there.length || (!!share && there.length < share && there.every((o) => sizeOf(o).shares)));
+  }
   return reach;
 }
 
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
-    o.attacks.some((a) => a.type === 'melee') && gap(s, o.pos, pos) <= 1 && clear(s, o.pos, pos));
+    o.attacks.some((a) => a.type === 'melee') && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos));
 }
 
 // Is there nothing solid between two positions? A wall or a shut door stops attacks, spells and
@@ -174,7 +199,12 @@ export function clear(s, a, b) {
   const B = barriers(s.map);
   return !wallsAt(s.map, lo.z).some((l) => hi.z < l.z + WALL_HEIGHT && B.blocked(l.id, a, b, 'both'));
 }
-const walled = (s, e, t) => clear(s, e.pos, t.pos) || fail(`There is a wall between ${e.name} and ${t.name}.`);
+// Between two creatures: is any part of one in the clear from any part of the other?
+export function unblocked(s, a, b) {
+  if (shapeOf(a).length === 1 && shapeOf(b).length === 1) return clear(s, a.pos, b.pos);
+  return footprint(a).some((fa) => footprint(b).some((fb) => clear(s, fa, fb)));
+}
+const walled = (s, e, t) => unblocked(s, e, t) || fail(`There is a wall between ${e.name} and ${t.name}.`);
 
 // ---------- regions ----------
 function revealRegion(s, r, ev) {
@@ -283,7 +313,8 @@ function trip(s, e, prev, ev, before) {
   for (const o of s.map.objects) {
     const def = objectDef(o);
     if (!def.triggers?.length || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) continue;
-    const was = H.dist(prev, o.at), now = H.dist(e.pos, o.at);
+    const nearest = (pos) => Math.min(...footprint(e, pos).map((f) => H.dist(f, o.at)));      // any part of a big creature sets a thing off
+    const was = nearest(prev), now = nearest(e.pos);
     const t = def.triggers.find((x) => x.from.includes(o.state) && (x.who !== 'party' || e.side === 'party') &&
       (x.on === 'enter' ? now === 0 && was > 0 : x.on === 'leave' ? was === 0 && now > 0 : now * FT <= x.feet && was * FT > x.feet));
     if (!t) continue;
@@ -319,7 +350,7 @@ function push(s, t, feet, dir, from, ev) {
       const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
       if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
       const h = { q: n.q, r: n.r, z: sf.z };
-      if (living(s).some((c) => c.id !== t.id && H.key(c.pos) === H.key(h))) continue;
+      if (living(s).some((c) => c.id !== t.id && overlapAt(c, c.pos, t, h)) || !fitsOn(s.map, t, h, B)) continue;
       const nw = H.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
@@ -513,7 +544,7 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= 1 && clear(s, o.pos, e.pos))) dis.push('enemy within 5 ft');
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
@@ -687,7 +718,7 @@ const able = (e) => { const by = incapacitatedBy(e); if (by) fail(`${e.name} is 
 export function targetsFor(s, e, { attack, spell }) {
   const out = [];
   for (const t of living(s)) {
-    if (!clear(s, e.pos, t.pos)) continue;
+    if (!unblocked(s, e, t)) continue;
     const d = apart(s, e, t) * FT;
     if (attack) {
       const atk = e.attacks.find((a) => a.id === attack);
@@ -741,7 +772,7 @@ const handlers = {
     for (const step of H.pathTo(reach, tk)) {
       if (fighting && s.encounter && !e.cond.disengaged) {
         for (const o of threatsAt(s, e, prev)) {
-          if (gap(s, o.pos, step) <= 1) continue;
+          if (apartAt(s, o, o.pos, e, step) <= 1) continue;
           flush();
           o.reactionUsed = true;
           resolveAttack(s, o, e, o.attacks.find((x) => x.type === 'melee'), ev, { opportunity: true });
@@ -758,11 +789,11 @@ const handlers = {
       if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
-      for (const o of living(s)) if (o.hidden && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
+      for (const o of living(s)) if (o.hidden && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && unblocked(s, o, e)) { flush(); reveal(s, o, ev); }
       const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
       if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
       if (!s.encounter && s.settings.autoEngage && free &&
-          living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && clear(s, o.pos, e.pos) && !unseenAt(s.map, o.pos))) {
+          living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && unblocked(s, o, e) && !unseenAt(s.map, o.pos))) {
         flush(); startEncounter(s, e.pos, ev); break;
       }
     }
@@ -815,7 +846,7 @@ const handlers = {
       const origin = shape === 'cone' || shape === 'emanation' ? e.pos : a.hex.z !== undefined ? { q: a.hex.q, r: a.hex.r, z: a.hex.z } : landing(s.map, a.hex, e.pos.z) ?? e.pos;
       const size = sp.area.size / FT, tall = sp.area.height ?? sp.area.size;
       const high = (t) => (shape === 'cylinder' ? t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : gap(s, origin, t.pos) <= size);     // areas have height too
-      targets = living(s).filter((t) => keys.has(H.col(t.pos)) && high(t) && clear(s, origin, t.pos));      // a wall shelters what is behind it
+      targets = living(s).filter((t) => footprint(t).some((f) => keys.has(H.col(f))) && high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
     } else if (sp.aim === 'creature') {
       const t = ent(s, a.target);
       !t.dead || fail(`${t.name} is dead.`);
@@ -1004,7 +1035,9 @@ const handlers = {
     const tpl = MONSTERS[a.monster] || fail('Unknown monster.');
     const at = landing(s.map, a.at);
     (at && TILES[ground(s.map, at).tile.t].cost < Infinity) || fail("A creature can't stand there.");
-    !living(s).some((o) => overlaps(o.pos, at)) || fail('That hex is occupied.');
+    const body = { size: tpl.size };
+    fitsOn(s.map, body, at, barriers(s.map)) || fail(`There isn't room for something ${tpl.size} there.`);
+    !living(s).some((o) => overlapAt(o, o.pos, body, at)) || fail('That hex is occupied.');
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
@@ -1016,7 +1049,7 @@ const handlers = {
     const e = ent(s, a.actor);
     // On the nearest floor, or exactly where asked if a height is given and there is room there (in the air, say).
     const to = (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z)) || fail("There's nothing there to stand on.");
-    !living(s).some((o) => o.id !== e.id && overlaps(o.pos, to)) || fail('That hex is occupied.');
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to)) || fail('That hex is occupied.');
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
@@ -1076,6 +1109,17 @@ const handlers = {
     if (a.mode === 'walk') e.speed = a.feet; else if (a.feet) e.speeds[a.mode] = a.feet; else delete e.speeds[a.mode];
     if (a.mode === 'fly') { if (a.hover && a.feet) e.hover = true; else delete e.hover; }
     ev.push({ type: 'speed', id: e.id, mode: a.mode, feet: a.feet });
+  },
+  // Change how big a creature is. { type: 'setSize', actor, size }
+  setSize(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change a creature\'s size.');
+    const e = ent(s, a.actor);
+    Object.hasOwn(SIZES, a.size) || fail('Unknown size.');
+    const body = { size: a.size };
+    (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${a.size} there.`);
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+    e.size = a.size;
+    ev.push({ type: 'size', id: e.id, size: a.size });
   },
   // Hand a creature an item, or take one away. { type: 'give', actor, item, take? }
   give(s, a, ctx, ev) {

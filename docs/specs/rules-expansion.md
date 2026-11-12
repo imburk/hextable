@@ -208,7 +208,7 @@ requirement the first four decisions did not answer.
 
 > Replaced by [maps-and-objects.md](maps-and-objects.md), decisions 2 and 3,
 > which design height and size together with walls and floors. Task R9 is
-> now M6 and M7 there. The text below is kept for the record.
+> now M6 and M7 there, both built. The text below is kept for the record.
 
 A creature's position becomes `{ q, r, z }` and its body has a footprint.
 
