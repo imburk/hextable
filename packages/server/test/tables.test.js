@@ -6,7 +6,7 @@ import { current, moveOptions } from "../../rules/src/engine.js";
 import * as H from "../../rules/src/hex.js";
 import { createReceiver } from "../../rules/src/patch.js";
 import { view } from "../../rules/src/view.js";
-import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "../src/tables.js";
+import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_TABLES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -515,7 +515,7 @@ test("the server upgrades tables saved by the previous version when it loads the
   saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
   const tables = createTables({ load: () => [saved] });
   const state = tables.get("FIXTR1").state;
-  assert.equal(state.version, 7);
+  assert.equal(state.version, 8);
   assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
   const dm = client(tables);
   dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });
@@ -596,4 +596,186 @@ test("export: the DM gets the whole table, a player is refused, and no member or
   const stranger = client(tables);
   stranger.say({ t: "export" });
   assert.deepEqual(stranger.got, [{ t: "error", error: "Join a table first." }]);
+});
+
+// ---------- the DM's undo ----------
+
+// What a member's client holds now, without the timeline.
+const known = (c) => JSON.stringify(c.receiver.state);
+
+test("undo: the DM takes back a move and both DM and player return to before; redo puts it back", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });   // not undoable
+  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: [] });
+  const dmBefore = known(dm), playerBefore = known(player), whole = JSON.stringify(state);
+
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to: freeHex(state, "rogue") } });
+  assert.deepEqual(dm.last("undoable").undo, ["Pip moved"]);
+  assert.notEqual(known(player), playerBefore);
+
+  dm.say({ t: "undo" });
+  assert.equal(JSON.stringify(state), whole, "the table's state is exactly as before, seed and all");
+  assert.equal(known(dm), dmBefore);
+  assert.equal(known(player), playerBefore);
+  assert.deepEqual(dm.last("update").events, [{ type: "undone", label: "Pip moved" }]);
+  assert.deepEqual(player.last("update").events, [{ type: "undone", label: "Pip moved" }]);
+  assert.ok(player.raw.findLast((m) => m.t === "update").state, "a whole view, not a patch");
+  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: ["Pip moved"] });
+  assert.equal(player.count("undoable"), 0, "players are never sent the history");
+  assert.equal(state.entities.rogue.owner, player.last("welcome").userId, "the seat is not taken back");
+
+  dm.say({ t: "redo" });
+  assert.equal(dm.last("update").events[0].type, "redone");
+  assert.notEqual(known(player), playerBefore);
+  // Patches after an undo still add up to the right view.
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  assert.equal(known(dm), JSON.stringify(expected(tables, code, dm)));
+  assert.deepEqual(dm.last("undoable").redo, []);
+});
+
+test("undo: a player is refused, and nothing to undo is an error", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  dm.say({ t: "undo" });
+  assert.equal(dm.last("error").error, "Nothing to undo.");
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  const clock = tables.get(code).state.clock, updates = player.count("update");
+  player.say({ t: "undo" });
+  assert.equal(player.last("error").error, "Only the DM can undo.");
+  player.say({ t: "redo" });
+  assert.equal(player.last("error").error, "Only the DM can redo.");
+  assert.equal(tables.get(code).state.clock, clock);
+  assert.equal(player.count("update"), updates);
+  const stranger = client(tables);
+  stranger.say({ t: "undo" });
+  assert.equal(stranger.last("error").error, "Join a table first.");
+});
+
+test("undo: a hidden monster's spawn, taken back, reaches no player in any form", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const spot = H.range({ q: 0, r: 0 }, 4).find((h) => state.map.levels[0].tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: spot, hidden: true, name: "Greyjaw" } });
+  const id = dm.last("update").events[0].id;
+  assert.deepEqual(dm.last("undoable").undo, ["Greyjaw was added"]);
+  const n = player.raw.length;
+  dm.say({ t: "undo" });
+  dm.say({ t: "redo" });
+  dm.say({ t: "undo" });
+  assert.equal(id in state.entities, false);
+  const sent = player.raw.slice(n);
+  assert.equal(sent.length, 3);
+  for (const m of sent) {
+    const text = JSON.stringify(m);
+    assert.equal(text.includes(id) || text.includes("Greyjaw"), false, `leaked: ${text}`);
+    assert.deepEqual(m.events, [], "players are not told of a step they never saw");
+  }
+  assert.ok(dm.last("update").events[0].label.includes("Greyjaw"));
+});
+
+test("undo: a region the player never saw stays unseen through undo and redo", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  // A room far from the party, not revealed. Paint it, then make it a region.
+  const far = H.range({ q: 0, r: 0 }, 1).map((h) => ({ q: h.q + 10, r: h.r - 10 }));
+  dm.say({ t: "act", action: { type: "mapEdit", ops: [
+    ...far.map((at) => ({ op: "tile", level: "ground", at, tile: { t: "stone" } })),
+    { op: "region", region: { id: "crypt", name: "The crypt", level: "ground", hexes: far.map(H.col) } },
+  ] } });
+  assert.ok(state.map.regions.some((r) => r.id === "crypt" && !r.revealed), dm.last("error")?.error);
+  const n = player.raw.length;
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  dm.say({ t: "undo" });
+  dm.say({ t: "undo" });                                                // the room itself
+  dm.say({ t: "redo" });
+  for (const m of player.raw.slice(n)) assert.equal(JSON.stringify(m).includes("crypt"), false, "the room is never named to the player");
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+
+  // Shown, then taken back: the player is told what they saw undone, and the room leaves their view.
+  dm.say({ t: "act", action: { type: "revealRegion", region: "crypt" } });
+  assert.ok(known(player).includes("crypt"));
+  dm.say({ t: "undo" });
+  assert.deepEqual(player.last("update").events, [{ type: "undone", label: "The crypt was revealed" }]);
+  assert.equal(known(player).includes("crypt"), false);
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+});
+
+test("undo: taking back a move that revealed a hidden creature hides it from the player again", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  dm.say({ t: "act", action: { type: "setting", key: "autoEngage", value: false } });
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  const pip = state.entities.rogue;
+  const spot = H.range(pip.pos, 5).find((h) => H.dist(h, pip.pos) === 5 && state.map.levels[0].tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: spot, hidden: true, name: "Greyjaw" } });
+  const id = dm.last("update").events[0].id;
+  const steps = [...moveOptions(state, pip)].filter(([k, v]) => v.canStop && H.dist(H.parse(k), spot) === 2).sort((a, b) => a[1].cost - b[1].cost);
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to: H.parse(steps[0][0]) } });
+  assert.ok(id in player.receiver.state.entities, "the move revealed it");
+
+  const n = player.raw.length;
+  dm.say({ t: "undo" });
+  assert.equal(state.entities[id].hidden, true);
+  assert.equal(id in player.receiver.state.entities, false, "hidden again");
+  assert.deepEqual(player.last("update").events, [{ type: "undone", label: "Pip moved" }]);
+  assert.equal(player.raw.slice(n).some((m) => JSON.stringify(m).includes("Greyjaw")), false);
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  // The table's record no longer says it was seen.
+  player.say({ t: "history", limit: 200 });
+  assert.equal(JSON.stringify(player.last("history")).includes(id), false);
+});
+
+test("undo: the history is not saved with the table", () => {
+  const saved = [];
+  const tables = createTables({ seed: () => 5, save: (t) => saved.push(JSON.stringify(t)) });
+  const { dm } = seated(tables);
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 10 } });
+  dm.say({ t: "undo" });
+  assert.equal(saved.some((x) => x.includes("minutes passed")), false);
+});
+
+test("tables idle for 30 days do not count against the cap, and are kept", () => {
+  let t = 1e12;
+  const tables = createTables({ seed: () => 1, now: () => t });
+  const old = client(tables), busy = client(tables);
+  old.say({ t: "host", name: "Old" });
+  busy.say({ t: "host", name: "Busy" });
+  const oldWelcome = old.last("welcome"), busyCode = busy.last("welcome").code;
+  old.session.disconnect();
+  t += IDLE_MS - 1000;
+  busy.session.disconnect();
+  t += 2000;                                             // "Old" is now past 30 days, "Busy" is not
+  assert.equal(tables.size(), 2);
+  assert.equal(tables.activeSize(), 1);
+  for (let i = 0; i < MAX_TABLES - 1; i++) client(tables).say({ t: "host", name: "D" + i });
+  assert.equal(tables.activeSize(), MAX_TABLES);         // full again: Busy plus 499 new ones
+  const refused = client(tables);
+  refused.say({ t: "host", name: "Late" });
+  assert.equal(refused.last("error")?.expired, true);
+  assert.equal(tables.size(), MAX_TABLES + 1);           // the idle table was kept, not deleted
+  const back = client(tables);                           // its DM can still come back, and it counts again
+  back.say({ t: "resume", code: oldWelcome.code, token: oldWelcome.token });
+  assert.equal(back.last("welcome")?.role, "dm");
+  assert.equal(tables.activeSize(), MAX_TABLES + 1);
+  assert.ok(tables.get(busyCode));
+});
+
+test("saved tables without an activity stamp start the idle clock at load", () => {
+  let t = 1e12;
+  const saved = createTables({ seed: () => 1, now: () => t });
+  const dm = client(saved);
+  dm.say({ t: "host", name: "Dana" });
+  const rec = structuredClone(saved.get(dm.last("welcome").code));
+  delete rec.active;
+  const tables = createTables({ load: () => [rec], now: () => t });
+  assert.equal(tables.activeSize(), 1);
+  t += IDLE_MS + 1;
+  assert.equal(tables.activeSize(), 0);
+  assert.equal(tables.size(), 1);
 });

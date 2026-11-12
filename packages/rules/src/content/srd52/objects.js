@@ -111,7 +111,7 @@ export const objects = [
   // Where the vocabulary cannot say a part (a cone, a number of darts, an Intelligence search),
   // a manual step or the text hands it to the DM and the entry is 'assist' or 'manual'.
   {
-    id: 'collapsing-roof', name: 'Collapsing Roof', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'collapsing-roof', name: 'Collapsing Roof', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'unnoticed', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -130,7 +130,7 @@ export const objects = [
     text: 'A trip wire between weak supports brings down a section of ceiling. DC 13 Dexterity save or 2d10 Bludgeoning (half on a save). Deadly at levels 1-4.',
   },
   {
-    id: 'falling-net', name: 'Falling Net', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'falling-net', name: 'Falling Net', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'unnoticed', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -149,7 +149,7 @@ export const objects = [
     text: 'A trip wire drops a weighted 10-foot-square net on the first creature across. DC 10 Dexterity save or Restrained. A Nuisance at levels 1-4.',
   },
   {
-    id: 'fire-casting-statue', name: 'Fire-Casting Statue', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'fire-casting-statue', name: 'Fire-Casting Statue', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'unnoticed', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -168,10 +168,10 @@ export const objects = [
       },
       { on: 'leave', from: ['pressed'], to: 'found' },
     ],
-    text: 'A pressure plate makes a nearby statue cast fire. DC 15 Dexterity save or 2d10 Fire (half on a save). The statue bears a glyph: DC 10 Perception finds it, DC 15 Arcana reads it. Deadly at levels 1-4.',
+    text: 'A pressure plate makes a nearby statue cast fire. DC 15 Dexterity save or 2d10 Fire (half on a save). The statue bears a glyph: DC 10 Perception finds it (within 5 feet), DC 15 Arcana reads it, and defacing it with a sharp tool as an action disarms the trap; the DM handles that. Deadly at levels 1-4.',
   },
   {
-    id: 'hidden-pit', name: 'Hidden Pit', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'hidden-pit', name: 'Hidden Pit', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'covered', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -184,10 +184,10 @@ export const objects = [
       { on: 'enter', from: ['hidden', 'found'], to: 'open', effects: [{ fall: 10 }] },
       { on: 'enter', from: ['open'], effects: [{ fall: 10 }] },
     ],
-    text: 'A lid over a 10-foot-deep pit swings open under a foot; the creature falls for 1d6 Bludgeoning and the lid stays open. The SRD finds it with a Study action and DC 15 Intelligence (Investigation), but the engine\'s Search rolls Perception against that DC. Nuisance at levels 1-4.',
+    text: 'A lid over a 10-foot-deep pit swings open under a foot; the creature falls for 1d6 Bludgeoning and the lid stays open. The SRD finds it with a Study action and DC 15 Intelligence (Investigation), but the engine\'s Search rolls Perception against that DC. Nuisance at levels 1-4. The smooth walls need a Climb Speed, climbing gear or magic to scale.',
   },
   {
-    id: 'spiked-pit', name: 'Spiked Pit', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'spiked-pit', name: 'Spiked Pit', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'covered', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -203,7 +203,7 @@ export const objects = [
     text: 'A lid over a 10-foot-deep pit lined with spikes: 1d6 Bludgeoning from the fall and 2d8 Piercing from the spikes. The SRD finds it with a Study action and DC 15 Intelligence (Investigation), but the engine\'s Search rolls Perception against that DC. Deadly at levels 1-4.',
   },
   {
-    id: 'poisoned-darts', name: 'Poisoned Darts', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'poisoned-darts', name: 'Poisoned Darts', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'unnoticed', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -225,10 +225,10 @@ export const objects = [
       },
       { on: 'leave', from: ['pressed'], to: 'found' },
     ],
-    text: 'Darts fly from holes in the walls when a plate is stepped on. DC 13 Dexterity save or 1d3 darts of 1d6 Poison each. It resets at the start of the next turn if it has fired fewer than three times; the DM counts. Deadly at levels 1-4.',
+    text: 'Darts fly from holes in the walls when a plate is stepped on. DC 13 Dexterity save or 1d3 darts of 1d6 Poison each. It resets at the start of the next turn if it has fired fewer than three times; the DM counts. DC 15 Perception finds the dart holes in the walls, and plugging them all disarms it; the DM handles that. Deadly at levels 1-4.',
   },
   {
-    id: 'poisoned-needle', name: 'Poisoned Needle', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: false,
+    id: 'poisoned-needle', name: 'Poisoned Needle', kind: 'thing', source: 'SRD 5.2.1', tier: 'assist', checked: true,
     states: {
       hidden: { name: 'unnoticed', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -249,7 +249,7 @@ export const objects = [
     text: 'A needle in a lock. Opening it any way but the key, or failing to disarm it, sets it off: DC 11 Constitution save or 1d10 Poison and Poisoned for 1 hour (half damage on a save). A failed disarm check does not set it off by itself; the DM does that. A Nuisance at levels 1-4.',
   },
   {
-    id: 'rolling-stone', name: 'Rolling Stone', kind: 'thing', source: 'SRD 5.2.1', tier: 'manual', checked: false,
+    id: 'rolling-stone', name: 'Rolling Stone', kind: 'thing', source: 'SRD 5.2.1', tier: 'manual', checked: true,
     states: {
       hidden: { name: 'unnoticed', blocks: [], hidden: true },
       found: { name: 'spotted', blocks: [] },
@@ -260,9 +260,9 @@ export const objects = [
     use: [{ id: 'wedge', name: 'Wedge an Iron Spike under the plate', from: ['found'], to: 'safe', time: 'action' }],
     triggers: [{
       on: 'enter', from: ['hidden', 'found'], to: 'rolling',
-      effects: [{ manual: 'A stone with a 5-foot radius rolls. It and nearby creatures roll Initiative; the stone has +8. On its turn it moves 60 feet in a line. A creature it enters the space of, or that enters its space, makes a DC 15 Dexterity save or takes 10d10 Bludgeoning and is Prone. It is a Large object, AC 17, 100 HP, Damage Threshold 10. An action and a DC 20 Strength (Athletics) check slows it by 15 feet.' }],
+      effects: [{ manual: 'A stone with a 5-foot radius rolls. It and nearby creatures roll Initiative; the stone has +8. On its turn it moves 60 feet in a line. A creature it enters the space of, or that enters its space, makes a DC 15 Dexterity save or takes 10d10 Bludgeoning and is Prone. The stone moves through other creatures\' spaces and they through its space, counting it as Difficult Terrain; it stops at a wall. It is a Large object, AC 17, 100 HP, Damage Threshold 10, Immune to Poison and Psychic. An action and a DC 20 Strength (Athletics) check slows it by 15 feet.' }],
     }],
-    text: 'A hidden plate sets a great stone rolling down the corridor. The engine cannot run it, so the DM does; the rules are in the step. The SRD finds the plate with a Study action and DC 15 Intelligence (Investigation). Deadly at levels 11-16.',
+    text: 'A hidden plate sets a great stone rolling down the corridor. The engine cannot run it, so the DM does; the rules are in the step. The SRD finds the plate with a Study action and DC 15 Intelligence (Investigation). Deadly at levels 11-16, or a Nuisance at levels 17-20.',
   },
 
   // ---- Hextable's own furniture ----

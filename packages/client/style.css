@@ -144,6 +144,20 @@ body.editing #dock, body.editing #hint { display: none !important; }
 #ed-opts { display: grid; gap: 6px; } #ed-opts .check { margin: 0; min-height: 44px; }
 #ed-hint { margin: 0; color: var(--muted); font-size: 13px; }
 #editor button.sure { outline: 2px solid currentColor; }
+#editor .ed-form { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
+#editor .ed-form:empty { display: none; }
+#editor .ed-form label { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 0; }
+#editor .ed-form input, #editor .ed-form select { flex: 1 1 8em; min-width: 0; min-height: 44px; font-size: 16px; }
+#editor .ed-form .ed-dcs { display: grid; grid-template-columns: repeat(auto-fit, minmax(10em, 1fr)); gap: 6px; }
+#editor .ed-form .ed-dcs input { flex: 0 0 4.5em; }
+#editor .ed-form .ed-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+#editor .ed-form .ed-line > span { flex: 1 1 8em; }
+#editor .ed-form button { min-height: 44px; padding: 6px 10px; }
+#editor .ed-form button.sel, #editor .ed-form button.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#editor .ed-form ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+#editor .ed-form li { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
+#editor .ed-form li.none { color: var(--muted); font-size: 13px; }
+#ed-rstate, #ed-hread { color: var(--muted); font-size: 13px; flex: 1 1 10em; }
 .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #0006; }
 .sw-grass { background: #6f8f55; } .sw-forest { background: #4f7446; } .sw-stone { background: #9a978c; } .sw-water { background: #3f6f8c; } .sw-rock { background: #77736a; }
 /* combat tracker: floats above the dock so the action bar stays free */
@@ -165,3 +179,9 @@ body.editing #dock, body.editing #hint { display: none !important; }
 @media (max-width: 700px) { #tracker { top: auto; bottom: calc(var(--dock-h, 120px) + 18px); height: min(44vh, 360px); left: 8px; width: calc(100% - 16px); } }
 #tr-list li.now button { color: var(--ink); }
 @media (max-width: 480px) { #tools { gap: 4px; } #tools button { padding: 8px 8px; } }
+
+/* Undo: the DM's top-bar button and the pair in the DM panel */
+#btn-undo:disabled, button.undo:disabled { opacity: .45; }
+button.undo { display: inline-flex; flex-direction: column; align-items: flex-start; flex: 1 1 10em; min-width: 0; }
+button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+@media (max-width: 480px) { #btn-undo { font-size: 0; min-width: 40px; } #btn-undo::before { content: "\21B6"; font-size: 18px; line-height: 1; } }
