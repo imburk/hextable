@@ -77,6 +77,15 @@ function flip(state, step) {
   return back;
 }
 
+// Reading a history back from a file. Anything that is not exactly the shape this module writes is
+// refused whole, so that a damaged file can never leave a step that breaks when it is undone.
+const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
+const isStep = (s) => isObj(s) && typeof s.label === 'string' && (s.shown === null || typeof s.shown === 'string')
+  && Array.isArray(s.ops) && s.ops.every((o) => isObj(o) && Array.isArray(o.p) && o.p.every((k) => (typeof k === 'string' && !BAD_KEY.has(k)) || Number.isInteger(k))
+    && ('d' in o || 'o' in o || 'v' in o) && (!('o' in o) || (Array.isArray(o.o) && o.o.every((k) => typeof k === 'string' && !BAD_KEY.has(k)))))
+  && isObj(s.tl) && Number.isInteger(s.tl.at) && s.tl.at >= 0 && Number.isInteger(s.tl.remove) && s.tl.remove >= 0 && Array.isArray(s.tl.insert);
+const rebuild = (s) => { const step = { label: s.label, shown: s.shown, ops: s.ops, tl: { at: s.tl.at, remove: s.tl.remove, insert: s.tl.insert } }; step.bytes = JSON.stringify(step).length; return step; };
+
 export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}) {
   let undos = [], redos = [];
   const bytes = () => [...undos, ...redos].reduce((n, s) => n + s.bytes, 0);
@@ -105,6 +114,18 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
     list: () => undos.map((s) => s.label).reverse(),
     listRedo: () => redos.map((s) => s.label).reverse(),
     clear() { undos = []; redos = []; },
+    // The whole history as plain JSON, to be kept beside the game it belongs to.
+    dump: () => ({ v: 1, undos, redos }),
+    // Take a dump back. Returns false, and leaves the history empty, if it is not a history this
+    // module wrote. The limits apply as they do to a live history.
+    restore(data) {
+      undos = []; redos = [];
+      if (!isObj(data) || data.v !== 1 || !Array.isArray(data.undos) || !Array.isArray(data.redos)) return false;
+      if (![...data.undos, ...data.redos].every(isStep)) return false;
+      undos = data.undos.map(rebuild); redos = data.redos.map(rebuild);
+      trim();
+      return true;
+    },
     get bytes() { return bytes(); },
   };
 }
