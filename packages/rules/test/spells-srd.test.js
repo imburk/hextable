@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT, PACKS, SPELLS } from "../src/content/index.js";
 import { spells0 } from "../src/content/srd52/spells-0.js";
+import { spells1 } from "../src/content/srd52/spells-1.js";
 import { lintPack } from "../src/content/schema.js";
 
 const [srd] = PACKS;
-const lists = [[0, spells0]];
+const lists = [[0, spells0], [1, spells1]];
 
 test("every entered spell list lints clean with the rest of the pack", () => {
   assert.deepEqual(lintPack(srd), []);
@@ -39,4 +40,14 @@ test("all SRD 5.2.1 cantrips are present (Fire Bolt and Sacred Flame live in spe
     "shocking-grasp", "sorcerous-burst", "spare-the-dying", "starry-wisp", "thaumaturgy", "true-strike", "vicious-mockery"];
   const have = srd.spells.filter((s) => s.level === 0).map((s) => s.id).sort();
   assert.deepEqual(have, expected);
+});
+
+test("all SRD 5.2.1 1st-level spells are present (five live in spells.js)", () => {
+  const expected = ["alarm", "animal-friendship", "bane", "bless", "burning-hands", "charm-person", "chromatic-orb", "color-spray", "command", "comprehend-languages",
+    "create-or-destroy-water", "cure-wounds", "detect-evil-and-good", "detect-magic", "detect-poison-and-disease", "disguise-self", "dissonant-whispers", "divine-favor",
+    "divine-smite", "ensnaring-strike", "entangle", "expeditious-retreat", "faerie-fire", "false-life", "feather-fall", "find-familiar", "fog-cloud", "floating-disk",
+    "goodberry", "grease", "guiding-bolt", "healing-word", "hellish-rebuke", "heroism", "hex", "hideous-laughter", "hunters-mark", "ice-knife", "identify",
+    "illusory-script", "inflict-wounds", "jump", "longstrider", "mage-armor", "magic-missile", "protection-from-evil-and-good", "purify-food-and-drink", "ray-of-sickness",
+    "sanctuary", "searing-smite", "shield", "shield-of-faith", "silent-image", "sleep", "speak-with-animals", "thunderwave", "unseen-servant"];
+  assert.deepEqual(srd.spells.filter((s) => s.level === 1).map((s) => s.id).sort(), expected.sort());
 });
