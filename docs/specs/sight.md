@@ -295,7 +295,7 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
   brazier and the campfire: 20 and 20, as a torch). A creature carries `light: { bright, dim }`,
   set by the DM action `setLight` with an item from `content/lights.js` (SRD gear: Candle 5 + 5,
   Torch 20 + 20, Lamp 15 + 30, Hooded Lantern 30 + 30, or 0 + 5 with the hood lowered) or with
-  radii; `item: null` puts it out. The Bullseye Lantern's cone is not supported. Distance to a
+  radii; `item: null` puts it out. The map editor sets ambient light with the same edits (Levels: a Light selector for the level; Rooms: one for the room, "Same as the level" by default), and Properties has a lit/unlit button for a thing that gives light. The Bullseye Lantern's cone is not supported. Distance to a
   light counts height by the `vertical` table rule.
 - **Seeing is not reaching** (S4). Light, and from S5 sight, go by `inView`: the S1 lines stopped by
   anything that blocks sight (walls, curtains, shut doors, floors), where cover and total cover go
