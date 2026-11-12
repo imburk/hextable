@@ -89,12 +89,15 @@ function summarise(def) {
   return { short: 'DM applies', long: 'The DM applies the effect' };
 }
 
+// Conditions the SRD treats as a benefit to whoever has them: putting one on a creature is not hostile.
+export const BENEFICIAL_CONDITIONS = ['invisible'];
+
 // Everything the engine and the UI need to know about a spell, worked out once from its data.
 export function spellProfile(def) {
   let harmful = false, heals = false, healStep = null;
   walk(def.effects, (st) => {
     const k = stepKind(st);
-    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'condition' || k === 'fall') harmful = true;
+    if (k === 'attack' || k === 'save' || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) harmful = true;
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
   const t = def.target;
