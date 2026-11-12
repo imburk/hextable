@@ -11,6 +11,27 @@ const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargan
 const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 
+// Lasting zones (a spell's area that stays): tinted by the damage type of the spell's steps, neutral if it has none.
+// A theme may replace any of these with its own `zones: { fire: [r, g, b], neutral: [r, g, b] }`.
+const ZONE_TINT = { acid: [0.55, 0.85, 0.2], cold: [0.45, 0.78, 0.95], fire: [0.98, 0.45, 0.12], force: [0.75, 0.55, 0.95], lightning: [0.4, 0.55, 1], necrotic: [0.45, 0.3, 0.55],
+  poison: [0.45, 0.75, 0.3], psychic: [0.9, 0.45, 0.8], radiant: [1, 0.9, 0.5], thunder: [0.65, 0.7, 0.85], bludgeoning: [0.7, 0.6, 0.5], piercing: [0.7, 0.6, 0.5], slashing: [0.7, 0.6, 0.5], neutral: [0.7, 0.75, 0.85] };
+const zoneType = (steps) => {
+  const walk = (v) => {
+    if (Array.isArray(v)) { for (const x of v) { const t = walk(x); if (t) return t; } return null; }
+    if (v && typeof v === 'object') { if ('damage' in v && ZONE_TINT[v.type] && v.type !== 'neutral') return v.type; for (const x of Object.values(v)) { const t = walk(x); if (t) return t; } }
+    return null;
+  };
+  return walk(steps);
+};
+// The hexes a zone covers now, as [{ q, r }] with the height it lies at: laid out ones as they were, an Emanation around whoever it follows.
+export function zoneHexes(state, fx) {
+  const z = fx.zone; if (!z) return null;
+  if (z.follows) {
+    const c = state.entities[z.follows]; if (!c || c.dead) return null;
+    return { at: c.pos.z ?? 0, hexes: H.range(c.pos, z.area.size / 5) };
+  }
+  return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => H.parse(k)) };
+}
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
 // Light through the day, by hour: [hour, light colour that multiplies the scene, how much of the sky colour is left].
@@ -316,6 +337,11 @@ export class Renderer {
     const l = this.state?.map.levels.find((x) => x.id === levelId);
     return !!l?.image && this.images.get(l.image.asset)?.state === 'ready';
   }
+  // The names of the lasting zones that cover a hex, for hover and tap.
+  zonesAt(hex) {
+    if (!hex || !this.state) return [];
+    return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
+  }
   screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
   rotate(d) { this.cam.yaw += d; }
   zoom(f) { this.cam.dist = Math.max(7, Math.min(48, this.cam.dist * f)); }
@@ -511,6 +537,15 @@ export class Renderer {
     const b = new Builder(), s = this.state, hl = this.hl, c = this.theme.hl;
     const top = (k) => this.#stand(H.parse(k)).y + 0.03;
     const at = (k) => H.toWorld(H.parse(k));
+    for (const fx of s.effects ?? []) {            // lasting zones, under everything else: a soft patch, fainter toward its outer edge
+      const zh = zoneHexes(s, fx); if (!zh?.hexes.length) continue;
+      const t = zoneType(fx.zone.steps), rgb = this.theme.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(H.col));
+      for (const h of zh.hexes) {
+        const w = H.toWorld(h), y = this.#stand({ q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = H.neighbors(h).some((n) => !have.has(H.col(n)));
+        b.flatHex(w.x, w.z, y, 0, rim ? 0.8 : 1.02, [...rgb, 0.3]);
+        if (rim) b.flatHex(w.x, w.z, y, 0.8, 0.98, [...rgb, 0.12]);
+      }
+    }
     for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
     for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
     // Whatever is in the air has a mark on the floor beneath it.
@@ -698,7 +733,7 @@ export class Renderer {
     });
     el.addEventListener('pointermove', (e) => {
       const p = xy(e), old = pts.get(e.pointerId);
-      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.onHover(hit?.hex ?? null); } return; }
+      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null); } return; }
       pts.set(e.pointerId, p);
       if (stroke && pts.size === 1) { this.onDrag.move(...p); return; }
       const dx = p[0] - old[0], dy = p[1] - old[1];
