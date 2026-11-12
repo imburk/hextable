@@ -21,6 +21,7 @@ import { entered, flushZones, snapshot, turnInZones } from './zones.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
+import { derive, validate } from './derive.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
@@ -1961,6 +1962,36 @@ const handlers = {
     s.entities[e.id] = fresh;
     ev.push({ type: 'edited', id: e.id });
   },
+  // A character built from class and level (derive.js). { type: 'setSheet', sheet, actor?, at? }
+  // Without `actor` it joins the party as addCharacter does; with one, that character is made
+  // again from the new sheet, keeping who plays it, where it stands, the damage it has taken, its
+  // conditions, and what it has spent: uses of features, spell slots, Hit Point Dice. The sheet is
+  // kept on the creature, so it can be made again. A hand-typed record has no sheet and is untouched.
+  setSheet(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change a character.');
+    const problems = validate(a.sheet);
+    problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
+    const { record } = derive(a.sheet), sheet = structuredClone(a.sheet);
+    if (a.actor === undefined) {
+      handlers.addCharacter(s, { record, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
+      s.entities[ev.findLast((x) => x.type === 'spawned').id].sheet = sheet;
+      return;
+    }
+    remake(s, ent(s, a.actor), record, sheet, ev);
+  },
+  // Up one level: the same class, one level higher, outside a fight. { type: 'levelUp', actor, sheet }
+  levelUp(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can level a character up.');
+    const e = ent(s, a.actor);
+    e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
+    !inFight(s, e.id) || fail(`${e.name} can't level up in the middle of a fight.`);
+    (a.sheet?.class === e.sheet.class) || fail('Levelling up keeps the class (multiclassing is not built).');
+    (a.sheet?.level === e.sheet.level + 1) || fail(`${e.name} is level ${e.sheet.level}; the new sheet must be level ${e.sheet.level + 1}.`);
+    const problems = validate(a.sheet);
+    problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
+    remake(s, e, derive(a.sheet).record, structuredClone(a.sheet), ev);
+    ev.push({ type: 'std', id: e.id, action: `reached level ${a.sheet.level}` });
+  },
   // Take a creature out of the game. { type: 'remove', actor }
   remove(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can remove a creature.');
@@ -2216,6 +2247,30 @@ const handlers = {
     s.settings[a.key] = a.value;
   },
 };
+
+// Make a character again from a new record, carrying over what play has done to it. Validates
+// everything before it changes anything.
+function remake(s, e, record, sheet, ev) {
+  e.kind === 'pc' || fail(`${e.name} is not a character.`);
+  const problems = lintRecord(record, { spells: SPELLS });
+  problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
+  const body = { size: record.size ?? 'medium' };
+  (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+  const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
+  const lost = e.maxHp - e.hp;
+  fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
+  for (const f of fresh.feats ?? []) {                                    // so do uses of features
+    const was = featOf(e, f.id);
+    if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
+  }
+  if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
+  fresh.sheet = sheet;
+  s.entities[e.id] = fresh;
+  ev.push({ type: 'edited', id: e.id });
+}
 
 // Every action type the engine handles (history.js is tested to have a label for each).
 export const ACTION_TYPES = Object.keys(handlers);
