@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal). Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things). Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),
@@ -454,6 +454,33 @@ Where the build settled a detail the design left open, or changed it.
   mentioned at all. Objects are sent without their DCs.
 - **The DM can hide a region again** (M3), outside a fight and with no party
   member in it.
+
+- **Triggers** (M4) are `{ on, from, to?, effects?, feet?, who?, area? }` with `on`
+  one of enter, leave, near. Only a thing in a hex has them. A trigger with
+  effects ends the walk of whoever set it off. Being placed by the DM or shoved
+  sets nothing off.
+- **Linking lives on the map, not in the definition** (M4). A placed object has
+  `links: [{ object, when, sets }]`: when it enters state `when`, `object` is
+  put into `sets`. A lever's definition therefore knows nothing about gates.
+  The whole chain is worked out and checked before anything changes. Players
+  are never sent links. The `set` and `reveal` steps remain for effects.
+- **Hidden is a property of a state** (M4), and `find: { to }` names the state
+  an object is found in. Finding a secret door moves it from `secret` to
+  `closed`. An object in a hidden state is not sent; a hidden door that blocks
+  is sent as a wall, and walls are sorted and renumbered in what players are
+  sent so that nothing marks which one is not a wall.
+- **Known traps and paths** (M4). No path runs across a trap its walker knows
+  about. The party knows the traps it has spotted and may still step onto one on
+  purpose; other creatures know all of them and never do.
+- **`fall` in M4 is damage and Prone only**: 1d6 Bludgeoning per 10 feet, 20d6 at
+  most, Prone if any damage was taken **(check)**. The creature's height does
+  not change until M6. **`move`** shoves a creature away from or toward the
+  source, hex by hex, stopping at walls, drops and other creatures.
+- **A trap's attack has no creature behind it** (M4): its events carry
+  `actor: null` and the trap's name.
+- The objects in the pack (doors, portcullis, secret door, lever, pressure
+  plate, pit trap, arrow trap) are Hextable's own generic definitions, marked
+  as such, not SRD text. The SRD's sample traps are M13.
 
 ## Sources
 

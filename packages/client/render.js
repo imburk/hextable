@@ -6,7 +6,7 @@
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
 import * as H from './shared/hex.js';
 import { allTiles, ground, shown, surfaces } from './shared/space.js';
-import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
+import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
@@ -238,9 +238,17 @@ export class Renderer {
     const baseOf = (id) => (map.levels.find((l) => l.id === id)?.z ?? 0) * UNIT + 0.55;
     for (const w of map.walls) { const [h, c] = WALLS[w.kind] ?? WALLS.wall; this.#slab(b, w.a, w.b, baseOf(w.level), h, 0.09, c); }
     for (const o of map.objects) {
-      const seg = objectSegment(o); if (!seg) continue;
+      const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;       // only the DM is ever sent an unseen one
+      if (!seg) {                                                       // a thing in a hex: a marker on the floor, and a post if it is in the way or a lever
+        const w = H.toWorld(o.at), y = this.#stand({ q: o.at.q, r: o.at.r, z: (map.levels.find((l) => l.id === o.level)?.z ?? 0) + (map.levels.find((l) => l.id === o.level)?.tiles[H.col(o.at)]?.h ?? 0) }).y + 0.02;
+        const trap = !!objectDef(o)?.triggers?.some((t) => t.effects), col = trap ? [0.75, 0.2, 0.18] : [0.8, 0.68, 0.3];
+        b.flatHex(w.x, w.z, y, 0.34, 0.5, [...col, unseen ? 0.45 : 1]);
+        if (o.def === 'pit-trap' && o.state === 'open') b.flatHex(w.x, w.z, y + 0.005, 0, 0.6, [0.05, 0.05, 0.06, 1]);
+        if (objectBlocks(o, 'move') || o.def === 'lever') b.lathe(w.x, w.z, y, [[0.12, 0], [0.12, o.def === 'lever' ? 0.7 : 1.1], [0, o.def === 'lever' ? 0.8 : 1.2]], 6, 0, () => [...col, 1]);
+        continue;
+      }
       const shut = objectBlocks(o, 'move'), c = th.door ?? [0.5, 0.33, 0.17];
-      if (shut) this.#slab(b, seg[0], seg[1], baseOf(o.level), 1.0, 0.07, objectBlocks(o, 'sight') ? c : [0.3, 0.3, 0.32]);
+      if (shut) this.#slab(b, seg[0], seg[1], baseOf(o.level), unseen ? 1.25 : 1.0, 0.07, unseen ? [0.62, 0.3, 0.55] : objectBlocks(o, 'sight') ? c : [0.3, 0.3, 0.32]);
       else {                                                            // open: the leaf stands swung back against its hinge
         const [p, q] = seg, dx = q[0] - p[0], dy = q[1] - p[1];
         this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);

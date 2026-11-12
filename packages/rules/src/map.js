@@ -92,6 +92,12 @@ export function lintMap(doc, extra = []) {
     if (def.kind !== 'door' && (o.edge !== undefined || o.seg !== undefined)) bad.push(`Object "${o.id}" stands in a hex, not on an edge.`);
     if (o.key !== undefined && !text(o.key)) bad.push(`Object "${o.id}" has a key that is not a name.`);
     if (o.name !== undefined && !text(o.name)) bad.push(`Object "${o.id}" has a name that is not text.`);
+    for (const l of o.links ?? []) {
+      const other = doc.objects.find((x) => x && x.id === l?.object), odef = other && Object.hasOwn(CONTENT.objects, other.def) ? CONTENT.objects[other.def] : null;
+      if (!odef || other.id === o.id) bad.push(`Object "${o.id}" is linked to something that is not on the map.`);
+      else if (!Object.hasOwn(def.states, l.when) || !Object.hasOwn(odef.states, l.sets)) bad.push(`Object "${o.id}" has a link naming a state that does not exist.`);
+    }
+    if (o.links !== undefined && !Array.isArray(o.links)) bad.push(`Object "${o.id}": links must be a list.`);
     if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
   }
   const taken = new Set();
