@@ -280,9 +280,9 @@ export const spells2 = [
     time: "action", range: "touch", components: ["v", "s", "m"],
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Invisibility: a creature the caster touches has the Invisible condition until the spell ends (up to an hour, Concentration). The spell ends early immediately after the target makes an attack roll, deals damage or casts a spell. One more creature per slot level above 2. A condition step is possible, but the engine treats any condition step as hostile and would refuse a friendly target, so the DM applies it."}],
-    tier: "manual", checked: true,
-    text: "A touched creature is Invisible for up to an hour of Concentration, ending early right after it attacks, deals damage or casts a spell. One more target per slot level above 2.",
+    effects: [{"condition": "invisible"}, {"manual": "Invisibility: the engine makes the touched creature Invisible until the spell ends. The DM ends the spell early immediately after the target makes an attack roll, deals damage or casts a spell, and adds one more creature per slot level above 2."}],
+    tier: "assist", checked: true,
+    text: "A touched creature is Invisible for up to an hour of Concentration. The DM ends it early right after the creature attacks, deals damage or casts a spell, and adds one more target per slot level above 2.",
   },
   {
     id: "knock", name: "Knock", source: "SRD 5.2.1",
