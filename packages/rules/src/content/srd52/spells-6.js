@@ -18,10 +18,11 @@ export const spells6 = [
     level: 6, school: "evocation", classes: ["sorcerer","wizard"],
     time: "action", range: 150, components: ["v","s","m"],
     duration: "instant", concentration: false, ritual: false,
-    target: {"creature":{"count":4}},
+    target: {"creature":{"count":4,"within":30}},
     effects: [{"save":"dex","half":true,"onFail":[{"damage":"10d8","type":"lightning"}]}],
-    tier: "assist", checked: true,
-    text: "A bolt strikes one target, then three bolts leap to as many as three other targets within 30 feet of the first (each target hit by only one bolt, and it can be an object). Each makes a Dexterity save, taking lightning damage on a failure or half on a success. The engine runs one target per cast, so the DM repeats it for the others and adds one more bolt per slot level above 6.",
+    higher: {"slot":{"targets":1}},
+    tier: "auto", checked: true,
+    text: "A bolt strikes one target, then leaps to as many as three other targets within 30 feet of the first, each struck by one bolt only. Each makes a Dexterity save, taking 10d8 lightning damage on a failure or half on a success, rolled once for all. One more bolt per slot level above 6. A bolt can also strike an object, which the DM applies.",
   },
   {
     id: "circle-of-death", name: "Circle of Death", source: "SRD 5.2.1",
@@ -215,7 +216,7 @@ export const spells6 = [
     target: {"creature":{"count":12}},
     effects: [{"save":"wis","onFail":[{"condition":"charmed"}]}],
     tier: "assist", checked: true,
-    text: "The caster suggests an activity in 25 words or fewer to up to twelve visible creatures that can hear and understand. Each makes a Wisdom save or is charmed for 24 hours. The engine handles one creature per cast, so the DM repeats it for the others. The DM also ends the charm when the caster or allies damage a target or when the suggested task is done, judges that the suggestion is achievable and harmless, and applies the longer duration from higher slots (10 days at 7, 30 days at 8, 366 days at 9).",
+    text: "The caster suggests an activity in 25 words or fewer to up to twelve visible creatures that can hear and understand. Each makes a Wisdom save or is charmed for 24 hours. The engine applies the save and the charm to each creature chosen. The DM ends the charm when the caster or allies damage a target or when the suggested task is done, judges that the suggestion is achievable and harmless and that each target can hear and understand it, and applies the longer duration from higher slots (10 days at 7, 30 days at 8, 366 days at 9).",
   },
   {
     id: "move-earth", name: "Move Earth", source: "SRD 5.2.1",

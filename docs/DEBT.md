@@ -56,14 +56,14 @@ many monsters each one touches:
 
 ## Spells
 
-339 are entered; 13 play fully, 85 partly, 241 are applied by the DM. What the vocabulary
+339 are entered; 21 play fully, 77 partly, 241 are applied by the DM. What the vocabulary
 cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
 | S1 | Dice-valued modifiers (Bless, Bane, Guidance) | engine |
-| S2 | More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing | engine |
-| S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall), several cubes arranged by the caster (Fire Storm), and creatures of the caster's choice in an area (Slow, `area.choose`) | engine |
+| S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks | engine |
+| S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall) and several cubes arranged by the caster (Fire Storm); creatures of the caster's choice in an area were done with S2 | engine |
 | S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
 | S5 | Temporary Hit Points, a damage type chosen at casting, "until the end of your next turn" | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |

@@ -20,7 +20,7 @@ export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube']
 // (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
 // wall placed at a distance, which the DM places.
 export function aimable(area, range) {
-  if (!AREAS.includes(area.shape) || area.count > 1 || area.choose) return false;     // several shapes, or a choice among those caught: the DM
+  if (!AREAS.includes(area.shape) || area.count > 1) return false;     // several shapes arranged by the caster: the DM
   if (area.shape === 'sphere' || area.shape === 'cylinder') return range > 0;
   if (area.shape === 'line') return !(range > 0);
   return true;
@@ -75,12 +75,27 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
   return { steps, unscaled };
 }
 
+// How many creatures (or rays, darts, beams) a spell aims at for this caster and slot:
+// `target.creature.count` (1 if not given), or the most reached in `higher.targets` by character
+// level (Eldritch Blast's beams), plus `higher.slot.targets` for each slot level above its own.
+// For an area with `choose`, how many of those caught the caster may pick.
+export function targetCount(def, casterLevel = 0, slot = def.level) {
+  const t = def.target;
+  let n = t.creature?.count ?? t.area?.choose ?? 1;
+  const byLevel = def.higher?.targets;
+  if (byLevel) { const reached = Object.keys(byLevel).map(Number).filter((l) => l <= casterLevel).sort((x, y) => y - x)[0]; if (reached !== undefined) n = byLevel[reached]; }
+  const up = slot - def.level;
+  if (up > 0 && def.higher?.slot?.targets) n += def.higher.slot.targets * up;
+  return n;
+}
+
 const feet = (range) => (range === 'self' ? 0 : range === 'touch' ? 5 : range);
 
 // A short description of the first thing a spell does, for buttons and the character sheet.
+// Rays, darts and beams (`repeat`) show how many there are, as more damage rolls do.
 function summarise(def) {
-  const step = def.effects[0], kind = stepKind(step);
-  const dmg = (list) => { const d = list?.find((x) => 'damage' in x); return d ? `${d.damage}${d.times > 1 ? ` ×${d.times}` : ''} ${d.type}` : null; };
+  const step = def.effects[0], kind = stepKind(step), c = def.target?.creature, many = c?.repeat ? c.count ?? 1 : 1;
+  const dmg = (list) => { const d = list?.find((x) => 'damage' in x); const n = (d?.times || 1) * many; return d ? `${d.damage}${n > 1 ? ` ×${n}` : ''} ${d.type}` : null; };
   const cond = (list) => list?.find((x) => 'condition' in x)?.condition;
   if (kind === 'attack') return { short: dmg(step.onHit) ?? 'attack', long: `${dmg(step.onHit) ?? 'no damage'}, ${step.kind === 'spell' ? 'spell attack' : 'attack'}` };
   if (kind === 'save') {
@@ -117,6 +132,7 @@ export function spellProfile(def) {
     id: def.id, name: def.name, level: def.level, time: def.time, range: feet(def.range),
     aim,                                           // 'creature' | 'area' | 'self' | 'none' (nothing the engine can aim)
     ...(aim === 'area' ? { area: { ...t.area } } : {}),
+    ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}) } : {}),
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
@@ -183,7 +199,8 @@ export function run(s, ev, kit) {
     const f = stack.at(-1);
     if (f.kind === 'each') {
       if (f.t >= f.targets.length) { stack.pop(); continue; }
-      stack.push({ kind: 'seq', steps: f.steps, path: '', i: 0, actor: f.actor, target: f.targets[f.t++], src: f.src, shared: f.shared });
+      // `told` is shared by the targets of one effect, so a manual step's text is shown once, not once per target.
+      stack.push({ kind: 'seq', steps: f.steps, path: '', i: 0, actor: f.actor, target: f.targets[f.t++], src: f.src, shared: f.shared, told: (f.told ??= {}) });
       continue;
     }
     if (f.i >= f.steps.length) { stack.pop(); continue; }
@@ -199,10 +216,13 @@ function exec(s, ev, kit, f, step, at) {
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
-      crit: f.crit, mode: f.mode, half: f.half, ...extra });
+      crit: f.crit, mode: f.mode, half: f.half, told: f.told, ...extra });
   };
 
-  if (kind === 'manual') return handOver(step.manual);
+  if (kind === 'manual') {
+    if (f.told) { if (f.told[at]) return; f.told[at] = true; }
+    return handOver(step.manual);
+  }
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
