@@ -73,6 +73,31 @@ cannot say, by how much it would unlock:
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
 | S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
 
+### Re-tiering pass (spells entered before the vocabulary grew)
+
+Each pull request takes two levels, converts what the vocabulary can now say exactly, and tallies
+what is still missing for the rest, by kind. A spell can be held back by more than one thing; it
+is counted under the first that applies.
+
+**Levels 0 and 1** (#105): 2 moved from manual to assist (Chromatic Orb: chosen damage type;
+Grease: a zone). Before: 0 auto, 3 assist, 15 manual at level 0 and 14 auto, 11 assist, 32 manual
+at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. Still missing:
+
+| Kind | Level 0 | Level 1 |
+|---|---|---|
+| Information, detection, utility with nothing to roll (the DM tells or applies it) | druidcraft, elementalism, mending, message, prestidigitation, thaumaturgy, spare the dying (no Stable condition to set), light (a lit object) | alarm, comprehend languages, create or destroy water, detect evil and good, detect magic, detect poison and disease, identify, illusory script, purify food and drink, speak with animals, goodberry |
+| Illusions | minor illusion | disguise self, silent image |
+| Summons, companions, objects that act | dancing lights, mage hand | find familiar, floating disk, unseen servant |
+| A trigger on the caster's own hit (smites) | | divine smite, ensnaring strike, searing smite |
+| A caster's weapon attacks changed, or a later action the spell grants | shillelagh, true strike, produce flame | |
+| Movement: Dash, jumping | | expeditious retreat, jump |
+| A reaction with a trigger | | feather fall (assist: hellish rebuke, shield) |
+| What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship, which also needs a type restriction) |
+| Light or obscurement on a creature or an area, and a negative tag ("if the attacker can see it") | starry wisp (assist) | faerie fire, fog cloud |
+| Staged or forced behaviour | | sleep (a second failed save makes it Unconscious), command |
+| A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
+| A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
+
 ## Maps, sight and movement
 
 | # | What | Who |
