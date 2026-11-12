@@ -255,7 +255,8 @@ These are the acceptance tests for the whole spec. Each is a test in
 ## Known limits after this work
 
 - A player still sees every non-hidden creature anywhere on the map, and the
-  whole map. Line of sight is the next layer.
+  whole map. Line of sight is the next layer (now built as the `sight` table
+  rule: `docs/specs/sight.md`, S7).
 - Damage amounts dealt to monsters are visible, so a careful player can work
   out a monster's remaining hit points. That matches play at a real table.
 - The DM's browser still runs the monster AI and so must hold everything.
@@ -264,7 +265,8 @@ These are the acceptance tests for the whole spec. Each is a test in
 - A hidden creature completely boxed in by walls or other creatures cannot be
   walked up to, so a move onto its hex is refused with "Can't get there."
 - Once a creature is revealed, a player's `history` includes earlier entries
-  about it, such as the moment it was added.
+  about it, such as the moment it was added. (Since sight S6, entries made while the
+  party could not know of it stay hidden: each entry records who was unseen then.)
 
 ## Tasks
 

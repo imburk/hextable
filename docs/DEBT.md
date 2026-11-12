@@ -76,7 +76,7 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); ~~hiding (S6)~~ (#88); sending players only what they can see (sight task S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
+| P1 | ~~Light (S4)~~ (#75); ~~senses in use (S5)~~ (#85); ~~hiding (S6)~~ (#88); ~~sending players only what they can see (S7)~~ (#92). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
 | P2 | Rock does not block sight | engine |
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
@@ -90,6 +90,8 @@ cannot say, by how much it would unlock:
 | P12 | ~~Exporting a table does not carry its files~~ (#83: base64 with records, up to 24 MB, the rest listed). Still open: exporting a map from the editor carries no files, and there is no import of a table export | any |
 
 | P13 | A creature that cannot be seen cannot be targeted by players even where the SRD allows attacking a guessed location (with Disadvantage); a party member's path may go around a creature the players cannot see, which shows that something is there | engine |
+| P14 | Under the `light` sight rule each newly seen tile resends the whole map document to players (patches are per top-level field), which is a few tens of KB a step in a big dark place; tile memory is found by a flood that can miss a tile seen only through a sliver; sight is followed across tiles 40 hexes at most | engine |
+| P15 | Under the los and light sight rules, players see the fight order without an unseen creature and its turn as nobody's; a creature walking into view is sent with only the hexes of its path in view | any |
 
 ## Table and server
 

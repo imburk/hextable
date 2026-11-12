@@ -1,6 +1,6 @@
 # Spec: sight
 
-Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover), S4 (light), S5 (`canSee`) and S6 (hiding). Owner of the design: Claude (Fable).
+Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover), S4 (light), S5 (`canSee`), S6 (hiding) and S7 (views by sight). Owner of the design: Claude (Fable).
 
 Covers line of sight, cover, light and darkness, special senses, hiding and
 finding hidden creatures, and what players are sent as a result. It builds on
@@ -356,3 +356,42 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
   entry whatever is known of them later, and never sends `unseen`. So a goblin found later does not
   bring its hidden movements into a player's history. (Hidden-information's "known limit" about
   earlier entries no longer holds for new entries.)
+- **Views by sight** (S7) are the table rule `sight`: `rooms` (the default, and exactly what was
+  built before: `vision.js` is not consulted), `los` or `light`. The party's view is worked out in
+  `packages/rules/src/vision.js` as `partyView(state)`: the creatures some party member who is up
+  can see (`los`: a sight-only line from any part to any part; `light`: `canSee`), and the tiles in
+  someone's line of sight, found by spreading out across tiles from each member (40 hexes at most)
+  and testing each; a tile is looked past only if it is itself in view. Under `light` a tile counts as
+  made out only if it is lit for that member (Darkvision, Truesight and Blindsight in range count).
+  It is kept beside the state and rebuilt only when something it depends on changes: a creature's
+  position, size, conditions, senses, light or hiding; a wall, door or object state; the map,
+  levels, regions or their light.
+- **Memory** (S7) is `map.seen = { tiles: { [level]: [cols] }, objects: { [id]: state } }`, written
+  by the engine after every action under `los` and `light` (never under `rooms`). It only grows; the
+  DM's map edit `{ op: 'forget', level? }` clears it. Under `light` the tiles sent are the revealed
+  ones the party has made out; under `los` tiles are sent by region, as under `rooms`. A thing on the
+  map is sent as it is while a tile it touches is made out, and as it was when last seen otherwise;
+  one never seen is not sent. A door counts as seen once a tile beside it is sent, so a revealed
+  room shows its doors. Events about a thing (opened, set off, noticed) are sent only while it is in
+  view. A region's outline is sent, under `light`, only where its tiles are.
+- **Region reveal by sight** (S7). Under `los` and `light` a region is revealed when a party member
+  has a line of sight into it, from any distance, in the walk as it happens and after every action;
+  it replaces standing beside it. Under `light` a region revealed in the dark sends nothing until lit.
+- **What players are told** (S7). A creature the party cannot see is concealed exactly like one the
+  DM hid: absent from views, events and the record, out of the fight order players see (whose turn
+  it is shows as nobody), and a guessed id is answered "No such creature." A creature walking into
+  view is sent with the part of its path the party could see; an area's hexes only where tiles are
+  sent. The record notes with each entry the creatures players did not know of then (S6), so its
+  entries stay as they were seen. A player's view under `los` and `light` carries
+  `sight: { rule, now, light? }`: the tiles in view now and, under `light`, which of them are dim or
+  dark, for the renderer to dim remembered tiles and darken dark ones.
+- **Targeting** (S7) follows from the above: what the party cannot see cannot be named; what a
+  companion sees can be, and the rules give the attacker the unseen-target Disadvantage if it
+  cannot see it itself. A party member stepping onto a creature the party cannot see stops beside
+  it, as with a hidden one. Under `los`, Invisible creatures in a line of sight are sent (layer 2 is
+  line of sight only); under `light` they are not.
+- **The server** (S7) builds the players' view once per change of a table and gives it to every
+  player, each copy adding only that player's handouts, and diffs from one shared snapshot.
+- **Not built from S7**: last-seen markers (the client's, per the spec); ambient light in the map
+  editor's level form (the DM panel sets it on the selected creature's level); the renderer shows
+  remembered and dark tiles by colour only (S8 owns the rest).

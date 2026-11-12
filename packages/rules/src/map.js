@@ -133,6 +133,12 @@ export function lintMap(doc, extra = []) {
     if (r.revealed !== undefined && typeof r.revealed !== 'boolean') bad.push(`Region "${r.id}": revealed must be true or false.`);
     if (r.light !== undefined && !AMBIENT.includes(r.light)) bad.push(`Region "${r.id}" has light "${r.light}"; it can be ${AMBIENT.join(', ')}.`);
   }
+  // What the party has seen (docs/specs/sight.md, decision 6): tiles per level, and things as last seen.
+  if (doc.seen !== undefined) {
+    const sn = doc.seen, okTiles = sn && typeof sn === 'object' && !Array.isArray(sn) && (sn.tiles === undefined || (sn.tiles && typeof sn.tiles === 'object' && Object.entries(sn.tiles).every(([l, cols]) => ids.has(l) && Array.isArray(cols) && cols.length <= MAP_LIMITS.tiles && cols.every((k) => typeof k === 'string' && COL.test(k)))));
+    const okObjects = okTiles && (sn.objects === undefined || (sn.objects && typeof sn.objects === 'object' && Object.values(sn.objects).every((v) => typeof v === 'string')));
+    if (!okTiles || !okObjects) bad.push('What the party has seen is not a record of tiles by level and of things by state.');
+  }
   for (const check of extra) bad.push(...check(doc));
   return bad;
 }
@@ -200,4 +206,12 @@ export const EDITS = {
   },
   unregion: (map, { id }) => drop(map.regions, id, 'region'),
   starts(map, { starts }) { map.starts = structuredClone(starts ?? []); },
+  // The DM clears what the party remembers of the place, on one level or all of it.
+  forget(map, { level }) {
+    if (!map.seen) return;
+    if (level === undefined) { delete map.seen; return; }
+    if (!map.levels.some((l) => l.id === level)) return `There is no level "${level}".`;
+    delete map.seen.tiles?.[level];
+    for (const o of map.objects) if (o.level === level) delete map.seen.objects?.[o.id];
+  },
 };

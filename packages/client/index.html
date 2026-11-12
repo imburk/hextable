@@ -76,6 +76,11 @@
     <label class="check"><input type="checkbox" id="dm-creature-cover" checked> Creatures give cover to those behind them</label>
     <label class="check"><input type="checkbox" id="dm-climb" checked> Creatures can climb faces too high to step up</label>
   </section>
+  <section><h3>Sight and light</h3>
+    <label class="assign">What players are sent <select id="dm-sight"><option value="rooms">Rooms: everything in a revealed room</option><option value="los">Line of sight: only what the party can see</option><option value="light">Light: line of sight, light and senses</option></select></label>
+    <label class="assign">Light on <span id="dm-ambient-level"></span> <select id="dm-ambient"><option value="bright">Bright (daylight, a lit hall)</option><option value="dim">Dim (dusk, moonlight)</option><option value="dark">Dark (a cave at night)</option></select></label>
+    <div class="row"><button type="button" id="dm-torch" disabled>Give selected a torch</button></div>
+  </section>
   <section><h3>Marching order</h3>
     <p class="note">Followers walk behind their leader in this order. Select a party member and tap Lead the party to have everyone follow them.</p>
     <ol id="dm-march"></ol>
