@@ -81,6 +81,11 @@ function summarise(def) {
   if (kind === 'damage') return { short: dmg([step]), long: `${dmg([step])}, always hits` };
   if (kind === 'heal') return { short: `heal ${step.heal}`, long: `Heal ${step.heal}` };
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
+  if (kind === 'modifier') {
+    const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
+    const text = m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}` : `${m.op} on ${what}`;
+    return { short: text, long: `${text} for ${def.duration}${def.concentration ? ', Concentration' : ''}` };
+  }
   return { short: 'DM applies', long: 'The DM applies the effect' };
 }
 
@@ -188,6 +193,10 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal') return kit.heal(s, t, roll(s, step.heal).total + (step.addMod ? f.src.healMod : 0), ev);
-  if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f);
+  if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
+  if (kind === 'modifier') {
+    if (kit.modifier(s, t, step.modifier, ev, f)) return;
+    return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
+  }
   handOver(`The engine cannot apply this part of ${f.src.name} yet (${kind}). The DM applies it.`);
 }

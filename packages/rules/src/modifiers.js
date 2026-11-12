@@ -1,6 +1,6 @@
 // Modifiers: one way for anything to change a roll or a number.
 //
-// A condition, a monster's trait, and later an item, a feature or a spell's lasting effect all
+// A condition, a monster's trait, a spell's lasting effect, and later an item or a feature all
 // say what they change as data: { on: hook, op, value?, when?, types? }. This file gathers the
 // ones that apply to a creature at a hook and adds them up. The engine asks once per roll and
 // gets back the total and the reasons, which is what the log shows.
@@ -63,7 +63,10 @@ export function judge(tag, sit, s) {
 }
 
 // Where a creature's modifiers come from, each with the name to show as the reason.
-function* sources(e) {
+function* sources(s, e) {
+  for (const fx of s?.effects ?? []) {
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1 };
+  }
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
     if (def) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
@@ -79,7 +82,7 @@ function* sources(e) {
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
     resist: [], vulnerable: [], immune: [] };
-  for (const src of sources(e)) {
+  for (const src of sources(s, e)) {
     for (const m of src.modifiers) {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, sit, s) === true)) continue;      // not known to hold: not applied

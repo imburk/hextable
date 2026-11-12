@@ -10,6 +10,7 @@ import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
+import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export const FT = 5;                 // feet per hex
@@ -134,6 +135,7 @@ function endEncounter(s, ev, result) {
     if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
   }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round });
+  fightOver(s, ev);
   s.encounter = null;
 }
 
@@ -159,7 +161,7 @@ function advanceTurn(s, ev) {
   const enc = s.encounter;
   for (let guard = 0; guard < enc.order.length * 2 + 2; guard++) {
     enc.turn++;
-    if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += 0.1; }
+    if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; roundStarted(s, ev); }
     const e = s.entities[enc.order[enc.turn].id];
     if (!e || e.dead) continue;
     if (e.hp <= 0) {
@@ -167,6 +169,7 @@ function advanceTurn(s, ev) {
       if (e.hp <= 0) continue;
     }
     enc.flags = {};
+    turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
     const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
     enc.budget = { move: speed, action: can, bonus: can };
     e.reactionUsed = false;
@@ -201,11 +204,12 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   const before = t.hp;
   t.hp = Math.max(0, before - n);
   ev.push({ type: 'damage', target: t.id, amount: n, dtype, hp: t.hp, note });
-  if (t.hp > 0) return;
+  if (t.hp > 0) return concentrationCheck(s, ev, t, n, KIT);
   if (t.kind === 'pc' && n - before < t.maxHp) {          // otherwise: instant death from massive damage
     t.cond.unconscious = {}; t.cond.prone = {}; t.death = { s: 0, f: 0 };
     ev.push({ type: 'down', id: t.id });
   } else { t.dead = true; ev.push({ type: 'died', id: t.id }); }
+  concentrationLost(s, ev, t, `${t.name} went down`);
 }
 
 function heal(s, t, amount, ev) {
@@ -244,10 +248,11 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const bonus = atk.bonus + add;
-  const hit = nat !== 1 && (nat === 20 || nat + bonus >= t.ac);
+  const ac = acOf(s, t);
+  const hit = nat !== 1 && (nat === 20 || nat + bonus >= ac);
   const crit = hit && (nat === 20 || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac: t.ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...extra });
+    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...extra });
   return { hit, crit, mode };
 }
 
@@ -273,21 +278,46 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
 }
 
-// Put a condition on a creature. What the condition does is data (content/srd52/conditions.js).
-// Whatever part of it the engine does not apply, and the fact that nothing ends it yet, goes
-// to the DM as a note. `f` is the effect frame that caused it, if any.
-function condition(s, t, id, ev, f = null, level = undefined) {
-  if (!up(t) || t.cond[id]) return;
-  t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}) };
-  ev.push({ type: 'cond', id: t.id, cond: id });
-  if (id === 'prone') return;                                           // fully applied, and ended by standing up
-  const def = conditionDef(id), name = conditionName(id);
-  ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true,
-    text: `${t.name} ${conditionPhrase(id)}.${def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : ''} Nothing ends it yet: the DM removes it.` });
+// Armor Class after anything that changes it.
+function acOf(s, t) {
+  const m = modifiers(s, t, 'ac', { target: t });
+  return (m.set ?? t.ac) + m.add;
 }
 
-function savingThrow(s, t, abil, dc) {
+// Put a condition on a creature. What the condition does is data (content/srd52/conditions.js).
+// `f` is the effect frame that caused it, if any, and `step` the step. If the frame belongs to
+// a lasting effect the condition is tied to it and ends when it does; otherwise only the DM
+// (or standing up, for Prone) ends it, and the DM is told so.
+function condition(s, t, id, ev, f = null, step = null, level = undefined) {
+  if (!up(t) || t.cond[id]) return;
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
+  if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc } : {}) });
+  ev.push({ type: 'cond', id: t.id, cond: id });
+  const def = conditionDef(id), name = conditionName(id);
+  const rest = def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
+  const ending = fx || id === 'prone' ? '' : ' Nothing ends it yet: the DM removes it.';
+  if (rest || ending) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} ${conditionPhrase(id)}.${rest}${ending}` });
+  concentrationLost(s, ev, t, `${t.name} ${conditionPhrase(id)}`);
+}
+
+// Attach a modifier to a creature for as long as a lasting effect runs. Returns false if there
+// is no lasting effect to carry it, in which case the step is handed to the DM.
+function modifier(s, t, mod_, ev, f) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx) return false;
+  fx.parts.push({ target: t.id, modifier: mod_ });
+  return true;
+}
+
+// `extra` names a second hook to gather modifiers from, such as 'concentration'.
+function savingThrow(s, t, abil, dc, extra = null) {
   const m = modifiers(s, t, `save.${abil}`, { target: t }, '');
+  if (extra) {
+    const x = modifiers(s, t, extra, { target: t }, '');
+    m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage);
+    m.autoFail ||= x.autoFail; m.autoSucceed ||= x.autoSucceed;
+  }
   if (m.autoFail) return { roll: 0, total: 0, success: false };
   if (m.autoSucceed) return { roll: 0, total: dc, success: true };
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
@@ -346,7 +376,7 @@ export function targetsFor(s, e, { attack, spell }) {
 // ---------- actions ----------
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, heal, condition, judge };
+const KIT = { rollToHit, savingThrow, damage, heal, condition, modifier, judge };
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -473,10 +503,18 @@ const handlers = {
     // What it does: run its effect steps.
     const st = spellStats(e), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}) });
+    // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
+    // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
+    let fx = null;
+    if (sp.def.duration !== 'instant') {
+      if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
+      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: targets.map((t) => t.id) });
+    }
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : targets.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10) },
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) },
       shared: sp.aim === 'area' ? sharedRolls(s, steps) : null,
     });
     run(s, ev, KIT);
@@ -486,9 +524,7 @@ const handlers = {
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
     if (sp.def.tier !== 'auto' && !toldAlready) note(sp.def.text);
     if (unscaled) note(`Cast with a level ${slot} slot. The engine could not add ${unscaled}; the DM does.`);
-    if (sp.def.concentration || sp.def.duration !== 'instant') {
-      note(`${sp.name} lasts ${sp.def.duration}${sp.def.concentration ? ' and needs Concentration' : ''}. The engine does not track that yet; the DM ends it.`);
-    }
+    if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
     checkEnd(s, ev);
   },
 
@@ -528,7 +564,8 @@ const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
     delete e.cond.disengaged;
-    advanceTurn(s, ev);
+    turnEnded(s, ev, e, KIT);
+    if (s.encounter) advanceTurn(s, ev);
   },
 
   // ----- table management -----
@@ -597,6 +634,13 @@ const handlers = {
       reveal(s, e, ev);
     }
   },
+  // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
+  endEffect(s, a, ctx, ev) {
+    const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
+    const src = s.entities[fx.source], own = !!src?.owner && src.owner === ctx.userId;
+    ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
+    endEffect(s, ev, fx, own || !src ? `${src?.name ?? 'its caster'} ended it` : 'the DM ended it');
+  },
   // Put a condition on a creature or take it off. { type: 'condition', actor, condition, on: true|false, level? }
   condition(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set conditions.');
@@ -616,7 +660,7 @@ const handlers = {
       ev.push({ type: 'cond', id: e.id, cond: a.condition, level });
       return;
     }
-    condition(s, e, a.condition, ev, null, level);
+    condition(s, e, a.condition, ev, null, null, level);
   },
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');
@@ -633,6 +677,7 @@ const handlers = {
     }
     s.clock += 480;
     ev.push({ type: 'rest' });
+    tick(s, ev);
   },
   advanceTime(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can advance time.');
@@ -640,6 +685,7 @@ const handlers = {
     a.minutes > 0 || fail('Time only moves forward.');
     s.clock += a.minutes;
     ev.push({ type: 'time', minutes: a.minutes });
+    tick(s, ev);
   },
   chronicle(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can write to the chronicle.');

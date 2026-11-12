@@ -410,9 +410,9 @@ What the engine does with a spell today (task R2):
   turn can only be cast outside a fight.
 - Runs its steps. In an area, damage is rolled once and shared.
 - Says what it did not do. A `manual` step shows its text to the table. A
-  step the engine cannot run yet, a condition it does not enforce yet, a
-  `when` it cannot judge, a spell marked `assist`, and any spell that lasts
-  longer than an instant each produce a note to the DM.
+  step the engine cannot run yet, the part of a condition it does not apply,
+  a `when` it cannot judge, a spell marked `assist`, and a duration it
+  cannot time each produce a note to the DM.
 
 ### A monster
 
@@ -572,6 +572,18 @@ Exhaustion; its modifiers can scale by it (`value: { perLevel: -2 }`).
 | `rest` | the next short or long rest |
 | `manual` | the DM removes it |
 
+As built (task R4): a spell whose `duration` is not `instant` becomes one
+effect record, `{ id, name, spell, source, conc, lasts, until, parts }`.
+`parts` lists exactly what it put on creatures, a condition or a modifier
+each, so ending the effect takes exactly that off. In a fight `until` is a
+round, and the effect ends at the start of its caster's turn in that round;
+outside one it is a time on the world clock. When a fight ends, rounds left
+become clock time. A `condition` step may carry its own `ends`
+(`turnStart`, `turnEnd`, or a repeat `save`), and an effect whose parts
+have all ended is over. `duration` is read from fixed forms: a number of
+rounds, minutes, hours or days, or `until dispelled` and `special`, which
+the engine records but cannot time.
+
 Active effects live in one list in the game state, `state.effects`, each with
 its source, targets, the modifiers and conditions it applies, and its ending
 rule. An effect that covers an area is anchored either to hexes (a wall, a
@@ -585,6 +597,7 @@ A creature concentrates on at most one effect. It ends when the creature
 casts another concentration spell, is Incapacitated or dies, or fails a
 Constitution save after taking damage (DC 10 or half the damage, whichever is
 higher, to a maximum of 30 **(check)**). The save is automatic and logged.
+The caster's player, or the DM, can also end an effect at any time.
 
 ## State version and saved tables
 
@@ -649,7 +662,7 @@ each other and with the engine tasks.
 | R1 (built) | Content pack layout, loader, and linter; move the existing 6 spells, 3 monsters and 4 pregens into `srd52/` in the new format | Fable | `content/**`, new linter, `scenario.js` | Linter passes; all existing tests pass unchanged apart from ids |
 | R2 (built) | Effect steps: resolve `attack`, `save`, `damage`, `heal`, `condition`, `manual` from data on a resumable stack; delete the four hard-coded spell kinds. `modifier`, `move` and `resource` steps are handed to the DM until R3 and R4. Weapon attacks stay flat records until R3 and R10 | Fable | `engine.js`, new `effects.js` | The six spells play identically from data; a `manual` spell enforces its costs and shows its text |
 | R3 (built) | Modifier system and the fifteen conditions as data; state version 2 and `migrate()`. Version 2 makes conditions records; the split of a creature into record, sheet and state moves to R7, where `derive()` needs it | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
-| R4 | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
+| R4 (built) | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
 | R5 | Quick entry: form, manual sheets, DM adds a character to the table | any agent, reviewed | `app.js`, `index.html`, small engine action | A level 5 character typed from a paper sheet can be claimed and played |
 | R6 | Standing-instruction reactions | Fable | `engine.js` | Opportunity Attack honours always / never; one spell reaction works |
 | R7 | `derive()` and `validate()` for built sheets: species, backgrounds, one class to level 5 | Fable | new `derive.js` | A built Fighter 1 to 5 matches hand-checked numbers at each level |

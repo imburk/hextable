@@ -26,7 +26,7 @@ export function newGame(seed = 7) {
 
   const s = {
     version: VERSION, rng: seed | 0, seq: 0, clock: 8 * 60, map: { radius: 13, tiles },
-    entities: {}, encounter: null, timeline: [], settings: { autoEngage: true },
+    entities: {}, encounter: null, effects: [], timeline: [], settings: { autoEngage: true },
   };
   const add = (tpl, over) => { flat(over.pos); s.entities[over.id] = makeEntity(tpl, over); };
   const colors = { fighter: '#c8553d', rogue: '#4a7c59', cleric: '#d9a441', wizard: '#5b6fb5' };

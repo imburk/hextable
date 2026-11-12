@@ -68,4 +68,14 @@ export const spells = [
     tier: "auto", checked: false,
     text: "A creature the caster can see in range regains hit points equal to the roll plus the caster's spellcasting ability modifier.",
   },
+  {
+    id: "shield-of-faith", name: "Shield of Faith", source: "SRD 5.2.1",
+    level: 1, school: "abjuration", classes: ["cleric", "paladin"],
+    time: "bonus", range: 60, components: ["v", "s", "m"],
+    duration: "10 minutes", concentration: true, ritual: false,
+    target: { creature: { count: 1 } },
+    effects: [{ modifier: { on: "ac", op: "add", value: 2 } }],
+    tier: "auto", checked: false,
+    text: "A creature in range gains +2 to Armor Class for as long as the caster concentrates, up to 10 minutes.",
+  },
 ];
