@@ -33,14 +33,30 @@ export const MAX_ACTION_BYTES = 4 * 1024;
 export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
   // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
   const touch = (t) => { t.active = now(); };
   const isActive = (t) => now() - (t.active ?? 0) < idleMs;
   const activeCount = () => { let n = 0; for (const t of tables.values()) if (isActive(t)) n++; return n; };
-  for (const t of load()) { migrate(t.state); t.active ??= now(); tables.set(t.code, t); }     // saved tables may predate the current content ids
+  // The DM's undo history, per table (see below). It is kept in a file beside the table's own.
+  const undos = new WeakMap();
+  const undoOf = (t) => { if (!undos.has(t)) undos.set(t, createHistory()); return undos.get(t); };
+  // Which table state each saved history belongs to: the table's `seq`, which moves with every change
+  // to the game. A history saved for another state (the server stopped between the two files, or the
+  // state was migrated to a newer version) is not used, because its patches would not fit.
+  const kept = new Map();       // code -> the seq of the last history handed out by exportHistory
+  const dirtyHistory = new Set();
+  for (const t of load()) {
+    const was = t.state?.version;
+    migrate(t.state); t.active ??= now(); tables.set(t.code, t);     // saved tables may predate the current content ids
+    try {
+      const data = loadHistory(t.code);
+      if (data && data.seq === (t.seq ?? 0) && t.state?.version === was && undoOf(t).restore(data)) kept.set(t.code, data.seq);
+      else undoOf(t).clear();
+    } catch { undoOf(t).clear(); }         // a damaged history file costs the undo history and nothing else
+  }
   // member id -> Set of live connections (the same person may have two tabs open)
   const online = new Map();
 
@@ -53,10 +69,8 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
   const stateFor = (t, m) => ({ ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined });
   const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
 
-  // The DM's undo history, per table. In memory only: it is not saved with the table and is
-  // gone after a restart. Never part of the game state, never sent to a player.
-  const undos = new WeakMap();
-  const undoOf = (t) => { if (!undos.has(t)) undos.set(t, createHistory()); return undos.get(t); };
+  // The DM's undo history is not part of the game state and is never sent to a player or put in an
+  // export. It is saved beside the table (see exportHistory) so that it survives a restart.
   // What the DM's Undo and Redo buttons would do, newest first.
   const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
   const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
@@ -212,7 +226,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) return error(res.error);
-        if (before) undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state));
+        if (before) { undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state)); dirtyHistory.add(table.code); }
         touch(table);
         save(table);
         if (before) tellUndo(table);
@@ -226,6 +240,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         if (me.role !== "dm") return error(`Only the DM can ${kind}.`);
         const step = undoOf(table)[kind](table.state);
         if (!step) return error(`Nothing to ${kind}.`);
+        dirtyHistory.add(table.code);
         save(table);
         tellUndo(table);
         resend(table, { dm: { type: done, label: step.label }, players: step.shown ? { type: done, label: step.shown } : null });
@@ -283,5 +298,17 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     return m?.approved ? { table: t, member: m } : null;
   }
 
-  return { connect, get: (code) => tables.get(code), member, size: () => tables.size, activeSize: activeCount };
+  // What to write beside a table's file: { seq, v, undos, redos }, or null if there is nothing new to
+  // write since the last call. The caller saves the table too; the two are matched by `seq` on load.
+  // The DM's undo history only: it holds the game's state changes and must never reach a player.
+  function exportHistory(code) {
+    const t = tables.get(code);
+    if (!t) return null;
+    const seq = t.seq ?? 0;
+    if (!dirtyHistory.has(code) && kept.get(code) === seq) return null;
+    dirtyHistory.delete(code); kept.set(code, seq);
+    return { seq, ...undoOf(t).dump() };
+  }
+
+  return { connect, exportHistory, member, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
 }

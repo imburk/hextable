@@ -394,9 +394,10 @@ function rollInit(s, e) {
   return { id: e.id, init: d + mod(e.abil.dex) + m.add, dex: e.abil.dex };
 }
 
-function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
+function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
   const arena = {};
   for (const h of H.range(center, radius)) if (hasColumn(s.map, h)) arena[H.col(h)] = 1;    // a fight locks whole columns, every level
+  catchUp(s, arena, walked, ev);                         // those walking with the party are with it
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
   const who = living(s).filter((e) => arena[H.col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
@@ -410,9 +411,9 @@ function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
 }
 
 // Start a fight big enough to hold both the attacker and a distant target.
-function engage(s, e, t, ev) {
+function engage(s, e, t, ev, walked = null) {
   const a = H.toWorld(e.pos), b = H.toWorld(t.pos), d = apart(s, e, t);
-  startEncounter(s, H.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1));
+  startEncounter(s, H.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1), walked);
 }
 
 function joinEncounter(s, e, ev) {
@@ -450,7 +451,7 @@ function deathSave(s, e, ev) {
   else if (d >= 10) e.death.s++;
   else e.death.f++;
   if (e.death.f >= 3) e.dead = true;
-  else if (e.death.s >= 3) e.cond.stable = {};
+  else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
 
@@ -488,12 +489,13 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   let n = amount;
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(dtype) || own.includes(dtype);
+  // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
+  const resisted = applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
   if (applies(m.immune, t.immune)) n = 0;
-  else if (applies(m.resist, t.resist)) n = Math.floor(n / 2);
-  else if (applies(m.vulnerable, t.vuln)) n *= 2;
-  const note = n === 0 && amount > 0 ? 'immune' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
+  else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
+  const note = n === 0 && amount > 0 ? 'immune' : resisted && vulnerable && amount > 0 ? 'resisted and vulnerable' : n < amount ? 'resisted' : n > amount ? 'vulnerable' : undefined;
   if (t.hp <= 0) {                                        // already dying
-    if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3) t.dead = true; }
+    if (n > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || n >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     ev.push({ type: 'damage', target: t.id, amount: n, dtype, hp: 0, note });
     if (t.dead) ev.push({ type: 'died', id: t.id });
     return;
@@ -535,7 +537,8 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
+  // Only an enemy who can see the attacker and is not Incapacitated counts. Until there is sight, "can see" is "not Blinded"; sight will refine it.
+  if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && !o.cond.blinded && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
@@ -641,6 +644,8 @@ export function checkBonus(e, { ability, skill, tool }) {
 function abilityCheck(s, e, what) {
   const m = modifiers(s, e, 'check', { target: e }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
+  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
+  if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
@@ -727,6 +732,170 @@ export function targetsFor(s, e, { attack, spell }) {
   return out;
 }
 
+// ---------- walking ----------
+
+// Walk a creature to `tk` along the way `reach` found for it. Every step can set something off,
+// catch an eye, or (outside a fight) start one. Returns the positions it stood on, from where it
+// set off, or null if it noticed something before taking a step and so did not go at all.
+function walk(s, e, reach, tk, ev, fighting) {
+  let seg = [], prev = e.pos;
+  const walked = [e.pos];
+  const flush = () => { if (seg.length) ev.push({ type: 'moved', id: e.id, path: seg }); seg = []; };
+  if (notice(s, e, ev, flush)) return null;
+  const range = Math.max(ENGAGE_RANGE, Math.floor((s.settings.engageRange ?? 10) / FT));
+  for (const step of H.pathTo(reach, tk)) {
+    if (fighting && s.encounter && !e.cond.disengaged) {
+      for (const o of threatsAt(s, e, prev)) {
+        if (apartAt(s, o, o.pos, e, step) <= 1) continue;
+        flush();
+        o.reactionUsed = true;
+        resolveAttack(s, o, e, o.attacks.find((x) => x.type === 'melee'), ev, { opportunity: true });
+        if (!up(e)) break;
+      }
+      if (!up(e)) break;
+    }
+    const k = H.key(step);
+    if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
+    const was = e.pos;
+    e.pos = step; seg.push(step); prev = step; walked.push(step);
+    lookAround(s, ev, [e], flush);
+    if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
+    if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
+    if (fighting) continue;
+    // Anything lying in wait this close is spotted, whether or not a fight follows.
+    for (const o of living(s)) if (o.hidden && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && unblocked(s, o, e)) { flush(); reveal(s, o, ev); }
+    const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
+    if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
+    // The table's engage distance: the walker stops this far from the first enemy it has a clear line to.
+    const foe = !s.encounter && s.settings.autoEngage && free &&
+      living(s).find((o) => up(o) && hostile(o, e) && apart(s, o, e) <= range && unblocked(s, o, e) && !unseenAt(s.map, o.pos));
+    if (foe) {
+      flush();
+      const trail = { id: e.id, path: walked.slice().reverse() };
+      if (range <= ENGAGE_RANGE) startEncounter(s, e.pos, ev, ARENA_RADIUS, trail); else engage(s, e, foe, ev, trail);
+      break;
+    }
+  }
+  flush();
+  return walked;
+}
+
+// ---------- walking together ----------
+// A party member may follow another (`follow: id`). When the one in front walks, outside a
+// fight, those behind walk after it in marching order (`march`, lowest first), each by its own
+// way of moving, to the free place nearest behind the leader's path. When a fight breaks out,
+// those who were following are brought up behind their leader before initiative is rolled.
+export const CATCH_UP = 60;          // feet: the furthest from its leader a follower is brought up to when a fight starts
+const KEEP_UP = 2;                   // hexes: a follower stays this close to the one in front where the ground allows
+const byMarch = (a, b) => (a.march ?? Infinity) - (b.march ?? Infinity);
+const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.march ?? -1)) + 1;
+
+function unfollow(s, e, ev, why = null) {
+  const leader = e.follow;
+  delete e.follow;
+  ev.push({ type: 'follow', id: e.id, leader: null, was: leader, ...(why ? { why } : {}) });
+}
+
+// The line a column walks along: the leader's path from where it stands back to where it set
+// off, then on the same way for a while, so that those at the back have somewhere to be.
+// `path` runs from the leader backwards; `away` is a place the line leads away from if the path is one hex.
+function trailOf(path, away = null) {
+  const t = path.map((h) => ({ q: h.q, r: h.r }));
+  const a = t.length > 1 ? t.at(-2) : away, b = t.at(-1);
+  if (!a) return t;
+  const wa = H.toWorld(a), wb = H.toWorld(b);
+  let dx = wb.x - wa.x, dz = wb.z - wa.z;
+  const n = Math.hypot(dx, dz);
+  if (!n) return t;
+  dx /= n; dz /= n;
+  for (let i = 0; i < 12; i++) {
+    const last = t.at(-1), lw = H.toWorld(last);
+    let best = null, most = -Infinity;
+    for (const nb of H.neighbors(last)) {
+      const w = H.toWorld(nb), p = (w.x - lw.x) * dx + (w.z - lw.z) * dz;
+      if (p > most + 1e-9) { most = p; best = nb; }
+    }
+    t.push(best);
+  }
+  return t;
+}
+// How far a place is from the trail, and how far back along it.
+function along(trail, h) {
+  let d = Infinity, i = 0;
+  trail.forEach((p, j) => { const x = H.dist(p, h); if (x < d) { d = x; i = j; } });
+  return { d, i };
+}
+
+// The leader has walked `walked` (from where it set off). Everyone following it, and everyone
+// following them, walks after it in marching order.
+function march(s, leader, walked, ev) {
+  if (leader.side !== 'party') return;
+  const trail = trailOf(walked.slice().reverse());
+  const moved = new Set([leader.id]);
+  let front = leader;
+  const pending = living(s).filter((x) => x.follow && x.id !== leader.id).sort(byMarch);
+  for (;;) {
+    const f = pending.find((x) => moved.has(x.follow));
+    if (!f) return;
+    pending.splice(pending.indexOf(f), 1);
+    if (s.encounter && inFight(s, f.id)) continue;
+    const reach = moveOptions(s, f);
+    const frontI = along(trail, front.pos).i;
+    // The places it could stop, and where it stands now (staying put costs nothing).
+    const spots = [{ k: H.key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
+    let best = null, bestKey = null;
+    for (const sp of spots) {
+      const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h);
+      const rank = [near <= KEEP_UP ? 0 : 1, at.i > frontI ? 0 : 1, at.d, at.i, near, sp.cost];
+      if (!best || less(rank, bestKey)) { best = sp; bestKey = rank; }
+    }
+    // It can get through if some way it could walk comes up beside the one in front (others in the party do not bar the way).
+    const through = [...reach.values()].some((v) => apartAt(s, front, front.pos, f, v.h) <= 1);
+    if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
+    if (best.k !== H.key(f.pos)) {
+      const had = !!s.encounter;
+      walk(s, f, reach, best.k, ev, false);
+      if (!had && s.encounter) return;                   // it walked into a fight: the rest were brought up when it started
+    }
+    moved.add(f.id);
+    front = f;
+  }
+}
+
+// A fight is starting in `arena`. Everyone who was following a party member in it, and is not in
+// it already, is brought up to the nearest free place behind its leader that it could have walked
+// to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
+// `walked` is { id, path } for a leader whose walk started the fight: the path from where it stands back.
+function catchUp(s, arena, walked, ev) {
+  const inArena = (e) => !!arena[H.col(e.pos)];
+  const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
+  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e)).sort(byMarch);
+  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
+  for (;;) {
+    const f = pending.find((x) => party.has(x.follow));
+    if (!f) return;
+    pending.splice(pending.indexOf(f), 1);
+    const leader = s.entities[f.follow];
+    const foe = foes.slice().sort((a, b) => H.dist(a.pos, leader.pos) - H.dist(b.pos, leader.pos))[0];
+    const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null);
+    const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
+    let best = null, bestKey = null;
+    for (const [k, v] of mine) {
+      if (!v.canStop || !arena[H.col(v.h)]) continue;
+      const lc = theirs.get(k)?.cost;
+      if (lc === undefined || lc > CATCH_UP) continue;
+      const at = along(trail, v.h), rank = [at.d, at.i, lc, v.cost];
+      if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+    }
+    if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
+    f.pos = best.v.h;
+    ev.push({ type: 'moved', id: f.id, path: H.pathTo(mine, best.k), caughtUp: true });
+    lookAround(s, ev, [f]);
+    party.add(f.id);
+  }
+}
+const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i]; return false; };
+
 // ---------- actions ----------
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
@@ -761,39 +930,13 @@ const handlers = {
       if (node) fail('That hex is occupied.');
       fail(fighting ? `Too far. ${e.name} has ${s.encounter.budget.move} ft of movement left.` : "Can't get there.");
     }
-    let seg = [], prev = e.pos;
-    const flush = () => { if (seg.length) ev.push({ type: 'moved', id: e.id, path: seg }); seg = []; };
-    if (notice(s, e, ev, flush)) return;                 // something caught the eye before a step was taken: the walk waits
-    for (const step of H.pathTo(reach, tk)) {
-      if (fighting && s.encounter && !e.cond.disengaged) {
-        for (const o of threatsAt(s, e, prev)) {
-          if (apartAt(s, o, o.pos, e, step) <= 1) continue;
-          flush();
-          o.reactionUsed = true;
-          resolveAttack(s, o, e, o.attacks.find((x) => x.type === 'melee'), ev, { opportunity: true });
-          if (!up(e)) break;
-        }
-        if (!up(e)) break;
-      }
-      const k = H.key(step);
-      if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
-      const was = e.pos;
-      e.pos = step; seg.push(step); prev = step;
-      lookAround(s, ev, [e], flush);
-      if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
-      if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
-      if (fighting) continue;
-      // Anything lying in wait this close is spotted, whether or not a fight follows.
-      for (const o of living(s)) if (o.hidden && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && unblocked(s, o, e)) { flush(); reveal(s, o, ev); }
-      const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
-      if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
-      if (!s.encounter && s.settings.autoEngage && free &&
-          living(s).some((o) => up(o) && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && unblocked(s, o, e) && !unseenAt(s.map, o.pos))) {
-        flush(); startEncounter(s, e.pos, ev); break;
-      }
-    }
-    flush();
+    // Moved on its own, it walks on its own: it no longer follows anyone.
+    if (!fighting && e.follow) unfollow(s, e, ev);
+    const had = !!s.encounter, walked = walk(s, e, reach, tk, ev, fighting);
+    if (!walked) return;                                 // something caught the eye before a step was taken: the walk waits
     if (lurker) reveal(s, lurker, ev);
+    // Whoever follows it comes after, unless a fight broke out on the way: then they were brought up when it did.
+    if (!fighting && (had || !s.encounter) && walked.length > 1) march(s, e, walked, ev);
     checkEnd(s, ev);
   },
 
@@ -1015,6 +1158,54 @@ const handlers = {
     ev.push({ type: 'released', id: e.id });
   },
 
+  // Walk behind another party member, or stop. { type: 'follow', actor, leader: id | null }
+  follow(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    if (a.leader === null || a.leader === undefined) {
+      e.follow || fail(`${e.name} isn't following anyone.`);
+      return unfollow(s, e, ev);
+    }
+    // One message for a creature that is not there and one that is not in the party, so nothing is given away.
+    const l = s.entities[a.leader];
+    (l && l.side === 'party' && !l.dead) || fail('Only a member of the party can be followed.');
+    e.side === 'party' || fail(`${e.name} isn't in the party.`);
+    up(e) || fail(`${e.name} can't follow anyone just now.`);
+    l.id !== e.id || fail(`${e.name} can't follow themselves.`);
+    !inFight(s, e.id) && !inFight(s, l.id) || fail('Nobody falls into line in the middle of a fight.');
+    e.follow !== l.id || fail(`${e.name} is already following ${l.name}.`);
+    for (let x = l, n = 0; x && n < 100; x = s.entities[x.follow], n++) x.id !== e.id || fail(`${l.name} is following ${e.name}.`);
+    e.follow = l.id; e.march = nextMarch(s);
+    ev.push({ type: 'follow', id: e.id, leader: l.id });
+  },
+  // The order the party walks in, first to last. { type: 'marchingOrder', order: [ids] }
+  marchingOrder(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can set the marching order.');
+    const order = Array.isArray(a.order) ? a.order : fail('Give the marching order as a list.');
+    new Set(order).size === order.length || fail('Someone is in the marching order twice.');
+    for (const id of order) s.entities[id]?.side === 'party' || fail('Only party members have a place in the marching order.');
+    // Those not named keep their order, after those who are.
+    const rest = Object.values(s.entities).filter((x) => x.side === 'party' && !order.includes(x.id)).sort(byMarch).map((x) => x.id);
+    [...order, ...rest].forEach((id, i) => { s.entities[id].march = i; });
+    ev.push({ type: 'marchingOrder', order: [...order, ...rest] });
+  },
+  // Everyone else in the party falls in behind one of them, in marching order. { type: 'partyFollow', leader }
+  partyFollow(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can move the whole party.');
+    const l = s.entities[a.leader];
+    (l && l.side === 'party' && !l.dead) || fail('Only a member of the party can lead.');
+    !s.encounter || fail('Nobody falls into line in the middle of a fight.');
+    const rest = living(s).filter((x) => x.side === 'party' && x.id !== l.id && up(x)).sort(byMarch);
+    rest.length || fail(`There is nobody to follow ${l.name}.`);
+    if (l.follow) unfollow(s, l, ev);
+    let n = nextMarch(s);
+    for (const x of rest) {
+      x.march = n++;
+      if (x.follow === l.id) continue;
+      x.follow = l.id;
+      ev.push({ type: 'follow', id: x.id, leader: l.id });
+    }
+  },
+
   // ----- DM only -----
   startEncounter(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call for initiative.');
@@ -1156,6 +1347,7 @@ const handlers = {
     !inFight(s, e.id) || fail(`${e.name} is in the fight. End the fight first.`);
     for (const fx of [...effectsOf(s)]) if (fx.source === e.id || fx.parts.some((p) => p.target === e.id)) endEffect(s, ev, fx, `${e.name} left`);
     ev.push({ type: 'removed', id: e.id, name: e.name });
+    for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
     delete s.entities[e.id];
   },
   // Change how big a creature is. { type: 'setSize', actor, size }
@@ -1260,9 +1452,19 @@ const handlers = {
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');
     !s.encounter || fail("You can't rest in the middle of a fight.");
-    for (const e of Object.values(s.entities).filter((x) => x.side === 'party')) {
-      Object.assign(e, { hp: e.maxHp, dead: false, cond: {}, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
+    // SRD Long Rest: all Hit Points back, Exhaustion down one level, features recharge. The dead stay
+    // dead, other conditions stay, and a creature at 0 Hit Points can't start one.
+    for (const e of Object.values(s.entities).filter((x) => x.side === 'party' && !x.dead)) {
+      if (e.hp <= 0) {
+        if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
+        else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
+        continue;
+      }
+      Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
+      const ex = e.cond.exhaustion;
+      if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
+      else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
     }
     s.clock += 480;
     ev.push({ type: 'rest' });
@@ -1310,7 +1512,7 @@ function gravity(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'] };
+export const SETTINGS = { autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];

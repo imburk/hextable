@@ -515,7 +515,7 @@ test("the server upgrades tables saved by the previous version when it loads the
   saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
   const tables = createTables({ load: () => [saved] });
   const state = tables.get("FIXTR1").state;
-  assert.equal(state.version, 8);
+  assert.equal(state.version, 9);
   assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
   const dm = client(tables);
   dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });
@@ -778,4 +778,101 @@ test("saved tables without an activity stamp start the idle clock at load", () =
   t += IDLE_MS + 1;
   assert.equal(tables.activeSize(), 0);
   assert.equal(tables.size(), 1);
+});
+
+// ---------- the undo history survives a restart ----------
+// A fake disk: the table file and the history file, as index.js keeps them side by side.
+function disk() {
+  const tablesOnDisk = new Map(), histories = new Map();
+  const flush = (tables, code) => {
+    tablesOnDisk.set(code, JSON.stringify(tables.get(code)));
+    const h = tables.exportHistory(code);
+    if (h) histories.set(code, JSON.stringify(h));
+  };
+  const open = (opts = {}) => createTables({
+    seed: () => 5,
+    load: () => [...tablesOnDisk.values()].map((s) => JSON.parse(s)),
+    loadHistory: (code) => (histories.has(code) ? JSON.parse(histories.get(code)) : null),
+    ...opts,
+  });
+  return { tablesOnDisk, histories, flush, open };
+}
+const sitDM = (tables, code, dmToken) => { const c = client(tables); c.say({ t: "resume", code, token: dmToken }); return c; };
+
+test("the undo history is saved, loaded with the table, and undo works after a restart", () => {
+  const d = disk();
+  const first = d.open();
+  const { dm, player, code } = seated(first);
+  const to = freeHex(first.get(code).state, "rogue");
+  dm.say({ t: "act", action: { type: "claim", entity: "rogue", user: player.last("welcome").userId, userName: "Pat" } });
+  const before = JSON.stringify(first.get(code).state);
+  player.say({ t: "act", action: { type: "move", actor: "rogue", to } });
+  dm.say({ t: "act", action: { type: "chronicle", title: "Pip crossed" } });
+  assert.deepEqual(dm.last("undoable").undo, ["Chronicle: Pip crossed", "Pip moved"]);
+  d.flush(first, code);
+  assert.equal(first.exportHistory(code), null, "nothing new to write the second time");
+
+  const second = d.open();
+  const dm2 = sitDM(second, code, dm.last("welcome").token);
+  assert.deepEqual(dm2.last("undoable").undo, ["Chronicle: Pip crossed", "Pip moved"]);
+  dm2.say({ t: "undo" }); dm2.say({ t: "undo" });
+  assert.equal(JSON.stringify(second.get(code).state), before, "two undos give back exactly the saved game");
+  dm2.say({ t: "redo" });
+  assert.deepEqual(dm2.last("undoable").redo, ["Chronicle: Pip crossed"]);
+});
+
+test("the undo history is never sent to players or put in an export", () => {
+  const d = disk();
+  const tables = d.open();
+  const { dm, player, code } = seated(tables);
+  dm.say({ t: "act", action: { type: "chronicle", title: "Secret plot" } });
+  d.flush(tables, code);
+  const pl = sitDM(tables, code, player.last("welcome").token);
+  assert.equal(pl.count("undoable"), 0);
+  assert.ok(!JSON.stringify(pl.raw).includes("ops"));
+  dm.say({ t: "export" });
+  assert.equal(dm.last("export").table.undos, undefined);
+});
+
+test("a history that belongs to another state, or is corrupted, is ignored and the table still loads", () => {
+  for (const damage of [
+    (h) => ({ ...h, seq: h.seq + 1 }),                          // saved for a different state
+    (h) => ({ ...h, v: 2 }),
+    (h) => ({ ...h, undos: "nope" }),
+    (h) => ({ ...h, undos: [{ label: "x" }] }),                 // a step with no patch
+    (h) => ({ ...h, undos: h.undos.map((s) => ({ ...s, ops: [{ p: ["__proto__", "x"], v: 1 }] })) }),
+    () => 42,
+  ]) {
+    const d = disk();
+    const first = d.open();
+    const { dm, code } = seated(first);
+    dm.say({ t: "act", action: { type: "chronicle", title: "Something" } });
+    d.flush(first, code);
+    d.histories.set(code, JSON.stringify(damage(JSON.parse(d.histories.get(code)))));
+    const second = d.open();
+    const dm2 = sitDM(second, code, dm.last("welcome").token);
+    assert.equal(dm2.last("welcome").role, "dm");
+    assert.deepEqual(dm2.last("undoable").undo, []);
+    assert.ok(second.get(code).state.timeline.some((e) => e.title === "Something"));
+    dm2.say({ t: "undo" });
+    assert.equal(dm2.last("error").error, "Nothing to undo.");
+  }
+});
+
+test("a loader that throws costs the history and nothing else", () => {
+  const d = disk();
+  const first = d.open();
+  const { dm, code } = seated(first);
+  d.flush(first, code);
+  const second = d.open({ loadHistory: () => { throw new Error("disk"); } });
+  assert.equal(sitDM(second, code, dm.last("welcome").token).last("welcome").role, "dm");
+});
+
+test("a restored history keeps the cap: older steps beyond the limit are dropped", async () => {
+  const { createHistory, UNDO_LIMIT } = await import("../../rules/src/history.js");
+  const step = (i) => ({ label: `s${i}`, shown: null, ops: [], tl: { at: 0, remove: 0, insert: [] } });
+  const h = createHistory();
+  assert.equal(h.restore({ v: 1, undos: Array.from({ length: UNDO_LIMIT + 10 }, (_, i) => step(i)), redos: [] }), true);
+  assert.equal(h.list().length, UNDO_LIMIT);
+  assert.equal(h.list()[0], `s${UNDO_LIMIT + 9}`);
 });

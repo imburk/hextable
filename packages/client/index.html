@@ -68,12 +68,17 @@
   <section><h3>Fight</h3>
     <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
-    <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when enemies come within 10 ft</label>
+    <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when the party comes near enemies</label>
+    <label class="assign">How near the party comes before the fight starts <select id="dm-engage-range"><option value="10">10 ft</option><option value="30">30 ft</option><option value="60">60 ft</option></select></label>
     <label class="assign">Noticing hidden things in passing (passive Perception) <select id="dm-passive"><option value="off">Off: only a Search finds them</option><option value="traps">Traps only</option><option value="all">Everything</option></select></label>
     <label class="assign">Distance when one creature is higher than another <select id="dm-vertical"><option value="max">The longer of across and up (a diagonal counts once)</option><option value="sum">Across plus up</option><option value="true">Straight line</option></select></label>
     <label class="assign">Cover from walls and objects <select id="dm-cover"><option value="on">On</option><option value="off">Off</option></select></label>
     <label class="check"><input type="checkbox" id="dm-creature-cover" checked> Creatures give cover to those behind them</label>
     <label class="check"><input type="checkbox" id="dm-climb" checked> Creatures can climb faces too high to step up</label>
+  </section>
+  <section><h3>Marching order</h3>
+    <p class="note">Followers walk behind their leader in this order. Select a party member and tap Lead the party to have everyone follow them.</p>
+    <ol id="dm-march"></ol>
   </section>
   <section><h3>Creatures</h3>
     <div class="row" id="dm-spawn"></div>

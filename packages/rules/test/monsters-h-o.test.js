@@ -102,3 +102,14 @@ test("two monsters from the batch play several full rounds against the heroes", 
     assert.ok(res.ok, res.error);
   }
 });
+
+// Senses as the SRD stat blocks give them: only the four special senses, in feet. Passive Perception is not one.
+test("H to O monsters carry their SRD senses", () => {
+  assert.deepEqual(MONSTERS["half-dragon"].senses, { blindsight: 10, darkvision: 60 });
+  assert.deepEqual(MONSTERS["horned-devil"].senses, { darkvision: 150 });
+  assert.deepEqual(MONSTERS["imp"].senses, { darkvision: 120 });
+  assert.deepEqual(MONSTERS["owl"].senses, { darkvision: 120 });
+  assert.deepEqual(MONSTERS["owlbear"].senses, { darkvision: 60 });
+  assert.equal(MONSTERS["knight"].senses, undefined);
+  assert.equal(MONSTERS["hill-giant"].senses, undefined);
+});

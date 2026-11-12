@@ -183,10 +183,16 @@ whole game exactly, the dice seed, the clock and the timeline entries included.
   `{t:"undoable", undo:[labels], redo:[labels]}`, newest first. Players never do.
 - Redo does not re-roll: the seed comes back with everything else, so the same
   action gives the same result. A new action after an undo clears what could be redone.
-- The history is in memory only, per table. It is not saved with the table and is
-  gone after a server restart. It keeps the last 30 steps, and drops the oldest
-  sooner if the steps of one table pass 8 MB (a map edit keeps the parts of the map
-  it changed; a big edit or `loadMap` can be large).
+- The history is saved beside the table: `DATA_DIR/<CODE>.undo.json` next to `<CODE>.json`,
+  written in the same flush (and, like the table, when the server stops), only when it has
+  changed. It is loaded with the table, so Undo still works after a restart. It is the DM's
+  alone: never sent to a player, never in an export. It is held to the same limits as a live
+  one (the last 30 steps, 8 MB), also when loaded.
+- The file records the table's `seq`, which moves with every change to the game. A history is
+  used only if its `seq` matches the table file and the table needed no migration; otherwise
+  (the server stopped between the two writes, say) it is dropped, because its patches would not
+  fit that state. A history file that is missing, cut off, not JSON or not in the exact shape
+  `history.js` writes is ignored with a line in the log, and the table loads with an empty history.
 
 ## Hosting
 

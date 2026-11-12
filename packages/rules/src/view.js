@@ -69,7 +69,10 @@ export function view(state, viewer) {
   const entities = {};
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
-    if (c === 'open') entities[id] = structuredClone(e);
+    if (c === 'open') {
+      entities[id] = structuredClone(e);
+      if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
+    }
     else if (c === 'seen') entities[id] = seenRecord(e);
   }
   return {
@@ -175,7 +178,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;

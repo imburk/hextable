@@ -11,15 +11,16 @@ players are sent). **any** can be handed to any agent.
 
 | # | What | Who |
 |---|---|---|
-| W1 | A long rest clears all Exhaustion and revives the dead | engine |
-| W2 | No instant death when damage at 0 Hit Points reaches the Hit Point maximum; death-save counts are not reset when a creature is stabilised | engine |
-| W3 | Resistance and Vulnerability to the same damage only halves it | engine |
-| W4 | Ranged attacks beside an enemy have Disadvantage even if that enemy cannot see the attacker or is Incapacitated | engine |
-| W5 | Dodge ignores "can see the attacker" | engine (with sight) |
+| W1 | ~~A long rest clears all Exhaustion and revives the dead~~ (#65) | engine |
+| W2 | ~~No instant death when damage at 0 Hit Points reaches the Hit Point maximum; death-save counts are not reset when a creature is stabilised~~ (#65) | engine |
+| W3 | ~~Resistance and Vulnerability to the same damage only halves it~~ (#65) | engine |
+| W4 | ~~Ranged attacks beside an enemy have Disadvantage even if that enemy cannot see the attacker or is Incapacitated~~ (#65) | engine |
+| W5 | Dodge ignores "can see the attacker" (left for the sight work: with no `canSee` there is nothing to test; W4 stands in "not Blinded" for it, and both should move to the sight check together) | engine (with sight) |
 | W6 | Every standing enemy blocks movement outright; the SRD allows passing some | engine |
-| W7 | A tool used with a skill the creature is proficient in should give Advantage | engine |
+| W7 | ~~A tool used with a skill the creature is proficient in should give Advantage~~ (#65) | engine |
 | W8 | A `condition` step is always treated as hostile, so a helpful one (Invisibility) is refused on oneself and starts a fight on an ally | engine |
 | W9 | Size limits on Prone, Grappled and pushes are not applied; any size is affected | engine |
+| W10 | Death Saving Throws are rolled only in a fight, and a Stable creature's 1 Hit Point after 1d4 hours happens only across a Long Rest; a dying creature at a Long Rest is handed to the DM (#65) | engine |
 
 ## Monsters
 
@@ -34,9 +35,10 @@ many monsters each one touches:
 | M4 | Condition immunities have no field (the Skeleton cannot be Poisoned) | engine |
 | M5 | Legendary actions and lair-free legendary resistance | engine |
 | M6 | Monster spellcasting (a list of spells with uses) | engine |
-| M7 | Senses, saving throw bonuses, languages and initiative bonuses are not entered for most monsters; the format now takes senses | any |
-| M8 | 49 monsters are not marked checked (mostly D to G entries with text not compared line by line) | any |
+| ~~M7~~ | ~~Senses are not entered for most monsters~~ Entered from the SRD for every monster (PRs #59, #61, #63, #64) | any |
+| M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
 | M9 | The monster AI uses only the first melee and first ranged attack, treats height only as distance, and does not hide | engine |
+| M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
 
 ## Characters
 
@@ -82,15 +84,16 @@ cannot say, by how much it would unlock:
 | P11 | Exporting a table or a map does not carry its files: the state names asset ids whose bytes stay on the server | any |
 | P7 | The Universal VTT import has only been tried on a hand-made file | any, with a real export |
 | P8 | The editor cannot rename a map, and shows no numbers for tile heights | any |
+| P9 | Walking together: a follower brought up when a fight starts is set down, not walked, so a hidden trap on the way it would have come is not set off; a follower whose way back to the column is longer than 300 ft is dropped as not keeping up; the undo list names follow actions only by their type | engine |
 
 ## Table and server
 
 | # | What | Who |
 |---|---|---|
-| T1 | Undo history is in memory only and is lost when the server restarts | any |
+| ~~T1~~ | ~~Undo history is in memory only and is lost when the server restarts~~ saved beside each table file (PR #67). Solo play still starts a reload with an empty history | any |
 | T2 | The timeline grows without limit | any |
 | T3 | Per-address limits can be dodged without a proxy in front of the server (documented) | any |
-| T4 | No client tests: UI work is checked by hand in a headless browser each time | any |
+| ~~T4~~ | ~~No client tests: UI work is checked by hand in a headless browser each time~~ `npm run smoke` drives the page in headless Chromium (PR #60). It is a smoke test, not a unit suite | any |
 | T5 | The pack's labels say SRD 5.2.1; the file it was checked against is SRD 5.2 | any |
 
 ## Specs still to write
