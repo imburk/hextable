@@ -25,6 +25,13 @@ export function edgeSegment(at, edge) {
 export const objectDef = (o) => CONTENT.objects[o.def];
 // Where an object stands as a line, if it stands on one: a door on a hex edge, or a traced door.
 export const objectSegment = (o) => (o.seg ? [o.seg.a, o.seg.b] : Number.isInteger(o.edge) ? edgeSegment(o.at, o.edge) : null);
+// The hexes an object touches: a thing's own hex, or the hexes on either side of a door.
+export function objectHexes(o) {
+  const seg = objectSegment(o);
+  if (!seg) return [{ q: o.at.q, r: o.at.r }];
+  if (Number.isInteger(o.edge) && !o.seg) return [{ q: o.at.q, r: o.at.r }, { q: o.at.q + H.DIRS[o.edge][0], r: o.at.r + H.DIRS[o.edge][1] }];
+  return H.range(o.at, 2).filter((h) => distToSegment(center(h), seg) <= FT / S3 + 0.02);
+}
 export const objectBlocks = (o, what) => !!objectDef(o)?.states[o.state]?.blocks?.includes(what);
 
 const orient = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);

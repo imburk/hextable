@@ -11,9 +11,9 @@ import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
-import { FT, STEP_FREE, STEP_MAX, ground, hasColumn, landing, surfaces } from './space.js';
+import { FT, STEP_FREE, STEP_MAX, concealed, ground, hasColumn, landing, regionAt, shown, surfaces, under, unseenAt } from './space.js';
 import { EDITS, lintMap } from './map.js';
-import { barriers, center, distToSegment, objectDef, objectSegment } from './walls.js';
+import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
@@ -101,8 +101,48 @@ export function clear(s, a, b) {
 }
 const walled = (s, e, t) => clear(s, e.pos, t.pos) || fail(`There is a wall between ${e.name} and ${t.name}.`);
 
+// ---------- regions ----------
+function revealRegion(s, r, ev) {
+  r.revealed = true;
+  ev.push({ type: 'region', region: r.id, name: r.name });
+  if (!s.encounter) return;
+  for (const e of living(s)) {                          // whoever was waiting in there is in the fight now
+    if (e.hidden || inFight(s, e.id) || !s.encounter.arena[H.col(e.pos)]) continue;
+    const sf = under(s.map, e.pos);
+    if (sf && regionAt(s.map, sf.level.id, e.pos) === r) joinEncounter(s, e, ev);
+  }
+}
+// Party members see the region they stand in and any region they stand beside with nothing
+// to block the view. `before` runs first if anything is found (to close a stretch of movement).
+function lookAround(s, ev, who = living(s), before = null) {
+  const B = barriers(s.map), found = new Set();
+  const note = (levelId, h) => { const r = regionAt(s.map, levelId, h); if (r && !r.revealed) found.add(r); };
+  for (const e of who) {
+    const here = e.side === 'party' ? under(s.map, e.pos) : null;
+    if (!here) continue;
+    note(here.level.id, e.pos);
+    for (const n of H.neighbors(e.pos)) for (const sf of surfaces(s.map, n)) {
+      if (Math.abs(sf.z - here.z) > STEP_MAX) continue;
+      if (B.blocked(here.level.id, e.pos, n, 'sight') || (sf.level !== here.level && B.blocked(sf.level.id, e.pos, n, 'sight'))) continue;
+      note(sf.level.id, n);
+    }
+  }
+  if (found.size && before) before();
+  for (const r of found) revealRegion(s, r, ev);
+}
+// A creature that acts from somewhere unseen has shown where it is.
+function showPlace(s, e, ev) {
+  const sf = under(s.map, e.pos), r = sf && regionAt(s.map, sf.level.id, e.pos);
+  if (r && !r.revealed) revealRegion(s, r, ev);
+}
+
 // ---------- objects ----------
-const objectOf = (s, id) => s.map.objects.find((o) => o.id === id) || fail('No such object.');
+// May players know about this object? It must touch a hex they have been shown.
+export const objectShown = (map, o) => objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && shown(map, o.level, h));
+const objectOf = (s, id, ctx = null) => {
+  const o = s.map.objects.find((x) => x.id === id);
+  return (o && (!ctx || ctx.role === 'dm' || objectShown(s.map, o)) && o) || fail('No such object.');
+};
 export const objectName = (o) => o.name ?? objectDef(o).name;
 // Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
 function nearObject(s, e, o) {
@@ -120,13 +160,14 @@ function setObject(s, o, state, ev, by = null, verb = null) {
   }
   o.state = state;
   ev.push({ type: 'object', object: o.id, name: objectName(o), state, stateName: def.states[state].name, ...(by ? { actor: by.id } : {}), ...(verb ? { verb } : {}) });
+  lookAround(s, ev);                                    // an opened door shows what is behind it
 }
 // What this creature could do right now with the objects in reach: [{ object, name, verb, label, time, why }].
 export function usesFor(s, e) {
   const out = [];
   if (!e || !up(e)) return out;
   for (const o of s.map.objects) {
-    if (!nearObject(s, e, o)) continue;
+    if (!nearObject(s, e, o) || !objectShown(s.map, o)) continue;
     for (const u of objectDef(o).use) {
       if (!u.from.includes(o.state) || (u.key && !o.key)) continue;         // a door with no lock offers no locking
       let why = '';
@@ -166,7 +207,8 @@ function rollInit(s, e) {
 function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
   const arena = {};
   for (const h of H.range(center, radius)) if (hasColumn(s.map, h)) arena[H.col(h)] = 1;    // a fight locks whole columns, every level
-  const who = living(s).filter((e) => arena[H.col(e.pos)]);
+  // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
+  const who = living(s).filter((e) => arena[H.col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
   for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
@@ -489,13 +531,14 @@ const handlers = {
       const k = H.key(step);
       if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
       e.pos = step; seg.push(step); prev = step;
+      lookAround(s, ev, [e], flush);
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
       for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
       const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
       if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
       if (!s.encounter && s.settings.autoEngage && free &&
-          living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos))) {
+          living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos) && !unseenAt(s.map, o.pos))) {
         flush(); startEncounter(s, e.pos, ev); break;
       }
     }
@@ -513,6 +556,7 @@ const handlers = {
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(e, t, atk);
     walled(s, e, t);
+    showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
     need(s, e, 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
@@ -571,6 +615,7 @@ const handlers = {
       if (sp.level > 0) s.encounter.flags.slot = true;
     }
     if (sp.level > 0) e.slots[slot]--;
+    showPlace(s, e, ev);
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
 
     // What it does: run its effect steps.
@@ -646,7 +691,7 @@ const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
-    const o = objectOf(s, a.object), def = objectDef(o), name = objectName(o), the = `The ${name.toLowerCase()}`;
+    const o = objectOf(s, a.object, ctx), def = objectDef(o), name = objectName(o), the = `The ${name.toLowerCase()}`;
     const u = def.use.find((x) => x.id === a.verb) || fail(`${the} can't be used that way.`);
     nearObject(s, e, o) || fail(`${e.name} is too far from the ${name.toLowerCase()}.`);
     u.from.includes(o.state) || fail(`${the} is ${def.states[o.state].name}.`);
@@ -719,7 +764,23 @@ const handlers = {
     !living(s).some((o) => o.id !== e.id && H.key(o.pos) === H.key(to)) || fail('That hex is occupied.');
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
+    lookAround(s, ev, [e]);
     if (s.encounter?.arena[H.col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+  },
+  // Show a region to the players, or take it back. { type: 'revealRegion', region, revealed: true|false }
+  revealRegion(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can reveal a place.');
+    const r = s.map.regions.find((x) => x.id === a.region) || fail('No such region.');
+    if (a.revealed === false) {
+      r.revealed || fail(`${r.name} isn't revealed.`);
+      !living(s).some((e) => e.side === 'party' && regionAt(s.map, under(s.map, e.pos)?.level.id, e.pos) === r) || fail(`Someone from the party is in ${r.name}.`);
+      !s.encounter || fail("A place can't be hidden in the middle of a fight.");
+      r.revealed = false;
+      ev.push({ type: 'regionHidden', region: r.id });
+    } else {
+      !r.revealed || fail(`${r.name} is already revealed.`);
+      revealRegion(s, r, ev);
+    }
   },
   // Put an object into one of its states. { type: 'setObject', object, state }
   setObject(s, a, ctx, ev) {
@@ -749,6 +810,7 @@ const handlers = {
     }
     s.map = map;
     ev.push({ type: 'mapEdit', count: a.ops.length });
+    lookAround(s, ev);
   },
   // Hand a creature an item, or take one away. { type: 'give', actor, item, take? }
   give(s, a, ctx, ev) {
@@ -787,6 +849,7 @@ const handlers = {
     s.map = map;
     party.forEach((e, i) => { e.pos = spots[i]; });
     ev.push({ type: 'map', map: map.id, name: map.name });
+    lookAround(s, ev);
   },
   // Hide a creature from the players, or show it to them. { type: 'reveal', actor, hidden: true|false }
   reveal(s, a, ctx, ev) {
@@ -873,7 +936,7 @@ export function apply(s, action, ctx = { role: 'dm' }) {
   try {
     // To anyone but the DM a hidden creature does not exist. Answering "it's 40 ft away" or
     // "it isn't yours" to a guessed id would confirm that it does.
-    if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (s.entities[action[k]]?.hidden) fail('No such creature.');
+    if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (concealed(s.map, s.entities[action[k]])) fail('No such creature.');
     const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
     h(s, action, ctx, ev);
   } catch (err) {

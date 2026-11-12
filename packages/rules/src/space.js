@@ -35,3 +35,31 @@ export function allTiles(map) {
   for (const level of map.levels) for (const k in level.tiles) { const h = H.parse(k), tile = level.tiles[k]; out.push({ q: h.q, r: h.r, z: level.z + (tile.h ?? 0), tile, level }); }
   return out;
 }
+
+// The surface under a position: what it stands on, or the nearest one below it if it is in the air.
+export function under(map, pos) {
+  let best = null;
+  for (const sf of surfaces(map, pos)) if (sf.z <= (pos.z ?? 0)) best = sf;
+  return best;
+}
+
+// ---------- regions ----------
+// A region is a named set of hexes on one level (a room, a corridor) that players are sent only
+// once it is revealed. Hexes in no region are always sent.
+const regionIndex = new WeakMap();
+export function regionAt(map, levelId, h) {
+  const sig = map.regions.map((r) => `${r.id}:${r.level}:${r.hexes.length}`).join();
+  let had = regionIndex.get(map);
+  if (!had || had.sig !== sig) {
+    had = { sig, at: new Map() };
+    for (const r of map.regions) for (const k of r.hexes) had.at.set(`${r.level}|${k}`, r);
+    regionIndex.set(map, had);
+  }
+  return had.at.get(`${levelId}|${H.col(h)}`) ?? null;
+}
+// May players be sent this hex of this level?
+export const shown = (map, levelId, h) => { const r = regionAt(map, levelId, h); return !r || !!r.revealed; };
+// Is this position somewhere the players have not seen yet?
+export const unseenAt = (map, pos) => { const sf = under(map, pos); return !!sf && !shown(map, sf.level.id, pos); };
+// A creature the players are not told about: the DM hid it, or it is somewhere they have not seen.
+export const concealed = (map, e) => !!e && e.side !== 'party' && (!!e.hidden || unseenAt(map, e.pos));

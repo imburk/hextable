@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors). Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal). Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),
@@ -439,6 +439,21 @@ Where the build settled a detail the design left open, or changed it.
   copy, so a bad edit changes nothing. The editor (M8) is a UI over this action.
 - **Checks on objects are handed to the DM until M5.** Picking or forcing a lock
   spends the action and tells the DM the check and DC; players are not told the DC.
+
+- **A region is revealed by standing beside it, not only in it** (M3). A party
+  member reveals the region they stand in and any region next to them with
+  nothing blocking sight between. That is what makes an open archway work: a
+  player cannot tap a hex they have not been sent. An opened door reveals the
+  room behind it only if someone from the party is beside the door to look.
+- **Unseen creatures stay out of fights** (M3). A creature in an unrevealed
+  region does not join a fight or trigger one; it joins when its region is
+  revealed. If it attacks or casts from there, its region is revealed.
+- **Walls are sent in pieces** (M3). Players get only the stretches of a wall
+  that run beside hexes they have been shown, so a long wall does not draw the
+  outline of rooms they have not seen. A level with nothing shown is not
+  mentioned at all. Objects are sent without their DCs.
+- **The DM can hide a region again** (M3), outside a fight and with no party
+  member in it.
 
 ## Sources
 

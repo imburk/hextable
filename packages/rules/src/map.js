@@ -94,6 +94,21 @@ export function lintMap(doc, extra = []) {
     if (o.name !== undefined && !text(o.name)) bad.push(`Object "${o.id}" has a name that is not text.`);
     if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
   }
+  const taken = new Set();
+  for (const r of doc.regions) {
+    if (!r || typeof r !== 'object') { bad.push('A region is not a record.'); continue; }
+    fresh(r.id, 'Region');
+    if (!text(r.name)) bad.push(`Region "${r.id}" has no name.`);
+    const level = doc.levels.find((l) => l.id === r.level);
+    if (!level) { bad.push(`Region "${r.id}" is on a level that does not exist.`); continue; }
+    if (!Array.isArray(r.hexes) || !r.hexes.length) { bad.push(`Region "${r.id}" has no hexes.`); continue; }
+    for (const k of r.hexes) {
+      if (typeof k !== 'string' || !COL.test(k) || !level.tiles[k]) { bad.push(`Region "${r.id}" includes "${k}", which is not a hex of its level.`); break; }
+      if (taken.has(`${r.level}|${k}`)) { bad.push(`Hex ${k} is in two regions.`); break; }
+      taken.add(`${r.level}|${k}`);
+    }
+    if (r.revealed !== undefined && typeof r.revealed !== 'boolean') bad.push(`Region "${r.id}": revealed must be true or false.`);
+  }
   for (const check of extra) bad.push(...check(doc));
   return bad;
 }
@@ -113,7 +128,12 @@ export const EDITS = {
   tile(map, { level, at, tile }) {
     const l = map.levels.find((x) => x.id === level);
     if (!l || !at) return 'A tile needs a level and a hex.';
-    if (tile) l.tiles[H.col(at)] = structuredClone(tile); else delete l.tiles[H.col(at)];
+    if (tile) l.tiles[H.col(at)] = structuredClone(tile);
+    else {
+      delete l.tiles[H.col(at)];
+      for (const r of map.regions) if (r.level === level) r.hexes = r.hexes.filter((k) => k !== H.col(at));
+      map.regions = map.regions.filter((r) => r.hexes.length);
+    }
   },
   level(map, { level }) {
     if (!level || typeof level !== 'object') return 'A level needs a record.';
@@ -125,6 +145,7 @@ export const EDITS = {
     if (map.levels.length < 2) return 'A map needs one level or more.';
     map.walls = map.walls.filter((w) => w.level !== id);
     map.objects = map.objects.filter((o) => o.level !== id);
+    map.regions = map.regions.filter((r) => r.level !== id);
     return drop(map.levels, id, 'level');
   },
   wall(map, { wall }) {
@@ -138,5 +159,14 @@ export const EDITS = {
     put(map.objects, { ...structuredClone(object), id: object.id ?? nextId(map.objects, 'o'), state: object.state ?? def?.initial });
   },
   unobject: (map, { id }) => drop(map.objects, id, 'object'),
+  // A region claims its hexes: any other region on that level gives them up.
+  region(map, { region }) {
+    if (!region || typeof region !== 'object' || !Array.isArray(region.hexes)) return 'A region needs a record with hexes.';
+    const id = region.id ?? nextId(map.regions, 'r'), mine = new Set(region.hexes);
+    for (const r of map.regions) if (r.id !== id && r.level === region.level) r.hexes = r.hexes.filter((k) => !mine.has(k));
+    map.regions = map.regions.filter((r) => r.id === id || r.hexes.length);
+    put(map.regions, { ...structuredClone(region), id, name: region.name ?? id });
+  },
+  unregion: (map, { id }) => drop(map.regions, id, 'region'),
   starts(map, { starts }) { map.starts = structuredClone(starts ?? []); },
 };
