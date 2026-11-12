@@ -168,6 +168,7 @@ function lintMonster(e, say) {
   if (!e.speed || !Object.keys(e.speed).length || !Object.entries(e.speed).every(([m, v]) => MOVE_MODES.includes(m) && v >= 0)) say(`speed must give feet for one or more of: ${MOVE_MODES.join(', ')}`);
   if (!e.abilities || !ABILITIES.every((a) => isInt(e.abilities[a]))) say('abilities must give all six scores');
   for (const k of ['resist', 'vulnerable', 'immune']) if (!allOf(DAMAGE_TYPES)(e[k])) say(`${k} must be a list of damage types`);
+  if (e.skills !== undefined && !(e.skills && Object.entries(e.skills).every(([k, v]) => Object.hasOwn(SKILLS, k) && isInt(v)))) say('skills must give a whole-number bonus for each skill named');
   const ids = new Set();
   for (const t of e.traits ?? []) {
     const sub = (m) => say(`trait ${t.id}: ${m}`);
@@ -279,6 +280,9 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
     const say = (m) => problems.push(`pregens/${p?.id ?? '?'}: ${m}`);
     if (!ID.test(p.id ?? '')) say('id must be kebab-case');
     for (const id of p.spells ?? []) if (!spellIds.has(id)) say(`knows a spell that is not in the pack: "${id}"`);
+    for (const k of ['skills', 'expertise']) if (p[k] !== undefined && !(Array.isArray(p[k]) && p[k].every((x) => Object.hasOwn(SKILLS, x)))) say(`${k} must be a list of skills`);
+    if (p.expertise?.some((x) => !(p.skills ?? []).includes(x))) say('expertise needs proficiency in the same skill');
+    if (p.tools !== undefined && !(Array.isArray(p.tools) && p.tools.every((x) => ID.test(x)))) say('tools must be a list of kebab-case ids');
     const fn = findFunction(p);
     if (fn) say(`contains a function at ${fn}; content is data only`);
   }

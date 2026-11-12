@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things). Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding). Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),
@@ -481,6 +481,24 @@ Where the build settled a detail the design left open, or changed it.
 - The objects in the pack (doors, portcullis, secret door, lever, pressure
   plate, pit trap, arrow trap) are Hextable's own generic definitions, marked
   as such, not SRD text. The SRD's sample traps are M13.
+
+- **Checks** (M5). A creature record has `skills`, `expertise` and `tools`
+  (lists) and, for monsters, `skillBonus` (listed totals). The `check` action
+  rolls any skill or ability; with a DC from the DM, players are sent their roll
+  but neither the DC nor whether it was met. Checks made on an object (picking a
+  lock, disarming) do show their outcome, since the object shows it anyway, but
+  never the DC. A tool check needs the tool in the creature's gear.
+- **Search** (M5) is one Wisdom (Perception) roll against every hidden object
+  within 15 feet that touches a hex the players have been shown, with nothing
+  solid between. It takes the action in a fight. The 15 feet is a design choice.
+- **Noticing in passing** (M5) is the table rule `passiveFind`: `off` (the
+  default, as the 2024 rules lean), `traps` or `all`. It compares passive
+  Perception with what is hidden within 10 feet before a walk starts and after
+  each step, and a walk stops when something is noticed.
+- **Disarming** (M5). The pit and arrow traps have a `disarm` use: a Dexterity
+  check with Thieves' Tools once the trap has been spotted.
+- Still to come from decision 6: hidden *creatures* found by a search. That
+  needs Stealth against Perception and belongs with the sight spec.
 
 ## Sources
 

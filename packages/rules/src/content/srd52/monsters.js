@@ -7,6 +7,7 @@ export const monsters = [
     size: "small", type: "fey", cr: 0.25, xp: 50, pb: 2,
     ac: 15, hp: 10, speed: { walk: 30 },
     abilities: { str: 8, dex: 15, con: 10, int: 10, wis: 8, cha: 8 },
+    skills: { stealth: 6 },
     resist: [], vulnerable: [], immune: [],
     traits: [
       { id: "nimble-escape", name: "Nimble Escape", modifiers: [],
