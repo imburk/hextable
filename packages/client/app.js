@@ -119,6 +119,8 @@ function describe(ev) {
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
+    case 'follow': return [ev.leader ? `${n(ev.id)} follows ${n(ev.leader)}.` : ev.why ? `${n(ev.id)} couldn't keep up with ${n(ev.was)} and stops following.` : `${n(ev.id)} stops following ${n(ev.was)}.`];
+    case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     default: return null;
@@ -175,6 +177,12 @@ function onUpdate(state, events, fresh) {
   const tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
   if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack)
     aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) act(a); }, 800);
+}
+
+// The nearest other living party member: whom Follow picks if nobody is tapped.
+function nearestAlly(e) {
+  return Object.values(S.entities).filter((x) => x.id !== e.id && x.side === 'party' && !x.dead)
+    .sort((a, b) => H.dist(a.pos, e.pos) - H.dist(b.pos, e.pos))[0] ?? null;
 }
 
 // ---------- rendering the UI ----------
@@ -276,6 +284,17 @@ function refresh() {
           bar.append(button('Higher', `Fly at ${alt + FT} ft`, '', '', () => { flyAlt[e.id] = alt + FT; refresh(); }));
           bar.append(button(alt ? 'Lower' : 'On the ground', alt ? `Fly at ${alt - FT} ft${alt === FT ? ' (land)' : ''}` : 'Tap Higher to take off', '', alt ? '' : 'Already as low as it goes.', () => { flyAlt[e.id] = alt - FT; refresh(); }));
         }
+        // Walking together, outside a fight: follow someone, or stop; the DM can have the whole party follow this one.
+        if (!inFight(S, e.id) && e.side === 'party') {
+          const leader = e.follow && S.entities[e.follow];
+          if (leader) bar.append(button('Stop following', `Following ${leader.name}`, '', '', () => act({ type: 'follow', actor: e.id, leader: null })));
+          else {
+            const armed = mode.kind === 'follow', near = nearestAlly(e);
+            bar.append(button(armed ? 'Follow nearest' : 'Follow', armed ? (near ? `${near.name} · or tap someone` : 'Tap a party member') : 'Walk behind someone', armed ? 'armed' : '', near ? '' : 'Nobody else in the party to follow.',
+              () => (armed ? (setMode(MOVE), act({ type: 'follow', actor: e.id, leader: near.id })) : setMode({ kind: 'follow' }))));
+          }
+          if (isDM() && !enc) bar.append(button('Lead the party', 'Everyone follows; then tap where to go', '', '', () => act({ type: 'partyFollow', leader: e.id })));
+        }
         bar.append(button('Search', `${enc ? 'Action · ' : ''}Perception ${signed(checkBonus(e, { skill: 'perception' }))} · 15 ft`, '', blocked(S, e, 'action'), () => act({ type: 'search', actor: e.id })));
         // Doors and other things within reach.
         for (const u of usesFor(S, e)) bar.append(button(`${u.label}`, `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, '', u.why, () => act({ type: 'use', actor: e.id, object: u.object, verb: u.verb })));
@@ -316,6 +335,7 @@ function refresh() {
   if (mode.kind === 'spawn') hint = `Tap a hex to add a ${MONSTERS[mode.monster].name}`;
   if (mode.kind === 'place') hint = `Tap a hex to place ${name(selId)}`;
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
+  if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   R.setHighlights(ED.on ? ED.marks() : hl);
@@ -358,7 +378,8 @@ function renderSheet() {
 
 function renderDM() {
   $('dm-end').disabled = !S.encounter; $('dm-start').disabled = !!S.encounter;
-  $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off';
+  $('dm-engage').checked = S.settings.autoEngage; $('dm-passive').value = S.settings.passiveFind ?? 'off'; $('dm-engage-range').value = String(S.settings.engageRange ?? 10);
+  renderMarch();
   $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-cover').value = S.settings.cover ?? 'on'; $('dm-creature-cover').checked = S.settings.creatureCover !== 'off'; $('dm-climb').checked = S.settings.climbing !== 'off';
   const picked = S.entities[selId], hideable = picked && picked.side !== 'party' && !picked.dead;
   $('dm-hide').disabled = !hideable || (!picked.hidden && inFight(S, picked.id));
@@ -410,6 +431,24 @@ function renderDM() {
   $('chron-list').innerHTML = (T.solo ? recall(S, { types: ['chronicle'] }) : chron).slice().reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
 }
 
+// The marching order as a list, first to last, with buttons to move someone up or down.
+function renderMarch() {
+  const party = Object.values(S.entities).filter((x) => x.side === 'party').sort((a, b) => (a.march ?? Infinity) - (b.march ?? Infinity));
+  const list = $('dm-march'); list.textContent = '';
+  party.forEach((x, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${i + 1}. ${esc(x.name)}${x.follow && S.entities[x.follow] ? ` <small>follows ${esc(S.entities[x.follow].name)}</small>` : ''}</span>`;
+    for (const [label, d, aria] of [['▲', -1, 'up'], ['▼', 1, 'down']]) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+      b.setAttribute('aria-label', `Move ${x.name} ${aria}`);
+      b.disabled = !party[i + d];
+      b.onclick = () => { const order = party.map((p) => p.id); [order[i], order[i + d]] = [order[i + d], order[i]]; act({ type: 'marchingOrder', order }); };
+      li.append(b);
+    }
+    list.append(li);
+  });
+}
+
 // ---------- undo: the DM's Undo and Redo buttons say what they will take back ----------
 function showUndo() {
   const { undo = [], redo = [] } = T?.undoInfo ?? {}, dm = isDM();
@@ -432,6 +471,11 @@ R.onTap = ({ hex, id }) => {
   if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
+  if (mode.kind === 'follow') {
+    setMode(MOVE);
+    if (tapped && tapped.id !== selId && tapped.side === 'party') return act({ type: 'follow', actor: selId, leader: tapped.id });
+    return tapped ? toast('Only another member of the party can be followed.') : undefined;
+  }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id }) : setMode(MOVE);
   if (mode.kind === 'spell') {
     if (SPELLS[mode.id].area) { mode.aim = hex; return refresh(); }
@@ -499,6 +543,7 @@ $('dm-creature-cover').onchange = (ev) => act({ type: 'setting', key: 'creatureC
 $('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
 $('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', actor: selId, size: ev.target.value }); };
 $('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setSpeed', actor: e.id, mode: 'fly', feet: e.speeds?.fly ? 0 : 60 }); };
+$('dm-engage-range').onchange = (ev) => act({ type: 'setting', key: 'engageRange', value: +ev.target.value });
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();
