@@ -13,6 +13,7 @@ import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
+const FLASH = 0.45, SHAKE = 0.5;                     // seconds a hit flash and a critical shake last
 const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
 const VS = `
@@ -200,6 +201,9 @@ export class Renderer {
     for (const ev of events) {
       const a = this.actors.get(ev.id);
       if (ev.type === 'moved' && a) for (const h of ev.path) a.way.push(this.#spot(state.entities[ev.id], h));
+      const hurt = this.actors.get(ev.target);                   // a hit flashes the pawn; a critical one also shakes it
+      if (ev.type === 'damage' && hurt && ev.amount > 0) hurt.flash = FLASH;
+      if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {            // anything teleported or out of sync
       const a = this.actors.get(e.id), w = this.#stand(e.pos);
@@ -380,6 +384,7 @@ export class Renderer {
       }
       if (a.face !== undefined) { const turn = Math.atan2(Math.sin(a.face - a.yaw), Math.cos(a.face - a.yaw)); a.yaw += turn * Math.min(1, dt * 16); }    // turn to face the way it walks
       a.walk = a.way.length ? (a.walk ?? 0) + walked : 0;
+      a.flash = Math.max(0, (a.flash ?? 0) - dt); a.shake = Math.max(0, (a.shake ?? 0) - dt);
       a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;                                            // drawn only; where it stands does not change
     }
     const C = (this.C = this.#camera());
@@ -391,7 +396,11 @@ export class Renderer {
     gl.uniform2f(this.loc.uFog, c.dist + th.fog[0] * 0.5, th.fog[1]);
     gl.disable(gl.BLEND);
     this.terrain.draw(this.loc, ident());
-    for (const a of this.actors.values()) a.mesh.draw(this.loc, model(a.x, a.y + (a.tilt ? 0.15 : 0) + (a.hop ?? 0), a.z, a.yaw, a.tilt));
+    for (const a of this.actors.values()) {
+      const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0;      // drawn only: the pawn is not really moved; it shakes across the screen whichever way the camera faces
+      a.mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + (a.tilt ? 0.15 : 0) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, a.tilt),
+        f ? [1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, 1] : [1, 1, 1, 1]);
+    }
     gl.enable(gl.BLEND); gl.depthMask(false);
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
     this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
