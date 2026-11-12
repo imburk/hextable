@@ -60,12 +60,13 @@ function signature(map) {
 export function barriers(map) {
   const sig = signature(map), had = cache.get(map);
   if (had?.sig === sig) return had;
-  const levels = new Map(map.levels.map((l) => [l.id, { move: [], sight: [], both: [], tall: [], solid: new Set(), memo: new Map() }]));
+  const levels = new Map(map.levels.map((l) => [l.id, { move: [], sight: [], both: [], tall: [], low: [], solid: new Set(), memo: new Map() }]));
   for (const w of map.walls) {
     const l = levels.get(w.level), k = WALL_KINDS[w.kind];
     if (!l || !k) continue;
     if (k.move) l.move.push([w.a, w.b]);
-    if (k.move && w.kind !== 'rail') l.tall.push([w.a, w.b]);        // a rail stops walkers; anything 5 ft up passes over it
+    if (k.move && w.kind !== 'rail') l.tall.push([w.a, w.b]);
+    if (w.kind === 'rail') l.low.push([w.a, w.b]);        // a rail stops walkers; anything 5 ft up passes over it
     if (k.sight) l.sight.push([w.a, w.b]);
     if (k.move && k.sight) l.both.push([w.a, w.b]);
   }
@@ -93,6 +94,8 @@ export function barriers(map) {
     // or 'both' for something that stops everything, like a wall or a shut door.
     blocked: (levelId, from, to, what = 'move') => hit(levelId, center(from), center(to), what),
     // Is this hex filled by something solid on this level?
+    // The segments of one kind on a level, for callers that need to know where a line meets them.
+    segments: (levelId, what) => levels.get(levelId)?.[what] ?? [],
     solid: (levelId, h) => !!levels.get(levelId)?.solid.has(H.col(h)),
   };
   cache.set(map, out);

@@ -9,8 +9,12 @@ import { aiStep } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { Renderer, hpFraction } from './render.js';
+import { createTracker } from './tracker.js';
 import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
+import { Editor } from './editor.js';
+import { initQuickEntry } from './quickentry.js';
+import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,6 +48,7 @@ function toast(msg, info = false) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), info ? 1600 : 3200);
 }
 function setMode(m) { mode = m; refresh(); }
+const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh() });     // the DM's map editor
 function select(id) { selId = id; mode = MOVE; }
 
 // ---------- events -> log lines and floating numbers ----------
@@ -132,6 +137,7 @@ function onUpdate(state, events, fresh) {
     log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false;
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
+  QE.events(events);
   for (const ev of events) {
     const d = describe(ev); if (d) log.push(d);
     if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
@@ -296,12 +302,14 @@ function refresh() {
   if (mode.kind === 'place') hint = `Tap a hex to place ${name(selId)}`;
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
-  R.setCeiling(S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
-  R.setHighlights(hl);
+  R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
+  R.setHighlights(ED.on ? ED.marks() : hl);
   R.inset = $('dock').offsetHeight * 0.85;
+  ED.sync();
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
+  tracker.render();
   if (isDM()) renderDM();
 }
 
@@ -342,6 +350,7 @@ function renderDM() {
   $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
   $('dm-size').disabled = !picked; if (picked) $('dm-size').value = picked.size ?? 'medium';
   $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
+  QE.sync(S, selId);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   $('dm-badge').hidden = !lb.pending.length; $('dm-badge').textContent = lb.pending.length;
@@ -425,6 +434,8 @@ $('hint-cancel').onclick = () => setMode(MOVE);
 $('hint-go').onclick = () => { act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim }); mode = MOVE; };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
+const tracker = createTracker({ root: $('tracker'), button: $('btn-tracker'), dock: $('dock'), state: () => S, isDM, mine, act, toast, pick: (id) => { select(id); R.focus(id); refresh(); } });
+$('btn-tracker').onclick = tracker.toggle;
 const panels = ['sheet', 'log', 'dm'];
 const openPanel = (id) => { for (const p of panels) $(p).hidden = p !== id || !$(p).hidden; refresh(); };
 $('btn-sheet').onclick = () => openPanel('sheet'); $('btn-log').onclick = () => openPanel('log'); $('btn-dm').onclick = () => openPanel('dm');
@@ -490,6 +501,8 @@ addEventListener('keydown', (ev) => {
   if (ev.key === 'q') R.rotate(-Math.PI / 12); if (ev.key === 'e') R.rotate(Math.PI / 12);
 });
 
+const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
+
 // For the browser console, tests and future automation.
 window.hextable = { R, act, get state() { return S; }, get mode() { return mode; } };
 
@@ -498,6 +511,7 @@ window.hextable = { R, act, get state() { return S; }, get mode() { return mode;
 const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled = on; };
 function start(transport) {
   T?.close?.();                 // only ever one connection to a table
+  ED.stop();
   T = transport; S = null;
   lobbyBusy(!T.solo);
   T.on.update = onUpdate;
