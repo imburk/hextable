@@ -1,7 +1,9 @@
 // Rules the engine got wrong (docs/DEBT.md, W1 to W9), each checked against the SRD 5.2 text.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, current, rollMode } from "../src/engine.js";
+import { CONTENT, SPELLS } from "../src/content/index.js";
+import { apply, current, moveOptions, rollMode } from "../src/engine.js";
+import { spellProfile } from "../src/effects.js";
 import * as H from "../src/hex.js";
 import { newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
@@ -177,4 +179,63 @@ test("W7: the tool alone adds the Proficiency Bonus but gives no Advantage", () 
   const c = ok(apply(s, { type: "use", actor: "rogue", object: "door", verb: "pick" }, DM)).events[0];
   assert.equal(c.mode, undefined);
   assert.equal(c.total, c.roll + 3 + 2);
+});
+
+// ---------- W8: a helpful condition is not an attack ----------
+
+test("W8: a spell is harmful for an attack, a save, damage or a hostile condition, not for Invisible", () => {
+  const spell = (effects) => spellProfile({ ...structuredClone(CONTENT.spells["greater-invisibility"]), effects });
+  assert.equal(spell([{ condition: "invisible" }]).harmful, false);
+  assert.equal(spell([{ condition: "poisoned" }]).harmful, true);
+  assert.equal(spell([{ save: "con", onFail: [{ condition: "invisible" }] }]).harmful, true);
+  assert.equal(SPELLS.invisibility.harmful, false);
+  assert.equal(SPELLS["greater-invisibility"].harmful, false);
+});
+
+test("W8: Invisibility on oneself or an ally makes them Invisible and starts no fight", () => {
+  const { s } = field();
+  const wizard = s.entities.wizard;
+  Object.assign(wizard, { slots: { 2: 3, 4: 1 }, slotsMax: { 2: 3, 4: 1 } });
+  wizard.spells.push("invisibility", "greater-invisibility");
+  ok(apply(s, { type: "place", actor: "cleric", to: { q: 1, r: 0 } }, DM));
+  const self = ok(apply(s, { type: "cast", actor: "wizard", spell: "invisibility", target: "wizard" }, DM));
+  assert.equal(s.encounter, null);
+  assert.ok(wizard.cond.invisible);
+  assert.ok(self.events.some((e) => e.type === "manual" && /ends the spell early/.test(e.text)));   // assist: the early ending is the DM's
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "greater-invisibility", target: "cleric" }, DM));   // Concentration moves to the new spell
+  assert.equal(s.encounter, null);
+  assert.ok(s.entities.cleric.cond.invisible);
+  assert.equal(wizard.cond.invisible, undefined);                    // Invisibility ended with the old Concentration
+  ok(apply(s, { type: "endEffect", effect: s.effects.at(-1).id }, DM));
+  assert.equal(s.entities.cleric.cond.invisible, undefined);
+});
+
+// ---------- W6: moving through other creatures ----------
+
+test("W6: a hostile creature blocks, unless it is Incapacitated, Tiny or two sizes apart; its space is Difficult Terrain unless it is Tiny", () => {
+  const { s, goblin } = field();
+  ok(apply(s, { type: "place", actor: "wizard", to: { q: -5, r: 0 } }, DM));
+  ok(apply(s, { type: "place", actor: goblin.id, to: { q: 1, r: 1 } }, DM));        // beside the fighter at 0,1
+  const brenna = s.entities.fighter, at = H.key(goblin.pos);
+  const through = () => moveOptions(s, brenna).get(at);
+  assert.equal(through(), undefined);                                              // Small against Medium: one size apart
+  ok(apply(s, { type: "condition", actor: goblin.id, condition: "stunned" }, DM));
+  assert.deepEqual([through().cost, through().canStop], [10, false]);              // Incapacitated: Difficult Terrain, and no stopping there
+  ok(apply(s, { type: "condition", actor: goblin.id, condition: "stunned", on: false }, DM));
+  ok(apply(s, { type: "setSize", actor: goblin.id, size: "tiny" }, DM));
+  assert.deepEqual([through().cost, through().canStop], [5, false]);               // Tiny: no extra cost (and Brenna is not Tiny, so no sharing)
+  ok(apply(s, { type: "setSize", actor: goblin.id, size: "small" }, DM));
+  ok(apply(s, { type: "place", actor: goblin.id, to: { q: 5, r: -3 } }, DM));
+  ok(apply(s, { type: "setSize", actor: "fighter", size: "large" }, DM));
+  ok(apply(s, { type: "place", actor: goblin.id, to: { q: 2, r: 1 } }, DM));
+  const big = moveOptions(s, brenna).get(H.key(goblin.pos));                      // Large against Small: two sizes apart
+  assert.ok(big, "a Large creature can pass through a Small one");
+  assert.equal(big.canStop, false);
+});
+
+test("W6: an ally can still be passed at no extra cost", () => {
+  const { s } = field();
+  ok(apply(s, { type: "place", actor: "wizard", to: { q: 1, r: 1 } }, DM));
+  const v = moveOptions(s, s.entities.fighter).get(H.key({ q: 1, r: 1 }));
+  assert.deepEqual([v.cost, v.canStop], [5, false]);
 });

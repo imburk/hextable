@@ -88,6 +88,7 @@ function fitsOn(map, e, h, B) {
 // The levels whose walls stand at this height.
 const wallsAt = (map, z) => map.levels.filter((l) => l.z <= z && z < l.z + WALL_HEIGHT);
 
+const SIZE_ORDER = Object.keys(SIZES);                 // tiny to gargantuan
 // Map of position key -> {cost, prev, canStop, h} that this creature can move to right now.
 // Walking steps onto surfaces in neighbouring columns; a bigger rise or drop is a climb; a ladder
 // or the like joins two places; and a creature that can fly moves through the air in 5 ft steps.
@@ -101,6 +102,12 @@ export function moveOptions(s, e) {
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
   const inWay = (h, test) => others.some((o) => overlapAt(o, o.pos, e, h) && test(o));
+  // SRD "Moving around Other Creatures": an ally, an Incapacitated or Tiny creature, or one two sizes
+  // larger or smaller can be passed through; any other creature's space but a Tiny one or an ally's
+  // is Difficult Terrain. Nobody ends a move in an occupied space (canStop, below).
+  const rank = (x) => SIZE_ORDER.indexOf(x.size ?? 'medium');
+  const passable = (o) => !hostile(o, e) || !up(o) || incapacitated(o) || o.size === 'tiny' || Math.abs(rank(o) - rank(e)) >= 2;
+  const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
   const big = shapeOf(e).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
@@ -131,10 +138,10 @@ export function moveOptions(s, e) {
           const h = { q: n.q, r: n.r, z: sf.z };
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
-          if (inWay(h, (o) => hostile(o, e) && up(o))) continue;
+          if (blocks(h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
+            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE || crowded(h) ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
           } else if (climbs) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.
@@ -151,7 +158,7 @@ export function moveOptions(s, e) {
         if (!o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = H.key(a) === H.key(from) ? b : b && H.key(b) === H.key(from) ? a : null;
-        if (!h || (fighting && !enc.arena[H.col(h)]) || inWay(h, (x) => hostile(x, e) && up(x)) || !fitsOn(map, e, h, B)) continue;
+        if (!h || (fighting && !enc.arena[H.col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
         out.push({ h, cost: Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
       }
     }
@@ -168,8 +175,8 @@ export function moveOptions(s, e) {
         if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
         if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${H.col(n)}`)))) continue;
         if (walled_ && n !== from && [from.z, h.z].some((z) => wallsAt(map, z).some((l) => B.blocked(l.id, from, n, z - l.z >= FT ? 'tall' : 'move')))) continue;
-        if (inWay(h, (o) => hostile(o, e) && up(o))) continue;
-        out.push({ h, cost: FT, max: limit.fly });
+        if (blocks(h)) continue;
+        out.push({ h, cost: crowded(h) ? 2 * FT : FT, max: limit.fly });
       }
     }
     return out;
