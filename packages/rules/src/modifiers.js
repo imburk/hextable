@@ -8,11 +8,13 @@
 import { CONTENT } from './content/index.js';
 import * as H from './hex.js';
 import { apart } from './space.js';
+import { canSee } from './sight.js';
 
 // Things a creature can be that are not SRD conditions but work the same way.
 const STATUSES = {
+  // SRD Dodge: attacks have Disadvantage if the dodger can see the attacker; lost while Incapacitated or at Speed 0.
   dodging: { name: 'Dodging', visible: true,
-    modifiers: [{ on: 'attack.received', op: 'disadvantage' }, { on: 'save.dex', op: 'advantage' }] },
+    modifiers: [{ on: 'attack.received', op: 'disadvantage', when: ['attacker.seen', 'self.canDodge'] }, { on: 'save.dex', op: 'advantage', when: ['self.canDodge'] }] },
   disengaged: { name: 'Disengaged', visible: false, modifiers: [] },
   stable: { name: 'Stable', visible: false, modifiers: [] },
 };
@@ -55,6 +57,13 @@ export function judge(tag, sit, s) {
     case 'attack.disadvantage': return sit.mode === undefined ? null : sit.mode === 'dis';
     case 'target.prone': return t ? has(t, 'prone') : null;
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
+    // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
+    // sees its target, and whether its target sees it changes nothing.
+    case 'target.unseen': return a && t ? (a.object ? true : canSee(s, a, t) === 'no') : null;
+    case 'attacker.unseen': return a && t ? (a.object ? false : canSee(s, t, a) === 'no') : null;
+    // Engine-only tags, for the statuses above: not in the content vocabulary.
+    case 'attacker.seen': return a && t ? (a.object ? true : canSee(s, t, a) !== 'no') : null;
+    case 'self.canDodge': return sit.self ? !incapacitated(sit.self) && speedOf(s, sit.self) > 0 : null;      // `self`: whose modifier it is
     case 'target.halfCover': return sit.cover === undefined ? null : sit.cover === 'half';
     case 'target.threeQuartersCover': return sit.cover === undefined ? null : sit.cover === 'threeQuarters';
     case 'ally.adjacentToTarget':
@@ -103,7 +112,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   for (const src of sources(s, e)) {
     for (const m of src.modifiers) {
       if (m.on !== hook) continue;
-      if (!(m.when ?? []).every((tag) => judge(tag, sit, s) === true)) continue;      // not known to hold: not applied
+      if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (!inScope(m, sit)) continue;
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;

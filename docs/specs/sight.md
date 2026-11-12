@@ -1,6 +1,6 @@
 # Spec: sight
 
-Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover) and S4 (light). Owner of the design: Claude (Fable).
+Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover), S4 (light) and S5 (`canSee`). Owner of the design: Claude (Fable).
 
 Covers line of sight, cover, light and darkness, special senses, hiding and
 finding hidden creatures, and what players are sent as a result. It builds on
@@ -229,9 +229,10 @@ is judged by corners instead of one line.
   add it now; the linter accepts it once S4 lands).
 - Objects: an optional `light: { bright, dim }` per state, so a brazier can be
   lit or out.
-- Conditions: Blinded and Invisible already exist as data. Their modifiers
-  move from "always" to "when the attacker cannot see the target" and the
-  reverse, using the two unseen tags.
+- Conditions: Blinded and Invisible already exist as data. Invisible's
+  modifiers move from "always" to "when the attacker cannot see the target"
+  and the reverse, using the two unseen tags. Blinded's stay "always", as
+  the SRD words them (see the S5 build notes).
 - New tags in the closed list: `target.halfCover`,
   `target.threeQuartersCover`, `target.unseen`. `attacker.unseen` exists.
 
@@ -299,3 +300,26 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
   by what blocks movement and sight. So light passes a window or a rail, and a curtain stops it.
   Light is kept per source and position and thrown away when a wall, door or the map changes; a
   carried light that moves is a new source, worked out only for the places asked about.
+- **`canSee`** (S5) is `sees(state, viewer, target)` → `{ see, why }`, with `see` one of `yes`,
+  `dim`, `no` and `why` one of `blinded`, `out of sight`, `invisible`, `dark`, `dim` (S6 adds
+  `hidden`). In order: Blindsight in range and no total cover sees; Blinded sees nothing; no
+  `inView` line from any part to any part sees nothing; Invisible is unseen except by Truesight in
+  range; Truesight in range sees whatever the light; otherwise the best light over the target's
+  hexes, raised one step by Darkvision in range. The viewer's own light does not matter.
+  Tremorsense plays no part: the SRD says it is not sight (resolving the audit's point on decision 4).
+- **Unseen Attackers and Targets** (S5) are worked out in `rollMode` for any attack: Disadvantage
+  when the attacker cannot see the target, Advantage when the target cannot see the attacker, with
+  reasons such as `target in darkness`, `attacker out of sight`. When the cause is Blinded or
+  Invisible the condition's own data gives the reason instead, so it is said once. A trap has no
+  eyes: it never sees its target and is never unseen.
+- **Blinded and Invisible** (S5), checked against the SRD. Invisible's attack effects carry the SRD's
+  "if a creature can somehow see you, you don't gain this benefit", so they now hold only `when` the
+  tags say so: `attacker.unseen` on its attacks, the new `target.unseen` on attacks against it.
+  Blinded's attack effects carry no such clause in the SRD, so they stay unconditional, even for a
+  Blinded creature with Blindsight; its "can't see" is `canSee`'s. Decision 3's "(check all three)"
+  and the "what changes for content" note are corrected accordingly.
+- **"Can see" elsewhere** (S5): Dodge's Disadvantage holds only against an attacker the dodger can
+  see, and neither benefit holds while it is Incapacitated or its Speed is 0 (engine-only tags
+  `attacker.seen` and `self.canDodge`, not in the content vocabulary). Ranged attacks in close combat
+  count only an enemy that can see the archer. An Opportunity Attack is made only at a creature the
+  attacker can see.

@@ -117,7 +117,7 @@ were to the descriptive `text` and the manual steps only:
   can see the attacker, and your Dexterity saves have Advantage; lost if Incapacitated or Speed 0.
   Hextable: `dodging` gives Disadvantage on every attack against and Advantage on Dex saves, cleared at the
   start of the creature's turn. **Differs**: it ignores "if you can see the attacker", and does not end when the
-  creature becomes Incapacitated or its Speed reaches 0.
+  creature becomes Incapacitated or its Speed reaches 0. **Fixed** (S5): both are now applied.
 - **Dash** (SRD): extra movement equal to your Speed after modifiers; may use a special speed instead.
   Hextable: adds `speedOf()` to the budget, counted per way of moving. **Matches.** Fighting only.
 - **Disengage** (SRD): your movement does not provoke Opportunity Attacks for the rest of the turn.
@@ -165,6 +165,9 @@ were to the descriptive `text` and the manual steps only:
   `canSee`. Only the Blinded and Invisible condition modifiers (applied unconditionally) approximate it.
 - **Differs / not built** (sight tasks S4-S6). A creature attacking from darkness or an unseen target never
   changes the roll. The spec's decision 3 wording (unseen means Disadvantage or Advantage) **matches** the SRD.
+- **Now built** (S5): `canSee` and the rule in `rollMode`; Invisible's effects hold only against a creature that
+  cannot see it. Blinded's attack effects stay unconditional, as its SRD text has no "can see" clause. A hidden
+  attacker giving away its location comes with Hide (S6).
 
 ### Blinded, Invisible, Heavily and Lightly Obscured
 - SRD: Blinded cannot see, fails sight checks, attacks against you have Advantage and yours Disadvantage.

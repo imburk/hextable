@@ -41,8 +41,9 @@ export const conditions = [
     also: "It cannot speak.",
     text: "Cannot take actions, Bonus Actions or Reactions." },
   { id: "invisible", name: "Invisible", source: "SRD 5.2.1", visible: false, checked: true,
-    modifiers: [{ on: "attack.roll", op: "advantage" }, { on: "attack.received", op: "disadvantage" }, { on: "initiative", op: "advantage" }],
-    also: "It is not affected by any effect that needs its target to be seen, unless the effect's creator can somehow see it, and what it wears or carries is hidden too. A creature that can somehow see it ignores the attack Advantage and Disadvantage.",
+    // SRD: "If a creature can somehow see you, you don't gain this benefit against that creature."
+    modifiers: [{ on: "attack.roll", op: "advantage", when: ["attacker.unseen"] }, { on: "attack.received", op: "disadvantage", when: ["target.unseen"] }, { on: "initiative", op: "advantage" }],
+    also: "It is not affected by any effect that needs its target to be seen, unless the effect's creator can somehow see it, and what it wears or carries is hidden too.",
     text: "Cannot be seen. Its attacks have Advantage and attacks against it have Disadvantage." },
   { id: "paralyzed", name: "Paralyzed", source: "SRD 5.2.1", visible: true, checked: true, includes: ["incapacitated"],
     modifiers: [

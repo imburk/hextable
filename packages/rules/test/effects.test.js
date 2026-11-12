@@ -196,7 +196,7 @@ test("a condition the engine does not enforce yet is recorded and flagged; one i
 test("a step that depends on something the engine cannot judge is handed over, and steps it can judge are obeyed", () => {
   const s = field();
   const lit = learn(s, { id: "test-when", level: 0, range: 60,
-    effects: [{ attack: "ranged", kind: "spell", onHit: [{ damage: "1d4", type: "fire" }, { damage: "9d4", type: "fire", when: ["attack.advantage"] }, { damage: "1d4", type: "cold", when: ["attacker.unseen"] }] }] });
+    effects: [{ attack: "ranged", kind: "spell", onHit: [{ damage: "1d4", type: "fire" }, { damage: "9d4", type: "fire", when: ["attack.advantage"] }, { damage: "1d4", type: "cold", when: ["long.range"] }] }] });
   const goblin = add(s, "goblin-warrior", { q: 4, r: 0 });
   goblin.hp = goblin.maxHp = 900; goblin.ac = 1;
   fight(s);
@@ -208,7 +208,7 @@ test("a step that depends on something the engine cannot judge is handed over, a
     if (res.events.find((e) => e.type === "attack").hit) {
       hits++;
       assert.equal(res.events.filter((e) => e.type === "damage").length, 1, "no Advantage, so the big extra damage is skipped");
-      assert.match(res.events.find((e) => e.type === "manual").text, /attacker\.unseen.*cannot judge/);
+      assert.match(res.events.find((e) => e.type === "manual").text, /long\.range.*cannot judge/);
     }
     apply(s, { type: "endTurn", actor: "wizard" }, DM);
   }
