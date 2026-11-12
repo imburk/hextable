@@ -14,7 +14,7 @@ import { createHistory, describeStep, mark, undoable } from "../../rules/src/his
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate } from "../../rules/src/migrate.js";
 import { newGame } from "../../rules/src/scenario.js";
-import { view, viewEvents } from "../../rules/src/view.js";
+import { playerView, view, viewEvents, viewHandouts } from "../../rules/src/view.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I/L
 const makeCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
@@ -70,7 +70,25 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // everything, a player's has no dice seed and only what their characters could know.
   // The timeline is the table's record (capped, see timeline.js) and grows, so it is never part of
   // an update, even the DM's. It is read through the history message instead.
-  const stateFor = (t, m) => ({ ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined });
+  // The party sees as one, so the players' view is built once per change of the table (its `seq`) and
+  // shared; each player's copy differs only in the handouts shown to them. The costly part inside it,
+  // what the party can see, is itself kept until something it depends on moves (rules vision.js).
+  const shared = new WeakMap();
+  const forPlayers = (t) => {
+    const had = shared.get(t);
+    if (had && had.seq === (t.seq ?? 0) && had.state === t.state) return had;
+    const base = playerView(t.state), out = { seq: t.seq ?? 0, state: t.state, base, snap: snapshot(base) };
+    shared.set(t, out);
+    return out;
+  };
+  const stateFor = (t, m) => (m.role === "dm" ? { ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined }
+    : { ...forPlayers(t).base, handouts: viewHandouts(t.state, { role: m.role, userId: m.id }) });
+  // What was sent, for the next difference: a player's is the shared one with their handouts.
+  const snapFor = (t, m, state) => {
+    if (m.role === "dm") return snapshot(state);
+    const { snap } = forPlayers(t);
+    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts) } };
+  };
   const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
 
   // The DM's undo history is not part of the game state and is never sent to a player or put in an
@@ -84,7 +102,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // The whole view, to one connection: on sitting down, on being let in, and on request.
   function sendFull(t, m, c) {
     const state = stateFor(t, m);
-    sent.set(c, snapshot(state));
+    sent.set(c, snapFor(t, m, state));
     c.send({ t: "update", seq: t.seq ?? 0, state, events: [] });
   }
   // Something happened: number it and send every approved connection its own difference.
@@ -92,7 +110,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     t.seq = (t.seq ?? 0) + 1;
     for (const m of t.members) {
       if (!m.approved || !conns(m).size) continue;
-      const state = stateFor(t, m), next = snapshot(state), seen = eventsFor(t, m, events);
+      const state = stateFor(t, m), next = snapFor(t, m, state), seen = eventsFor(t, m, events);
       for (const c of conns(m)) {
         const prev = sent.get(c);
         sent.set(c, next);
@@ -110,7 +128,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       if (!m.approved || !conns(m).size) continue;
       const state = stateFor(t, m), ev = m.role === "dm" ? told.dm : told.players;
       for (const c of conns(m)) {
-        sent.set(c, snapshot(state));
+        sent.set(c, snapFor(t, m, state));
         c.send({ t: "update", seq: t.seq, state, events: ev ? [ev] : [] });
       }
     }
