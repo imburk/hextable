@@ -118,7 +118,7 @@ export const spells7 = [
     level: 7, school: "evocation", classes: ["bard","sorcerer","wizard"],
     time: "action", range: "self", components: ["v","s"],
     duration: "instant", concentration: false, ritual: false,
-    target: {"self":true},
+    target: {"area":{"shape":"cone","size":60}},
     effects: [{"save":"dex","onFail":[{"manual":"Prismatic Spray, failed save: the DM rolls 1d8 for the target to pick its ray. 1 Red: 12d6 Fire damage. 2 Orange: 12d6 Acid. 3 Yellow: 12d6 Lightning. 4 Green: 12d6 Poison. 5 Blue: 12d6 Cold. 6 Indigo: Restrained, with a Constitution save at the end of each of its turns; three successes end it and three failures make it Petrified until it is freed by an effect like the Greater Restoration spell. 7 Violet: Blinded, with a Wisdom save at the start of the caster's next turn that ends it; on a failed Wisdom save it also teleports to another plane (the DM chooses). The DM applies the ray."}],"onSuccess":[{"manual":"Prismatic Spray, successful save: rays 1 to 5 deal half as much damage as on a failure. The DM applies it."}]}],
     tier: "assist", checked: true,
     text: "Eight colored rays in a 60-foot cone. Each creature in it makes a Dexterity save; the engine runs those saves. The DM rolls each creature's ray and applies its damage (half on a success) or its restraint, petrification, blindness or teleport.",

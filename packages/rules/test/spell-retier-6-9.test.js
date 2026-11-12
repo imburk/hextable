@@ -19,6 +19,7 @@ test("tiers and the saving throws of the re-tiered spells", () => {
   const ps = byId(spells7, "prismatic-spray");
   assert.equal(ps.tier, "assist");
   assert.equal(ps.effects[0].save, "dex");
+  assert.deepEqual(ps.target, { area: { shape: "cone", size: 60 } });
   assert.equal(SPELLS["prismatic-spray"].def.tier, "assist");
 
   const im = byId(spells9, "imprisonment");
