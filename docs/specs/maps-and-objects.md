@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions). Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors). Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),
@@ -411,6 +411,34 @@ in parallel.
 M1 to M3 give a playable dungeon with doors and rooms that reveal. M4 and
 M5 add traps and secret doors. M6 and M7 are the height and size work that
 `rules-expansion.md` called R9.
+
+## Build notes
+
+Where the build settled a detail the design left open, or changed it.
+
+- **Object states are records, not a list** (M2). `states: { closed: { name, blocks: ["move", "sight"] }, ... }`.
+  A state says what it blocks and, from M4, whether it is hidden. The example
+  under decision 5 shows the earlier list form.
+- **What a creature can do to an object is `use`** (M2): each entry has `from`
+  states, a `to` state, a `time` (`free` or `action`), and optionally `key` or
+  a `check`. In a fight the first object handled on a turn is free and anything
+  more takes the action **(check against the SRD's rule on interacting with
+  objects)**.
+- **Reach** (M2). A door is used from within 5 ft of its line; a thing from its
+  own hex or the next.
+- **Keys** are items named in a creature's gear; the DM hands them out with the
+  `give` action.
+- **Walls stop attacks and spells now, not only movement** (M2). Until the sight
+  spec, the engine draws a straight line between the two hex centres and refuses
+  an attack or a targeted spell if a wall or shut door crosses it; areas do not
+  reach creatures behind one; and walking up to a wall does not start a fight
+  with what is behind it. Windows, rails and curtains do not stop attacks. This
+  is cruder than cover and is replaced by the sight spec.
+- **Editing in play** (M2). The DM action `mapEdit` takes a list of changes
+  (tile, level, wall, object, starts), applies them to a copy and lints the
+  copy, so a bad edit changes nothing. The editor (M8) is a UI over this action.
+- **Checks on objects are handed to the DM until M5.** Picking or forcing a lock
+  spends the action and tells the DM the check and DC; players are not told the DC.
 
 ## Sources
 

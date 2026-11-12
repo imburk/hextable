@@ -20,7 +20,8 @@ by the engine. Must work on PC, phone and tablet.
   or a number. `durations.js` keeps lasting effects, ends them, and handles
   Concentration.
   `space.js` is where things can stand: levels, heights, surfaces. `map.js`
-  is the map document: its format, its linter and its migration.
+  is the map document: its format, its linter, its migration and its edits.
+  `walls.js` works out what walls and doors block.
 - `packages/rules/src/content` — rules content. `srd52/` is a pack of data
   files; `schema.js` is the closed vocabulary they may use and the linter
   that enforces it; `index.js` loads packs. `npm run content` prints what is

@@ -12,7 +12,8 @@ import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, STEP_FREE, STEP_MAX, ground, hasColumn, landing, surfaces } from './space.js';
-import { lintMap } from './map.js';
+import { EDITS, lintMap } from './map.js';
+import { barriers, center, distToSegment, objectDef, objectSegment } from './walls.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
@@ -63,15 +64,16 @@ export function moveOptions(s, e) {
   if (!e || !up(e) || speedOf(s, e) === 0) return new Map();
   const enc = s.encounter, fighting = inFight(s, e.id);
   if (fighting && current(s) !== e.id) return new Map();
-  const occ = occupancy(s);
+  const occ = occupancy(s), B = barriers(s.map);
   // One step: onto a surface in a neighbouring column, if the rise or drop can be walked.
   const reach = H.reachable(e.pos, fighting ? enc.budget.move : EXPLORE_BUDGET, (from) => {
-    const out = [];
+    const out = [], here = ground(s.map, from)?.level;
     for (const n of H.neighbors(from)) {
       if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
       for (const sf of surfaces(s.map, n)) {
         const rise = Math.abs(sf.z - from.z), terrain = TILES[sf.tile.t].cost;
-        if (rise > STEP_MAX || terrain === Infinity) continue;
+        if (rise > STEP_MAX || terrain === Infinity || B.solid(sf.level.id, n)) continue;
+        if (here && (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n)))) continue;   // a wall or a shut door
         const h = { q: n.q, r: n.r, z: sf.z };
         if ((occ.get(H.key(h)) || []).some((o) => hostile(o, e) && up(o))) continue;
         out.push({ h, cost: Math.max(terrain, rise > STEP_FREE ? 2 : 1) * FT });   // Difficult Terrain does not stack
@@ -87,8 +89,60 @@ export function moveOptions(s, e) {
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
-    o.attacks.some((a) => a.type === 'melee') && H.dist(o.pos, pos) <= 1);
+    o.attacks.some((a) => a.type === 'melee') && H.dist(o.pos, pos) <= 1 && clear(s, o.pos, pos));
 }
+
+// Is there nothing solid between two positions? A wall or a shut door stops attacks, spells and
+// notice. This is the straight line between hex centres; cover and light come with the sight spec.
+export function clear(s, a, b) {
+  if (H.col(a) === H.col(b)) return true;
+  const B = barriers(s.map), la = ground(s.map, a)?.level, lb = ground(s.map, b)?.level;
+  return !((la && B.blocked(la.id, a, b, 'both')) || (lb && lb !== la && B.blocked(lb.id, a, b, 'both')));
+}
+const walled = (s, e, t) => clear(s, e.pos, t.pos) || fail(`There is a wall between ${e.name} and ${t.name}.`);
+
+// ---------- objects ----------
+const objectOf = (s, id) => s.map.objects.find((o) => o.id === id) || fail('No such object.');
+export const objectName = (o) => o.name ?? objectDef(o).name;
+// Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
+function nearObject(s, e, o) {
+  const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[H.col(o.at)]?.h ?? 0);
+  if (!ground(s.map, e.pos) || Math.abs(e.pos.z - z) > STEP_MAX) return false;
+  const seg = objectSegment(o);
+  return seg ? distToSegment(center(e.pos), seg) <= FT + 1e-9 : H.dist(e.pos, o.at) <= 1;     // within 5 ft
+}
+const hasKey = (e, key) => e.gear.some((g) => String(g).toLowerCase() === key.toLowerCase());
+function setObject(s, o, state, ev, by = null, verb = null) {
+  const def = objectDef(o);
+  if (!objectSegment(o) && def.states[state].blocks.includes('move')) {
+    const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[H.col(o.at)]?.h ?? 0);
+    !living(s).some((c) => H.col(c.pos) === H.col(o.at) && c.pos.z === z) || fail(`Someone is standing where the ${objectName(o).toLowerCase()} would be.`);
+  }
+  o.state = state;
+  ev.push({ type: 'object', object: o.id, name: objectName(o), state, stateName: def.states[state].name, ...(by ? { actor: by.id } : {}), ...(verb ? { verb } : {}) });
+}
+// What this creature could do right now with the objects in reach: [{ object, name, verb, label, time, why }].
+export function usesFor(s, e) {
+  const out = [];
+  if (!e || !up(e)) return out;
+  for (const o of s.map.objects) {
+    if (!nearObject(s, e, o)) continue;
+    for (const u of objectDef(o).use) {
+      if (!u.from.includes(o.state) || (u.key && !o.key)) continue;         // a door with no lock offers no locking
+      let why = '';
+      const stopped = incapacitatedBy(e);
+      if (stopped) why = `${e.name} is ${stopped} and can't act.`;
+      else if (s.encounter && inFight(s, e.id)) {
+        if (current(s) !== e.id) why = `It isn't ${e.name}'s turn.`;
+        else if (!(u.time === 'free' && !s.encounter.flags.interact) && s.encounter.budget.action < 1) why = `${e.name} has already used an action this turn.`;
+      }
+      if (!why && u.key && !hasKey(e, o.key)) why = `${e.name} doesn't have the key.`;
+      out.push({ object: o.id, name: objectName(o), verb: u.id, label: u.name, time: u.time, why });
+    }
+  }
+  return out;
+}
+
 
 // ---------- hidden creatures ----------
 // `hidden` is a DM switch: players are not told the creature exists (see view.js). The engine's
@@ -249,7 +303,7 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
-  if (ranged && living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= 1)) dis.push('enemy within 5 ft');
+  if (ranged && living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= 1 && clear(s, o.pos, e.pos))) dis.push('enemy within 5 ft');
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
 }
 
@@ -371,6 +425,7 @@ const able = (e) => { const by = incapacitatedBy(e); if (by) fail(`${e.name} is 
 export function targetsFor(s, e, { attack, spell }) {
   const out = [];
   for (const t of living(s)) {
+    if (!clear(s, e.pos, t.pos)) continue;
     const d = H.dist(e.pos, t.pos) * FT;
     if (attack) {
       const atk = e.attacks.find((a) => a.id === attack);
@@ -436,11 +491,11 @@ const handlers = {
       e.pos = step; seg.push(step); prev = step;
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
-      for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE) { flush(); reveal(s, o, ev); }
+      for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos)) { flush(); reveal(s, o, ev); }
       const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
       if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
       if (!s.encounter && s.settings.autoEngage && free &&
-          living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE)) {
+          living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE && clear(s, o.pos, e.pos))) {
         flush(); startEncounter(s, e.pos, ev); break;
       }
     }
@@ -457,6 +512,7 @@ const handlers = {
     !t.dead || fail(`${t.name} is already dead.`);
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(e, t, atk);
+    walled(s, e, t);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
     need(s, e, 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
@@ -487,13 +543,15 @@ const handlers = {
       }
       hexes = areaHexes(s, e, sp, a.hex);
       const keys = new Set(hexes.map(H.key));
-      targets = living(s).filter((t) => keys.has(H.key(t.pos)));
+      const origin = shape === 'cone' || shape === 'emanation' ? e.pos : landing(s.map, a.hex, e.pos.z) ?? e.pos;
+      targets = living(s).filter((t) => keys.has(H.col(t.pos)) && clear(s, origin, t.pos));      // a wall shelters what is behind it
     } else if (sp.aim === 'creature') {
       const t = ent(s, a.target);
       !t.dead || fail(`${t.name} is dead.`);
       if (sp.harmful && t.id === e.id) fail(`${sp.name} needs another target.`);
       const d = H.dist(e.pos, t.pos);
       if (d * FT > sp.range) fail(`${t.name} is ${ft(d)} away. ${sp.name} reaches ${sp.range === 5 ? 'touch (5 ft)' : sp.range + ' ft'}.`);
+      walled(s, e, t);
       targets = [t];
     } else if (sp.aim === 'self') targets = [e];
 
@@ -583,6 +641,34 @@ const handlers = {
     if (s.encounter) advanceTurn(s, ev);
   },
 
+  // Do something with an object in reach: open a door, pull a lever. { type: 'use', actor, object, verb }
+  use(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    const o = objectOf(s, a.object), def = objectDef(o), name = objectName(o), the = `The ${name.toLowerCase()}`;
+    const u = def.use.find((x) => x.id === a.verb) || fail(`${the} can't be used that way.`);
+    nearObject(s, e, o) || fail(`${e.name} is too far from the ${name.toLowerCase()}.`);
+    u.from.includes(o.state) || fail(`${the} is ${def.states[o.state].name}.`);
+    if (u.key) {
+      o.key || fail(`${the} has no lock.`);
+      hasKey(e, o.key) || fail(`${e.name} doesn't have the key.`);
+    }
+    // In a fight the first thing handled on a turn is free; anything more, or anything slow, takes the action.
+    if (s.encounter && inFight(s, e.id)) {
+      current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
+      if (u.time === 'free' && !s.encounter.flags.interact) s.encounter.flags.interact = true;
+      else { need(s, e, 'action'); s.encounter.budget.action--; }
+    }
+    if (u.check) {
+      const c = u.check, dc = o.dc?.[u.id] ?? c.dc, what = `${c.ability.toUpperCase()}${c.skill ? ` (${c.skill})` : ''}${c.tool ? ` with ${c.tool}` : ''}`;
+      ev.push({ type: 'std', id: e.id, action: `${u.name}: ${name}` });
+      ev.push({ type: 'manual', actor: e.id, name, partial: true, text: `${e.name} tries to ${u.name.toLowerCase()} (${name}). That is a ${what} check against DC ${dc}. The engine does not roll checks yet: the DM rolls it and sets the ${name.toLowerCase()}.` });
+      return;
+    }
+    if (u.to) setObject(s, o, u.to, ev, e, u.id);
+  },
+
   // ----- table management -----
   claim(s, a, ctx, ev) {
     const e = ent(s, a.entity);
@@ -634,6 +720,47 @@ const handlers = {
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
     if (s.encounter?.arena[H.col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+  },
+  // Put an object into one of its states. { type: 'setObject', object, state }
+  setObject(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can set objects.');
+    const o = objectOf(s, a.object);
+    Object.hasOwn(objectDef(o).states, a.state) || fail(`The ${objectName(o).toLowerCase()} has no such state.`);
+    o.state !== a.state || fail(`The ${objectName(o).toLowerCase()} is already ${objectDef(o).states[a.state].name}.`);
+    setObject(s, o, a.state, ev);
+  },
+  // Change the map in play: tiles, levels, walls, objects. { type: 'mapEdit', ops: [{ op, ... }] }
+  // The changes are made to a copy and the copy is checked whole, so a bad edit changes nothing.
+  mapEdit(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change the map.');
+    (Array.isArray(a.ops) && a.ops.length > 0 && a.ops.length <= 2000) || fail('Nothing to change.');
+    const map = structuredClone(s.map);
+    for (const op of a.ops) {
+      const edit = (op && Object.hasOwn(EDITS, op.op) && EDITS[op.op]) || fail(`Unknown map change: ${op?.op}`);
+      const problem = edit(map, op);
+      if (problem) fail(problem);
+    }
+    const problems = lintMap(map);
+    problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
+    const B = barriers(map);
+    for (const e of living(s)) {
+      const sf = ground(map, e.pos);
+      (sf && !B.solid(sf.level.id, e.pos)) || fail(`${e.name} would be left with nowhere to stand.`);
+    }
+    s.map = map;
+    ev.push({ type: 'mapEdit', count: a.ops.length });
+  },
+  // Hand a creature an item, or take one away. { type: 'give', actor, item, take? }
+  give(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can hand out items.');
+    const e = ent(s, a.actor), item = String(a.item ?? '').trim();
+    (item && item.length <= 80) || fail('Name the item.');
+    if (a.take) {
+      const i = e.gear.findIndex((g) => String(g).toLowerCase() === item.toLowerCase());
+      i >= 0 || fail(`${e.name} has no ${item}.`);
+      e.gear.splice(i, 1);
+    } else e.gear.push(item);
+    ev.push({ type: 'gear', id: e.id, item, ...(a.take ? { taken: true } : {}) });
   },
   // Play on a different map. The party is set down at its start; the creatures of the old
   // place stay behind with it. { type: 'loadMap', map }

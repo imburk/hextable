@@ -8,16 +8,17 @@ import { spells as spellsStarter } from './srd52/spells.js';
 import { monsters as monstersStarter } from './srd52/monsters.js';
 import { pregens } from './srd52/pregens.js';
 import { conditions } from './srd52/conditions.js';
+import { objects } from './srd52/objects.js';
 
 // A new content file is added in two places: an import above, and its list here.
 const spells = [...spellsStarter];
 const monsters = [...monstersStarter];
 
 export { TILES };
-export const PACKS = [{ pack, spells, monsters, pregens, conditions }];
+export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects }];
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
-export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens), conditions: byId(conditions) };
+export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects) };
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));
