@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT, SPELLS } from "../src/content/index.js";
 import { lintPack } from "../src/content/schema.js";
-import { addDice, scaleSteps, spellProfile } from "../src/effects.js";
+import { addDice, scaleSteps, spellProfile, targetCount } from "../src/effects.js";
 import { apply, current, inFight } from "../src/engine.js";
 import * as H from "../src/hex.js";
 import { newGame } from "../src/scenario.js";
@@ -50,8 +50,13 @@ test("cantrips grow with character level and levelled spells with the slot spent
   assert.equal(dice(CONTENT.spells["burning-hands"], 5, 1), "3d6");
   assert.equal(dice(CONTENT.spells["burning-hands"], 5, 3), "5d6");
   assert.equal(dice(CONTENT.spells["cure-wounds"], 1, 2), "4d8");
-  assert.equal(scaleSteps(CONTENT.spells["magic-missile"], 1, 3).steps[0].times, 5);
-  assert.equal(CONTENT.spells["magic-missile"].effects[0].times, 3, "the pack's own data is never altered");
+  // Magic Missile's darts are targets now (one creature may take several): five at level 3.
+  assert.equal(targetCount(CONTENT.spells["magic-missile"], 1, 3), 5);
+  assert.equal(targetCount(CONTENT.spells["eldritch-blast"], 11, 0), 3);
+  // `higher.slot.times` still adds damage rolls.
+  const twice = { ...CONTENT.spells["fire-bolt"], level: 1, higher: { slot: { times: 1 } } };
+  assert.equal(scaleSteps(twice, 1, 3).steps[0].onHit[0].times, 3);
+  assert.equal(CONTENT.spells["fire-bolt"].effects[0].onHit[0].times, undefined, "the pack's own data is never altered");
 });
 
 test("upcasting spends the higher slot and is refused when that slot is missing or too low", () => {
@@ -61,11 +66,12 @@ test("upcasting spends the higher slot and is refused when that slot is missing 
   assert.match(cast(s, "magic-missile", { target: goblin.id, slot: 4 }).error, /no level 4 spell slots/);
   assert.match(cast(s, "magic-missile", { target: goblin.id, slot: 0 }).error, /level 1 or higher/);
   goblin.hp = goblin.maxHp = 500;
-  const res = cast(s, "magic-missile", { target: goblin.id, slot: 3 });
+  assert.match(cast(s, "magic-missile", { targets: Array(6).fill(goblin.id), slot: 3 }).error, /has 5 targets/);
+  const res = cast(s, "magic-missile", { targets: Array(5).fill(goblin.id), slot: 3 });
   assert.ok(res.ok, res.error);
   assert.deepEqual(s.entities.wizard.slots, { 1: 4, 2: 3, 3: 2 });
   assert.equal(res.events[0].slot, 3);
-  const dmg = res.events.find((e) => e.type === "damage").amount;
+  const dmg = res.events.filter((e) => e.type === "damage").reduce((n, e) => n + e.amount, 0);
   assert.ok(dmg >= 10 && dmg <= 25, `five darts of 1d4+1 should total 10 to 25, got ${dmg}`);
 });
 
@@ -95,7 +101,9 @@ test("a partly applied spell notes what was left out, for the DM only", () => {
   const goblin = add(s, "goblin-warrior", { q: 2, r: 0 });
   goblin.hp = goblin.maxHp = 500;                                       // so the fight outlasts the test
   fight(s); wizardsTurn(s);
-  const res = cast(s, "magic-missile", { target: goblin.id });
+  const id = learn(s, { id: "test-darts", level: 1, range: 120, tier: "assist", text: "Darts the DM may split between targets.",
+    effects: [{ damage: "1d4+1", type: "force" }] });
+  const res = cast(s, id, { target: goblin.id });
   const note = res.events.find((e) => e.type === "manual");
   assert.equal(note.partial, true);
   assert.match(note.text, /split/);

@@ -10,7 +10,7 @@ import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
 import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
-import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls } from './effects.js';
+import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
@@ -784,6 +784,37 @@ function aimArea(s, e, name, area, range, hex) {
   return { targets, hexes, origin: origin === e.pos ? null : origin };
 }
 
+// The creatures a spell or action aimed at creatures goes to: `a.targets` (a list of ids) or
+// `a.target` (one). At most `most`; one creature more than once only for rays, darts and beams
+// (`repeat`); each within `range` feet with nothing solid between; a harmful one not at its own
+// user; with `within`, each after the first that near the first (Chain Lightning).
+function creatures(s, e, name, { range, harmful, repeat, within, most, spell = false }, a) {
+  const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
+  (Array.isArray(ids) && ids.length > 0) || fail(`Pick a target for ${name}.`);
+  ids.length <= most || fail(`${name} has ${most === 1 ? 'one target' : `${most} targets`}.`);
+  if (!repeat && new Set(ids).size !== ids.length) fail(`${name} can't target the same creature twice.`);
+  const out = ids.map((id) => ent(s, id));
+  for (const t of out) {
+    !t.dead || fail(`${t.name} is dead.`);
+    if (harmful && t.id === e.id) fail(`${name} needs another target.`);
+    const d = apart(s, e, t);
+    if (d * FT > range) fail(`${t.name} is ${ft(d)} away. ${name} reaches ${spell && range === 5 ? 'touch (5 ft)' : range + ' ft'}.`);
+    walled(s, e, t);
+  }
+  if (within) for (const t of out.slice(1)) apart(s, out[0], t) * FT <= within || fail(`${t.name} is more than ${within} ft from ${out[0].name}.`);
+  return out;
+}
+// Of the creatures an area catches, those the caster picks (an area with `choose`): `ids`, or all
+// of them if that is no more than it may pick.
+function chosen(e, name, caught, ids, most) {
+  if (ids === undefined) {
+    caught.length <= most || fail(`${name} affects up to ${most} creatures of ${e.name}'s choice in the area. Pick them.`);
+    return caught;
+  }
+  (Array.isArray(ids) && ids.length <= most && new Set(ids).size === ids.length) || fail(`${name} affects up to ${most} different creatures.`);
+  return ids.map((id) => caught.find((t) => t.id === id) || fail(`That creature is not in the area of ${name}.`));
+}
+
 // Why this creature can't take an action/bonus action right now ('' if it can).
 export function blocked(s, e, time = 'action') {
   if (!up(e)) return `${e.name} is down.`;
@@ -865,13 +896,10 @@ function aimAction(s, e, def, a) {
   const t = def.target;
   if (t.self) return { targets: [e], hexes: null, origin: null };
   if (t.creature) {
-    const target = ent(s, a.target);
-    !target.dead || fail(`${target.name} is already dead.`);
-    e.id !== target.id || fail(`${def.name} needs another target.`);
-    const d = apart(s, e, target), far = t.creature.reach ?? t.creature.range[1];
-    if (d * FT > far) fail(`${target.name} is ${ft(d)} away. ${def.name} reaches ${far} ft.`);
-    walled(s, e, target);
-    return { targets: [target], hexes: null, origin: null };
+    const c = t.creature, far = c.reach ?? c.range[1];
+    for (const id of a.targets ?? [a.target]) { const x = ent(s, id); !x.dead || fail(`${x.name} is already dead.`); }
+    const targets = creatures(s, e, def.name, { range: far, harmful: true, repeat: c.repeat, within: c.within, most: c.count ?? 1 }, a);
+    return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
   return aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);
@@ -898,7 +926,7 @@ function takeAction(s, e, def, a, ev) {
   if (s.encounter) {
     const b = s.encounter.budget, time = def.time ?? 'action', pooled = time === 'action' && fromPool(b, def.id);
     need(s, e, pooled ? null : time);
-    if (def.target.creature) inFight(s, targets[0].id) || fail(`${targets[0].name} is outside the battle.`);
+    if (def.target.creature) for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     if (pooled) fromPool(b, def.id, true); else b[time]--;
   }
   if (def.recharge) (e.spent ??= {})[def.id] = true;
@@ -1194,21 +1222,18 @@ const handlers = {
     if (sp.time === 'reaction') fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
     if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
 
-    // Who or what it is aimed at.
+    // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
+    const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
+    const most = targetCount(sp.def, e.level, Math.max(slot, sp.level));
     let targets = [], hexes = null, areaOrigin = null;
-    if (sp.aim === 'area') ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, sp.range, a.hex));
-    else if (sp.aim === 'creature') {
-      const t = ent(s, a.target);
-      !t.dead || fail(`${t.name} is dead.`);
-      if (sp.harmful && t.id === e.id) fail(`${sp.name} needs another target.`);
-      const d = apart(s, e, t);
-      if (d * FT > sp.range) fail(`${t.name} is ${ft(d)} away. ${sp.name} reaches ${sp.range === 5 ? 'touch (5 ft)' : sp.range + ' ft'}.`);
-      walled(s, e, t);
-      targets = [t];
+    if (sp.aim === 'area') {
+      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, sp.range, a.hex));
+      if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
+    } else if (sp.aim === 'creature') {
+      targets = creatures(s, e, sp.name, { range: sp.range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
     } else if (sp.aim === 'self') targets = [e];
 
     // What it costs.
-    const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
     if (sp.level > 0) {
       (Number.isInteger(slot) && slot >= sp.level && slot <= 9) || fail(`${sp.name} needs a spell slot of level ${sp.level} or higher.`);
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
@@ -1218,7 +1243,7 @@ const handlers = {
     if (s.encounter) {
       need(s, e, sp.time);
       if (sp.level > 0 && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
-      if (sp.aim === 'creature') inFight(s, targets[0].id) || fail(`${targets[0].name} is outside the battle.`);
+      if (sp.aim === 'creature') for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
       s.encounter.budget[sp.time]--;
       if (sp.level > 0) s.encounter.flags.slot = true;
     }
@@ -1235,13 +1260,15 @@ const handlers = {
     if (sp.def.duration !== 'instant') {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
       fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
-      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: targets.map((t) => t.id) });
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
     }
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : targets.map((t) => t.id),
       src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}) },
-      shared: sp.aim === 'area' ? sharedRolls(s, steps) : null,
+      // Damage from one effect that several creatures save against at once is rolled once (SRD
+      // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
+      shared: sp.aim === 'area' || (targets.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
     });
     run(s, ev, KIT);
 
