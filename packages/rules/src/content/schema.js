@@ -159,6 +159,9 @@ function lintSpell(e, say) {
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
 }
+const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
+// A senses map gives a range in feet, a multiple of 5, for some of the four special senses.
+const validSenses = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([k, f]) => SENSES.includes(k) && isInt(f) && f >= 0 && f <= 1000 && f % 5 === 0);
 function lintMonster(e, say) {
   lintCommon(e, say);
   if (!SIZES.includes(e.size)) say(`unknown size "${e.size}"`);
@@ -168,6 +171,7 @@ function lintMonster(e, say) {
   if (!e.speed || !Object.keys(e.speed).length || !Object.entries(e.speed).every(([m, v]) => MOVE_MODES.includes(m) && v >= 0)) say(`speed must give feet for one or more of: ${MOVE_MODES.join(', ')}`);
   if (!e.abilities || !ABILITIES.every((a) => isInt(e.abilities[a]))) say('abilities must give all six scores');
   for (const k of ['resist', 'vulnerable', 'immune']) if (!allOf(DAMAGE_TYPES)(e[k])) say(`${k} must be a list of damage types`);
+  if (e.senses !== undefined && !validSenses(e.senses)) say(`senses must give whole feet, in multiples of 5, for only: ${SENSES.join(', ')}`);
   if (e.skills !== undefined && !(e.skills && Object.entries(e.skills).every(([k, v]) => Object.hasOwn(SKILLS, k) && isInt(v)))) say('skills must give a whole-number bonus for each skill named');
   const ids = new Set();
   for (const t of e.traits ?? []) {
@@ -295,7 +299,7 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
 // A finished record with its numbers already worked out, the same shape as a pregenerated
 // character. Only the fields listed here are accepted, so a record can never carry anything
 // else into the game (an owner, a side, a hidden flag). Returns a list of problems.
-const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
+const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
   'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look'];
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse'];
 const FEATURES = { secondWind: (v) => isInt(v) && v >= 0 && v <= 10, sneak: isDice };
@@ -314,6 +318,7 @@ export function lintRecord(r, { spells = {} } = {}) {
   if (!within(r.hp, 1, 999)) say('Its Hit Points are 1 to 999.');
   if (!(within(r.speed, 0, 300) && r.speed % 5 === 0)) say('Its Speed is a multiple of 5 feet.');
   if (r.speeds !== undefined && !(r.speeds && typeof r.speeds === 'object' && Object.entries(r.speeds).every(([m, v]) => MOVE_MODES.includes(m) && m !== 'walk' && within(v, 5, 300) && v % 5 === 0))) say(`Its other speeds are multiples of 5 feet for climb, swim, fly or burrow.`);
+  if (r.senses !== undefined && !validSenses(r.senses)) say(`Its senses are feet, in multiples of 5, for ${SENSES.join(', ')}.`);
   if (r.hover !== undefined && typeof r.hover !== 'boolean') say('Hover is true or false.');
   if (!within(r.prof, 2, 9)) say('Its Proficiency Bonus is 2 to 9.');
   if (!(r.abil && typeof r.abil === 'object' && Object.keys(r.abil).length === 6 && ABILITIES.every((a) => within(r.abil[a], 1, 30)))) say('It needs all six ability scores, each 1 to 30.');
