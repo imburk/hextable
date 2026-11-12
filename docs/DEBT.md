@@ -87,7 +87,7 @@ cannot say, by how much it would unlock:
 | # | What | Who |
 |---|---|---|
 | ~~T1~~ | ~~Undo history is in memory only and is lost when the server restarts~~ saved beside each table file (PR #67). Solo play still starts a reload with an empty history | any |
-| ~~T2~~ | ~~The timeline grows without limit~~ chronicle entries are kept, the newest 5000 others (`TIMELINE_CAP`) (PR #PRN) | any |
+| ~~T2~~ | ~~The timeline grows without limit~~ chronicle entries are kept, the newest 5000 others (`TIMELINE_CAP`) (PR #69) | any |
 | T3 | Per-address limits can be dodged without a proxy in front of the server (documented) | any |
 | ~~T4~~ | ~~No client tests: UI work is checked by hand in a headless browser each time~~ `npm run smoke` drives the page in headless Chromium (PR #60). It is a smoke test, not a unit suite | any |
 | T5 | The pack's labels say SRD 5.2.1; the file it was checked against is SRD 5.2 | any |
