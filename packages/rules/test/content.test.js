@@ -72,8 +72,8 @@ test("the linter catches broken monsters and dangling references", () => {
   ];
   for (const [change, expected] of cases) assert.match(withMonster(change).join("\n"), expected);
 
-  const p = clone(srd.pregens[3]); p.spells.push("wish");
-  assert.match(lintPack({ ...srd, pregens: [p] }).join("\n"), /knows a spell that is not in the pack: "wish"/);
+  const p = clone(srd.pregens[3]); p.spells.push("wish-for-more-wishes");
+  assert.match(lintPack({ ...srd, pregens: [p] }).join("\n"), /knows a spell that is not in the pack: "wish-for-more-wishes"/);
   assert.match(lintPack({ ...srd, pack: { id: "x" } }).join("\n"), /pack: needs/);
 });
 
