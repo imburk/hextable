@@ -523,3 +523,40 @@ test("the server upgrades tables saved by the previous version when it loads the
   dm.say({ t: "act", action: { type: "endTurn", actor: "wizard" } });
   assert.equal(dm.last("update").events.at(-1).type, "turn");
 });
+
+test("export: the DM gets the whole table, a player is refused, and no member or token is in it", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  dm.say({ t: "act", action: { type: "chronicle", title: "Before the backup" } });
+
+  dm.say({ t: "export" });
+  const reply = dm.last("export");
+  assert.deepEqual(Object.keys(reply.table).sort(), ["code", "exportedAt", "state"]);
+  assert.equal(reply.table.code, code);
+  assert.ok(Math.abs(Date.parse(reply.table.exportedAt) - Date.now()) < 5000);
+  // The real state, not a view: it has the dice seed and the timeline that views leave out.
+  assert.deepEqual(reply.table.state, JSON.parse(JSON.stringify(tables.get(code).state)));
+  assert.ok(reply.table.state.timeline.some((e) => e.title === "Before the backup"));
+
+  // No key called token or members anywhere, and none of the members' tokens as a value.
+  const json = JSON.stringify(reply);
+  const keys = [];
+  JSON.parse(json, function (k) { keys.push(k); return this[k]; });
+  assert.ok(!keys.includes("token") && !keys.includes("members"));
+  for (const m of tables.get(code).members) assert.ok(!json.includes(m.token), "a member's token leaked");
+
+  // A player cannot have it, whether approved or still waiting.
+  player.say({ t: "export" });
+  assert.equal(player.last("export"), undefined);
+  assert.deepEqual(player.got.at(-1), { t: "error", error: "Only the DM can export the table." });
+  const waiting = client(tables);
+  waiting.say({ t: "join", code, name: "Wes" });
+  waiting.say({ t: "export" });
+  assert.equal(waiting.last("export"), undefined);
+  assert.equal(waiting.got.at(-1).t, "error");
+  assert.ok(!JSON.stringify(player.raw).includes('"t":"export"'));
+  // Not seated at all.
+  const stranger = client(tables);
+  stranger.say({ t: "export" });
+  assert.deepEqual(stranger.got, [{ t: "error", error: "Join a table first." }]);
+});

@@ -10,7 +10,7 @@ import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { Renderer, hpFraction } from './render.js';
 import { THEMES } from './themes.js';
-import { localTransport, serverTransport, savedSession, prefs } from './transport.js';
+import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -459,6 +459,7 @@ $('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 's
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
 $('dm-auto').onchange = () => S && onUpdate(S, []);
 $('dm-new').onclick = () => T.reset?.();
+$('dm-export').onclick = () => T.export().then(downloadTable, (e) => toast(e.message));
 // Leaving takes two taps, so a stray one can't drop you from the table.
 let leaveTimer = null;
 function leaveTable(btn) {

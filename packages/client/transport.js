@@ -12,6 +12,14 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } },
 };
 
+// What an export looks like, and how it reaches the DM's disk: a JSON file named hextable-<code>-<date>.json.
+export function downloadTable(table) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(table, null, 1)], { type: 'application/json' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: `hextable-${table.code}-${table.exportedAt.slice(0, 10)}.json` });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 // Solo: the engine runs here and you are the DM and every hero.
 export function localTransport() {
   let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
@@ -25,6 +33,7 @@ export function localTransport() {
       store.set('hextable.solo', state);
       t.on.update(state, res.events);
     },
+    export: async () => ({ code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state) }),   // nothing leaves this tab
     reset() { state = newGame((Math.random() * 1e9) | 0); store.set('hextable.solo', state); t.on.update(state, [], true); },
   };
   return t;
@@ -37,6 +46,7 @@ export function serverTransport(first) {
   // After the first full state the server sends only what changed. The receiver keeps our copy
   // up to date and asks for everything again if an update ever goes missing.
   const receiver = createReceiver(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'sync' })); });
+  let pendingExport = null;            // { resolve, reject, timer } while an export is awaited
   const open = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
     ws.onopen = () => { retry = 0; ws.send(JSON.stringify(hello)); };
@@ -48,6 +58,8 @@ export function serverTransport(first) {
         store.set('hextable.session', { code: msg.code, token: msg.token });
         t.on.welcome?.(t.you);
       } else if (msg.t === 'update') { const u = receiver.receive(msg); if (u) t.on.update(u.state, u.events); }
+      else if (msg.t === 'export') { pendingExport?.resolve(msg.table); }
+      else if (msg.t === 'error' && pendingExport && !msg.expired) pendingExport.reject(new Error(msg.error));
       else if (msg.t === 'history') t.on.history?.(msg);
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
@@ -62,6 +74,14 @@ export function serverTransport(first) {
   t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); store.del('hextable.session'); t.close(); };
   // Ask for past entries from the table's record: { types, since, limit }. The answer arrives on on.history.
   t.history = (query) => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'history', ...query })); };
+  // The DM asks for the whole table to keep as a file. Resolves to { code, exportedAt, state }.
+  t.export = () => new Promise((resolve, reject) => {
+    if (ws?.readyState !== 1) return reject(new Error('Reconnecting to the table…'));
+    const done = (fn) => (v) => { clearTimeout(pendingExport.timer); pendingExport = null; fn(v); };
+    pendingExport = { resolve, reject, timer: setTimeout(() => pendingExport?.reject(new Error('The table did not answer.')), 30000) };
+    pendingExport.resolve = done(resolve); pendingExport.reject = done(reject);
+    ws.send(JSON.stringify({ t: 'export' }));
+  });
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
 }

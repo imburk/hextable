@@ -139,6 +139,12 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
         save(table);
         lobby(table);
       },
+      // The DM keeps their own copy of the table. Everything in the game state, and nothing about
+      // who is sitting there: no members, no tokens.
+      export() {
+        if (me.role !== "dm") return error("Only the DM can export the table.");
+        conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state } });
+      },
       // The client noticed it missed an update and wants the whole view again.
       sync() {
         if (!me.approved) return error("Waiting for the DM to let you in.");
@@ -187,7 +193,7 @@ export function createTables({ load = () => [], save = () => {}, seed = () => ra
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "leave", "history", "sync"].includes(msg.t);
+        const seated = ["approve", "act", "leave", "history", "sync", "export"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },
