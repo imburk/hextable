@@ -25,7 +25,7 @@ function learn(s, over) {
 function field(seed = 5) {
   const s = newGame(seed);
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
-  for (const k of Object.keys(s.map.tiles)) s.map.tiles[k] = { t: "grass", h: 0.6 };
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
   apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
   apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM);
   Object.assign(s.entities.wizard, { slots: { 1: 4, 2: 3, 3: 3 }, slotsMax: { 1: 4, 2: 3, 3: 3 } });
@@ -240,7 +240,7 @@ test("a whole fight with spells replays identically from the same seed", () => {
   const play = () => {
     const s = newGame(21);
     for (const e of Object.values(s.entities)) if (e.side !== "party") e.hp = e.maxHp = 60;      // a fight long enough to use every spell
-    apply(s, { type: "place", actor: "m1", to: H.neighbors(s.entities.wizard.pos).find((h) => s.map.tiles[H.key(h)]?.t === "grass" && !Object.values(s.entities).some((e) => H.key(e.pos) === H.key(h))) }, DM);
+    apply(s, { type: "place", actor: "m1", to: H.neighbors(s.entities.wizard.pos).find((h) => s.map.levels[0].tiles[H.key(h)]?.t === "grass" && !Object.values(s.entities).some((e) => H.key(e.pos) === H.key(h))) }, DM);
     apply(s, { type: "cast", actor: "wizard", spell: "fire-bolt", target: "m1" }, DM);
     for (let i = 0; i < 80 && s.encounter; i++) {
       const id = current(s), e = s.entities[id];

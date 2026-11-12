@@ -40,7 +40,7 @@ test("a critical hit doubles the dice, not the modifier", () => {
 
 test("the same seed builds the same world", () => {
   assert.deepEqual(newGame(123), newGame(123));
-  assert.notDeepEqual(newGame(123).map.tiles, newGame(124).map.tiles);
+  assert.notDeepEqual(newGame(123).map.levels[0].tiles, newGame(124).map.levels[0].tiles);
 });
 
 test("players control only their own character; the DM controls anyone", () => {
@@ -93,7 +93,7 @@ test("the arena locks: fighters cannot leave it and movement is budgeted", () =>
     assert.ok(s.encounter.arena[k], `${k} is outside the arena`);
     assert.ok(v.cost <= e.speed);
   }
-  const outside = H.range(e.pos, 6).find((h) => s.map.tiles[H.key(h)] && !s.encounter.arena[H.key(h)]);
+  const outside = H.range(e.pos, 6).find((h) => s.map.levels[0].tiles[H.key(h)] && !s.encounter.arena[H.key(h)]);
   assert.equal(apply(s, { type: "move", actor: id, to: outside }, DM).ok, false);
 });
 
@@ -201,7 +201,7 @@ test("a character can be released by its player or the DM, and reassigned by the
 function withLurker(at, { autoEngage = false } = {}) {
   const s = newGame(5);
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
-  for (const k of Object.keys(s.map.tiles)) s.map.tiles[k] = { t: "grass", h: 0.6 };      // open ground everywhere
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };      // open ground everywhere
   apply(s, { type: "setting", key: "autoEngage", value: autoEngage }, DM);
   const res = apply(s, { type: "spawn", monster: "goblin-warrior", at, hidden: true }, DM);
   assert.ok(res.ok, res.error);
@@ -265,7 +265,7 @@ test("a hidden creature is revealed when a fight starts around it or it joins on
   assert.ok(inFight(s, lurker.id));
 
   // A second one, spawned hidden straight into the arena, joins and is seen at once.
-  const spot = H.range(brenna(s).pos, 3).find((h) => s.encounter.arena[H.key(h)] && !Object.values(s.entities).some((e) => H.key(e.pos) === H.key(h)) && s.map.tiles[H.key(h)].t === "grass");
+  const spot = H.range(brenna(s).pos, 3).find((h) => s.encounter.arena[H.key(h)] && !Object.values(s.entities).some((e) => H.key(e.pos) === H.key(h)) && s.map.levels[0].tiles[H.key(h)].t === "grass");
   const second = apply(s, { type: "spawn", monster: "wolf", at: spot, hidden: true }, DM);
   assert.ok(second.ok, second.error);
   const wolf = s.entities[second.events[0].id];

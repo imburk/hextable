@@ -11,9 +11,11 @@ import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
+import { FT, STEP_FREE, STEP_MAX, ground, hasColumn, landing, surfaces } from './space.js';
+import { lintMap } from './map.js';
 import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
-export const FT = 5;                 // feet per hex
+export { FT };                       // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
 export const ENGAGE_RANGE = 2;       // walking this close to a hostile starts the fight
 export const EXPLORE_BUDGET = 300;   // feet per tap while free roaming
@@ -39,6 +41,7 @@ const ft = (hexes) => `${hexes * FT} ft`;
 
 export function makeEntity(tpl, over = {}) {
   const t = structuredClone(tpl);
+  if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
     kind: 'npc', side: 'foe', owner: null, level: 0, saveProf: [], features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
@@ -61,12 +64,20 @@ export function moveOptions(s, e) {
   const enc = s.encounter, fighting = inFight(s, e.id);
   if (fighting && current(s) !== e.id) return new Map();
   const occ = occupancy(s);
-  const reach = H.reachable(e.pos, fighting ? enc.budget.move : EXPLORE_BUDGET, (h) => {
-    const k = H.key(h), tile = s.map.tiles[k];
-    if (!tile) return Infinity;
-    if (fighting && !enc.arena[k]) return Infinity;                       // the arena is locked
-    if ((occ.get(k) || []).some((o) => hostile(o, e) && up(o))) return Infinity;
-    return TILES[tile.t].cost * FT;
+  // One step: onto a surface in a neighbouring column, if the rise or drop can be walked.
+  const reach = H.reachable(e.pos, fighting ? enc.budget.move : EXPLORE_BUDGET, (from) => {
+    const out = [];
+    for (const n of H.neighbors(from)) {
+      if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
+      for (const sf of surfaces(s.map, n)) {
+        const rise = Math.abs(sf.z - from.z), terrain = TILES[sf.tile.t].cost;
+        if (rise > STEP_MAX || terrain === Infinity) continue;
+        const h = { q: n.q, r: n.r, z: sf.z };
+        if ((occ.get(H.key(h)) || []).some((o) => hostile(o, e) && up(o))) continue;
+        out.push({ h, cost: Math.max(terrain, rise > STEP_FREE ? 2 : 1) * FT });   // Difficult Terrain does not stack
+      }
+    }
+    return out;
   });
   const here = H.key(e.pos);
   for (const [k, v] of reach) v.canStop = k !== here && !(occ.get(k) || []).some((o) => o.id !== e.id);
@@ -100,8 +111,8 @@ function rollInit(s, e) {
 
 function startEncounter(s, center, ev, radius = ARENA_RADIUS) {
   const arena = {};
-  for (const h of H.range(center, radius)) if (s.map.tiles[H.key(h)]) arena[H.key(h)] = 1;
-  const who = living(s).filter((e) => arena[H.key(e.pos)]);
+  for (const h of H.range(center, radius)) if (hasColumn(s.map, h)) arena[H.col(h)] = 1;    // a fight locks whole columns, every level
+  const who = living(s).filter((e) => arena[H.col(e.pos)]);
   if (!who.length) fail('Nobody is close enough to fight here.');
   for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
@@ -338,7 +349,7 @@ export function areaHexes(s, e, sp, aim) {
   else if (!aim) return [];
   else if (shape === 'cone') hexes = H.cone(e.pos, aim, n);
   else if (shape === 'sphere' || shape === 'cylinder') hexes = H.range(aim, n);
-  return hexes.filter((h) => s.map.tiles[H.key(h)]);
+  return hexes.filter((h) => hasColumn(s.map, h));
 }
 
 // Why this creature can't take an action/bonus action right now ('' if it can).
@@ -386,20 +397,24 @@ const handlers = {
     const fighting = inFight(s, e.id);
     if (fighting && current(s) !== e.id) fail(`It isn't ${e.name}'s turn.`);
     const reach = moveOptions(s, e);
-    let tk = H.key(a.to), node = reach.get(tk);
+    // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
+    const column = [...reach.values()].filter((n) => H.col(n.h) === H.col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
+      .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
+    const to = column?.h ?? landing(s.map, a.to, e.pos.z);
+    to || fail("There's nothing there to stand on.");
+    let tk = H.key(to), node = reach.get(tk);
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
     const lurker = fighting ? null : living(s).find((o) => o.hidden && hostile(o, e) && H.key(o.pos) === tk);
     if (lurker) {
       if (H.dist(e.pos, lurker.pos) <= 1) return reveal(s, lurker, ev);      // already beside it: no move, but it is found
-      const beside = H.neighbors(a.to).map(H.key).filter((k) => reach.get(k)?.canStop)
+      const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && H.dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
         .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
       if (!beside) fail("Can't get there.");
       tk = beside; node = reach.get(tk);
     }
     if (!node || !node.canStop) {
-      if (!s.map.tiles[tk]) fail("There's nothing there to stand on.");
-      if (fighting && !s.encounter.arena[tk]) fail("The arena is locked until the fight ends.");
+      if (fighting && !s.encounter.arena[H.col(to)]) fail("The arena is locked until the fight ends.");
       if (node) fail('That hex is occupied.');
       fail(fighting ? `Too far. ${e.name} has ${s.encounter.budget.move} ft of movement left.` : "Can't get there.");
     }
@@ -417,13 +432,13 @@ const handlers = {
         if (!up(e)) break;
       }
       const k = H.key(step);
-      if (fighting && s.encounter) s.encounter.budget.move -= TILES[s.map.tiles[k].t].cost * FT;
+      if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
       e.pos = step; seg.push(step); prev = step;
       if (fighting) continue;
       // Anything lying in wait this close is spotted, whether or not a fight follows.
       for (const o of living(s)) if (o.hidden && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE) { flush(); reveal(s, o, ev); }
       const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
-      if (s.encounter && s.encounter.arena[k] && free) { flush(); joinEncounter(s, e, ev); break; }
+      if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
       if (!s.encounter && s.settings.autoEngage && free &&
           living(s).some((o) => up(o) && hostile(o, e) && H.dist(o.pos, e.pos) <= ENGAGE_RANGE)) {
         flush(); startEncounter(s, e.pos, ev); break;
@@ -602,22 +617,49 @@ const handlers = {
   spawn(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can add creatures.');
     const tpl = MONSTERS[a.monster] || fail('Unknown monster.');
-    s.map.tiles[H.key(a.at)] && TILES[s.map.tiles[H.key(a.at)].t].cost < Infinity || fail("A creature can't stand there.");
-    !living(s).some((o) => H.key(o.pos) === H.key(a.at)) || fail('That hex is occupied.');
+    const at = landing(s.map, a.at);
+    (at && TILES[ground(s.map, at).tile.t].cost < Infinity) || fail("A creature can't stand there.");
+    !living(s).some((o) => H.key(o.pos) === H.key(at)) || fail('That hex is occupied.');
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
-    s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: a.at, ...(a.hidden ? { hidden: true } : {}) });
+    s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
-    if (s.encounter?.arena[H.key(a.at)]) joinEncounter(s, s.entities[id], ev);
+    if (s.encounter?.arena[H.col(at)]) joinEncounter(s, s.entities[id], ev);
   },
   place(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can place creatures.');
     const e = ent(s, a.actor);
-    s.map.tiles[H.key(a.to)] || fail("There's nothing there to stand on.");
-    !living(s).some((o) => o.id !== e.id && H.key(o.pos) === H.key(a.to)) || fail('That hex is occupied.');
-    e.pos = a.to;
-    ev.push({ type: 'placed', id: e.id, to: a.to });
-    if (s.encounter?.arena[H.key(a.to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+    const to = landing(s.map, a.to, e.pos.z) || fail("There's nothing there to stand on.");
+    !living(s).some((o) => o.id !== e.id && H.key(o.pos) === H.key(to)) || fail('That hex is occupied.');
+    e.pos = to;
+    ev.push({ type: 'placed', id: e.id, to });
+    if (s.encounter?.arena[H.col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+  },
+  // Play on a different map. The party is set down at its start; the creatures of the old
+  // place stay behind with it. { type: 'loadMap', map }
+  loadMap(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change the map.');
+    !s.encounter || fail("The map can't change in the middle of a fight.");
+    const problems = lintMap(a.map);
+    problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
+    const map = structuredClone(a.map);
+    const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
+    const first = map.starts[0] ?? H.parse(Object.keys(map.levels[0].tiles)[0]);
+    const start = landing(map, first, first.z ?? 0);
+    const party = Object.values(s.entities).filter((e) => e.side === 'party'), spots = [];
+    for (let n = 0; n < 12 && spots.length < party.length; n++) {
+      for (const h of H.range(start, n)) {
+        const p = H.dist(h, start) === n ? landing(map, h, start.z) : null;
+        if (walkable(p) && Math.abs(p.z - start.z) <= STEP_MAX && spots.length < party.length) spots.push(p);
+      }
+    }
+    spots.length === party.length || fail("That map has no room for the party at its start.");
+    const leaving = new Set(Object.values(s.entities).filter((e) => e.side !== 'party').map((e) => e.id));
+    for (const fx of [...effectsOf(s)]) if (leaving.has(fx.source) || fx.parts.some((p) => leaving.has(p.target))) endEffect(s, ev, fx, 'the party moved on');
+    for (const id of leaving) delete s.entities[id];
+    s.map = map;
+    party.forEach((e, i) => { e.pos = spots[i]; });
+    ev.push({ type: 'map', map: map.id, name: map.name });
   },
   // Hide a creature from the players, or show it to them. { type: 'reveal', actor, hidden: true|false }
   reveal(s, a, ctx, ev) {

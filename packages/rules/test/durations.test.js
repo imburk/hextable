@@ -25,7 +25,7 @@ function learn(s, who, over) {
 function field(seed = 5) {
   const s = newGame(seed);
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
-  for (const k of Object.keys(s.map.tiles)) s.map.tiles[k] = { t: "grass", h: 0.6 };
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
   apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
   apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM);
   apply(s, { type: "place", actor: "fighter", to: { q: 0, r: 1 } }, DM);

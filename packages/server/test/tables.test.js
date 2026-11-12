@@ -372,7 +372,7 @@ test("property 5: a hidden monster is in no message to a player until it is reve
   const pip = state.entities.rogue;
 
   // The DM adds a hidden wolf a few hexes from Pip, moves it, and writes it into the record.
-  const spot = H.range(pip.pos, 5).find((h) => H.dist(h, pip.pos) === 5 && state.map.tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
+  const spot = H.range(pip.pos, 5).find((h) => H.dist(h, pip.pos) === 5 && state.map.levels[0].tiles[H.key(h)]?.t === "grass" && !Object.values(state.entities).some((e) => H.key(e.pos) === H.key(h)));
   dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: spot, hidden: true, name: "Greyjaw" } });
   const id = dm.last("update").events[0].id;
   assert.equal(state.entities[id].hidden, true);
@@ -515,7 +515,7 @@ test("the server upgrades tables saved by the previous version when it loads the
   saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
   const tables = createTables({ load: () => [saved] });
   const state = tables.get("FIXTR1").state;
-  assert.equal(state.version, 2);
+  assert.equal(state.version, 3);
   assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
   const dm = client(tables);
   dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });

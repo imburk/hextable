@@ -80,6 +80,7 @@ function describe(ev) {
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
+    case 'map': return [`The scene changes: ${ev.name}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
     default: return null;
@@ -248,7 +249,7 @@ function refresh() {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
           hl.area = hexes.map(H.key);
-          const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(H.key(x.pos)));
+          const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(H.col(x.pos)));
           const how = sp.area.shape === 'cone' ? `tap a hex to aim the ${sp.area.size} ft cone` : `tap where the ${sp.area.size} ft ${sp.area.shape} goes (within ${sp.range} ft)`;
           hint = aimed ? `${sp.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
