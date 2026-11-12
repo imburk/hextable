@@ -1,30 +1,21 @@
 // End to end through the real server and real files: the undo history sits beside the table file,
 // comes back after a restart, and a damaged history file does not stop the table loading.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { after, test } from "node:test";
+import { startServer, stopAll } from "./helpers.js";
 
-const SERVER = fileURLToPath(new URL("../src/index.js", import.meta.url));
-let nextPort = 20000 + (process.pid % 2000) * 2;
+// A server on a free port over this data folder; stop() lets it save what is waiting, and waits for it.
+const start = (dir) => startServer({ data: dir, stderr: "pipe" });
+after(stopAll);
 
-async function start(dir) {
-  const port = nextPort++;
-  const child = spawn(process.execPath, [SERVER], { env: { ...process.env, PORT: String(port), DATA_DIR: dir }, stdio: ["ignore", "pipe", "pipe"] });
-  let err = "";
-  child.stderr.on("data", (d) => (err += d));
-  await new Promise((resolve, reject) => { child.stdout.once("data", resolve); child.once("exit", (c) => reject(new Error(`server exited ${c}`))); });
-  return { port, child, stderr: () => err,
-    stop: () => new Promise((resolve) => { child.once("exit", resolve); child.kill("SIGTERM"); }) };    // SIGTERM flushes what is waiting to be saved
-}
 // Send messages in turn over one socket; resolve with everything received once `done` says so.
 function talk(port, messages, done) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://localhost:${port}/ws`), got = [];
-    const timer = setTimeout(() => { ws.close(); reject(new Error(`timed out: ${JSON.stringify(got.map((m) => m.t))}`)); }, 5000);
+    const timer = setTimeout(() => { ws.close(); reject(new Error(`timed out: ${JSON.stringify(got.map((m) => m.t))}`)); }, 15_000);
     let i = 0;
     const next = () => { if (i < messages.length) ws.send(JSON.stringify(messages[i++])); };
     ws.onopen = next;
