@@ -558,6 +558,8 @@ $('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick 
 R.onTap = ({ hex, id }) => {
   if (!S || !T) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
+  const inZone = [...new Set(R.zonesAt(hex))];
+  if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
