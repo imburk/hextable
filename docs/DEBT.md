@@ -123,7 +123,7 @@ Sleet Storm and Stinking Cloud (losing Concentration; a Poisoned that also bars 
 | Obscurement with a rider no hook can say (Concentration lost, no actions) | | sleet storm, stinking cloud |
 | Assist spells held at assist by: Speed doubled and an extra action, healing from damage dealt, a wall of free shape, a later action | | haste, vampiric touch, wind wall, call lightning |
 
-**Levels 4 and 5** (PR_NUM): 3 moved from manual to assist: Conjure Woodland Beings (an emanation zone that
+**Levels 4 and 5** (#110): 3 moved from manual to assist: Conjure Woodland Beings (an emanation zone that
 moves with the caster, spares the caster's side, a Wisdom save for force damage on entering or ending a
 turn there), Fire Shield (the damage type resisted is the choice: Cold for the warm shield, Fire for the
 chill one; the retaliation and the light stay with the DM) and Mislead (the caster is Invisible; the DM ends
