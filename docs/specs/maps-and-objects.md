@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding), M6 (height in play). Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding), M6 (height in play), M7 (size and footprints). M8 to M14 are open. Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),
@@ -529,6 +529,22 @@ Where the build settled a detail the design left open, or changed it.
   centre to centre and are replaced by the sight spec.
 - Not built from decision 2: swimming and burrowing have speeds but no rules of
   their own yet, and two creatures landing in one hex are left for the DM.
+
+- **Footprints** (M7) are 1, 3, 7 and 12 hexes: the hex, a triangle, the hex and
+  its six neighbours, the triangle and everything around it. Heights are 5, 10,
+  15 and 20 ft. The table is `content/sizes.js`. Up to four Tiny creatures can
+  share a hex.
+- **A big creature moves as one** (M7): every hex of it needs a floor within a
+  step of its own, no wall may run between two parts of it, and no part may
+  cross a wall. Distance, reach, opportunity attacks, areas, traps and the
+  line for attacks all use the nearest parts of the creatures involved, and a
+  tall creature reaches up by its height.
+- Not built from decision 3: **squeezing** through a space one size smaller, and
+  moving through the space of a creature two sizes apart. The DM's `place` puts
+  a creature anywhere, which covers a squeeze by hand. "Attached to" (grappled
+  and dragged, carried, mounted) is not built either; it belongs with grappling.
+- The DM's `setSize` action changes a creature's size where it stands, if there
+  is room. Forms (R11) will use the same check.
 
 ## Sources
 

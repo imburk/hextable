@@ -1,6 +1,7 @@
 // Space: where things can stand. A map is a stack of levels, each a sheet of hexes at a base
 // height in feet. A position is { q, r, z } with z in feet. Design: docs/specs/maps-and-objects.md
 import * as H from './hex.js';
+import { SIZES } from './content/sizes.js';
 
 export const FT = 5;            // feet per hex
 export const STEP_FREE = 2.5;   // a rise or drop up to this is ordinary walking
@@ -73,9 +74,37 @@ export function gap(s, a, b) {
   const h = H.dist(a, b), v = rise((a.z ?? 0) - (b.z ?? 0)), rule = s?.settings?.vertical ?? 'max';
   return rule === 'sum' ? h + v : rule === 'true' ? Math.round(Math.hypot(h, v)) : Math.max(h, v);
 }
-// Distance between two creatures.
-export const apart = (s, a, b) => gap(s, a.pos, b.pos);
-// Do two creatures a hex apart or less in the same column get in each other's way?
-export const overlaps = (a, b) => a.q === b.q && a.r === b.r && Math.abs((a.z ?? 0) - (b.z ?? 0)) < FT;
 // How high a wall stands above the floor of its level, and how tall a creature is, in feet.
 export const WALL_HEIGHT = 10, HEADROOM = 5;
+
+// ---------- size ----------
+// A creature fills a footprint of hexes, anchored on the hex of its position, and stands so high.
+const TRIANGLE = [[0, 0], [1, 0], [0, 1]];
+const SHAPES = { 1: [[0, 0]], 3: TRIANGLE, 7: [[0, 0], ...H.DIRS] };
+SHAPES[12] = [...new Map(TRIANGLE.flatMap(([q, r]) => [[q, r], ...H.DIRS.map(([dq, dr]) => [q + dq, r + dr])]).map((o) => [`${o}`, o])).values()];
+export const sizeOf = (e) => SIZES[e?.size] ?? SIZES.medium;
+export const shapeOf = (e) => SHAPES[sizeOf(e).hexes];
+// The hexes a creature fills when it stands at `pos` (its own position if none is given).
+export const footprint = (e, pos = e.pos) => shapeOf(e).map(([dq, dr]) => ({ q: pos.q + dq, r: pos.r + dr, z: pos.z ?? 0 }));
+// Would two creatures be in each other's space, one at `pa` and the other at `pb`?
+export function overlapAt(a, pa, b, pb) {
+  const za = pa.z ?? 0, zb = pb.z ?? 0;
+  if (za >= zb + sizeOf(b).height || zb >= za + sizeOf(a).height) return false;
+  const sa = shapeOf(a), sb = shapeOf(b);
+  if (sa.length === 1 && sb.length === 1) return pa.q === pb.q && pa.r === pb.r;
+  return sa.some(([aq, ar]) => sb.some(([bq, br]) => pa.q + aq === pb.q + bq && pa.r + ar === pb.r + br));
+}
+// Distance in hexes between two creatures, one at `pa` and the other at `pb`: between the nearest
+// parts of them, across and up, combined by the table rule for height.
+export function apartAt(s, a, pa, b, pb) {
+  const sa = shapeOf(a), sb = shapeOf(b);
+  let h = Infinity;
+  if (sa.length === 1 && sb.length === 1) h = H.dist(pa, pb);
+  else for (const [aq, ar] of sa) for (const [bq, br] of sb) h = Math.min(h, H.dist({ q: pa.q + aq, r: pa.r + ar }, { q: pb.q + bq, r: pb.r + br }));
+  const za = pa.z ?? 0, zb = pb.z ?? 0;
+  // The lower creature reaches up by its own height: only what lies above its head counts.
+  const v = rise(zb >= za ? Math.max(0, zb - (za + sizeOf(a).height - FT)) : Math.max(0, za - (zb + sizeOf(b).height - FT)));
+  const rule = s?.settings?.vertical ?? 'max';
+  return rule === 'sum' ? h + v : rule === 'true' ? Math.round(Math.hypot(h, v)) : Math.max(h, v);
+}
+export const apart = (s, a, b) => apartAt(s, a, a.pos, b, b.pos);

@@ -81,7 +81,7 @@ test("property 3: anything not on the allow list is not sent", () => {
 
   // A monster's record is exactly the public fields.
   const goblin = view(s, PLAYER).entities.m1;
-  assert.deepEqual(Object.keys(goblin).sort(), ["cond", "dead", "health", "hp", "id", "kind", "look", "name", "pos", "side", "tpl"].sort());
+  assert.deepEqual(Object.keys(goblin).sort(), ["cond", "dead", "health", "hp", "id", "kind", "look", "name", "pos", "side", "size", "tpl"].sort());
   // Party members are shared in full.
   assert.deepEqual(view(s, PLAYER).entities.fighter, s.entities.fighter);
   assert.notEqual(view(s, PLAYER).entities.fighter, s.entities.fighter);

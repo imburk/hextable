@@ -97,6 +97,7 @@ function describe(ev) {
     case 'noticed': return [`${n(ev.id)} notices a ${ev.name.toLowerCase()}.`];
     case 'triggered': return [`${n(ev.id)} sets off a ${ev.name.toLowerCase()}!`];
     case 'fell': return [`${n(ev.id)} falls ${ev.feet} ft.`];
+    case 'size': return [`${n(ev.id)} is now ${ev.size[0].toUpperCase()}${ev.size.slice(1)}.`];
     case 'speed': return [ev.feet ? `${n(ev.id)} now has a ${ev.mode === 'walk' ? '' : `${ev.mode[0].toUpperCase()}${ev.mode.slice(1)} `}Speed of ${ev.feet} ft.` : `${n(ev.id)} no longer has a ${ev.mode} speed.`];
     case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
     case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
@@ -339,6 +340,7 @@ function renderDM() {
   const picked = S.entities[selId], hideable = picked && picked.side !== 'party' && !picked.dead;
   $('dm-hide').disabled = !hideable || (!picked.hidden && inFight(S, picked.id));
   $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
+  $('dm-size').disabled = !picked; if (picked) $('dm-size').value = picked.size ?? 'medium';
   $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
@@ -452,6 +454,7 @@ $('dm-hide').onclick = () => { const e = S.entities[selId]; if (e) act({ type: '
 $('dm-engage').onchange = (ev) => act({ type: 'setting', key: 'autoEngage', value: ev.target.checked });
 $('dm-vertical').onchange = (ev) => act({ type: 'setting', key: 'vertical', value: ev.target.value });
 $('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
+$('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', actor: selId, size: ev.target.value }); };
 $('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setSpeed', actor: e.id, mode: 'fly', feet: e.speeds?.fly ? 0 : 60 }); };
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
 $('dm-auto').onchange = () => S && onUpdate(S, []);

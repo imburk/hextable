@@ -5,7 +5,10 @@
 // engine, because the engine only ever emits events ("moved", "attack", "damage").
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
 import * as H from './shared/hex.js';
-import { allTiles, ground, shown, surfaces, under } from './shared/space.js';
+import { allTiles, footprint, ground, shown, surfaces, under } from './shared/space.js';
+
+const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };      // how much bigger a pawn is drawn
+const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
@@ -165,7 +168,7 @@ export class Renderer {
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
       let a = this.actors.get(e.id);
-      const w = this.#stand(e.pos);
+      const w = this.#spot(e, e.pos);
       if (!a) {
         const el = document.createElement('div');
         el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div>';
@@ -173,7 +176,7 @@ export class Renderer {
         a = { mesh: new Mesh(this.gl), ...w, yaw: 0, way: [], el, key: '' };
         this.actors.set(e.id, a);
       }
-      const key = `${e.dead}|${e.side}`;
+      const key = `${e.dead}|${e.side}|${e.size}`; a.k = girth(e);
       if (key !== a.key) { a.key = key; a.mesh.set(this.#makePawn(e)); }
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
@@ -183,7 +186,7 @@ export class Renderer {
     }
     for (const ev of events) {
       const a = this.actors.get(ev.id);
-      if (ev.type === 'moved' && a) for (const h of ev.path) a.way.push(this.#stand(h));
+      if (ev.type === 'moved' && a) for (const h of ev.path) a.way.push(this.#spot(state.entities[ev.id], h));
     }
     for (const e of Object.values(state.entities)) {            // anything teleported or out of sync
       const a = this.actors.get(e.id), w = this.#stand(e.pos);
@@ -215,6 +218,15 @@ export class Renderer {
 
   // ---------- building ----------
   #stand(h) { const w = H.toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(this.state.map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
+
+  // Where a creature's pawn stands when its own hex is `pos`: the middle of the hexes it fills.
+  #spot(e, pos) {
+    const base = this.#stand(pos), parts = footprint(e ?? {}, pos);
+    if (parts.length === 1) return base;
+    let x = 0, z = 0;
+    for (const f of parts) { const w = H.toWorld(f); x += w.x; z += w.z; }
+    return { x: x / parts.length, y: base.y, z: z / parts.length };
+  }
 
   #buildTerrain() {
     const b = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6;
@@ -285,7 +297,7 @@ export class Renderer {
     for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = H.toWorld(e.pos); b.flatHex(w.x, w.z, this.#stand({ q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
     const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
       const e = s.entities[id]; if (!e) return;
-      const k = H.key(e.pos), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col);
+      for (const f of footprint(e)) { const k = H.key(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }      // every hex it fills
     };
     for (const id of hl.targets) ringOn(id, c.target);
     for (const id of hl.allies) ringOn(id, c.ally);
@@ -300,7 +312,8 @@ export class Renderer {
     const base = [...th.sides[e.side] || th.sides.foe, 1];
     let body = e.look?.color ? [...hexToRgb(e.look.color), 1] : [...th.foeBody, 1];
     if (e.dead) body = [0.4, 0.4, 0.4, 1];
-    b.lathe(0, 0, 0, p.profile, p.sides, p.sides === 4 ? Math.PI / 4 : 0, (seg) => (seg < 2 ? base : body));
+    const k = girth(e);
+    b.lathe(0, 0, 0, p.profile.map(([r, y]) => [r * k, y * k]), p.sides, p.sides === 4 ? Math.PI / 4 : 0, (seg) => (seg < 2 ? base : body));
     return b;
   }
 
@@ -352,7 +365,7 @@ export class Renderer {
     gl.depthMask(true);
 
     for (const a of this.actors.values()) {
-      const p = this.#project(C, a.x, a.y + (a.tilt ? 0.9 : 1.95), a.z);
+      const p = this.#project(C, a.x, a.y + (a.tilt ? 0.9 : 1.95) * (a.k ?? 1), a.z);
       a.el.style.display = p ? '' : 'none';
       if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
     }
@@ -376,13 +389,13 @@ export class Renderer {
     const acts = [...this.actors].filter(([id]) => !this.state.entities[id]?.dead);
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
-      for (const [id, a] of acts) if (y > a.y && y < a.y + 1.7 && Math.hypot(x - a.x, z - a.z) < 0.5) return { id, hex: this.state.entities[id].pos };
+      for (const [id, a] of acts) if (y > a.y && y < a.y + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < 0.5 * (a.k ?? 1)) return { id, hex: this.state.entities[id].pos };
       const h = H.fromWorld(x, z), column = surfaces(this.state.map, h);
       for (let i = column.length - 1; i >= 0; i--) {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;               // above this floor, or under it in the room below
         const hex = { q: h.q, r: h.r, z: column[i].z };
-        const occ = Object.values(this.state.entities).find((e) => !e.dead && H.key(e.pos) === H.key(hex));
+        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.z === hex.z && footprint(e).some((f) => f.q === hex.q && f.r === hex.r));
         return { hex, id: occ?.id ?? null };
       }
       if (y < -60) break;
