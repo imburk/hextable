@@ -606,6 +606,27 @@ entry names what was added to `schema.js` and what the engine does with it.
   timed instead of handed to the DM. A modifier with `uses: 1` is used up by the first roll it
   applies to (Guiding Bolt's Advantage, Vicious Mockery's Disadvantage).
 
+- **Lasting zones** (S4), in `zones.js`. A spell with `zone: { on, once?, atCast?, spare? }`
+  leaves its area in place for its duration as `fx.zone` on its effect: the hexes it was laid
+  out on (and its height), or, for an Emanation, the caster it moves with. Its own effect steps,
+  scaled and with the caster's choices made, are stored with the caster's DC and attack as they
+  were when cast, and run against one creature when it enters the zone (walking in, being
+  pushed in, or the zone moving onto it: before and after every step of a walk or a push the
+  engine compares which zones hold whom), or when its turn starts or ends there (`on`).
+  `once: 'turn'` is "a creature makes this save only once per turn" (recorded by turn).
+  `atCast`: it also works on everyone in it as it appears (Moonbeam); otherwise appearing is
+  not entering (Web, Spirit Guardians). `spare`: the `cast` action names creatures it leaves
+  alone (`spare: [ids]`; the client spares the caster's side). A walk stops where a zone goes
+  off on the walker, as it does at a trap. A zone that goes off while another effect is being
+  resolved (pushed in by Thunderwave) waits in `s.zoneQueue` until that effect is done, so the
+  stack is never run from inside itself. Whatever a zone's steps put on a creature is a part
+  of its effect and ends with it (Web's Restrained ends with the spell). Event `zone` (DM
+  only); players are not sent `fx.zone`. A `damage` step may say `type: 'chosen'` with a
+  `choice` of damage type (Spirit Guardians' radiant or necrotic).
+  Not built: moving a zone after it is cast (Moonbeam's Magic action), a zone that changes
+  something while a creature is inside it (Spirit Guardians' halved Speed, Difficult Terrain),
+  walls of free shape (Wall of Fire), and drawing zones on the map.
+
 ### A class
 
 ```js

@@ -17,6 +17,7 @@ import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
+import { entered, flushZones, snapshot, turnInZones } from './zones.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
@@ -301,7 +302,7 @@ function objectEffects(s, o, steps, targets, ev) {
   if (!targets.length) return;
   begin(s, { steps, actor: null, targets: targets.map((t) => t.id), shared: targets.length > 1 ? sharedRolls(s, steps) : null,
     src: { name: objectName(o), object: o.id, dc: o.dc?.save ?? objectDef(o).dc?.save ?? 10, range: 1000 } });
-  run(s, ev, KIT);
+  resolve(s, ev);
 }
 // A `set` or `reveal` step: work the thing itself or what it is linked to. False if there is nothing to work.
 function objectStep(s, id, of, state, ev) {
@@ -366,7 +367,9 @@ function push(s, t, feet, dir, from, ev) {
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
+    const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
+    entered(s, ev, KIT, zonesBefore);                                    // pushed into a zone: it goes off once this effect is done
   }
   if (!path.length) return;
   ev.push({ type: 'moved', id: t.id, path, forced: true });
@@ -546,6 +549,7 @@ function advanceTurn(s, ev) {
     }
     enc.flags = {};
     turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
+    turnInZones(s, ev, KIT, e, 'turnStart');                            // a zone it starts its turn in (Web)
     const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
     enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
     e.reactionUsed = false;
@@ -973,6 +977,7 @@ function chooseIn(steps, of, value) {
     const m = st.modifier;
     if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && k === of) m.scope[k] = value;
     if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
+    if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
     for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) visit(st[b]);
   } };
   visit(steps);
@@ -1141,7 +1146,7 @@ function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
     src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}), ...(fx ? { fx: fx.id } : {}) },
     shared: def.target.area && targets ? sharedRolls(s, def.effects) : null,
   });
-  run(s, ev, KIT);
+  resolve(s, ev);
   if (fx) settle(s, ev, fx, targets ?? []);
 }
 
@@ -1171,10 +1176,12 @@ function walk(s, e, reach, tk, ev, fighting) {
     }
     const k = H.key(step);
     if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
-    const was = e.pos;
+    const was = e.pos, zonesBefore = snapshot(s);
     e.pos = step; seg.push(step); prev = step; walked.push(step);
     lookAround(s, ev, [e], flush);
     if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
+    // So does a zone it walks into (Web, Moonbeam); one that moves with it may catch others.
+    if (entered(s, ev, KIT, zonesBefore, flush).includes(e.id) || !up(e)) { checkEnd(s, ev); break; }
     if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
     if (fighting) continue;
     // Anything lying in wait this close is spotted, whether or not a fight follows.
@@ -1313,6 +1320,9 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 
 // ---------- actions ----------
 
+// Run the effect stack to the end, then whatever zones went off while it ran (zones.js).
+function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
+
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
 const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
 
@@ -1420,6 +1430,12 @@ const handlers = {
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
     if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
+    // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
+    const zoneDef = sp.def.zone;
+    if (a.spare !== undefined) {
+      zoneDef?.spare || fail(`${sp.name} spares nobody by choice.`);
+      (Array.isArray(a.spare) && a.spare.length <= 100 && a.spare.every((id) => typeof id === 'string' && s.entities[id])) || fail('Name the creatures it spares.');
+    }
     // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
     const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
     const most = targetCount(sp.def, e.level, Math.max(slot, sp.level));
@@ -1462,15 +1478,27 @@ const handlers = {
       fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
     } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
+    // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
+    // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
+    let hit = targets;
+    if (zoneDef && fx && hexes) {
+      const spare = a.spare ?? [];
+      fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
+        ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) } }),
+        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10) }, last: {} };
+      hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
+      const now = turnKey(s);
+      if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
+    }
     const before = ev.length;
     begin(s, {
-      steps, actor: e.id, targets: sp.aim === 'none' ? null : targets.map((t) => t.id),
+      steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
       src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
-      shared: sp.aim === 'area' || (targets.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
+      shared: sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
     });
-    run(s, ev, KIT);
+    resolve(s, ev);
 
     // Whatever the engine did not do, it says, so nothing is quietly skipped.
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
@@ -1518,6 +1546,9 @@ const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
     delete e.cond.disengaged;
+    turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
+    checkEnd(s, ev);
+    if (!s.encounter) return;
     turnEnded(s, ev, e, KIT);
     if (s.encounter) advanceTurn(s, ev);
   },
