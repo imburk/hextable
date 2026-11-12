@@ -225,3 +225,9 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 .dg[data-s="4"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); border: 0; background: var(--accent); color: var(--accent-ink); padding-top: 0.4em; }
 .dg.drop { opacity: 0.4; text-decoration: line-through; }
 .dg.neg::before { content: '−'; }
+
+/* Height tool: a small number on each tile (editor.js) */
+#ed-hnums { position: absolute; left: 0; top: 0; pointer-events: none; }
+#ed-hnums i { position: absolute; left: 0; top: 0; font: 700 11px/1 var(--body); font-style: normal; color: #fff; background: #0008; border-radius: 6px; padding: 1px 4px; will-change: transform; }
+#ed-hnums i.up { background: #2f7d4fcc; } #ed-hnums i.down { background: #8a3b2fcc; }
+#ed-hnums i:not(.up):not(.down) { opacity: .5; }
