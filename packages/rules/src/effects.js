@@ -248,6 +248,7 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'save') {
     const dc = step.dc ?? f.src.dc;
     if (dc === undefined) return handOver(`${f.src.name} calls for a ${step.save.toUpperCase()} save with no DC entered. The DM applies it.`);
+    kit.renew?.(s, e, t);                                               // making an enemy save keeps a Rage going
     const { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
