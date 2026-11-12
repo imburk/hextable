@@ -33,7 +33,7 @@ export const spells = [
     effects: [{ damage: "1d4+1", type: "force", times: 3 }],
     higher: { slot: { times: 1 } },
     tier: "assist", checked: false,
-    text: "Three darts that each hit a creature of the caster's choice automatically for force damage. The darts may be split between targets; this engine sends all of them at one target, so splitting is done by the DM.",
+    text: "Three darts of force that always hit. They may be split between targets; the engine sends all of them at one target, so the DM splits them if wanted.",
   },
   {
     id: "burning-hands", name: "Burning Hands", source: "SRD 5.2.1",

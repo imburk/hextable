@@ -397,6 +397,22 @@ packages/rules/src/content/
 ```
 
 Cantrips scale by character level with `higher: { level: { 5: "2d10", 11: "3d10", 17: "4d10" } }`.
+A levelled spell cast with a higher slot adds `higher.slot` once per level
+above its own: `{ damage: "1d6" }`, `{ heal: "2d8" }` or `{ times: 1 }`.
+
+What the engine does with a spell today (task R2):
+
+- Aims it: one creature in range, the caster, or an area. Cones, spheres,
+  cylinders and emanations are laid out on the hexes. Lines and cubes are
+  not yet, so those spells are handed to the DM.
+- Charges for it: the action or Bonus Action, the slot, the range. Spells
+  cast as a Reaction are refused for now; spells that take longer than a
+  turn can only be cast outside a fight.
+- Runs its steps. In an area, damage is rolled once and shared.
+- Says what it did not do. A `manual` step shows its text to the table. A
+  step the engine cannot run yet, a condition it does not enforce yet, a
+  `when` it cannot judge, a spell marked `assist`, and any spell that lasts
+  longer than an instant each produce a note to the DM.
 
 ### A monster
 
@@ -624,7 +640,7 @@ each other and with the engine tasks.
 | # | Task | Who | Touches | Done when |
 |---|---|---|---|---|
 | R1 (built) | Content pack layout, loader, and linter; move the existing 6 spells, 3 monsters and 4 pregens into `srd52/` in the new format | Fable | `content/**`, new linter, `scenario.js` | Linter passes; all existing tests pass unchanged apart from ids |
-| R2 | Effect steps: resolve `attack`, `save`, `damage`, `heal`, `condition`, `resource`, `manual` from data; delete the four hard-coded spell kinds | Fable | `engine.js`, new `effects.js` | The six spells play identically from data; a `manual` spell enforces its costs and shows its text |
+| R2 (built) | Effect steps: resolve `attack`, `save`, `damage`, `heal`, `condition`, `manual` from data on a resumable stack; delete the four hard-coded spell kinds. `modifier`, `move` and `resource` steps are handed to the DM until R3 and R4. Weapon attacks stay flat records until R3 and R10 | Fable | `engine.js`, new `effects.js` | The six spells play identically from data; a `manual` spell enforces its costs and shows its text |
 | R3 | Modifier system and the fifteen conditions as data; state version 2 and `migrate()` | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
 | R4 | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
 | R5 | Quick entry: form, manual sheets, DM adds a character to the table | any agent, reviewed | `app.js`, `index.html`, small engine action | A level 5 character typed from a paper sheet can be claimed and played |

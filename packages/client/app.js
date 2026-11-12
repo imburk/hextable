@@ -66,7 +66,8 @@ function describe(ev) {
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
     case 'std': return [`${n(ev.id)} uses ${ev.action}.`];
     case 'note': return [`${n(ev.id)}: ${ev.text}.`];
-    case 'cond': return [`${n(ev.id)} is knocked Prone.`];
+    case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} is ${ev.cond}.`];
+    case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
     case 'stood': return [`${n(ev.id)} stands up (half their Speed).`];
     case 'chronicle': return [`Chronicle: ${ev.title}`, 'head'];
     case 'time': return [`Time passes. It is now ${clockText(ev.t ?? S.clock)}.`];
@@ -89,7 +90,7 @@ function floaters(events) {
     else if (ev.type === 'save' && ev.success) f(ev.id, 'Saved', 'miss');
     else if (ev.type === 'note') f(ev.id, ev.text, 'crit');
     else if (ev.type === 'std') f(ev.id, ev.action, '');
-    else if (ev.type === 'cond') f(ev.id, 'Prone', '');
+    else if (ev.type === 'cond') f(ev.id, ev.cond[0].toUpperCase() + ev.cond.slice(1), '');
     else if (ev.type === 'down') f(ev.id, 'Down!', 'dmg');
     else if (ev.type === 'revealed') f(ev.id, 'Spotted!', 'crit');
     else if (ev.type === 'cast') f(ev.actor, ev.name, '');
@@ -204,9 +205,11 @@ function refresh() {
           const sp = SPELLS[id], armed = mode.kind === 'spell' && mode.id === id;
           const why = blocked(S, e, sp.time) || (sp.level > 0 && !(e.slots[sp.level] > 0) && `${e.name} has no level ${sp.level} spell slots left.`) ||
             (sp.level > 0 && enc?.flags.slot && 'Only one spell slot can be spent per turn.') || '';
-          const what = sp.kind === 'heal' ? `heal ${sp.heal}${signed(mod(e.abil[e.castAbil]))}` : `${sp.damage}${sp.darts ? ` ×${sp.darts}` : ''} ${sp.dtype}`;
+          const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
+          // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
+          const pick = () => (sp.aim === 'self' || sp.aim === 'none' ? act({ type: 'cast', actor: e.id, spell: id }) : setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area }));
           bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
-            () => setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area })));
+            pick));
         }
         if (e.features.secondWind && (enc || e.hp < e.maxHp))
           bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
@@ -229,14 +232,16 @@ function refresh() {
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
         if (sp.area) {
-          const hexes = mode.aim ? areaHexes(S, e, sp, mode.aim) : [];
+          const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
+          const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
           hl.area = hexes.map(H.key);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(H.key(x.pos)));
-          hint = mode.aim ? `${sp.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${sp.name}: tap a hex to aim the ${sp.area.size} ft cone`;
-          go = !!mode.aim && hexes.length > 0;
+          const how = sp.area.shape === 'cone' ? `tap a hex to aim the ${sp.area.size} ft cone` : `tap where the ${sp.area.size} ft ${sp.area.shape} goes (within ${sp.range} ft)`;
+          hint = aimed ? `${sp.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
+          go = aimed && hexes.length > 0;
         } else {
           const ids = targetsFor(S, e, { spell: mode.id });
-          if (sp.kind === 'heal') hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
+          if (!sp.harmful) hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
           hint = (hl.allies || hl.targets).length ? `${sp.name}: tap a target` : `${sp.name}: nobody within ${sp.range} ft`;
         }
@@ -275,7 +280,7 @@ function renderSheet() {
       ${e.attacks.map((a) => `<tr><td>${esc(a.name)}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${a.dtype}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`).join('')}</table></section>
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${sp.name}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : 'Action'}</td><td>${sp.area ? `${sp.area.size} ft cone` : sp.range === 5 ? 'Touch' : `${sp.range} ft`}</td><td>${sp.kind === 'heal' ? `Heal ${sp.heal}${signed(mod(e.abil[e.castAbil]))}` : `${sp.damage}${sp.darts ? ` ×${sp.darts}` : ''} ${sp.dtype}${sp.save ? `, ${sp.save.toUpperCase()} save${sp.half ? ' for half' : ''}` : sp.kind === 'attack' ? ', spell attack' : ', always hits'}`}</td></tr>`; }).join('')}</table></section>` : ''}
+      ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${sp.name}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
     ${Object.keys(e.features).length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;

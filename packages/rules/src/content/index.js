@@ -1,8 +1,7 @@
 // Loads the content packs and builds lookups by id.
 //
-// The engine does not read the new format yet (that is task R2 of the rules expansion spec).
-// Until it does, the tables at the bottom translate each entry into the flat shape the engine
-// plays with today. They are a bridge, deleted when R2 lands.
+// Spells are played straight from their data by the effect runner (effects.js).
+import { spellProfile } from '../effects.js';
 import { TILES } from './terrain.js';
 import { pack } from './srd52/pack.js';
 import { spells as spellsStarter } from './srd52/spells.js';
@@ -15,36 +14,18 @@ const monsters = [...monstersStarter];
 
 export { TILES };
 export const PACKS = [{ pack, spells, monsters, pregens }];
-export { playable, legacySpell, legacyMonster };       // exported for tests
+export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
 export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens) };
 
-// ---------- bridge to the engine's current shape ----------
+// Spells: what the engine and the UI need to know about each, worked out from its data.
+export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));
 
-const feet = (range) => (range === 'self' ? 0 : range === 'touch' ? 5 : range);
+// ---------- bridge to the engine's current shape, for monsters and pregens ----------
+// Weapon attacks are still flat records. They move to effect steps when modifiers and
+// equipment do (tasks R3 and R10); this bridge goes then.
 
-function legacySpell(s) {
-  const step = s.effects[0];
-  const base = { name: s.name, level: s.level, time: s.time, range: feet(s.range), ...(s.target.area ? { area: { ...s.target.area } } : {}) };
-  if (step.attack) return { ...base, kind: 'attack', damage: step.onHit[0].damage, dtype: step.onHit[0].type };
-  if (step.save) return { ...base, kind: 'save', save: step.save, damage: step.onFail[0].damage, dtype: step.onFail[0].type, half: !!step.half };
-  if (step.heal) return { ...base, kind: 'heal', heal: step.heal };
-  if (step.damage) return { ...base, kind: 'auto', damage: step.damage, dtype: step.type, ...(step.times > 1 ? { darts: step.times } : {}) };
-  return null;
-}
-
-// Can today's engine play this step list at all? Entries it cannot play are still in CONTENT
-// (and in the coverage report); they are left out of the tables below until R2.
 const simpleDamage = (steps) => Array.isArray(steps) && steps[0]?.damage !== undefined;
-function playable(s) {
-  const step = s.effects[0];
-  if (s.effects.length !== 1 || !['action', 'bonus'].includes(s.time) || s.concentration) return false;
-  if (s.target.area && s.target.area.shape !== 'cone') return false;
-  if (step.attack) return step.kind === 'spell' && simpleDamage(step.onHit) && step.onHit.length === 1 && !step.onMiss;
-  if (step.save) return simpleDamage(step.onFail) && step.onFail.length === 1 && !step.onSuccess;
-  return step.heal !== undefined || step.damage !== undefined;
-}
-
 const LEGACY_FEATURES = { 'nimble-escape': 'nimbleEscape', 'pack-tactics': 'packTactics' };
 function legacyAttack(a) {
   const step = a.effects[0], [main, ...rest] = step.onHit;
@@ -73,6 +54,5 @@ function legacyMonster(m) {
 const legacyPregen = ({ id, ...record }) => structuredClone(record);
 
 const table = (list, make) => Object.fromEntries(list.map((e) => [e.id, make(e)]));
-export const SPELLS = table(spells.filter(playable), legacySpell);
 export const MONSTERS = table(monsters, legacyMonster);
 export const PREGENS = table(pregens, legacyPregen);
