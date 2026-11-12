@@ -90,3 +90,14 @@ test("Sleet Storm: a creature in the cylinder as it is entered or on its turn sa
   assert.ok(seen.some((e) => e.type === "save" && e.id === a.id), "it starts its turn in the storm and saves");
   assert.ok(seen.some((e) => e.type === "cond" && e.id === a.id && e.cond === "prone"), "and falls Prone");
 });
+
+test("Aura of Life: necrotic Resistance for the caster and the allies chosen", () => {
+  const s = field(), w = s.entities.wizard, f = s.entities.fighter;
+  Object.assign(w, { slots: { 4: 2 }, slotsMax: { 4: 2 } }); w.spells.push("aura-of-life");
+  assert.equal(SPELLS["aura-of-life"].def.tier, "assist");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "aura-of-life", targets: [f.id] }, DM));
+  f.hp = f.maxHp = 40; w.hp = w.maxHp = 40;
+  ok(apply(s, { type: "harm", actor: "fighter", amount: 10, dtype: "necrotic" }, DM));
+  ok(apply(s, { type: "harm", actor: "wizard", amount: 10, dtype: "necrotic" }, DM));
+  assert.deepEqual([f.hp, w.hp], [35, 35]);
+});

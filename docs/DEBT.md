@@ -57,7 +57,7 @@ many monsters each one touches:
 
 ## Spells
 
-339 are entered; 36 play fully, 86 partly, 217 are applied by the DM (after the re-tiering pass
+339 are entered; 36 play fully, 87 partly, 216 are applied by the DM (after the re-tiering pass
 below: levels 0 to 5, and a second look at levels 1 to 3). What the vocabulary cannot say, by how much
 it would unlock:
 
@@ -139,7 +139,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | Summons, objects and sensors that act, and actions the spell grants for later turns | arcane eye, faithful hound, guardian of faith, giant insect | animate objects, conjure elemental, summon dragon, arcane hand, telekinesis |
 | Forms | polymorph | |
 | Teleporting and tree travel | dimension door | teleportation circle, tree stride |
-| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, Hit Point maximum, magical Restrained) | aura of life, death ward, freedom of movement | |
+| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, magical Restrained) | death ward, freedom of movement | |
 | Barriers and walls of free shape, or around a creature | wall of fire, resilient sphere, private sanctum | wall of force, wall of stone |
 | Barriers and wards by creature type | | antilife shell, dispel evil and good, hallow, planar binding |
 | Raising or restoring | | greater restoration, raise dead, reincarnate |
@@ -149,8 +149,8 @@ Aura of Life (effects while inside an aura). Still missing:
 
 **A second look at levels 1 to 3** (PR_NUM). The first pass held back spells where the vocabulary could not
 say all of the SRD. The brief's own rule is that what it cannot say becomes a manual step and the tier is
-set honestly, so four spells in which the engine can do the numbers and the DM only a rider moved from
-manual to assist (the tables above were corrected):
+set honestly, so five spells in which the engine can do the numbers and the DM only a rider moved from
+manual to assist (the tables above were corrected; Aura of Life, level 4, joined them, so level 4 is now 2 / 12 / 20):
 - **Sleep** (1): a Wisdom save for each creature of the caster's choice in the sphere, Incapacitated until the
   end of its next turn (`ends: turnEnd`). The DM runs the second save and the Unconscious condition, wakes
   a creature that is hurt or shaken, and applies the automatic successes (elves, immune to Exhaustion).
@@ -160,9 +160,10 @@ manual to assist (the tables above were corrected):
   success, are the DM's (the engine rolls one save per part, so it cannot end all parts on one save).
 - **Pass without Trace** (2): +10 on Stealth checks (`scope: stealth`) to the caster and chosen creatures in
   the emanation. That it holds only while inside the aura, and the tracks, are the DM's.
+- **Aura of Life** (4): necrotic Resistance for the caster and chosen allies; the Hit Point maximum protection, the 1 Hit Point at the start of a downed ally's turn, and leaving the aura are the DM's.
 - **Sleet Storm** (3): a zone (cylinder, enter or start of turn, once a turn), Dexterity save or Prone. Losing
   Concentration, the obscurement, flames and Difficult Terrain are the DM's.
-Counts: spells 36 / 86 / 217. Level 1 is now 14 auto, 14 assist, 29 manual; level 2 is 4 / 17 / 36; level 3
+Counts: spells 36 / 87 / 216. Level 1 is now 14 auto, 14 assist, 29 manual; level 2 is 4 / 17 / 36; level 3
 is 3 / 12 / 27. The same rule applies to the next two passes. Not done: Heroism (the Temporary Hit Points
 are granted at the start of each turn, which a cast-time grant would get wrong), Faerie Fire (Advantage only
 if the attacker can see the creature, and no negative tag), Stinking Cloud (a Poisoned that lasts to the end
