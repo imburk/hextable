@@ -13,6 +13,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLimits, limitsFromEnv, LIMIT_MESSAGE } from "./limits.js";
 import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
+import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
@@ -98,7 +99,7 @@ function save(t) {
   timer ??= setTimeout(() => { timer = null; flush(); }, 1000);
 }
 
-const tables = createTables({ load, save, loadHistory, ...(timelineCap !== undefined && { timelineCap }) });
+const tables = createTables({ load, save, loadHistory, exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
