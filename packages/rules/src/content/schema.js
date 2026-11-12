@@ -271,6 +271,9 @@ function lintObject(e, say) {
     if (!v || !isText(v.name)) say(`state "${st}" needs a name`);
     if (!allOf(OBJECT_BLOCKS)(v?.blocks)) say(`state "${st}" needs \`blocks\`, a list drawn from ${OBJECT_BLOCKS.join(', ')}`);
     if (v?.hidden !== undefined && typeof v.hidden !== 'boolean') say(`state "${st}": hidden must be true or false`);
+    // Light it gives in that state: Bright Light to `bright` feet, Dim Light `dim` feet beyond (docs/specs/sight.md).
+    if (v?.light !== undefined && !(v.light && typeof v.light === 'object' && Object.keys(v.light).every((k) => ['bright', 'dim'].includes(k)) && [v.light.bright, v.light.dim].every((n) => isInt(n) && n >= 0 && n % 5 === 0 && n <= 600) && v.light.bright + v.light.dim > 0)) say(`state "${st}": light must be { bright, dim }, feet in multiples of 5`);
+    if (v?.light !== undefined && e.kind !== 'thing') say(`state "${st}": only a thing in a hex can give light`);
   }
   if (!states.includes(e.initial)) say('`initial` must be one of its states');
   if (e.connects !== undefined && (typeof e.connects !== 'boolean' || e.kind !== 'thing')) say('`connects` is true or false, and only a thing in a hex can join two places');

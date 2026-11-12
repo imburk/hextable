@@ -75,7 +75,7 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| P1 | Light, senses in use, hiding, and sending players only what they can see (sight tasks S4 to S7) | engine |
+| P1 | ~~Light (S4)~~ (#S4PR); senses in use, hiding, and sending players only what they can see (sight tasks S5 to S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
 | P2 | Rock does not block sight | engine |
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |

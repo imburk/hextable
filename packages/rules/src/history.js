@@ -150,7 +150,7 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
 const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind',
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
   editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set',
-  condition: 'had a condition changed', place: 'was placed', remove: 'was removed' };
+  condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed' };
 
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;
