@@ -126,7 +126,7 @@ export function viewEvents(events, state, viewer) {
         else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(caster !== null && cls(caster) === 'open' ? ['dc'] : [])]));
         break;
       case 'cast':
-        out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name']),
+        out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name', 'slot']),
           hexes: ev.hexes ? ev.hexes.map((h) => ({ q: h.q, r: h.r })) : ev.hexes,
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
         break;
@@ -136,6 +136,11 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'joined':
         out.push(cls(ev.id) === 'open' ? { ...ev } : { type: ev.type, id: ev.id });
+        break;
+      case 'manual':                                   // what the DM must apply by hand
+        // Everyone sees what a spell does when the engine cannot apply it. Notes about what
+        // the engine left out of a spell it did apply are for the DM alone.
+        if (!ev.partial) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
         break;
       case 'chronicle':
         if (ev.public === true) out.push(structuredClone(ev));

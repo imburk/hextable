@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { CONTENT, legacyMonster, legacySpell, MONSTERS, PACKS, playable, PREGENS, SPELLS } from "../src/content/index.js";
+import { CONTENT, legacyMonster, MONSTERS, PACKS, PREGENS, SPELLS } from "../src/content/index.js";
 import { coverage, lintPack } from "../src/content/schema.js";
 import { apply } from "../src/engine.js";
 import { migrate } from "../src/migrate.js";
@@ -86,9 +86,16 @@ test("coverage counts entries by tier and how many are unchecked", () => {
 test("lookups by id, and the bridge to the engine's current shape", () => {
   assert.equal(CONTENT.spells["burning-hands"].target.area.size, 15);
   assert.equal(CONTENT.monsters["goblin-warrior"].actions.length, 2);
-  assert.deepEqual(SPELLS["burning-hands"], { name: "Burning Hands", level: 1, time: "action", range: 0, area: { shape: "cone", size: 15 }, kind: "save", save: "dex", damage: "3d6", dtype: "fire", half: true });
-  assert.deepEqual(SPELLS["magic-missile"], { name: "Magic Missile", level: 1, time: "action", range: 120, kind: "auto", damage: "1d4+1", dtype: "force", darts: 3 });
-  assert.deepEqual(SPELLS["cure-wounds"], { name: "Cure Wounds", level: 1, time: "action", range: 5, kind: "heal", heal: "2d8" });
+  // A spell's profile: what the engine and the UI need, worked out from its data.
+  const { def, ...burning } = SPELLS["burning-hands"];
+  assert.equal(def, CONTENT.spells["burning-hands"]);
+  assert.deepEqual(burning, { id: "burning-hands", name: "Burning Hands", level: 1, time: "action", range: 0, aim: "area", area: { shape: "cone", size: 15 },
+    harmful: true, heals: false, heal: null, turn: true, short: "3d6 fire", long: "3d6 fire, DEX save for half" });
+  assert.deepEqual([SPELLS["magic-missile"].short, SPELLS["magic-missile"].long, SPELLS["magic-missile"].aim], ["1d4+1 ×3 force", "1d4+1 ×3 force, always hits", "creature"]);
+  assert.deepEqual([SPELLS["fire-bolt"].long, SPELLS["fire-bolt"].range], ["1d10 fire, spell attack", 120]);
+  assert.deepEqual(SPELLS["cure-wounds"].heal, { dice: "2d8", addMod: true });
+  assert.deepEqual([SPELLS["cure-wounds"].range, SPELLS["cure-wounds"].heals, SPELLS["cure-wounds"].harmful], [5, true, false]);
+  assert.equal(SPELLS["healing-word"].time, "bonus");
   assert.deepEqual(MONSTERS.wolf, { name: "Wolf", ac: 12, hp: 11, speed: 40, abil: { str: 14, dex: 15, con: 12, int: 3, wis: 12, cha: 6 }, prof: 2,
     features: { packTactics: true }, attacks: [{ id: "bite", name: "Bite", type: "melee", bonus: 4, damage: "1d6+2", dtype: "piercing", reach: 5, onHit: "prone" }] });
   assert.equal(MONSTERS["goblin-warrior"].attacks[1].bonusOnAdv, "1d4");
@@ -125,24 +132,7 @@ test("a game saved with the old ids is upgraded and still plays", () => {
   assert.deepEqual(migrate({}), {});
 });
 
-test("an entry the engine cannot play yet is entered without breaking the game", () => {
-  // Shapes other agents will add long before the engine can resolve them.
-  const spell = (over) => ({ ...clone(srd.spells[0]), ...over });
-  const notYet = [
-    spell({ id: "bless-like", concentration: true }),
-    spell({ id: "wall-like", target: { area: { shape: "line", size: 60 } }, effects: [{ save: "dex", onFail: [{ damage: "5d8", type: "fire" }] }] }),
-    spell({ id: "hold-like", effects: [{ save: "wis", onFail: [{ condition: "paralyzed" }] }] }),
-    spell({ id: "wish-like", tier: "manual", effects: [{ manual: "The DM decides." }] }),
-    spell({ id: "ritual-like", time: "minute" }),
-    spell({ id: "two-step", effects: [{ damage: "1d6", type: "fire" }, { condition: "prone" }] }),
-  ];
-  for (const s of notYet) {
-    assert.deepEqual(lintPack({ pack: srd.pack, spells: [s] }), [], s.id);
-    assert.equal(playable(s), false, s.id);
-  }
-  for (const s of srd.spells) { assert.equal(playable(s), true, s.id); assert.ok(legacySpell(s)); }
-
-  // A monster keeps the attacks the engine can run and drops the rest, instead of failing to load.
+test("a monster keeps the attacks the engine can run and drops the rest, instead of failing to load", () => {
   const dragon = clone(srd.monsters[2]);
   dragon.actions.push({ id: "breath", name: "Breath", target: { area: { shape: "cone", size: 30 } },
     effects: [{ save: "dex", half: true, onFail: [{ damage: "7d6", type: "fire" }] }], text: "A cone of fire." });

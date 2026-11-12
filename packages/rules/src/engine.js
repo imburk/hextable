@@ -9,6 +9,7 @@
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { SPELLS, TILES, MONSTERS } from './content/index.js';
+import { begin, run, scaleSteps, sharedRolls } from './effects.js';
 
 export const FT = 5;                 // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
@@ -228,7 +229,8 @@ export function rollMode(s, e, t, atk) {
   return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis };
 }
 
-function resolveAttack(s, e, t, atk, ev, extra = {}) {
+// The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
+function rollToHit(s, e, t, atk, ev, extra = {}) {
   const { mode, adv, dis } = rollMode(s, e, t, atk);
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
@@ -236,6 +238,13 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   const crit = hit && (nat === 20 || (!!t.cond.unconscious && H.dist(e.pos, t.pos) <= 1));
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
     total: nat + atk.bonus, ac: t.ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...extra });
+  return { hit, crit, mode };
+}
+
+// A weapon attack by a creature whose attacks are still flat records (monsters and
+// hand-entered characters). Spells resolve through effect steps instead.
+function resolveAttack(s, e, t, atk, ev, extra = {}) {
+  const { hit, crit, mode } = rollToHit(s, e, t, atk, ev, extra);
   if (!hit) return;
   let total = roll(s, atk.damage, { crit }).total;
   const notes = [];
@@ -251,7 +260,18 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
   damage(s, t, total, atk.dtype, ev, { crit });
-  if (atk.onHit === 'prone' && up(t) && !t.cond.prone) { t.cond.prone = true; ev.push({ type: 'cond', id: t.id, cond: 'prone' }); }
+  if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
+}
+
+// Conditions whose rules the engine applies today. Any other is recorded on the creature and
+// the DM is told to apply it, until conditions become data (task R3).
+const ENFORCED = ['prone', 'unconscious'];
+function condition(s, t, id, ev, f = null) {
+  if (!up(t) || t.cond[id]) return;
+  t.cond[id] = true;
+  ev.push({ type: 'cond', id: t.id, cond: id });
+  if (!ENFORCED.includes(id)) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? id, partial: true,
+    text: `${t.name} is ${id}. The engine records that but does not apply its effects yet; the DM does, and removes it when it ends.` });
 }
 
 function savingThrow(s, t, abil, dc) {
@@ -261,9 +281,16 @@ function savingThrow(s, t, abil, dc) {
 }
 
 // Hexes an area spell would cover if aimed at `aim`.
+// A cone opens from the caster toward `aim`. A sphere or cylinder is centred on `aim`, which must
+// be within the spell's range. An emanation surrounds the caster and needs no aim.
 export function areaHexes(s, e, sp, aim) {
-  if (!sp.area || !aim) return [];
-  const hexes = sp.area.shape === 'cone' ? H.cone(e.pos, aim, sp.area.size / FT) : [];
+  if (!sp.area) return [];
+  const n = sp.area.size / FT, shape = sp.area.shape;
+  let hexes = [];
+  if (shape === 'emanation') hexes = H.range(e.pos, n).filter((h) => H.key(h) !== H.key(e.pos));
+  else if (!aim) return [];
+  else if (shape === 'cone') hexes = H.cone(e.pos, aim, n);
+  else if (shape === 'sphere' || shape === 'cylinder') hexes = H.range(aim, n);
   return hexes.filter((h) => s.map.tiles[H.key(h)]);
 }
 
@@ -288,14 +315,17 @@ export function targetsFor(s, e, { attack, spell }) {
       if (t.id !== e.id && d <= (atk.type === 'melee' ? atk.reach : atk.range[1])) out.push(t.id);
     } else {
       const sp = SPELLS[spell];
-      if (sp.area) continue;
-      if (sp.kind === 'heal' ? d <= sp.range : t.id !== e.id && d <= sp.range) out.push(t.id);
+      if (sp.aim !== 'creature') continue;
+      if (sp.harmful ? t.id !== e.id && d <= sp.range : d <= sp.range) out.push(t.id);
     }
   }
   return out;
 }
 
 // ---------- actions ----------
+
+// The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
+const KIT = { rollToHit, savingThrow, damage, heal, condition, dist: H.dist };
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -367,56 +397,73 @@ const handlers = {
     checkEnd(s, ev);
   },
 
+  // { type: 'cast', actor, spell, target? | hex?, slot? }
   cast(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     const sp = SPELLS[a.spell];
     (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     up(e) || fail(`${e.name} is down.`);
-    const harmful = sp.kind !== 'heal';
+    if (sp.time === 'reaction') fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+    if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
+
+    // Who or what it is aimed at.
     let targets = [], hexes = null;
-    if (sp.area) {
-      (a.hex && H.dist(a.hex, e.pos) > 0) || fail(`Pick a direction for ${sp.name}.`);
+    if (sp.aim === 'area') {
+      const shape = sp.area.shape;
+      if (shape === 'cone') (a.hex && H.dist(a.hex, e.pos) > 0) || fail(`Pick a direction for ${sp.name}.`);
+      else if (shape !== 'emanation') {
+        a.hex || fail(`Pick where ${sp.name} goes off.`);
+        const d = H.dist(a.hex, e.pos);
+        if (d * FT > sp.range) fail(`That is ${ft(d)} away. ${sp.name} reaches ${sp.range} ft.`);
+      }
       hexes = areaHexes(s, e, sp, a.hex);
       const keys = new Set(hexes.map(H.key));
       targets = living(s).filter((t) => keys.has(H.key(t.pos)));
-    } else {
+    } else if (sp.aim === 'creature') {
       const t = ent(s, a.target);
       !t.dead || fail(`${t.name} is dead.`);
-      if (harmful && t.id === e.id) fail(`${sp.name} needs another target.`);
+      if (sp.harmful && t.id === e.id) fail(`${sp.name} needs another target.`);
       const d = H.dist(e.pos, t.pos);
       if (d * FT > sp.range) fail(`${t.name} is ${ft(d)} away. ${sp.name} reaches ${sp.range === 5 ? 'touch (5 ft)' : sp.range + ' ft'}.`);
       targets = [t];
+    } else if (sp.aim === 'self') targets = [e];
+
+    // What it costs.
+    const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
+    if (sp.level > 0) {
+      (Number.isInteger(slot) && slot >= sp.level && slot <= 9) || fail(`${sp.name} needs a spell slot of level ${sp.level} or higher.`);
+      e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
-    if (sp.level > 0 && !(e.slots[sp.level] > 0)) fail(`${e.name} has no level ${sp.level} spell slots left.`);
-    if (!s.encounter && harmful) return sp.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+    const aimed = sp.aim === 'area' || sp.aim === 'creature';
+    if (!s.encounter && sp.harmful && aimed) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     if (s.encounter) {
       need(s, e, sp.time);
       if (sp.level > 0 && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
-      for (const t of targets) inFight(s, t.id) || sp.area || fail(`${t.name} is outside the battle.`);
+      if (sp.aim === 'creature') inFight(s, targets[0].id) || fail(`${targets[0].name} is outside the battle.`);
       s.encounter.budget[sp.time]--;
       if (sp.level > 0) s.encounter.flags.slot = true;
     }
-    if (sp.level > 0) e.slots[sp.level]--;
+    if (sp.level > 0) e.slots[slot]--;
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
-    const st = spellStats(e);
-    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id) });
-    if (sp.kind === 'attack') {
-      resolveAttack(s, e, targets[0], { name: sp.name, type: 'ranged', spell: true, bonus: st.attack, damage: sp.damage, dtype: sp.dtype, range: [sp.range, sp.range] }, ev);
-    } else if (sp.kind === 'auto') {
-      let total = 0;
-      for (let i = 0; i < (sp.darts || 1); i++) total += roll(s, sp.damage).total;
-      damage(s, targets[0], total, sp.dtype, ev);
-    } else if (sp.kind === 'save') {
-      const full = sp.area ? roll(s, sp.damage).total : null;     // one roll for everyone in an area
-      for (const t of targets) {
-        const sv = savingThrow(s, t, sp.save, st.dc);
-        ev.push({ type: 'save', id: t.id, abil: sp.save, dc: st.dc, ...sv });
-        const dmg = full ?? roll(s, sp.damage).total;
-        if (!sv.success) damage(s, t, dmg, sp.dtype, ev);
-        else if (sp.half) damage(s, t, Math.floor(dmg / 2), sp.dtype, ev);
-      }
-    } else if (sp.kind === 'heal') {
-      heal(s, targets[0], roll(s, sp.heal).total + mod(e.abil[e.castAbil]), ev);
+
+    // What it does: run its effect steps.
+    const st = spellStats(e), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
+    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}) });
+    const before = ev.length;
+    begin(s, {
+      steps, actor: e.id, targets: sp.aim === 'none' ? null : targets.map((t) => t.id),
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10) },
+      shared: sp.aim === 'area' ? sharedRolls(s, steps) : null,
+    });
+    run(s, ev, KIT);
+
+    // Whatever the engine did not do, it says, so nothing is quietly skipped.
+    const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
+    const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
+    if (sp.def.tier !== 'auto' && !toldAlready) note(sp.def.text);
+    if (unscaled) note(`Cast with a level ${slot} slot. The engine could not add ${unscaled}; the DM does.`);
+    if (sp.def.concentration || sp.def.duration !== 'instant') {
+      note(`${sp.name} lasts ${sp.def.duration}${sp.def.concentration ? ' and needs Concentration' : ''}. The engine does not track that yet; the DM ends it.`);
     }
     checkEnd(s, ev);
   },
@@ -570,6 +617,7 @@ export function apply(s, action, ctx = { role: 'dm' }) {
     const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
     h(s, action, ctx, ev);
   } catch (err) {
+    delete s.stack;                                  // never leave half an effect behind
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
   }
