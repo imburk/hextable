@@ -278,6 +278,8 @@ function lintMonster(e, say) {
   if (e.senses !== undefined && !validSenses(e.senses)) say(`senses must give whole feet, in multiples of 5, for only: ${SENSES.join(', ')}`);
   // `saves` is the SAVE column of the stat block: a whole-number bonus for the abilities whose saving throw differs from the plain modifier.
   if (e.saves !== undefined && !(e.saves && typeof e.saves === 'object' && !Array.isArray(e.saves) && Object.keys(e.saves).length > 0 && Object.entries(e.saves).every(([k, v]) => ABILITIES.includes(k) && isInt(v) && v >= -10 && v <= 30))) say(`saves must give a whole-number bonus for one or more of: ${ABILITIES.join(', ')}`);
+  // `initiative` is the stat block's Initiative modifier, which can differ from Dexterity (it adds Proficiency for some monsters).
+  if (e.initiative !== undefined && !(isInt(e.initiative) && e.initiative >= -10 && e.initiative <= 40)) say('initiative must be a whole number, the stat block\'s Initiative modifier');
   if (e.skills !== undefined && !(e.skills && Object.entries(e.skills).every(([k, v]) => Object.hasOwn(SKILLS, k) && isInt(v)))) say('skills must give a whole-number bonus for each skill named');
   const ids = new Set();
   for (const t of e.traits ?? []) {

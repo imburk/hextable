@@ -54,5 +54,7 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) if (!e.conditionImmune && MONSTERS[e.tpl]?.conditionImmune) e.conditionImmune = [...MONSTERS[e.tpl].conditionImmune];
   // Version 11: a monster's saving throw bonuses, from the template.
   for (const e of Object.values(state.entities)) e.saveBonus ??= structuredClone(MONSTERS[e.tpl]?.saveBonus ?? {});
+  // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
+  for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
 }
