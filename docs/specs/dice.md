@@ -1,7 +1,7 @@
 # Dice on the screen
 
 Status: built in two parts: the faces in events and the `diceThrow` table rule
-(rules), then the dice themselves and throwing them (client).
+(rules, #116), then the dice themselves and throwing them (client).
 
 The owner asked to see rolls as dice thrown across the screen, thrown by the
 player or the DM, and for that to be a choice.
@@ -126,3 +126,18 @@ log lines on their beat), done for dice only; the timeline, when built,
 should treat a throw as the beat before an attack, save or damage.
 
 The log line of a roll gains small glyphs for the faces the viewer was sent.
+
+## 7. Where the controls are
+
+- DM panel, Fight: "Dice" (the table rule `diceThrow`) and "Throw the monsters'
+  dice for me (on this device)".
+- Log panel, on every device: "Dice on this device" (full, quick, off) and
+  "Always throw my dice at once".
+- `npm run smoke` arms an attack under `throw` and checks that nothing is applied
+  until the throw, solo at both sizes. At a two-browser table it checks that the
+  DM sees the player's throw, and that the player is shown no d20 of a monster.
+
+Not done: the dice are drawn on a 2D canvas, not in the WebGL scene, so they do
+not land on the board or cast shadows on the pawns. Opposite faces of the drawn
+d20 do not add up to 21 the way a real die's do. The tray's preview of an
+attack's damage dice is text only.

@@ -107,12 +107,12 @@ function throwsOf(state, events) {
     if (ev.type === 'attack' && !ev.opportunity || ev.type === 'cast' || ev.type === 'act') actor = ev.actor ?? actor;
     if (ev.type === 'encounterStart') {
       const ds = ev.order.filter((o) => o.dice).flatMap((o) => o.dice.map((d) => ({ ...d, color: colorOf(state, o.id) })));
-      if (ds.length) groups.push({ dice: ds, label: 'Initiative', sub: ev.order.filter((o) => o.init !== undefined).map((o) => `${nm(o.id)} ${o.init}`).join(', '), from: 'bottom' });
+      if (ds.length) groups.push({ type: 'initiative', ids: ev.order.filter((o) => o.dice).map((o) => o.id), dice: ds, label: 'Initiative', sub: ev.order.filter((o) => o.init !== undefined).map((o) => `${nm(o.id)} ${o.init}`).join(', '), from: 'bottom' });
       continue;
     }
     if (!ev.dice?.length) continue;
     const who = ev.type === 'attack' ? ev.actor : ['damage', 'heal', 'tempHp'].includes(ev.type) ? (ev.by !== undefined ? ev.by : actor) : ev.id;
-    const g = { dice: ev.dice, color: colorOf(state, who), from: state.entities[who]?.side === 'party' ? 'bottom' : 'top', label: who ? nm(who) : 'The dice' };
+    const g = { type: ev.type, side: state.entities[who]?.side ?? null, dice: ev.dice, color: colorOf(state, who), from: state.entities[who]?.side === 'party' ? 'bottom' : 'top', label: who ? nm(who) : 'The dice' };
     switch (ev.type) {
       case 'attack': g.label += `${ev.opportunity ? ' · Opportunity Attack' : ''} · ${ev.name}${behalf(ev.opportunity ? who : null)}`; g.sub = `${ev.total}${ev.ac !== undefined ? ` vs AC ${ev.ac}` : ''} · ${ev.crit ? 'Critical hit!' : ev.hit ? 'Hit' : 'Miss'}`; g.mark = ev.crit ? 'crit' : ev.nat === 1 ? 'fumble' : null; break;
       case 'damage': g.label += ' · damage'; g.sub = `${ev.rolled ?? ev.amount} ${ev.dtype}`; g.key = JSON.stringify([ev.dice, ev.bonus, ev.dtype]); g.to = nm(ev.target); break;
@@ -140,8 +140,10 @@ function throwsOf(state, events) {
 // Updates wait while dice are in the air on this client, so the log, hit points and floaters do
 // not give the roll away early. The server never waits; with dice off nothing does.
 let waiting = 0, chain = Promise.resolve();
+const thrown = [];          // the last rolls thrown on this device, for tests: window.hextable.thrown
 function received(state, events, fresh) {
   const groups = !S || fresh || DICE.show === 'off' ? [] : throwsOf(state, events);
+  thrown.push(...groups); thrown.splice(0, Math.max(0, thrown.length - 60));
   if (groups[0] && flick) groups[0].flick = flick;
   flick = null;
   if (!groups.length && !waiting) return onUpdate(state, events, fresh);
@@ -829,7 +831,7 @@ const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => se
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, ED, act, dice: DICE, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, ED, act, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
