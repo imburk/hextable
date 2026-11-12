@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, rollMode } from "../src/engine.js";
+import * as H from "../src/hex.js";
+import { newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -144,4 +146,35 @@ test("W4: an enemy beside an archer imposes Disadvantage only if it is not Incap
   ok(apply(s, { type: "condition", actor: goblin.id, condition: "stunned", on: false }, DM));
   ok(apply(s, { type: "condition", actor: goblin.id, condition: "blinded" }, DM));
   assert.equal(rollMode(s, wizard, far, bow).dis.includes("enemy within 5 ft"), false);
+});
+
+// ---------- W7: a tool used with a skill ----------
+
+// A locked wooden door in a wall, the rogue beside it (as in walls.test.js).
+function lockedDoor() {
+  const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 5).map((h) => [H.col(h), { t: "stone" }]));
+  const s = newGame(4);
+  ok(apply(s, { type: "loadMap", map: newMap({ id: "hall", name: "Hall", starts: [{ q: -2, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }],
+    walls: [{ id: "north", level: "ground", a: [1.25, -100], b: [1.25, -1.5], kind: "wall" }, { id: "south", level: "ground", a: [1.25, 1.5], b: [1.25, 100], kind: "wall" }],
+    objects: [{ id: "door", def: "door-wooden", level: "ground", at: { q: 0, r: 0 }, seg: { a: [1.25, -1.5], b: [1.25, 1.5] }, state: "locked" }] }) }, DM));
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  for (const [id, q, r] of [["fighter", -2, 0], ["rogue", 0, 0], ["cleric", -2, 1], ["wizard", -3, 1]]) ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));
+  return s;
+}
+
+test("W7: picking a lock is Dexterity (Sleight of Hand) with Thieves' Tools; proficient in both gives Advantage", () => {
+  const s = lockedDoor();
+  const c = ok(apply(s, { type: "use", actor: "rogue", object: "door", verb: "pick" }, DM)).events[0];
+  assert.equal(c.skill, "sleight-of-hand");
+  assert.equal(c.mode, "adv");
+  assert.deepEqual(c.why, ["tool and skill"]);
+  assert.equal(c.total, c.roll + 3 + 4);                                            // Expertise in Sleight of Hand doubles the bonus
+});
+
+test("W7: the tool alone adds the Proficiency Bonus but gives no Advantage", () => {
+  const s = lockedDoor();
+  Object.assign(s.entities.rogue, { skills: ["stealth"], expertise: ["stealth"] });
+  const c = ok(apply(s, { type: "use", actor: "rogue", object: "door", verb: "pick" }, DM)).events[0];
+  assert.equal(c.mode, undefined);
+  assert.equal(c.total, c.roll + 3 + 2);
 });

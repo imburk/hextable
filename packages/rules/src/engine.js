@@ -642,6 +642,8 @@ export function checkBonus(e, { ability, skill, tool }) {
 function abilityCheck(s, e, what) {
   const m = modifiers(s, e, 'check', { target: e }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
+  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
+  if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
