@@ -2,7 +2,7 @@
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
-import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, FT } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, usesFor, FT } from './shared/engine.js';
 import { aiStep } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
@@ -81,6 +81,8 @@ function describe(ev) {
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
     case 'map': return [`The scene changes: ${ev.name}.`];
+    case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
+    case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
     default: return null;
@@ -229,6 +231,8 @@ function refresh() {
           bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
             blocked(S, e, 'bonus') || (!e.uses.secondWind && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '',
             () => act({ type: 'secondWind', actor: e.id })));
+        // Doors and other things within reach.
+        for (const u of usesFor(S, e)) bar.append(button(`${u.label}`, `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, '', u.why, () => act({ type: 'use', actor: e.id, object: u.object, verb: u.verb })));
         if (myTurn) {
           bar.append(button('Dash', 'Action · double move', '', blocked(S, e, 'action'), () => act({ type: 'dash', actor: e.id })));
           const nimble = e.features.nimbleEscape;

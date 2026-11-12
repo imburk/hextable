@@ -109,7 +109,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'object']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;

@@ -1,6 +1,9 @@
 // The map document: one self-contained JSON description of a place. A table's game state holds
 // its own copy. Design: docs/specs/maps-and-objects.md
+import * as H from './hex.js';
 import { TILES } from './content/terrain.js';
+import { CONTENT } from './content/index.js';
+import { WALL_KINDS } from './walls.js';
 
 export const MAP_FORMAT = 1;
 export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500 };
@@ -64,6 +67,76 @@ export function lintMap(doc, extra = []) {
     if (!st || !Number.isInteger(st.q) || !Number.isInteger(st.r)) bad.push('A start is not a hex.');
     else if (!doc.levels.some((l) => l.tiles?.[`${st.q},${st.r}`])) bad.push(`The start at ${st.q},${st.r} has nothing to stand on.`);
   }
-  if (!bad.length) for (const check of extra) bad.push(...check(doc));
+  if (bad.length) return bad;
+  const point = (p) => Array.isArray(p) && p.length === 2 && p.every(num);
+  const used = new Set();
+  const fresh = (id, what) => { if (!text(id) || used.has(id)) bad.push(`${what} id "${id}" is missing or used twice.`); used.add(id); };
+  for (const w of doc.walls) {
+    if (!w || typeof w !== 'object') { bad.push('A wall is not a record.'); continue; }
+    fresh(w.id, 'Wall');
+    if (!ids.has(w.level)) bad.push(`Wall "${w.id}" is on a level that does not exist.`);
+    if (!point(w.a) || !point(w.b)) bad.push(`Wall "${w.id}" needs two points.`);
+    if (!Object.hasOwn(WALL_KINDS, w.kind)) bad.push(`Wall "${w.id}" has unknown kind "${w.kind}".`);
+  }
+  for (const o of doc.objects) {
+    if (!o || typeof o !== 'object') { bad.push('An object is not a record.'); continue; }
+    fresh(o.id, 'Object');
+    const def = Object.hasOwn(CONTENT.objects, o.def) ? CONTENT.objects[o.def] : null, level = doc.levels.find((l) => l.id === o.level);
+    if (!def) { bad.push(`Object "${o.id}" is of unknown kind "${o.def}".`); continue; }
+    if (!level) { bad.push(`Object "${o.id}" is on a level that does not exist.`); continue; }
+    if (!o.at || !Number.isInteger(o.at.q) || !Number.isInteger(o.at.r) || !level.tiles[H.col(o.at)]) bad.push(`Object "${o.id}" is not on a hex of its level.`);
+    if (!Object.hasOwn(def.states, o.state)) bad.push(`Object "${o.id}" is in a state its kind does not have: "${o.state}".`);
+    if (o.edge !== undefined && !(Number.isInteger(o.edge) && o.edge >= 0 && o.edge < 6)) bad.push(`Object "${o.id}" has an edge that is not 0 to 5.`);
+    if (o.seg !== undefined && !(o.seg && point(o.seg.a) && point(o.seg.b))) bad.push(`Object "${o.id}" has a line that is not two points.`);
+    if (def.kind === 'door' && o.edge === undefined && o.seg === undefined) bad.push(`Door "${o.id}" needs a hex edge or a line to stand on.`);
+    if (def.kind !== 'door' && (o.edge !== undefined || o.seg !== undefined)) bad.push(`Object "${o.id}" stands in a hex, not on an edge.`);
+    if (o.key !== undefined && !text(o.key)) bad.push(`Object "${o.id}" has a key that is not a name.`);
+    if (o.name !== undefined && !text(o.name)) bad.push(`Object "${o.id}" has a name that is not text.`);
+    if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
+  }
+  for (const check of extra) bad.push(...check(doc));
   return bad;
 }
+
+// ---------- editing ----------
+// One change to a map document. Returns a sentence if the change makes no sense, otherwise
+// nothing. The caller lints the whole document afterwards, so an edit can never leave a map
+// that cannot be played.
+const nextId = (list, prefix) => {
+  let n = 0;
+  for (const x of list) { const m = new RegExp(`^${prefix}(\\d+)$`).exec(x.id ?? ''); if (m) n = Math.max(n, +m[1]); }
+  return `${prefix}${n + 1}`;
+};
+const put = (list, item) => { const i = list.findIndex((x) => x.id === item.id); if (i < 0) list.push(item); else list[i] = item; };
+const drop = (list, id, what) => { const i = list.findIndex((x) => x.id === id); if (i < 0) return `There is no ${what} "${id}".`; list.splice(i, 1); };
+export const EDITS = {
+  tile(map, { level, at, tile }) {
+    const l = map.levels.find((x) => x.id === level);
+    if (!l || !at) return 'A tile needs a level and a hex.';
+    if (tile) l.tiles[H.col(at)] = structuredClone(tile); else delete l.tiles[H.col(at)];
+  },
+  level(map, { level }) {
+    if (!level || typeof level !== 'object') return 'A level needs a record.';
+    const had = map.levels.find((x) => x.id === level.id);
+    if (had) Object.assign(had, { name: level.name ?? had.name, z: level.z ?? had.z });
+    else map.levels.push({ id: level.id, name: level.name ?? level.id, z: level.z, tiles: structuredClone(level.tiles ?? {}) });
+  },
+  unlevel(map, { id }) {
+    if (map.levels.length < 2) return 'A map needs one level or more.';
+    map.walls = map.walls.filter((w) => w.level !== id);
+    map.objects = map.objects.filter((o) => o.level !== id);
+    return drop(map.levels, id, 'level');
+  },
+  wall(map, { wall }) {
+    if (!wall || typeof wall !== 'object') return 'A wall needs a record.';
+    put(map.walls, { kind: 'wall', ...structuredClone(wall), id: wall.id ?? nextId(map.walls, 'w') });
+  },
+  unwall: (map, { id }) => drop(map.walls, id, 'wall'),
+  object(map, { object }) {
+    if (!object || typeof object !== 'object') return 'An object needs a record.';
+    const def = Object.hasOwn(CONTENT.objects, object.def) ? CONTENT.objects[object.def] : null;
+    put(map.objects, { ...structuredClone(object), id: object.id ?? nextId(map.objects, 'o'), state: object.state ?? def?.initial });
+  },
+  unobject: (map, { id }) => drop(map.objects, id, 'object'),
+  starts(map, { starts }) { map.starts = structuredClone(starts ?? []); },
+};

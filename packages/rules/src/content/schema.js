@@ -5,7 +5,7 @@
 // these lists is an engine change and needs the spec amended (docs/specs/rules-expansion.md);
 // a content pull request cannot do it.
 //
-//   lintPack({ pack, spells, monsters, pregens }) -> [ "spells/fire-bolt: problem", ... ]
+//   lintPack({ pack, spells, monsters, pregens, conditions, objects }) -> [ "spells/fire-bolt: problem", ... ]
 //   coverage({ spells, monsters })                -> { spells: { auto, assist, manual, unchecked, total }, ... }
 
 export const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
@@ -32,6 +32,14 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range'];
+
+// Things on a map (docs/specs/maps-and-objects.md).
+export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
+export const OBJECT_BLOCKS = ['move', 'sight'];
+export const USE_TIMES = ['free', 'action'];
+export const SKILLS = { acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int',
+  insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha',
+  persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis' };
 
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DICE = /^(\d+d\d+)?([+-]\d+)?$/;
@@ -187,10 +195,45 @@ function lintCondition(e, say) {
   if (fn) say(`contains a function at ${fn}; content is data only`);
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [] }) {
+// A check an object asks for: an ability, optionally a skill or a tool, and a default DC.
+function lintCheck(c, say) {
+  if (!c || !ABILITIES.includes(c.ability)) return say('a check needs an ability');
+  if (c.skill !== undefined && !Object.hasOwn(SKILLS, c.skill)) say(`unknown skill "${c.skill}"`);
+  if (c.tool !== undefined && !ID.test(c.tool)) say('a tool must be a kebab-case id');
+  if (!(isInt(c.dc) && c.dc > 0)) say('a check needs a whole-number DC');
+}
+function lintObject(e, say) {
+  lintCommon(e, say);
+  if (!OBJECT_KINDS.includes(e.kind)) say(`kind must be one of ${OBJECT_KINDS.join(', ')}`);
+  const states = e.states && typeof e.states === 'object' && !Array.isArray(e.states) ? Object.keys(e.states) : [];
+  if (!states.length) say('needs states');
+  for (const st of states) {
+    const v = e.states[st];
+    if (!ID.test(st)) say(`state "${st}" must be kebab-case`);
+    if (!v || !isText(v.name)) say(`state "${st}" needs a name`);
+    if (!allOf(OBJECT_BLOCKS)(v?.blocks)) say(`state "${st}" needs \`blocks\`, a list drawn from ${OBJECT_BLOCKS.join(', ')}`);
+    if (v?.hidden !== undefined && typeof v.hidden !== 'boolean') say(`state "${st}": hidden must be true or false`);
+  }
+  if (!states.includes(e.initial)) say('`initial` must be one of its states');
+  if (!Array.isArray(e.use)) return say('needs a `use` list (it may be empty)');
+  const ids = new Set();
+  for (const u of e.use) {
+    const sub = (m) => say(`use ${u?.id}: ${m}`);
+    if (!u || !ID.test(u.id ?? '') || ids.has(u.id)) { sub('id must be kebab-case and used once'); continue; }
+    ids.add(u.id);
+    if (!isText(u.name)) sub('needs a name');
+    if (!(Array.isArray(u.from) && u.from.length && u.from.every((x) => states.includes(x)))) sub('`from` must list one or more of its states');
+    if (u.to !== undefined && !states.includes(u.to)) sub('`to` must be one of its states');
+    if (!USE_TIMES.includes(u.time)) sub(`time must be one of ${USE_TIMES.join(', ')}`);
+    if (u.key !== undefined && typeof u.key !== 'boolean') sub('key must be true or false');
+    if (u.check !== undefined) lintCheck(u.check, sub);
+  }
+}
+
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [] }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
-  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition]]) {
+  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);

@@ -6,6 +6,7 @@
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
 import * as H from './shared/hex.js';
 import { allTiles, ground, surfaces } from './shared/space.js';
+import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
@@ -158,7 +159,7 @@ export class Renderer {
 
   setState(state, events = []) {
     this.state = state;
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
@@ -231,7 +232,30 @@ export class Renderer {
         }
       }
     }
+    // Walls and doors, drawn low enough to see over.
+    const WALLS = { wall: [1.15, th.wall ?? [0.44, 0.42, 0.4]], window: [0.55, th.wallWindow ?? [0.55, 0.62, 0.68]], rail: [0.5, th.wall ?? [0.44, 0.42, 0.4]], curtain: [1.15, th.curtain ?? [0.38, 0.3, 0.45]] };
+    const baseOf = (id) => (map.levels.find((l) => l.id === id)?.z ?? 0) * UNIT + 0.55;
+    for (const w of map.walls) { const [h, c] = WALLS[w.kind] ?? WALLS.wall; this.#slab(b, w.a, w.b, baseOf(w.level), h, 0.09, c); }
+    for (const o of map.objects) {
+      const seg = objectSegment(o); if (!seg) continue;
+      const shut = objectBlocks(o, 'move'), c = th.door ?? [0.5, 0.33, 0.17];
+      if (shut) this.#slab(b, seg[0], seg[1], baseOf(o.level), 1.0, 0.07, objectBlocks(o, 'sight') ? c : [0.3, 0.3, 0.32]);
+      else {                                                            // open: the leaf stands swung back against its hinge
+        const [p, q] = seg, dx = q[0] - p[0], dy = q[1] - p[1];
+        this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);
+      }
+    }
     this.terrain.set(b);
+  }
+  // An upright slab along a line given in map feet.
+  #slab(b, p, q, y0, height, half, col) {
+    const ax = p[0] * UNIT, az = p[1] * UNIT, bx = q[0] * UNIT, bz = q[1] * UNIT, len = Math.hypot(bx - ax, bz - az) || 1;
+    const nx = (-(bz - az) / len) * half, nz = ((bx - ax) / len) * half, y1 = y0 + height;
+    const c = [[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]];
+    const lo = c.map(([x, z]) => [x, y0, z]), hi = c.map(([x, z]) => [x, y1, z]);
+    const face = (a, b2, c2, d, f) => { b.quad(a, b2, c2, d, shade(col, f)); b.quad(d, c2, b2, a, shade(col, f)); };
+    face(hi[0], hi[1], hi[2], hi[3], 1.1);
+    for (let i = 0; i < 4; i++) { const n = (i + 1) % 4; face(hi[i], hi[n], lo[n], lo[i], i % 2 ? 0.7 : 0.9); }
   }
 
   #buildOverlay() {
