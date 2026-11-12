@@ -7,6 +7,7 @@ import { CONTENT } from './shared/content/index.js';
 import { WALL_KINDS, barriers, center, edgeSegment, objectHexes, objectSegment } from './shared/walls.js';
 import { FT } from './shared/space.js';
 import { newMap, lintMap, migrateMap } from './shared/map.js';
+import { UvttError, importUvtt } from './shared/import-uvtt.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,7 +28,7 @@ const HINTS = {
   props: 'Tap a door or thing to set its state, name, key, DCs and links.',
   start: 'Tap the hex where the party starts.',
   level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
-  file: 'Start a blank map, save this one to a file, or open one.',
+  file: 'Start a blank map, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
 };
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
 const fresh = (base, taken) => { let id = base, n = 2; while (taken.has(id)) id = `${base}-${n++}`; return id; };
@@ -68,7 +69,7 @@ export class Editor {
   stop() {
     if (!this.on) return;
     this.on = false; this.pending = null;
-    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.traceLine = []; this.sel = null; this.endDrag = null; this.R.setPins([]); this.R.setBars([]); this.pinSig = ''; this.barSig = '';
+    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.traceLine = []; this.sel = null; this.endDrag = null; this.uvtt = null; this.R.setPins([]); this.R.setBars([]); this.pinSig = ''; this.barSig = '';
     document.body.classList.remove('editing'); $('editor').hidden = true;
     if (this.S) this.refresh();
   }
@@ -114,6 +115,7 @@ export class Editor {
     for (const b of $('ed-kinds').children) b.classList.toggle('sel', b.dataset.k === this.kind);
     for (const b of $('ed-brush').children) b.classList.toggle('sel', +b.dataset.b === this.brush);
     for (const p of $('ed-opts').children) p.hidden = !p.dataset.for.split(' ').includes(this.tool);
+    $('ed-notes').hidden = this.tool !== 'file' || !this.uvtt;
     const d = CONTENT.objects[this.def];
     const hint = this.tool === 'object' ? (d.kind === 'door' ? 'door' : d.connects ? 'ladder' : 'thing') : this.tool;
     $('ed-hint').textContent = this.pending ? (this.tool === 'object' && d.connects ? 'Now tap where it leads.' : 'Now tap a neighbouring hex.') : HINTS[hint];
@@ -729,6 +731,69 @@ export class Editor {
     this.refresh();
   }
 
+  // ---------- Universal VTT ----------
+  // Read the file and show what the importer made of it (its notes) before anything replaces the map.
+  async importUvtt(file) {
+    if (!file) return;
+    if (file.size > 60e6) return this.toast('That file is too big to be a map.');
+    let res;
+    try { res = importUvtt(await file.text(), { name: String(file.name ?? '').replace(/\.[^.]*$/, '').slice(0, 60) || undefined, id: slug(String(file.name ?? '').replace(/\.[^.]*$/, '')) }); }
+    catch (err) { return this.toast(err instanceof UvttError ? err.message : 'That file could not be read as a Universal VTT map.'); }
+    this.uvtt = res; this.tool = 'file';
+    this.#renderNotes();
+    this.refresh();
+  }
+  #renderNotes() {
+    const box = $('ed-notes'), u = this.uvtt;
+    if (!u) { box.hidden = true; box.innerHTML = ''; return; }
+    const bad = lintMap(u.map);
+    box.hidden = false;
+    box.innerHTML = `<strong>${esc(u.map.name)}</strong>
+      <div class="ed-row"><button type="button" class="go" id="ed-uvtt-load"${bad.length ? ' disabled' : ''}>Load this map</button>${u.image ? '<button type="button" id="ed-uvtt-bare">Load without the picture</button>' : ''}<button type="button" id="ed-uvtt-cancel">Cancel</button></div>
+      ${bad.length ? `<p class="bad">This map cannot be loaded: ${esc(bad[0])}</p>` : ''}
+      <ul>${u.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
+    box.scrollIntoView?.({ block: 'nearest' });
+    $('ed-uvtt-cancel').onclick = () => { this.uvtt = null; this.#renderNotes(); this.refresh(); };
+    $('ed-uvtt-load').onclick = () => this.#loadUvtt(true);
+    if (u.image) $('ed-uvtt-bare').onclick = () => this.#loadUvtt(false);
+  }
+  async #loadUvtt(withPicture) {
+    const u = this.uvtt, store = this.assets?.();
+    if (!u) return;
+    const map = structuredClone(u.map);
+    $('ed-uvtt-load').disabled = true;
+    if (withPicture && u.image) {
+      try {
+        if (!store) throw new Error('There is nowhere to keep the picture.');
+        const rec = await store.upload(await this.#fitPicture(u.image, store));
+        map.levels[0].image = { asset: rec.id, feet: u.image.size, origin: u.image.origin };
+      } catch (err) { $('ed-uvtt-load').disabled = false; return this.toast(`The picture could not be saved: ${err.message}`); }
+    }
+    this.uvtt = null; this.#renderNotes();
+    this.levelId = null; this.region = ''; this.pending = null; this.traceLine = []; this.sel = null;
+    this.tool = 'trace'; this.tmode = 'edit';
+    this.act({ type: 'loadMap', map });
+    this.refresh();
+    this.toast('Map loaded. Check the walls and doors, and fill the floor if hexes are missing.', true);
+  }
+  // The picture as a File the store will take. One too big for the store is shrunk and saved as WebP.
+  async #fitPicture(image, store) {
+    const raw = atob(image.url.slice(image.url.indexOf(',') + 1)), bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const limit = (await store.list()).limits.file, ext = image.mime === 'image/webp' ? 'webp' : 'png';
+    let blob = new Blob([bytes], { type: image.mime });
+    if (blob.size <= limit) return new File([blob], `map.${ext}`, { type: image.mime });
+    const bmp = await createImageBitmap(blob).catch(() => { throw new Error('the picture could not be read.'); });
+    for (let k = 1; k > 0.1; k *= 0.75) {
+      const cv = document.createElement('canvas'), top = Math.min(1, 4096 / Math.max(bmp.width, bmp.height)) * k;
+      cv.width = Math.max(1, Math.round(bmp.width * top)); cv.height = Math.max(1, Math.round(bmp.height * top));
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+      blob = await new Promise((res) => cv.toBlob(res, 'image/webp', 0.85));
+      if (blob?.type === 'image/webp' && blob.size <= limit * 0.95) return new File([blob], 'map.webp', { type: 'image/webp' });
+    }
+    throw new Error('the picture is too big to keep, even shrunk.');
+  }
+
   // ---------- the toolbar ----------
   #options(sel, list, value) {
     const sig = JSON.stringify(list);
@@ -763,7 +828,9 @@ export class Editor {
         <div class="ed-row" data-for="region"><button type="button" id="ed-wallin">Wall it in</button><button type="button" id="ed-unregion">Delete room</button></div>
         <form class="ed-row" data-for="level" id="ed-addlevel"><input id="ed-lname" maxlength="40" placeholder="New level name" autocomplete="off"><input id="ed-lfeet" type="number" step="5" value="10" aria-label="Height in feet" class="feet"><button type="submit">Add level</button></form>
         <div class="ed-row" data-for="level"><button type="button" id="ed-unlevel">Delete this level</button><label class="check"><input type="checkbox" id="ed-all"> Show levels above</label></div>
-        <div class="ed-row" data-for="file"><button type="button" id="ed-new">New blank map</button><button type="button" id="ed-export">Export map</button><button type="button" id="ed-import">Import map</button><input type="file" id="ed-file" accept=".json,application/json" hidden></div>
+        <div class="ed-row" data-for="file"><button type="button" id="ed-new">New blank map</button><button type="button" id="ed-export">Export map</button><button type="button" id="ed-import">Import map</button><input type="file" id="ed-file" accept=".json,application/json" hidden>
+          <button type="button" id="ed-uvtt">Import Universal VTT</button><input type="file" id="ed-uvttfile" accept=".dd2vtt,.df2vtt,.uvtt,.json" hidden></div>
+        <div class="ed-notes" data-for="file" id="ed-notes" hidden></div>
       </div>
       <p id="ed-hint"></p>`;
     this.#buildMore();
@@ -800,6 +867,8 @@ export class Editor {
     $('ed-new').onclick = (ev) => this.#sure(ev.currentTarget, () => this.blank());
     $('ed-export').onclick = () => this.export();
     $('ed-import').onclick = () => $('ed-file').click();
+    $('ed-uvtt').onclick = () => $('ed-uvttfile').click();
+    $('ed-uvttfile').onchange = (ev) => { const f = ev.target.files[0]; ev.target.value = ''; this.importUvtt(f); };
     $('ed-file').onchange = (ev) => { const f = ev.target.files[0]; ev.target.value = ''; this.import(f); };
   }
 }
