@@ -8,9 +8,9 @@
 // an AI DM or AI character is just another caller of apply().
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
-import { CONTENT, SPELLS, TILES, MONSTERS } from './content/index.js';
+import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
 import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
-import { begin, run, scaleSteps, sharedRolls } from './effects.js';
+import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
@@ -46,6 +46,8 @@ const ft = (hexes) => `${hexes * FT} ft`;
 
 export function makeEntity(tpl, over = {}) {
   const t = structuredClone(tpl);
+  // A creature made from a pack monster carries its own copy of the monster's actions.
+  if (!t.actions && over.tpl && MONSTER_ACTIONS[over.tpl]) t.actions = structuredClone(MONSTER_ACTIONS[over.tpl]);
   if (over.pos && over.pos.z === undefined) over = { ...over, pos: { ...over.pos, z: 0 } };
   return {
     kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, senses: {}, saveProf: [], skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
@@ -186,7 +188,13 @@ export function moveOptions(s, e) {
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
-    o.attacks.some((a) => a.type === 'melee') && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos));
+    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos));
+}
+// What a creature makes an Opportunity Attack with: its first melee attack action, or for a
+// creature with flat attack records, its first melee attack.
+export function opportunityAttack(o) {
+  if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
+  return o.attacks.find((a) => a.type === 'melee') ?? null;
 }
 
 // Is there nothing solid between two positions? A wall or a shut door stops attacks, spells and
@@ -471,6 +479,7 @@ function advanceTurn(s, ev) {
     e.reactionUsed = false;
     delete e.cond.dodging;
     ev.push({ type: 'turn', id: e.id, round: enc.round });
+    recharge(s, e, ev);
     if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
       delete e.cond.prone;
       enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
@@ -587,6 +596,7 @@ function acOf(s, t) {
 // (or standing up, for Prone) ends it, and the DM is told so.
 function condition(s, t, id, ev, f = null, step = null, level = undefined) {
   if (!up(t) || t.cond[id]) return;
+  if (t.conditionImmune?.includes(id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
   if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc } : {}) });
@@ -693,6 +703,27 @@ export function areaHexes(s, e, sp, aim) {
   return hexes.filter((h) => hasColumn(s.map, h));
 }
 
+// Who an area catches when `e` aims it at `hex`: { targets, hexes, origin }. A cone opens from
+// `e` toward the hex; a sphere or cylinder goes off at the hex, which must be within `range`
+// feet; an emanation surrounds `e`. `origin` is null when the area starts from `e` itself.
+function aimArea(s, e, name, area, range, hex) {
+  const shape = area.shape;
+  if (shape === 'cone') (hex && H.dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
+  else if (shape !== 'emanation') {
+    hex || fail(`Pick where ${name} goes off.`);
+    const d = gap(s, hex.z !== undefined ? hex : landing(s.map, hex, e.pos.z) ?? hex, e.pos);
+    if (d * FT > range) fail(`That is ${ft(d)} away. ${name} reaches ${range} ft.`);
+  }
+  const hexes = areaHexes(s, e, { area }, hex);
+  const keys = new Set(hexes.map(H.key));
+  // Where it goes off: the source for a cone or an emanation, else the spot aimed at (in the air if a height was given).
+  const origin = shape === 'cone' || shape === 'emanation' ? e.pos : hex.z !== undefined ? { q: hex.q, r: hex.r, z: hex.z } : landing(s.map, hex, e.pos.z) ?? e.pos;
+  const size = area.size / FT, tall = area.height ?? area.size;
+  const high = (t) => (shape === 'cylinder' ? t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : gap(s, origin, t.pos) <= size);     // areas have height too
+  const targets = living(s).filter((t) => footprint(t).some((f) => keys.has(H.col(f))) && high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
+  return { targets, hexes, origin: origin === e.pos ? null : origin };
+}
+
 // Why this creature can't take an action/bonus action right now ('' if it can).
 export function blocked(s, e, time = 'action') {
   if (!up(e)) return `${e.name} is down.`;
@@ -701,7 +732,7 @@ export function blocked(s, e, time = 'action') {
   if (!s.encounter) return '';
   if (!inFight(s, e.id)) return `${e.name} is outside the battle. Move into the arena to join.`;
   if (current(s) !== e.id) return `It isn't ${e.name}'s turn.`;
-  if (s.encounter.budget[time] < 1) return `${e.name} has already used ${time === 'bonus' ? 'a Bonus Action' : 'an action'} this turn.`;
+  if (time && s.encounter.budget[time] < 1) return `${e.name} has already used ${time === 'bonus' ? 'a Bonus Action' : 'an action'} this turn.`;
   return '';
 }
 const need = (s, e, time) => { const why = blocked(s, e, time); if (why) fail(why); };
@@ -709,12 +740,15 @@ const need = (s, e, time) => { const why = blocked(s, e, time); if (why) fail(wh
 const able = (e) => { const by = incapacitatedBy(e); if (by) fail(`${e.name} is ${by} and can't act.`); };
 
 // Creature ids a given attack or spell could legally target right now (range only).
-export function targetsFor(s, e, { attack, spell }) {
+export function targetsFor(s, e, { attack, spell, action }) {
   const out = [];
+  const def = action ?? (attack && e.actions?.find((x) => x.id === attack && !x.multiattack)?.id);
+  const far = def ? actionProfile(e.actions.find((x) => x.id === def)).far : null;
   for (const t of living(s)) {
     if (!unblocked(s, e, t)) continue;
     const d = apart(s, e, t) * FT;
-    if (attack) {
+    if (def) { if (far !== undefined && far !== null && t.id !== e.id && d <= far) out.push(t.id); }
+    else if (attack) {
       const atk = e.attacks.find((a) => a.id === attack);
       if (t.id !== e.id && d <= (atk.type === 'melee' ? atk.reach : atk.range[1])) out.push(t.id);
     } else {
@@ -724,6 +758,109 @@ export function targetsFor(s, e, { attack, spell }) {
     }
   }
   return out;
+}
+
+// ---------- a creature's own actions ----------
+// A monster's actions are data, run by the effect runner as a spell's are (effects.js).
+
+// Attacks left this turn from a Multiattack or from Extra Attack sit in `budget.attacks`: a list
+// of alternatives, each a list of { action, left }, where `action` is an action id, a list of
+// ids (any of them), or null (any attack). An attack spends from every alternative that allows
+// it, and alternatives that do not are dropped, so the choice between them is made attack by
+// attack. Returns whether `id` may be made from it; with `spend`, makes it.
+const fits = (x, id) => x.left > 0 && (x.action === null || x.action === id || (Array.isArray(x.action) && x.action.includes(id)));
+const width = (x) => (x.action === null ? Infinity : Array.isArray(x.action) ? x.action.length : 1);
+export function fromPool(b, id, spend = false) {
+  if (!b?.attacks) return false;
+  const keep = b.attacks.filter((alt) => alt.some((x) => fits(x, id)));
+  if (!keep.length) return false;
+  if (!spend) return true;
+  for (const alt of keep) alt.filter((x) => fits(x, id)).sort((x, y) => width(x) - width(y))[0].left--;      // the narrowest entry that allows it
+  b.attacks = keep.filter((alt) => alt.some((x) => x.left > 0));
+  if (!b.attacks.length) delete b.attacks;
+  return true;
+}
+// How many attacks are left this turn (the most any alternative still allows).
+export const attacksLeft = (b) => (b?.attacks ? Math.max(0, ...b.attacks.map((alt) => alt.reduce((n, x) => n + x.left, 0))) : 0);
+
+// Can this action be used now, as far as its recharge and uses go? '' if so.
+export function actionSpent(e, def) {
+  if (def.recharge && e.spent?.[def.id]) return `${def.name} has not recharged.`;
+  if (def.uses && (e.charges?.[def.id] ?? def.uses.n) < 1) return `${e.name} has no uses of ${def.name} left today.`;
+  return '';
+}
+// At the start of its turn a creature rolls for each spent action with a recharge.
+function recharge(s, e, ev) {
+  for (const def of e.actions ?? []) {
+    if (!def.recharge || !e.spent?.[def.id]) continue;
+    const d = die(s, 6), ready = d >= def.recharge[0];
+    if (ready) delete e.spent[def.id];
+    ev.push({ type: 'recharge', id: e.id, action: def.id, name: def.name, roll: d, ready });
+  }
+}
+
+// Who or what an action is aimed at: { targets, hexes, origin }. `targets` is null for an area
+// the engine cannot lay out (a line, a cube), which the DM then applies.
+function aimAction(s, e, def, a) {
+  const t = def.target;
+  if (t.self) return { targets: [e], hexes: null, origin: null };
+  if (t.creature) {
+    const target = ent(s, a.target);
+    !target.dead || fail(`${target.name} is already dead.`);
+    e.id !== target.id || fail(`${def.name} needs another target.`);
+    const d = apart(s, e, target), far = t.creature.reach ?? t.creature.range[1];
+    if (d * FT > far) fail(`${target.name} is ${ft(d)} away. ${def.name} reaches ${far} ft.`);
+    walled(s, e, target);
+    return { targets: [target], hexes: null, origin: null };
+  }
+  if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
+  return aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);
+}
+
+// Who an area action would catch if aimed at `hex`, or null if it cannot be aimed there. For the AI and the UI.
+export function areaTargets(s, e, def, hex) {
+  try { return aimAction(s, e, def, { hex }).targets; } catch (err) { if (err instanceof RuleError) return null; throw err; }
+}
+
+// Use an action: aim it, pay for it, run it. In a fight it costs the creature's action (or its
+// Bonus Action, for one with `time: 'bonus'`), unless it is one of the attacks a Multiattack
+// left this turn, which it spends instead.
+function takeAction(s, e, def, a, ev) {
+  const why = actionSpent(e, def);
+  if (why) fail(why);
+  const { targets, hexes, origin } = aimAction(s, e, def, a);
+  const p = actionProfile(def);
+  if (!s.encounter && p.harmful && targets !== null && !def.target.self) {          // roll initiative first
+    showPlace(s, e, ev);
+    if (def.target.creature) showPlace(s, targets[0], ev);
+    return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+  }
+  if (s.encounter) {
+    const b = s.encounter.budget, time = def.time ?? 'action', pooled = time === 'action' && fromPool(b, def.id);
+    need(s, e, pooled ? null : time);
+    if (def.target.creature) inFight(s, targets[0].id) || fail(`${targets[0].name} is outside the battle.`);
+    if (pooled) fromPool(b, def.id, true); else b[time]--;
+  }
+  if (def.recharge) (e.spent ??= {})[def.id] = true;
+  if (def.uses) (e.charges ??= {})[def.id] = (e.charges[def.id] ?? def.uses.n) - 1;
+  runAction(s, e, def, targets, hexes, origin, ev);
+  checkEnd(s, ev);
+}
+
+// Run an action's effect steps against its targets. Costs are the caller's. `tag` marks the
+// attack event (an Opportunity Attack).
+function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
+  showPlace(s, e, ev);
+  for (const t of targets ?? []) if (t.id !== e.id) { if (def.target.creature) showPlace(s, t, ev); else reveal(s, t, ev); }
+  const c = def.target.creature;
+  // An attack roll says what it is in its own event; anything else (a breath, a gaze) is announced.
+  if (!('attack' in def.effects[0])) ev.push({ type: 'act', actor: e.id, action: def.id, name: def.name, hexes, targets: (targets ?? []).map((t) => t.id) });
+  begin(s, {
+    steps: structuredClone(def.effects), actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
+    src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}) },
+    shared: def.target.area && targets ? sharedRolls(s, def.effects) : null,
+  });
+  run(s, ev, KIT);
 }
 
 // ---------- actions ----------
@@ -769,7 +906,9 @@ const handlers = {
           if (apartAt(s, o, o.pos, e, step) <= 1) continue;
           flush();
           o.reactionUsed = true;
-          resolveAttack(s, o, e, o.attacks.find((x) => x.type === 'melee'), ev, { opportunity: true });
+          const oa = opportunityAttack(o);
+          if (o.actions) runAction(s, o, oa, [e], null, null, ev, { opportunity: true });
+          else resolveAttack(s, o, e, oa, ev, { opportunity: true });
           if (!up(e)) break;
         }
         if (!up(e)) break;
@@ -796,8 +935,16 @@ const handlers = {
     checkEnd(s, ev);
   },
 
+  // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
+  // monster) attacks with the action of that id; others with their flat attack records.
   attack(s, a, ctx, ev) {
     const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
+    const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
+    if (def) {
+      up(e) || fail(`${e.name} is down.`);
+      able(e);
+      return takeAction(s, e, def, { target: a.target }, ev);
+    }
     const atk = e.attacks.find((x) => x.id === a.attack) || fail('Unknown attack.');
     up(e) || fail(`${e.name} is down.`);
     able(e);
@@ -807,11 +954,36 @@ const handlers = {
     walled(s, e, t);
     showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
-    need(s, e, 'action');
+    const b = s.encounter.budget, pooled = fromPool(b, atk.id);
+    need(s, e, pooled ? null : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
-    s.encounter.budget.action--;
+    if (pooled) fromPool(b, atk.id, true);
+    else {
+      b.action--;
+      // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
+      if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
+    }
     resolveAttack(s, e, t, atk, ev);
     checkEnd(s, ev);
+  },
+
+  // { type: 'act', actor, action, target? | hex? }: a creature uses one of its actions (a
+  // monster's Bite, Fire Breath or Multiattack). Its effect steps run like a spell's.
+  act(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    if (!def.multiattack) return takeAction(s, e, def, a, ev);
+    // Multiattack spends the action and leaves the attacks it gives in the budget, to be made
+    // one at a time, each at a target chosen when it is made. What is not made by the end of
+    // the turn is lost.
+    s.encounter || fail(`${def.name} is for a fight. Make one of ${e.name}'s attacks to start one.`);
+    need(s, e, 'action');
+    const b = s.encounter.budget;
+    b.action--;
+    b.attacks = (Array.isArray(def.multiattack) ? [def.multiattack] : def.multiattack.or).map((list) => list.map((x) => ({ action: structuredClone(x.action), left: x.times })));
+    ev.push({ type: 'std', id: e.id, action: def.name });
   },
 
   // { type: 'cast', actor, spell, target? | hex?, slot? }
@@ -826,23 +998,8 @@ const handlers = {
 
     // Who or what it is aimed at.
     let targets = [], hexes = null, areaOrigin = null;
-    if (sp.aim === 'area') {
-      const shape = sp.area.shape;
-      if (shape === 'cone') (a.hex && H.dist(a.hex, e.pos) > 0) || fail(`Pick a direction for ${sp.name}.`);
-      else if (shape !== 'emanation') {
-        a.hex || fail(`Pick where ${sp.name} goes off.`);
-        const d = gap(s, a.hex.z !== undefined ? a.hex : landing(s.map, a.hex, e.pos.z) ?? a.hex, e.pos);
-        if (d * FT > sp.range) fail(`That is ${ft(d)} away. ${sp.name} reaches ${sp.range} ft.`);
-      }
-      hexes = areaHexes(s, e, sp, a.hex);
-      const keys = new Set(hexes.map(H.key));
-      // Where it goes off: the caster for a cone or an emanation, else the spot aimed at (in the air if a height was given).
-      const origin = shape === 'cone' || shape === 'emanation' ? e.pos : a.hex.z !== undefined ? { q: a.hex.q, r: a.hex.r, z: a.hex.z } : landing(s.map, a.hex, e.pos.z) ?? e.pos;
-      areaOrigin = origin === e.pos ? null : origin;
-      const size = sp.area.size / FT, tall = sp.area.height ?? sp.area.size;
-      const high = (t) => (shape === 'cylinder' ? t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : gap(s, origin, t.pos) <= size);     // areas have height too
-      targets = living(s).filter((t) => footprint(t).some((f) => keys.has(H.col(f))) && high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
-    } else if (sp.aim === 'creature') {
+    if (sp.aim === 'area') ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, sp.range, a.hex));
+    else if (sp.aim === 'creature') {
       const t = ent(s, a.target);
       !t.dead || fail(`${t.name} is dead.`);
       if (sp.harmful && t.id === e.id) fail(`${sp.name} needs another target.`);
@@ -1241,6 +1398,7 @@ const handlers = {
       return;
     }
     up(e) || fail(`${e.name} is down.`);
+    !e.conditionImmune?.includes(a.condition) || fail(`${e.name} is immune to ${def.name}.`);
     const level = def.levels ? Math.max(1, Math.min(def.levels, a.level | 0 || 1)) : undefined;
     if (e.cond[a.condition]) {
       (def.levels && e.cond[a.condition].level !== level) || fail(`${e.name} is already ${def.name}.`);

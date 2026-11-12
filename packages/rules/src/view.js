@@ -57,7 +57,8 @@ function viewEncounter(state) {
     turn: order.findIndex((o) => o.id === currentId),
     // What the active creature has left is its own business unless it is one of ours.
     // Zeros, not null, so the engine's helpers run on a view without special cases.
-    budget: activeOpen ? { ...enc.budget } : { move: 0, action: 0, bonus: 0 },
+    // Attacks a Multiattack or Extra Attack left (`budget.attacks`) go with the rest, and only then.
+    budget: activeOpen ? structuredClone(enc.budget) : { move: 0, action: 0, bonus: 0 },
     flags: { ...enc.flags },
     order,
   };
@@ -174,10 +175,10 @@ export function viewEvents(events, state, viewer) {
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
   const out = { push(e) { if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
-  let caster = null;                       // who cast the spell that the following saves answer
+  let caster = null;                       // who cast the spell (or used the action) that the following saves answer
   for (const ev of events) {
     out.ev = ev;
-    if (ev.type === 'cast') caster = ev.actor;
+    if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack') caster = ev.actor;      // a save on a hit answers the attacker
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
 
     switch (ev.type) {
@@ -208,6 +209,11 @@ export function viewEvents(events, state, viewer) {
           hexes: ev.hexes ? ev.hexes.map((h) => ({ q: h.q, r: h.r })) : ev.hexes,
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
         break;
+      case 'act':                                      // a creature used one of its actions: its name and where, never its numbers
+        out.push({ ...pick(ev, ['type', 'actor', 'name']),
+          hexes: ev.hexes ? ev.hexes.map((h) => ({ q: h.q, r: h.r })) : null,
+          targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
+        break;
       case 'encounterStart':
         out.push({ type: ev.type, center: ev.center, radius: ev.radius,
           order: ev.order.filter((o) => cls(o.id) !== 'hidden').map((o) => (cls(o.id) === 'open' ? { ...o } : { id: o.id })) });
@@ -231,7 +237,9 @@ export function viewEvents(events, state, viewer) {
       case 'manual':                                   // what the DM must apply by hand
         // Everyone sees what a spell does when the engine cannot apply it. Notes about what
         // the engine left out of a spell it did apply are for the DM alone.
-        if (!ev.partial) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
+        // What a creature that is not one of theirs does by hand is the DM's to tell: a monster's
+        // action text carries its numbers. A thing on the map (actor null) is not a creature.
+        if (!ev.partial && (ev.actor === null || ev.actor === undefined || cls(ev.actor) === 'open')) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
         break;
       case 'check':                                    // a check by one of ours: the roll, never the DC; the outcome only where it will show anyway
         if (cls(ev.id) === 'open') { const e = structuredClone(ev); delete e.dc; if (e.secret) delete e.success; out.push(e); }

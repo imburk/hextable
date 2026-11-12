@@ -7,9 +7,9 @@ const SPELL_IDS = { fireBolt: 'fire-bolt', sacredFlame: 'sacred-flame', magicMis
 const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
-import { MONSTERS, PREGENS } from './content/index.js';
+import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 
-export const VERSION = 8;
+export const VERSION = 9;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -41,5 +41,10 @@ export function migrate(state) {
     if (MONSTER_IDS[e.tpl]) e.tpl = MONSTER_IDS[e.tpl];
   }
   for (const entry of state.timeline ?? []) if (SPELL_IDS[entry.spell]) entry.spell = SPELL_IDS[entry.spell];
+  // Version 9: a creature made from a pack monster plays from its actions (Multiattack, breath
+  // weapons, saves), carried on the creature. One saved before then takes them from its template.
+  for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);
+  // Also version 9: condition immunities, from the template.
+  for (const e of Object.values(state.entities)) if (!e.conditionImmune && MONSTERS[e.tpl]?.conditionImmune) e.conditionImmune = [...MONSTERS[e.tpl].conditionImmune];
   return state;
 }

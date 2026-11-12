@@ -111,6 +111,32 @@ export function spellProfile(def) {
   };
 }
 
+// Everything the engine, the AI and the UI need to know about a creature's action (a monster's
+// Bite, a dragon's breath, its Multiattack), worked out from its data.
+export function actionProfile(a) {
+  if (a.multiattack) {
+    const lists = Array.isArray(a.multiattack) ? [a.multiattack] : a.multiattack.or;
+    const most = Math.max(...lists.map((l) => l.reduce((n, x) => n + x.times, 0)));
+    return { id: a.id, name: a.name, aim: 'multi', harmful: true, short: `${most} attacks`, long: `${most} attacks this turn`, lists };
+  }
+  let harmful = false;
+  walk(a.effects, (st) => { const k = stepKind(st); if (k === 'attack' || k === 'save' || k === 'damage' || k === 'condition' || k === 'fall' || k === 'move') harmful = true; });
+  const t = a.target, first = a.effects[0], kind = stepKind(first);
+  const aim = t.self ? 'self' : t.area ? (AREAS.includes(t.area.shape) && (t.area.range || !['sphere', 'cylinder'].includes(t.area.shape)) ? 'area' : 'none') : 'creature';
+  const reach = t.creature?.reach ?? null, range = t.creature?.range ?? null;
+  return {
+    id: a.id, name: a.name, aim, harmful,
+    ...(aim === 'area' ? { area: { ...t.area }, range: t.area.range ?? 0 } : {}),
+    ...(aim === 'creature' ? { reach, range: range ? [...range] : null, far: reach ?? range[1] } : {}),
+    roll: kind === 'attack' ? first.attack : kind === 'save' ? 'save' : null,         // 'melee' | 'ranged' | 'save' | null
+    ...(kind === 'attack' ? { bonus: first.bonus } : {}),
+    ...(kind === 'save' ? { save: first.save, dc: first.dc } : {}),
+    time: a.time ?? 'action',
+    ...(a.recharge ? { recharge: [...a.recharge] } : {}), ...(a.uses ? { uses: { ...a.uses } } : {}),
+    ...summarise({ effects: a.effects, duration: 'instant' }),
+  };
+}
+
 // ---------- running steps ----------
 
 const rollDamage = (s, step, crit) => {
@@ -177,11 +203,12 @@ function exec(s, ev, kit, f, step, at) {
     const atk = step.kind === 'spell'
       ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
-    const r = kit.rollToHit(s, e, t, atk, ev);
+    const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
     return branch(r.hit ? 'onHit' : 'onMiss', { crit: r.crit, mode: r.mode, half: false });
   }
   if (kind === 'save') {
     const dc = step.dc ?? f.src.dc;
+    if (dc === undefined) return handOver(`${f.src.name} calls for a ${step.save.toUpperCase()} save with no DC entered. The DM applies it.`);
     const sv = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     if (!sv.success) return branch('onFail', { half: false });

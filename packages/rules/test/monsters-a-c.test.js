@@ -102,10 +102,10 @@ test("corrections and additions from the SRD check", () => {
   assert.ok(CONTENT.monsters.bulette.actions.some((a) => a.id === "leap"));
   const stalker = CONTENT.monsters["bugbear-stalker"];
   assert.deepEqual([stalker.cr, stalker.ac, stalker.hp, stalker.pb], [3, 15, 65, 2]);
-  assert.deepEqual(stalker.actions.map((a) => a.id), ["javelin", "javelin-thrown", "morningstar", "quick-grapple"]);
+  assert.deepEqual(stalker.actions.map((a) => a.id), ["multiattack", "javelin", "javelin-thrown", "morningstar", "quick-grapple"]);
   const archmage = CONTENT.monsters.archmage;
   assert.deepEqual([archmage.cr, archmage.xp, archmage.ac, archmage.hp], [12, 8000, 17, 170]);
-  assert.deepEqual(archmage.actions.map((a) => a.effects[0].bonus), [9, 9]);
+  assert.deepEqual(archmage.actions.filter((a) => a.effects).map((a) => a.effects[0].bonus), [9, 9]);
   const red = MONSTERS["ancient-red-dragon"];
   assert.deepEqual([red.size, red.hp, red.ac, red.speeds], ["gargantuan", 507, 22, { climb: 40, fly: 80 }]);
   assert.deepEqual(red.immune, ["fire"]);
@@ -123,7 +123,7 @@ test("each A to C dragon's Rend bonus and breath save DCs follow from its abilit
     const rend = m.actions.find((a) => a.id === "rend");
     assert.equal(rend.effects[0].bonus, mod(m.abilities.str) + m.pb, `${m.id} Rend`);
     for (const a of m.actions) {
-      const save = a.effects[0].save;
+      const save = a.effects?.[0].save;              // a Multiattack has no effects of its own
       if (save && /breath/.test(a.id)) assert.equal(a.effects[0].dc, 8 + m.pb + mod(m.abilities.con), `${m.id} ${a.id}`);
     }
     assert.equal(m.immune.length, 1, m.id);

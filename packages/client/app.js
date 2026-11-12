@@ -2,7 +2,8 @@
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
-import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { actionProfile } from './shared/effects.js';
 import { SKILLS } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
@@ -25,7 +26,7 @@ const flyAlt = {};
 const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
 const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
 
-let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null;
+let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null, aiSent = null;
 let themeId = THEMES[prefs.get('hextable.theme')] ? prefs.get('hextable.theme') : 'classic';
 const log = [];
 let seeded = false;      // whether the log has been given the table's recent history yet
@@ -79,6 +80,8 @@ function describe(ev) {
     case 'damage': return [`${n(ev.target)} takes ${ev.amount} ${ev.dtype} damage${ev.note ? ` (${ev.note})` : ''}.`, 'bad'];
     case 'heal': return [`${n(ev.target)} regains ${ev.amount} Hit Points.`, 'good'];
     case 'cast': return [`${n(ev.actor)} casts ${ev.name}.`];
+    case 'act': return [`${n(ev.actor)} uses ${ev.name}.`];
+    case 'recharge': return [`${n(ev.id)} rolls ${ev.roll} for ${ev.name}: ${ev.ready ? 'ready again' : 'not yet'}.`];
     case 'save': {
       const cv = behind(ev.cover);       // half or three-quarters cover helps a Dexterity save
       if (!('roll' in ev)) return [`${n(ev.id)} makes a ${ev.abil.toUpperCase()} save${ev.dc === undefined ? '' : ` against DC ${ev.dc}`}${cv}. ${ev.success ? 'Saved.' : 'Failed.'}`];
@@ -168,13 +171,14 @@ function onUpdate(state, events, fresh) {
   else if (events.some((e) => e.type === 'moved' && e.id === selId)) R.focus(selId);
   if (events.some((e) => e.type === 'map')) R.focus(selId ?? Object.values(S.entities).find((e) => e.side === 'party')?.id, true);     // a new place: look at the party
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
-  if (mode.kind === 'attack' || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
+  if (mode.kind === 'attack' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
   refresh();
   clearTimeout(aiTimer);
+  aiSent = null;
   const cur = S.entities[current(S)];
   const tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
   if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack)
-    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) act(a); }, 800);
+    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) { aiSent = cur.id; act(a); } }, 800);
 }
 
 // ---------- rendering the UI ----------
@@ -184,6 +188,35 @@ function button(label, sub, cls, why, onClick) {
   b.innerHTML = `<span>${esc(label)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}`;
   b.onclick = () => (why ? toast(why) : onClick());
   return b;
+}
+
+// A creature that plays from its actions (a monster): one button per action, with what its
+// first step does. Multiattack and anything with nothing to aim go off at once.
+function actionButtons(e, bar) {
+  const b = S.encounter?.budget, mine = b && current(S) === e.id;
+  for (const def of e.actions) {
+    const p = actionProfile(def), armed = mode.kind === 'action' && mode.id === def.id;
+    const pooled = mine && b.attacks && fromPool(b, def.id);
+    const why = (pooled ? blocked(S, e, null) : blocked(S, e, 'action')) || actionSpent(e, def) ||
+      (def.multiattack && !S.encounter ? `${def.name} is for a fight. Use one of its attacks to start one.` : '');
+    const sub = [pooled ? 'from Multiattack' : p.aim === 'multi' ? 'Action' : '', p.short, p.bonus !== undefined ? signed(p.bonus) : '', p.dc ? `DC ${p.dc}` : '',
+      p.recharge ? `recharge ${p.recharge[0]}–6` : '', p.uses ? `${e.charges?.[def.id] ?? p.uses.n}/day left` : ''].filter(Boolean).join(' · ');
+    const go = () => (p.aim === 'multi' || p.aim === 'self' || p.aim === 'none' ? act({ type: 'act', actor: e.id, action: def.id }) : setMode(armed ? MOVE : { kind: 'action', id: def.id, area: p.aim === 'area', aim: null }));
+    bar.append(button(def.name, sub, armed ? 'armed' : '', why, go));
+  }
+}
+// Highlights and the hint for an action being aimed.
+function actionAim(e, hl) {
+  const def = e.actions.find((x) => x.id === mode.id), p = actionProfile(def);
+  if (!p.area) {
+    hl.targets = targetsFor(S, e, { action: def.id }).filter((id) => hostile(S.entities[id], e));
+    return { hint: hl.targets.length ? `${def.name}: tap a target${coverHint(e, hl.targets)}` : `${def.name}: nobody in reach (${p.far} ft)`, go: false };
+  }
+  const aimed = !!mode.aim || p.area.shape === 'emanation';
+  hl.area = aimed ? areaHexes(S, e, { area: p.area }, mode.aim).map(H.key) : [];
+  const caught = aimed ? areaTargets(S, e, def, mode.aim) ?? [] : [];
+  const how = p.area.shape === 'cone' ? `tap a hex to aim the ${p.area.size} ft cone` : `tap where the ${p.area.size} ft ${p.area.shape} goes (within ${p.range} ft)`;
+  return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
 function refresh() {
@@ -243,7 +276,7 @@ function refresh() {
       return mine(S.entities[fx.source]) ? `<button type="button" class="fx" data-fx="${esc(fx.id)}" title="End ${esc(fx.name)}">${label} ✕</button>` : `<span class="fx">${label}</span>`;
     }).join('');
     $('c-res').innerHTML =
-      (myTurn && full ? pip('Action', b.action > 0) + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
+      (myTurn && full ? pip('Action', b.action > 0) + (b.attacks ? pip(`Attacks left ${attacksLeft(b)}`, true) : '') + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
       (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
       Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
       conds.map((c) => `<span>${c}</span>`).join('') + lasting;
@@ -252,7 +285,8 @@ function refresh() {
     if (my && up(e)) {
       if (enc && inFight(S, e.id) && cur !== e.id) bar.innerHTML = `<span class="wait">Waiting for ${esc(name(cur))}…</span>`;
       else {
-        for (const a of e.attacks) {
+        if (e.actions) actionButtons(e, bar);
+        else for (const a of e.attacks) {
           const armed = mode.kind === 'attack' && mode.id === a.id;
           bar.append(button(a.name, `${signed(a.bonus)} · ${a.damage} ${a.dtype}`, armed ? 'armed' : '', blocked(S, e, 'action'),
             () => setMode(armed ? MOVE : { kind: 'attack', id: a.id })));
@@ -294,6 +328,7 @@ function refresh() {
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
         hint = hl.targets.length ? `${a.name}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
+      if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
         if (sp.area) {
@@ -344,12 +379,13 @@ function renderSheet() {
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
     <div class="stats">${abil}</div>
     <p class="note">Saving throws: ${saves}</p>
-    <section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
-      ${e.attacks.map((a) => `<tr><td>${esc(a.name)}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${a.dtype}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`).join('')}</table></section>
+    ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
+      ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
+      ${e.attacks.map((a) => `<tr><td>${esc(a.name)}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${a.dtype}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`).join('')}</table></section>`}
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
       ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${sp.name}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
-    ${Object.keys(e.features).length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
+    ${Object.keys(e.features).length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
@@ -433,6 +469,10 @@ R.onTap = ({ hex, id }) => {
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id }) : setMode(MOVE);
+  if (mode.kind === 'action') {
+    if (mode.area) { mode.aim = hex; return refresh(); }
+    return tapped && tapped.id !== selId ? act({ type: 'act', actor: selId, action: mode.id, target: id }) : setMode(MOVE);
+  }
   if (mode.kind === 'spell') {
     if (SPELLS[mode.id].area) { mode.aim = hex; return refresh(); }
     return tapped ? act({ type: 'cast', actor: selId, spell: mode.id, target: id }) : setMode(MOVE);
@@ -441,6 +481,12 @@ R.onTap = ({ hex, id }) => {
     const myTurn = e && mine(e) && S.encounter && current(S) === e.id;
     if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead) {         // tap an enemy on your turn: attack with whatever reaches
       const d = gap(S, e.pos, tapped.pos) * FT;
+      if (e.actions) {             // a monster: the first of its attacks that reaches, from what a Multiattack left if it did
+        const b = S.encounter.budget;
+        const x = e.actions.map(actionProfile).filter((p) => p.roll && p.roll !== 'save' && p.aim === 'creature' && !actionSpent(e, p) && (!b.attacks || fromPool(b, p.id)) && targetsFor(S, e, { action: p.id }).includes(tapped.id))[0];
+        if (x) return act({ type: 'act', actor: e.id, action: x.id, target: tapped.id });
+        return toast(`${tapped.name} is ${d} ft away. Move closer, or pick an action.`);
+      }
       const a = e.attacks.find((x) => (x.type === 'melee' ? d <= x.reach : d <= x.range[1] && d > 5)) || e.attacks.find((x) => x.type === 'ranged' && d <= x.range[1]);
       if (a) return act({ type: 'attack', actor: e.id, target: tapped.id, attack: a.id });
       return toast(`${tapped.name} is ${d} ft away. Move closer, or pick a spell.`);
@@ -456,12 +502,12 @@ R.onTap = ({ hex, id }) => {
     act({ type: 'move', actor: e.id, to: hex });
   }
 };
-R.onHover = (hex) => { if (mode.kind === 'spell' && SPELLS[mode.id].area && hex && !mode.pinned && H.key(hex) !== (mode.aim && H.key(mode.aim))) { mode.aim = hex; refresh(); } };
+R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && H.key(hex) !== (mode.aim && H.key(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
 $('btn-end').onclick = () => act({ type: 'endTurn', actor: selId });
 $('hint-cancel').onclick = () => setMode(MOVE);
-$('hint-go').onclick = () => { act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim }); mode = MOVE; };
+$('hint-go').onclick = () => { act(mode.kind === 'action' ? { type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined } : { type: 'cast', actor: selId, spell: mode.id, hex: mode.aim }); mode = MOVE; };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 const tracker = createTracker({ root: $('tracker'), button: $('btn-tracker'), dock: $('dock'), state: () => S, isDM, mine, act, toast, pick: (id) => { select(id); R.focus(id); refresh(); } });
@@ -538,7 +584,7 @@ addEventListener('keydown', (ev) => {
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, act, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, act, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
@@ -549,7 +595,10 @@ function start(transport) {
   T = transport; S = null;
   lobbyBusy(!T.solo);
   T.on.update = onUpdate;
-  T.on.error = (msg, expired) => { if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
+  T.on.error = (msg, expired) => {
+    // The engine refused a step the monster AI chose: end its turn rather than ask again.
+    if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
+    if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => S && showUndo();
   T.on.history = (msg) => {
