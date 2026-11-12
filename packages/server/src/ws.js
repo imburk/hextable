@@ -31,22 +31,40 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
       : (() => { const h = Buffer.alloc(10); h[0] = 0x80 | opcode; h[1] = 127; h.writeBigUInt64BE(BigInt(n), 2); return h; })();
     return Buffer.concat([head, payload]);
   };
+  let draining = false;
   const shut = () => {
     if (!conn.open) return;
     conn.open = false;
     socket.destroy();
     conn.onclose?.();
   };
+  // Say goodbye without losing the goodbye. Destroying a socket that still has
+  // unread data makes the kernel send a reset, and a client that is mid-write
+  // of a huge frame then sees 1006 and never reads the close frame. So: write
+  // the close frame, end our side (FIN, not RST), keep reading and discarding
+  // whatever the client is still sending, and destroy only once it hangs up or
+  // after a short grace period.
+  const farewell = (closeFrame) => {
+    if (!conn.open) return;
+    conn.open = false;
+    draining = true;
+    buf = Buffer.alloc(0); parts = []; partsSize = 0;
+    socket.end(closeFrame);
+    const timer = setTimeout(() => socket.destroy(), 2000);
+    timer.unref?.();
+    socket.once("close", () => clearTimeout(timer));
+    conn.onclose?.();
+  };
   conn.send = (text) => { if (conn.open) socket.write(frame(0x1, Buffer.from(String(text)))); };
   // Too large: say so with the standard close code (1009) rather than just dropping the line.
   const tooBig = () => {
     if (!conn.open) return;
-    socket.write(frame(0x8, Buffer.from([0x03, 0xf1])));
-    shut();
+    farewell(frame(0x8, Buffer.from([0x03, 0xf1])));
   };
-  conn.close = () => { if (conn.open) { socket.write(frame(0x8, Buffer.alloc(0))); shut(); } };
+  conn.close = () => { farewell(frame(0x8, Buffer.alloc(0))); };
 
   socket.on("data", (chunk) => {
+    if (draining) return;                                      // discard until the client hangs up
     buf = Buffer.concat([buf, chunk]);
     for (;;) {
       if (buf.length < 2) return;
@@ -80,6 +98,6 @@ export function acceptWebSocket(req, socket, { maxPayload = 256 * 1024 } = {}) {
     }
   });
   socket.on("close", shut);
-  socket.on("error", shut);
+  socket.on("error", () => { shut(); socket.destroy(); });
   return conn;
 }
