@@ -543,6 +543,27 @@ entry names what was added to `schema.js` and what the engine does with it.
   table once. The client adds a target for each tap until the count is reached, with a Cast
   button to go with fewer.
 
+- **Dice in a modifier** (S1). An `add` modifier's `value` may be dice, `"1d4"` or `"-1d4"`.
+  `modifiers()` never rolls (asking what applies must change nothing, and the client asks
+  too); it lists them in `dice`, and the engine rolls them each time it makes the roll they
+  apply to (attack rolls, saving throws, ability checks, death saves). The roll's event gets
+  `extra: [{ name, dice, roll }]`. A passive score is not a roll: dice do not count there.
+  Players are sent `extra` only on rolls of their own creatures (the view's allow lists).
+  A new hook, `save`, applies to every saving throw (Bless, Bane), death saves included.
+  Death saves now read `save.death` and `save` (Exhaustion's penalty, Foresight).
+- **Scope, and a choice made in casting** (S7, S5). A modifier's `scope: { skill }` or
+  `{ ability }` limits it to checks (or saves) with that skill or ability. A spell's
+  `choice: { of: 'skill' | 'ability' | 'damageType', from? }` is made when it is cast: the
+  `cast` action carries `choice`, which the engine checks against the list and puts wherever
+  the steps say `"chosen"` (in `scope.skill`, `scope.ability` or a modifier's `types`).
+  Guidance, Enhance Ability, Resistance, Protection from Energy. A chosen damage type in a
+  `damage` step is not built yet. The client shows the choices as a menu beside the hint.
+- **Adjusting damage taken.** An `add` on `damage.taken` (a number or dice, with `types`)
+  changes the damage of a part of those types before Resistance and Vulnerability (SRD order
+  of application), once per instance of damage; `once: 'turn'` limits it to once a turn,
+  recorded in the turn's flags (the Resistance cantrip). The damage event says so in
+  `adjusted`, which players are not sent.
+
 ### A class
 
 ```js

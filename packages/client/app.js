@@ -4,7 +4,7 @@
 import * as H from './shared/hex.js';
 import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
-import { SKILLS } from './shared/content/schema.js';
+import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
 import { aiStep } from './shared/ai.js';
@@ -216,6 +216,26 @@ function actionButtons(e, bar) {
     bar.append(button(def.name, sub, armed ? 'armed' : '', why, go));
   }
 }
+// A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
+const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+const choicesOf = (sp) => (sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null);
+function chosen(sp) {
+  const list = choicesOf(sp);
+  if (!list) return {};
+  if (!list.includes(mode.choice)) mode.choice = list[0];
+  return { choice: mode.choice };
+}
+function showPick() {
+  const sel = $('hint-pick'), sp = mode.kind === 'spell' ? SPELLS[mode.id] : null, list = choicesOf(sp);
+  sel.hidden = !list || $('hint').hidden;
+  if (sel.hidden) return;
+  const key = `${sp.id}|${list.join()}`;
+  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = list.map((v) => `<option value="${v}">${esc(choiceLabel(sp.def.choice.of, v))}</option>`).join(''); }
+  if (!list.includes(mode.choice)) mode.choice = list[0];
+  sel.value = mode.choice;
+}
+$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
+
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
   const what = `${area.size} ft ${area.shape}${area.shape === 'line' && area.width > 5 ? ` (${area.width} ft wide)` : ''}`;
@@ -314,7 +334,7 @@ function refresh() {
             (sp.level > 0 && enc?.flags.slot && 'Only one spell slot can be spent per turn.') || '';
           const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
           // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
-          const pick = () => (sp.aim === 'self' || sp.aim === 'none' ? act({ type: 'cast', actor: e.id, spell: id }) : setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }));
+          const pick = () => (sp.aim === 'self' || sp.aim === 'none' ? act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) }) : setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }));
           bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
             pick));
         }
@@ -389,6 +409,7 @@ function refresh() {
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  showPick();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   R.setHighlights(ED.on ? ED.marks() : hl);
   R.inset = $('dock').offsetHeight * 0.85;
@@ -541,11 +562,11 @@ R.onTap = ({ hex, id }) => {
     if (!tapped) return setMode(MOVE);
     if (!targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = targetCount(sp.def, e.level);
-    if (most <= 1) return act({ type: 'cast', actor: selId, spell: mode.id, target: id });
+    if (most <= 1) return act({ type: 'cast', actor: selId, spell: mode.id, target: id, ...chosen(sp) });
     const picked = mode.picked ?? (mode.picked = []);
     if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
     else picked.push(id);
-    if (picked.length >= most) return act({ type: 'cast', actor: selId, spell: mode.id, targets: picked });
+    if (picked.length >= most) return act({ type: 'cast', actor: selId, spell: mode.id, targets: picked, ...chosen(sp) });
     return refresh();
   }
   if (tapped) {
@@ -580,8 +601,8 @@ $('btn-end').onclick = () => act({ type: 'endTurn', actor: selId });
 $('hint-cancel').onclick = () => setMode(MOVE);
 $('hint-go').onclick = () => {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
-  else if (SPELLS[mode.id].area) act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim, ...(SPELLS[mode.id].area.choose ? { targets: mode.picked ?? [] } : {}) });
-  else act({ type: 'cast', actor: selId, spell: mode.id, targets: mode.picked ?? [] });
+  else if (SPELLS[mode.id].area) act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim, ...(SPELLS[mode.id].area.choose ? { targets: mode.picked ?? [] } : {}), ...chosen(SPELLS[mode.id]) });
+  else act({ type: 'cast', actor: selId, spell: mode.id, targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) });
   mode = MOVE;
 };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);

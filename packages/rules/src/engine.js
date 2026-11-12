@@ -9,7 +9,7 @@
 import * as H from './hex.js';
 import { die, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
-import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
+import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
 import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount } from './effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
@@ -460,15 +460,23 @@ function checkEnd(s, ev) {
   if (!foes || !party) endEncounter(s, ev, !foes ? 'victory' : 'defeat');
 }
 
+// A Death Saving Throw: a d20, with what modifiers add to saves (`save.death`, and `save` for any
+// saving throw, such as Bless). A 1 or a 20 on the die counts as itself whatever is added.
 function deathSave(s, e, ev) {
-  const d = die(s, 20);
+  const m = modifiers(s, e, 'save.death', { target: e }, ''), all = modifiers(s, e, 'save', { target: e }, '');
+  const adv = [...m.advantage, ...all.advantage], dis = [...m.disadvantage, ...all.disadvantage];
+  const mode = adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal';
+  const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
+  const d = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
+  const more = rollDice(s, [...m.dice, ...all.dice]), total = d + m.add + all.add + more.total;
   if (d === 20) { e.hp = 1; delete e.cond.unconscious; e.death = { s: 0, f: 0 }; }
   else if (d === 1) e.death.f += 2;
-  else if (d >= 10) e.death.s++;
+  else if (total >= 10) e.death.s++;
   else e.death.f++;
   if (e.death.f >= 3) e.dead = true;
   else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
-  ev.push({ type: 'deathSave', id: e.id, roll: d, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
+  ev.push({ type: 'deathSave', id: e.id, roll: d, ...(total !== d ? { total } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode }), ...(more.extra.length ? { extra: more.extra } : {}),
+    s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
 
 function advanceTurn(s, ev) {
@@ -502,6 +510,19 @@ function advanceTurn(s, ev) {
 
 // ---------- damage, healing, attacks ----------
 
+// Roll the dice that modifiers add to a roll (Bless's 1d4, Bane's -1d4). Returns the total and,
+// for the roll's event, what was rolled for what: [{ name, dice, roll }].
+function rollDice(s, list) {
+  let total = 0;
+  const extra = [];
+  for (const d of list) {
+    const neg = d.dice.startsWith('-'), r = roll(s, d.dice.replace(/^[+-]/, '')).total * (neg ? -1 : 1);
+    total += r;
+    extra.push({ name: d.name, dice: d.dice, roll: r });
+  }
+  return { total, extra };
+}
+
 // `amount` is a number of `dtype` damage, or a list of { amount, type } parts that land together
 // (one hit that does slashing and fire): each part is resisted on its own and logged on its own,
 // but the creature takes them as one instance of damage, so a dying creature fails one death
@@ -510,18 +531,31 @@ function damage(s, t, amount, dtype, ev, { crit = false } = {}) {
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const dying = t.hp <= 0, before = t.hp;
+  // Amounts added to or taken off the damage (the Resistance cantrip's 1d4) come first, then
+  // Resistance and Vulnerability (SRD "Order of Application"). Each applies once to the
+  // instance, on its first part of a type it names; one marked `once` at most once a turn.
+  const adjust = parts.map(() => 0), noted = parts.map(() => []);
+  for (const x of m.taken) {
+    const i = parts.findIndex((p) => p.amount > 0 && (!x.types || x.types.includes(p.type)));
+    if (i < 0) continue;
+    const flag = `once:${x.key}`;
+    if (x.once && s.encounter?.flags[flag]) continue;
+    if (x.once && s.encounter) s.encounter.flags[flag] = true;
+    const r = typeof x.value === 'string' ? rollDice(s, [{ dice: x.value, name: x.name }]).total : x.value;
+    adjust[i] += r; noted[i].push({ name: x.name, ...(typeof x.value === 'string' ? { dice: x.value } : {}), roll: r });
+  }
   let total = 0;
-  for (const p of parts) {
+  for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
     const resisted = applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
-    let n = p.amount;
+    let n = Math.max(0, p.amount + adjust[pi]);
     if (applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
     const note = n === 0 && p.amount > 0 ? 'immune' : resisted && vulnerable && p.amount > 0 ? 'resisted and vulnerable' : n < p.amount ? 'resisted' : n > p.amount ? 'vulnerable' : undefined;
     total += n;
     if (!dying) t.hp = Math.max(0, t.hp - n);
-    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note });
+    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}) });
   }
   if (dying) {                                            // already dying
     if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
@@ -564,21 +598,22 @@ export function rollMode(s, e, t, atk) {
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
   // Only an enemy who can see the attacker and is not Incapacitated counts. Until there is sight, "can see" is "not Blinded"; sight will refine it.
   if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && !o.cond.blinded && apart(s, o, e) <= 1 && unblocked(s, o, e))) dis.push('enemy within 5 ft');
-  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, crit: theirs.crit };
+  return { mode: adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal', adv, dis, add: mine.add, dice: [...mine.dice, ...theirs.dice], crit: theirs.crit };
 }
 
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 function rollToHit(s, e, t, atk, ev, extra = {}) {
-  const { mode, adv, dis, add, crit: sureCrit } = rollMode(s, e, t, atk);
+  const { mode, adv, dis, add, dice, crit: sureCrit } = rollMode(s, e, t, atk);
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
-  const bonus = atk.bonus + add;
+  const more = rollDice(s, dice);
+  const bonus = atk.bonus + add + more.total;
   // Cover adds to Armor Class: 2 for half, 5 for three-quarters.
   const cover = e.object ? 'none' : coverOf(s, e, t, living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
   const hit = nat !== 1 && (nat === 20 || nat + bonus >= ac);
   const crit = hit && (nat === 20 || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...extra });
+    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}), ...extra });
   return { hit, crit, mode };
 }
 
@@ -640,12 +675,14 @@ function modifier(s, t, mod_, ev, f) {
 // `extra` names a second hook to gather modifiers from, such as 'concentration'.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
 function savingThrow(s, t, abil, dc, extra = null, from = null) {
-  const m = modifiers(s, t, `save.${abil}`, { target: t }, '');
+  const sit = { target: t, ability: abil };
+  const m = modifiers(s, t, `save.${abil}`, sit, '');
   const cover = abil === 'dex' && from && !from.object ? coverOf(s, from, t, living(s)) : 'none';
   m.add += COVER[cover] ?? 0;
-  if (extra) {
-    const x = modifiers(s, t, extra, { target: t }, '');
-    m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage);
+  // `save` applies to every saving throw (Bless, Bane); `extra` names one more hook, such as 'concentration'.
+  for (const hook of ['save', ...(extra ? [extra] : [])]) {
+    const x = modifiers(s, t, hook, sit, '');
+    m.add += x.add; m.advantage.push(...x.advantage); m.disadvantage.push(...x.disadvantage); m.dice.push(...x.dice);
     m.autoFail ||= x.autoFail; m.autoSucceed ||= x.autoSucceed;
   }
   if (m.autoFail) return { roll: 0, total: 0, success: false };
@@ -653,8 +690,9 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
-  const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add;
-  return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
+  const more = rollDice(s, m.dice);
+  const total = r + mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0) + m.add + more.total;
+  return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}) };
 }
 
 // ---------- ability checks ----------
@@ -668,18 +706,21 @@ export function checkBonus(e, { ability, skill, tool }) {
   return b;
 }
 function abilityCheck(s, e, what) {
-  const m = modifiers(s, e, 'check', { target: e }, ''), bonus = checkBonus(e, what) + m.add;
+  const ability = what.ability ?? SKILLS[what.skill];
+  const m = modifiers(s, e, 'check', { target: e, ability, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const r = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
-  return { roll: r, total: r + bonus, bonus, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }) };
+  const more = rollDice(s, m.dice);
+  return { roll: r, total: r + bonus + more.total, bonus, ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}) };
 }
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
+// Dice from modifiers (Guidance) are not rolled for a passive score: it is not a roll.
 export function passive(s, e, skill) {
-  const m = modifiers(s, e, 'check', { target: e }, '');
+  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill] }, '');
   return 10 + checkBonus(e, { skill }) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
 }
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -803,6 +844,16 @@ function creatures(s, e, name, { range, harmful, repeat, within, most, spell = f
   }
   if (within) for (const t of out.slice(1)) apart(s, out[0], t) * FT <= within || fail(`${t.name} is more than ${within} ft from ${out[0].name}.`);
   return out;
+}
+// Put the caster's choice where a spell's steps say "chosen".
+function chooseIn(steps, of, value) {
+  const visit = (list) => { for (const st of list) {
+    const m = st.modifier;
+    if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && k === of) m.scope[k] = value;
+    if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
+    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) visit(st[b]);
+  } };
+  visit(steps);
 }
 // Of the creatures an area catches, those the caster picks (an area with `choose`): `ids`, or all
 // of them if that is no more than it may pick.
@@ -1222,6 +1273,9 @@ const handlers = {
     if (sp.time === 'reaction') fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
     if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
 
+    // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
+    const pick = sp.def.choice;
+    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
     const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
     const most = targetCount(sp.def, e.level, Math.max(slot, sp.level));
@@ -1253,7 +1307,8 @@ const handlers = {
 
     // What it does: run its effect steps.
     const st = spellStats(e), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
-    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}) });
+    if (pick) chooseIn(steps, pick.of, a.choice);
+    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}) });
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;

@@ -275,9 +275,10 @@ export const spells3 = [
     time: "action", range: "touch", components: ["v", "s"],
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Protection from Energy: for up to an hour (Concentration) a willing creature the caster touches has Resistance to one damage type of the caster's choice: Acid, Cold, Fire, Lightning or Thunder. A modifier can give Resistance to a fixed type, but the type here is a choice made at casting, so the DM applies the chosen one."}],
-    tier: "manual", checked: true,
-    text: "A willing touched creature has Resistance to one damage type chosen from Acid, Cold, Fire, Lightning or Thunder for up to an hour of Concentration.",
+    choice: {"of": "damageType", "from": ["acid", "cold", "fire", "lightning", "thunder"]},
+    effects: [{"modifier": {"on": "damage.taken", "op": "resist", "types": ["chosen"]}}],
+    tier: "auto", checked: true,
+    text: "A willing touched creature has Resistance to one damage type the caster chooses from Acid, Cold, Fire, Lightning or Thunder, for up to an hour of Concentration.",
   },
   {
     id: "remove-curse", name: "Remove Curse", source: "SRD 5.2.1",
