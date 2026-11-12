@@ -230,7 +230,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       },
       history(msg) {
         if (!me.approved) return error("Waiting for the DM to let you in.");
-        conn.send({ t: "history", entries: history(table, me, msg) });
+        // The answer names the types asked for, so a client with several requests out can tell them apart.
+        const types = Array.isArray(msg.types) ? msg.types.filter((x) => typeof x === "string").slice(0, 20) : undefined;
+        conn.send({ t: "history", entries: history(table, me, msg), ...(types && { types }) });
       },
       act(msg) {
         if (!me.approved) return error("Waiting for the DM to let you in.");
@@ -240,6 +242,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         if (Buffer.byteLength(JSON.stringify(action)) > cap) return error("That action is too large.");
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
+        // Out of character, a player's line is signed with the name they joined by, never one they send.
+        if (action.type === "say") { if (me.role === "dm") delete action.userName; else action.userName = me.name; }
         // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
         if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;

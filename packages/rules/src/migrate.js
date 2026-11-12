@@ -43,6 +43,8 @@ export function migrate(state) {
   if (state.settings) state.settings.unseenTurns ??= 'say';
   // Handouts (no version of their own: a state without them simply has none yet).
   if (!Array.isArray(state.handouts)) state.handouts = [];
+  // Scenes (no version of their own either): none going on.
+  if (state.scene === undefined) state.scene = null;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

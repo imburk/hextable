@@ -17,6 +17,7 @@ import { localTransport, serverTransport, savedSession, prefs, downloadTable } f
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
+import { initScenes } from './scenes.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -133,7 +134,7 @@ function describe(ev) {
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
-    default: return HO.describe(ev);       // handouts and private notes
+    default: return HO.describe(ev) ?? SC.describe(ev);       // handouts and private notes; scenes
   }
 }
 function floaters(events) {
@@ -159,10 +160,11 @@ function onUpdate(state, events, fresh) {
   const first = !S || fresh;
   S = state;
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false;
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
   QE.events(events);
+  SC.events(events);
   for (const ev of events) {
     const d = describe(ev); if (d) log.push(d);
     if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
@@ -433,6 +435,7 @@ function refresh() {
   tracker.render();
   if (isDM()) renderDM();
   HO.refresh();
+  SC.refresh();
 }
 
 function renderLog() {
@@ -716,6 +719,7 @@ addEventListener('keydown', (ev) => {
 
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
+const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, openPanel, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: the scene ends when it starts.', true); } });
 
 // For the browser console, tests and future automation.
 window.hextable = { R, ED, act, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
@@ -742,7 +746,11 @@ function start(transport) {
       seeded = true;
       const lines = msg.entries.map(describe).filter(Boolean);
       log.unshift(...lines);
-    } else chron = msg.entries.filter((e) => e.type === 'chronicle');
+    } else {
+      // An answer says which types it was asked for (older servers do not: those are chronicle requests).
+      if (!msg.types || msg.types.includes('chronicle')) chron = msg.entries.filter((e) => e.type === 'chronicle');
+      if (msg.types?.includes('say')) SC.history(msg.entries.filter((e) => e.type === 'say'));
+    }
     refresh();
   };
   T.on.welcome = (you) => { $('lobby').hidden = you.approved; if (!you.approved) $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; };

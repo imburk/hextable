@@ -247,6 +247,43 @@ test("a level's background is fetched by the players only when that level is sen
   for (const c of [dm, pat]) c.ws.close();
 });
 
+test("a scene's picture and its NPCs' portraits are fetched by players while the scene shows them, and never the DM's notes", async () => {
+  const { port } = await start();
+  const { dm, pat, sam, code } = await table(port);
+  const ids = [];
+  for (let i = 0; i < 3; i++) ids.push((await (await upload(port, code, dm.token, PNG)).json()).asset.id);
+  const [picture, face, unused] = ids, path = (id) => `/assets/${code}/${id}`;
+  for (const id of ids) assert.equal((await get(port, path(id), pat.token)).status, 404);
+  assert.equal((await act(dm, { type: "scene", scene: { title: "The study", image: picture } })).t, "update");
+  assert.equal((await act(dm, { type: "sceneNpc", npc: { name: "Ostrin", portrait: face, notes: "PRIVATE-zq he lies" } })).t, "update");
+  for (const p of [pat, sam]) {
+    assert.equal((await get(port, path(picture), p.token)).status, 200);
+    assert.equal((await get(port, path(face), p.token)).status, 200);
+    assert.equal((await get(port, path(unused), p.token)).status, 404, "a file nothing they were sent names");
+  }
+  // Their words go to everyone; a player's line out of character is signed with the name they joined by.
+  const n = sam.got.length;
+  await act(pat, { type: "say", as: null, text: "brb", userName: "Ostrin" });
+  const line = await until(() => sam.got.slice(n).find((m) => m.t === "update" && m.events?.some((e) => e.type === "say")));
+  assert.equal(line.events.find((e) => e.type === "say").name, "Pat");
+  assert.match((await act(pat, { type: "say", as: "npc1", text: "I am the mayor" })).error, /your own character/);
+  // Taken away: the portrait with its NPC, the picture with the scene.
+  await act(dm, { type: "sceneNpc", npc: { id: "npc1" }, remove: true });
+  assert.equal((await get(port, path(face), pat.token)).status, 404);
+  assert.equal((await get(port, path(picture), pat.token)).status, 200);
+  await act(dm, { type: "endScene" });
+  assert.equal((await get(port, path(picture), pat.token)).status, 404);
+  await new Promise((r) => setTimeout(r, 100));
+  for (const p of [pat, sam]) {
+    assert.ok(!p.got.some((m) => JSON.stringify(m).includes("PRIVATE-zq")));
+    p.send({ t: "history", limit: 200 });
+    const h = await until(() => p.got.findLast((m) => m.t === "history" && !m.recent));
+    assert.ok(!JSON.stringify(h).includes("PRIVATE-zq"));
+    assert.ok(h.entries.some((e) => e.type === "say" && e.text === "brb"), "the transcript is in the record players read");
+  }
+  for (const c of [dm, pat, sam]) c.ws.close();
+});
+
 test("notes: the DM's goes only to a player at this table, and reaches no one else", async () => {
   const { port } = await start();
   const { dm, pat, sam } = await table(port);

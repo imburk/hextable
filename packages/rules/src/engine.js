@@ -17,6 +17,7 @@ import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
+import { fightEndsScene, sceneActions } from './scenes.js';
 import { entered, flushZones, snapshot, turnInZones } from './zones.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
@@ -2035,6 +2036,8 @@ const handlers = {
   },
   // Handouts and notes to one player: handout, showHandout, hideHandout, removeHandout, note (handouts.js).
   ...handoutActions(fail),
+  // Scenes: scene, endScene, sceneNpc, say, askCheck, sceneChronicle (scenes.js).
+  ...sceneActions(fail),
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
@@ -2089,6 +2092,7 @@ export function apply(s, action, ctx = { role: 'dm' }) {
     throw err;
   }
   try { gravity(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
+  fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
   // The record keeps, with each entry, the creatures the party did not know of when it happened,
   // so that reading the record later never tells players about what they could not see then.
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
