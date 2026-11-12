@@ -84,6 +84,12 @@ same way as live events. On joining or rejoining, each client is sent its last
   be up to 1 MiB. A player sending those is held to 4 KB. WebSocket frames are capped to match:
   16 KB until someone is seated as the DM, about 1 MiB after. A larger frame closes the
   connection with code 1009.
+- **Idle tables.** A table nobody has sat down at, acted in or left for 30 days stops counting
+  against the cap of 500 tables, so abandoned tables cannot lock out new ones. It is not
+  deleted: its DM or players can still resume it, and it counts again from then. The stamp
+  (`active`, milliseconds) is saved with the table; tables saved before it existed start the
+  clock when the server loads them.
+
 ## Exporting a table
 
 Tables live on one disk, so the DM can keep their own copy. **Export table** in the DM panel

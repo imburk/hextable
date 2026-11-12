@@ -1,6 +1,6 @@
 // Spells from the SRD 5.2.1. Data only. Format: docs/specs/rules-expansion.md.
 // `text` is a plain-words description of what the spell does, written for this project.
-// `checked: false` means nobody has yet compared the entry against the SRD text.
+// `checked: true` means every field was compared with the SRD 5.2.1 text; `false` means something could not be confirmed.
 export const spells = [
   {
     id: "fire-bolt", name: "Fire Bolt", source: "SRD 5.2.1",
@@ -10,7 +10,7 @@ export const spells = [
     target: { creature: { count: 1 } },
     effects: [{ attack: "ranged", kind: "spell", onHit: [{ damage: "1d10", type: "fire" }] }],
     higher: { level: { 5: "2d10", 11: "3d10", 17: "4d10" } },
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "A ranged spell attack against one target in range. On a hit it deals fire damage, which grows at higher character levels.",
   },
   {
@@ -21,7 +21,7 @@ export const spells = [
     target: { creature: { count: 1 } },
     effects: [{ save: "dex", half: false, onFail: [{ damage: "1d8", type: "radiant" }] }],
     higher: { level: { 5: "2d8", 11: "3d8", 17: "4d8" } },
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "One creature in range makes a Dexterity save or takes radiant damage, which grows at higher character levels.",
   },
   {
@@ -32,7 +32,7 @@ export const spells = [
     target: { creature: { count: 3 } },
     effects: [{ damage: "1d4+1", type: "force", times: 3 }],
     higher: { slot: { times: 1 } },
-    tier: "assist", checked: false,
+    tier: "assist", checked: true,
     text: "Three darts of force that always hit. They may be split between targets; the engine sends all of them at one target, so the DM splits them if wanted.",
   },
   {
@@ -43,7 +43,7 @@ export const spells = [
     target: { area: { shape: "cone", size: 15 } },
     effects: [{ save: "dex", half: true, onFail: [{ damage: "3d6", type: "fire" }] }],
     higher: { slot: { damage: "1d6" } },
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "Each creature in a 15-foot cone makes a Dexterity save, taking fire damage on a failure or half as much on a success.",
   },
   {
@@ -54,7 +54,7 @@ export const spells = [
     target: { creature: { count: 1 } },
     effects: [{ heal: "2d8", addMod: true }],
     higher: { slot: { heal: "2d8" } },
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "A creature the caster touches regains hit points equal to the roll plus the caster's spellcasting ability modifier.",
   },
   {
@@ -65,7 +65,7 @@ export const spells = [
     target: { creature: { count: 1 } },
     effects: [{ heal: "2d4", addMod: true }],
     higher: { slot: { heal: "2d4" } },
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "A creature the caster can see in range regains hit points equal to the roll plus the caster's spellcasting ability modifier.",
   },
   {
@@ -75,7 +75,7 @@ export const spells = [
     duration: "10 minutes", concentration: true, ritual: false,
     target: { creature: { count: 1 } },
     effects: [{ modifier: { on: "ac", op: "add", value: 2 } }],
-    tier: "auto", checked: false,
+    tier: "auto", checked: true,
     text: "A creature in range gains +2 to Armor Class for as long as the caster concentrates, up to 10 minutes.",
   },
 ];

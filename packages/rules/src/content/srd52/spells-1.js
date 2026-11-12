@@ -2,7 +2,8 @@
 // Magic Missile, Burning Hands, Cure Wounds, Healing Word and Shield of Faith are the other
 // 1st-level SRD spells; they live in spells.js.
 // `text` is a plain-words description of what the spell does, written for this project.
-// Source for every entry: https://www.fantasygrounds.com/library/5e/dd-srd-5-2-1/spells (an SRD 5.2.1 mirror).
+// Every entry was compared field by field with the SRD 5.2.1 text. Command stays `checked: false`:
+// the on-disk SRD text has lost its Components and Duration lines, so those two fields are unconfirmed.
 // `manual` steps hand the DM what the closed vocabulary cannot say (see schema.js).
 export const spells1 = [
   {
@@ -82,7 +83,7 @@ export const spells1 = [
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
     effects: [{"manual": "Command: a creature the caster can see makes a Wisdom save. On a failure, on its next turn it obeys a one-word command: Approach (move toward the caster by the shortest route), Drop (drop what it holds, then its turn ends), Flee (spend its turn moving away), Grovel (fall Prone, then its turn ends) or Halt (do not move or take actions). One more creature per slot level above 1. The DM runs the save and the obedience."}],
-    tier: "manual", checked: true,
+    tier: "manual", checked: false,
     text: "One creature makes a Wisdom save or follows a one-word command (approach, drop, flee, grovel or halt) on its next turn.",
   },
   {
@@ -242,7 +243,7 @@ export const spells1 = [
     time: "hour", range: 10, components: ["v", "s", "m"],
     duration: "instant", concentration: false, ritual: true,
     target: {"self": true},
-    effects: [{"manual": "Find Familiar: the caster gains a familiar in an animal form the caster chooses, a spirit companion that, can speak telepathically within 100 feet, and can deliver the caster's touch spells using its Reaction. The DM adds and runs the familiar."}],
+    effects: [{"manual": "Find Familiar: the caster gains a familiar in an animal form the caster chooses, a spirit companion that can communicate telepathically within 100 feet and can deliver the caster's touch spells using its Reaction. The DM adds and runs the familiar."}],
     tier: "manual", checked: true,
     text: "Summons a spirit companion in animal form that can deliver the caster's touch spells. Takes an hour to cast; it can be a ritual.",
   },
@@ -324,9 +325,9 @@ export const spells1 = [
     time: "bonus", range: 90, components: ["v", "s", "m"],
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Hex: the caster curses a creature in range. Until the spell ends, the caster's attack hits against it deal an extra 1d6 Necrotic damage, and the target has Disadvantage on ability checks made with one ability the caster chose. The duration is longer with higher slots (4 hours at slot 2, 8 hours at slot 3 or 4, 24 hours at slot 5 or higher). The DM applies the damage and the penalty."}],
+    effects: [{"manual": "Hex: the caster curses a creature in range. Until the spell ends, the caster's hits with an attack roll against it deal an extra 1d6 Necrotic damage, and the target has Disadvantage on ability checks made with one ability the caster chose. The duration is longer with higher slots (4 hours at slot 2, 8 hours at slot 3 or 4, 24 hours at slot 5 or higher). The DM applies the damage and the penalty."}],
     tier: "manual", checked: true,
-    text: "The caster curses a creature: attacks against it deal extra necrotic damage, and it has disadvantage on checks with one chosen ability.",
+    text: "The caster curses a creature: the caster's attack hits against it deal extra necrotic damage, and it has disadvantage on checks with one chosen ability.",
   },
   {
     id: "hideous-laughter", name: "Hideous Laughter", source: "SRD 5.2.1",
@@ -344,9 +345,9 @@ export const spells1 = [
     time: "bonus", range: 90, components: ["v"],
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Hunter's Mark: the caster marks a creature in range. Until the spell ends, the caster's weapon hits against it deal an extra 1d6 Force damage, and the caster has Advantage on Wisdom (Perception or Survival) checks to find it. If the target drops to 0 Hit Points, the caster can move the mark to another creature as a Bonus Action. The duration is longer with higher slots (8 hours at slot 3 or 4, 24 hours at slot 5 or higher). The DM applies it."}],
+    effects: [{"manual": "Hunter's Mark: the caster marks a creature in range. Until the spell ends, the caster's hits with an attack roll against it deal an extra 1d6 Force damage, and the caster has Advantage on Wisdom (Perception or Survival) checks to find it. If the target drops to 0 Hit Points, the caster can move the mark to another creature as a Bonus Action. The duration is longer with higher slots (8 hours at slot 3 or 4, 24 hours at slot 5 or higher). The DM applies it."}],
     tier: "manual", checked: true,
-    text: "The caster marks a creature: weapon hits against it deal extra force damage, and the caster tracks it easily. The mark can move when the target drops.",
+    text: "The caster marks a creature: attack hits against it deal extra force damage, and the caster tracks it easily. The mark can move when the target drops.",
   },
   {
     id: "ice-knife", name: "Ice Knife", source: "SRD 5.2.1",
@@ -467,7 +468,7 @@ export const spells1 = [
     duration: "1 minute", concentration: false, ritual: false,
     target: {"self": true},
     effects: [{"manual": "Searing Smite: cast right after the caster hits with a Melee weapon or an Unarmed Strike. The hit deals an extra 1d6 Fire damage, and for 1 minute the target takes 1d6 Fire damage at the start of each of its turns and then makes a Constitution save, ending the spell on a success. Each slot level above 1 adds 1d6 to all of the damage. The DM runs it."}],
-    tier: "manual", checked: false,
+    tier: "manual", checked: true,
     text: "After a melee hit, the target burns for extra fire damage each turn until it makes a Constitution save.",
   },
   {
@@ -477,8 +478,8 @@ export const spells1 = [
     duration: "1 round", concentration: false, ritual: false,
     target: {"self": true},
     effects: [{"modifier": {"on": "ac", "op": "add", "value": 5}}],
-    tier: "assist", checked: false,
-    text: "Cast as a reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the triggering attack. The engine does not check the trigger or undo the attack that already hit, and the rest of the text on what happens to Magic Missile is not readable in the source consulted, so the DM handles both.",
+    tier: "assist", checked: true,
+    text: "Cast as a reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the triggering attack. The engine does not check the trigger or undo the attack that already hit, and the caster takes no damage from Magic Missile; the DM handles both of those.",
   },
   {
     id: "silent-image", name: "Silent Image", source: "SRD 5.2.1",
@@ -524,7 +525,7 @@ export const spells1 = [
   {
     id: "unseen-servant", name: "Unseen Servant", source: "SRD 5.2.1",
     level: 1, school: "conjuration", classes: ["bard", "warlock", "wizard"],
-    time: "action", range: 60, components: ["v", "s"],
+    time: "action", range: 60, components: ["v", "s", "m"],
     duration: "1 hour", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Unseen Servant: an Invisible, mindless, shapeless Medium force appears in range for 1 hour. It has AC 10, 1 Hit Point and Strength 2, and cannot attack. As a Bonus Action once per turn the caster can mentally command it to move up to 15 feet and interact with an object, doing simple tasks. The spell ends if it drops to 0 Hit Points or if a command would take it more than 60 feet from the caster. The DM runs the servant."}],

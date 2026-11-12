@@ -1,7 +1,7 @@
 // Cantrips (level 0) from the SRD 5.2.1. Data only. Format: docs/specs/rules-expansion.md.
 // Fire Bolt and Sacred Flame are the two other SRD cantrips; they live in spells.js.
 // `text` is a plain-words description of what the spell does, written for this project.
-// Source for every entry: https://www.fantasygrounds.com/library/5e/dd-srd-5-2-1/spells (an SRD 5.2.1 mirror).
+// Every entry was compared field by field with the SRD 5.2.1 text (Spell Descriptions).
 // `manual` steps hand the DM what the closed vocabulary cannot say (see schema.js).
 export const spells0 = [
   {
