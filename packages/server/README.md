@@ -39,11 +39,11 @@ JSON messages over the WebSocket at `/ws`.
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
-`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`.
+`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`, `{t:"export"}` (DM only).
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",seq,events,state}` or `{t:"update",seq,events,patch}`, `{t:"lobby",members,pending}`,
-`{t:"error",error,expired?}`, `{t:"history",entries,recent?}`.
+`{t:"error",error,expired?}`, `{t:"history",entries,recent?}`, `{t:"export",table}`.
 
 An update's `state` is the receiver's view of the game and never includes the
 timeline. The first update a connection gets carries the whole view; later
@@ -52,6 +52,17 @@ sees a gap in `seq` sends `sync` and is sent the whole view again. The patch
 format is in `packages/rules/src/patch.js`. Past entries come through `history`, redacted for players in the
 same way as live events. On joining or rejoining, each client is sent its last
 50 visible entries with `recent: true`.
+
+## Exporting a table
+
+Tables live on one disk, so the DM can keep their own copy. **Export table** in the DM panel
+sends `{t:"export"}`; the reply is `{t:"export", table:{code, exportedAt, state}}` and the
+browser saves it as `hextable-<code>-<yyyy-mm-dd>.json`. Only the DM gets it; a player (or
+anyone not yet let in) is answered with an error. `state` is the whole game state, including
+the dice seed, hidden creatures and the timeline, which is why it is DM only. It holds no
+`members` and no tokens. In solo play the same button saves the local state without
+contacting a server. There is no import yet: loading a file back means accepting game state
+from a browser, which needs validation designed first.
 
 ## Hosting
 
