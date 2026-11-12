@@ -1,6 +1,6 @@
 # Spec: maps and objects
 
-Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding), M6 (height in play), M7 (size and footprints). M8 to M14 are open. Owner of the design: Claude (Fable).
+Status: agreed. Built so far: M1 (map document, levels, height in positions), M2 (walls and doors), M3 (regions and reveal), M4 (objects, triggers, hidden things), M5 (checks and finding), M6 (height in play), M7 (size and footprints), M8 (the editor), M9 (assets, handouts, private notes, level pictures), M10 (trace), M12 (Universal VTT import) and M13 (objects). M11 beyond private notes (scenes) and M14 are open. Owner of the design: Claude (Fable).
 
 Covers what a map is, buildings and caves, walls and doors, floors and
 height, creature size, objects with states (doors, levers, chests, traps),

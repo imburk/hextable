@@ -1,6 +1,6 @@
 # Spec: sight
 
-Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover), S4 (light) and S5 (`canSee`). Owner of the design: Claude (Fable).
+Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover), S4 (light), S5 (`canSee`) and S6 (hiding). Owner of the design: Claude (Fable).
 
 Covers line of sight, cover, light and darkness, special senses, hiding and
 finding hidden creatures, and what players are sent as a result. It builds on
@@ -137,7 +137,9 @@ in feet, on the record. Monsters already list them in the SRD.
   but not through total cover.
 - **Truesight**: sees in darkness and sees the Invisible within range.
 - **Tremorsense**: knows where creatures touching the ground are within range,
-  without seeing them. It defeats hiding, not darkness penalties.
+  without seeing them. The SRD says it is not sight, so a creature known only
+  by it is still unseen (Disadvantage to attack it); it tells the monster AI
+  where a hidden creature is, and does not end the hiding.
 
 One function answers everything else in this spec: `canSee(state, viewer,
 target)` returns `yes`, `dim` (seen, but Lightly Obscured) or `no`, from line
@@ -148,22 +150,22 @@ conditions (Invisible) and hidden state (decision 5).
 
 The DM's `hidden` switch stays, for setting an ambush by fiat. Beside it:
 
-- **Hide** is an action **(check: the Hide action, DC 15, and what it
-  requires)**. A creature may try it when no enemy can see it: it is Heavily
-  Obscured or behind three-quarters or total cover from every enemy. It rolls
-  Dexterity (Stealth). On 15 or more it is hidden, and the total is kept on
-  the creature as the DC to find it.
-- A hidden creature has the Invisible condition's benefits against anyone who
-  has not found it. Who has found it is a list on the creature: hidden is
-  per observer, not all or nothing.
+- **Hide** is an action (checked against the SRD: DC 15, and it requires
+  being Heavily Obscured or behind three-quarters or total cover, and out of
+  any enemy's line of sight). It rolls Dexterity (Stealth). On 15 or more it
+  is hidden, and the total is kept on the creature as the DC to find it.
+- A hidden creature has the Invisible condition's benefits against its
+  enemies. Its allies see it as before: hidden is per observer, by side. The
+  SRD ends hiding as soon as *an* enemy finds it, so no list of finders is
+  kept: a found creature is simply no longer hidden (see the S6 build notes).
 - **Finding.** The Search action (already built for objects) also finds hidden
   creatures within range whose DC the roll meets. If the table rule for
   passive noticing is on, each enemy's passive Perception is compared with the
   DC when the hider comes into its line of sight.
-- **Hiding ends** when the creature attacks, casts a spell with a spoken
-  component, makes a sound louder than a whisper (the DM's call, by the
-  existing reveal action), or an enemy finds it **(check)**. Being found by
-  one enemy reveals it to that enemy's side, which keeps the table simple.
+- **Hiding ends** when the creature makes an attack roll, casts a spell with
+  a Verbal component, makes a sound louder than a whisper (the DM's call, by
+  the existing reveal action), or an enemy finds it (checked: the SRD's list).
+  Being found by one enemy ends it for all, as the SRD says.
 - Monsters hide and seek by the same rules. The monster AI gains two
   behaviours only: it does not act on creatures it has not found, and one
   whose stat block has a Stealth bonus may open by hiding.
@@ -323,3 +325,34 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
   `attacker.seen` and `self.canDodge`, not in the content vocabulary). Ranged attacks in close combat
   count only an enemy that can see the archer. An Opportunity Attack is made only at a creature the
   attacker can see.
+- **Hiding** (S6) is `hiding: { dc }` on the creature, set by the action `hide`. It is judged
+  against the enemies the hider can see itself ("if you can see a creature, you can discern whether
+  it can see you"): each must be unable to see it (by `canSee`, ignoring its hiding) because it is
+  dark there for them or something blocks sight, or must have three-quarters or total cover against
+  it. An enemy the hider could not see, but that sees it with less cover, finds it at once. So a
+  player is never told about a watcher they could not know of by being refused. In a fight Hide
+  takes the action, or the Bonus Action with Nimble Escape (the goblin's).
+- **Per observer collapses** (S6). The spec proposed a list of who has found a hidden creature. The
+  SRD ends hiding when any enemy finds it, so the list would never hold anyone: hidden is by side
+  (`hiddenFrom`: hiding, and on another side), and a found creature stops hiding.
+- **Finding** (S6). Search finds every hiding enemy the searcher could see but for its hiding, at
+  any distance, whose DC its Wisdom (Perception) total meets; one seen only in Dim Light is judged
+  with Disadvantage from the same dice. After every action, an enemy that can see a hider anyway
+  (Blindsight or Truesight in range) finds it, and with the table rule `passiveFind: 'all'` so does
+  an enemy whose passive Perception (5 less in Dim Light) meets the DC while it has the hider in
+  view; `traps` and `off` do not look for creatures. A party member walking onto a hidden creature's
+  hex stops beside it and finds it, in a fight too.
+- **What else hiding does** (S6). It gives Advantage on Initiative (it is the Invisible condition),
+  keeps a creature out of the table's engage distance (neither a hidden walker nor a hidden enemy
+  starts a fight by being near), and is kept through the start of a fight. To players a hiding
+  monster is concealed exactly as one the DM hid: absent from views and events, and refused as
+  "No such creature." The `hidden` switch stays the DM's.
+- **The monster AI** (S6) leaves out of its choices any enemy hiding from it, unless Tremorsense
+  pinpoints it (both on the ground, within range). A monster whose stat block gives a Stealth bonus
+  opens by hiding in round 1 if it may hide where it stands (with Nimble Escape, as a Bonus Action).
+  In the valley in daylight nothing can hide, so it plays as before.
+- **The record knows what was unseen** (S6). Each timeline entry carries `unseen`, the creatures it
+  names that players did not know of when it happened; `viewEvents` treats them as unknown in that
+  entry whatever is known of them later, and never sends `unseen`. So a goblin found later does not
+  bring its hidden movements into a player's history. (Hidden-information's "known limit" about
+  earlier entries no longer holds for new entries.)

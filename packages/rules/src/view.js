@@ -180,17 +180,21 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
-  const cls = (id) => classify(state, id);
+  // A record entry names the creatures the party did not know of when it happened (`unseen`, from
+  // apply()): they stay unknown in it, whatever is known of them now. `unseen` itself is never sent.
+  let was = null;
+  const cls = (id) => (was?.includes(id) ? 'hidden' : classify(state, id));
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
-  const out = { push(e) { if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
+  const out = { push(e) { delete e.unseen; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
   let caster = null;                       // who cast the spell (or used the action) that the following saves answer
   for (const ev of events) {
     out.ev = ev;
+    was = Array.isArray(ev.unseen) ? ev.unseen : null;
     if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack') caster = ev.actor;      // a save on a hit answers the attacker
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
 
@@ -262,6 +266,12 @@ export function viewEvents(events, state, viewer) {
       case 'object':                                   // something on the map changed state or went off, if they can see it
         if (shownMap(state.map).doc.objects.some((o) => o.id === ev.object)) out.push(structuredClone(ev));
         break;
+      case 'unhidden': {                               // a creature stopped hiding; who found it, only if they know of the finder
+        const e = pick(ev, ['type', 'id', 'why']);
+        if (ev.by !== undefined && cls(ev.by) !== 'hidden') e.by = ev.by;
+        out.push(e);
+        break;
+      }
       case 'chronicle':
         if (ev.public === true) out.push(structuredClone(ev));
         break;
@@ -276,5 +286,7 @@ export function viewEvents(events, state, viewer) {
     }
   }
   // A creature is introduced before anything is said about it.
-  return [...kept.filter((e) => e.type === 'revealed'), ...kept.filter((e) => e.type !== 'revealed')];
+  was = null;
+  const intro = (e) => e.type === 'revealed' || (e.type === 'unhidden' && cls(e.id) !== 'open');       // one of theirs needs no introduction
+  return [...kept.filter(intro), ...kept.filter((e) => !intro(e))];
 }
