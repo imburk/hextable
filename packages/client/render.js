@@ -86,6 +86,16 @@ class Builder {
       prev = cur;
     }
   }
+  // A flat shadow blob: darkest in the middle and fading to nothing at the rim (or a hard-edged one for a blocky theme).
+  blob(cx, cz, y, r, a, { sides = 12, hard = false } = {}) {
+    const rot = sides === 4 ? Math.PI / 4 : 0, o = this.ring(cx, cz, r, y, sides, rot), n = this.ring(cx, cz, r * 0.5, y, sides, rot), dark = [0, 0, 0, a], edge = [0, 0, 0, hard ? a : 0];
+    const v = (p, col) => this.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
+    for (let k = 0; k < sides; k++) {
+      const j = (k + 1) % sides;
+      v(n[j], dark); v(n[k], dark); v([cx, y, cz], dark);                 // solid middle
+      v(o[j], edge); v(o[k], edge); v(n[k], dark); v(o[j], edge); v(n[k], dark); v(n[j], dark);      // soft rim
+    }
+  }
   flatHex(cx, cz, y, r0, r1, col) {            // disc (r0 = 0) or ring on the ground plane
     const o = this.ring(cx, cz, r1, y, 6, Math.PI / 6), i = r0 ? this.ring(cx, cz, r0, y, 6, Math.PI / 6) : null;
     for (let k = 0; k < 6; k++) {
@@ -142,7 +152,7 @@ export class Renderer {
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl);
+    this.terrain = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -160,7 +170,7 @@ export class Renderer {
   }
 
   // ---------- public ----------
-  setTheme(theme) { this.theme = theme; this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
+  setTheme(theme) { this.theme = theme; this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
 
   setState(state, events = []) {
     this.state = state;
@@ -184,6 +194,8 @@ export class Renderer {
       a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
+      const floor = e.dead || ground(state.map, e.pos) ? null : under(state.map, e.pos);
+      a.air = floor ? Math.max(0, w.y - this.#stand({ q: e.pos.q, r: e.pos.r, z: floor.z }).y) : 0;      // how far above the floor it hangs: its shadow stays down there
     }
     for (const ev of events) {
       const a = this.actors.get(ev.id);
@@ -240,7 +252,7 @@ export class Renderer {
   }
 
   #buildTerrain() {
-    const b = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6;
+    const b = new Builder(), sb = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6, sh = th.shadow ?? { a: 0.4 };
     const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;      // a floor above whoever is being followed
     for (const h of allTiles(map)) {
       if (h.z > this.ceiling) continue;
@@ -259,7 +271,9 @@ export class Renderer {
         const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
         for (let i = 0; i < 2; i++) {
           const a = jitter(h.q + i * 7, h.r - i * 3) * 6.28, d = 0.28 + 0.2 * i, hh = 0.9 + jitter(h.r, h.q + i) * 0.7;
-          b.lathe(w.x + Math.cos(a) * d, w.z + Math.sin(a) * d, y, [[0.1, 0], [0.1, 0.25], [0.42, 0.25], [0, hh + 0.25]], 6, a, (s) => (s === 0 ? shade(tc, 0.5) : tc));
+          const tx = w.x + Math.cos(a) * d, tz = w.z + Math.sin(a) * d;
+          b.lathe(tx, tz, y, [[0.1, 0], [0.1, 0.25], [0.42, 0.25], [0, hh + 0.25]], 6, a, (s) => (s === 0 ? shade(tc, 0.5) : tc));
+          sb.blob(tx - 0.16, tz - 0.12, y + 0.012, 0.5 + hh * 0.12, sh.a * (locked ? 0.6 : 1), sh);       // the light comes from the upper right
         }
       }
     }
@@ -285,7 +299,7 @@ export class Renderer {
         this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);
       }
     }
-    this.terrain.set(b);
+    this.terrain.set(b); this.shadows.set(sb);
   }
   // An upright slab along a line given in map feet.
   #slab(b, p, q, y0, height, half, col) {
@@ -297,6 +311,9 @@ export class Renderer {
     face(hi[0], hi[1], hi[2], hi[3], 1.1);
     for (let i = 0; i < 4; i++) { const n = (i + 1) % 4; face(hi[i], hi[n], lo[n], lo[i], i % 2 ? 0.7 : 0.9); }
   }
+
+  // One unit shadow, drawn under every creature at its own size.
+  #makeBlob() { const b = new Builder(), sh = this.theme.shadow ?? { a: 0.4 }; b.blob(0, 0, 0, 1, sh.a, sh); this.blobMesh.set(b); }
 
   #buildOverlay() {
     const b = new Builder(), s = this.state, hl = this.hl, c = this.theme.hl;
@@ -372,6 +389,13 @@ export class Renderer {
     this.terrain.draw(this.loc, ident());
     for (const a of this.actors.values()) a.mesh.draw(this.loc, model(a.x, a.y + (a.tilt ? 0.15 : 0), a.z, a.yaw, a.tilt));
     gl.enable(gl.BLEND); gl.depthMask(false);
+    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
+    this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
+    for (const a of this.actors.values()) {
+      const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);                    // a flier's shadow is fainter and smaller
+      this.blobMesh.draw(this.loc, model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade)), [1, 1, 1, fade], 0);
+    }
+    gl.disable(gl.POLYGON_OFFSET_FILL);
     this.overlay.draw(this.loc, ident(), [1, 1, 1, 1], 0);
     gl.depthMask(true);
 
