@@ -119,9 +119,9 @@ export const spells7 = [
     time: "action", range: "self", components: ["v","s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
-    effects: [{"manual":"Prismatic Spray: eight rays flash from the caster in a 60-foot Cone. Each creature in it makes a Dexterity save and the DM rolls 1d8 for its ray (rolling twice for 8, rerolling any further 8). 1 Red, 2 Orange, 3 Yellow, 4 Green, 5 Blue: on a failure 12d6 damage of Fire, Acid, Lightning, Poison or Cold respectively, half on a success. 6 Indigo: on a failure Restrained, with a Constitution save at the end of each of its turns, three successes ending it and three failures turning it Petrified until freed by something like Greater Restoration. 7 Violet: on a failure Blinded, with a Wisdom save at the start of the caster's next turn that ends the condition, and on a failure the creature also teleports to another plane (the DM chooses). The DM runs the rays."}],
-    tier: "manual", checked: true,
-    text: "Eight colored rays in a 60-foot cone, each creature struck by a random ray with damage, restraint or banishment effects after a Dexterity save.",
+    effects: [{"save":"dex","onFail":[{"manual":"Prismatic Spray, failed save: the DM rolls 1d8 for the target to pick its ray.1 Red: 12d6 Fire damage. 2 Orange: 12d6 Acid. 3 Yellow: 12d6 Lightning. 4 Green: 12d6 Poison. 5 Blue: 12d6 Cold. 6 Indigo: Restrained, with a Constitution save at the end of each of its turns; three successes end it and three failures make it Petrified until freed by Greater Restoration or similar. 7 Violet: Blinded, with a Wisdom save at the start of the caster's next turn that ends it; on a failed Wisdom save it also teleports to another plane (the DM chooses). The DM applies the ray."}],"onSuccess":[{"manual":"Prismatic Spray, successful save: rays 1 to 5 deal half as much damage as on a failure; rays 6 and 7 have no effect. The DM applies it."}]}],
+    tier: "assist", checked: true,
+    text: "Eight colored rays in a 60-foot cone. Each creature in it makes a Dexterity save; the engine runs those saves. The DM rolls each creature's ray and applies its damage (half on a success) or its restraint, petrification, blindness or teleport.",
   },
   {
     id: "project-image", name: "Project Image", source: "SRD 5.2.1",
