@@ -98,7 +98,7 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 | A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
 | A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
 
-**Levels 2 and 3** (PR_NUM): 1 moved from manual to assist: Zone of Truth (a zone with a Charisma save on
+**Levels 2 and 3** (#107): 1 moved from manual to assist: Zone of Truth (a zone with a Charisma save on
 entering or starting a turn there, once a turn; the DM is told who failed and holds them to it).
 Level 2 was 4 auto, 14 assist, 39 manual and is now 4 / 15 / 38; level 3 is unchanged (3 / 11 / 28).
 Considered and left: Pass without Trace (the +10 holds only while inside the aura, and a modifier cannot
