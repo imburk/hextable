@@ -291,6 +291,65 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
   return problems;
 }
 
+// ---------- a character typed in by hand (quick entry) ----------
+// A finished record with its numbers already worked out, the same shape as a pregenerated
+// character. Only the fields listed here are accepted, so a record can never carry anything
+// else into the game (an owner, a side, a hidden flag). Returns a list of problems.
+const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
+  'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look'];
+const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse'];
+const FEATURES = { secondWind: (v) => isInt(v) && v >= 0 && v <= 10, sneak: isDice };
+export function lintRecord(r, { spells = {} } = {}) {
+  const bad = [], say = (m) => bad.push(m);
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return ['A character is a record.'];
+  if (findFunction(r)) return ['A character is data only.'];
+  for (const k of Object.keys(r)) if (!RECORD_FIELDS.includes(k)) say(`"${k}" is not something a character record has.`);
+  const within = (v, lo, hi) => isInt(v) && v >= lo && v <= hi;
+  const list = (v, ok, max = 40) => Array.isArray(v) && v.length <= max && v.every(ok);
+  if (!(isText(r.name) && r.name.length <= 40)) say('It needs a name of up to 40 letters.');
+  if (r.cls !== undefined && !(isText(r.cls) && r.cls.length <= 40)) say('Its class is a short piece of text.');
+  if (!within(r.level, 1, 20)) say('Its level is 1 to 20.');
+  if (r.size !== undefined && !SIZES.includes(r.size)) say(`Its size is one of ${SIZES.join(', ')}.`);
+  if (!within(r.ac, 1, 40)) say('Its Armor Class is 1 to 40.');
+  if (!within(r.hp, 1, 999)) say('Its Hit Points are 1 to 999.');
+  if (!(within(r.speed, 0, 300) && r.speed % 5 === 0)) say('Its Speed is a multiple of 5 feet.');
+  if (r.speeds !== undefined && !(r.speeds && typeof r.speeds === 'object' && Object.entries(r.speeds).every(([m, v]) => MOVE_MODES.includes(m) && m !== 'walk' && within(v, 5, 300) && v % 5 === 0))) say(`Its other speeds are multiples of 5 feet for climb, swim, fly or burrow.`);
+  if (r.hover !== undefined && typeof r.hover !== 'boolean') say('Hover is true or false.');
+  if (!within(r.prof, 2, 9)) say('Its Proficiency Bonus is 2 to 9.');
+  if (!(r.abil && typeof r.abil === 'object' && Object.keys(r.abil).length === 6 && ABILITIES.every((a) => within(r.abil[a], 1, 30)))) say('It needs all six ability scores, each 1 to 30.');
+  if (r.saveProf !== undefined && !list(r.saveProf, oneOf(ABILITIES))) say('Its saving throw proficiencies are abilities.');
+  for (const k of ['skills', 'expertise']) if (r[k] !== undefined && !list(r[k], (x) => Object.hasOwn(SKILLS, x))) say(`Its ${k} must be skills.`);
+  if (r.expertise?.some?.((x) => !(r.skills ?? []).includes(x))) say('Expertise needs proficiency in the same skill.');
+  if (r.tools !== undefined && !list(r.tools, (x) => typeof x === 'string' && ID.test(x))) say('Its tools are kebab-case ids such as thieves-tools.');
+  const ids = new Set();
+  if (r.attacks !== undefined && !Array.isArray(r.attacks)) say('Its attacks are a list.');
+  for (const a of Array.isArray(r.attacks) ? r.attacks.slice(0, 13) : []) {
+    const sub = (m) => say(`Attack "${a?.name ?? a?.id}": ${m}`);
+    if (!a || typeof a !== 'object') { say('An attack is a record.'); continue; }
+    for (const k of Object.keys(a)) if (!ATTACK_FIELDS.includes(k)) sub(`"${k}" is not something an attack has.`);
+    if (!ID.test(a.id ?? '') || ids.has(a.id)) sub('it needs a kebab-case id used once.');
+    ids.add(a.id);
+    if (!(isText(a.name) && a.name.length <= 40)) sub('it needs a name.');
+    if (!['melee', 'ranged'].includes(a.type)) sub('it is melee or ranged.');
+    if (!within(a.bonus, -5, 30)) sub('its bonus to hit is a whole number.');
+    if (!isDice(a.damage)) sub(`its damage "${a.damage}" is not dice like 1d8+3.`);
+    if (!DAMAGE_TYPES.includes(a.dtype)) sub(`unknown damage type "${a.dtype}".`);
+    if (a.type === 'melee' && !(within(a.reach, 5, 30) && a.reach % 5 === 0)) sub('a melee attack needs a reach in feet.');
+    if (a.type === 'ranged' && !(Array.isArray(a.range) && a.range.length === 2 && a.range.every((n) => within(n, 5, 2000)) && a.range[0] <= a.range[1])) sub('a ranged attack needs a range of [normal, long] in feet.');
+    if (a.finesse !== undefined && typeof a.finesse !== 'boolean') sub('finesse is true or false.');
+  }
+  if ((r.attacks?.length ?? 0) > 12) say('Twelve attacks at most.');
+  if (r.castAbil !== undefined && !ABILITIES.includes(r.castAbil)) say('Its spellcasting ability is an ability.');
+  if (r.spells !== undefined && !list(r.spells, (x) => typeof x === 'string' && Object.hasOwn(spells, x), 400)) say('It knows a spell that is not in the game.');
+  if (r.spells?.length && !r.castAbil) say('A character with spells needs a spellcasting ability.');
+  if (r.slots !== undefined && !(r.slots && typeof r.slots === 'object' && Object.entries(r.slots).every(([l, n]) => within(+l, 1, 9) && within(n, 0, 9)))) say('Its spell slots are a number for each level 1 to 9.');
+  if (r.features !== undefined && !(r.features && typeof r.features === 'object' && Object.entries(r.features).every(([k, v]) => Object.hasOwn(FEATURES, k) && FEATURES[k](v)))) say(`Its features can be: ${Object.keys(FEATURES).join(', ')}.`);
+  if (r.gear !== undefined && !list(r.gear, (x) => typeof x === 'string' && x.length > 0 && x.length <= 60, 60)) say('Its gear is a list of short names.');
+  for (const k of ['resist', 'vuln', 'immune']) if (r[k] !== undefined && !list(r[k], oneOf(DAMAGE_TYPES))) say(`${k} must be damage types.`);
+  if (r.look !== undefined && !(r.look && Object.keys(r.look).every((k) => k === 'color') && /^#[0-9a-fA-F]{6}$/.test(r.look.color ?? ''))) say('Its look is a colour like #c8553d.');
+  return bad;
+}
+
 // How much of each kind is entered, at which tier, and how much is still unchecked against the SRD.
 export function coverage(kinds) {
   const out = {};
