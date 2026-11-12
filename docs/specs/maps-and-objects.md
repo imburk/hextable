@@ -563,7 +563,15 @@ Where the build settled a detail the design left open, or changed it.
   if it is from or to them. The server checks a DM's note is addressed to a player at the table.
 - **A level's background** (M9) is `level.image: { asset, feet: [w, h], origin: [x, y] }`, in the
   feet that walls use, set or cleared (`image: null`) with the `level` edit. Players get it only with
-  a level they are sent. The renderer does not draw it yet.
+  a level they are sent. The renderer draws it (PR #73) as a flat textured quad at the level's floor
+  and draws that level's hexes as a faint outline once the picture has arrived.
+- **Trace** (M10) is the editor's Trace tool over a level's picture. Walls are free segments: taps
+  snap to the end of a wall already there (so corners meet) or round to a chosen step (default 1 ft).
+  A traced door is an object with `seg`, its `at` the hex nearest its middle (a stone tile is added
+  there if the level has none). Dragging a wall end moves every wall and door that meets there. Fill
+  floor lays stone on every empty hex whose centre is inside the picture, in one edit (at most 2000
+  hexes). The amber bars show each step between neighbouring tiles that `barriers(map).blocked`
+  stops, so the DM can see where a square-grid picture and the hexes disagree and nudge a wall.
 
 ## Sources
 
