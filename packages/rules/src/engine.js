@@ -472,7 +472,8 @@ function rollInit(s, e) {
   const two = (m.advantage.length > 0) !== (m.disadvantage.length > 0);
   const r1 = die(s, 20), r2 = two ? die(s, 20) : null;
   const d = !two ? r1 : m.advantage.length ? Math.max(r1, r2) : Math.min(r1, r2);
-  return { id: e.id, init: d + mod(e.abil.dex) + m.add, dex: e.abil.dex };
+  // A monster's stat block gives its Initiative modifier outright (`initBonus`); anyone else adds their Dexterity modifier.
+  return { id: e.id, init: d + (e.initBonus ?? mod(e.abil.dex)) + m.add, dex: e.abil.dex };
 }
 
 function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {

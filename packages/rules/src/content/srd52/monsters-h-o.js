@@ -32,6 +32,7 @@ export const monsters = [
       cha: 14
     },
     saves: { dex: 5, wis: 5 },
+    initiative: 5,
     senses: { blindsight: 10, darkvision: 60 },
     skills: {
       athletics: 7,
@@ -139,6 +140,7 @@ export const monsters = [
       wis: 10,
       cha: 13
     },
+    initiative: 1,
     resist: [],
     vulnerable: [],
     immune: [],
@@ -225,6 +227,7 @@ export const monsters = [
       wis: 14,
       cha: 6
     },
+    initiative: 3,
     skills: {
       perception: 6
     },
@@ -283,6 +286,7 @@ export const monsters = [
       wis: 13,
       cha: 6
     },
+    initiative: 1,
     senses: { darkvision: 60 },
     skills: {
       perception: 5
@@ -395,6 +399,7 @@ export const monsters = [
       cha: 13
     },
     saves: { str: 7, con: 8, wis: 4 },
+    initiative: 6,
     senses: { darkvision: 120 },
     resist: [
       "cold",
@@ -499,6 +504,7 @@ export const monsters = [
       wis: 9,
       cha: 6
     },
+    initiative: 2,
     skills: {
       perception: 2
     },
@@ -600,6 +606,7 @@ export const monsters = [
       wis: 12,
       cha: 8
     },
+    initiative: 1,
     skills: {
       perception: 5
     },
@@ -673,6 +680,7 @@ export const monsters = [
       cha: 4
     },
     saves: { str: 7 },
+    initiative: -2,
     skills: {
       perception: 3
     },
@@ -744,6 +752,7 @@ export const monsters = [
       wis: 10,
       cha: 13
     },
+    initiative: 4,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -847,6 +856,7 @@ export const monsters = [
       wis: 10,
       cha: 9
     },
+    initiative: 3,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -950,6 +960,7 @@ export const monsters = [
       cha: 7
     },
     saves: { wis: 2, cha: 0 },
+    initiative: 2,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -1040,6 +1051,7 @@ export const monsters = [
       cha: 18
     },
     saves: { str: 10, dex: 7, wis: 7, cha: 8 },
+    initiative: 7,
     senses: { darkvision: 150 },
     resist: [
       "cold"
@@ -1189,6 +1201,7 @@ export const monsters = [
       wis: 10,
       cha: 4
     },
+    initiative: 2,
     senses: { blindsight: 60 },
     skills: {
       perception: 2
@@ -1256,6 +1269,7 @@ export const monsters = [
       wis: 10,
       cha: 7
     },
+    initiative: 4,
     senses: { darkvision: 60 },
     skills: {
       perception: 6
@@ -1347,6 +1361,7 @@ export const monsters = [
       wis: 12,
       cha: 5
     },
+    initiative: 1,
     senses: { darkvision: 60 },
     skills: {
       perception: 3
@@ -1422,6 +1437,7 @@ export const monsters = [
       cha: 18
     },
     saves: { dex: 7, con: 9, wis: 7, cha: 9 },
+    initiative: 7,
     senses: { blindsight: 120 },
     skills: {
       insight: 7,
@@ -1595,6 +1611,7 @@ export const monsters = [
       wis: 11,
       cha: 12
     },
+    initiative: 1,
     senses: { darkvision: 60 },
     skills: {
       perception: 2,
@@ -1710,6 +1727,7 @@ export const monsters = [
       wis: 12,
       cha: 14
     },
+    initiative: 3,
     senses: { darkvision: 120 },
     skills: {
       deception: 4,
@@ -1814,6 +1832,7 @@ export const monsters = [
       wis: 12,
       cha: 20
     },
+    initiative: 3,
     senses: { darkvision: 60 },
     skills: {
       deception: 9,
@@ -1931,6 +1950,7 @@ export const monsters = [
       wis: 15,
       cha: 11
     },
+    initiative: 7,
     senses: { darkvision: 60 },
     skills: {
       perception: 8,
@@ -2052,6 +2072,7 @@ export const monsters = [
       wis: 11,
       cha: 1
     },
+    initiative: 9,
     senses: { darkvision: 120 },
     resist: [],
     vulnerable: [],
@@ -2199,6 +2220,7 @@ export const monsters = [
       wis: 12,
       cha: 6
     },
+    initiative: 2,
     senses: { darkvision: 90 },
     skills: {
       perception: 5,
@@ -2260,6 +2282,7 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    initiative: 2,
     senses: { blindsight: 120 },
     skills: {
       perception: 3,
@@ -2328,6 +2351,7 @@ export const monsters = [
       cha: 15
     },
     saves: { con: 4, wis: 2 },
+    initiative: 0,
     resist: [],
     vulnerable: [],
     immune: [],
@@ -2437,6 +2461,7 @@ export const monsters = [
       wis: 7,
       cha: 8
     },
+    initiative: 2,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -2542,6 +2567,7 @@ export const monsters = [
       cha: 20
     },
     saves: { str: 17, dex: 7, con: 15, wis: 11 },
+    initiative: 14,
     senses: { truesight: 120 },
     skills: {
       history: 13,
@@ -2732,6 +2758,7 @@ export const monsters = [
       wis: 15,
       cha: 16
     },
+    initiative: 1,
     senses: { darkvision: 60 },
     skills: {
       deception: 7,
@@ -2847,6 +2874,7 @@ export const monsters = [
       wis: 11,
       cha: 3
     },
+    initiative: -3,
     senses: { darkvision: 120 },
     resist: [
       "cold"
@@ -2923,6 +2951,7 @@ export const monsters = [
       cha: 16
     },
     saves: { dex: 10, con: 10, int: 12, wis: 9 },
+    initiative: 17,
     senses: { truesight: 120 },
     skills: {
       arcana: 19,
@@ -3091,6 +3120,7 @@ export const monsters = [
       wis: 12,
       cha: 8
     },
+    initiative: 2,
     senses: { darkvision: 60 },
     skills: {
       perception: 3,
@@ -3207,6 +3237,7 @@ export const monsters = [
       wis: 8,
       cha: 3
     },
+    initiative: 0,
     senses: { darkvision: 30 },
     resist: [],
     vulnerable: [],
@@ -3271,6 +3302,7 @@ export const monsters = [
       cha: 11
     },
     saves: { int: 6, wis: 4 },
+    initiative: 2,
     skills: {
       arcana: 6,
       history: 6,
@@ -3383,6 +3415,7 @@ export const monsters = [
       wis: 10,
       cha: 10
     },
+    initiative: 1,
     senses: { darkvision: 60 },
     skills: {
       stealth: 3
@@ -3490,6 +3523,7 @@ export const monsters = [
       wis: 11,
       cha: 10
     },
+    initiative: 2,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -3565,6 +3599,7 @@ export const monsters = [
       cha: 6
     },
     saves: { str: 10, con: 8 },
+    initiative: 2,
     resist: [],
     vulnerable: [],
     immune: [],
@@ -3654,6 +3689,7 @@ export const monsters = [
       wis: 12,
       cha: 8
     },
+    initiative: 3,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -3744,6 +3780,7 @@ export const monsters = [
       cha: 20
     },
     saves: { str: 9, con: 10, wis: 8, cha: 10 },
+    initiative: 10,
     senses: { truesight: 120 },
     skills: {
       perception: 8
@@ -3889,6 +3926,7 @@ export const monsters = [
       cha: 7
     },
     saves: { wis: 3 },
+    initiative: 2,
     senses: { darkvision: 60 },
     skills: {
       perception: 5
@@ -3952,6 +3990,7 @@ export const monsters = [
       cha: 15
     },
     saves: { wis: 4 },
+    initiative: 6,
     senses: { darkvision: 150 },
     skills: {
       deception: 5,
@@ -4105,6 +4144,7 @@ export const monsters = [
       wis: 14,
       cha: 12
     },
+    initiative: 1,
     resist: [],
     vulnerable: [],
     immune: [],
@@ -4208,6 +4248,7 @@ export const monsters = [
       wis: 10,
       cha: 9
     },
+    initiative: 2,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -4362,6 +4403,7 @@ export const monsters = [
       wis: 13,
       cha: 8
     },
+    initiative: 3,
     senses: { darkvision: 60 },
     skills: {
       stealth: 5
@@ -4483,6 +4525,7 @@ export const monsters = [
       wis: 16,
       cha: 9
     },
+    initiative: 0,
     senses: { darkvision: 60 },
     skills: {
       perception: 7,
@@ -4574,6 +4617,7 @@ export const monsters = [
       wis: 8,
       cha: 5
     },
+    initiative: 0,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [
@@ -4669,6 +4713,7 @@ export const monsters = [
       cha: 5
     },
     saves: { str: 4 },
+    initiative: 0,
     resist: [],
     vulnerable: [],
     immune: [],
@@ -4732,6 +4777,7 @@ export const monsters = [
       cha: 12
     },
     saves: { wis: 3 },
+    initiative: -1,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [
@@ -4846,6 +4892,7 @@ export const monsters = [
       cha: 16
     },
     saves: { int: 5, wis: 9 },
+    initiative: 10,
     senses: { truesight: 60 },
     skills: {
       history: 5,
@@ -5029,6 +5076,7 @@ export const monsters = [
       cha: 15
     },
     saves: { con: 11, int: 9, wis: 6, cha: 7 },
+    initiative: 5,
     senses: { truesight: 120 },
     resist: [
       "cold",
@@ -5171,6 +5219,7 @@ export const monsters = [
       wis: 14,
       cha: 16
     },
+    initiative: 5,
     senses: { darkvision: 120 },
     skills: {
       deception: 6,
@@ -5287,6 +5336,7 @@ export const monsters = [
       wis: 13,
       cha: 15
     },
+    initiative: 2,
     hover: true,
     resist: [],
     vulnerable: [],
@@ -5375,6 +5425,7 @@ export const monsters = [
       wis: 14,
       cha: 16
     },
+    initiative: 1,
     skills: {
       deception: 5,
       insight: 4,
@@ -5443,6 +5494,7 @@ export const monsters = [
       wis: 6,
       cha: 1
     },
+    initiative: -2,
     senses: { blindsight: 60 },
     resist: [
       "acid"
@@ -5530,6 +5582,7 @@ export const monsters = [
       wis: 7,
       cha: 7
     },
+    initiative: -1,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -5636,6 +5689,7 @@ export const monsters = [
       cha: 5
     },
     saves: { wis: 0 },
+    initiative: -2,
     senses: { darkvision: 60 },
     resist: [],
     vulnerable: [],
@@ -5710,6 +5764,7 @@ export const monsters = [
       cha: 15
     },
     saves: { dex: 3, con: 6, wis: 4, cha: 5 },
+    initiative: 0,
     senses: { darkvision: 60 },
     skills: {
       arcana: 5,
@@ -5843,6 +5898,7 @@ export const monsters = [
       cha: 6
     },
     saves: { con: 7 },
+    initiative: 0,
     senses: { darkvision: 120 },
     resist: [],
     vulnerable: [],
@@ -5972,6 +6028,7 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    initiative: 1,
     senses: { darkvision: 120 },
     skills: {
       perception: 5,
@@ -6040,6 +6097,7 @@ export const monsters = [
       wis: 12,
       cha: 7
     },
+    initiative: 1,
     senses: { darkvision: 60 },
     skills: {
       perception: 5
