@@ -58,3 +58,11 @@ test("a Frost Giant's Great Bow takes 10 feet off the target's Speed, which ends
   ok(apply(s, { type: "endTurn", actor: t.id }, DM));                                // and its end lifts it
   assert.equal(modifiers(s, t, "speed").add, 0);
 });
+
+test("a Merfolk Skirmisher's Ocean Spear, thrown or in hand, slows the target by 10 feet until its next turn ends", () => {
+  for (const action of ["ocean-spear", "ocean-spear-thrown"]) {
+    const { s, t } = hitWith("merfolk-skirmisher", action);
+    assert.equal(modifiers(s, t, "speed").add, -10, action);
+    assert.ok(CONTENT.monsters["merfolk-skirmisher"].actions.every((a) => !JSON.stringify(a.effects ?? []).includes("manual")));
+  }
+});

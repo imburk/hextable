@@ -376,7 +376,7 @@ export const monsters = [
         text: "Recharge 5-6. A 15 foot cone."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A fiery infernal hound that hunts in packs."
   },
@@ -3788,7 +3788,7 @@ export const monsters = [
         text: "A ranged attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A winged lion with a spiked tail and a man's face."
   },
@@ -4219,9 +4219,7 @@ export const monsters = [
                 damage: "1d4",
                 type: "cold"
               },
-              {
-                manual: "A creature's Speed drops by 10 feet until the end of its next turn."
-              }
+              { modifier: { on: "speed", op: "add", value: -10 }, ends: { on: "turnEnd" } }
             ]
           }
         ],
@@ -4252,13 +4250,11 @@ export const monsters = [
                 damage: "1d4",
                 type: "cold"
               },
-              {
-                manual: "A creature's Speed drops by 10 feet until the end of its next turn. The spear returns to the merfolk's hand."
-              }
+              { modifier: { on: "speed", op: "add", value: -10 }, ends: { on: "turnEnd" } }
             ]
           }
         ],
-        text: "The same spear thrown."
+        text: "The same spear thrown. It returns to the merfolk's hand at once; the engine does not keep track of held weapons."
       }
     ],
     tier: "assist",
@@ -6195,7 +6191,7 @@ export const monsters = [
         text: "A melee attack."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A savage cross between a bear and a giant owl."
   }
