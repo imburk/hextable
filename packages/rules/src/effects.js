@@ -71,6 +71,7 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
       if (sum) st[key] = sum; else unscaled = `the extra ${bySlot[key]} per slot level above ${def.level}`;
     }
     if (bySlot.times) { const st = first('damage'); if (st) st.times = (st.times || 1) + bySlot.times * up; }
+    if (bySlot.value) { const st = first('modifier'); if (st && typeof st.modifier.value === 'number') st.modifier.value += bySlot.value * up; }
   }
   return { steps, unscaled };
 }
@@ -218,7 +219,7 @@ function exec(s, ev, kit, f, step, at) {
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
-      crit: f.crit, mode: f.mode, half: f.half, told: f.told, ...extra });
+      crit: f.crit, mode: f.mode, half: f.half, told: f.told, hit: f.hit, weapon: f.weapon, ...extra });
   };
 
   if (kind === 'manual') {
@@ -240,7 +241,7 @@ function exec(s, ev, kit, f, step, at) {
       ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
     const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
-    return branch(r.hit ? 'onHit' : 'onMiss', { crit: r.crit, mode: r.mode, half: false });
+    return branch(r.hit ? 'onHit' : 'onMiss', { crit: r.crit, mode: r.mode, half: false, hit: r.hit, weapon: step.kind === 'weapon' });
   }
   if (kind === 'save') {
     const dc = step.dc ?? f.src.dc;
@@ -264,14 +265,14 @@ function exec(s, ev, kit, f, step, at) {
       if (ok) parts.push({ amount: amount(next, `${f.path}${f.i}`), type: next.type });
       f.i++;
     }
-    return kit.damage(s, t, parts, null, ev, { crit: !!f.crit });
+    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit });
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal') return kit.heal(s, t, roll(s, step.heal).total + (step.addMod ? f.src.healMod : 0), ev);
   if (kind === 'tempHp') return kit.tempHp(s, t, roll(s, step.tempHp).total + (step.addMod ? f.src.healMod : 0), ev, f);
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'modifier') {
-    if (kit.modifier(s, t, step.modifier, ev, f)) return;
+    if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
     return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
   if (kind === 'fall') return kit.fall(s, t, step.fall, ev);

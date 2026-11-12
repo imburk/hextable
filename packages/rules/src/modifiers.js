@@ -56,6 +56,8 @@ export function judge(tag, sit, s) {
     case 'attack.advantage': return sit.mode === undefined ? null : sit.mode === 'adv';
     case 'attack.disadvantage': return sit.mode === undefined ? null : sit.mode === 'dis';
     case 'target.prone': return t ? has(t, 'prone') : null;
+    case 'attack.hit': return sit.hit === undefined ? null : sit.hit;              // the damage comes from an attack roll that hit
+    case 'attack.weapon': return sit.weapon === undefined ? null : sit.weapon;     // ... made with a weapon
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
     // sees its target, and whether its target sees it changes nothing.
@@ -77,7 +79,8 @@ export function judge(tag, sit, s) {
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id };
+    // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against };
   }
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
@@ -102,24 +105,30 @@ function inScope(m, sit) {
 //   { add, set, advantage: [reasons], disadvantage: [reasons], autoFail, autoSucceed, crit,
 //     resist, vulnerable, immune,   (the last three: true for all damage, or a list of types)
 //     dice: [{ dice, name }],       dice to roll and add when the roll is made
+//     min, max,                     the least and the most the number may be (Barkskin: AC at least 17)
+//     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
 //     taken: [{ value, types, name, once, key }] }   for damage.taken: an amount (or dice) added
 //                                   to damage of those types (all, if none), at most once a turn if `once`
 // `side` says which end of an attack `e` is on, for wording the reasons as the log always has
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null };
   for (const src of sources(s, e)) {
+    if (src.against && sit.target?.id !== src.against) continue;
     for (const m of src.modifiers) {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (!inScope(m, sit)) continue;
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
-      if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
+      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name });
+      else if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
       else if (m.op === 'add' && typeof value === 'string') out.dice.push({ dice: value, name: src.name });
       else if (m.op === 'add') out.add += value;
       else if (m.op === 'set') out.set = out.set === null ? value : Math.min(out.set, value);
+      else if (m.op === 'min') out.min = out.min === null ? value : Math.max(out.min, value);
+      else if (m.op === 'max') out.max = out.max === null ? value : Math.min(out.max, value);
       else if (m.op === 'advantage') out.advantage.push(reason);
       else if (m.op === 'disadvantage') out.disadvantage.push(reason);
       else if (m.op === 'autoFail') out.autoFail = true;
@@ -133,9 +142,12 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   return out;
 }
 
+// A number kept within what `min` and `max` modifiers allow.
+export const bounded = (m, n) => Math.min(m.max ?? Infinity, Math.max(m.min ?? -Infinity, n));
+
 // A creature's Speed after everything that changes it. Never below 0.
 // `mode` is walk (the default), climb, swim, fly or burrow; a creature without that way of moving has 0.
 export function speedOf(s, e, mode = 'walk') {
   const base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0, m = modifiers(s, e, 'speed');
-  return base > 0 ? Math.max(0, m.set !== null ? m.set : base + m.add) : 0;
+  return base > 0 ? Math.max(0, bounded(m, m.set !== null ? m.set : base + m.add)) : 0;
 }

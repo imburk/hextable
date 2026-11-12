@@ -19,7 +19,7 @@ import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
 import { COVER, canSee, coverOf, inSight, sees } from './sight.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
-import { conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
+import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
@@ -36,9 +36,13 @@ export const hostile = (a, b) => a.side !== b.side;
 export const living = (s) => Object.values(s.entities).filter((e) => !e.dead);
 export const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 export const current = (s) => (s.encounter ? s.encounter.order[s.encounter.turn]?.id ?? null : null);
-export const spellStats = (e) => {
+// A spellcaster's spell attack bonus and save DC, with what modifiers change about them when the
+// game state is given (`spell.attack`, `spell.dc`).
+export const spellStats = (e, s = null) => {
   const m = e.prof + mod(e.abil[e.castAbil] ?? 10);
-  return { attack: m, dc: 8 + m };
+  if (!s) return { attack: m, dc: 8 + m };
+  const a = modifiers(s, e, 'spell.attack', {}, ''), d = modifiers(s, e, 'spell.dc', {}, '');
+  return { attack: bounded(a, m + a.add), dc: bounded(d, 8 + m + d.add) };
 };
 const ent = (s, id) => s.entities[id] || fail('No such creature.');
 const control = (e, ctx) =>
@@ -661,14 +665,14 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
     }
   }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
-  damage(s, t, total, atk.dtype, ev, { crit });
+  damage(s, t, dealt(s, e, t, [{ amount: total, type: atk.dtype }], { hit: true, weapon: !atk.spell }, crit), null, ev, { crit });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
 }
 
 // Armor Class after anything that changes it.
 function acOf(s, t) {
   const m = modifiers(s, t, 'ac', { target: t });
-  return (m.set ?? t.ac) + m.add;
+  return bounded(m, (m.set ?? t.ac) + m.add);
 }
 
 // Put a condition on a creature. What the condition does is data (content/srd52/conditions.js).
@@ -691,11 +695,41 @@ function condition(s, t, id, ev, f = null, step = null, level = undefined) {
 
 // Attach a modifier to a creature for as long as a lasting effect runs. Returns false if there
 // is no lasting effect to carry it, in which case the step is handed to the DM.
-function modifier(s, t, mod_, ev, f) {
+// A step with `to: 'caster'` puts the modifier on the caster instead, and one whose modifier says
+// `against: 'target'` holds only against this target (Hex's extra damage). A Hit Point maximum
+// raised or lowered (`hp.max`) moves current Hit Points with it, and back when the effect ends.
+function modifier(s, t, mod_, ev, f, step = {}) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx) return false;
-  fx.parts.push({ target: t.id, modifier: mod_ });
+  const holder = step.to === 'caster' ? s.entities[f.actor] : t;
+  if (!holder) return false;
+  const { against, ...m } = mod_;
+  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}) };
+  if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {
+    holder.maxHp += m.value;
+    holder.hp = m.value > 0 && holder.hp > 0 ? holder.hp + m.value : Math.min(holder.hp, holder.maxHp);
+    part.hpMax = m.value;
+    ev.push({ type: 'maxHp', id: holder.id, maxHp: holder.maxHp, hp: holder.hp });
+  }
+  fx.parts.push(part);
   return true;
+}
+
+// Extra damage a creature deals, from its `damage.dealt` modifiers: a modifier with `types` adds a
+// part of that type (Hex's 1d6 necrotic), one without is added to the first part. Extra dice are
+// doubled on a critical hit like the rest. `sit` says whether it came from a hit and a weapon.
+function dealt(s, e, t, parts, sit, crit) {
+  if (!e || e.object) return parts;
+  const m = modifiers(s, e, 'damage.dealt', { attacker: e, target: t, ...sit }, 'attacker');
+  if (!m.dealt.length) return parts;
+  const out = parts.map((p) => ({ ...p }));
+  for (const x of m.dealt) {
+    const neg = typeof x.value === 'string' && x.value.startsWith('-');
+    const n = typeof x.value === 'string' ? roll(s, x.value.replace(/^[+-]/, ''), { crit }).total * (neg ? -1 : 1) : x.value;
+    if (x.types) out.push({ amount: Math.max(0, n), type: x.types[0], from: x.name });
+    else if (out.length) out[0].amount = Math.max(0, out[0].amount + n);
+  }
+  return out;
 }
 
 // `extra` names a second hook to gather modifiers from, such as 'concentration'.
@@ -1197,7 +1231,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 // ---------- actions ----------
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
+const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -1332,7 +1366,7 @@ const handlers = {
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
 
     // What it does: run its effect steps.
-    const st = spellStats(e), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
+    const st = spellStats(e, s), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     if (pick) chooseIn(steps, pick.of, a.choice);
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}) });
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on

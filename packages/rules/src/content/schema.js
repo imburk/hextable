@@ -32,7 +32,7 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
-  'target.seesSource'];
+  'target.seesSource', 'attack.hit', 'attack.weapon'];
 
 // Things on a map (docs/specs/maps-and-objects.md).
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
@@ -84,6 +84,9 @@ function lintModifier(m, say) {
       if (!['check', 'save'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
     }
   }
+  // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
+  // against the spell's target (Hex, Hunter's Mark).
+  if (m.against !== undefined && m.against !== 'target') say('`against` is "target" or left out');
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
   if (m.once !== undefined && !(m.once === 'turn' && m.on === 'damage.taken' && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken');
   lintWhen(m.when, say);
@@ -143,7 +146,11 @@ function lintSteps(steps, say, seen = { manual: false }) {
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
       }
     }
-    if (kind === 'modifier') lintModifier(step.modifier ?? {}, say);
+    if (kind === 'modifier') {
+      lintModifier(step.modifier ?? {}, say);
+      if (step.to !== undefined && step.to !== 'caster') say('a modifier step\'s `to` is "caster" or left out');
+      if (step.modifier?.against !== undefined && step.to !== 'caster') say('`against: "target"` is for a modifier put on the caster (`to: "caster"`)');
+    }
     if (kind === 'move') {
       if (!(isInt(step.move) && step.move > 0 && step.move % 5 === 0)) say('`move` must be a distance in feet, a multiple of 5');
       if (!['away', 'toward'].includes(step.dir)) say('a move step needs `dir`: away or toward');
@@ -228,9 +235,9 @@ function lintHigher(e, say) {
   if (h.targets !== undefined && !byLevel(h.targets, (v) => isInt(v) && v >= 1 && v <= 20)) say('`higher.targets` gives a number of targets by character level');
   if (h.targets !== undefined && !e.target?.creature) say('`higher.targets` is for a spell aimed at creatures');
   if (h.slot !== undefined) {
-    for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'tempHp', 'times', 'targets'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
+    for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'tempHp', 'times', 'targets', 'value'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
     for (const k of ['damage', 'heal', 'tempHp']) if (h.slot[k] !== undefined && !isDice(h.slot[k])) say(`\`higher.slot.${k}\` must be dice`);
-    for (const k of ['times', 'targets']) if (h.slot[k] !== undefined && !(isInt(h.slot[k]) && h.slot[k] > 0)) say(`\`higher.slot.${k}\` must be a positive whole number`);
+    for (const k of ['times', 'targets', 'value']) if (h.slot[k] !== undefined && !(isInt(h.slot[k]) && h.slot[k] > 0)) say(`\`higher.slot.${k}\` must be a positive whole number`);
     if (h.slot.targets !== undefined && !e.target?.creature && !e.target?.area?.choose) say('`higher.slot.targets` is for a spell aimed at creatures');
   }
 }
