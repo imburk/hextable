@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { PREGENS } from './content/index.js';
 
-export const VERSION = 4;
+export const VERSION = 5;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -26,6 +26,9 @@ export function migrate(state) {
     e.skills ??= [...(from?.skills ?? [])]; e.expertise ??= [...(from?.expertise ?? [])]; e.tools ??= [...(from?.tools ?? [])]; e.skillBonus ??= {};
   }
   if (state.settings) state.settings.passiveFind ??= 'off';
+  // Version 5: ways of moving other than walking, and table rules for height.
+  for (const e of Object.values(state.entities)) e.speeds ??= {};
+  if (state.settings) { state.settings.vertical ??= 'max'; state.settings.climbing ??= 'on'; }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

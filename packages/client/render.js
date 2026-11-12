@@ -5,7 +5,7 @@
 // engine, because the engine only ever emits events ("moved", "attack", "damage").
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
 import * as H from './shared/hex.js';
-import { allTiles, ground, shown, surfaces } from './shared/space.js';
+import { allTiles, ground, shown, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
@@ -141,6 +141,7 @@ export class Renderer {
 
     this.terrain = new Mesh(gl); this.overlay = new Mesh(gl);
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
+    this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
     this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null };
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;   // px of screen bottom covered by UI
@@ -159,7 +160,7 @@ export class Renderer {
 
   setState(state, events = []) {
     this.state = state;
-    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}`;
+    const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}`;
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
     for (const e of Object.values(state.entities)) {
@@ -175,7 +176,8 @@ export class Renderer {
       const key = `${e.dead}|${e.side}`;
       if (key !== a.key) { a.key = key; a.mesh.set(this.#makePawn(e)); }
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
-      a.el.firstChild.textContent = e.name;
+      const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
+      a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
       a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
     }
@@ -189,6 +191,9 @@ export class Renderer {
     }
     this.#buildOverlay();
   }
+
+  // Do not draw floors higher than this (in feet), so that a room is not hidden by the one above it.
+  setCeiling(z) { if (z !== this.ceiling) { this.ceiling = z; this.terrainKey = ''; if (this.state) this.setState(this.state, []); } }
 
   setHighlights(hl) { this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null, ...hl }; if (this.state) this.#buildOverlay(); }
 
@@ -213,7 +218,9 @@ export class Renderer {
 
   #buildTerrain() {
     const b = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6;
+    const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;      // a floor above whoever is being followed
     for (const h of allTiles(map)) {
+      if (h.z > this.ceiling) continue;
       const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t);
       const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
       const j = 0.94 + jitter(h.q, h.r) * 0.12;
@@ -236,8 +243,9 @@ export class Renderer {
     // Walls and doors, drawn low enough to see over.
     const WALLS = { wall: [1.15, th.wall ?? [0.44, 0.42, 0.4]], window: [0.55, th.wallWindow ?? [0.55, 0.62, 0.68]], rail: [0.5, th.wall ?? [0.44, 0.42, 0.4]], curtain: [1.15, th.curtain ?? [0.38, 0.3, 0.45]] };
     const baseOf = (id) => (map.levels.find((l) => l.id === id)?.z ?? 0) * UNIT + 0.55;
-    for (const w of map.walls) { const [h, c] = WALLS[w.kind] ?? WALLS.wall; this.#slab(b, w.a, w.b, baseOf(w.level), h, 0.09, c); }
+    for (const w of map.walls) { if (hid(w.level)) continue; const [h, c] = WALLS[w.kind] ?? WALLS.wall; this.#slab(b, w.a, w.b, baseOf(w.level), h, 0.09, c); }
     for (const o of map.objects) {
+      if (hid(o.level)) continue;
       const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;       // only the DM is ever sent an unseen one
       if (!seg) {                                                       // a thing in a hex: a marker on the floor, and a post if it is in the way or a lever
         const w = H.toWorld(o.at), y = this.#stand({ q: o.at.q, r: o.at.r, z: (map.levels.find((l) => l.id === o.level)?.z ?? 0) + (map.levels.find((l) => l.id === o.level)?.tiles[H.col(o.at)]?.h ?? 0) }).y + 0.02;
@@ -273,6 +281,8 @@ export class Renderer {
     const at = (k) => H.toWorld(H.parse(k));
     for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
     for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
+    // Whatever is in the air has a mark on the floor beneath it.
+    for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = H.toWorld(e.pos); b.flatHex(w.x, w.z, this.#stand({ q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
     const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
       const e = s.entities[id]; if (!e) return;
       const k = H.key(e.pos), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col);

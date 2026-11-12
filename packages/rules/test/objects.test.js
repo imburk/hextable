@@ -163,6 +163,7 @@ test("a secret door is a wall to the players until it is found", () => {
   assert.deepEqual(usesFor(s, s.entities.fighter).map((u) => u.verb), ["open"]);
   // Or it is opened by the plate nobody noticed: stepping on it presses it, stepping off releases it.
   ok(apply(s, { type: "setObject", object: "sd", state: "secret" }, DM));
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: -1, r: 0 } }, DM));              // from here the only two-step way to -1,2 is over the plate
   const step = ok(apply(s, { type: "move", actor: "fighter", to: { q: -1, r: 2 } }, PAT));
   assert.deepEqual(step.events.filter((e) => e.type === "object").map((e) => [e.object, e.state]), [["plate", "pressed"], ["sd", "open"], ["plate", "found"]]);
   assert.deepEqual(s.entities.fighter.pos, { q: -1, r: 2, z: 0 });                         // a plate does not stop a walk

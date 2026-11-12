@@ -60,11 +60,12 @@ function signature(map) {
 export function barriers(map) {
   const sig = signature(map), had = cache.get(map);
   if (had?.sig === sig) return had;
-  const levels = new Map(map.levels.map((l) => [l.id, { move: [], sight: [], both: [], solid: new Set(), memo: new Map() }]));
+  const levels = new Map(map.levels.map((l) => [l.id, { move: [], sight: [], both: [], tall: [], solid: new Set(), memo: new Map() }]));
   for (const w of map.walls) {
     const l = levels.get(w.level), k = WALL_KINDS[w.kind];
     if (!l || !k) continue;
     if (k.move) l.move.push([w.a, w.b]);
+    if (k.move && w.kind !== 'rail') l.tall.push([w.a, w.b]);        // a rail stops walkers; anything 5 ft up passes over it
     if (k.sight) l.sight.push([w.a, w.b]);
     if (k.move && k.sight) l.both.push([w.a, w.b]);
   }
@@ -76,6 +77,7 @@ export function barriers(map) {
       if (seg) l[what].push(seg); else if (what === 'move') l.solid.add(H.col(o.at));     // a thing that fills its hex
     }
     if (seg && objectBlocks(o, 'move') && objectBlocks(o, 'sight')) l.both.push(seg);
+    if (seg && objectBlocks(o, 'move')) l.tall.push(seg);
   }
   const hit = (levelId, a, b, what) => {
     const l = levels.get(levelId);

@@ -227,6 +227,7 @@ function lintObject(e, say) {
     if (v?.hidden !== undefined && typeof v.hidden !== 'boolean') say(`state "${st}": hidden must be true or false`);
   }
   if (!states.includes(e.initial)) say('`initial` must be one of its states');
+  if (e.connects !== undefined && (typeof e.connects !== 'boolean' || e.kind !== 'thing')) say('`connects` is true or false, and only a thing in a hex can join two places');
   if (e.dc !== undefined && !(e.dc && typeof e.dc === 'object' && Object.entries(e.dc).every(([k, n]) => ['save', 'find'].includes(k) && isInt(n) && n > 0))) say('`dc` may give whole numbers for save and find');
   const anyHidden = states.some((st) => e.states[st]?.hidden);
   if (anyHidden && !(e.find && states.includes(e.find.to) && !e.states[e.find.to]?.hidden && isInt(e.dc?.find))) say('something with a hidden state needs `find: { to }` naming the state it is found in, and `dc.find`');
@@ -251,6 +252,7 @@ function lintObject(e, say) {
     if (!u || !ID.test(u.id ?? '') || ids.has(u.id)) { sub('id must be kebab-case and used once'); continue; }
     ids.add(u.id);
     if (!isText(u.name)) sub('needs a name');
+    if (false) say('');
     if (!(Array.isArray(u.from) && u.from.length && u.from.every((x) => states.includes(x)))) sub('`from` must list one or more of its states');
     if (u.to !== undefined && !states.includes(u.to)) sub('`to` must be one of its states');
     if (!USE_TIMES.includes(u.time)) sub(`time must be one of ${USE_TIMES.join(', ')}`);

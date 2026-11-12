@@ -98,4 +98,10 @@ export const objects = [
     triggers: [{ on: 'enter', from: ['hidden', 'found'], to: 'sprung', effects: [{ attack: 'ranged', kind: 'weapon', bonus: 6, onHit: [{ damage: '1d8', type: 'piercing' }] }] }],
     text: 'A tripwire that looses an arrow at whoever crosses it.',
   },
+  {
+    id: 'ladder', name: 'Ladder', kind: 'thing', connects: true, source: 'Hextable', tier: 'auto', checked: false,
+    states: { there: { name: 'in place', blocks: [] } },
+    initial: 'there', use: [],
+    text: 'A ladder, a rope or a climbable trunk: it joins the hex it stands in to another place, set where it is put on the map. Going up or down it is climbing.',
+  },
 ];

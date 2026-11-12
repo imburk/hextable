@@ -27,21 +27,33 @@ export function fromWorld(x, z, size = 1) {
   return { q, r };
 }
 
-// Dijkstra flood. stepsFn(position) -> [{ h, cost }]: where one step from there can lead and
-// what it costs. Returns Map key -> {cost, prev, h}.
+// Dijkstra flood. stepsFn(position) -> [{ h, cost, max? }]: where one step from there can lead,
+// what it costs, and optionally the most that may have been spent in all once it is taken (so
+// that different ways of moving can have different allowances). Returns Map key -> {cost, prev, h}.
 export function reachable(start, budget, stepsFn) {
   const out = new Map([[key(start), { cost: 0, prev: null, h: start }]]);
-  const open = [{ h: start, cost: 0 }];
-  while (open.length) {
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) if (open[i].cost < open[bi].cost) bi = i;
-    const cur = open.splice(bi, 1)[0];
+  // A heap ordered by cost, then by the order things were added, so that among equal routes the
+  // first one found wins. Replays depend on that staying the same.
+  let seq = 0;
+  const heap = [{ h: start, cost: 0, seq: seq++ }];
+  const before = (a, b) => a.cost < b.cost || (a.cost === b.cost && a.seq < b.seq);
+  const push = (x) => { x.seq = seq++; let i = heap.push(x) - 1; while (i > 0) { const p = (i - 1) >> 1; if (!before(heap[i], heap[p])) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let i = 0; ;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && before(heap[l], heap[m])) m = l; if (r < heap.length && before(heap[r], heap[m])) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; }
+    }
+    return top;
+  };
+  while (heap.length) {
+    const cur = pop();
     if (cur.cost > out.get(key(cur.h)).cost) continue;
-    for (const { h: n, cost } of stepsFn(cur.h)) {
+    for (const { h: n, cost, max } of stepsFn(cur.h)) {
       const c = cur.cost + cost;
-      if (!(c <= budget)) continue;
+      if (!(c <= budget) || (max !== undefined && c > max)) continue;
       const k = key(n), old = out.get(k);
-      if (!old || c < old.cost) { out.set(k, { cost: c, prev: key(cur.h), h: n }); open.push({ h: n, cost: c }); }
+      if (!old || c < old.cost) { out.set(k, { cost: c, prev: key(cur.h), h: n }); push({ h: n, cost: c }); }
     }
   }
   return out;
