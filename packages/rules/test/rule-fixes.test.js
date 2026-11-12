@@ -1,7 +1,9 @@
 // Rules the engine got wrong (docs/DEBT.md, W1 to W9), each checked against the SRD 5.2 text.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { CONTENT, SPELLS } from "../src/content/index.js";
 import { apply, current, rollMode } from "../src/engine.js";
+import { spellProfile } from "../src/effects.js";
 import * as H from "../src/hex.js";
 import { newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
@@ -177,4 +179,33 @@ test("W7: the tool alone adds the Proficiency Bonus but gives no Advantage", () 
   const c = ok(apply(s, { type: "use", actor: "rogue", object: "door", verb: "pick" }, DM)).events[0];
   assert.equal(c.mode, undefined);
   assert.equal(c.total, c.roll + 3 + 2);
+});
+
+// ---------- W8: a helpful condition is not an attack ----------
+
+test("W8: a spell is harmful for an attack, a save, damage or a hostile condition, not for Invisible", () => {
+  const spell = (effects) => spellProfile({ ...structuredClone(CONTENT.spells["greater-invisibility"]), effects });
+  assert.equal(spell([{ condition: "invisible" }]).harmful, false);
+  assert.equal(spell([{ condition: "poisoned" }]).harmful, true);
+  assert.equal(spell([{ save: "con", onFail: [{ condition: "invisible" }] }]).harmful, true);
+  assert.equal(SPELLS.invisibility.harmful, false);
+  assert.equal(SPELLS["greater-invisibility"].harmful, false);
+});
+
+test("W8: Invisibility on oneself or an ally makes them Invisible and starts no fight", () => {
+  const { s } = field();
+  const wizard = s.entities.wizard;
+  Object.assign(wizard, { slots: { 2: 3, 4: 1 }, slotsMax: { 2: 3, 4: 1 } });
+  wizard.spells.push("invisibility", "greater-invisibility");
+  ok(apply(s, { type: "place", actor: "cleric", to: { q: 1, r: 0 } }, DM));
+  const self = ok(apply(s, { type: "cast", actor: "wizard", spell: "invisibility", target: "wizard" }, DM));
+  assert.equal(s.encounter, null);
+  assert.ok(wizard.cond.invisible);
+  assert.ok(self.events.some((e) => e.type === "manual" && /ends the spell early/.test(e.text)));   // assist: the early ending is the DM's
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "greater-invisibility", target: "cleric" }, DM));   // Concentration moves to the new spell
+  assert.equal(s.encounter, null);
+  assert.ok(s.entities.cleric.cond.invisible);
+  assert.equal(wizard.cond.invisible, undefined);                    // Invisibility ended with the old Concentration
+  ok(apply(s, { type: "endEffect", effect: s.effects.at(-1).id }, DM));
+  assert.equal(s.entities.cleric.cond.invisible, undefined);
 });
