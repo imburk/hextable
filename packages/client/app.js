@@ -50,7 +50,9 @@ function toast(msg, info = false) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), info ? 1600 : 3200);
 }
 function setMode(m) { mode = m; refresh(); }
-const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh() });     // the DM's map editor
+R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
+R.onPicture = () => { if (ED.on) refresh(); };
+const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh(), assets: () => T?.assets });     // the DM's map editor
 function select(id) { selId = id; mode = MOVE; }
 
 // ---------- events -> log lines and floating numbers ----------
@@ -214,6 +216,12 @@ function actionButtons(e, bar) {
     bar.append(button(def.name, sub, armed ? 'armed' : '', why, go));
   }
 }
+// What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
+function aimHow(area, range) {
+  const what = `${area.size} ft ${area.shape}${area.shape === 'line' && area.width > 5 ? ` (${area.width} ft wide)` : ''}`;
+  if (area.shape === 'cone' || area.shape === 'line' || (area.shape === 'cube' && !(range > 0))) return `tap a hex to aim the ${what}`;
+  return area.shape === 'cube' ? `tap where the near side of the ${what} goes (within ${range} ft)` : `tap where the ${what} goes (within ${range} ft)`;
+}
 // Highlights and the hint for an action being aimed.
 function actionAim(e, hl) {
   const def = e.actions.find((x) => x.id === mode.id), p = actionProfile(def);
@@ -224,7 +232,7 @@ function actionAim(e, hl) {
   const aimed = !!mode.aim || p.area.shape === 'emanation';
   hl.area = aimed ? areaHexes(S, e, { area: p.area }, mode.aim).map(H.key) : [];
   const caught = aimed ? areaTargets(S, e, def, mode.aim) ?? [] : [];
-  const how = p.area.shape === 'cone' ? `tap a hex to aim the ${p.area.size} ft cone` : `tap where the ${p.area.size} ft ${p.area.shape} goes (within ${p.range} ft)`;
+  const how = aimHow(p.area, p.range);
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
@@ -356,7 +364,7 @@ function refresh() {
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
           hl.area = hexes.map(H.key);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(H.col(x.pos)));
-          const how = sp.area.shape === 'cone' ? `tap a hex to aim the ${sp.area.size} ft cone` : `tap where the ${sp.area.size} ft ${sp.area.shape} goes (within ${sp.range} ft)`;
+          const how = aimHow(sp.area, sp.range);
           hint = aimed ? `${sp.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
         } else {
@@ -632,7 +640,7 @@ const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => se
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, act, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, ED, act, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.

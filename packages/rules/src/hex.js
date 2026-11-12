@@ -78,3 +78,31 @@ export function cone(origin, aim, n) {
     return cos >= Math.cos((30.5 * Math.PI) / 180);
   });
 }
+
+// Feet in one unit of toWorld(): neighbouring hex centres are √3 units, and 5 feet, apart.
+export const FEET_PER_UNIT = 5 / S3;
+// Hexes in a straight band from `origin` toward `aim`: those whose centres lie between `from`
+// and `to` feet along the direction (from < t ≤ to) and no more than `half` feet to either side
+// of it (a centre exactly on the edge counts on one side only). A Line is a long thin band, a
+// Cube a square one. Empty if `aim` is `origin`.
+export function band(origin, aim, from, to, half) {
+  const o = toWorld(origin), a = toWorld(aim);
+  const dx = a.x - o.x, dz = a.z - o.z, dl = Math.hypot(dx, dz);
+  if (!dl) return [];
+  const ux = dx / dl, uz = dz / dl, n = Math.ceil(Math.max(Math.abs(from), Math.abs(to), half) / 5) + 1;
+  const eps = 1e-6;
+  return range(origin, n).filter((h) => {
+    const w = toWorld(h), vx = (w.x - o.x) * FEET_PER_UNIT, vz = (w.z - o.z) * FEET_PER_UNIT;
+    const t = vx * ux + vz * uz, cross = vx * uz - vz * ux, side = Math.abs(cross);
+    // A hex whose centre is exactly on the edge of the band (the band runs along the border of
+    // two hexes) counts on one side only, so a 5-foot Line is one hex wide in every direction.
+    return t > from + eps && t <= to + eps && (side < half - eps || (side <= half + eps && cross > 0));
+  });
+}
+// How far along the direction from `origin` toward `aim` (in feet) a point lies.
+export function along(origin, aim, h) {
+  const o = toWorld(origin), a = toWorld(aim), w = toWorld(h);
+  const dx = a.x - o.x, dz = a.z - o.z, dl = Math.hypot(dx, dz);
+  if (!dl) return 0;
+  return ((w.x - o.x) * dx + (w.z - o.z) * dz) / dl * FEET_PER_UNIT;
+}

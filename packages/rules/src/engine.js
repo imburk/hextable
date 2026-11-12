@@ -14,6 +14,7 @@ import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls } from './eff
 import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnStarted } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
+import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
 import { COVER, coverOf, inSight } from './sight.js';
@@ -710,38 +711,76 @@ function notice(s, e, ev, before) {
   return true;
 }
 
-// Hexes an area spell would cover if aimed at `aim`.
-// A cone opens from the caster toward `aim`. A sphere or cylinder is centred on `aim`, which must
-// be within the spell's range. An emanation surrounds the caster and needs no aim.
+// How an area is laid out on the hexes when `e` aims it at `aim`: { hexes, origin, high }.
+// `range` is the spell's range in feet (0 for Self), or an action's `area.range`.
+//   cone      opens from `e` toward `aim`.
+//   sphere, cylinder   centred on `aim`, which must be within range.
+//   emanation surrounds `e` and needs no aim.
+//   line      from the edge of `e`'s space toward `aim`, `size` feet long and `width` feet wide
+//             (5 unless the area says), tilted up or down toward the height aimed at. A Line with
+//             a range (a wall placed at a distance) is not laid out: the DM places it.
+//   cube      a Self cube starts at the edge of `e`'s space and extends `size` feet toward `aim`
+//             (SRD: its point of origin lies on a face, outside the area). A cube with a range
+//             has its near face at the hex aimed at, which is in it, and extends away from `e`.
+//             It rises `size` feet from the ground (or the height) at its point of origin.
+// `origin` is where it goes off; `high(t)` says whether creature `t` is within its height.
+function layout(s, e, area, range, aim) {
+  const n = area.size / FT, shape = area.shape;
+  if (shape === 'emanation') return { hexes: H.range(e.pos, n).filter((h) => H.key(h) !== H.key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
+  if (!aim) return null;
+  const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
+  if (shape === 'cone') return { hexes: H.cone(e.pos, aim, n), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
+  if (shape === 'sphere' || shape === 'cylinder') {
+    const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
+    const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : (t) => gap(s, origin, t.pos) <= n;
+    return { hexes: H.range(aim, n), origin, high };
+  }
+  const front = Math.max(...footprint(e).map((f) => H.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
+  if (shape === 'line') {
+    if (range > 0 || H.dist(aim, e.pos) === 0) return null;
+    const flat = H.along(e.pos, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
+    const length = area.size / Math.hypot(1, slope), half = (area.width ?? FT) / 2;
+    const hexes = H.band(e.pos, aim, front, front + length, half);
+    const high = (t) => { const z = e.pos.z + slope * H.along(e.pos, aim, t.pos); return z + half > t.pos.z && z - half < t.pos.z + sizeOf(t).height; };
+    return { hexes, origin: e.pos, high };
+  }
+  if (shape === 'cube') {
+    const size = area.size, half = size / 2;
+    if (!(range > 0)) {
+      if (H.dist(aim, e.pos) === 0) return null;
+      const base = e.pos.z;
+      return { hexes: H.band(e.pos, aim, front, front + size, half), origin: e.pos, high: (t) => t.pos.z < base + size && t.pos.z + sizeOf(t).height > base };
+    }
+    const away = H.dist(aim, e.pos) === 0 ? { q: aim.q + 1, r: aim.r } : { q: 2 * aim.q - e.pos.q, r: 2 * aim.r - e.pos.r };
+    const origin = { q: aim.q, r: aim.r, z: aimZ };
+    return { hexes: H.band(aim, away, -FT / 2, size - FT / 2, half), origin, high: (t) => t.pos.z < aimZ + size && t.pos.z + sizeOf(t).height > aimZ };
+  }
+  return null;
+}
+// The range an area is aimed within: a spell's range, or an action's `area.range`.
+const areaRange = (sp) => (typeof sp.range === 'number' ? sp.range : sp.area?.range ?? 0);
+
+// Hexes an area would cover if aimed at `aim` (for the UI's highlight and the AI).
+// `sp` is a spell profile or { area, range? }.
 export function areaHexes(s, e, sp, aim) {
   if (!sp.area) return [];
-  const n = sp.area.size / FT, shape = sp.area.shape;
-  let hexes = [];
-  if (shape === 'emanation') hexes = H.range(e.pos, n).filter((h) => H.key(h) !== H.key(e.pos));
-  else if (!aim) return [];
-  else if (shape === 'cone') hexes = H.cone(e.pos, aim, n);
-  else if (shape === 'sphere' || shape === 'cylinder') hexes = H.range(aim, n);
-  return hexes.filter((h) => hasColumn(s.map, h));
+  const l = layout(s, e, sp.area, areaRange(sp), aim);
+  return l ? l.hexes.filter((h) => hasColumn(s.map, h)) : [];
 }
 
-// Who an area catches when `e` aims it at `hex`: { targets, hexes, origin }. A cone opens from
-// `e` toward the hex; a sphere or cylinder goes off at the hex, which must be within `range`
-// feet; an emanation surrounds `e`. `origin` is null when the area starts from `e` itself.
+// Who an area catches when `e` aims it at `hex`: { targets, hexes, origin }. See layout().
+// `origin` is null when the area starts from `e` itself.
 function aimArea(s, e, name, area, range, hex) {
-  const shape = area.shape;
-  if (shape === 'cone') (hex && H.dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
+  const shape = area.shape, fromSelf = shape === 'cone' || shape === 'line' || (shape === 'cube' && !(range > 0));
+  if (fromSelf) (hex && H.dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
   else if (shape !== 'emanation') {
     hex || fail(`Pick where ${name} goes off.`);
     const d = gap(s, hex.z !== undefined ? hex : landing(s.map, hex, e.pos.z) ?? hex, e.pos);
     if (d * FT > range) fail(`That is ${ft(d)} away. ${name} reaches ${range} ft.`);
   }
-  const hexes = areaHexes(s, e, { area }, hex);
-  const keys = new Set(hexes.map(H.key));
-  // Where it goes off: the source for a cone or an emanation, else the spot aimed at (in the air if a height was given).
-  const origin = shape === 'cone' || shape === 'emanation' ? e.pos : hex.z !== undefined ? { q: hex.q, r: hex.r, z: hex.z } : landing(s.map, hex, e.pos.z) ?? e.pos;
-  const size = area.size / FT, tall = area.height ?? area.size;
-  const high = (t) => (shape === 'cylinder' ? t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : gap(s, origin, t.pos) <= size);     // areas have height too
-  const targets = living(s).filter((t) => footprint(t).some((f) => keys.has(H.col(f))) && high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
+  const l = layout(s, e, area, range, hex) || fail(`The engine cannot lay out ${name} there.`);
+  const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(H.key)), origin = l.origin;
+  const targets = living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t).some((f) => keys.has(H.col(f))) && l.high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
   return { targets, hexes, origin: origin === e.pos ? null : origin };
 }
 
@@ -1544,6 +1583,23 @@ const handlers = {
       e.gear.splice(i, 1);
     } else e.gear.push(item);
     ev.push({ type: 'gear', id: e.id, item, ...(a.take ? { taken: true } : {}) });
+  },
+  // Hand a creature a light to carry, or take it away. { type: 'setLight', actor, item } with an item
+  // from content/lights.js (a torch, a lamp), or { light: { bright, dim } } in feet; `item: null` puts it out.
+  setLight(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can hand out light.');
+    const e = ent(s, a.actor);
+    if (a.item === null || a.light === null) {
+      e.light || fail(`${e.name} carries no light.`);
+      delete e.light;
+      return ev.push({ type: 'light', id: e.id, bright: 0, dim: 0 });
+    }
+    const item = a.item === undefined ? null : (typeof a.item === 'string' && Object.hasOwn(LIGHTS, a.item) && a.item) || fail('Unknown light.');
+    const l = item ? LIGHTS[item] : a.light ?? fail('Name a light or give its radii.');
+    const feet = (n) => Number.isInteger(n) && n >= 0 && n <= 600 && n % FT === 0;
+    (l && typeof l === 'object' && feet(l.bright) && feet(l.dim) && l.bright + l.dim > 0) || fail('A light is Bright and Dim radii in feet, multiples of 5.');
+    e.light = { bright: l.bright, dim: l.dim, ...(item ? { item } : {}) };
+    ev.push({ type: 'light', id: e.id, bright: l.bright, dim: l.dim, ...(item ? { item, name: LIGHTS[item].name } : {}) });
   },
   // Play on a different map. The party is set down at its start; the creatures of the old
   // place stay behind with it. { type: 'loadMap', map }

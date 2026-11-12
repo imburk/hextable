@@ -192,10 +192,10 @@ export const spells1 = [
     level: 1, school: "conjuration", classes: ["druid", "ranger"],
     time: "action", range: 90, components: ["v", "s"],
     duration: "1 minute", concentration: true, ritual: false,
-    target: {"area": {"shape": "cube", "size": 20}},
+    target: {"area": {"shape": "cube", "size": 20, "exceptCaster": true}},
     effects: [{"save": "str", "onFail": [{"condition": "restrained"}]}],
     tier: "assist", checked: true,
-    text: "Plants fill a 20-foot square, making it Difficult Terrain. Each creature in it other than the caster makes a Strength save or is restrained while the spell lasts. The engine cannot lay out a square area, so the DM picks who is caught, and the DM also handles the Difficult Terrain and the Athletics check a restrained creature can use to break free.",
+    text: "Plants fill a 20-foot square, making it Difficult Terrain. Each creature in it other than the caster makes a Strength save or is restrained while the spell lasts. The engine lays out the square as a 20-foot cube and resolves the save; the DM handles the Difficult Terrain and the Athletics check a restrained creature can use to break free.",
   },
   {
     id: "expeditious-retreat", name: "Expeditious Retreat", source: "SRD 5.2.1",
@@ -520,7 +520,7 @@ export const spells1 = [
     effects: [{"save": "con", "half": true, "onFail": [{"damage": "2d8", "type": "thunder"}, {"move": 10, "dir": "away"}]}],
     higher: {"slot": {"damage": "1d8"}},
     tier: "assist", checked: true,
-    text: "Each creature in a 15-foot cube from the caster makes a Constitution save, taking thunder damage on a failure (half on a success; more with higher slots) and being pushed 10 feet away on a failure. Unsecured objects inside the cube are also pushed 10 feet, and the boom is heard 300 feet away. The engine cannot lay out a cube, so the DM picks who is caught and moves the objects.",
+    text: "Each creature in a 15-foot cube from the caster makes a Constitution save, taking thunder damage on a failure (half on a success; more with higher slots) and being pushed 10 feet away on a failure. Unsecured objects inside the cube are also pushed 10 feet, and the boom is heard 300 feet away. The engine lays out the cube and resolves the creatures; the DM moves the objects.",
   },
   {
     id: "unseen-servant", name: "Unseen Servant", source: "SRD 5.2.1",

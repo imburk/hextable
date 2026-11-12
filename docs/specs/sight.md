@@ -1,6 +1,6 @@
 # Spec: sight
 
-Status: proposed. Built so far: S1 (line of sight by centre and corners) and S2 (cover). Owner of the design: Claude (Fable).
+Status: proposed. Built so far: S1 (line of sight by centre and corners), S2 (cover) and S4 (light). Owner of the design: Claude (Fable).
 
 Covers line of sight, cover, light and darkness, special senses, hiding and
 finding hidden creatures, and what players are sent as a result. It builds on
@@ -105,10 +105,11 @@ Each hex is **bright**, **dim** or **dark**.
 - A map level has an ambient light: `bright` (daylight, a lit hall), `dim`
   (dusk, moonlight) or `dark` (a cave). A region may override its level.
 - A **light source** is an object on the map or an item a creature carries,
-  with a bright radius and a dim radius in feet (a torch: 20 and 20 more
-  **(check)**). Carried lights are a field on the creature record set from its
-  gear; the DM's `give` action is the interim way to hand someone a torch, and
-  equipment states (R10) make it proper.
+  with a bright radius and a dim radius in feet (a torch: 20 and 20 more,
+  confirmed in the SRD's Adventuring Gear). Carried lights are a field on the
+  creature record; the DM's `setLight` action (not `give`, see the build notes)
+  is the interim way to hand someone a torch, and equipment states (R10) make
+  it proper.
 - A source lights a hex if it has line of sight to it (decision 1). Light does
   not pass walls.
 - The light at a hex is the best of ambient and every source that reaches it.
@@ -284,3 +285,17 @@ into. S4 to S7 are the dark-cave work and depend on each other in that order.
 - **Creature cover** (S2) is given by a creature whose hex centre lies within
   1.5 ft of the line between attacker and target, and not by one next to the
   attacker's own hex end or the target's.
+- **Light** (S4). A level and a region may carry `light`: `bright`, `dim` or `dark`; a region's
+  wins over its level's, and with neither a place is bright, so every existing map is lit as
+  before. The DM sets them with the `level` and `region` map edits (`light: null` restores the
+  default). A thing on the map gives light in a state that has `light: { bright, dim }` (the
+  brazier and the campfire: 20 and 20, as a torch). A creature carries `light: { bright, dim }`,
+  set by the DM action `setLight` with an item from `content/lights.js` (SRD gear: Candle 5 + 5,
+  Torch 20 + 20, Lamp 15 + 30, Hooded Lantern 30 + 30, or 0 + 5 with the hood lowered) or with
+  radii; `item: null` puts it out. The Bullseye Lantern's cone is not supported. Distance to a
+  light counts height by the `vertical` table rule.
+- **Seeing is not reaching** (S4). Light, and from S5 sight, go by `inView`: the S1 lines stopped by
+  anything that blocks sight (walls, curtains, shut doors, floors), where cover and total cover go
+  by what blocks movement and sight. So light passes a window or a rail, and a curtain stops it.
+  Light is kept per source and position and thrown away when a wall, door or the map changes; a
+  carried light that moves is a new source, worked out only for the places asked about.

@@ -40,7 +40,7 @@ many monsters each one touches:
 | M8 | One monster is not marked checked: Swarm of Insects, whose SRD speed is "Climb or Fly 20 ft. (GM's choice)", a choice the format cannot hold. The other 49 were compared with the SRD and marked checked (PR #61) | any |
 | M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, does not hide, and uses no Bonus Action but an area one | engine |
 | M10 | Saving throw bonuses, languages and initiative bonuses are not entered for monsters (split out of M7) | any |
-| M11 | Monster lines and cubes (22 breath weapons are lines) and spheres or cylinders with no `area.range` cannot be aimed; the DM applies them | engine (with S3) |
+| M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
 
 ## Characters
 
@@ -56,14 +56,14 @@ many monsters each one touches:
 
 ## Spells
 
-339 are entered; 12 play fully, 86 partly, 241 are applied by the DM. What the vocabulary
+339 are entered; 13 play fully, 85 partly, 241 are applied by the DM. What the vocabulary
 cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
 | S1 | Dice-valued modifiers (Bless, Bane, Guidance) | engine |
 | S2 | More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing | engine |
-| S3 | Line and cube areas | engine |
+| S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall), several cubes arranged by the caster (Fire Storm), and creatures of the caster's choice in an area (Slow, `area.choose`) | engine |
 | S4 | Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them | engine |
 | S5 | Temporary Hit Points, a damage type chosen at casting, "until the end of your next turn" | engine |
 | S6 | Summoned creatures and their stat blocks (the companions spec is not written) | engine |
@@ -75,7 +75,7 @@ cannot say, by how much it would unlock:
 
 | # | What | Who |
 |---|---|---|
-| P1 | Light, senses in use, hiding, and sending players only what they can see (sight tasks S4 to S7) | engine |
+| P1 | ~~Light (S4)~~ (#75); senses in use, hiding, and sending players only what they can see (sight tasks S5 to S7). Carried lights are set by the DM (`setLight`), not from gear; the Bullseye Lantern's cone is not supported | engine |
 | P2 | Rock does not block sight | engine |
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
@@ -84,7 +84,7 @@ cannot say, by how much it would unlock:
 | P7 | The Universal VTT import has only been tried on a hand-made file | any, with a real export |
 | P8 | The editor cannot rename a map, and shows no numbers for tile heights | any |
 | P9 | Walking together: a follower brought up when a fight starts is set down, not walked, so a hidden trap on the way it would have come is not set off; a follower whose way back to the column is longer than 300 ft is dropped as not keeping up; the undo list names follow actions only by their type | engine |
-| P10 | The renderer does not draw a level's background picture (`level.image`), and the editor cannot set one | any |
+| P10 | ~~The renderer does not draw a level's background picture (`level.image`), and the editor cannot set one~~ (PR #73) | any |
 | P11 | Handouts: no shared pointer on an open handout; undo of a handout or note action is labelled "handout (an action)" and the like (`history.js` has no labels for them), and undoing a note takes it off the record but not off the screens it reached | any |
 | P12 | Exporting a table or a map does not carry its files: the state names asset ids whose bytes stay on the server | any |
 

@@ -38,6 +38,7 @@ function seenRecord(e) {
     id: e.id, name: e.name, kind: e.kind, side: e.side, tpl: e.tpl, size: e.size,
     pos: { q: e.pos.q, r: e.pos.r, z: e.pos.z }, look: e.look ? structuredClone(e.look) : undefined,
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
+    ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
   };
 }
 
@@ -179,7 +180,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;

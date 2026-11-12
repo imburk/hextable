@@ -1,8 +1,8 @@
-// Sight: line of sight and cover, worked out on hexes from the centre and the corners.
-// Design: docs/specs/sight.md, decisions 1 and 2.
+// Sight: line of sight and cover, worked out on hexes from the centre and the corners, and light.
+// Design: docs/specs/sight.md, decisions 1 to 3.
 import * as H from './hex.js';
-import { FT, WALL_HEIGHT, footprint, ground, shapeOf, surfaces } from './space.js';
-import { barriers, center } from './walls.js';
+import { FT, WALL_HEIGHT, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
+import { barriers, center, objectDef } from './walls.js';
 
 const S3 = Math.sqrt(3), CORNER = (FT / S3) * 0.9;        // a little inside the true corner, so a wall on the hex's own edge is not "in front of" it
 const CORNERS = [0, 1, 2, 3, 4, 5].map((i) => { const a = (Math.PI / 180) * (30 + 60 * i); return [CORNER * Math.cos(a), CORNER * Math.sin(a)]; });
@@ -36,14 +36,17 @@ function floored(map, a, b) {
 }
 
 const memo = new WeakMap();
+const MEMO_MAX = 200000;                                   // lines kept per map before the table is started afresh
 // What can be made out of hex `b` from the centre of hex `a`: { centre, corners } where corners
 // counts how many of b's six are reached past everything that stops both movement and sight, and
 // `low` says whether a rail or low wall lies on the way to the centre.
-export function sightline(map, a, b) {
+// With `what` = 'sight' the lines are stopped by whatever blocks sight alone (a curtain too, a
+// window or a rail not): that is seeing, where 'both' is reaching.
+export function sightline(map, a, b, what = 'both') {
   const B = barriers(map);
   let had = memo.get(map);
-  if (!had || had.sig !== B.sig) memo.set(map, had = { sig: B.sig, at: new Map() });
-  const k = `${a.q},${a.r},${a.z}|${b.q},${b.r},${b.z}`;
+  if (!had || had.sig !== B.sig || had.at.size > MEMO_MAX) memo.set(map, had = { sig: B.sig, at: new Map() });
+  const k = `${what}|${a.q},${a.r},${a.z}|${b.q},${b.r},${b.z}`;
   let v = had.at.get(k);
   if (v) return v;
   if (floored(map, a, b)) v = { centre: false, corners: 0, low: false };
@@ -54,9 +57,9 @@ export function sightline(map, a, b) {
     // A corner counts if it is reached and is on the target's own side of any wall that cuts through its hex.
     for (const [dx, dy] of CORNERS) {
       const k2 = [c[0] + dx, c[1] + dy];
-      if (!stopped(map, B, p, a.z, k2, b.z, ['both']) && !stopped(map, B, c, b.z, k2, b.z, ['both'])) corners++;
+      if (!stopped(map, B, p, a.z, k2, b.z, [what]) && !stopped(map, B, c, b.z, k2, b.z, [what])) corners++;
     }
-    v = { centre: !stopped(map, B, p, a.z, c, b.z, ['both']), corners, low: stopped(map, B, p, a.z, c, b.z, ['low']) };
+    v = { centre: !stopped(map, B, p, a.z, c, b.z, [what]), corners, low: what === 'both' && stopped(map, B, p, a.z, c, b.z, ['low']) };
   }
   had.at.set(k, v);
   return v;
@@ -67,6 +70,19 @@ export function inSight(map, a, b) {
   if (ab.centre || ab.corners > 0) return true;
   const ba = sightline(map, b, a);
   return ba.centre || ba.corners > 0;
+}
+
+// Can anything at one position see the other, past whatever blocks sight? Either way round will do.
+export function inView(map, a, b) {
+  const ab = sightline(map, a, b, 'sight');
+  if (ab.centre || ab.corners > 0) return true;
+  const ba = sightline(map, b, a, 'sight');
+  return ba.centre || ba.corners > 0;
+}
+// Between two creatures (or a creature and a position): does any part of one see any part of the other?
+export function inViewOf(map, a, b) {
+  const pa = a.pos ? footprint(a) : [a], pb = b.pos ? footprint(b) : [b];
+  return pa.some((x) => pb.some((y) => inView(map, x, y)));
 }
 
 export const COVER = { none: 0, half: 2, threeQuarters: 5 };
@@ -98,4 +114,50 @@ export function coverOf(s, from, target, others = []) {
     }
   }
   return 'none';
+}
+
+// ---------- light ----------
+// Each place is bright, dim or dark: the best of its ambient light and of every source whose light
+// reaches it. A source reaches a place it has a line of sight to (inView), within its radius: Bright
+// Light to `bright` feet, then Dim Light for `dim` feet more. Design: docs/specs/sight.md, decision 3.
+export const LIGHT = ['dark', 'dim', 'bright'];
+const LEVEL = { dark: 0, dim: 1, bright: 2 };
+// The light a place has with nothing lit in it: its region's, else its level's, else bright.
+export function ambientAt(map, pos) {
+  const sf = under(map, pos);
+  if (!sf) return 'bright';
+  return regionAt(map, sf.level.id, pos)?.light ?? sf.level.light ?? 'bright';
+}
+// Everything giving light: things on the map in a state that is lit, and creatures carrying a light.
+export function lightSources(s) {
+  const out = [];
+  for (const o of s.map.objects) {
+    const l = objectDef(o)?.states[o.state]?.light, level = l && s.map.levels.find((x) => x.id === o.level);
+    if (level) out.push({ pos: { q: o.at.q, r: o.at.r, z: level.z + (level.tiles[H.col(o.at)]?.h ?? 0) }, bright: l.bright, dim: l.dim, object: o.id });
+  }
+  for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0)) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
+  return out;
+}
+// What one source gives a place: 0, 1 (dim) or 2 (bright). Kept per source and position, and thrown
+// away when a wall, door or the map changes; a source that moves is simply a new source.
+const shone = new WeakMap();
+function shine(s, src, pos) {
+  const d = gap(s, src.pos, pos) * FT;
+  if (d > src.bright + src.dim) return 0;
+  const B = barriers(s.map);
+  let had = shone.get(s.map);
+  if (!had || had.sig !== B.sig || had.per.size > 4000) shone.set(s.map, had = { sig: B.sig, per: new Map() });
+  const sk = `${src.pos.q},${src.pos.r},${src.pos.z}|${src.bright}|${src.dim}`, pk = `${pos.q},${pos.r},${pos.z}`;
+  let per = had.per.get(sk);
+  if (!per) had.per.set(sk, per = new Map());
+  let v = per.get(pk);
+  if (v === undefined) per.set(pk, v = !inView(s.map, src.pos, pos) ? 0 : src.bright > 0 && d <= src.bright ? 2 : 1);
+  return v;
+}
+// How light it is at a position: 'bright', 'dim' or 'dark'. `sources` may be passed in when many
+// places are asked about at once.
+export function lightAt(s, pos, sources = lightSources(s)) {
+  let best = LEVEL[ambientAt(s.map, pos)];
+  for (const src of sources) { if (best === 2) break; best = Math.max(best, shine(s, src, pos)); }
+  return LIGHT[best];
 }

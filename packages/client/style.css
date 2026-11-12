@@ -157,6 +157,9 @@ body.editing #dock, body.editing #hint { display: none !important; }
 #editor .ed-form ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 #editor .ed-form li { display: flex; gap: 6px; align-items: center; justify-content: space-between; }
 #editor .ed-form li.none { color: var(--muted); font-size: 13px; }
+#ed-bgstate, #ed-scalehint { color: var(--muted); font-size: 13px; flex: 1 1 10em; }
+#ed-bg select { flex: 1 1 9em; min-width: 0; } #ed-nudgestep { flex: 0 0 5.5em !important; }
+#ed-scaleask { display: inline-flex; gap: 6px; align-items: center; } #ed-scaleask[hidden] { display: none; }
 #ed-rstate, #ed-hread { color: var(--muted); font-size: 13px; flex: 1 1 10em; }
 .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #0006; }
 .sw-grass { background: #6f8f55; } .sw-forest { background: #4f7446; } .sw-stone { background: #9a978c; } .sw-water { background: #3f6f8c; } .sw-rock { background: #77736a; }

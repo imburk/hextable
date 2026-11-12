@@ -14,8 +14,17 @@ import { roll } from './rng.js';
 
 const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess'];
 export const stepKind = (step) => STEPS.find((k) => k in step);
-// Area shapes the engine can lay out on hexes today. Others are applied by the DM.
-export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation'];
+// Area shapes the engine can lay out on hexes (engine.js, layout()).
+export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
+// Can the engine aim this area? A sphere or cylinder needs somewhere within range to go off
+// (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
+// wall placed at a distance, which the DM places.
+export function aimable(area, range) {
+  if (!AREAS.includes(area.shape) || area.count > 1 || area.choose) return false;     // several shapes, or a choice among those caught: the DM
+  if (area.shape === 'sphere' || area.shape === 'cylinder') return range > 0;
+  if (area.shape === 'line') return !(range > 0);
+  return true;
+}
 
 // Visit every step, including those inside branches. `path` names a step uniquely within its
 // list ("0", "0.onFail.1"), and `inAttack` says whether it sits under an attack roll.
@@ -101,7 +110,9 @@ export function spellProfile(def) {
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
   const t = def.target;
-  const aim = t.self ? 'self' : t.area ? (AREAS.includes(t.area.shape) ? 'area' : 'none') : 'creature';
+  // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
+  const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
+  const aim = t.self ? 'self' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
   return {
     id: def.id, name: def.name, level: def.level, time: def.time, range: feet(def.range),
     aim,                                           // 'creature' | 'area' | 'self' | 'none' (nothing the engine can aim)
@@ -125,7 +136,7 @@ export function actionProfile(a) {
   let harmful = false;
   walk(a.effects, (st) => { const k = stepKind(st); if (k === 'attack' || k === 'save' || k === 'damage' || k === 'condition' || k === 'fall' || k === 'move') harmful = true; });
   const t = a.target, first = a.effects[0], kind = stepKind(first);
-  const aim = t.self ? 'self' : t.area ? (AREAS.includes(t.area.shape) && (t.area.range || !['sphere', 'cylinder'].includes(t.area.shape)) ? 'area' : 'none') : 'creature';
+  const aim = t.self ? 'self' : t.area ? (aimable(t.area, t.area.range ?? 0) ? 'area' : 'none') : 'creature';
   const reach = t.creature?.reach ?? null, range = t.creature?.range ?? null;
   return {
     id: a.id, name: a.name, aim, harmful,
