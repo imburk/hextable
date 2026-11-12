@@ -25,7 +25,7 @@ players are sent). **any** can be handed to any agent.
 
 ## Monsters
 
-329 are entered; 34 play fully by the rules (tiers were not raised by #71; #102 and the pull requests after it re-tiered the files one by one, see M12). The rest are held back by these, in order of how
+329 are entered; 49 play fully by the rules (tiers were not raised by #71; #102 and the pull requests after it re-tiered the files one by one, see M12). The rest are held back by these, in order of how
 many monsters each one touches:
 
 | # | What | Who |
@@ -41,18 +41,18 @@ many monsters each one touches:
 | M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, hides only to open a fight (#88), and uses no Bonus Action but an area one or Nimble Escape's Hide | engine |
 | ~~M10~~ | ~~Saving throw bonuses~~ (#93: `saves` on the monster, 122 monsters list one; used by the engine as `saveBonus`); ~~initiative bonuses~~ (#95: `initiative` on the monster, `initBonus` on the creature, used by `rollInit`; the SRD prints two inconsistent bracketed totals, Gray Ooze and Invisible Stalker, the modifier was kept); ~~languages~~ (#98: `languages` on the monster, 329 entered, data only). Nothing of M10 is left | any |
 | M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
-| M12 | **Why the rest are not `auto`** (monster-saves re-tier; 34 auto, 293 assist, 2 manual; counts of monsters, one monster can be in several; "alone" = the only thing holding it back, so what building it would unlock at once): descriptive traits the engine cannot enforce (breathing, senses, climbing, plane, telepathy) (75, alone for 15); movement rules (bonus-action moves, teleports, leaps, passing through) (75, alone for 22); spellcasting and spell-like actions (72, alone for 9); other effects of an attack or action the vocabulary cannot say (60, alone for 7); a size limit on Prone, Grappled, pulled or swallowed (W9) (57, alone for 13); traits that act at a turn boundary (auras, regeneration, ...) (46, alone for 4); magic resistance (no tag for saves against magic) (35, alone for 0); dying and returning (death bursts, restoration, Undead Fortitude) (34, alone for 3); legendary resistance (32, alone for 0); lasting effects (Hit Point maximum loss, curses, wounds, no healing) (30, alone for 1); legendary actions (30, alone for 0); changing form, parts and special bodies (23, alone for 0); reactions (21, alone for 5); grapple, swallow and engulf riders (escape DC, Restrained until the grapple ends, damage each turn) (19, alone for 4); a charge (moved N feet straight toward) (17, alone for 11); Bloodied (no tag for it) (16, alone for 4); Multiattack that cannot be entered (spellcasting or "if available") (13, alone for 0); chained or repeated saves (a second failure, a worse state) (13, alone for 2). Size limits (W9) alone hold 13 | engine |
+| M12 | **Why the rest are not `auto`** (monster-saves re-tier; 49 auto, 278 assist, 2 manual; counts of monsters, one monster can be in several; "alone" = the only thing holding it back, so what building it would unlock at once): descriptive traits the engine cannot enforce (breathing, senses, climbing, plane, telepathy) (75, alone for 15); movement rules (bonus-action moves, teleports, leaps, passing through) (75, alone for 22); spellcasting and spell-like actions (72, alone for 9); other effects of an attack or action the vocabulary cannot say (57, alone for 6); a size limit on Prone, Grappled, pulled or swallowed (W9) (57, alone for 14); traits that act at a turn boundary (auras, regeneration, ...) (46, alone for 5); magic resistance (no tag for saves against magic) (35, alone for 0); dying and returning (death bursts, restoration, Undead Fortitude) (34, alone for 3); legendary resistance (32, alone for 0); lasting effects (Hit Point maximum loss, curses, wounds, no healing) (30, alone for 1); legendary actions (30, alone for 0); changing form, parts and special bodies (23, alone for 0); reactions (21, alone for 5); grapple, swallow and engulf riders (escape DC, Restrained until the grapple ends, damage each turn) (19, alone for 4); a charge (moved N feet straight toward) (17, alone for 11); Bloodied (no tag for it) (16, alone for 4); Multiattack that cannot be entered (spellcasting or "if available") (13, alone for 0); chained or repeated saves (a second failure, a worse state) (13, alone for 2). Size limits (W9) alone hold 14 | engine |
 
 ## Characters
 
 | # | What | Who |
 |---|---|---|
 | C1 | ~~**Extra Attack** (the characters' Multiattack: Fighter, Paladin, Ranger, Barbarian and Monk at level 5). Not built. A typed-in level 5 fighter attacks once~~ (#71: `features.extraAttack`, also in quick entry) | engine (with M1) |
-| C2 | Only Second Wind and Sneak Attack exist as features. Everything else on a sheet (Action Surge, Rage, Channel Divinity, Cunning Action, Wild Shape...) is not there | engine (R7) |
-| C3 | No levelling or derived sheets: numbers are typed in (R7, R8) | engine, then any |
+| C2 | ~~Only Second Wind and Sneak Attack exist as features. Everything else on a sheet (Action Surge, Rage, Channel Divinity, Cunning Action, Wild Shape...) is not there~~ (#99 classes as data, #108 features from their data). What each class still lacks is listed under C8 | engine (R7) |
+| C3 | ~~No levelling or derived sheets: numbers are typed in (R7, R8)~~ (#103 derive, #111 setSheet and levelUp). Left: species, backgrounds and feats are not entered (their effects are typed into the scores and `extraSkills`); multiclassing; a DM override for a sheet with problems | engine, then any |
 | C4 | Equipment states, attunement, encumbrance, spell materials (R10) | engine |
-| C5 | Short rests and Hit Dice; ~~Temporary Hit Points~~ (#82) | engine |
-| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #88). Cunning Action (the rogue's Bonus Action Hide) is not built | engine |
+| C5 | ~~Short rests and Hit Dice~~ (#108: `shortRest`, for built characters; a hand-typed record has no Hit Die, so it spends none); ~~Temporary Hit Points~~ (#82) | engine |
+| C6 | Grapple and shove; Help, Study, Influence actions (~~Hide~~ #88). ~~Cunning Action (the rogue's Bonus Action Hide) is not built~~ (#108) | engine |
 | C7 | Reactions: Shield, Counterspell, choosing whether to take an opportunity attack (R6) | engine |
 
 ## Spells
@@ -72,6 +72,81 @@ cannot say, by how much it would unlock:
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
 | S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+
+### Re-tiering pass (spells entered before the vocabulary grew)
+
+Each pull request takes two levels, converts what the vocabulary can now say exactly, and tallies
+what is still missing for the rest, by kind. A spell can be held back by more than one thing; it
+is counted under the first that applies.
+
+**Levels 0 and 1** (#105): 2 moved from manual to assist (Chromatic Orb: chosen damage type;
+Grease: a zone). Before: 0 auto, 3 assist, 15 manual at level 0 and 14 auto, 11 assist, 32 manual
+at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. Still missing:
+
+| Kind | Level 0 | Level 1 |
+|---|---|---|
+| Information, detection, utility with nothing to roll (the DM tells or applies it) | druidcraft, elementalism, mending, message, prestidigitation, thaumaturgy, spare the dying (no Stable condition to set), light (a lit object) | alarm, comprehend languages, create or destroy water, detect evil and good, detect magic, detect poison and disease, identify, illusory script, purify food and drink, speak with animals, goodberry |
+| Illusions | minor illusion | disguise self, silent image |
+| Summons, companions, objects that act | dancing lights, mage hand | find familiar, floating disk, unseen servant |
+| A trigger on the caster's own hit (smites) | | divine smite, ensnaring strike, searing smite |
+| A caster's weapon attacks changed, or a later action the spell grants | shillelagh, true strike, produce flame | |
+| Movement: Dash, jumping | | expeditious retreat, jump |
+| A reaction with a trigger | | feather fall (assist: hellish rebuke, shield) |
+| What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship, which also needs a type restriction) |
+| Light or obscurement on a creature or an area, and a negative tag ("if the attacker can see it") | starry wisp (assist) | faerie fire, fog cloud |
+| Staged or forced behaviour | | sleep (a second failed save makes it Unconscious), command |
+| A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
+| A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
+
+**Levels 2 and 3** (#107): 1 moved from manual to assist: Zone of Truth (a zone with a Charisma save on
+entering or starting a turn there, once a turn; the DM is told who failed and holds them to it).
+Level 2 was 4 auto, 14 assist, 39 manual and is now 4 / 15 / 38; level 3 is unchanged (3 / 11 / 28).
+Considered and left: Pass without Trace (the +10 holds only while inside the aura, and a modifier cannot
+say that), Ray of Enfeeblement (one repeat save ends all its parts; the engine rolls one save per part),
+Sleet Storm and Stinking Cloud (losing Concentration; a Poisoned that also bars actions). Still missing:
+
+| Kind | Level 2 | Level 3 |
+|---|---|---|
+| Information, utility, wards, locks and triggers with nothing to roll | animal messenger, augury, detect thoughts, find traps, gentle repose, locate animals or plants, locate object, arcane lock, knock, magic mouth, rope trick | clairvoyance, create food and water, nondetection, sending, speak with dead, speak with plants, tongues, plant growth |
+| Illusions | arcanist's magic aura, phantasmal force | major image |
+| Summons, moving objects, and actions the spell grants for later turns | find steed, flame blade, flaming sphere, spiritual weapon, dragon's breath | animate dead, conjure animals, phantom steed |
+| Forms and size | alter self, enlarge/reduce | |
+| Movement modes, teleporting, traversal | levitate, spider climb, misty step | fly, water breathing, water walk, blink, meld into stone |
+| Light, obscurement and senses | continual flame, darkness, darkvision, see invisibility | daylight |
+| An effect that holds only while inside an area, or a trigger per 5 feet moved | pass without trace, silence, spike growth | |
+| An object or a weapon as the target | heat metal, magic weapon | |
+| Removing a condition, ending an effect, raising the dead | lesser restoration | dispel magic, remove curse, revivify |
+| A trigger on a hit (smites, duplicates that take hits), or a reaction | shining smite, mirror image | counterspell |
+| Several parts ended by one repeat save | ray of enfeeblement | |
+| A choice among effects, or creatures of the caster's choice with no count | calm emotions, enthrall | bestow curse (four effects, duration by slot) |
+| Barriers by creature type, glyphs | | glyph of warding, magic circle, tiny hut |
+| Obscurement with a rider no hook can say (Concentration lost, no actions) | | sleet storm, stinking cloud |
+| Assist spells held at assist by: Speed doubled and an extra action, healing from damage dealt, a wall of free shape, a later action | | haste, vampiric touch, wind wall, call lightning |
+
+**Levels 4 and 5** (#110): 3 moved from manual to assist: Conjure Woodland Beings (an emanation zone that
+moves with the caster, spares the caster's side, a Wisdom save for force damage on entering or ending a
+turn there), Fire Shield (the damage type resisted is the choice: Cold for the warm shield, Fire for the
+chill one; the retaliation and the light stay with the DM) and Mislead (the caster is Invisible; the DM ends
+it and runs the double). Black Tentacles and Insect Plague stay assist but are now zones, so the save on
+entering or ending a turn in the area is run by the engine (they were first-save only). Level 4 was 2 auto,
+9 assist, 23 manual and is now 2 / 11 / 21; level 5 was 2 / 9 / 27 and is now 2 / 10 / 26. Considered and left:
+Cloudkill (the sphere moves 10 feet away from the caster each turn, which a zone cannot do), Holy Aura and
+Aura of Life (effects while inside an aura). Still missing:
+
+| Kind | Level 4 | Level 5 |
+|---|---|---|
+| Information, communication, crafting and terrain with nothing to roll | divination, locate creature, fabricate, stone shape, control water, secret chest | commune, commune with nature, legend lore, dream, telepathic bond, scrying, creation, awaken, passwall |
+| Illusions | hallucinatory terrain | seeming |
+| Summons, objects and sensors that act, and actions the spell grants for later turns | arcane eye, faithful hound, guardian of faith, giant insect | animate objects, conjure elemental, summon dragon, arcane hand, telekinesis |
+| Forms | polymorph | |
+| Teleporting and tree travel | dimension door | teleportation circle, tree stride |
+| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, Hit Point maximum, magical Restrained) | aura of life, death ward, freedom of movement | |
+| Barriers and walls of free shape, or around a creature | wall of fire, resilient sphere, private sanctum | wall of force, wall of stone |
+| Barriers and wards by creature type | | antilife shell, dispel evil and good, hallow, planar binding |
+| Raising or restoring | | greater restoration, raise dead, reincarnate |
+| An aura with a rider (extra damage to attacks against creatures in it) | conjure minor elementals | |
+| Random behaviour | confusion | |
+| Assist spells held at assist by: Difficult Terrain, a Plant creature that auto-fails, an escape check, forced obedience, a banishment that leaves play, a sphere that moves | black tentacles, blight, compulsion, dominate beast, banishment | cloudkill, insect plague, dominate person, geas |
 
 ## Maps, sight and movement
 

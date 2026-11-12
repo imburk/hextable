@@ -90,6 +90,8 @@ function* sources(s, e) {
     if (def) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
   }
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
+  // A built character's features that are always on (Danger Sense, Feral Instinct), as derive() made them.
+  for (const f of e.feats ?? []) if (f.modifiers) yield { name: f.name, modifiers: f.modifiers, level: 1 };
 }
 
 // Dice in a modifier's value: "1d4" (Bless) or "-1d4" (Bane). Rolled each time it applies, by the

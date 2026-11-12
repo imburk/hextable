@@ -237,11 +237,15 @@ export function derive(sheet) {
 
 // ---------- what is wrong with a sheet ----------
 
+const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'weapons', 'spells',
+  'size', 'speed', 'senses', 'tools', 'gear', 'look'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
   if (!sheet || typeof sheet !== 'object') return ['A sheet is a record of choices.'];
+  for (const k of Object.keys(sheet)) if (!SHEET_FIELDS.includes(k)) say(`"${k}" is not something a sheet has.`);
+  if (JSON.stringify(sheet).length > 20000) say('That sheet is too long.');
   const c = classOf(sheet);
-  if (!c) return [`Choose a class: ${Object.keys(CONTENT.classes).join(', ')}.`];
+  if (!c) return [...bad, `Choose a class: ${Object.keys(CONTENT.classes).join(', ')}.`];
   if (!(typeof sheet.name === 'string' && sheet.name.trim() && sheet.name.trim().length <= 40)) say('It needs a name of up to 40 letters.');
   const level = sheet.level;
   if (!(Number.isInteger(level) && level >= 1 && level <= 20)) return [...bad, 'Its level is 1 to 20.'];
@@ -318,7 +322,9 @@ export function validate(sheet) {
     if (cantrips > maxC) say(`A level ${level} ${c.name} knows ${maxC} cantrip${maxC === 1 ? '' : 's'}; ${cantrips} chosen.`);
     if (prepared > maxP) say(`A level ${level} ${c.name} prepares ${maxP} spells; ${prepared} chosen (spells the class always has prepared are added and do not count).`);
   }
-  for (const k of ['tools', 'gear']) if (sheet[k] !== undefined && !Array.isArray(sheet[k])) say(`Its ${k} are a list.`);
+  for (const k of ['tools', 'gear', 'weapons']) if (sheet[k] !== undefined && !(Array.isArray(sheet[k]) && sheet[k].length <= 60 && sheet[k].every((x) => typeof x === 'string' && x.length <= 60))) say(`Its ${k} are a list of short names.`);
+  if (sheet.choices !== undefined && !(sheet.choices && typeof sheet.choices === 'object' && Object.values(sheet.choices).every((v) => typeof v === 'string'))) say('Its choices name options.');
+  if (sheet.shield !== undefined && typeof sheet.shield !== 'boolean') say('Shield is true or false.');
   void abil;
   return bad;
 }

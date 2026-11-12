@@ -22,6 +22,7 @@ import { entered, flushZones, snapshot, turnInZones } from './zones.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
+import { derive, validate } from './derive.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
@@ -61,10 +62,15 @@ export function makeEntity(tpl, over = {}) {
   return {
     kind: 'npc', side: 'foe', owner: null, level: 0, size: 'medium', speeds: {}, senses: {}, saveProf: [], saveBonus: {}, skills: [], expertise: [], tools: [], skillBonus: {}, features: {}, attacks: [], spells: [],
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
-    maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0 },
+    maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0, ...featureUses(t) },
+    ...(t.hitDie ? { hd: t.level } : {}),
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
   };
 }
+// A built character's features with uses (Rage, Second Wind, Channel Divinity) start full. Kept in
+// `uses` by feature id, beside the hand-typed record's `secondWind`.
+const featureUses = (t) => Object.fromEntries((t.feats ?? []).filter((f) => f.uses).map((f) => [f.id, f.uses.max]));
+export const featOf = (e, id) => (e.feats ?? []).find((f) => f.id === id) ?? null;
 
 // ---------- movement ----------
 
@@ -679,7 +685,8 @@ function tempHp(s, t, amount, ev, f = null) {
 // `crit` (a hit is critical whatever the die shows).
 export function rollMode(s, e, t, atk) {
   const d = apart(s, e, t), ranged = atk.type === 'ranged';
-  const sit = { attacker: e, target: t, ranged };
+  // A built character's attack says which ability it uses (`abil`), for Rage and Reckless Attack.
+  const sit = { attacker: e, target: t, ranged, spell: !!atk.spell, ...(atk.abil ? { str: atk.abil === 'str' } : atk.spell ? { str: false } : {}) };
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
@@ -705,12 +712,23 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   const bonus = atk.bonus + add + more.total;
   // Cover adds to Armor Class: 2 for half, 5 for three-quarters.
   const cover = e.object ? 'none' : coverOf(s, e, t, living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
-  const hit = nat !== 1 && (nat === 20 || nat + bonus >= ac);
-  const crit = hit && (nat === 20 || sureCrit);
+  // Improved Critical: a weapon attack scores a Critical Hit, and so hits, on a lower roll (`critOn`).
+  const critRoll = nat === 20 || (!atk.spell && e.critOn && nat >= e.critOn);
+  const hit = nat !== 1 && (critRoll || nat + bonus >= ac);
+  const crit = hit && (critRoll || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
     total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}), ...extra });
   useUp(s, ev, used);
+  if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
+  renew(s, e, t);
   return { hit, crit, mode };
+}
+// Rage goes on while its creature keeps fighting: an attack roll against an enemy, or making an
+// enemy save, carries it to the end of its next turn again (its parts are made new this turn).
+function renew(s, e, t) {
+  if (!e || !t || !hostile(e, t) || !s.encounter) return;
+  const now = turnKey(s);
+  for (const fx of effectsOf(s)) if (fx.renew && fx.source === e.id) for (const p of fx.parts) if (!p.ended && p.ends?.on === 'turnEnd') p.born = now;
 }
 
 // A weapon attack by a creature whose attacks are still flat records (monsters and
@@ -723,7 +741,7 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   if (atk.bonusOnAdv && mode === 'adv') total += roll(s, atk.bonusOnAdv, { crit }).total;
   const sneakKey = `sneak:${e.id}`;
   if (e.features.sneak && !atk.spell && (atk.finesse || atk.type === 'ranged') && !s.encounter?.flags[sneakKey] && mode !== 'dis') {
-    const flank = living(s).some((o) => o.id !== e.id && up(o) && hostile(o, t) && apart(s, o, t) <= 1);
+    const flank = living(s).some((o) => o.id !== e.id && up(o) && !incapacitated(o) && hostile(o, t) && apart(s, o, t) <= 1);     // an ally who is not Incapacitated
     if (mode === 'adv' || flank) {
       total += roll(s, e.features.sneak, { crit }).total;
       if (s.encounter) s.encounter.flags[sneakKey] = true;
@@ -731,7 +749,7 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
     }
   }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
-  damage(s, t, dealt(s, e, t, [{ amount: total, type: atk.dtype }], { hit: true, weapon: !atk.spell }, crit), null, ev, { crit });
+  damage(s, t, dealt(s, e, t, [{ amount: total, type: atk.dtype }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
 }
 
@@ -1042,6 +1060,14 @@ export function targetsFor(s, e, { attack, spell, action }) {
   return out;
 }
 
+// Which part of a turn Dash, Disengage or Hide takes: a Bonus Action when asked for (`a.bonus`) by a
+// creature that may (Cunning Action, `bonusActs`); Nimble Escape makes Disengage and Hide one always.
+function actTime(e, kind, a) {
+  const nimble = !!e.features?.nimbleEscape && kind !== 'dash';
+  if (a.bonus) { (nimble || e.bonusActs?.includes(kind)) || fail(`${e.name} can't take that as a Bonus Action.`); return 'bonus'; }
+  return nimble ? 'bonus' : 'action';
+}
+
 // ---------- a creature's own actions ----------
 // A monster's actions are data, run by the effect runner as a spell's are (effects.js).
 
@@ -1337,7 +1363,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal };
+const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -1399,10 +1425,16 @@ const handlers = {
     walled(s, e, t);
     showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
-    const b = s.encounter.budget, pooled = fromPool(b, atk.id);
-    need(s, e, pooled ? null : 'action');
+    const b = s.encounter.budget;
+    // Attacks a feature gave this turn (Flurry of Blows) come first; then a Bonus Action attack
+    // (the Monk's Unarmed Strike); then those Extra Attack left; then the Attack action.
+    const flurry = b.bonusAttacks?.with === atk.id && b.bonusAttacks.left > 0, bonusTime = !flurry && atk.time === 'bonus';
+    const pooled = !flurry && !bonusTime && fromPool(b, atk.id);
+    need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
-    if (pooled) fromPool(b, atk.id, true);
+    if (flurry) { if (--b.bonusAttacks.left <= 0) delete b.bonusAttacks; }
+    else if (bonusTime) b.bonus--;
+    else if (pooled) fromPool(b, atk.id, true);
     else {
       b.action--;
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
@@ -1439,6 +1471,8 @@ const handlers = {
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (sp.time === 'reaction') fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+    const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
+    if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
     if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
@@ -1471,6 +1505,9 @@ const handlers = {
     if (s.encounter) {
       need(s, e, sp.time);
       if (sp.level > 0 && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
+      // Action Surge gives an action that can't be the Magic action: with it, one action spell a turn.
+      if (sp.time === 'action' && s.encounter.flags[`surge:${e.id}`] && s.encounter.flags[`magic:${e.id}`]) fail('The extra action from Action Surge can\'t be used to cast a spell.');
+      if (sp.time === 'action') s.encounter.flags[`magic:${e.id}`] = true;
       if (sp.aim === 'creature') for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
       s.encounter.budget[sp.time]--;
       if (sp.level > 0) s.encounter.flags.slot = true;
@@ -1527,14 +1564,15 @@ const handlers = {
   dash(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
-    need(s, e, 'action');
-    s.encounter.budget.action--; s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
+    const time = actTime(e, 'dash', a);
+    need(s, e, time);
+    s.encounter.budget[time]--; s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
     ev.push({ type: 'std', id: e.id, action: 'Dash' });
   },
   disengage(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
-    const time = e.features.nimbleEscape ? 'bonus' : 'action';
+    const time = actTime(e, 'disengage', a);
     need(s, e, time);
     s.encounter.budget[time]--; e.cond.disengaged = {};
     ev.push({ type: 'std', id: e.id, action: 'Disengage' });
@@ -1555,6 +1593,84 @@ const handlers = {
     e.uses.secondWind--;
     ev.push({ type: 'std', id: e.id, action: 'Second Wind' });
     heal(s, e, roll(s, `1d10+${e.level}`).total, ev);
+  },
+  // Use a feature of a built character (derive.js): { type: 'feature', actor, feature, target? |
+  // targets? | hex?, amount? }. What it does is its data: effect steps (on the effect runner, a
+  // lasting effect if it has a duration), an extra action or attacks (`gain`), or a pool of healing
+  // (`pool`, `amount` from it). A feature with uses and no action of its own is spent, and its text
+  // goes to the DM, who applies it. Costs: the action or Bonus Action, and a use of its own or of
+  // another feature (`cost`).
+  feature(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
+    const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
+    act || fail(`${f.name} is always on; there is nothing to use.`);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    act.time !== 'reaction' || fail(`${f.name} is a Reaction. The engine does not prompt for reactions yet; the DM applies it.`);
+    const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
+    if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
+    // A Rage already going is extended by its Bonus Action, without spending a use.
+    const live = act.renew ? effectsOf(s).find((fx) => fx.source === e.id && fx.feature === f.id) : null;
+    if (live) {
+      fighting || fail(`${e.name}'s ${f.name} is already going.`);
+      need(s, e, time);
+      enc.budget[time]--;
+      const now = turnKey(s);
+      for (const p of live.parts) if (!p.ended && p.ends?.on === 'turnEnd') p.born = now;
+      return ev.push({ type: 'std', id: e.id, action: `${f.name} (extended)` });
+    }
+    const res = act.cost?.resource ?? (f.uses ? f.id : null), n = act.cost?.n ?? 1;
+    if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.`);
+    if (time && fighting) need(s, e, time);
+    if ((act.gain || act.firstAttack) && !(fighting && current(s) === e.id)) fail(`${f.name} is used on ${e.name}'s turn in a fight.`);
+    if (act.firstAttack) {
+      !enc.flags[`attacked:${e.id}`] || fail(`${f.name} is decided before the first attack roll of the turn.`);
+      !enc.flags[`${f.id}:${e.id}`] || fail(`${e.name} has already used ${f.name} this turn.`);
+    }
+    if (act.gain?.action) !enc.flags[`surge:${e.id}`] || fail(`${f.name} can be used once a turn.`);
+    if (act.gain?.attacks && enc.budget.bonusAttacks) fail(`${e.name} already has those attacks to make.`);
+    // A pool of healing (Lay On Hands): `amount` Hit Points from what is left, to a creature in reach.
+    let poolTarget = null, amount = 0;
+    if (act.pool) {
+      poolTarget = ent(s, a.target ?? e.id);
+      !poolTarget.dead || fail(`${poolTarget.name} is dead.`);
+      if (poolTarget.id !== e.id) { apart(s, e, poolTarget) * FT <= (act.target.creature.reach ?? 5) || fail(`${poolTarget.name} is out of reach.`); walled(s, e, poolTarget); }
+      amount = a.amount;
+      (Number.isInteger(amount) && amount > 0) || fail(`Say how many Hit Points ${f.name} restores.`);
+      amount <= (e.uses[res] ?? 0) || fail(`${f.name} has ${e.uses[res] ?? 0} Hit Points left.`);
+    }
+    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target }, a);
+    if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+
+    // Paid for: from here it happens.
+    if (time && fighting) enc.budget[time]--;
+    if (res) e.uses[res] -= act.pool ? amount : n;
+    if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
+    if (act.pool) { ev.push({ type: 'std', id: e.id, action: f.name }); return heal(s, poolTarget, Math.min(amount, poolTarget.maxHp - Math.max(0, poolTarget.hp)), ev); }
+    if (act.gain?.action) {                                             // Action Surge: one more action, not a Magic action
+      enc.budget.action++; enc.flags[`surge:${e.id}`] = true;
+      return ev.push({ type: 'std', id: e.id, action: f.name });
+    }
+    if (act.gain?.attacks) {                                            // Flurry of Blows: so many attacks with one attack
+      enc.budget.bonusAttacks = { with: act.gain.attacks.with, left: act.gain.attacks.n };
+      return ev.push({ type: 'std', id: e.id, action: f.name });
+    }
+    if (act.noSpells) breakConcentration(s, ev, e.id, `${e.name} entered ${f.name}`);
+    const steps = structuredClone(act.effects), targets = aimed.targets;
+    let fx = null;
+    if (act.duration && act.duration !== 'instant') {
+      fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
+      Object.assign(fx, { feature: f.id, ...(act.renew ? { renew: true } : {}), ...(act.noSpells ? { noSpells: true } : {}), ...(act.endsWhenIncapacitated ? { fragile: true } : {}) });
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: fx.lasts, targets: (targets ?? []).map((t) => t.id) });
+    } else fx = boundEffect(s, f.name, e.id, steps);
+    if (!('attack' in steps[0])) ev.push({ type: 'std', id: e.id, action: f.name });
+    const st = e.castAbil ? spellStats(e, s) : null;
+    begin(s, { steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
+      src: { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) } });
+    resolve(s, ev);
+    if (fx?.bound) settle(s, ev, fx, targets ?? []);
+    checkEnd(s, ev);
   },
   endTurn(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
@@ -1635,7 +1751,7 @@ const handlers = {
     able(e);
     const why = hideProblem(s, e);
     if (why) fail(why);
-    if (s.encounter && inFight(s, e.id)) { const time = e.features?.nimbleEscape ? 'bonus' : 'action'; need(s, e, time); s.encounter.budget[time]--; }
+    if (s.encounter && inFight(s, e.id)) { const time = actTime(e, 'hide', a); need(s, e, time); s.encounter.budget[time]--; }
     const r = abilityCheck(s, e, { skill: 'stealth' }), success = r.total >= HIDE_DC;
     ev.push({ type: 'check', id: e.id, ability: 'dex', skill: 'stealth', ...r, hide: true, success });
     if (!success) return;
@@ -1847,6 +1963,36 @@ const handlers = {
     s.entities[e.id] = fresh;
     ev.push({ type: 'edited', id: e.id });
   },
+  // A character built from class and level (derive.js). { type: 'setSheet', sheet, actor?, at? }
+  // Without `actor` it joins the party as addCharacter does; with one, that character is made
+  // again from the new sheet, keeping who plays it, where it stands, the damage it has taken, its
+  // conditions, and what it has spent: uses of features, spell slots, Hit Point Dice. The sheet is
+  // kept on the creature, so it can be made again. A hand-typed record has no sheet and is untouched.
+  setSheet(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can change a character.');
+    const problems = validate(a.sheet);
+    problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
+    const { record } = derive(a.sheet), sheet = structuredClone(a.sheet);
+    if (a.actor === undefined) {
+      handlers.addCharacter(s, { record, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
+      s.entities[ev.findLast((x) => x.type === 'spawned').id].sheet = sheet;
+      return;
+    }
+    remake(s, ent(s, a.actor), record, sheet, ev);
+  },
+  // Up one level: the same class, one level higher, outside a fight. { type: 'levelUp', actor, sheet }
+  levelUp(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can level a character up.');
+    const e = ent(s, a.actor);
+    e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
+    !inFight(s, e.id) || fail(`${e.name} can't level up in the middle of a fight.`);
+    (a.sheet?.class === e.sheet.class) || fail('Levelling up keeps the class (multiclassing is not built).');
+    (a.sheet?.level === e.sheet.level + 1) || fail(`${e.name} is level ${e.sheet.level}; the new sheet must be level ${e.sheet.level + 1}.`);
+    const problems = validate(a.sheet);
+    problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
+    remake(s, e, derive(a.sheet).record, structuredClone(a.sheet), ev);
+    ev.push({ type: 'std', id: e.id, action: `reached level ${a.sheet.level}` });
+  },
   // Take a creature out of the game. { type: 'remove', actor }
   remove(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can remove a creature.');
@@ -2011,6 +2157,8 @@ const handlers = {
       }
       Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
+      for (const f of e.feats ?? []) if (f.uses) e.uses[f.id] = f.uses.max;   // every feature with uses
+      if (e.hitDie) e.hd = e.level;                                        // and all spent Hit Point Dice
       if (e.tempHp) { e.tempHp = 0; delete e.tempFx; }
       delete e.charges; delete e.spent;                                    // a monster's daily uses and spent recharges
       const ex = e.cond.exhaustion;
@@ -2019,6 +2167,63 @@ const handlers = {
     }
     s.clock += 480;
     ev.push({ type: 'rest' });
+    tick(s, ev);
+  },
+  // SRD Short Rest: an hour. { type: 'shortRest', ids?, spend?: { id: n }, recover?: { id: [slot levels] } }
+  // Each who rests (the party when `ids` is not given) can spend Hit Point Dice (`spend`): each rolls
+  // the die + Constitution modifier, at least 1. Features that come back on a Short Rest do; those
+  // that come back on a Long Rest with some back on a Short Rest regain those; Pact Magic slots come
+  // back; and a feature that recovers spell slots on a Short Rest (Arcane Recovery) takes `recover`.
+  shortRest(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can call a rest.');
+    !s.encounter || fail("You can't rest in the middle of a fight.");
+    let who = Object.values(s.entities).filter((x) => x.side === 'party' && !x.dead);
+    if (a.ids !== undefined) {
+      (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= 500) || fail('Name who rests.');
+      who = [...new Set(a.ids)].map((id) => ent(s, id)).filter((x) => !x.dead);
+    }
+    const spend = a.spend ?? {}, recover = a.recover ?? {};
+    (spend && typeof spend === 'object' && recover && typeof recover === 'object') || fail('Say how many Hit Point Dice each spends.');
+    // Everything is checked before anything changes.
+    for (const [id, n] of Object.entries(spend)) {
+      const e = ent(s, id);
+      who.includes(e) || fail(`${e.name} isn't resting.`);
+      (Number.isInteger(n) && n >= 0) || fail('Spend a whole number of Hit Point Dice.');
+      n <= (e.hd ?? 0) || fail(`${e.name} has ${e.hd ?? 0} Hit Point Dice left.`);
+      e.hp > 0 || fail(`${e.name} is at 0 Hit Points and can't take a Short Rest.`);
+    }
+    const plans = [];
+    for (const [id, levels] of Object.entries(recover)) {
+      const e = ent(s, id), f = (e.feats ?? []).find((x) => x.recover && (e.uses[x.id] ?? 0) > 0);
+      who.includes(e) || fail(`${e.name} isn't resting.`);
+      f || fail(`${e.name} has nothing that recovers spell slots now.`);
+      (Array.isArray(levels) && levels.length > 0 && levels.every((l) => Number.isInteger(l) && l >= 1 && l <= f.recover.max)) || fail(`${f.name} recovers slots of level 1 to ${f.recover.max}.`);
+      const most = Math.ceil(e.level / 2), total = levels.reduce((t, l) => t + l, 0);
+      total <= most || fail(`${f.name} recovers ${most} levels of slots at most; that is ${total}.`);
+      for (const l of new Set(levels)) levels.filter((x) => x === l).length <= (e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0) || fail(`${e.name} hasn't spent that many level ${l} slots.`);
+      plans.push({ e, f, levels });
+    }
+    for (const e of who) {
+      if (e.hp <= 0) { ev.push({ type: 'manual', actor: e.id, name: 'Short Rest', text: `${e.name} is at 0 Hit Points and can't take a Short Rest.` }); continue; }
+      for (let i = 0; i < (spend[e.id] ?? 0); i++) {
+        e.hd--;
+        heal(s, e, Math.max(1, roll(s, `1d${e.hitDie}`).total + mod(e.abil.con)), ev);
+      }
+      for (const f of e.feats ?? []) {
+        if (!f.uses) continue;
+        if (f.uses.recharge === 'short') e.uses[f.id] = f.uses.max;
+        else if (f.uses.short) e.uses[f.id] = Math.min(f.uses.max, (e.uses[f.id] ?? 0) + f.uses.short);
+      }
+      if (e.features?.secondWind && !e.feats) e.uses.secondWind = Math.min(e.features.secondWind, (e.uses.secondWind ?? 0) + 1);   // SRD: one use back
+      if (e.pact) e.slots = { ...e.slotsMax };
+    }
+    for (const { e, f, levels } of plans) {
+      e.uses[f.id]--;
+      for (const l of levels) e.slots[l]++;
+      ev.push({ type: 'std', id: e.id, action: `${f.name} (${levels.map((l) => `level ${l}`).join(', ')})` });
+    }
+    s.clock += 60;
+    ev.push({ type: 'rest', short: true });
     tick(s, ev);
   },
   advanceTime(s, a, ctx, ev) {
@@ -2045,6 +2250,30 @@ const handlers = {
     s.settings[a.key] = a.value;
   },
 };
+
+// Make a character again from a new record, carrying over what play has done to it. Validates
+// everything before it changes anything.
+function remake(s, e, record, sheet, ev) {
+  e.kind === 'pc' || fail(`${e.name} is not a character.`);
+  const problems = lintRecord(record, { spells: SPELLS });
+  problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
+  const body = { size: record.size ?? 'medium' };
+  (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+  const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
+  const lost = e.maxHp - e.hp;
+  fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
+  for (const f of fresh.feats ?? []) {                                    // so do uses of features
+    const was = featOf(e, f.id);
+    if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
+  }
+  if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
+  fresh.sheet = sheet;
+  s.entities[e.id] = fresh;
+  ev.push({ type: 'edited', id: e.id });
+}
 
 // Every action type the engine handles (history.js is tested to have a label for each).
 export const ACTION_TYPES = Object.keys(handlers);
