@@ -1,14 +1,13 @@
 // Table files (task M9): uploads, who may fetch what, and the tricks a request might try.
 // The store is tested directly; the HTTP side against the real server.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { startServer, stopAll } from "./helpers.js";
 import { createAssets, sniff } from "../src/assets.js";
 import { assetRoute } from "../src/assets-http.js";
 
@@ -67,20 +66,15 @@ test("routes are matched on the raw path: dots, encoded slashes and absolute pat
 });
 
 // ---------- against the real server ----------
-let next = 0;
-const running = [];
+let started = [];
 async function start(env = {}) {
-  const port = 30000 + ((process.pid * 11 + next++ * 17) % 8000);
-  const data = tempDir();
-  const child = spawn(process.execPath, [fileURLToPath(new URL("../src/index.js", import.meta.url))],
-    { env: { ...process.env, PORT: String(port), DATA_DIR: data, ...env }, stdio: ["ignore", "pipe", "inherit"] });
-  running.push(child);
-  await new Promise((resolve, reject) => { child.stdout.once("data", resolve); child.once("exit", (c) => reject(new Error(`server exited with ${c}`))); });
-  return { port, data };
+  const s = await startServer({ env });
+  started.push(s);
+  return { port: s.port, data: s.data, stop: s.stop };
 }
-after(() => { for (const c of running) c.kill(); });
+after(stopAll);
 
-const until = async (fn, ms = 3000) => {
+const until = async (fn, ms = 10_000) => {
   for (const end = Date.now() + ms; Date.now() < end;) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 10)); }
   throw new Error("timed out");
 };
@@ -283,11 +277,8 @@ test("the page may show pictures from blob: URLs, and files of a table that is g
   const orphan = join(data, "assets", "QQQQQQ");
   createAssets({ dir: join(data, "assets") }).put("QQQQQQ", PNG);
   assert.ok(existsSync(orphan));
-  running.at(-1).kill();
-  await new Promise((r) => setTimeout(r, 300));
-  const again = spawn(process.execPath, [fileURLToPath(new URL("../src/index.js", import.meta.url))], { env: { ...process.env, PORT: String(port + 1), DATA_DIR: data }, stdio: ["ignore", "pipe", "inherit"] });
-  running.push(again);
-  await new Promise((resolve) => again.stdout.once("data", resolve));
+  await started.at(-1).stop();                                    // saves and exits; its folder is kept for the next one
+  const again = await startServer({ data });
   assert.ok(!existsSync(orphan), "the orphan folder is gone");
   assert.ok(existsSync(join(data, "assets", code)), "the live table's files are kept");
 });

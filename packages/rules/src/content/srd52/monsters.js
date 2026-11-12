@@ -74,7 +74,7 @@ export const monsters = [
         effects: [{ attack: "ranged", kind: "weapon", bonus: 5, onHit: [{ damage: "1d6+3", type: "piercing" }] }],
         text: "A ranged attack." },
     ],
-    tier: "assist", checked: true,
+    tier: "auto", checked: true,
     text: "An animated set of bones, brittle against crushing blows.",
   },
 ];

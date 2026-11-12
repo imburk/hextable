@@ -25,7 +25,7 @@ players are sent). **any** can be handed to any agent.
 
 ## Monsters
 
-329 are entered; 33 play fully by the rules (tiers were not raised by #71). The rest are held back by these, in order of how
+329 are entered; 40 play fully by the rules (tiers were not raised by #71; #102 and the pull requests after it re-tiered the files one by one, see M12). The rest are held back by these, in order of how
 many monsters each one touches:
 
 | # | What | Who |
@@ -41,6 +41,7 @@ many monsters each one touches:
 | M9 | ~~The monster AI uses only the first melee and first ranged attack~~ (#71: it uses every action, all of a Multiattack, and area actions on clusters); it treats height only as distance, hides only to open a fight (#88), and uses no Bonus Action but an area one or Nimble Escape's Hide | engine |
 | ~~M10~~ | ~~Saving throw bonuses~~ (#93: `saves` on the monster, 122 monsters list one; used by the engine as `saveBonus`); ~~initiative bonuses~~ (#95: `initiative` on the monster, `initBonus` on the creature, used by `rollInit`; the SRD prints two inconsistent bracketed totals, Gray Ooze and Invisible Stalker, the modifier was kept); ~~languages~~ (#98: `languages` on the monster, 329 entered, data only). Nothing of M10 is left | any |
 | M11 | ~~Monster lines and cubes (22 breath weapons are lines)~~ (#74: aimed and resolved; no monster's tier moved, each is held at assist by something else, most often its saving throw bonuses, M10). Spheres or cylinders with no `area.range` still cannot be aimed; the DM applies them | engine (with S3) |
+| M12 | **Why the rest are not `auto`** (monster-saves re-tier; 40 auto, 287 assist, 2 manual; counts of monsters, one monster can be in several; "alone" = the only thing holding it back, so what building it would unlock at once): descriptive traits the engine cannot enforce (breathing, senses, climbing, plane, telepathy) (75, alone for 15); movement rules (bonus-action moves, teleports, leaps, passing through) (75, alone for 22); spellcasting and spell-like actions (72, alone for 9); other effects of an attack or action the vocabulary cannot say (60, alone for 7); a size limit on Prone, Grappled, pulled or swallowed (W9) (57, alone for 13); traits that act at a turn boundary (auras, regeneration, ...) (46, alone for 4); magic resistance (no tag for saves against magic) (35, alone for 0); dying and returning (death bursts, restoration, Undead Fortitude) (34, alone for 3); legendary resistance (32, alone for 0); lasting effects (Hit Point maximum loss, curses, wounds, no healing) (30, alone for 1); legendary actions (30, alone for 0); changing form, parts and special bodies (23, alone for 0); reactions (21, alone for 5); grapple, swallow and engulf riders (escape DC, Restrained until the grapple ends, damage each turn) (19, alone for 4); a charge (moved N feet straight toward) (17, alone for 11); Bloodied (no tag for it) (16, alone for 4); Multiattack that cannot be entered (spellcasting or "if available") (13, alone for 0); chained or repeated saves (a second failure, a worse state) (13, alone for 2). Size limits (W9) alone hold 13 | engine |
 
 ## Characters
 
@@ -70,7 +71,32 @@ cannot say, by how much it would unlock:
 | S7 | ~~The `min` op exists but is ignored (Barkskin); hooks that nothing reads: `hp.max`, `damage.dealt`, `spell.dc`, `spell.attack`, `save.death`; the `check` hook cannot be limited to one skill~~ (#80, #86). `carry` is still unread (no encumbrance) | engine |
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
-| S10 | The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82. ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+| S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+
+### Re-tiering pass (spells entered before the vocabulary grew)
+
+Each pull request takes two levels, converts what the vocabulary can now say exactly, and tallies
+what is still missing for the rest, by kind. A spell can be held back by more than one thing; it
+is counted under the first that applies.
+
+**Levels 0 and 1** (#105): 2 moved from manual to assist (Chromatic Orb: chosen damage type;
+Grease: a zone). Before: 0 auto, 3 assist, 15 manual at level 0 and 14 auto, 11 assist, 32 manual
+at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. Still missing:
+
+| Kind | Level 0 | Level 1 |
+|---|---|---|
+| Information, detection, utility with nothing to roll (the DM tells or applies it) | druidcraft, elementalism, mending, message, prestidigitation, thaumaturgy, spare the dying (no Stable condition to set), light (a lit object) | alarm, comprehend languages, create or destroy water, detect evil and good, detect magic, detect poison and disease, identify, illusory script, purify food and drink, speak with animals, goodberry |
+| Illusions | minor illusion | disguise self, silent image |
+| Summons, companions, objects that act | dancing lights, mage hand | find familiar, floating disk, unseen servant |
+| A trigger on the caster's own hit (smites) | | divine smite, ensnaring strike, searing smite |
+| A caster's weapon attacks changed, or a later action the spell grants | shillelagh, true strike, produce flame | |
+| Movement: Dash, jumping | | expeditious retreat, jump |
+| A reaction with a trigger | | feather fall (assist: hellish rebuke, shield) |
+| What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship, which also needs a type restriction) |
+| Light or obscurement on a creature or an area, and a negative tag ("if the attacker can see it") | starry wisp (assist) | faerie fire, fog cloud |
+| Staged or forced behaviour | | sleep (a second failed save makes it Unconscious), command |
+| A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
+| A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
 
 ## Maps, sight and movement
 
@@ -91,7 +117,8 @@ cannot say, by how much it would unlock:
 
 | P13 | A creature that cannot be seen cannot be targeted by players even where the SRD allows attacking a guessed location (with Disadvantage); a party member's path may go around a creature the players cannot see, which shows that something is there | engine |
 | P14 | Under the `light` sight rule each newly seen tile resends the whole map document to players (patches are per top-level field), which is a few tens of KB a step in a big dark place; tile memory is found by a flood that can miss a tile seen only through a sliver; sight is followed across tiles 40 hexes at most | engine |
-| P15 | Under the los and light sight rules, players see the fight order without an unseen creature and its turn as nobody's; a creature walking into view is sent with only the hexes of its path in view | any |
+| P15 | ~~Under the los and light sight rules, players see the fight order without an unseen creature and its turn as nobody's~~ (#101: one "someone unseen" slot and one `turn` line for a run of such turns, no id or count; the table rule `unseenTurns: quiet` says nothing). Still told: that some unseen creature is taking a turn (the game waits), whether a run of them spans the end of a round (the round number moves inside it, which shows there are at least two), and, from the server, how many updates the run produced (one per action, empty for players). A creature walking into view is sent with only the hexes of its path in view | any; the update count is the server's |
+| P16 | A single-use modifier spent by an ability check (`abilityCheck` in engine.js) still ends without an `effectEnd` event; saving throws were fixed (#101). No SRD entry has a single-use check modifier yet | engine |
 
 ## Table and server
 

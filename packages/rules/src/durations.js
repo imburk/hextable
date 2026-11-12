@@ -97,8 +97,9 @@ function boundary(s, ev, e, kit, when) {
       if (p.ended || !p.ends) continue;
       if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && p.born === now)) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
-        const sv = kit.savingThrow(s, e, p.ends.save, p.dc);
+        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc);
         ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name });
+        useUp(s, ev, used ?? []);
         if (sv.success) endPart(s, ev, fx, p);
       }
     }
@@ -141,8 +142,9 @@ export function concentrationCheck(s, ev, t, amount, kit) {
   const held = concentrating(s, t.id);
   if (!held.length || amount <= 0) return;
   const dc = Math.min(30, Math.max(10, Math.floor(amount / 2)));
-  const sv = kit.savingThrow(s, t, 'con', dc, 'concentration');
+  const { used, ...sv } = kit.savingThrow(s, t, 'con', dc, 'concentration');
   ev.push({ type: 'concentration', id: t.id, dc, ...sv, name: held.map((fx) => fx.name).join(', ') });
+  useUp(s, ev, used ?? []);
   if (!sv.success) breakConcentration(s, ev, t.id, `${t.name} lost Concentration`);
 }
 // Anything that stops a creature acting also ends what it was concentrating on.

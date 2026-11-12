@@ -46,28 +46,62 @@ function seenRecord(e) {
   };
 }
 
+// A creature the party cannot see takes its turn. Under the table rule `unseenTurns: 'say'` (the
+// default) players are told what a DM would say at a table, "something moves where you cannot
+// see": the order shows one slot `{ someone: true }` while such a turn is taken, placed after the
+// last creature they can see that comes before it, and holding no id, no name, no number. A run of
+// unseen turns one after another is one slot and one `turn` event, so how many there are is not
+// told. Under `quiet` nothing is said: the order shows no one's turn (`turn: -1`).
+export const unseenTurns = (state) => state.settings?.unseenTurns ?? 'say';
+
 function viewEncounter(state) {
   const enc = state.encounter;
   if (!enc) return null;
   const currentId = enc.order[enc.turn]?.id ?? null;
   const order = [];
-  for (const o of enc.order) {
+  let slot = -1;                                    // where an unseen turn shows: after the last seen creature before it
+  enc.order.forEach((o, i) => {
     const c = classify(state, o.id);
     if (c === 'open') order.push({ id: o.id, init: o.init, dex: o.dex });
     else if (c === 'seen') order.push({ id: o.id });
+    if (i < enc.turn && c !== 'hidden') slot = order.length;
+  });
+  const activeHidden = currentId !== null && classify(state, currentId) === 'hidden';
+  let turn = order.findIndex((o) => o.id === currentId);
+  if (activeHidden && unseenTurns(state) === 'say') {
+    // Before every seen creature, the run wraps round from the end of the order.
+    const at = slot === -1 ? order.length : slot;
+    order.splice(at, 0, { someone: true });
+    turn = at;
   }
   const activeOpen = currentId !== null && classify(state, currentId) === 'open';
   return {
     id: enc.id, center: { q: enc.center.q, r: enc.center.r }, radius: enc.radius,
     arena: Object.fromEntries(Object.keys(enc.arena).filter((k) => shownMap(state).cols.has(k)).map((k) => [k, 1])), round: enc.round,
-    turn: order.findIndex((o) => o.id === currentId),
+    turn,
     // What the active creature has left is its own business unless it is one of ours.
     // Zeros, not null, so the engine's helpers run on a view without special cases.
     // Attacks a Multiattack or Extra Attack left (`budget.attacks`) go with the rest, and only then.
     budget: activeOpen ? structuredClone(enc.budget) : { move: 0, action: 0, bonus: 0 },
-    flags: { ...enc.flags },
+    // What an unseen creature has done with its turn is not theirs to know either.
+    flags: activeHidden ? {} : { ...enc.flags },
     order,
   };
+}
+
+// Whether the turn before this one (a `turn` event, live or from the record) was one players
+// could not see when it was taken. Read from the record, where each entry keeps the creatures
+// players did not know of then. The start of a fight, or nothing found, counts as seen.
+function turnBeforeUnseen(state, ev) {
+  const tl = state.timeline ?? [];
+  let i = tl.lastIndexOf(ev);
+  if (i < 0) for (i = tl.length - 1; i >= 0; i--) { const x = tl[i]; if (x.type === 'turn' && x.id === ev.id && x.round === ev.round) break; }
+  for (let j = i - 1; j >= 0; j--) {
+    const x = tl[j];
+    if (x.type === 'encounterStart' || x.type === 'encounterEnd') return false;
+    if (x.type === 'turn') return Array.isArray(x.unseen) && x.unseen.includes(x.id);
+  }
+  return false;
 }
 
 export function view(state, viewer) {
@@ -211,7 +245,7 @@ const pick = (ev, keys) => {
 };
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
-const AS_IS = new Set(['moved', 'turn', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
+const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
   'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid']);
 
 export function viewEvents(events, state, viewer) {
@@ -226,11 +260,21 @@ export function viewEvents(events, state, viewer) {
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
   const out = { push(e) { delete e.unseen; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
+  let lastTurnHidden = null;               // whether the last turn in this list was unseen (null: none yet)
   let caster = null;                       // who cast the spell (or used the action) that the following saves answer
   for (const ev of events) {
     out.ev = ev;
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
     if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack') caster = ev.actor;      // a save on a hit answers the attacker
+    if (ev.type === 'turn') {
+      const hidden = cls(ev.id) === 'hidden', before = lastTurnHidden ?? turnBeforeUnseen(state, ev);
+      lastTurnHidden = hidden;
+      if (!hidden) { out.push(structuredClone(ev)); continue; }
+      // Something moves where they cannot see: once for a run of such turns, and never who.
+      if (unseenTurns(state) === 'say' && !before) out.push({ type: 'turn', round: ev.round, someone: true });
+      continue;
+    }
+    if (ev.type === 'encounterStart' || ev.type === 'encounterEnd') lastTurnHidden = false;
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
 
     switch (ev.type) {
@@ -284,6 +328,7 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'concentration':
+      case 'tempHp':                                   // Temporary Hit Points gained or lost: hit points of a creature not theirs are private
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));
         break;
       case 'manual':                                   // what the DM must apply by hand
