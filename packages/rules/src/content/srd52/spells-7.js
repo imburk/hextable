@@ -68,7 +68,7 @@ export const spells7 = [
     level: 7, school: "evocation", classes: ["cleric","druid","sorcerer"],
     time: "action", range: 150, components: ["v","s"],
     duration: "instant", concentration: false, ritual: false,
-    target: {"area":{"shape":"cube","size":10}},
+    target: {"area":{"shape":"cube","size":10,"count":10}},
     effects: [{"save":"dex","half":true,"onFail":[{"damage":"7d10","type":"fire"}]}],
     tier: "assist", checked: true,
     text: "Up to ten contiguous 10-foot cubes, arranged as the caster likes, burst into flame. Each creature in them makes a Dexterity save, taking fire damage on a failure or half on a success. The engine cannot lay out cubes, so the DM arranges them and picks who is caught. The DM also sets fire to flammable objects in the area that are not worn or carried.",

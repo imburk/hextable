@@ -249,10 +249,10 @@ export const spells2 = [
     level: 2, school: "evocation", classes: ["druid", "ranger", "sorcerer", "wizard"],
     time: "action", range: "self", components: ["v", "s", "m"],
     duration: "1 minute", concentration: true, ritual: false,
-    target: {"area": {"shape": "line", "size": 60}},
+    target: {"area": {"shape": "line", "size": 60, "width": 10}},
     effects: [{"save": "str", "onFail": [{"move": 15, "dir": "away"}]}],
     tier: "assist", checked: true,
-    text: "A 60-foot line of wind: each creature in it makes a Strength save or is pushed 15 feet away from the caster. The engine cannot lay out a line, so it hands each step to the DM, who picks who is in it, repeats the save for creatures ending a turn there, and handles the extra movement toward the caster, the flames and gas, and changes of direction.",
+    text: "A 60-foot-long, 10-foot-wide line of wind: each creature in it makes a Strength save or is pushed 15 feet away from the caster. The engine lays out the line and resolves the first save; the DM repeats the save for creatures ending a turn there, and handles the extra movement toward the caster, the flames and gas, and changes of direction.",
   },
   {
     id: "heat-metal", name: "Heat Metal", source: "SRD 5.2.1",

@@ -6832,7 +6832,8 @@ export const monsters = [
         target: {
           area: {
             shape: "line",
-            size: 90
+            size: 90,
+            width: 10
           }
         },
         effects: [
@@ -7372,7 +7373,8 @@ export const monsters = [
         target: {
           area: {
             shape: "line",
-            size: 90
+            size: 90,
+            width: 10
           }
         },
         effects: [

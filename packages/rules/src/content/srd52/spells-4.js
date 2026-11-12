@@ -41,7 +41,7 @@ export const spells4 = [
     target: {"area":{"shape":"cube","size":20}},
     effects: [{"save":"str","onFail":[{"damage":"3d6","type":"bludgeoning"},{"condition":"restrained"}]}],
     tier: "assist", checked: true,
-    text: "Tentacles fill a 20-foot square, making it Difficult Terrain. Each creature there makes a Strength save or takes 3d6 bludgeoning damage and is restrained. The engine cannot lay out a square, so the DM picks who is caught. The DM also handles the Difficult Terrain, the save for creatures that enter or end a turn there (once per turn), and the Athletics check against the spell save DC that frees a restrained creature.",
+    text: "Tentacles fill a 20-foot square, making it Difficult Terrain. Each creature there makes a Strength save or takes 3d6 bludgeoning damage and is restrained. The engine lays out the square as a 20-foot cube and resolves the first save. The DM handles the Difficult Terrain, the save for creatures that enter or end a turn there (once per turn), and the Athletics check against the spell save DC that frees a restrained creature.",
   },
   {
     id: "blight", name: "Blight", source: "SRD 5.2.1",

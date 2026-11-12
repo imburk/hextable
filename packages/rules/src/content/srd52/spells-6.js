@@ -252,10 +252,10 @@ export const spells6 = [
     level: 6, school: "evocation", classes: ["cleric","druid","sorcerer","wizard"],
     time: "action", range: "self", components: ["v","s","m"],
     duration: "1 minute", concentration: true, ritual: false,
-    target: {"area":{"shape":"line","size":60}},
+    target: {"area":{"shape":"line","size":60,"width":5}},
     effects: [{"save":"con","half":true,"onFail":[{"damage":"6d8","type":"radiant"},{"condition":"blinded","ends":{"on":"turnStart","of":"source"}}]}],
     tier: "assist", checked: true,
-    text: "A beam fills a 5-foot-wide, 60-foot-long line. Each creature in it makes a Constitution save, taking radiant damage and blinded until the start of the caster's next turn on a failure, or half damage on a success. The engine cannot lay out a line, so the DM picks who is in it. The DM also handles the follow-ups: a Magic action on later turns makes a new line, and a mote of sunlight above the caster sheds Bright Light 30 feet and Dim Light 30 feet more.",
+    text: "A beam fills a 5-foot-wide, 60-foot-long line. Each creature in it makes a Constitution save, taking radiant damage and blinded until the start of the caster's next turn on a failure, or half damage on a success. The engine lays out the first line and resolves it. The DM handles the follow-ups: a Magic action on later turns makes a new line, and a mote of sunlight above the caster sheds Bright Light 30 feet and Dim Light 30 feet more.",
   },
   {
     id: "transport-via-plants", name: "Transport via Plants", source: "SRD 5.2.1",

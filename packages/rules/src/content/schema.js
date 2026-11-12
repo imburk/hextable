@@ -31,7 +31,8 @@ export const HOOKS = ['check', 'attack.roll', 'attack.received', 'damage.dealt',
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
-  'attacker.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover'];
+  'attacker.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
+  'target.seesSource'];
 
 // Things on a map (docs/specs/maps-and-objects.md).
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
@@ -128,6 +129,12 @@ function lintTarget(target, say) {
     if (!(target.area.size > 0)) say('an area needs a size in feet');
     // How far away a monster's sphere or cylinder may be centred (a spell's range says it for a spell).
     if (target.area.range !== undefined && !(isInt(target.area.range) && target.area.range > 0 && target.area.range % 5 === 0)) say('an area\'s range is feet, a multiple of 5');
+    // A Line's width in feet (5 when not given); `exceptCaster` for "each creature other than you".
+    if (target.area.width !== undefined && !(target.area.shape === 'line' && isInt(target.area.width) && target.area.width > 0 && target.area.width % 5 === 0)) say('`width` is for a line: feet, a multiple of 5');
+    if (target.area.exceptCaster !== undefined && target.area.exceptCaster !== true) say('`exceptCaster` is true or left out');
+    // `choose`: up to so many creatures of the caster's choice in the area. `count`: so many of
+    // these shapes, which the caster arranges (Fire Storm's ten cubes); the engine lays out one.
+    for (const k of ['choose', 'count']) if (target.area[k] !== undefined && !(isInt(target.area[k]) && target.area[k] > 1 && target.area[k] <= 20)) say(`\`${k}\` is a whole number from 2 to 20`);
   }
   if (target.creature) {
     const c = target.creature;

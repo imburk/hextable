@@ -148,7 +148,8 @@ test("an emanation surrounds the caster, spares the caster, and needs no aim", (
 
 test("a shape the engine cannot lay out yet is handed to the DM, not guessed", () => {
   const s = field();
-  const id = learn(s, { id: "test-bolt", level: 3, range: "self", target: { area: { shape: "line", size: 100 } },
+  // A Line placed at a distance is a wall of any shape (Wind Wall): nothing for the engine to lay out.
+  const id = learn(s, { id: "test-bolt", level: 3, range: 120, target: { area: { shape: "line", size: 100 } },
     effects: [{ save: "dex", half: true, onFail: [{ damage: "8d6", type: "lightning" }] }] });
   assert.equal(SPELLS[id].aim, "none");
   const goblin = add(s, "goblin-warrior", { q: 2, r: 0 });
