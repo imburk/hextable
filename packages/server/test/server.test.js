@@ -59,13 +59,34 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
   assert.equal(reply.t, "update");
   assert.equal(reply.events[0].type, "chronicle");
 
-  // A 70 KB message each way exercises frames with a 64-bit length, in and out.
-  const big = new Promise((resolve) => {
-    ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.t === "update") resolve(m); };
+  // A 70 KB action is over the 4 KB cap, so it is refused and nothing is recorded.
+  const refused = new Promise((resolve) => {
+    ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.t === "error" || m.t === "update") resolve(m); };
   });
   ws.send(JSON.stringify({ t: "act", action: { type: "chronicle", title: "Long entry", text: "y".repeat(70000) } }));
-  const bigReply = await big;
-  assert.equal(bigReply.events[0].text.length, 70000);
-  assert.ok(JSON.stringify(bigReply).length > 65536);
+  assert.deepEqual(await refused, { t: "error", error: "That action is too large." });
+
+  // The DM may send a whole map: this one is over 300 KB, so it arrives in frames with a 64-bit
+  // length, and the update that follows is large too.
+  const map = structuredClone(update.state.map), tile = Object.values(map.levels[0].tiles)[0];
+  for (let q = -40; q < 40; q++) for (let r = -40; r < 40; r++) map.levels[0].tiles[`${q},${r}`] ??= { ...tile };
+  const loaded = new Promise((resolve) => {
+    ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.t === "error" || m.t === "update") resolve(m); };
+  });
+  const body = JSON.stringify({ t: "act", action: { type: "loadMap", map } });
+  assert.ok(body.length > 300000);
+  ws.send(body);
+  const loadReply = await loaded;
+  assert.equal(loadReply.t, "update", loadReply.error);
+  assert.ok(JSON.stringify(loadReply).length > 65536 || loadReply.patch);
   ws.close();
+});
+
+test("a message far over any limit closes that connection cleanly and the server carries on", async () => {
+  const { ws } = await talk({ t: "host", name: "Dana" }, (g) => g.some((m) => m.t === "update"));
+  const closed = new Promise((resolve) => { ws.onclose = (ev) => resolve(ev.code); });
+  ws.send("z".repeat(3 * 1024 * 1024));
+  assert.equal(await closed, 1009);
+  const ping = await fetch(`http://localhost:${PORT}/api/ping`);
+  assert.deepEqual(await ping.json(), { ok: true });
 });

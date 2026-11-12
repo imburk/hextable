@@ -6,7 +6,7 @@ import { current, moveOptions } from "../../rules/src/engine.js";
 import * as H from "../../rules/src/hex.js";
 import { createReceiver } from "../../rules/src/patch.js";
 import { view } from "../../rules/src/view.js";
-import { createTables } from "../src/tables.js";
+import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -522,4 +522,41 @@ test("the server upgrades tables saved by the previous version when it loads the
   assert.equal(dm.last("update").state.encounter.round, 2);
   dm.say({ t: "act", action: { type: "endTurn", actor: "wizard" } });
   assert.equal(dm.last("update").events.at(-1).type, "turn");
+});
+
+test("action size cap: players and the DM are held to 4 KB, except the DM's map actions", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player } = seated(tables);
+  const TOO_BIG = { t: "error", error: "That action is too large." };
+  const chronicle = (n) => ({ t: "act", action: { type: "chronicle", title: "x", text: "y".repeat(n) } });
+  const fits = MAX_ACTION_BYTES - JSON.stringify({ type: "chronicle", title: "x", text: "" }).length;
+
+  // Just inside the cap is accepted; one byte more is refused, for the DM and for a player alike.
+  dm.say(chronicle(fits));
+  assert.equal(dm.got.at(-1).t, "update");
+  dm.say(chronicle(fits + 1));
+  assert.deepEqual(dm.got.at(-1), TOO_BIG);
+  player.say(chronicle(fits + 1));
+  assert.deepEqual(player.got.at(-1), TOO_BIG);
+  dm.say(chronicle(70_000));
+  assert.deepEqual(dm.got.at(-1), TOO_BIG);
+
+  // A map document is well over 4 KB. The DM may send one; a player may not, and nothing changes.
+  const map = structuredClone(dm.last("update").state.map), tile = Object.values(map.levels[0].tiles)[0];
+  for (let q = -40; q < 40; q++) for (let r = -40; r < 40; r++) map.levels[0].tiles[`${q},${r}`] ??= { ...tile };
+  const size = JSON.stringify({ type: "loadMap", map }).length;
+  assert.ok(size > 300_000 && size < MAX_MAP_ACTION_BYTES);
+  const seq = tables.get(dm.last("welcome").code).seq;
+  player.say({ t: "act", action: { type: "loadMap", map } });
+  assert.deepEqual(player.got.at(-1), TOO_BIG);
+  player.say({ t: "act", action: { type: "mapEdit", ops: [{ op: "x", pad: "z".repeat(5000) }] } });
+  assert.deepEqual(player.got.at(-1), TOO_BIG);
+  assert.equal(tables.get(dm.last("welcome").code).seq, seq);
+  dm.say({ t: "act", action: { type: "loadMap", map } });
+  assert.equal(dm.got.at(-1).t, "update");
+  assert.equal(Object.keys(tables.get(dm.last("welcome").code).state.map.levels[0].tiles).length, Object.keys(map.levels[0].tiles).length);
+
+  // Even the DM's map actions have a ceiling.
+  dm.say({ t: "act", action: { type: "mapEdit", ops: [{ op: "x", pad: "z".repeat(MAX_MAP_ACTION_BYTES) }] } });
+  assert.deepEqual(dm.got.at(-1), TOO_BIG);
 });
