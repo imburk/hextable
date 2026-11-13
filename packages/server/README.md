@@ -167,12 +167,12 @@ answer repeats `types`).
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
-`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`, `{t:"export"}` (DM only),
+`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"history",fight}`, `{t:"sync"}`, `{t:"export"}` (DM only),
 `{t:"undo"}`, `{t:"redo"}` and `{t:"rewind",to:"fight"|"rest"}` (DM only).
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",seq,events,state}` or `{t:"update",seq,events,patch}`, `{t:"lobby",members,pending}`,
-`{t:"error",error,expired?}`, `{t:"history",entries,recent?,types?}`, `{t:"export",table}`,
+`{t:"error",error,expired?}`, `{t:"history",entries,recent?,types?}`, `{t:"history",fight,entries,cut}`, `{t:"export",table}`,
 `{t:"undoable",undo,redo,pins:{fight,rest}}` (DM only).
 
 An update's `state` is the receiver's view of the game and never includes the
@@ -186,6 +186,13 @@ the whole view again. The patch
 format is in `packages/rules/src/patch.js`. Past entries come through `history`, redacted for players in the
 same way as live events. On joining or rejoining, each client is sent its last
 50 visible entries with `recent: true`.
+
+A fight is named in the record: `encounterStart` has `fight` (its number) and `where` (the name of the
+revealed region at its centre, else the map's name; never a region the party has not found), and
+`encounterEnd` has `fight`. `{t:"history",fight}` asks for one fight's record: the entries from its
+`encounterStart` to its `encounterEnd` (or to now, while it goes on), redacted for the asker like any
+`history`, at most 500 from the start (`cut: true` if more were left out). An unknown fight answers
+with no entries.
 
 ## Limits and hardening
 

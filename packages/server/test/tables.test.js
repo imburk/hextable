@@ -1345,3 +1345,48 @@ test("rewind: a pin survives a restart, and loading a map drops it", () => {
   assert.ok(!dm2.last("error") || dm2.last("error").error === undefined, dm2.last("error")?.error);
   assert.deepEqual(dm2.last("undoable").pins, { fight: false, rest: false });
 });
+
+// ---------- one fight's record (docs/specs/table-ui.md, Decision 5, E11) ----------
+test("history by fight: one fight's record, start to end, redacted for players", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const wolf = cryptWithWolf(dm, state);
+  dm.say({ t: "act", action: { type: "chronicle", title: "Before" } });
+  fightHere(dm, state);
+  const id = state.encounter.id;
+  turns(dm, state, 6);
+  dm.say({ t: "act", action: { type: "harm", actor: wolf, amount: 1 } });     // a hidden creature's line
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  dm.say({ t: "act", action: { type: "chronicle", title: "After" } });
+  fightHere(dm, state);                                                         // a second fight, still going
+
+  dm.say({ t: "history", fight: id });
+  const mine = dm.last("history");
+  assert.equal(mine.fight, id);
+  assert.equal(mine.entries[0].type, "encounterStart");
+  assert.equal(mine.entries.at(-1).type, "encounterEnd");
+  assert.equal(mine.entries.at(-1).fight, id);
+  assert.ok(!mine.entries.some((e) => e.title === "Before" || e.title === "After"));
+  assert.ok(mine.entries.some((e) => e.type === "damage" && e.target === wolf), "the DM sees it all");
+  assert.equal(mine.cut, false);
+
+  player.say({ t: "history", fight: id });
+  const theirs = player.last("history");
+  assert.equal(theirs.fight, id);
+  assert.equal(theirs.entries[0].fight, id);
+  assert.equal(theirs.entries.at(-1).type, "encounterEnd");
+  assert.ok(!JSON.stringify(theirs).includes(wolf), "nothing of the hidden wolf");
+  assert.ok(theirs.entries.length < mine.entries.length);
+
+  // The fight still going: from its start to now.
+  const now = state.encounter.id;
+  player.say({ t: "history", fight: now });
+  assert.equal(player.last("history").entries[0].fight, now);
+  assert.ok(!player.last("history").entries.some((e) => e.type === "encounterEnd"));
+  // No such fight, and a bad id.
+  player.say({ t: "history", fight: 9999 });
+  assert.deepEqual(player.last("history"), { t: "history", fight: 9999, entries: [], cut: false });
+  player.say({ t: "history", fight: "x" });
+  assert.equal(player.last("error").error, "Name a fight by its number.");
+});
