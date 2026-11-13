@@ -18,6 +18,7 @@ import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
+import { concludeFight, rewardActions, xpFor } from './rewards.js';
 import { fightEndsScene, sceneActions } from './scenes.js';
 import { entered, flushZones, snapshot, turnInZones } from './zones.js';
 import { difficultAt, terrainsOf } from './terrain.js';
@@ -71,6 +72,8 @@ export function makeEntity(tpl, over = {}) {
     ...(t.hitDie ? { hd: t.level } : {}),
     ...(t.hitDice ? { hdBy: { ...t.hitDice } } : {}),                 // Hit Dice of several sizes, left of each (several classes)
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
+    // A party character's Experience Points: the total its level starts at, unless it has its own.
+    ...((over.kind ?? t.kind) === 'pc' ? { xp: Number.isInteger(over.xp ?? t.xp) ? (over.xp ?? t.xp) : xpFor(over.level ?? t.level ?? 1) } : {}),
   };
 }
 // A built character's features with uses (Rage, Second Wind, Channel Divinity) start full. Kept in
@@ -591,11 +594,11 @@ function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
   for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
-    order: null,
+    order: null, where: fightPlace(s, center),
   };
   const faces = {};
   s.encounter.order = initiativeSort(who.map((e) => rollInit(s, e, faces)));
-  ev.push({ type: 'encounterStart', fight: s.encounter.id, where: fightPlace(s, center), center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
+  ev.push({ type: 'encounterStart', fight: s.encounter.id, where: s.encounter.where, center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
   advanceTurn(s, ev);
 }
 
@@ -623,6 +626,7 @@ function endEncounter(s, ev, result) {
   }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round, fight: s.encounter.id });
   fightOver(s, ev);
+  concludeFight(s, ev, result, s.encounter, fighters(s));      // XP and loot for a fight won or ended (rewards.js)
   s.encounter = null;
 }
 
@@ -2682,7 +2686,7 @@ const handlers = {
       i >= 0 || fail(`${e.name} has no ${item}.`);
       e.gear.splice(i, 1);
     } else e.gear.push(item);
-    ev.push({ type: 'gear', id: e.id, item, ...(a.take ? { taken: true } : {}) });
+    ev.push({ type: 'gear', id: e.id, item, why: 'dm', ...(a.take ? { taken: true } : {}) });
   },
   // Hand a creature a light to carry, or take it away. { type: 'setLight', actor, item } with an item
   // from content/lights.js (a torch, a lamp), or { light: { bright, dim } } in feet; `item: null` puts it out.
@@ -2934,6 +2938,8 @@ const handlers = {
   ...handoutActions(fail),
   // Scenes: scene, endScene, sceneNpc, say, askCheck, sceneChronicle (scenes.js).
   ...sceneActions(fail),
+  // Rewards at the end of a fight: conclusion { edit | publish | skip } (rewards.js).
+  ...rewardActions(fail),
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
@@ -3039,6 +3045,7 @@ function remake(s, e, record, sheet, ev) {
     for (const d of Object.keys(fresh.hdBy)) fresh.hdBy[d] = Math.max(0, fresh.hitDice[d] - Math.max(0, (had[d] ?? 0) - (left[d] ?? 0)));
     fresh.hd = Object.values(fresh.hdBy).reduce((a, b) => a + b, 0);
   }
+  fresh.xp = Math.max(e.xp ?? 0, fresh.xp ?? 0);                     // XP earned is kept; a level given by hand starts at least at its threshold
   fresh.sheet = sheet;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });
@@ -3074,7 +3081,9 @@ function look(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'] };
+export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
+  // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
+  conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'] };
 
 // The fields of an action that name creatures, one id or a list of them. (`follow`'s `leader` is
 // not one: its handler gives one answer for a creature that is not there and one not in the party.)
