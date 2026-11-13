@@ -80,7 +80,19 @@ Which values a reaction takes depends on it (`miss` only for one that adds to AC
 carries `reactions: { [creatureId]: { [reactionId]: when } }` for their own creatures only, with
 only what differs from the default; the shared part of the view never has a creature's
 `reactions`. A reaction taken sends `reaction {id,reaction,name,trigger,against?}` to everyone who
-could see it (`trigger`: `leave`, `hit`, `targeted`, `cast`, `damaged`).
+could see it (`trigger`: `leave`, `hit`, `targeted`, `cast`, `damaged`, `saveFailed`: Countercharm,
+`always` or `never` only).
+
+**Class features (#154).** More fields on actions the engine already takes, all checked there:
+`feature` takes `mode` (Divine Spark: `heal`, `radiant`, `necrotic`), `form` (Wild Shape: a pack
+Beast's id; none leaves the form), `make` or `spend` (Font of Magic: a slot level), and `cure`
+(Lay On Hands: a list of conditions, with `amount` 0 or more). `cast` takes `via` (a feature that
+casts without a slot: Divine Intervention), `metamagic` (a list of option ids) with `careful` (ids),
+`heightened` (an id) and `transmute` (a damage type). `shortRest` takes `restore` (ids: Sorcerous
+Restoration). New event `form {id, form, name}` (sent where the creature is known; `form` null when
+it ends); `save` and `attack` events may carry `rescued {name, dice, add}` (a Bardic Inspiration
+die or Peerless Skill) and a `save` may carry `careful` or `reroll`. A creature seen by players
+carries `form` (the Beast's id) while in one. State version 17.
 
 **Asking in the moment** (Decision 4 build notes, part 2). Where a player's creature has `ask`, the
 action that reaches it stops and nothing it did is kept; the state's `pending` holds it (the DM's

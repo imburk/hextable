@@ -11,7 +11,8 @@ import { d20Faces, die, faceSum, negate, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
 import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
 import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from './effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
+import { leaveForm, takeForm } from './forms.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, durationMinutes, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
@@ -24,7 +25,7 @@ import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown 
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { derive, validate } from './derive.js';
 import { OPPORTUNITY, WHILE_WAITING, canReact, checkInstructions, instruction, mayAsk, opportunityAttack, reactionsOf } from './reactions.js';
-import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
+import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, immuneTo, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
@@ -651,6 +652,7 @@ function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null
     ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
+  if (total > 0) damaged(s, ev, t);                       // "until it takes any damage" (Turn Undead)
   if (dying) {                                            // already dying
     if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     if (t.dead) ev.push({ type: 'died', id: t.id });
@@ -750,22 +752,44 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   // Improved Critical: a weapon attack scores a Critical Hit, and so hits, on a lower roll (`critOn`).
   const critRoll = nat === 20 || (!atk.spell && e.critOn && nat >= e.critOn);
   let hit = nat !== 1 && (critRoll || nat + bonus >= ac), ac2 = ac, cut = null;
+  // A die that may turn a miss into a hit (Bardic Inspiration, Peerless Skill); never a natural 1.
+  const lift = !hit && nat !== 1 ? rescue(s, e, 'attack.roll', ac - (nat + bonus), ev) : null;
+  if (lift?.success) hit = true;
+  const lifted = lift?.add ?? 0;
   // The target may react to being hit (reactions.js): Shield raises its Armor Class against this
   // very attack, so the roll is compared again; Uncanny Dodge and Deflect Attacks cut the damage.
   if (hit) {
-    const r = reactToHit(s, t, e, atk, { total: nat + bonus, ac, critRoll }, ev);
-    if (r?.ac) { ac2 = acOf(s, t) + (COVER[cover] ?? 0); hit = critRoll || nat + bonus >= ac2; }
-    if (r?.acAdd) { ac2 = ac + r.acAdd; hit = critRoll || nat + bonus >= ac2; }
+    const r = reactToHit(s, t, e, atk, { total: nat + bonus + lifted, ac, critRoll }, ev);
+    if (r?.ac) { ac2 = acOf(s, t) + (COVER[cover] ?? 0); hit = critRoll || nat + bonus + lifted >= ac2; }
+    if (r?.acAdd) { ac2 = ac + r.acAdd; hit = critRoll || nat + bonus + lifted >= ac2; }
     if (r?.cut) cut = r.cut;
   }
   const crit = hit && (critRoll || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
+    total: nat + bonus + lifted, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };
+}
+
+// A failed save against an effect that would put one of some conditions on a creature: an ally
+// within range with a feature reaction on `saveFailed` for those conditions (Countercharm) and a
+// standing instruction of `always` takes its Reaction to have the save rolled again with Advantage.
+// `onFail` is the steps the failure would run. Returns the new save, or null.
+function rerollSave(s, t, abil, dc, onFail, from, ev) {
+  const conds = (onFail ?? []).filter((x) => 'condition' in x).map((x) => x.condition);
+  if (!conds.length) return null;
+  for (const o of living(s)) {
+    if (o.side !== t.side || !canReact(o)) continue;
+    const r = reactionsOf(o).find((x) => x.on === 'saveFailed' && x.reaction.conditions.some((c) => conds.includes(c)) && instruction(o, x) === 'always');
+    if (!r || (o.id !== t.id && apart(s, o, t) * FT > r.reaction.range)) continue;
+    o.reactionUsed = true;
+    ev.push({ type: 'reaction', id: o.id, reaction: r.id, name: r.name, trigger: 'saveFailed', against: t.id });
+    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev);
+  }
+  return null;
 }
 
 // ---------- reactions (reactions.js; docs/specs/rules-expansion.md, Decision 4) ----------
@@ -1007,7 +1031,7 @@ function acOf(s, t) {
 // (or standing up, for Prone) ends it, and the DM is told so.
 function condition(s, t, id, ev, f = null, step = null, level = undefined) {
   if (!up(t) || t.cond[id]) return;
-  if (t.conditionImmune?.includes(id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
+  if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
   if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc, born: turnKey(s) } : {}) });
@@ -1050,11 +1074,16 @@ function dealt(s, e, t, parts, sit, crit) {
   if (!m.dealt.length) return parts;
   const out = parts.map((p) => ({ ...p }));
   for (const x of m.dealt) {
+    // `once`: once on each of its own turns (Divine Strike, Primal Strike); outside a fight there are no turns.
+    if (x.once && s.encounter) {
+      if (current(s) !== e.id || s.encounter.flags[`once:${x.key}`]) continue;
+      s.encounter.flags[`once:${x.key}`] = true;
+    }
     const neg = typeof x.value === 'string' && x.value.startsWith('-');
     const r = typeof x.value === 'string' ? roll(s, x.value.replace(/^[+-]/, ''), { crit }) : null;
     const n = r ? r.total * (neg ? -1 : 1) : x.value;
     const dice = r ? (neg ? negate(r.dice) : r.dice) : [], bonus = r ? r.bonus * (neg ? -1 : 1) : x.value;
-    if (x.types) out.push({ amount: Math.max(0, n), type: x.types[0], from: x.name, dice, bonus, by: e.id });
+    if (x.types) out.push({ amount: Math.max(0, n), type: x.types.length > 1 ? bestType(s, t, x.types) : x.types[0], from: x.name, dice, bonus, by: e.id });
     else if (out.length) {
       const p = out[0];
       p.amount = Math.max(0, p.amount + n);
@@ -1064,12 +1093,44 @@ function dealt(s, e, t, parts, sit, crit) {
   return out;
 }
 
+// A die added to a D20 Test that failed (`onFail` modifiers: a Bardic Inspiration die on the
+// creature, `d20`; Peerless Skill, `attack.roll`, paid from a feature's uses only if it succeeds).
+// Used only where it could turn the failure (`short`, how much the roll fell short, is no more
+// than the dice can make), as a player would; the first that fits is rolled. Returns
+// { add, name, dice, success } or null.
+const diceMax = (d) => { const m = /^(\d+)d(\d+)([+-]\d+)?$/.exec(d); return m ? +m[1] * +m[2] + (+m[3] || 0) : 0; };
+function rescue(s, t, hook, short, ev) {
+  if (!t || t.object || !(short > 0)) return null;
+  const list = [...modifiers(s, t, 'd20', { target: t }, '').rescue, ...modifiers(s, t, hook, { target: t }, '').rescue];
+  for (const x of list) {
+    if (typeof x.value !== 'string' || diceMax(x.value) < short) continue;
+    if (x.cost && !((t.uses?.[x.cost] ?? 0) > 0)) continue;
+    const r = roll(s, x.value), success = r.total >= short;
+    if (x.part) useUp(s, ev, [x.part]);                      // a die given is spent when it is rolled
+    if (x.cost && success) t.uses[x.cost]--;                 // Peerless Skill: not spent on a failure
+    return { add: r.total, name: x.name, dice: r.dice, success };
+  }
+  return null;
+}
+
+// Of the damage types a creature may choose among (Divine Strike: Necrotic or Radiant), the one
+// that hurts the target most: one it is Vulnerable to, then one it does not resist, then the first.
+function bestType(s, t, types) {
+  if (!t) return types[0];
+  const m = modifiers(s, t, 'damage.taken', { target: t });
+  const has = (list, own, k) => list === true || list.includes(k) || (own ?? []).includes(k);
+  const worth = (k) => (has(m.immune, t.immune, k) ? 0 : has(m.resist, t.resist, k) ? 1 : 2) * (has(m.vulnerable, t.vuln, k) ? 2 : 1);
+  return types.reduce((a, k) => (worth(k) > worth(a) ? k : a), types[0]);
+}
+
 // `extra` names a second hook to gather modifiers from, such as 'concentration'. The result carries
 // `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
-function savingThrow(s, t, abil, dc, extra = null, from = null) {
+function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null) {
   const sit = { target: t, ability: abil };
   const m = modifiers(s, t, `save.${abil}`, sit, '');
+  if (dis) m.disadvantage.push(dis);                       // Disadvantage from the caster's side (Heightened Spell)
+  if (adv) m.advantage.push(adv);                          // Advantage on a reroll (Countercharm)
   const cover = abil === 'dex' && from && !from.object ? coverOf(s, from, t, living(s)) : 'none';
   m.add += COVER[cover] ?? 0;
   // `save` applies to every saving throw (Bless, Bane); `extra` names one more hook, such as 'concentration'.
@@ -1089,8 +1150,11 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
   const more = rollDice(s, m.dice);
   // A monster's stat block gives its save outright (`saveBonus`); anyone else adds Proficiency to the modifier for a saving throw they are proficient in.
   const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
-  const total = r + base + m.add + more.total;
-  return { roll: r, total, success: total >= dc, dice: [...d20Faces(r1, r2, r), ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
+  let total = r + base + m.add + more.total;
+  // A die that may turn a failure (Bardic Inspiration), with `ev` to say what was spent.
+  const lift = ev && total < dc ? rescue(s, t, 'save', dc - total, ev) : null;
+  if (lift) total += lift.add;
+  return { roll: r, total, success: total >= dc, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), dice: [...d20Faces(r1, r2, r), ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
 // ---------- ability checks ----------
@@ -1386,8 +1450,12 @@ function aimAction(s, e, def, a) {
     return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
-  return aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);
+  const out = aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);
+  if (t.area.types) out.targets = out.targets.filter((x) => t.area.types.includes(creatureType(x)));     // Turn Undead: Undead only
+  return out;
 }
+// A creature's type: a pack monster's, else a character's (Humanoid). Null for one the engine cannot tell.
+export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e.kind === 'pc' ? 'humanoid' : null);
 
 // Who an area action would catch if aimed at `hex`, or null if it cannot be aimed there. For the AI and the UI.
 export function areaTargets(s, e, def, hex) {
@@ -1626,7 +1694,60 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
+const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
+
+// ---------- Metamagic ----------
+// The options a creature knows are its features that grant `metamagic: { id, cost, pool }`
+// (Sorcerer; content/srd52/classes/sorcerer.js); `a.metamagic` names those used on this casting,
+// paid for from the pool (Sorcery Points). One a spell, or more while a feature with
+// `metamagicMax: { n, while }` is in its `while` feature's effect (Sorcery Incarnate during Innate
+// Sorcery). What each does is the engine's, by its id; Empowered and Seeking are decided after a
+// roll, which the engine does not offer, so they are refused here and the DM applies them.
+const TRANSMUTE = ['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder'];
+const METAMAGIC = ['careful', 'distant', 'extended', 'heightened', 'quickened', 'subtle', 'transmuted', 'twinned'];
+function metamagicFor(s, e, sp, a, slot) {
+  const none = { list: [], names: [], has: {}, cost: 0 };
+  for (const k of ['careful', 'heightened', 'transmute']) if (a[k] !== undefined && !(a.metamagic ?? []).includes(k === 'transmute' ? 'transmuted' : k)) fail(`"${k}" goes with that Metamagic option.`);
+  if (a.metamagic === undefined) return none;
+  const ids = a.metamagic;
+  (Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length) || fail('Name the Metamagic options used.');
+  const known = (e.feats ?? []).filter((f) => f.metamagic);
+  const opts = ids.map((id) => known.find((f) => f.metamagic.id === id)?.metamagic ?? fail(`${e.name} doesn't know that Metamagic option.`));
+  for (const o of opts) METAMAGIC.includes(o.id) || fail(`${nice(o.id)} Spell is decided after a roll; the engine does not offer that, so the DM applies it.`);
+  const extra = (e.feats ?? []).filter((f) => f.metamagicMax && effectsOf(s).some((fx) => fx.source === e.id && fx.feature === f.metamagicMax.while));
+  const max = Math.max(1, ...extra.map((f) => f.metamagicMax.n));
+  ids.length <= max || fail(max === 1 ? 'One Metamagic option a spell.' : `${max} Metamagic options a spell at most.`);
+  const pool = opts[0].pool, cost = opts.reduce((n, o) => n + o.cost, 0);
+  (e.uses[pool] ?? 0) >= cost || fail(`${e.name} has ${e.uses[pool] ?? 0} Sorcery Points; that costs ${cost}.`);
+  const has = Object.fromEntries(ids.map((id) => [id, true]));
+  const out = { list: ids, names: ids.map((id) => `${nice(id)} Spell`), has, cost, pool };
+  let saves = false, types = [];
+  walkSteps(sp.def.effects, (st) => { if ('save' in st) saves = true; if ('damage' in st) types.push(st.type); });
+  if (has.careful) {
+    (saves) || fail('Careful Spell is for a spell that calls for saving throws.');
+    const n = Math.max(1, mod(e.abil.cha));
+    (Array.isArray(a.careful) && a.careful.length >= 1 && a.careful.length <= n && new Set(a.careful).size === a.careful.length) || fail(`Careful Spell protects up to ${n} creature${n === 1 ? '' : 's'}: name them.`);
+  }
+  if (has.heightened) { saves || fail('Heightened Spell is for a spell that calls for saving throws.'); typeof a.heightened === 'string' || fail('Name the target Heightened Spell picks.'); }
+  if (has.quickened) sp.time === 'action' || fail('Quickened Spell is for a spell cast as an action.');
+  if (has.distant) {
+    const r = sp.def.range;
+    out.range = r === 'touch' ? 30 : typeof r === 'number' && r >= 5 ? sp.range * 2 : fail('Distant Spell is for a spell with a range of Touch or of 5 feet or more.');
+  }
+  if (has.extended) {
+    const m = durationMinutes(sp.def.duration);
+    (m !== null && m >= 1) || fail('Extended Spell is for a spell that lasts 1 minute or longer.');
+    const twice = Math.min(1440, m * 2);
+    out.duration = twice % 60 === 0 ? `${twice / 60} hour${twice === 60 ? '' : 's'}` : `${twice} minutes`;
+  }
+  if (has.transmuted) {
+    types.some((t) => TRANSMUTE.includes(t)) || fail('Transmuted Spell is for a spell that deals Acid, Cold, Fire, Lightning, Poison or Thunder damage.');
+    (TRANSMUTE.includes(a.transmute) && !types.includes(a.transmute)) || fail(`Choose the damage type Transmuted Spell makes it: ${TRANSMUTE.filter((t) => !types.includes(t)).join(', ')}.`);
+  }
+  if (has.twinned) targetCount(sp.def, e.level, Math.max(slot, sp.level) + 1) > targetCount(sp.def, e.level, Math.max(slot, sp.level)) || fail('Twinned Spell is for a spell that targets another creature at a higher level.');
+  return out;
+}
+const nice = (id) => id[0].toUpperCase() + id.slice(1);
 
 const handlers = {
   move(s, a, ctx, ev) {
@@ -1730,15 +1851,26 @@ const handlers = {
   cast(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     const sp = SPELLS[a.spell];
-    (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
+    // Cast through a feature (`a.via`, a feature with `freeCast`: Divine Intervention): any spell
+    // of its list up to its level, prepared or not, with no slot, as part of the feature's action,
+    // for one of its uses.
+    const via = a.via !== undefined ? (featOf(e, a.via)?.freeCast ? featOf(e, a.via) : fail(`${e.name} has no feature that casts spells that way.`)) : null;
+    if (via) {
+      const fc = via.freeCast;
+      (sp && (fc.spells ? fc.spells.includes(a.spell) : (sp.def.classes ?? []).includes(fc.list) && sp.level <= fc.maxLevel)) || fail(`${via.name} can't cast that spell.`);
+      (e.uses[via.id] ?? 0) > 0 || fail(`${e.name} has no uses of ${via.name} left.`);
+      a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
+    } else (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (sp.time === 'reaction') fail(sp.def.reaction
       ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
       : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+    !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
-    if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
+    if (!sp.turn && s.encounter && !via) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
+    let time = via ? (via.freeCast.time ?? 'action') : sp.time;
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
@@ -1751,42 +1883,53 @@ const handlers = {
     }
     // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
     const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
-    const most = targetCount(sp.def, e.level, Math.max(slot, sp.level));
+    const mm = metamagicFor(s, e, sp, a, slot);
+    const range = mm.range ?? sp.range;
+    const most = targetCount(sp.def, e.level, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
-      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, sp.range, a.hex));
+      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
-      targets = creatures(s, e, sp.name, { range: sp.range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
+      targets = creatures(s, e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
     } else if (sp.aim === 'self') targets = [e];
+    if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
+    if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
 
     // What it costs.
-    if (sp.level > 0) {
+    if (sp.level > 0 && !via) {
       (Number.isInteger(slot) && slot >= sp.level && slot <= 9) || fail(`${sp.name} needs a spell slot of level ${sp.level} or higher.`);
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
     if (!s.encounter && sp.harmful && aimed) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
+    const slotted = sp.level > 0 && !via;
+    if (mm.has.quickened) time = 'bonus';
     if (s.encounter) {
-      need(s, e, sp.time);
-      if (sp.level > 0 && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
+      need(s, e, time);
+      if (mm.has.quickened && s.encounter.flags.slot) fail('Quickened Spell can\'t be used after a level 1+ spell this turn.');
+      if (slotted && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
       // Action Surge gives an action that can't be the Magic action: with it, one action spell a turn.
-      if (sp.time === 'action' && s.encounter.flags[`surge:${e.id}`] && s.encounter.flags[`magic:${e.id}`]) fail('The extra action from Action Surge can\'t be used to cast a spell.');
-      if (sp.time === 'action') s.encounter.flags[`magic:${e.id}`] = true;
+      if (time === 'action' && s.encounter.flags[`surge:${e.id}`] && s.encounter.flags[`magic:${e.id}`]) fail('The extra action from Action Surge can\'t be used to cast a spell.');
+      if (time === 'action') s.encounter.flags[`magic:${e.id}`] = true;
       if (sp.aim === 'creature') for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
-      s.encounter.budget[sp.time]--;
-      if (sp.level > 0) s.encounter.flags.slot = true;
+      s.encounter.budget[time]--;
+      if (slotted) s.encounter.flags.slot = true;
     }
-    if (sp.level > 0) e.slots[slot]--;
-    if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
+    if (slotted) e.slots[slot]--;
+    if (via) e.uses[via.id]--;
+    if (mm.cost) e.uses[mm.pool] -= mm.cost;
+    if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
+    if (mm.list.length) ev.push({ type: 'std', id: e.id, action: `Metamagic: ${mm.names.join(', ')}` });
+    if (sp.def.components?.includes('v') && !mm.has.subtle) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
     showPlace(s, e, ev);
     // Someone who sees it being cast may counter it (Counterspell). Then it dissipates with no
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
-    const counteredBy = counterWindow(s, e, sp, ev);
+    const counteredBy = mm.has.subtle ? null : counterWindow(s, e, sp, ev);      // Subtle Spell: nothing to see being cast
     if (counteredBy) {
-      if (sp.level > 0) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
+      if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
       return checkEnd(s, ev);
     }
@@ -1795,7 +1938,8 @@ const handlers = {
     // What it does: run its effect steps.
     const st = spellStats(e, s), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     if (pick) chooseIn(steps, pick.of, a.choice);
-    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}) });
+    if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
+    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}) });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
@@ -1803,7 +1947,9 @@ const handlers = {
     let fx = null;
     if (sp.def.duration !== 'instant') {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
-      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration });
+      // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
+      if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
     } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
@@ -1813,7 +1959,7 @@ const handlers = {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10) }, last: {} };
+        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10) }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
@@ -1821,7 +1967,8 @@ const handlers = {
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}) },
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}),
+        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared: sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
@@ -1916,11 +2063,15 @@ const handlers = {
   feature(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
+    // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
+    // spend) still spends what it costs and hands the rest to the DM, as before these were built.
+    if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
     const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
+    if (act.form && (a.form !== undefined || e.form)) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
@@ -1933,7 +2084,10 @@ const handlers = {
       for (const p of live.parts) if (!p.ended && p.ends?.on === 'turnEnd') p.born = now;
       return ev.push({ type: 'std', id: e.id, action: `${f.name} (extended)` });
     }
-    const res = act.cost?.resource ?? (f.uses ? f.id : null), n = act.cost?.n ?? 1;
+    let res = act.cost?.resource ?? (f.uses ? f.id : null), n = act.cost?.n ?? 1;
+    // `orCost`: with none of its own uses left, it may be paid for from another pool instead
+    // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
+    if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
     if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.`);
     if (time && fighting) need(s, e, time);
     if ((act.gain || act.firstAttack) && !(fighting && current(s) === e.id)) fail(`${f.name} is used on ${e.name}'s turn in a fight.`);
@@ -1943,24 +2097,41 @@ const handlers = {
     }
     if (act.gain?.action) !enc.flags[`surge:${e.id}`] || fail(`${f.name} can be used once a turn.`);
     if (act.gain?.attacks && enc.budget.bonusAttacks) fail(`${e.name} already has those attacks to make.`);
-    // A pool of healing (Lay On Hands): `amount` Hit Points from what is left, to a creature in reach.
-    let poolTarget = null, amount = 0;
+    // A pool of healing (Lay On Hands): `amount` Hit Points from what is left, to a creature in
+    // reach; and with `cure`, conditions to remove from it at the pool's cost each (`a.cure`, a list).
+    let poolTarget = null, amount = 0, cures = [];
     if (act.pool) {
       poolTarget = ent(s, a.target ?? e.id);
       !poolTarget.dead || fail(`${poolTarget.name} is dead.`);
       if (poolTarget.id !== e.id) { apart(s, e, poolTarget) * FT <= (act.target.creature.reach ?? 5) || fail(`${poolTarget.name} is out of reach.`); walled(s, e, poolTarget); }
-      amount = a.amount;
-      (Number.isInteger(amount) && amount > 0) || fail(`Say how many Hit Points ${f.name} restores.`);
-      amount <= (e.uses[res] ?? 0) || fail(`${f.name} has ${e.uses[res] ?? 0} Hit Points left.`);
+      if (a.cure !== undefined) {
+        (Array.isArray(a.cure) && a.cure.length && new Set(a.cure).size === a.cure.length) || fail(`Name the conditions ${f.name} removes.`);
+        for (const c of a.cure) {
+          act.cure?.conditions.includes(c) || fail(`${f.name} can't remove ${conditionName(c)}.`);
+          poolTarget.cond[c] || fail(`${poolTarget.name} ${conditionPhrase(c).replace(/^is /, 'is not ').replace(/^has /, 'does not have ')}.`);
+        }
+        cures = a.cure;
+      }
+      amount = a.amount ?? 0;
+      (Number.isInteger(amount) && amount >= 0 && (amount > 0 || cures.length)) || fail(`Say how many Hit Points ${f.name} restores.`);
+      const cost = amount + cures.length * (act.cure?.cost ?? 0);
+      cost <= (e.uses[res] ?? 0) || fail(`${f.name} has ${e.uses[res] ?? 0} Hit Points left.`);
     }
-    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target }, a);
+    // A feature with `modes` does one of several things, named by `a.mode` (Divine Spark: heal, or radiant or necrotic harm).
+    const mode = act.modes && a.mode !== undefined ? act.modes.find((m) => m.id === a.mode) || fail(`Choose what ${f.name} does: ${act.modes.map((m) => m.name).join(', ')}.`) : null;
+    const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
+    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, a);
     if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
 
     // Paid for: from here it happens.
     if (time && fighting) enc.budget[time]--;
-    if (res) e.uses[res] -= act.pool ? amount : n;
+    if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
     if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
-    if (act.pool) { ev.push({ type: 'std', id: e.id, action: f.name }); return heal(s, poolTarget, Math.min(amount, poolTarget.maxHp - Math.max(0, poolTarget.hp)), ev); }
+    if (act.pool) {
+      ev.push({ type: 'std', id: e.id, action: f.name });
+      for (const c of cures) { delete poolTarget.cond[c]; ev.push({ type: 'condEnd', id: poolTarget.id, cond: c }); }
+      return amount > 0 ? heal(s, poolTarget, Math.min(amount, poolTarget.maxHp - Math.max(0, poolTarget.hp)), ev) : undefined;
+    }
     if (act.gain?.action) {                                             // Action Surge: one more action, not a Magic action
       enc.budget.action++; enc.flags[`surge:${e.id}`] = true;
       return ev.push({ type: 'std', id: e.id, action: f.name });
@@ -1970,7 +2141,7 @@ const handlers = {
       return ev.push({ type: 'std', id: e.id, action: f.name });
     }
     if (act.noSpells) breakConcentration(s, ev, e.id, `${e.name} entered ${f.name}`);
-    const steps = structuredClone(act.effects), targets = aimed.targets;
+    const steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects)), targets = aimed.targets;
     let fx = null;
     if (act.duration && act.duration !== 'instant') {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
@@ -1980,7 +2151,9 @@ const handlers = {
     if (!('attack' in steps[0])) ev.push({ type: 'std', id: e.id, action: f.name });
     const st = e.castAbil ? spellStats(e, s) : null;
     begin(s, { steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
-      src: { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) } });
+      src: { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) },
+      // Damage an area feature deals is rolled once for everyone in it (Sear Undead), as a spell's is.
+      shared: aimed.hexes ? sharedRolls(s, steps) : null });
     resolve(s, ev);
     if (fx?.bound) settle(s, ev, fx, targets ?? []);
     checkEnd(s, ev);
@@ -2429,7 +2602,7 @@ const handlers = {
       return;
     }
     up(e) || fail(`${e.name} is down.`);
-    !e.conditionImmune?.includes(a.condition) || fail(`${e.name} is immune to ${def.name}.`);
+    !immuneTo(s, e, a.condition) || fail(`${e.name} is immune to ${def.name}.`);
     const level = def.levels ? Math.max(1, Math.min(def.levels, a.level | 0 || 1)) : undefined;
     if (e.cond[a.condition]) {
       (def.levels && e.cond[a.condition].level !== level) || fail(`${e.name} is already ${def.name}.`);
@@ -2516,6 +2689,16 @@ const handlers = {
       n <= (e.hd ?? 0) || fail(`${e.name} has ${e.hd ?? 0} Hit Point Dice left.`);
       e.hp > 0 || fail(`${e.name} is at 0 Hit Points and can't take a Short Rest.`);
     }
+    // `restore`: those who use a feature that gives points back on a Short Rest (Sorcerous Restoration:
+    // `restore: { of, max }`), regaining what was spent up to its most, for one of its uses.
+    const restore = a.restore ?? [];
+    Array.isArray(restore) || fail('Name who restores points.');
+    const refills = restore.map((id) => {
+      const e = ent(s, id), f = (e.feats ?? []).find((x) => x.restore && (e.uses[x.id] ?? 0) > 0);
+      who.includes(e) || fail(`${e.name} isn't resting.`);
+      f || fail(`${e.name} has nothing that restores points now.`);
+      return { e, f };
+    });
     const plans = [];
     for (const [id, levels] of Object.entries(recover)) {
       const e = ent(s, id), f = (e.feats ?? []).find((x) => x.recover && (e.uses[x.id] ?? 0) > 0);
@@ -2547,6 +2730,12 @@ const handlers = {
       for (const l of levels) e.slots[l]++;
       ev.push({ type: 'std', id: e.id, action: `${f.name} (${levels.map((l) => `level ${l}`).join(', ')})` });
     }
+    for (const { e, f } of refills) {
+      const pool = featOf(e, f.restore.of), gain = pool ? Math.min(f.restore.max, pool.uses.max - (e.uses[pool.id] ?? 0)) : 0;
+      e.uses[f.id]--;
+      if (pool) e.uses[pool.id] = (e.uses[pool.id] ?? 0) + gain;
+      ev.push({ type: 'std', id: e.id, action: `${f.name} (${gain} point${gain === 1 ? '' : 's'})` });
+    }
     s.clock += 60;
     ev.push({ type: 'rest', short: true });
     tick(s, ev);
@@ -2576,9 +2765,81 @@ const handlers = {
   },
 };
 
+// A pool of points traded with spell slots (Font of Magic: `exchange: { costs, minLevel }`, by slot
+// level). { type: 'feature', actor, feature, make: level } makes a slot of that level as a Bonus
+// Action for its cost in points, if the creature's level reaches the table's; a made slot is gone
+// at the next Long Rest (slots come back to their maximum). { ..., spend: level } spends a slot of
+// that level for as many points, with no action, never above the pool's maximum.
+function exchange(s, e, f, a, ev) {
+  up(e) || fail(`${e.name} is down.`);
+  able(e);
+  const x = f.exchange, have = e.uses[f.id] ?? 0, fighting = !!s.encounter && inFight(s, e.id);
+  if (a.make !== undefined) {
+    const cost = x.costs[a.make] ?? fail(`${f.name} makes spell slots of level 1 to ${Object.keys(x.costs).length}.`);
+    e.level >= x.minLevel[a.make] || fail(`${f.name} makes a level ${a.make} slot from level ${x.minLevel[a.make]}.`);
+    have >= cost || fail(`A level ${a.make} slot costs ${cost} points; ${e.name} has ${have}.`);
+    if (fighting) need(s, e, 'bonus');
+    if (fighting) s.encounter.budget.bonus--;
+    e.uses[f.id] -= cost;
+    e.slots[a.make] = (e.slots[a.make] ?? 0) + 1;
+    return ev.push({ type: 'std', id: e.id, action: `${f.name}: a level ${a.make} spell slot` });
+  }
+  if (a.spend !== undefined) {
+    (Number.isInteger(a.spend) && (e.slots?.[a.spend] ?? 0) > 0) || fail(`${e.name} has no level ${a.spend} spell slot to spend.`);
+    have + a.spend <= f.uses.max || fail(`${e.name} can't have more than ${f.uses.max} points.`);
+    e.slots[a.spend]--;
+    e.uses[f.id] += a.spend;
+    return ev.push({ type: 'std', id: e.id, action: `${f.name}: ${a.spend} point${a.spend === 1 ? '' : 's'} from a spell slot` });
+  }
+  fail(`Say whether ${f.name} makes a spell slot (make) or spends one (spend).`);
+}
+
+// A feature that lays a form over its creature (Wild Shape; forms.js): { type: 'feature', actor,
+// feature, form: monster id } takes that form for one use, ending any form it is in; with no `form`,
+// it leaves the one it is in, for its time and no use. The form lasts `hours` hours and ends early
+// if the creature is Incapacitated or drops to 0 Hit Points (a fragile effect), or if the effect is ended.
+const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
+function shapeShift(s, e, f, act, a, ev) {
+  const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
+  const holding = e.form ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
+  if (a.form === undefined || a.form === null) {
+    e.form || fail(`Choose a form for ${f.name}.`);
+    if (time && fighting) { need(s, e, time); enc.budget[time]--; }
+    if (holding) return endEffect(s, ev, holding, `${e.name} left the form`);
+    leaveForm(e);
+    return ev.push({ type: 'form', id: e.id, form: null });
+  }
+  const F = act.form, m = typeof a.form === 'string' ? CONTENT.monsters[a.form] : null, tpl = m && MONSTERS[a.form];
+  tpl || fail('No such creature.');
+  F.types.includes(m.type) || fail(`${f.name} takes the form of a ${F.types.join(' or ')}; the ${m.name} is not one.`);
+  m.cr <= F.maxCr || fail(`At ${e.name}'s level ${f.name} takes forms of Challenge Rating ${crText(F.maxCr)} or lower; the ${m.name} is ${crText(m.cr)}.`);
+  (!m.speed.fly || F.fly) || fail(`At ${e.name}'s level ${f.name} can't take a form with a Fly Speed.`);
+  (e.uses[f.id] ?? 0) >= 1 || fail(`${e.name} has no uses of ${f.name} left.`);
+  if (time && fighting) need(s, e, time);
+  const body = { size: tpl.size };
+  (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for a ${m.name} there.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} becoming a ${m.name}.`);
+
+  // Paid for: from here it happens.
+  if (time && fighting) enc.budget[time]--;
+  e.uses[f.id]--;
+  if (holding) endEffect(s, ev, holding, `${e.name} took another form`);
+  else if (e.form) leaveForm(e);
+  const fx = startEffect(s, { name: `${f.name} (${m.name})`, spell: null, source: e.id, conc: false, duration: `${F.hours} hour${F.hours === 1 ? '' : 's'}` });
+  Object.assign(fx, { feature: f.id, fragile: true });
+  fx.parts.push({ target: e.id, form: true });
+  const was = e.size;
+  takeForm(e, a.form, m.name, tpl, MONSTER_ACTIONS[a.form] ?? [], fx.id);
+  ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: fx.lasts, targets: [e.id] });
+  ev.push({ type: 'form', id: e.id, form: a.form, name: m.name });
+  if (e.size !== was) ev.push({ type: 'size', id: e.id, size: e.size });
+  if (F.tempHp) tempHp(s, e, F.tempHp, ev);
+}
+
 // Make a character again from a new record, carrying over what play has done to it. Validates
 // everything before it changes anything.
 function remake(s, e, record, sheet, ev) {
+  !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
   const problems = lintRecord(record, { spells: SPELLS });
   problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);

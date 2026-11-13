@@ -252,9 +252,9 @@ export const bard = {
       "id": "bardic-inspiration",
       "name": "Bardic Inspiration",
       "level": 1,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "As a Bonus Action, give a creature within 60 feet who can see or hear you a Bardic Inspiration die; within the next hour, after failing a D20 Test, it can roll the die and add it. Charisma modifier uses (at least 1); they come back on a Long Rest (a Short Rest too from level 5). The engine spends the use; the die is added by the DM, because it is rolled after a failure.",
+      "text": "As a Bonus Action, give another creature within 60 feet who can see or hear you a Bardic Inspiration die for 1 hour; once, when it fails a D20 Test, it rolls the die and adds it. Charisma modifier uses (at least 1); back on a Long Rest (a Short Rest too from level 5). The engine rolls the die on the first failed attack roll or saving throw it could turn; on an ability check, and keeping it for a later roll, and the one-die-at-a-time limit, are the DM's.",
       "uses": {
         "max": {
           "mod": "cha",
@@ -276,9 +276,18 @@ export const bard = {
               ]
             }
           },
+          "duration": "1 hour",
           "effects": [
             {
-              "manual": "The creature has a Bardic Inspiration die (see the Bardic Die column) to add to one failed D20 Test within the next hour."
+              "modifier": {
+                "on": "d20",
+                "op": "add",
+                "value": {
+                  "column": "bardic-die"
+                },
+                "onFail": true,
+                "uses": 1
+              }
             }
           ]
         }
@@ -355,9 +364,19 @@ export const bard = {
       "id": "countercharm",
       "name": "Countercharm",
       "level": 7,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Use your Reaction to let you or a creature within 30 feet reroll a failed save against Charmed or Frightened, with Advantage. Reactions are not prompted yet."
+      "text": "When you or a creature within 30 feet fails a save against an effect that would make it Charmed or Frightened, take your Reaction to have it rolled again with Advantage (by your standing instruction: always or never).",
+      "grants": {
+        "reaction": {
+          "on": "saveFailed",
+          "conditions": [
+            "charmed",
+            "frightened"
+          ],
+          "range": 30
+        }
+      }
     },
     {
       "id": "expertise-9",
@@ -458,9 +477,22 @@ export const bard = {
         "id": "peerless-skill",
         "name": "Peerless Skill",
         "level": 14,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
-        "text": "After failing an ability check or attack roll, spend Bardic Inspiration to add the die; it is not spent if you still fail."
+        "text": "When you fail an ability check or attack roll, spend a use of Bardic Inspiration to roll the die and add it; the use is not spent if you still fail. The engine does this for an attack roll the die could turn; for an ability check the DM does.",
+        "grants": {
+          "modifiers": [
+            {
+              "on": "attack.roll",
+              "op": "add",
+              "value": {
+                "column": "bardic-die"
+              },
+              "onFail": true,
+              "cost": "bardic-inspiration"
+            }
+          ]
+        }
       }
     ]
   }

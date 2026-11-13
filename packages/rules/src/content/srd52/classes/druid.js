@@ -342,9 +342,9 @@ export const druid = {
       "id": "wild-shape",
       "name": "Wild Shape",
       "level": 2,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "As a Bonus Action, take the form of a Beast you know (CR and Fly Speed by level) for hours equal to half your Druid level. One use back on a Short Rest, all on a Long Rest. Forms are not built (spec R11): the engine spends the use; the DM runs the form.",
+      "text": "As a Bonus Action, take the form of a Beast (CR 1/4 and no Fly Speed at level 2, CR 1/2 at 4, CR 1 with flying at 8) for hours equal to half your Druid level, gaining Temporary Hit Points equal to your Druid level; a Bonus Action with no form leaves it. The form ends if you are Incapacitated or drop to 0 Hit Points. You keep your Hit Points, mental scores, features and proficiencies (applied). Which forms you know (4, 6 or 8) and what happens to your equipment are the DM's.",
       "uses": {
         "max": {
           "column": "wild-shape"
@@ -358,11 +358,41 @@ export const druid = {
           "target": {
             "self": true
           },
-          "effects": [
-            {
-              "manual": "Wild Shape: the druid takes a known Beast form, with Temporary Hit Points equal to its Druid level. The DM runs the form."
+          "form": {
+            "types": [
+              "beast"
+            ],
+            "maxCr": {
+              "byLevel": {
+                "2": 0.25,
+                "4": 0.5,
+                "8": 1
+              }
+            },
+            "fly": {
+              "byLevel": {
+                "2": 0,
+                "8": 1
+              }
+            },
+            "hours": {
+              "byLevel": {
+                "2": 1,
+                "4": 2,
+                "6": 3,
+                "8": 4,
+                "10": 5,
+                "12": 6,
+                "14": 7,
+                "16": 8,
+                "18": 9,
+                "20": 10
+              }
+            },
+            "tempHp": {
+              "perLevel": 1
             }
-          ]
+          }
         }
       }
     },
@@ -418,21 +448,60 @@ export const druid = {
       "id": "elemental-fury",
       "name": "Elemental Fury",
       "level": 7,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
       "text": "Choose Potent Spellcasting or Primal Strike.",
       "options": [
         {
           "id": "potent-spellcasting",
           "name": "Potent Spellcasting",
-          "tier": "manual",
-          "text": "Add your Wisdom modifier to damage from Druid cantrips. The DM adds it."
+          "tier": "auto",
+          "text": "Add your Wisdom modifier to the damage your Druid cantrips deal.",
+          "grants": {
+            "modifiers": [
+              {
+                "on": "damage.dealt",
+                "op": "add",
+                "value": {
+                  "mod": "wis"
+                },
+                "when": [
+                  "spell.cantrip"
+                ]
+              }
+            ]
+          }
         },
         {
           "id": "primal-strike",
           "name": "Primal Strike",
-          "tier": "manual",
-          "text": "Once a turn when you hit with a weapon or a Beast form's attack, deal an extra 1d8 Cold, Fire, Lightning or Thunder (your choice). The DM applies it."
+          "tier": "auto",
+          "text": "Once on each of your turns when you hit with a weapon or a Beast form's attack, deal an extra 1d8 (2d8 from level 15) Cold, Fire, Lightning or Thunder damage; the engine picks the type that hurts the target most.",
+          "grants": {
+            "modifiers": [
+              {
+                "on": "damage.dealt",
+                "op": "add",
+                "value": {
+                  "byLevel": {
+                    "7": "1d8",
+                    "15": "2d8"
+                  }
+                },
+                "types": [
+                  "cold",
+                  "fire",
+                  "lightning",
+                  "thunder"
+                ],
+                "once": "turn",
+                "when": [
+                  "attack.hit",
+                  "attack.weapon"
+                ]
+              }
+            ]
+          }
         }
       ]
     },
@@ -440,9 +509,9 @@ export const druid = {
       "id": "improved-elemental-fury",
       "name": "Improved Elemental Fury",
       "level": 15,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "Potent Spellcasting cantrips of 10 feet or more gain 300 feet of range; Primal Strike becomes 2d8."
+      "text": "Primal Strike becomes 2d8 (applied through Elemental Fury). With Potent Spellcasting, a Druid cantrip with a range of 10 feet or more reaches 300 feet farther: the engine does not change spell ranges, so the DM allows it."
     },
     {
       "id": "beast-spells",
@@ -530,9 +599,60 @@ export const druid = {
         "id": "natures-ward",
         "name": "Nature's Ward",
         "level": 10,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "Immune to Poisoned, and Resistance to the damage type of your current land (arid Fire, polar Cold, temperate Lightning, tropical Poison). The DM applies it."
+        "text": "Immune to Poisoned, and Resistance to the damage type of your current land: Arid Fire, Polar Cold, Temperate Lightning, Tropical Poison. Set the land here when you change it after a Long Rest.",
+        "grants": {
+          "conditionImmune": [
+            "poisoned"
+          ]
+        },
+        "options": [
+          {
+            "id": "arid",
+            "name": "Arid",
+            "tier": "auto",
+            "text": "Resistance to Fire.",
+            "grants": {
+              "resist": [
+                "fire"
+              ]
+            }
+          },
+          {
+            "id": "polar",
+            "name": "Polar",
+            "tier": "auto",
+            "text": "Resistance to Cold.",
+            "grants": {
+              "resist": [
+                "cold"
+              ]
+            }
+          },
+          {
+            "id": "temperate",
+            "name": "Temperate",
+            "tier": "auto",
+            "text": "Resistance to Lightning.",
+            "grants": {
+              "resist": [
+                "lightning"
+              ]
+            }
+          },
+          {
+            "id": "tropical",
+            "name": "Tropical",
+            "tier": "auto",
+            "text": "Resistance to Poison.",
+            "grants": {
+              "resist": [
+                "poison"
+              ]
+            }
+          }
+        ]
       },
       {
         "id": "natures-sanctuary",
@@ -540,7 +660,7 @@ export const druid = {
         "level": 14,
         "tier": "manual",
         "checked": true,
-        "text": "As a Magic action, spend Wild Shape for a 15-foot Cube of spectral trees within 120 feet for 1 minute: you and allies there have Half Cover and allies gain your Nature's Ward Resistance.",
+        "text": "As a Magic action, spend Wild Shape for a 15-foot Cube of spectral trees within 120 feet for 1 minute: you and allies there have Half Cover and allies gain your Nature's Ward Resistance. The engine spends the use; an area that changes things while a creature is in it is not built, so the DM applies it.",
         "grants": {
           "action": {
             "time": "action",

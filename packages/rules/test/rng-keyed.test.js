@@ -69,12 +69,12 @@ test("a whole fight on a keyed game: same key, same game; no player view or even
 });
 
 test("migration to version 16: an integer rng is kept and rolls the same; a keyed one is kept", () => {
-  assert.equal(VERSION, 16);
+  assert.ok(VERSION >= 16);                   // 17 since forms (#154)
   const s = newGame(9);
   s.version = 15;
   const t = structuredClone(s);
   migrate(t);
-  assert.equal(t.version, 16);
+  assert.equal(t.version, VERSION);
   assert.equal(t.rng, s.rng);
   const go = (x) => apply(x, { type: "attack", actor: "fighter", target: "m1", attack: "javelin" }, DM);
   for (const x of [s, t]) { x.entities.fighter.pos = { q: 1, r: -1, z: 0 }; }

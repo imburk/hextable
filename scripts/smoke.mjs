@@ -129,6 +129,7 @@ async function selectAndMove(page, touch, id, name) {
       if (Object.values(S.entities).some((o) => o.pos && o.pos.q === q && o.pos.r === r)) return null;
       return window.hextable.R.screenOf({ q, r, z: e.pos.z }); }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
+    await page.click(`#party button:has-text("${name}")`);                              // still the one selected
     await tapAt(page, touch, pt.x, pt.y);
     try {
       await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 2500);

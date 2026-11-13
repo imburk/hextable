@@ -199,11 +199,12 @@ test("Sneak Attack needs an ally who is not Incapacitated beside the target", ()
   assert.ok(hit);
 });
 
-test("Channel Divinity: the cost is enforced and the DM is shown what Divine Spark does", () => {
+test("Channel Divinity: the cost is enforced and Divine Spark does what it says (built in #154; was the DM's)", () => {
   const s = field("cleric", 2);
   fight(s); turnOf(s, "hero");
-  const ev = ok(use(s, "divine-spark", { target: "rogue" })).events;
-  assert.ok(ev.some((x) => x.type === "manual" && /Divine Spark/.test(x.text)));
+  s.entities.rogue.hp = 1;
+  const ev = ok(use(s, "divine-spark", { target: "rogue", mode: "heal" })).events;
+  assert.ok(ev.some((x) => x.type === "heal" && x.target === "rogue"));
   assert.equal(s.entities.hero.uses["channel-divinity"], 1);
   assert.equal(s.encounter.budget.action, 0);
   s.encounter = null;
