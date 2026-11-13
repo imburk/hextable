@@ -26,6 +26,7 @@ typed in:
 - Nothing lasts: there are no durations and no concentration.
 - The only reaction is the opportunity attack, taken automatically. (Since reactions part 1:
   a general mechanism with standing instructions, Shield, Uncanny Dodge and Deflect Attacks;
+  since part 2: asking a player in the moment, Counterspell, Hellish Rebuke and monsters' Parry;
   see the Decision 4 build notes.)
 - All content is one 87-line file.
 
@@ -278,6 +279,84 @@ dice of a reaction (DEBT T6).
 **Not built in part 1.** No screen sets instructions yet: the action is there and tested, and the
 sheet's Reaction pip shows available or spent, but choosing "always / never / only if it misses"
 waits for a sheet job.
+
+#### Build notes: reactions, part 2 (amendment, stage B)
+
+**How an action waits.** Not by a stack of resumable steps but by running the action again. When
+an action reaches a reaction whose instruction is `ask` for a creature a player controls, the
+engine throws a pause; `apply()` puts the whole state back as it was before the action (a copy
+is taken first, only when some player's creature has an `ask` instruction, `mayAsk()`, or the
+action is an answer), and stores `pending: { n, action, ctx, answers, ask }`. The answer,
+`{ type: 'react', prompt: n, take: reactionId | null, slot? }`, runs the same action from the same
+state with the answers given so far: the dice seed is part of the state, so the same dice fall,
+and at each point where it asked before, the next answer is read instead of asking. An action may
+ask several times; each answer adds one. So the waiting state is plain data that saves, sends,
+undoes and replays exactly, no timer is in the rules package, and nothing half-done is ever kept.
+The effect stack (decision 2) is unchanged and still empty whenever `apply()` returns.
+
+**Settled.**
+- *Who is asked.* Only a player, about a creature they control. For the DM's own creatures `ask`
+  stays a DM-only `manual` event and nothing waits, so monster turns and the AI never stop on
+  themselves, and a hidden monster's reaction can never hold the table up where players would
+  notice. `ask` is now an option of every reaction. Its label is "Ask".
+- *Who answers.* The reacting creature's controller or the DM (the DM's answer overrides; there is
+  no other override). An answer must name the question's number, so a late answer to an earlier
+  question is refused. A refused answer leaves the question waiting, unchanged. Time limits are
+  the DM's (or a later server feature's): the engine has none.
+- *What may happen while it waits.* Only the answer and what cannot change how the waiting action
+  comes out: `say`, `note`, handouts, `askCheck`, `claim` and `release` (`WHILE_WAITING`). Setting
+  an instruction, moving, ending a turn are refused. `aiStep()` returns nothing while it waits.
+- *What is asked.* The player sees `{ n, reactor, trigger, options: [{ reaction, name, slots?, ac? }] }`
+  and, by trigger: `hit` the attack's name, total, the Armor Class it beat and `crit`; `targeted`
+  the spell (Shield's trigger names it); `leave`, `cast`, `damaged` nothing more. `by`, who set it
+  off, only where the party knows of that creature. A `cast` question never says which spell: a
+  creature sees a spell being cast, not what it is. At a hit with several reactions, if any says
+  `ask` the player chooses among all that could be taken (a `miss` one only where it would turn the
+  hit into a miss); otherwise the first is taken, as before.
+- *What others are told.* Every other player gets `prompt: { waiting: true }` in their view and
+  nothing else: not who, not why, not the waiting action. The question event (`reactionAsked`) goes
+  to the player asked alone, live and in the record; `reactionAnswered` is the DM's. The waiting
+  step's history label is shown to no player; the answer's is the waiting action's label with
+  ", after a reaction", naming nobody asked.
+- *Counterspell* (trigger `cast`, new step `counter: "spell"`). Offered when a creature hostile to
+  the reactor, within 60 feet and seen by it, casts a spell with V, S or M components through the
+  engine's `cast` action, after the spell's costs are paid and before it takes effect. The caster
+  makes a Constitution save against the counterspeller's spell save DC; on a failure the spell
+  dissipates (`countered` event), the action or Bonus Action stays spent, and the slot is given
+  back and does not count as the turn's one slot. The counterspeller's slot (level 3 or higher, its
+  player may choose) is spent either way. Creatures are offered it in the table's order until one
+  counters. Players are told a countered spell's name only if it was theirs.
+- *Hellish Rebuke* (trigger `damaged`). After damage from a hostile creature it can see within 60
+  feet, if still standing (and after any Concentration save), it casts at that creature: a
+  Dexterity save, 2d10 Fire, half on a success, 1d10 more per slot level above 1.
+- *Hostile only.* `cast` and `damaged` reactions are offered against hostile creatures only, so a
+  player is not asked every time an ally casts or catches them in an area. Countering or rebuking
+  an ally is the DM's.
+- *Monster reactions* (DEBT M3). A pack monster's trait may carry
+  `reaction: { on: 'hit', ac, attack?, manual? }`: it adds `ac` to its Armor Class against the
+  attack that hit (not lastingly), only for `attack` rolls of that kind, and tells the DM `manual`
+  (the rest of the reaction) when taken. Default `miss`: a Reaction that only adds to AC is taken
+  when it turns the hit into a miss. "While holding a weapon" is not tracked: the engine assumes
+  it, and the trait's text tells the DM to set it to `never` when the creature is disarmed. Wired:
+  Parry (bandit captain, erinyes, gladiator, knight, marilith, noble, warrior veteran), Riposte
+  (pirate captain; the Rapier attack is the DM's) and Whirlwind of Sand (mummy lord; the teleport
+  and Blinded are the DM's).
+- State version 15: `pending`, and `asked` (how many questions so far, for their numbers). The
+  migration drops a `pending` that is not whole.
+
+**Vocabulary added** (schema.js): `REACTION_TRIGGERS` gains `cast` and `damaged` (spells only; a
+reaction spell set off by another creature is aimed at that one creature and has a range in
+feet); the step `counter: "spell"`, only in a spell whose reaction is `cast`; a monster trait's
+`reaction`. Events: `reactionAsked {id, n, to, ask}`, `reactionAnswered {id, n, take, by}` (DM),
+`countered {id, spell, name, by}`; `reaction.trigger` may be `cast` or `damaged`.
+
+**Not built in part 2.** Counterspell is offered only against spells cast through the `cast`
+action: monsters' Spellcasting is the DM's by hand, and reaction spells (Shield, Counterspell
+itself) are never offered to be countered. Monsters that cast Counterspell or Shield from their
+stat block (Protective Magic) keep it as text. The Deflect Attacks redirect, Dark One's Own Luck,
+Feather Fall (`fall`) and the Shield Guardian's and Stone Giant's reactions are still the DM's.
+No client screen asks the question yet (a client job); with the default instructions nothing
+asks, so play is as before.
 
 ## Four more decisions, from play experience
 

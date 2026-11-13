@@ -923,7 +923,8 @@ export const monsters = [
         id: "parry",
         name: "Parry",
         modifiers: [],
-        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 4 to its AC against that attack. The DM applies this.",
+        reaction: { on: "hit", ac: 4, attack: "melee" },
+        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 4 to its AC against that attack. Taken by standing instruction, by default only when it turns the hit into a miss; the engine assumes it is holding a weapon (set it to never if it is not).",
       },
     ],
     actions: [
@@ -1981,7 +1982,8 @@ export const monsters = [
         id: "parry",
         name: "Parry",
         modifiers: [],
-        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 3 to its AC against that attack. The DM applies this.",
+        reaction: { on: "hit", ac: 3, attack: "melee" },
+        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 3 to its AC against that attack. Taken by standing instruction, by default only when it turns the hit into a miss; the engine assumes it is holding a weapon (set it to never if it is not).",
       },
     ],
     actions: [

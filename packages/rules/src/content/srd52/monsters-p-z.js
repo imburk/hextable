@@ -667,7 +667,8 @@ export const monsters = [
         id: "riposte",
         name: "Riposte",
         modifiers: [],
-        text: "Reaction: When a melee attack hits it while it holds a weapon, it adds 3 to its AC against that attack. If the attack then misses, it makes one Rapier attack against the attacker if in range. The DM applies this."
+        reaction: { on: "hit", ac: 3, attack: "melee", manual: "Riposte: if the attack now misses, the pirate makes one Rapier attack against the attacker if it is within range. The DM makes it." },
+        text: "Reaction: When a melee attack hits it while it holds a weapon, it adds 3 to its AC against that attack. If the attack then misses, it makes one Rapier attack against the attacker if in range. The engine adds the AC by standing instruction (by default only when that turns the hit into a miss, assuming it holds a weapon); the DM makes the Rapier attack."
       }
     ],
     actions: [
@@ -6858,7 +6859,8 @@ export const monsters = [
         id: "parry",
         name: "Parry",
         modifiers: [],
-        text: "Reaction: When a melee attack hits it while it holds a weapon, it adds 2 to its AC against that attack. The DM applies this."
+        reaction: { on: "hit", ac: 2, attack: "melee" },
+        text: "Reaction: When a melee attack hits it while it holds a weapon, it adds 2 to its AC against that attack. Taken by standing instruction, by default only when it turns the hit into a miss; the engine assumes it is holding a weapon (set it to never if it is not)."
       }
     ],
     actions: [

@@ -1044,3 +1044,54 @@ test("standing instructions for reactions go to their player and the DM, and to 
   assert.deepEqual(kim.receiver.state.reactions, {});
   assert.equal(kim.receiver.state.entities.rogue.reactions, undefined);
 });
+
+test("a reaction question goes to the player asked and to the DM; other players learn only that the table waits", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player: pat, code } = seated(tables);
+  const kim = client(tables);
+  kim.say({ t: "join", code, name: "Kim" });
+  dm.say({ t: "approve", userId: kim.last("welcome").userId, ok: true });
+  pat.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  kim.say({ t: "act", action: { type: "claim", entity: "fighter" } });
+  const st = () => dm.receiver.state;
+  // Pat's rogue stands beside a goblin and will be asked about its Opportunity Attack.
+  const m = Object.values(st().entities).find((e) => e.side !== "party" && !e.dead);
+  const beside = H.neighbors(m.pos).find((h) => { dm.say({ t: "act", action: { type: "place", actor: "rogue", to: h } }); return H.dist(st().entities.rogue.pos, m.pos) === 1; });
+  assert.ok(beside, "the rogue was put beside it");
+  pat.say({ t: "act", action: { type: "reactions", actor: "rogue", set: { "opportunity-attack": "ask" } } });
+  dm.say({ t: "act", action: { type: "startEncounter", center: m.pos } });
+  for (let i = 0; i < 30 && current(st()) !== m.id; i++) dm.say({ t: "act", action: { type: "endTurn", actor: current(st()) } });
+  assert.equal(current(st()), m.id);
+  const away = [...moveOptions(st(), st().entities[m.id])].map(([k, v]) => ({ h: H.parse(k), v })).find(({ h, v }) => v.canStop && H.dist(h, st().entities.rogue.pos) >= 3);
+  const kimRaw = kim.raw.length;
+  dm.say({ t: "act", action: { type: "move", actor: m.id, to: away.h } });
+  // The DM has the whole record; Pat the question; Kim only that the table waits.
+  assert.equal(dm.last("update").state.pending.ask.reactor, "rogue");
+  const q = pat.receiver.state.prompt;
+  assert.deepEqual([q.reactor, q.trigger, q.by, q.options[0].reaction], ["rogue", "leave", m.id, "opportunity-attack"]);
+  assert.ok(pat.last("update").events.some((e) => e.type === "reactionAsked"));
+  assert.deepEqual(kim.receiver.state.prompt, { waiting: true });
+  const toKim = JSON.stringify(kim.raw.slice(kimRaw));
+  assert.ok(!toKim.includes("rogue") && !toKim.includes("leave") && !toKim.includes("pending"), toKim);
+  assert.equal(kim.receiver.state.pending, undefined);
+  // Kim may not answer for Pat; while it waits the DM's AI and turn wait too.
+  kim.say({ t: "act", action: { type: "react", prompt: q.n, take: null } });
+  assert.match(kim.last("error").error, /isn't yours/);
+  assert.equal(aiStep(dm.receiver.state, m.id), null);
+  dm.say({ t: "act", action: { type: "endTurn", actor: m.id } });
+  assert.match(dm.last("error").error, /waiting/);
+  // Pat answers; everyone's view goes back to no question, and the views match the engine's.
+  pat.say({ t: "act", action: { type: "react", prompt: q.n, take: "opportunity-attack" } });
+  assert.ok(pat.last("update").events.some((e) => e.type === "attack" && e.actor === "rogue"));
+  for (const c of [pat, kim]) assert.equal(c.receiver.state.prompt, null);
+  assert.equal(dm.last("update").state.pending, undefined);
+  for (const c of [pat, kim]) {
+    const userId = c.last("welcome").userId;
+    assert.deepEqual(c.receiver.state, JSON.parse(JSON.stringify(view(dm.last("update").state, { role: "player", userId }))));
+  }
+  // The undo list names the waiting step; the label a player gets for the answer names nobody asked.
+  dm.say({ t: "undo" });
+  assert.ok(dm.receiver.state.pending, "undoing the answer puts the question back");
+  const told = kim.last("update").events[0];
+  assert.ok(told && told.type === "undone" && !/Rogue|rogue/.test(told.label) && !told.label.includes(st().entities.rogue.name), told?.label);
+});
