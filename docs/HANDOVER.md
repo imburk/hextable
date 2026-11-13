@@ -38,12 +38,15 @@ Points are percent of the Pro weekly limit, the lead's turns included. Agent
 work did not draw on the Fable meter; only the lead's own turns did. A Max
 account has five times the Pro allowance.
 
-## State of main (13 November, 6:55 AM Eastern)
+## State of main (13 November, 10:00 AM Eastern)
 
-- 746 tests pass; content check clean; build clean. Last merged: #164. **State version 17.**
+- 822 tests pass; content check clean; build clean. Last merged: #183. **State version 18.**
 - The lead conversation ("Beej") is on the owner's **Ultra** account, which replaces "Max" below:
   it leads, builds and merges. Parallel work is allowed: one engine job at a time, with client,
   render, content, server and read-only jobs beside it. The lead checks agents hourly.
+- **The workspace has two CPU cores.** At most two agents doing browser checks at once; agents run
+  named smoke passes (`SMOKE_ONLY=base` is solo and multiplayer; `SMOKE_ONLY=solo` runs nothing),
+  never the full run; the lead does not run smoke while they do.
 - Deploys on merge to main: GitHub Pages (solo), Railway (multiplayer).
 
 Merged on the night of 13 November (costs in `docs/USAGE.md`):
@@ -64,11 +67,20 @@ Merged on the night of 13 November (costs in `docs/USAGE.md`):
 | #157 | Reaction waiting notice only when the trigger can be perceived; `loadMap` uses all starts; `pace` table setting |
 | #160 | Renderer R3: the event timeline and pace |
 | #161 | Party spells: one raised; the table of missing vocabulary is in `docs/DEBT.md` |
-| #164 | Class features 7 to 15 for Paladin, Cleric, Druid, Sorcerer, Bard (state 17); unreviewed until #166 reports |
+| #164 | Class features 7 to 15 for Paladin, Cleric, Druid, Sorcerer, Bard (state 17); reviewed in #166, fixed in #179 |
+| #168 | DM pace control; stock maps in the lobby and DM panel; import report to the DM's chronicle |
+| #171 | Renderer R4: animations on beats |
+| #174 | Spell vocabulary: teleport, cure, kill riders, terrain and fog, ending on damage; 45 spells auto |
+| #176 | Renderer R5: the interface, the empty renderer, the governor; `SMOKE_ONLY=base` |
+| #178 | Class feature controls: Divine Spark, Wild Shape, Metamagic, Font of Magic and others |
+| #179 | Fixes from the #166 review |
+| #180 | Three.js r187 vendored (`packages/client/vendor`), gzip in the server; 458 KB gzipped, not loaded by default |
+| #182 | Multiclassing (state 18); the importer builds multiclass sheets |
+| #183 | Spec: `docs/specs/table-ui.md` (drawer, action panel, defeat, rewards, log by combat) |
 
-Running when this was written: #162 (R4 animations), #163 (pace control, stock maps in the lobby,
-import report to the chronicle), #165 (engine lane: teleport, cure, kill rider, terrain and obscuring,
-with the party's spells raised), #166 (independent review of #164, report only).
+Running when this was written: the drawer with Settings, About and the tracker (T1, T2 of the
+table UI spec; closes #173), and the engine side of that spec (the Sorcerer file that fails to
+import since #164, then defeat and rewind, fight records, spell kinds, then rewards: state 19).
 
 Lessons from the night: after merging main into a branch, grep for conflict markers before
 committing (the lead once committed them in `docs/DEBT.md`, fixed in #158). Smoke steps that depend
@@ -76,28 +88,30 @@ on timing or on where the party stands fail under load or after placement change
 Node before blaming the game. A workspace restart stops agents; they resume by themselves, but
 unpushed work stays local, so check `git ls-remote` against the worktree.
 
-## Owner's goals, set 13 November
+## Owner's goals
 
 - **Play a session with his own party**: a Paladin 13, a Paladin 6 / Bard 8, a Druid 14, a Sorcerer 15
   and a Cleric 14, kept as Fantasy Grounds XML (2014 rules, much non-SRD content). The files are
   private: never commit them or the players' names. The report on #142 ranks what they need.
+- **He played on 13 November and his party was wiped with no conclusion.** His six notes are issue
+  #181 and the spec `docs/specs/table-ui.md`; the spec's open questions proceed on its defaults
+  unless he says otherwise (monsters do not finish off the dying; new dice after a rewind; XP split
+  equally among survivors who took part; only the DM leads the party; one Search; the drawer does
+  not open itself; items that do things later).
 - **He will bring an adventure** to turn into a session. Published adventure text and non-SRD
   creatures stay out of the repo: the session is a private file loaded into a table.
-- **Three.js is decided** (renderer spec, Decision 8). Order: R3, R4, R5, then vendor a pinned
-  release (GitHub is reachable from the workspace: `git ls-remote https://github.com/mrdoob/three.js`
-  works, so the lead can vendor it), R11 parity, R12 models (owner verifies each pack's licence), R14.
+- **Three.js is decided** and vendored (R10 done). Next R11 (the Three.js renderer at parity behind
+  the R5 interface), R12 models (owner verifies each pack's licence), R14. A minified build would
+  cut the download; it needs a machine with npm.
 
 ## Next work, in order
 
-Engine lane (Opus), one at a time: #165, then fixes from the #166 review, then multiclassing,
-then feats and magic item bonuses with attunement, then levels 7+ for the other seven classes,
-then what is left of the #132 review (DEBT T11).
-Render lane (Sonnet): #162 (R4), then R5 (the interface), R10 (vendor Three.js and measure), R11.
-Client lane (Sonnet): #163, then the controls #164 lists under "For the client job" (Wild Shape
-form, Divine Spark mode, Metamagic choice and the rest).
-Content and client (Sonnet or Haiku): spells the party prepares that are below `auto`
-(Dispel Magic, Counterspell, Misty Step, Revivify, Moonbeam, Fire Storm); a lobby choice for stock
-maps; a notes field so an import report stays with its character; players importing their own sheet.
+Engine lane (Opus), one at a time: the table UI engine items (running), then feats and magic item
+bonuses with attunement, then levels 7+ for the other seven classes, then DEBT T11 and C11, C12.
+Client lane (Sonnet): T1 and T2 (running), then T3 (action panel shell), T4a, T4b, T5c (defeat),
+T6c (rewards), T7c (log by combat), as the spec's task table orders them; then teleport aiming,
+terrain drawing and remains (from #174) and multiclass level-up and import summary (from #182).
+Render lane (Sonnet): R11, the Three.js renderer at parity.
 Second opinion: a Gemini read of what the #132 review did not cover (sight internals, zone and
 effect events, monster AI, the UVTT importer, a live server).
 
