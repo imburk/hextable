@@ -4,8 +4,11 @@
 // { type: 'setSheet', actor, sheet } (the selected one made again), and the engine may refuse it; its words are shown.
 // Nothing is decided here: the sheet and the report are the importer's, the file never leaves this tab.
 //
-// A sheet has no field for notes, so the report cannot live in the character. Two ways to keep it, both the DM's
-// choice: a text file saved from the panel, and an entry in the DM's own chronicle (not public: players never get it).
+// A sheet has no field for notes, so the report cannot live in the character. On confirm it is written to the DM's
+// chronicle by itself, titled with the character's name and not public (a chronicle entry reaches a player only when
+// `public` is set: view.js), and the character's sheet says so for the DM (tablecontrols.js). A text file can be saved too.
+// Only the DM can import: setSheet is a DM action.
+import { importEntry } from './tablecontrols.js';
 import { importFgxml, XML_LIMITS } from './shared/import-fgxml.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -69,7 +72,7 @@ export function initImport({ act, toast, getState, getSelected }) {
   const panel = Object.assign(document.createElement('aside'), { id: 'fgi', className: 'panel qe fgi', hidden: true });
   panel.setAttribute('aria-label', 'Import a Fantasy Grounds character');
   document.body.append(file, panel);
-  let cur = null, pending = null, afterChron = null, busy = false;
+  let cur = null, pending = null, busy = false;
 
   function pick() { file.value = ''; file.click(); }
   file.onchange = async () => {
@@ -100,7 +103,8 @@ export function initImport({ act, toast, getState, getSelected }) {
     const spellTiers = Object.entries(rep.spellTiers ?? {}).filter(([, v]) => v.length).map(([t, v]) => `${v.length} ${t}`).join(', ');
     const st = rep.state ?? {};
     const body = [
-      `<p class="note">${esc(cur.name)} · ${Math.max(1, Math.round(cur.size / 1024))} KB. Nothing has been changed yet: read this, then choose.</p>`,
+      `<p class="note">${esc(cur.name)} · ${Math.max(1, Math.round(cur.size / 1024))} KB. Nothing has been changed yet: read this, then choose.</p>
+      <p class="note" id="fgi-dm-only">Only the DM can import a character: the table refuses a sheet from anyone else.</p>`,
       `<section class="fgi-sum" id="fgi-summary"><h3>What will be set up</h3>
         <p><b>${esc(sh.name)}</b>, level ${esc(sh.level)} ${esc(cap(String(sh.class)))}${sh.subclass ? ` (${esc(cap(String(sh.subclass).replace(/-/g, ' ')))})` : ''}</p>
         <p class="note">Mapped: ${esc(imported.join(' · ') || 'nothing besides class, level and ability scores')}.${spellTiers ? ` Spells by how far the engine plays them: ${esc(spellTiers)}.` : ''} The engine works out Hit Points, Armor Class and the rest from this sheet; they are not copied from the file.</p>
@@ -109,8 +113,7 @@ export function initImport({ act, toast, getState, getSelected }) {
       `<section><h3>Not on the sheet</h3>${lists.length ? '' : '<p class="note">Nothing was left out.</p>'}${lists.map(([k, h, sub]) => section(k, h, sub, rep[k].length, `<ul class="fgi-list">${rep[k].map(li).join('')}</ul>`, rep[k].length <= 12)).join('')}
         ${rep.numbers?.length ? section('numbers', 'Numbers that differ from the file', 'What the file says against what the engine works out from the sheet.', rep.numbers.length, `<ul class="fgi-list">${rep.numbers.map((n) => `<li><b>${esc(n.what)}</b> file ${esc(n.sheet)}, engine ${esc(n.engine)}${n.why ? `<br><small>${esc(n.why)}</small>` : ''}</li>`).join('')}</ul>`, false) : ''}
         ${Object.keys(st).length ? `<details class="fgi-sec" id="fgi-state"><summary>Not applied: damage, spent slots, languages</summary><p class="note">A sheet has no field for these. Hit Points in the file: ${esc(st.hpCurrent ?? '?')} of ${esc(st.hp ?? '?')}${st.tempHp ? ` (+${esc(st.tempHp)} temporary)` : ''}.${Object.keys(st.slotsUsed ?? {}).length ? ` Spent slots: ${esc(Object.entries(st.slotsUsed).map(([l, n]) => `level ${l}: ${n}`).join(', '))}.` : ''}${rep.languages?.length ? ` Languages: ${esc(rep.languages.join(', '))}.` : ''} A new character starts rested; a replaced one keeps what it had.</p></details>` : ''}</section>`,
-      `<section class="fgi-keep"><h3>Keeping this report</h3><p class="note">The character sheet has no place for notes, so the report is not stored with it.</p>
-        <label class="check"><input type="checkbox" id="fgi-chron" checked> Write it in my chronicle (only I can see it)</label>
+      `<section class="fgi-keep"><h3>Keeping this report</h3><p class="note" id="fgi-keep-note">The character sheet has no place for notes, so when you add or replace the character this report is written to your chronicle (DM panel) under &ldquo;${esc(sh.name)}&rdquo;. Only you can see it; players are never sent it. The sheet will tell you where it is.</p>
         <div class="row"><button type="button" id="fgi-save">Save the report as a text file</button></div></section>`,
     ].join('');
     const foot = `<div class="qe-foot"><p class="fgi-error" id="fgi-refused" role="alert" hidden></p><div class="row">
@@ -135,7 +138,7 @@ export function initImport({ act, toast, getState, getSelected }) {
     };
     const go = (actor) => {
       if (busy) return;
-      busy = true; pending = actor ? 'edited' : 'spawned'; afterChron = q('fgi-chron').checked;
+      busy = true; pending = actor ? 'edited' : 'spawned';
       q('fgi-refused').hidden = true; q('fgi-add').disabled = true; if (q('fgi-replace')) q('fgi-replace').disabled = true;
       act({ type: 'setSheet', ...(actor ? { actor } : {}), sheet: structuredClone(cur.character) });
     };
@@ -164,9 +167,9 @@ export function initImport({ act, toast, getState, getSelected }) {
       const done = events.find((ev) => ev.type === pending);
       if (!done) return;
       const name = getState()?.entities[done.id]?.name ?? cur?.character?.name ?? 'The character', was = pending;
-      if (afterChron && cur) {
+      if (cur) {
         const text = reportText(cur.report, cur.character);
-        act({ type: 'chronicle', title: `Imported ${name} from Fantasy Grounds`, text: text.length > CHRONICLE_MAX ? `${text.slice(0, CHRONICLE_MAX)}\n[cut here: save the report as a file for the rest]` : text });
+        act(importEntry(name, text.length > CHRONICLE_MAX ? `${text.slice(0, CHRONICLE_MAX)}\n[cut here: save the report as a file for the rest]` : text));
       }
       close();
       toast(`${name} ${was === 'edited' ? 'was made again from the import' : 'joins the party'}.`, true);

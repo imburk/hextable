@@ -1511,6 +1511,247 @@ async function pacingTable(browser, url) {
   });
 }
 
+// ---------- beats in the renderer (R4) ----------
+// At pace `wait` a door opens over time and a goblin falls over time (the renderer's tweens are seen part way, then at their end);
+// at `instant` both are at their end state the moment the update is shown. A skip ends what is easing. Nothing is left half played.
+async function beats(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const ctx = await browser.newContext(opts, { pace: 'wait' });
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      let door, pc;
+      await run.do('start on the stock dungeon with a hero on a door, and a goblin to fall', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => { window.hextable.dice.show = 'off'; });
+        await setPace(page, 'instant');
+        await page.evaluate(() => window.hextable.ED.stock('dungeon'));
+        await wait(page, () => window.hextable.state.map.id === 'dungeon');
+        const ids = await page.evaluate(() => {
+          const h = window.hextable, S = h.state, o = S.map.objects.find((x) => x.def === 'door-wooden' && x.state === 'open');
+          const pcId = Object.values(S.entities).find((e) => e.kind === 'pc').id;
+          h.act({ type: 'place', actor: pcId, to: { q: o.at.q, r: o.at.r } });
+          h.act({ type: 'spawn', monster: 'goblin-warrior', at: { q: o.at.q + 1, r: o.at.r } });
+          return { door: o.id, pc: pcId, goblin: Object.values(h.state.entities).find((e) => e.side === 'foe')?.id };
+        });
+        door = ids.door; pc = ids.pc;
+        await page.evaluate((i) => { window.__door = i.door; window.__goblin = i.goblin; }, ids);
+        if (!ids.goblin) throw new Error('no goblin to fall');
+        await calm(page);
+      });
+      await run.do('at wait a door closes over time and a goblin falls over time', async () => {
+        await setPace(page, 'wait');
+        const g = await page.evaluate(() => window.__goblin);
+        // The tweens start inside the update, so they are read in the same breath as the action; then the time they take is measured.
+        const door0 = await page.evaluate(([p, d]) => {
+          const h = window.hextable; window.__t0 = performance.now(); h.act({ type: 'use', actor: p, object: d, verb: 'close' });
+          const x = h.R.doors.get(d);
+          return { tw: !!x.tw, v: x.v, goal: x.goal };
+        }, [pc, door]);
+        if (!door0.tw || door0.v === door0.goal) throw new Error(`the door did not start to swing: ${JSON.stringify(door0)}`);
+        await wait(page, (d) => !window.hextable.R.doors.get(d).tw, door, 5000);
+        const took = await page.evaluate(() => performance.now() - window.__t0);
+        if (took < 400) throw new Error(`the door swung in ${Math.round(took)} ms`);
+        const end = await page.evaluate((d) => { const x = window.hextable.R.doors.get(d); return { v: x.v, goal: x.goal }; }, door);
+        if (end.v !== end.goal || end.v !== 0) throw new Error(`the door did not end shut: ${JSON.stringify(end)}`);
+        await calm(page);
+        const fall0 = await page.evaluate((id) => {
+          const h = window.hextable; window.__t0 = performance.now(); h.act({ type: 'harm', actor: id, amount: 99 });
+          const a = h.R.actors.get(id);
+          return { falling: !!a.tiltTw, tilt: a.tiltNow };
+        }, g);
+        if (!fall0.falling || fall0.tilt > 0.3) throw new Error(`the goblin did not start to fall: ${JSON.stringify(fall0)}`);
+        await wait(page, (id) => { const a = window.hextable.R.actors.get(id); return window.hextable.state.entities[id].dead && !a.tiltTw && !a.dying; }, g, 8000);
+        const t2 = await page.evaluate(() => performance.now() - window.__t0), tilt = await page.evaluate((id) => window.hextable.R.actors.get(id).tiltNow, g);
+        if (t2 < 500 || Math.abs(tilt - 1.45) > 0.01) throw new Error(`the goblin fell in ${Math.round(t2)} ms and lies at ${tilt}`);
+      });
+      await run.do('a skip brings a running swing and fall to their end at once', async () => {
+        await calm(page);
+        const r = await page.evaluate(([p, d]) => {
+          const h = window.hextable; h.act({ type: 'use', actor: p, object: d, verb: 'open' });
+          const x = h.R.doors.get(d), before = { tw: !!x.tw, v: x.v, goal: x.goal, busy: h.timeline.busy() };
+          h.timeline.skip();
+          return { before, after: { tw: !!x.tw, v: x.v, goal: x.goal, busy: h.timeline.busy() } };
+        }, [pc, door]);
+        if (!r.before.tw) throw new Error(`the door did not start to swing: ${JSON.stringify(r)}`);
+        const after = r.after;
+        if (after.tw || after.v !== after.goal) throw new Error(`a skip left the door half way: ${JSON.stringify(after)}`);
+      });
+      await run.do('at instant the same changes show at once', async () => {
+        await setPace(page, 'instant');
+        const r = await page.evaluate(([p, d]) => {
+          const h = window.hextable; h.act({ type: 'use', actor: p, object: d, verb: 'close' });
+          const x = h.R.doors.get(d);
+          return { tw: !!x.tw, v: x.v, goal: x.goal };
+        }, [pc, door]);
+        if (r.tw || r.v !== r.goal) throw new Error(`at instant the door was not at once: ${JSON.stringify(r)}`);
+        const f = await page.evaluate(([d]) => {
+          const h = window.hextable, o = h.state.map.objects.find((x) => x.id === d);
+          const n = Object.keys(h.state.entities).length;
+          for (const [dq, dr] of [[1, 0], [0, 1], [-1, 1], [1, -1], [-1, 0], [0, -1]]) { if (Object.keys(h.state.entities).length > n) break; h.act({ type: 'spawn', monster: 'goblin-warrior', at: { q: o.at.q + dq, r: o.at.r + dr } }); }
+          const id = Object.values(h.state.entities).filter((e) => e.side === 'foe' && !e.dead).at(-1).id;
+          h.act({ type: 'harm', actor: id, amount: 99 });
+          const a = h.R.actors.get(id);
+          return { dead: h.state.entities[id].dead, tilt: a.tiltNow, tw: !!a.tiltTw, dying: !!a.dying };
+        }, [door]);
+        if (!f.dead || f.tw || f.dying || Math.abs(f.tilt - 1.45) > 0.01) throw new Error(`at instant the goblin did not fall at once: ${JSON.stringify(f)}`);
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
+// ---------- table controls (issue #163) ----------
+// The DM's pace setting, the stock maps (lobby and DM panel, asking before a map replaces a game) and the import report kept in the
+// chronicle with a line on the sheet. Solo, then a DM with a phone player, who must see the pace and nothing of the report.
+async function controlsSolo(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, tap = (page, sel) => (touch ? page.locator(sel).tap() : page.click(sel));
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${n}-${touch ? 'phone' : 'desktop'}.png` }); };
+      const openDM = async () => { await closePanels(page); await tap(page, '#btn-dm'); await waitShown(page, '#dm'); };
+      await run.do('the lobby offers the stock maps and solo starts on the one chosen', async () => {
+        await open(page, url);
+        const opts2 = await page.$$eval('#lobby-map option', (o) => o.map((x) => x.value));
+        if (opts2.length !== 6 || opts2[0] !== '') throw new Error(`lobby maps: ${opts2}`);
+        await shot('controls-lobby');
+        await page.selectOption('#lobby-map', 'cave');
+        await playSolo(page);
+        await wait(page, () => window.hextable.state.map.id === 'cave');
+        if (await state(page, (S) => Object.values(S.entities).filter((e) => e.side === 'party').length) < 1) throw new Error('no party');
+      });
+      await run.do('the DM sets the pace, and the table keeps it', async () => {
+        await openDM();
+        await page.selectOption('#dm-pace', 'flow');
+        await wait(page, () => window.hextable.state.settings.pace === 'flow');
+        await page.selectOption('#dm-pace', 'instant');
+        await wait(page, () => window.hextable.state.settings.pace === 'instant');
+        if (!/instant/.test(await page.$eval('#pace-table', (e) => e.textContent))) throw new Error('the pace line did not follow');
+        await shot('controls-dm');
+      });
+      await run.do('a map over a game in progress asks first, then loads', async () => {
+        await page.selectOption('#dm-stock', 'tavern');
+        await tap(page, '#dm-stock-go');
+        if ((await state(page, (S) => S.map.id)) === 'tavern') throw new Error('one tap loaded the map');
+        await waitShown(page, '#dm-stock-ask');
+        const ask = await page.$eval('#dm-stock-ask', (e) => e.textContent);
+        if (!/Copper Kettle/.test(ask)) throw new Error(`the question: ${ask}`);
+        await shot('controls-ask');
+        await tap(page, '#dm-stock-go');
+        await wait(page, () => window.hextable.state.map.id === 'tavern');
+        await page.selectOption('#dm-stock', 'keep');                       // choosing another map cancels the question
+        await tap(page, '#dm-stock-go'); await page.selectOption('#dm-stock', 'dungeon');
+        if (await shown(page, '#dm-stock-ask')) throw new Error('changing the choice did not cancel the question');
+        await sleep(300);
+        if ((await state(page, (S) => S.map.id)) !== 'tavern') throw new Error('the map changed without a second tap');
+      });
+      await run.do('the import says only the DM can import, and the report lands in the chronicle by itself', async () => {
+        await closePanels(page); await openDM();
+        await waitShown(page, '#dm-qe .fgi-open');
+        await page.evaluate(() => { document.querySelector('#fgi-file').value = ''; });
+        await page.setInputFiles('#fgi-file', fileURLToPath(new URL('../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
+        await waitShown(page, '#fgi-summary');
+        if (!/Only the DM can import/.test(await page.$eval('#fgi-dm-only', (e) => e.textContent))) throw new Error('no DM-only line');
+        if (await page.$('#fgi-chron')) throw new Error('the report is still a choice');
+        await shot('controls-import');
+        await tap(page, '#fgi-add');
+        await waitShown(page, '#fgi', false);
+        await wait(page, () => window.hextable.state.timeline.some((e) => e.type === 'chronicle' && e.title === 'Mira Testwell' && /Divine Order/.test(e.text) && !e.public && e.tags?.includes('fg-import')));
+      });
+      await run.do("the character's sheet says where the report is", async () => {
+        await closePanels(page);
+        const id = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Mira Testwell').id);
+        await page.evaluate((i) => window.hextable.select(i), id);
+        await waitShown(page, '#btn-sheet'); await tap(page, '#btn-sheet');
+        await waitShown(page, '#sheet-import');
+        const t = await page.$eval('#sheet-import', (e) => e.textContent);
+        if (!/chronicle/.test(t) || !/Mira Testwell/.test(t)) throw new Error(t);
+        await shot('controls-sheet');
+        const other = await state(page, (S) => Object.values(S.entities).find((e) => e.kind === 'pc' && e.name !== 'Mira Testwell').id);
+        await page.evaluate((i) => window.hextable.select(i), other);
+        await wait(page, () => !document.querySelector('#sheet-import'));
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
+async function controlsTable(browser, url) {
+  await scenario('controls: a DM hosts on a map, a phone player sees the pace and none of the report', async (run) => {
+    const hostCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const host = await hostCtx.newPage(), phone = await phoneCtx.newPage();
+      run.watch(host, ' (DM)'); run.watch(phone, ' (phone)');
+      const frames = [];
+      phone.on('websocket', (ws) => ws.on('framereceived', (f) => frames.push(String(f.payload))));
+      let code;
+      await run.do('the DM hosts on the dungeon and a phone joins', async () => {
+        await open(host, url); await host.fill('#lobby-name', 'Smoke DM');
+        await host.selectOption('#lobby-map', 'dungeon');
+        await host.click('#lobby-host');
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6, null, 20000);
+        await wait(host, () => window.hextable.state.map.id === 'dungeon');
+        code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
+        await open(phone, url); await phone.fill('#lobby-name', 'Smoke Player'); await phone.fill('#lobby-code', code); await phone.click('#lobby-join');
+        await wait(phone, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await host.click('#btn-dm'); await waitShown(host, '#dm');
+        await host.click('#dm-table button:has-text("Let in")');
+        await wait(phone, () => window.hextable.state?.map?.id === 'dungeon');
+      });
+      await run.do('the DM sets the pace and the phone sees it but cannot change it', async () => {
+        await host.selectOption('#dm-pace', 'flow');
+        await wait(phone, () => window.hextable.state.settings.pace === 'flow');
+        await phone.click('#btn-log'); await waitShown(phone, '#log');
+        await wait(phone, () => /flow/.test(document.querySelector('#pace-table').textContent));
+        if (!/Only the DM/.test(await phone.$eval('#pace-table', (e) => e.textContent))) throw new Error('the phone is not told it cannot change it');
+        if (await phone.$('#dm-pace:not([hidden])') && (await shown(phone, '#dm-pace'))) throw new Error('the phone can see the DM control');
+        await phone.evaluate(() => window.hextable.act({ type: 'setting', key: 'pace', value: 'instant' }));
+        await sleep(600);
+        if ((await state(phone, (S) => S.settings.pace)) !== 'flow') throw new Error('a player changed the pace');
+        await phone.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/controls-phone-pace.png` : '/dev/null' }).catch(() => {});
+        await phone.click('#log .close');
+      });
+      await run.do('the DM loads another stock map after being asked; the phone follows', async () => {
+        await host.selectOption('#dm-stock', 'forest-road');
+        await host.click('#dm-stock-go');
+        if ((await state(host, (S) => S.map.id)) !== 'dungeon') throw new Error('one tap loaded it');
+        await host.click('#dm-stock-go');
+        await wait(host, () => window.hextable.state.map.id === 'forest-road');
+        await wait(phone, () => window.hextable.state.map.id === 'forest-road');
+      });
+      await run.do('an import writes a DM-only chronicle entry that no player is sent', async () => {
+        await host.evaluate(() => { document.querySelector('#fgi-file').value = ''; });
+        await host.setInputFiles('#fgi-file', fileURLToPath(new URL('../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
+        await waitShown(host, '#fgi-summary');
+        await host.click('#fgi-add');
+        await waitShown(host, '#fgi', false);
+        await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Mira Testwell'));
+        await sleep(500);
+        await host.click('#dm .close').catch(() => {});
+        // The DM's sheet line is there after the history has come back.
+        const id = await state(host, (S) => Object.values(S.entities).find((e) => e.name === 'Mira Testwell').id);
+        await host.evaluate((i) => window.hextable.select(i), id);
+        await waitShown(host, '#btn-sheet'); await host.click('#btn-sheet');
+        await wait(host, () => document.querySelector('#sheet-import'));
+        // What the phone has been sent, live: nothing of the report. And what it gets when it asks for the record.
+        const leak = frames.find((f) => /fg-import|Imported from Fantasy|ADJUSTMENTS|"chronicle"/.test(f));
+        if (leak) throw new Error(`the phone was sent the report: ${leak.match(/.{0,60}(fg-import|Imported from Fantasy|ADJUSTMENTS|"chronicle").{0,60}/)?.[0]}`);
+        const asked = await phone.evaluate(() => new Promise((resolve) => {
+          const sess = JSON.parse(localStorage.getItem('hextable.session')), got = [];
+          const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+          ws.onopen = () => ws.send(JSON.stringify({ t: 'resume', ...sess }));
+          ws.onmessage = (m) => { got.push(m.data); if (JSON.parse(m.data).t === 'welcome') { ws.send(JSON.stringify({ t: 'history', types: ['chronicle'], limit: 200 })); ws.send(JSON.stringify({ t: 'history', limit: 500 })); } };
+          setTimeout(() => { ws.close(); resolve(got); }, 1500);
+        }));
+        if (!asked.some((f) => JSON.parse(f).t === 'history')) throw new Error('the phone got no history answer to check');
+        if (asked.some((f) => /fg-import|Imported from Fantasy|ADJUSTMENTS/.test(f))) throw new Error('the phone got the report from the history');
+      });
+    } finally { await hostCtx.close(); await phoneCtx.close(); }
+  });
+}
+
 // ---------- main ----------
 try {
   console.log('smoke: building and starting the table server');
@@ -1524,7 +1765,7 @@ try {
     await c.addInitScript((p) => { try { localStorage.setItem('hextable.pace', JSON.stringify(p)); } catch { /* storage unavailable */ } }, pace);
     return c;
   };
-  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline) runs one pass alone
+  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline, beats) runs one pass alone
   if (!only) {
     await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
     await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -1552,6 +1793,15 @@ try {
     await pacing(browser, url, 'timeline at 1280x800', { viewport: { width: 1280, height: 800 } });
     await pacing(browser, url, 'timeline at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     await pacingTable(browser, url);
+  }
+  if (!only || only === 'beats') {
+    await beats(browser, url, 'beats at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await beats(browser, url, 'beats at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  }
+  if (!only || only === 'controls') {
+    await controlsSolo(browser, url, 'controls at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await controlsSolo(browser, url, 'controls at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    await controlsTable(browser, url);
   }
   if (!only || only === 'maps') {
     await stockMaps(browser, url, 'stock maps at 1280x800', { viewport: { width: 1280, height: 800 } });
