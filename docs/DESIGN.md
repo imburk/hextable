@@ -91,6 +91,17 @@ Fight ──(one side is down, or the DM ends it)──▶ Exploring
 
 ### Rules engine (`packages/rules`)
 
+`engine.js` holds `apply()` and nothing else of substance: the order in
+which an action is checked (hidden creature ids first, then the handler, then
+whether a reaction is awaited), the snapshot and pause for reaction prompts,
+what runs after every action (gravity, watching for hidden creatures, what
+the party sees) and the timeline. The handlers are split by domain under
+`engine/` (movement, attacks, casting, features, characters, rests, DM
+tools), above layered helper modules (`shared`, `world`, `rolls`, `sheets`,
+`resolve`) that import only downwards, so the split has no import cycles.
+CLAUDE.md lists which module holds what. Everything is still imported from
+`engine.js`, which re-exports it.
+
 Built so far:
 
 - Movement with terrain cost, difficult terrain, occupied hexes
