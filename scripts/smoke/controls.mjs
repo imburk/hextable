@@ -52,7 +52,7 @@ async function controlsSolo(browser, url, label, opts) {
         await closePanels(page); await openDM();
         await waitShown(page, '#dm-qe .fgi-open');
         await page.evaluate(() => { document.querySelector('#fgi-file').value = ''; });
-        await page.setInputFiles('#fgi-file', fileURLToPath(new URL('../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
+        await page.setInputFiles('#fgi-file', fileURLToPath(new URL('../../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
         await waitShown(page, '#fgi-summary');
         if (!/Only the DM can import/.test(await page.$eval('#fgi-dm-only', (e) => e.textContent))) throw new Error('no DM-only line');
         if (await page.$('#fgi-chron')) throw new Error('the report is still a choice');
@@ -124,7 +124,7 @@ async function controlsTable(browser, url) {
       });
       await run.do('an import writes a DM-only chronicle entry that no player is sent', async () => {
         await host.evaluate(() => { document.querySelector('#fgi-file').value = ''; });
-        await host.setInputFiles('#fgi-file', fileURLToPath(new URL('../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
+        await host.setInputFiles('#fgi-file', fileURLToPath(new URL('../../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
         await waitShown(host, '#fgi-summary');
         await host.click('#fgi-add');
         await waitShown(host, '#fgi', false);

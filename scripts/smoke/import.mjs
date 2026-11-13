@@ -15,7 +15,7 @@ async function importFg(browser, url, label, opts) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
-      const fixture = (n) => fileURLToPath(new URL(`../packages/rules/test/fixtures/${n}`, import.meta.url));
+      const fixture = (n) => fileURLToPath(new URL(`../../packages/rules/test/fixtures/${n}`, import.meta.url));
       const count = () => state(page, (S) => Object.keys(S.entities).length);
       const pickFile = async (path) => {
         await page.evaluate(() => { document.querySelector('#fgi-file').value = ''; });      // what the button does before it opens the picker
