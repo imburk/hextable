@@ -12,7 +12,7 @@
 // subclass at level 3, an option of a feature), the stand-in is listed under `adjustments`.
 import { CONTENT, SPELLS } from './content/index.js';
 import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
-import { derive, featSlots, featuresOf, mod, proficiencyFor, validate } from './derive.js';
+import { derive, featSlots, featuresOf, itemName, mod, proficiencyFor, validate } from './derive.js';
 
 // ---------- a small XML reader ----------
 // Elements, attributes, text, comments, CDATA, processing instructions. A DOCTYPE is skipped unless it has an
@@ -150,6 +150,29 @@ function itemKeys(name) {
   return { keys: keys.filter(Boolean), bonus: bonus ? +bonus : 0 };
 }
 const find = (map, keys) => { for (const k of keys) { const v = map.get(k) ?? map.get(singular(k)); if (v) return v; } return null; };
+
+// Magic items of the pack, by name, and the 2014 names of the same SRD items ("Potion of Greater Healing", "Potion of
+// Hill Giant Strength", "Quaal's Feather Token", "Scroll of Fireball", "Ioun Stone (Awareness)"). Returns { item, base?,
+// spell? } or null; a "+1" weapon, armour or Shield is read from its base item (`magicGear`).
+const itemByKey = new Map();
+for (const d of Object.values(CONTENT.items)) { itemByKey.set(norm(d.name), d); itemByKey.set(norm(d.id), d); }
+const GIANTS = { hill: 'hill', frost: 'frost-or-stone', stone: 'frost-or-stone', fire: 'fire', cloud: 'cloud', storm: 'storm' };
+export function packItem(name) {
+  const k = norm(String(name ?? '').replace(/\(from [^)]*\)/i, ' '));
+  if (!k) return null;
+  const direct = itemByKey.get(k);
+  if (direct && !direct.base && direct.variant !== 'spell') return { item: direct.id };
+  let m;
+  if ((m = /^potion of (greater|superior|supreme) healing$/.exec(k))) return { item: `potion-of-healing-${m[1]}` };
+  if ((m = /^(potion|belt) of (hill|frost|stone|fire|cloud|storm) giant strength$/.exec(k))) return { item: `${m[1] === 'belt' ? 'belt' : 'potion'}-of-giant-strength-${GIANTS[m[2]]}` };
+  if (/^(quaals )?feather token\b/.test(k)) return { item: 'feather-token' };
+  if (k === 'luckstone') return { item: 'stone-of-good-luck' };
+  if (/^iron bands of \w+$/.test(k)) return { item: 'iron-bands' };            // the 2014 name
+  if ((m = /^(?:spell )?scroll(?: of)? (.+)$/.exec(k))) { const sp = spellByKey.get(m[1]); return sp ? { item: 'spell-scroll', spell: sp.id } : null; }
+  if (direct?.base) { const b = direct.base.weapon ?? direct.base.armour; return { item: direct.id, ...(Array.isArray(b) && b.length === 1 ? { base: b[0] } : {}) }; }
+  return null;
+}
+const magicGear = (kind, bonus, base) => (bonus >= 1 && bonus <= 3 ? { item: `${kind}-plus-${bonus}`, ...(base ? { base } : {}) } : null);
 
 // ---------- 2014 and 5.2 differences that can be told from a name ----------
 // The SRD 5.2 text (reference/srd52) lists these species and backgrounds; the pack holds none of them yet.
@@ -331,7 +354,10 @@ function build(root, ch, options) {
   };
 
   // Gear is read before choices, so a choice can be judged by what the character carries.
-  const items = kids(kid(ch, 'inventorylist')).map((it, idx) => ({ node: it, id: it.tag, name: txt(it, 'name'), type: txt(it, 'type'), subtype: txt(it, 'subtype'), rarity: txt(it, 'rarity'), carried: int(it, 'carried') ?? 0, ac: int(it, 'ac'), idx }));
+  const items = kids(kid(ch, 'inventorylist')).map((it, idx) => ({ node: it, id: it.tag, name: txt(it, 'name'), type: txt(it, 'type'), subtype: txt(it, 'subtype'), rarity: txt(it, 'rarity'), carried: int(it, 'carried') ?? 0, ac: int(it, 'ac'), attune: int(it, 'attune') === 1, count: Math.max(1, int(it, 'count') ?? 1), idx }));
+  // Magic items of the pack found on the sheet, put on it after its armour and weapons: { spec, name, equipped, attuned, count }.
+  const itemSpecs = [];
+  const wantItem = (spec, i, name) => itemSpecs.push({ spec, name, equipped: (i?.carried ?? 2) === 2, attuned: !!i?.attune, count: CONTENT.items[spec.item].category === 'potion' || CONTENT.items[spec.item].category === 'scroll' ? Math.min(10, i?.count ?? 1) : 1 });
   const byId = new Map(items.map((i) => [i.id, i]));
   const isMagic = (i) => (!!i.rarity && !/^\(?\s*common\s*\)?$/i.test(i.rarity)) || /\+\d\s*$/.test(i.name) || /^(wondrous|ring|rod|staff|wand|potion|scroll)/i.test(i.type);
   const armourCands = [], weaponCands = [], usedItems = new Set();
@@ -339,14 +365,23 @@ function build(root, ch, options) {
   for (const i of items) {
     if (/^armor$/i.test(i.type) || /shield|armor/i.test(i.subtype)) {
       if (i.carried < 2) continue;
-      if (/shield/i.test(i.subtype) || /^shield$/i.test(norm(i.name))) { wantShield = true; usedItems.add(i.id); if (isMagic(i) || /\+\d/.test(i.name)) note('magicItems', i.name, 'Imported as a plain Shield (+2 AC); any bonus or magic property is not applied.', { importedAs: 'shield' }); continue; }
-      const { keys, bonus } = itemKeys(i.name);
+      const { keys, bonus } = itemKeys(i.name), named = packItem(i.name);
+      if (/shield/i.test(i.subtype) || /^shield$/i.test(norm(i.name))) {
+        usedItems.add(i.id);
+        const spec = named && CONTENT.items[named.item].wear === 'shield' ? named : magicGear('shield', bonus);
+        if (spec) { wantItem(spec, i, i.name); continue; }
+        wantShield = true;
+        if (isMagic(i) || /\+\d/.test(i.name)) note('magicItems', i.name, 'Imported as a plain Shield (+2 AC); its magic is not an SRD 5.2 item the pack holds.', { importedAs: 'shield' });
+        continue;
+      }
       let a = find(armourByKey, keys), viaSubtype = false;
       if (!a) { a = find(armourByKey, [norm(i.subtype)]); viaSubtype = !!a; }
+      const asItem = named && CONTENT.items[named.item].wear === 'armour' ? { ...named, ...(a && !named.base ? { base: a.id } : {}) } : a && a.category !== 'shield' ? magicGear('armor', bonus, a.id) : null;
+      if (asItem) { usedItems.add(i.id); wantItem(asItem, i, i.name); continue; }
       if (a && a.category !== 'shield') {
         armourCands.push({ a, i });
         usedItems.add(i.id);
-        if (viaSubtype || bonus || isMagic(i)) note('magicItems', i.name, `Imported as plain ${a.name}; its bonus and magic properties are not applied.`, { importedAs: a.id });
+        if (viaSubtype || bonus || isMagic(i)) note('magicItems', i.name, `Imported as plain ${a.name}; its magic is not an SRD 5.2 item the pack holds.`, { importedAs: a.id });
       } else note('gear', i.name, 'Armour that is not in the SRD 5.2 pack; AC is not taken from it.');
     }
   }
@@ -362,8 +397,12 @@ function build(root, ch, options) {
     if (!wp && inv) { wp = find(weaponByKey, [norm(inv.subtype)]); viaSubtype = !!wp; }
     const magic = bonus > 0 || /magic/i.test(dmg) || (inv && isMagic(inv)) || viaSubtype;
     if (carried < 1) { note('gear', label, 'Listed as not carried on the sheet; not imported.'); continue; }
+    // A magic weapon of the pack (Sun Blade, Staff of Striking), or a "+1" one made from a weapon of the pack.
+    const named = packItem(label), nd = named && CONTENT.items[named.item];
+    const asItem = nd && nd.wear === 'weapon' ? { ...named, ...(wp && nd.base && !named.base ? { base: wp.id } : {}) } : wp ? magicGear('weapon', bonus, wp.id) : null;
+    if (asItem) { if (!itemSpecs.some((x) => x.name === label)) wantItem(asItem, { ...(inv ?? {}), carried, attune: inv?.attune }, label); continue; }
     if (!wp) { note('magicItems', label, 'A weapon that is not in the SRD 5.2 pack, so it has no attack on the sheet.'); continue; }
-    if (magic) note('magicItems', label, `Imported as a plain ${wp.name}; its bonus and magic properties are not applied.`, { importedAs: wp.id });
+    if (magic) note('magicItems', label, `Imported as a plain ${wp.name}; its magic is not an SRD 5.2 item the pack holds.`, { importedAs: wp.id });
     if (!weaponCands.some((x) => x.w.id === wp.id)) weaponCands.push({ w: wp, equipped: carried === 2 });
   }
   weaponCands.sort((a, b) => b.equipped - a.equipped);
@@ -420,16 +459,47 @@ function build(root, ch, options) {
   for (const i of items) {
     if (usedItems.has(i.id) || !i.name) continue;
     if (/^(weapon|armor)$/i.test(i.type)) {
+      // A magic weapon listed only in the inventory ("Mace, +1").
+      const { keys, bonus } = itemKeys(i.name), named = packItem(i.name), wp = find(weaponByKey, keys);
+      const spec = named && CONTENT.items[named.item].wear === 'weapon' ? named : /^weapon$/i.test(i.type) && wp ? magicGear('weapon', bonus, wp.id) : null;
+      if (spec && i.carried >= 1) { wantItem(spec, i, i.name); continue; }
       if (!byId.has(i.id) || i.carried >= 1) note(isMagic(i) ? 'magicItems' : 'gear', i.name, isMagic(i) ? 'A magic weapon or armour with no base item in the pack.' : 'A weapon or armour that is not in the SRD 5.2 pack.');
       continue;
     }
-    if (isMagic(i)) { note('magicItems', i.name, `${i.type || 'Magic item'}: the engine has no magic items, so it does nothing on the sheet.`, { carried: i.carried > 0 }); continue; }
+    if (isMagic(i) || packItem(i.name)) {
+      const spec = packItem(i.name);
+      if (spec && i.carried >= 1) { wantItem(spec, i, i.name); continue; }
+      note('magicItems', i.name, spec ? 'An SRD 5.2 item, listed as not carried on the sheet; not imported.' : `${i.type || 'Magic item'}: not an SRD 5.2 magic item the pack holds; a name-only note.`, { carried: i.carried > 0 });
+      continue;
+    }
     if (i.carried < 1) continue;
     if (i.name.length > NAME_MAX) { note('gear', i.name, 'An entry with a long description in its name; not imported.'); continue; }
     if (!/^(adventuring gear|treasure|tool|)$/i.test(i.type)) note('gear', i.name, 'Gear the pack does not hold; kept as a name only.');
     if (gear.length < 60) gear.push(i.name);
   }
   if (gear.length) sheet.gear = gear;
+
+  // Magic items of the pack: each put on the sheet as worn and attuned as the file says, if the sheet accepts it; if
+  // not, attuned only if that alone is refused, then carried; what cannot be held at all is a note with the reason.
+  for (const it of itemSpecs) {
+    const def = CONTENT.items[it.spec.item];
+    if (def.variant === 'damageType') { note('magicItems', it.name, `${def.name}: the sheet does not say its damage type, so it is not on the sheet; the DM gives it with its type.`); continue; }
+    const tries = [{ equipped: it.equipped && def.wear !== 'carried', attuned: it.attuned && !!def.attune }];
+    if (tries[0].attuned) tries.push({ ...tries[0], attuned: false });
+    if (tries[0].equipped) tries.push({ equipped: false, attuned: false });
+    let put = null, first = null;
+    for (const t of tries) {
+      const list = [...(sheet.items ?? [])], start = list.length;
+      for (let n = 0; n < it.count; n++) list.push({ id: `i${start + n + 1}`, ...it.spec, ...(t.equipped ? { equipped: true } : {}), ...(t.attuned ? { attuned: true } : {}) });
+      const r = tryAdd({ items: list });
+      if (r.ok) { put = { list, t }; break; }
+      first ??= r.why;
+    }
+    if (!put) { note('magicItems', it.name, `${def.name}, not on the sheet: ${first}`); continue; }
+    sheet.items = put.list;
+    const lost = [tries[0].equipped && !put.t.equipped ? 'worn' : '', tries[0].attuned && !put.t.attuned ? 'attuned' : ''].filter(Boolean);
+    note('magicItems', it.name, `Mapped to the SRD 5.2 ${itemName(def, it.spec)}${it.count > 1 ? ` x${it.count}` : ''} (${def.tier})${put.t.equipped ? ', worn' : ''}${put.t.attuned ? ', attuned' : ''}.${lost.length ? ` Not ${lost.join(' or ')} as on the sheet: ${first}` : ''}`, { item: it.spec.item, tier: def.tier });
+  }
 
   // Tools, size, speed, senses
   const tools = [];
@@ -603,7 +673,7 @@ function build(root, ch, options) {
     problems.push(...lint);
     const cmp = (what, theirs, mine, why) => { if (theirs !== null && theirs !== undefined && theirs !== mine) R.numbers.push({ what, sheet: theirs, engine: mine, ...(why ? { why } : {}) }); };
     cmp('Hit Points', int(kid(ch, 'hp'), 'total'), record.hp, 'The engine takes the fixed value per level plus Constitution; a sheet can hold rolled Hit Points, a feat or an item.');
-    cmp('Armor Class', int(kid(kid(ch, 'defenses'), 'ac'), 'total'), record.ac, 'The engine counts armour, Shield and Dexterity (and Defense, Unarmored Defense); rings, cloaks, magic armour and spells are not counted.');
+    cmp('Armor Class', int(kid(kid(ch, 'defenses'), 'ac'), 'total'), record.ac, 'The engine counts armour, Shield, Dexterity, Defense, Unarmored Defense and the SRD magic items on the sheet; items not in the pack and spells are not counted.');
     cmp('Speed', int(kid(ch, 'speed'), 'total'), record.speed);
     cmp('Proficiency Bonus', int(ch, 'profbonus'), record.prof, classes.length > 1 && level !== totalLevel ? 'The sheet uses its total level.' : undefined);
     for (const a of ABILITIES) {
