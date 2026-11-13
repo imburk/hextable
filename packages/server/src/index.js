@@ -105,12 +105,19 @@ const tables = createTables({ load, save, loadHistory, exportAssets: (code, stat
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
 for (const code of assets.codes()) if (!tables.get(code)) assets.removeTable(code);
 
+// Seats with a live connection: "<code> <token>" -> how many. Changing a table's files needs one, so a
+// token alone (kept from an old session) cannot upload.
+const live = new Map();
+const seatKey = (code, token) => `${code} ${token}`;
+const online = (code, token) => typeof token === "string" && live.has(seatKey(code, token));
+const sit = (key, by) => { const n = (live.get(key) ?? 0) + by; if (n > 0) live.set(key, n); else live.delete(key); };
+
 // ---------- http ----------
 const server = createServer(async (req, res) => {
   for (const [k, v] of Object.entries(securityHeaders(req))) res.setHeader(k, v);
   const route = assetRoute(/^https?:/i.test(req.url) ? new URL(req.url).pathname : req.url);
   if (route) {
-    try { return handleAssets(req, res, route, { assets, tables, limits, addr: addressOf(req) }); }
+    try { return handleAssets(req, res, route, { assets, tables, limits, addr: addressOf(req), online }); }
     catch (err) { console.error(`Asset request failed: ${err.stack}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
   }
   let path;
@@ -148,8 +155,13 @@ server.on("upgrade", (req, socket) => {
     return;
   }
   const bucket = limits.messageBucket();
+  let seat = null;                                         // this connection's seat, for `online`
   const session = tables.connect({
     send(msg) {
+      if (msg.t === "welcome") {
+        if (seat) sit(seat, -1);
+        seat = seatKey(msg.code, msg.token); sit(seat, 1);
+      }
       if (msg.t === "welcome" && msg.role === "dm") ws.maxPayload = DM_FRAME_MAX;
       ws.send(JSON.stringify(msg));
     },
@@ -168,7 +180,7 @@ server.on("upgrade", (req, socket) => {
     }
     session.receive(msg);
   };
-  ws.onclose = () => { release(); session.disconnect(); };
+  ws.onclose = () => { release(); if (seat) { sit(seat, -1); seat = null; } session.disconnect(); };
 });
 
 server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${server.address().port} (${tables.size()} saved tables)`));
