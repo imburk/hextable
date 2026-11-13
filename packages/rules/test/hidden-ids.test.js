@@ -2,7 +2,7 @@
 // (security review #132, H1; issue #136). Whatever field of whatever action a player puts its id
 // in, the answer and the game afterwards must be exactly what they are for an id that is nothing.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { apply, ACTION_TYPES, current } from "../src/engine.js";
 import * as H from "../src/hex.js";
@@ -17,7 +17,8 @@ const P = { role: "player", userId: "u1" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 
 // Every field any action handler reads (`a.<field>`), so a field added later is walked too.
-const src = ["engine.js", "scenes.js", "handouts.js"].map((f) => readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8")).join("\n");
+const engineParts = readdirSync(new URL("../src/engine/", import.meta.url)).filter((f) => f.endsWith(".js")).sort().map((f) => `engine/${f}`);
+const src = ["engine.js", ...engineParts, "scenes.js", "handouts.js"].map((f) => readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8")).join("\n");
 const FIELDS = [...new Set([...src.matchAll(/\ba\.([a-zA-Z]+)\b/g)].map((m) => m[1]))].filter((k) => k !== "type").sort();
 
 // The player plays the wizard and the cleric. Two creatures they may not know of are within
