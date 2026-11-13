@@ -1920,7 +1920,7 @@ const handlers = {
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
-    act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not prompt for reactions yet; the DM applies it.`);
+    act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
@@ -2680,7 +2680,7 @@ function record(s, ev) {
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved') continue;
-    const ids = [e.id, e.actor, e.target, e.by, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
+    const ids = [e.id, e.actor, e.target, e.by, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
     s.timeline.push({ t: s.clock, ...e, ...(ids.length ? { unseen: [...new Set(ids)] } : {}) });
   }
   return { ok: true, events: ev };
