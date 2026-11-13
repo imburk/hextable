@@ -2732,6 +2732,32 @@ async function rewards(browser, url) {
           if ((await state(pg, (S) => S.conclusion?.fight)) !== fight0) throw new Error(`${who} has a new conclusion`);
         }
       });
+      await run.do('the party falls: the phone sees the card with no choices, the DM rewinds over the wire', async () => {
+        await host.evaluate(() => {
+          const h = window.hextable;
+          for (const e of Object.values(h.state.entities)) if (e.side === 'foe') h.act({ type: 'setHp', actor: e.id, hp: e.maxHp });
+        });
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.side === 'foe' && e.hp > 0 && !e.hidden));
+        await host.evaluate(() => {
+          const h = window.hextable, foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden);
+          h.act({ type: 'startEncounter', center: foe.pos, radius: 40 });
+        });
+        await wait(host, () => !!window.hextable.state.encounter);
+        for (let n = 0; n < 5; n++) {
+          await host.evaluate(() => { const h = window.hextable; for (const e of Object.values(h.state.entities)) if (e.kind === 'pc' && !e.dead) h.act({ type: 'harm', actor: e.id, amount: Math.max(1, e.hp) }); });
+          await sleep(300);
+          if (await host.evaluate(() => !window.hextable.state.encounter)) break;
+        }
+        await waitShown(host, '#df'); await waitShown(phone, '#df');
+        if (await phone.locator('#df .df-choice').count()) throw new Error('the phone is offered choices');
+        if (!/The DM will decide what happens next/.test(await phone.textContent('#df'))) throw new Error('the phone card has no line about the DM');
+        if (!(await host.locator('#df .df-choice').count())) throw new Error('the DM has no choices');
+        await host.click('#df [data-df="fight"]');
+        await host.click('#df [data-df="yes"]');
+        await waitShown(host, '#df', false); await waitShown(phone, '#df', false);
+        const up = await state(host, (S) => Object.values(S.entities).filter((e) => e.kind === 'pc' && !e.dead && e.hp > 0).length);
+        if (up < 1) throw new Error('nobody is standing after the rewind');
+      });
     } finally { await phoneCtx.close(); await hostCtx.close(); }
   });
 }
