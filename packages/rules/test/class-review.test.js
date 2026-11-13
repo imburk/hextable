@@ -261,3 +261,48 @@ test("one Bardic Inspiration die at a time, from any bard; a refusal changes not
   ok(apply(s, { type: "endEffect", effect: fx.id }, DM));
   ok(apply(s, { type: "feature", actor: "hero", feature: "bardic-inspiration", target: "rogue" }, DM));
 });
+
+// L6 (suspected; dismissed). Countercharm: "If you or a creature within 30 feet of you fails a saving
+// throw against an effect that applies the Charmed or Frightened condition, you can take a Reaction".
+// "Can": under the standing instruction the engine takes it for its own side only, as a bard would.
+test("Countercharm is not spent on a foe's failed save against the bard's own charm", () => {
+  const bard = { name: "Zaa", class: "bard", level: 8, subclass: "lore", abilities: { str: 10, dex: 14, con: 12, int: 10, wis: 10, cha: 18 },
+    skills: ["performance", "persuasion", "insight", "history", "arcana", "deception"], expertise: ["performance", "persuasion"], weapons: ["dagger"], spells: ["vicious-mockery", "charm-person"] };
+  let failed = 0;
+  for (let seed = 1; seed <= 20 && !failed; seed++) {
+    const s = field(bard);
+    fight(s); turnOf(s, "hero");
+    s.rng = seed * 7919;
+    const r = ok(apply(s, { type: "cast", actor: "hero", spell: "charm-person", target: "m1" }, DM));
+    if (r.events.some((x) => x.type === "save" && x.id === "m1" && !x.success)) {
+      failed++;
+      assert.ok(!r.events.some((x) => x.type === "reaction" && x.reaction === "countercharm"));
+      assert.ok(!s.entities.hero.reactionUsed);
+    }
+  }
+  assert.ok(failed, "a failed save was seen");
+});
+
+// L8 (suspected; dismissed). A creature an unseen paladin's Aura of Courage makes immune shows
+// "Immune to Frightened", as any immune creature does: what anyone sees (it is not frightened), and
+// nothing of the hidden paladin.
+test("an aura's condition immunity tells players what they see, never whose aura it is", () => {
+  const s = field(paladin(10));
+  // The hidden paladin stands outside the fight (a hidden creature is never in one), 10 feet from the goblin at its edge.
+  ok(apply(s, { type: "place", actor: "m1", to: { q: 8, r: 0 } }, DM));
+  s.entities.evil = makeEntity(derive({ ...paladin(10), name: "Sir Hidden" }).record, { id: "evil", kind: "npc", side: "foe", pos: { q: 10, r: 0, z: 0 } });
+  ok(apply(s, { type: "reveal", actor: "evil", hidden: true }, DM));
+  fight(s); turnOf(s, "hero");
+  assert.equal(view(s, PAT).entities.evil, undefined, "hidden from the players");
+  const before = mark(s);
+  let r = null;
+  for (let seed = 1; seed <= 20; seed++) {
+    const t = structuredClone(s); t.rng = seed * 7919;
+    const x = ok(apply(t, { type: "feature", actor: "hero", feature: "abjure-foes", target: "m1" }, DM));
+    if (x.events.some((e) => e.type === "note" && e.id === "m1")) { r = { x, t }; break; }
+  }
+  assert.ok(r, "m1 failed its save and was found immune");
+  const seen = viewEvents(r.x.events, r.t, PAT);
+  assert.ok(seen.some((e) => e.type === "note" && e.id === "m1" && e.text === "Immune to Frightened"));
+  assert.doesNotMatch(JSON.stringify([seen, view(r.t, PAT), describeStep({ type: "feature", actor: "hero", feature: "abjure-foes", target: "m1" }, r.x.events, before, r.t).shown]), /"evil"|Sir Hidden/);
+});
