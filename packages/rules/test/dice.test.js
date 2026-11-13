@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
-import { migrate } from "../src/migrate.js";
+import { migrate, VERSION } from "../src/migrate.js";
 import { faceSum } from "../src/rng.js";
 import { newGame } from "../src/scenario.js";
 import { viewEvents } from "../src/view.js";
@@ -134,7 +134,7 @@ test("the table rule diceThrow: auto or throw, the DM's to set, and an old game 
   delete old.settings.diceThrow; old.version = 11;
   migrate(old);
   assert.equal(old.settings.diceThrow, "auto");
-  assert.equal(old.version, 14);
+  assert.equal(old.version, VERSION);
 });
 
 test("a healing spell and a saving throw carry their faces too", () => {

@@ -18,6 +18,16 @@ test("the SRD pack passes the linter", () => {
   assert.deepEqual(lintPack(srd), []);
 });
 
+test("a spell aimed at its caster may not make a saving throw, unless it is a listed exception", () => {
+  const contagion = srd.spells.find((s) => s.id === "contagion");
+  assert.ok(contagion.effects.some((st) => "save" in st), "the fixture has a save step");
+  const broken = clone(contagion);
+  broken.target = { self: true };                                       // the save is for others, so this is wrong
+  const withContagion = (entry) => ({ ...srd, spells: srd.spells.map((s) => (s.id === "contagion" ? entry : s)) });
+  assert.match(lintPack(withContagion(broken)).join("\n"), /aimed at its caster has a saving throw/);
+  assert.deepEqual(lintPack(withContagion(clone(contagion))), []);       // aimed at creatures: passes
+});
+
 test("content files are data only: no imports, no functions", () => {
   const dir = fileURLToPath(new URL("../src/content/srd52/", import.meta.url));
   const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
