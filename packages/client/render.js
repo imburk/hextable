@@ -906,15 +906,16 @@ export class Renderer {
     this.wallMesh.draw(this.loc, ident());
     if (this.pics.length) this.#drawPictures(C, sky, lt.light);
     this.#drawDoorsNow();
-    for (const a of this.actors.values()) if (a.fade >= 1 && !a.dying) this.#drawPawn(a, a.mesh, 1);
+    for (const a of this.actors.values()) if (a.fade >= 1) this.#drawPawn(a, a.mesh, 1);
     gl.enable(gl.BLEND);
     // Pawns that are fading (appearing, dying, being placed or removed) are drawn blended, lit by the hour like the rest.
     gl.uniform3fv(this.loc.uGrade, lt.light);
+    gl.depthFunc(gl.LEQUAL);                                              // the living pawn fades off the fallen one that stands in the same place
     for (const a of this.actors.values()) {
-      if (a.fade >= 1 && !a.dying) continue;
-      if (a.dying) { const p = Math.min(1, (this.now - a.dying.t0) / a.dying.dur); this.#drawPawn(a, a.dying.mesh, (1 - p) * a.fade); this.#drawPawn(a, a.mesh, p * a.fade); }
-      else this.#drawPawn(a, a.mesh, a.fade);
+      if (a.dying) this.#drawPawn(a, a.dying.mesh, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur));
+      else if (a.fade < 1) this.#drawPawn(a, a.mesh, a.fade);
     }
+    gl.depthFunc(gl.LESS);
     for (const g of this.ghosts) this.#drawPawn(g, g.mesh, 1 - Math.min(1, (this.now - g.t0) / g.dur));
     gl.depthMask(false);
     gl.uniform3f(this.loc.uGrade, 1, 1, 1);                                // highlights, the arena edge and shadows are not tinted by the hour
