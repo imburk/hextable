@@ -671,6 +671,18 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   `{ mod, min }` (an ability modifier, at least `min`) or `{ perLevel }` (times the class level). A
   modifier's `value` may be one of these in class content; `derive()` puts the number in. A heal
   step may say `addLevel: true` (Second Wind's 1d10 + Fighter level), also baked by `derive()`.
+- **Amendment (levels 5 and 6, classes-5).** Three more things a class feature's steps may say,
+  all baked by `derive()` into plain dice and numbers, so the effect runner sees nothing new but
+  one key:
+  - a heal or tempHp step's dice may be an amount, `{ column }` (Wholeness of Body rolls the
+    Martial Arts die), and `addMod` may name an ability (`addMod: "wis"`) where a spell's
+    `addMod: true` means the spellcasting modifier;
+  - a save step's `dc` may name an ability: the class's own DC, 8 + Proficiency Bonus + that
+    modifier (Stunning Strike's Focus save DC, `dc: "wis"`). In any other content `dc` is a whole
+    number, as before, and the linter now says so;
+  - a heal step may say `atLeast: n`, the fewest Hit Points it restores ("minimum of 1 Hit Point
+    regained"). This one is read by the effect runner (`effects.js`).
+  No new step, hook, op, tag or grant was added.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and
