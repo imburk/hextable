@@ -83,3 +83,16 @@ A button reads the file as text and calls `importFgxml(text)`. If `report.ok` is
 shows the report (counts, `adjustments` first, then each list) and, on the DM's confirmation, sends
 `act({ type: 'setSheet', sheet: character })`. Spent slots and damage in `report.state` can be applied afterwards with
 `harm`. The report must be shown: the sheet alone hides stand-ins.
+
+### Where the report goes after the import
+
+A sheet has no notes field and the engine has no state for a report, so the client keeps it in the DM's chronicle. When the DM
+confirms (Add or Replace), `importfg.js` sends, after `setSheet` is applied, an ordinary
+`{ type: 'chronicle', title: <the character's name>, text: <the report as text>, tags: ['fg-import'] }`. There is no
+choice to make: the report is always written. The entry has no `public` flag, and a `chronicle` event reaches a player only when
+`public` is true (`view.js`, "chronicle"; `packages/server/README.md`), live and from `history`. The smoke pass `controls` checks
+that a phone player is sent none of it, in the live updates and when it asks the table for its history.
+The sheet shows the DM a line ("Imported from Fantasy Grounds. Its report is in your chronicle...") when the chronicle holds an
+entry tagged `fg-import` titled with that character's name (so the line is found again after a reload). A character renamed
+afterwards loses the line; the entry stays. Text over 8,000 characters is cut with a note, and the file button still saves all of it.
+Only the DM can import: `setSheet` is a DM action, and the import panel says so.

@@ -56,7 +56,7 @@
 <aside id="tracker" hidden aria-label="Combat tracker"></aside>
 <aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
 <aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2>
-  <div class="dice-prefs"><label class="assign">Dice on this device <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label><label class="assign">Animation on this device <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label><label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label></div>
+  <div class="dice-prefs"><label class="assign">Dice on this device <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label><label class="assign">Animation on this device <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label><label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label><p class="note" id="pace-table"></p></div>
   <ol id="log-list"></ol>
   <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
 </aside>
@@ -70,10 +70,17 @@
     <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
   </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
-  <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div></section>
+  <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div>
+    <label class="assign">Start on a stock map <select id="dm-stock"></select></label>
+    <p class="note" id="dm-stock-text"></p>
+    <div class="row"><button type="button" id="dm-stock-go">Start on this map</button></div>
+    <p class="note" id="dm-stock-ask" role="status" hidden></p>
+    <p class="note" id="dm-stock-fight" hidden>The map can't change in the middle of a fight.</p></section>
   <section><h3>Fight</h3>
     <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
     <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
+    <label class="assign">How fast the table plays out what happens <select id="dm-pace"></select></label>
+    <p class="note">Players can make it quicker on their own device, never slower.</p>
     <label class="assign">Dice <select id="dm-dice-throw"><option value="auto">Rolled as soon as someone acts</option><option value="throw">Thrown by whoever acts: a tap or flick sends the action</option></select></label>
     <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me (on this device)</label>
     <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when the party comes near enemies</label>
@@ -131,6 +138,7 @@
     <h1>Hextable</h1>
     <p>Roam free. When a fight starts, the hexes lock and turns begin.</p>
     <label for="lobby-name">Your name</label><input id="lobby-name" maxlength="24" placeholder="Name">
+    <label for="lobby-map">Starting map (when you host or play solo)</label><select id="lobby-map"></select>
     <div class="row"><button type="button" id="lobby-host">Host a table</button></div>
     <label for="lobby-code">Table code</label>
     <div class="row"><input id="lobby-code" maxlength="6" placeholder="ABC123"><button type="button" id="lobby-join">Join</button></div>
