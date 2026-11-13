@@ -155,3 +155,24 @@ test("a Shield cast against an attacker in the dark does not name it in the reco
   assert.ok(told, "players still read that Shield was cast");
   assert.equal(told.against, undefined);
 });
+
+// Review #132, L3: map objects go to players by an allow list, and a ladder's `to` only once
+// the place it leads to is sent.
+test("a map object is sent by an allow list, and where a ladder leads only once that place is shown", async () => {
+  const { view } = await import("../src/view.js");
+  const ground = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "stone" }]));
+  const attic = Object.fromEntries(H.range({ q: 4, r: 0 }, 1).map((h) => [H.col(h), { t: "stone" }]));
+  const s = newGame(5);
+  ok(apply(s, { type: "loadMap", map: newMap({ id: "h", name: "House", starts: [{ q: -2, r: 0 }],
+    levels: [{ id: "ground", name: "Ground", z: 0, tiles: ground }, { id: "attic", name: "Attic", z: 10, tiles: attic }],
+    objects: [{ id: "ladder", def: "ladder", level: "ground", at: { q: 0, r: 0 }, state: "there", to: { q: 4, r: 0, z: 10 }, plot: "SECRET-zq" }],
+    regions: [{ id: "attic", name: "The attic", level: "attic", hexes: Object.keys(attic) }] }) }, DM));
+  const sent = () => view(s, P).map.objects.find((o) => o.id === "ladder");
+  assert.ok(sent(), "the ladder is sent");
+  assert.equal(sent().to, undefined, "not where it leads: the attic is not shown");
+  assert.ok(!JSON.stringify(view(s, P)).includes("SECRET-zq"), "a field not on the allow list is not sent");
+  ok(apply(s, { type: "revealRegion", region: "attic" }, DM));
+  assert.deepEqual(sent().to, { q: 4, r: 0, z: 10 });
+  assert.ok(!JSON.stringify(view(s, P)).includes("SECRET-zq"));
+  assert.equal(view(s, DM).map.objects.find((o) => o.id === "ladder").plot, "SECRET-zq", "the DM has all of it");
+});
