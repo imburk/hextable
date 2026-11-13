@@ -4,7 +4,7 @@
 
 Please report security problems privately, not in a public issue: on the
 repository page, open **Security**, then **Report a vulnerability**. You will
-get an answer within a week. If the problem is being used against a live
+get an answer as soon as the maintainer can give one. If the problem is being used against a live
 table, say so in the first line.
 
 Say what you did, what you expected and what happened, with the smallest
