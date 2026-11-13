@@ -4,6 +4,9 @@ This file is for any AI coding agent (Claude, Gemini, Grok or another).
 Project rules live in [CLAUDE.md](CLAUDE.md); read it first, whichever agent
 you are. Architecture is in [docs/DESIGN.md](docs/DESIGN.md) and agreed
 designs are in [docs/specs](docs/specs).
+What is wrong or missing is listed in [docs/DEBT.md](docs/DEBT.md). The
+maintainer's working notes (hand-over, agent brief, session records) are kept
+in a private repo, `imburk/hextable-ops`; you do not need them to take an issue.
 
 ## How work is handed out
 
@@ -24,7 +27,7 @@ designs are in [docs/specs](docs/specs).
 - **Do not edit `packages/rules/src/engine.js` or `packages/server/src/tables.js`
   unless the issue names them.** Most parallel work collides there, and
   mistakes there are rule or security bugs.
-- **Only SRD 5.2.1 content.** Nothing from other D&D books, and no invented
+- **Only SRD 5.2.1 content.** Nothing from other sourcebooks, and no invented
   stats presented as SRD.
 - **Content is data, and it is checked.** Entries go in
   `packages/rules/src/content/srd52/` in the format `schema.js` enforces. No
