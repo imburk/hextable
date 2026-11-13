@@ -38,13 +38,14 @@ What happened in the last working session is in `docs/sessions/2026-11-13.md`.
 - **The workspace has two CPU cores.** At most two agents doing browser checks at once. Agents
   run named smoke passes only (`SMOKE_ONLY=<name>`, one at a time, in the foreground, 7-minute
   timeout), never the full run; the lead does not run smoke while they do. `SMOKE_ONLY=base` is
-  solo and multiplayer. An unknown name runs nothing and reports success. Three workspace
+  solo and multiplayer. An unknown name exits 1 and lists the valid names (the registry is at the top of `scripts/smoke.mjs`). Three workspace
   restarts on 13 November came from ignoring this.
 - After a restart, agents usually resume by themselves; if one stays silent, send a message to
   its id. Tell agents to push after each commit: unpushed work survives only on this machine.
 - After merging main into a branch: `grep -rn '^<<<<<<<' docs packages scripts`, and
-  `node --check scripts/smoke.mjs`. When `smoke.mjs` conflicts, both sides added a function and a
-  line in `main`: keep both whole. Then `git add -A` and commit.
+  `for f in scripts/smoke.mjs scripts/smoke/*.mjs; do node --check $f; done`. Each smoke pass is its own
+  file under `scripts/smoke/`, so conflicts are rare; when `scripts/smoke.mjs` (the registry) or
+  `scripts/smoke/lib.mjs` conflicts, both sides added a line or a helper: keep both whole. Then `git add -A` and commit.
 - A smoke step that fails under load is re-run alone once; if a rule seems broken, reproduce it
   in Node through `apply()` before blaming the game. Several "failures" on 13 November were the
   test (timing, or where the party stands), not the game.
@@ -73,8 +74,9 @@ What happened in the last working session is in `docs/sessions/2026-11-13.md`.
 ## Next work, in order
 
 **Refactors first (agreed with the owner on 13 November; none changes behaviour):**
-1. **Split `scripts/smoke.mjs` (2,500 lines) into one file per pass with a runner** (Sonnet).
-   Every client job appends to it; it caused most merge conflicts.
+1. ~~**Split `scripts/smoke.mjs` (2,500 lines) into one file per pass with a runner** (Sonnet).
+   Every client job appends to it; it caused most merge conflicts.~~ Done (#196): one file per
+   pass under `scripts/smoke/`, shared helpers in `lib.mjs`, a registry in `scripts/smoke.mjs`.
 2. **Split `packages/rules/src/engine.js` (3,200 lines, 50 handlers) by domain** behind the same
    `apply()`: movement, attacks, casting, features, rests and rewards, map and DM tools (Opus,
    alone in the engine lane, no feature work beside it; the tests are the safety net). Do this

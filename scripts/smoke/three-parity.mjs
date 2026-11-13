@@ -1,3 +1,4 @@
+import { beats } from './beats.mjs';
 import { join } from 'node:path';
 import { sleep, scenario, wait, state, open, playSolo, tapAt, closePanels, selectAndMove } from './lib.mjs';
 

@@ -4,7 +4,7 @@ import { scenario, wait, state, shown, open, playSolo, calm, setPace } from './l
 // ---------- beats in the renderer (R4) ----------
 // At pace `wait` a door opens over time and a goblin falls over time (the renderer's tweens are seen part way, then at their end);
 // at `instant` both are at their end state the moment the update is shown. A skip ends what is easing. Nothing is left half played.
-async function beats(browser, url, label, opts) {
+export async function beats(browser, url, label, opts) {
   await scenario(label, async (run) => {
     const ctx = await browser.newContext(opts, { pace: 'wait' });
     try {

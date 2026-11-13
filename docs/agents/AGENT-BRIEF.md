@@ -50,7 +50,9 @@ the repo. The pack's `source` strings say "SRD 5.2.1"; keep whatever string the 
    the same place, keep both whole.
 2. Re-run everything on the merged result: `npm test` (0 failures), `npm run content` (no problems),
    `npm run build`, and `for f in dist/*.js dist/shared/*.js dist/shared/content/*.js; do node --check "$f" || echo BAD $f; done`
-   (nothing BAD). If you touched packages/client, also run `npm run smoke`.
+   (nothing BAD). If you touched packages/client, also run the smoke passes that cover your change, one at a time
+   (`SMOKE_ONLY=<name> npm run smoke`; the names are the registry at the top of `scripts/smoke.mjs`, one file per pass in
+   `scripts/smoke/`; an unknown name exits 1).
 3. If your task changed something listed in docs/DEBT.md, strike that line in the same pull request (wrap it in ~~ ~~
    and add the PR number). Add a line for any new gap you found.
 4. If your task changes the state shape, bump the state version with a migration and say so in the PR.
