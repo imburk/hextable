@@ -67,6 +67,10 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the architecture.
 
 MIT. See [LICENSE](LICENSE).
 
+Third-party code: [Three.js](https://threejs.org) r187 (MIT, Copyright 2010-2026 Three.js Authors), copied into
+[packages/client/vendor/three](packages/client/vendor/three) with its licence; see
+[packages/client/vendor/README.md](packages/client/vendor/README.md).
+
 ## Rules content
 
 Hextable uses the System Reference Document 5.2.1 by Wizards of the Coast LLC,

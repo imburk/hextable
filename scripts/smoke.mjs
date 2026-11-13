@@ -425,6 +425,44 @@ async function statsPass(browser, url) {
   });
 }
 
+// ---------- vendored Three.js (R10) ----------
+// A normal page load fetches nothing under vendor/. Then, in the page, the vendored module is imported (gzipped by the
+// server), a WebGLRenderer on an offscreen canvas draws a cube, and GLTFLoader and SkeletonUtils import.
+async function threePass(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const asked = [], got = [];
+      page.on('request', (r) => asked.push(r.url()));
+      page.on('response', (r) => { if (r.url().includes('/vendor/')) got.push({ url: r.url(), enc: r.headers()['content-encoding'], vary: r.headers()['vary'], status: r.status() }); });
+      await run.do('a normal page load and a solo game fetch nothing under vendor/', async () => {
+        await open(page, url); await playSolo(page); await sleep(1000);
+        const v = asked.filter((u) => u.includes('/vendor/'));
+        if (v.length) throw new Error(`the page fetched ${v.join(', ')}`);
+      });
+      await run.do('the vendored module loads, draws a cube on an offscreen canvas, GLTFLoader and SkeletonUtils import', async () => {
+        const r = await page.evaluate(async () => (await import('/three-check.js')).checkThree());
+        if (!/^\d+$/.test(String(r.revision))) throw new Error(`revision: ${JSON.stringify(r)}`);
+        if (r.pixel[0] < 200 || !(r.drawCalls >= 1)) throw new Error(`result: ${JSON.stringify(r)}`);
+        console.log(`       three r${r.revision}, webgl2 ${r.webgl2}, middle pixel ${r.pixel}, ${r.drawCalls} draw call(s)`);
+      });
+      await run.do('the vendored files came over gzipped', async () => {
+        const want = ['three.module.js', 'three.core.js', 'GLTFLoader.js', 'SkeletonUtils.js', 'BufferGeometryUtils.js'];
+        for (const f of want) {
+          const r = got.find((g) => g.url.endsWith('/' + f));
+          if (!r) throw new Error(`${f} was not requested`);
+          if (r.status !== 200 || r.enc !== 'gzip' || !/accept-encoding/i.test(r.vary ?? '')) throw new Error(`${f}: ${JSON.stringify(r)}`);
+        }
+        // and the server sends it plain to a client that does not accept gzip
+        const plain = await fetch(url + 'vendor/three/three.module.js', { headers: { 'accept-encoding': 'identity' } });
+        if (plain.headers.get('content-encoding')) throw new Error('identity request got a content-encoding');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 // ---------- multiplayer ----------
 async function multiplayer(browser, url) {
   await scenario('multiplayer: host on a desktop, a phone joins', async (run) => {
@@ -2069,7 +2107,7 @@ try {
     await c.addInitScript((p) => { try { localStorage.setItem('hextable.pace', JSON.stringify(p)); } catch { /* storage unavailable */ } }, pace);
     return c;
   };
-  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline, beats, interface) runs one pass alone
+  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline, beats, interface, three) runs one pass alone
   if (!only || only === 'base') {       // SMOKE_ONLY=base: the solo and multiplayer passes alone
     await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
     await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -2115,6 +2153,9 @@ try {
     await interfacePass(browser, url, 'interface: the empty renderer at 1280x800 (address flag)', { viewport: { width: 1280, height: 800 } }, 'address');
     await interfacePass(browser, url, 'interface: the empty renderer at 390x844 with touch (preference)', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, 'pref');
     await statsPass(browser, url);
+  }
+  if (!only || only === 'three') {      // SMOKE_ONLY=three: the vendored Three.js alone
+    await threePass(browser, url, 'three: the vendored library at 1280x800', { viewport: { width: 1280, height: 800 } });
   }
   if (!only || only === 'maps') {
     await stockMaps(browser, url, 'stock maps at 1280x800', { viewport: { width: 1280, height: 800 } });

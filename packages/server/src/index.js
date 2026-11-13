@@ -8,7 +8,9 @@
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLimits, limitsFromEnv, LIMIT_MESSAGE } from "./limits.js";
@@ -24,7 +26,48 @@ const PORT = /^\d+$/.test(process.env.PORT ?? "") ? Number(process.env.PORT) : 8
 // TIMELINE_CAP: how many timeline entries other than chronicle entries a table keeps (default 5000).
 const capEnv = process.env.TIMELINE_CAP;
 const timelineCap = capEnv !== undefined && /^\d+$/.test(capEnv) ? Number(capEnv) : undefined;
-const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" };
+const TYPES = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml",
+};
+// Text files of the built game are sent gzipped to a client that accepts it (the vendored Three.js is over 2 MB raw).
+// Only these types, and only files over a kilobyte. Each file is compressed once and kept until it changes on disk.
+// Uploads and served table files are not here: they go through assets-http.js, which this does not touch.
+const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg"]);
+const GZIP_MIN = 1024;
+const gzipAsync = promisify(gzip);
+const siteCache = new Map();                 // target path -> { key: "mtimeMs:size", raw: Promise<Buffer>, gz: Promise<Buffer> | null }
+
+// Does an Accept-Encoding header allow gzip? A listed q of 0 refuses it; "*" allows it unless gzip is listed.
+function acceptsGzip(header) {
+  if (typeof header !== "string") return false;
+  let star = null;
+  for (const part of header.split(",")) {
+    const [name, ...params] = part.trim().toLowerCase().split(";");
+    const q = params.map((x) => /^\s*q\s*=\s*([0-9.]+)\s*$/.exec(x)).find(Boolean);
+    const ok = q ? Number(q[1]) > 0 : true;
+    if (name === "gzip" || name === "x-gzip") return ok;
+    if (name === "*") star = ok;
+  }
+  return star === true;
+}
+
+async function siteFile(target, compress) {
+  const st = await stat(target);
+  if (!st.isFile()) throw new Error("not a file");
+  const key = `${st.mtimeMs}:${st.size}`;
+  let e = siteCache.get(target);
+  if (!e || e.key !== key) {
+    e = { key, raw: readFile(target), gz: null };
+    siteCache.set(target, e);
+    e.raw.catch(() => { if (siteCache.get(target) === e) siteCache.delete(target); });
+  }
+  const raw = await e.raw;
+  if (!compress || raw.length < GZIP_MIN) return { body: raw, gzipped: false };
+  e.gz ??= gzipAsync(raw, { level: 9 });
+  try { return { body: await e.gz, gzipped: true }; }
+  catch { e.gz = null; return { body: raw, gzipped: false }; }
+}
 
 // A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
 // only the DM may send a whole map document.
@@ -130,8 +173,13 @@ const server = createServer(async (req, res) => {
   const target = join(SITE, path.endsWith(sep) ? path + "index.html" : path);
   if (target !== SITE && !target.startsWith(SITE + sep)) { res.writeHead(403).end(); return; }
   try {
-    const body = await readFile(target);
-    res.writeHead(200, { "content-type": TYPES[extname(target)] || "application/octet-stream" }).end(body);
+    const ext = extname(target);
+    const text = COMPRESSIBLE.has(ext);
+    const { body, gzipped } = await siteFile(target, text && req.headers.range === undefined && acceptsGzip(req.headers["accept-encoding"]));
+    const headers = { "content-type": TYPES[ext] || "application/octet-stream", "content-length": body.length };
+    if (text) headers.vary = "Accept-Encoding";
+    if (gzipped) headers["content-encoding"] = "gzip";
+    res.writeHead(200, headers).end(body);
   } catch {
     res.writeHead(404, { "content-type": "text/plain" }).end("Not found");
   }
