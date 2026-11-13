@@ -1543,20 +1543,20 @@ async function beats(browser, url, label, opts) {
         const g = await page.evaluate(() => window.__goblin);
         // The tweens start inside the update, so they are read in the same breath as the action; then the time they take is measured.
         const door0 = await page.evaluate(([p, d]) => {
-          const h = window.hextable; h.act({ type: 'use', actor: p, object: d, verb: 'close' });
-          const x = h.R.doors.get(d); window.__t0 = performance.now();
+          const h = window.hextable; window.__t0 = performance.now(); h.act({ type: 'use', actor: p, object: d, verb: 'close' });
+          const x = h.R.doors.get(d);
           return { tw: !!x.tw, v: x.v, goal: x.goal };
         }, [pc, door]);
         if (!door0.tw || door0.v === door0.goal) throw new Error(`the door did not start to swing: ${JSON.stringify(door0)}`);
         await wait(page, (d) => !window.hextable.R.doors.get(d).tw, door, 5000);
         const took = await page.evaluate(() => performance.now() - window.__t0);
-        if (took < 250) throw new Error(`the door swung in ${Math.round(took)} ms`);
+        if (took < 400) throw new Error(`the door swung in ${Math.round(took)} ms`);
         const end = await page.evaluate((d) => { const x = window.hextable.R.doors.get(d); return { v: x.v, goal: x.goal }; }, door);
         if (end.v !== end.goal || end.v !== 0) throw new Error(`the door did not end shut: ${JSON.stringify(end)}`);
         await calm(page);
         const fall0 = await page.evaluate((id) => {
-          const h = window.hextable; h.act({ type: 'harm', actor: id, amount: 99 });
-          const a = h.R.actors.get(id); window.__t0 = performance.now();
+          const h = window.hextable; window.__t0 = performance.now(); h.act({ type: 'harm', actor: id, amount: 99 });
+          const a = h.R.actors.get(id);
           return { falling: !!a.tiltTw, tilt: a.tiltNow };
         }, g);
         if (!fall0.falling || fall0.tilt > 0.3) throw new Error(`the goblin did not start to fall: ${JSON.stringify(fall0)}`);
