@@ -7,6 +7,9 @@
 //   h.undo(state)  -> { state, label, shown } or null     (state is changed in place and returned)
 //   h.redo(state)  -> the same, the other way
 //   h.list()       -> labels of what can be undone, newest first; h.listRedo() likewise
+//   h.track(action, events, before, state)    // after a recorded action: keeps or drops the pins
+//   h.rewind(state, 'fight' | 'rest') -> { state, label, shown } or null      (one undoable step)
+//   h.pins()       -> { fight, rest }: whether each can be gone back to
 //
 // Each step is kept as a reverse patch: the changes that turn the state after an action back into
 // the state before it, down to the dice seed, the clock, the order of keys and the timeline entries
@@ -93,9 +96,17 @@ const isStep = (s) => isObj(s) && typeof s.label === 'string' && (s.shown === nu
   && splicesOf(s.tl).length > 0 && splicesOf(s.tl).every((t) => isObj(t) && Number.isInteger(t.at) && t.at >= 0 && Number.isInteger(t.remove) && t.remove >= 0 && Array.isArray(t.insert));
 const rebuild = (s) => { const step = { label: s.label, shown: s.shown, ops: s.ops, tl: Array.isArray(s.tl) ? s.tl.map((t) => ({ at: t.at, remove: t.remove, insert: t.insert })) : { at: s.tl.at, remove: s.tl.remove, insert: s.tl.insert } }; step.bytes = JSON.stringify(step).length; return step; };
 
+// Pins (docs/specs/table-ui.md, Decision 1): a whole copy of the state, as mark() takes it, from just
+// before a fight began and from just after the last rest, so the DM can go back further than the undo
+// list reaches. They share the byte budget but are never trimmed to make room; steps are.
+const PIN_KINDS = ['fight', 'rest'];
+const isPin = (p) => isObj(p) && isObj(p.tree) && Number.isInteger(p.tl) && p.tl >= 0 && isObj(p.tree.entities) && Number.isInteger(p.tree.version);
+const pinOf = (m) => ({ tree: m.tree, tl: m.tl, bytes: JSON.stringify(m.tree).length });
+export const REWIND_LABELS = { fight: 'The table went back to the start of the fight', rest: 'The table went back to the last rest' };
+
 export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}) {
-  let undos = [], redos = [];
-  const bytes = () => [...undos, ...redos].reduce((n, s) => n + s.bytes, 0);
+  let undos = [], redos = [], pins = { fight: null, rest: null };
+  const bytes = () => [...undos, ...redos].reduce((n, s) => n + s.bytes, 0) + PIN_KINDS.reduce((n, k) => n + (pins[k]?.bytes ?? 0), 0);
   const trim = () => { while (undos.length && (undos.length > limit || bytes() > maxBytes)) undos.shift(); };
   const step = (list, other, state) => {
     const s = list.pop();
@@ -126,16 +137,60 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
     redo: (state) => step(redos, undos, state),
     list: () => undos.map((s) => s.label).reverse(),
     listRedo: () => redos.map((s) => s.label).reverse(),
-    clear() { undos = []; redos = []; },
+    clear() { undos = []; redos = []; pins = { fight: null, rest: null }; },
+    // After an action that was recorded: a fight that began pins the state from before the action
+    // (`before`, its mark); a rest pins the state after it and drops the fight pin; a new map drops both.
+    // Taking an action back with undo leaves the pins as they are.
+    track(action, events, before, after) {
+      // Returns whether the pins changed, so a caller that keeps them elsewhere knows to write them.
+      const was = pins;
+      if (action?.type === 'loadMap') pins = { fight: null, rest: null };
+      else {
+        const started = events.some((e) => e.type === 'encounterStart'), rested = events.some((e) => e.type === 'rest');
+        if (!started && !rested) return false;
+        pins = { ...pins };
+        if (started) pins.fight = pinOf(before && 'tree' in before && 'tl' in before ? before : mark(before));
+        if (rested) { pins.rest = pinOf(mark(after)); pins.fight = null; }
+      }
+      trim();
+      return pins.fight !== was.fight || pins.rest !== was.rest;
+    },
+    pins: () => ({ fight: !!pins.fight, rest: !!pins.rest }),
+    // Put the state back as it was at a pin, as one undoable step. Kept from now, not from the pin:
+    // the dice stream (`rng`, so the same choices do not roll the same results), the id counter
+    // (`seq`, so a fight fought again has a new id), the timeline (the record keeps what happened,
+    // the lost fight too) and who holds which character (as undo never changes it).
+    rewind(state, kind) {
+      const p = pins[kind];
+      if (!p) return null;
+      const before = mark(state), was = state, tl = state.timeline;
+      const tree = structuredClone(p.tree), owners = {};
+      for (const [id, e] of Object.entries(was.entities ?? {})) owners[id] = { owner: e.owner, ownerName: e.ownerName };
+      const rng = state.rng, seq = state.seq;
+      for (const k of Object.keys(state)) delete state[k];
+      for (const [k, v] of Object.entries(tree)) state[k] = k === 'timeline' ? tl : v;
+      state.rng = rng;
+      if (Number.isInteger(seq)) state.seq = Math.max(seq, state.seq ?? 0);
+      for (const [id, e] of Object.entries(state.entities)) {
+        if (!owners[id]) continue;
+        for (const k of ['owner', 'ownerName']) { if (owners[id][k] === undefined) delete e[k]; else e[k] = owners[id][k]; }
+      }
+      const label = REWIND_LABELS[kind];
+      this.record(before, state, { label, shown: label });
+      return { state, label, shown: label };
+    },
     // The whole history as plain JSON, to be kept beside the game it belongs to.
-    dump: () => ({ v: 1, undos, redos }),
+    dump: () => ({ v: 2, undos, redos, pins: { fight: pins.fight && { tree: pins.fight.tree, tl: pins.fight.tl }, rest: pins.rest && { tree: pins.rest.tree, tl: pins.rest.tl } } }),
     // Take a dump back. Returns false, and leaves the history empty, if it is not a history this
-    // module wrote. The limits apply as they do to a live history.
+    // module wrote. The limits apply as they do to a live history. A dump from before pins (v 1) has none.
     restore(data) {
-      undos = []; redos = [];
-      if (!isObj(data) || data.v !== 1 || !Array.isArray(data.undos) || !Array.isArray(data.redos)) return false;
+      undos = []; redos = []; pins = { fight: null, rest: null };
+      if (!isObj(data) || (data.v !== 1 && data.v !== 2) || !Array.isArray(data.undos) || !Array.isArray(data.redos)) return false;
       if (![...data.undos, ...data.redos].every(isStep)) return false;
+      const saved = data.v === 2 && isObj(data.pins) ? data.pins : {};
+      if (PIN_KINDS.some((k) => saved[k] !== undefined && saved[k] !== null && !isPin(saved[k]))) return false;
       undos = data.undos.map(rebuild); redos = data.redos.map(rebuild);
+      for (const k of PIN_KINDS) if (saved[k]) pins[k] = pinOf(saved[k]);
       trim();
       return true;
     },
@@ -151,7 +206,7 @@ const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage acti
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
   editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
-  feature: 'used a feature', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', levelUp: 'levelled up' };
+  feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', levelUp: 'levelled up' };
 
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;

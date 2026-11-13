@@ -158,3 +158,29 @@ test("scores above 20 and speeds the engine cannot hold are adjusted and reporte
   assert.ok(report.adjustments.some((a) => a.what === "WIS score" && a.from === "24"));
   assert.equal(report.loadable, true);
 });
+
+test("a sheet that lists Metamagic more than once imports with each option once, and reports what it left out", () => {
+  // A level 10 Sorcerer made from the cleric fixture: Metamagic three times in the features, the options in the powers,
+  // one of them twice, and five options for the four places Metamagic has at level 10.
+  const xml = fixture("cleric")
+    .replace('<name type="string">Cleric</name>\n\t\t\t\t<level type="number">5</level>\n\t\t\t\t<specialization type="string">Life Domain</specialization>',
+      '<name type="string">Sorcerer</name>\n\t\t\t\t<level type="number">10</level>\n\t\t\t\t<specialization type="string">Draconic Sorcery</specialization>')
+    .replace('<level type="number">5</level>', '<level type="number">10</level>')
+    .replace(/<featurelist>[\s\S]*<\/featurelist>/, '<featurelist>' + [2, 10, 10].map((l, i) => `<id-0000${i + 1}><name type="string">Metamagic</name><level type="number">${l}</level></id-0000${i + 1}>`).join('') + '</featurelist>')
+    .replace(/<powers>[\s\S]*<\/powers>/, '<powers>' + ["Quickened", "Quickened", "Subtle", "Twinned", "Careful", "Distant"]
+      .map((n, i) => `<id-0000${i + 1}><name type="string">Metamagic (${n} Spell)</name><group type="string">Class Features</group></id-0000${i + 1}>`).join('') + '</powers>');
+  const { character, report } = importFgxml(xml);
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.deepEqual(validate(character), []);
+  const picked = [...character.choices.metamagic, ...character.choices["metamagic-10"]];
+  assert.equal(picked.length, 4);
+  assert.equal(new Set(picked).size, 4, "no option twice");
+  assert.deepEqual(names(report.features.filter((f) => /^Metamagic: /.test(f.name))), ["Metamagic: Twinned Spell"], "the fifth option is reported");
+  assert.ok(apply(newGame(7), { type: "setSheet", sheet: character }, DM).ok);
+  // Named nowhere: Metamagic is left unchosen (the engine allows it) and the report says so.
+  const bare = importFgxml(xml.replace(/<powers>[\s\S]*<\/powers>/, "<powers></powers>"));
+  assert.equal(bare.report.loadable, true, bare.report.problems.join("; "));
+  assert.equal(bare.character.choices?.metamagic, undefined);
+  assert.ok(bare.report.features.some((f) => f.name === "Metamagic (level 10)" && /left unchosen/.test(f.why)));
+  assert.ok(apply(newGame(7), { type: "setSheet", sheet: bare.character }, DM).ok);
+});

@@ -614,7 +614,7 @@ test("undo: the DM takes back a move and both DM and player return to before; re
   const { dm, player, code } = seated(tables);
   const state = tables.get(code).state;
   player.say({ t: "act", action: { type: "claim", entity: "rogue" } });   // not undoable
-  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: [] });
+  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: [], pins: { fight: false, rest: false } });
   const dmBefore = known(dm), playerBefore = known(player), whole = JSON.stringify(state);
 
   player.say({ t: "act", action: { type: "move", actor: "rogue", to: freeHex(state, "rogue") } });
@@ -628,7 +628,7 @@ test("undo: the DM takes back a move and both DM and player return to before; re
   assert.deepEqual(dm.last("update").events, [{ type: "undone", label: "Pip moved" }]);
   assert.deepEqual(player.last("update").events, [{ type: "undone", label: "Pip moved" }]);
   assert.ok(player.raw.findLast((m) => m.t === "update").state, "a whole view, not a patch");
-  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: ["Pip moved"] });
+  assert.deepEqual(dm.last("undoable"), { t: "undoable", undo: [], redo: ["Pip moved"], pins: { fight: false, rest: false } });
   assert.equal(player.count("undoable"), 0, "players are never sent the history");
   assert.equal(state.entities.rogue.owner, player.last("welcome").userId, "the seat is not taken back");
 
@@ -845,7 +845,8 @@ test("the undo history is never sent to players or put in an export", () => {
 test("a history that belongs to another state, or is corrupted, is ignored and the table still loads", () => {
   for (const damage of [
     (h) => ({ ...h, seq: h.seq + 1 }),                          // saved for a different state
-    (h) => ({ ...h, v: 2 }),
+    (h) => ({ ...h, v: 3 }),                                    // a version this server does not know (2 is the one with pins)
+    (h) => ({ ...h, pins: { fight: { tree: "nope", tl: 0 } } }),
     (h) => ({ ...h, undos: "nope" }),
     (h) => ({ ...h, undos: [{ label: "x" }] }),                 // a step with no patch
     (h) => ({ ...h, undos: h.undos.map((s) => ({ ...s, ops: [{ p: ["__proto__", "x"], v: 1 }] })) }),
@@ -1218,4 +1219,174 @@ test("an action that throws part way through leaves the table's game exactly as 
   delete t.state.timeline.push;
   assert.equal(t.state.clock, JSON.parse(before).clock, "the clock is put back");
   assert.ok(JSON.stringify(t.state) === before, "and so is everything else");
+});
+
+// ---------- rewind: back to the start of the fight or the last rest (docs/specs/table-ui.md, Decision 1, E2, E3) ----------
+
+// A crypt the party has not found, holding a wolf the DM hid there: it stays out of the fight and out of every player's view.
+function cryptWithWolf(dm, state) {
+  const far = H.range({ q: 0, r: 0 }, 1).map((h) => ({ q: h.q + 10, r: h.r - 10 }));
+  dm.say({ t: "act", action: { type: "mapEdit", ops: [
+    ...far.map((at) => ({ op: "tile", level: "ground", at, tile: { t: "stone" } })),
+    { op: "region", region: { id: "crypt", name: "The crypt", level: "ground", hexes: far.map(H.col) } },
+  ] } });
+  dm.say({ t: "act", action: { type: "spawn", monster: "wolf", at: far[0], hidden: true, name: "Greyjaw" } });
+  return Object.values(state.entities).find((e) => e.name === "Greyjaw").id;
+}
+const fightHere = (dm, state) => dm.say({ t: "act", action: { type: "startEncounter", center: state.entities.m1.pos, radius: 30 } });
+const turns = (dm, state, n) => { for (let i = 0; i < n && state.encounter; i++) dm.say({ t: "act", action: aiStep(state, current(state)) ?? { type: "endTurn", actor: current(state) } }); };
+const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, timeline: null });
+
+test("rewind: the DM takes the table back to the start of the fight, with new dice; undo brings the lost fight back", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  assert.deepEqual(dm.last("undoable").pins, { fight: false, rest: false });
+  const beforeFight = withoutDice(state), tl = state.timeline.length;
+  fightHere(dm, state);
+  const firstFight = state.encounter.id, firstStart = state.timeline.find((e) => e.type === "encounterStart");
+  assert.deepEqual(dm.last("undoable").pins, { fight: true, rest: false });
+  turns(dm, state, 40);
+  dm.say({ t: "act", action: { type: "harm", actor: "fighter", amount: 5 } });
+  const lost = JSON.stringify(state), rng = state.rng, n = player.raw.length;
+
+  dm.say({ t: "rewind", to: "fight" });
+  assert.equal(withoutDice(state), beforeFight, "the table as it was when the fight began");
+  assert.equal(state.encounter, null);
+  assert.deepEqual(state.rng, rng, "the dice go on: the same choices do not roll the same results");
+  assert.ok(state.timeline.length > tl, "the record keeps the lost fight");
+  assert.equal(state.entities.rogue.owner, player.last("welcome").userId, "who holds which character is not rewound");
+  assert.deepEqual(dm.last("update").events, [{ type: "rewound", to: "fight", label: "The table went back to the start of the fight" }]);
+  assert.deepEqual(player.last("update").events, [{ type: "rewound", to: "fight" }]);
+  assert.ok(player.raw.slice(n).some((m) => m.t === "update" && m.state), "a whole view");
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  assert.equal(known(dm), JSON.stringify(expected(tables, code, dm)));
+  assert.equal(dm.last("undoable").undo[0], "The table went back to the start of the fight");
+  const rewound = JSON.stringify(state);
+
+  // Undo takes the rewind back exactly, redo does it again exactly.
+  dm.say({ t: "undo" });
+  assert.equal(JSON.stringify(state), lost);
+  dm.say({ t: "redo" });
+  assert.equal(JSON.stringify(state), rewound);
+
+  // The fight fought again is a new fight, and its initiative is rolled with new dice.
+  fightHere(dm, state);
+  const again = state.timeline.findLast((e) => e.type === "encounterStart");
+  assert.notEqual(again.fight, firstFight);
+  assert.notDeepEqual(again.order.map((o) => o.dice), firstStart.order.map((o) => o.dice));
+});
+
+test("rewind: a player is refused, nothing to go back to is an error, and a rest moves the pins", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  dm.say({ t: "rewind", to: "fight" });
+  assert.equal(dm.last("error").error, "No fight to go back to.");
+  dm.say({ t: "rewind", to: "rest" });
+  assert.equal(dm.last("error").error, "No rest to go back to.");
+  dm.say({ t: "rewind", to: "anywhere" });
+  assert.match(dm.last("error").error, /start of the fight or to the last rest/);
+  fightHere(dm, state);
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  const whole = JSON.stringify(state), updates = player.count("update");
+  player.say({ t: "rewind", to: "fight" });
+  assert.equal(player.last("error").error, "Only the DM can rewind.");
+  assert.equal(JSON.stringify(state), whole);
+  assert.equal(player.count("update"), updates);
+  dm.say({ t: "act", action: { type: "rest" } });
+  assert.deepEqual(dm.last("undoable").pins, { fight: false, rest: true }, "a rest drops the fight pin");
+  const rested = withoutDice(state);
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 30 } });
+  dm.say({ t: "rewind", to: "rest" });
+  assert.equal(withoutDice(state), rested);
+  assert.deepEqual(player.last("update").events, [{ type: "rewound", to: "rest" }]);
+  const stranger = client(tables);
+  stranger.say({ t: "rewind", to: "rest" });
+  assert.equal(stranger.last("error").error, "Join a table first.");
+});
+
+test("rewind: tells a player nothing they did not know", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const wolf = cryptWithWolf(dm, state);
+  fightHere(dm, state);
+  assert.ok(!state.encounter.order.some((o) => o.id === wolf), "the hidden wolf is not in the fight");
+  turns(dm, state, 10);
+  // A second secret, made during the fight: rewinding takes it away again.
+  dm.say({ t: "act", action: { type: "chronicle", title: "Secret plot", text: "The mayor is the necromancer" } });
+  const n = player.raw.length;
+  dm.say({ t: "rewind", to: "fight" });
+  dm.say({ t: "undo" });
+  dm.say({ t: "redo" });
+  const sent = JSON.stringify(player.raw.slice(n));
+  for (const secret of [wolf, "Greyjaw", "crypt", "The crypt", "necromancer", "Secret plot"]) assert.ok(!sent.includes(secret), `leaked: ${secret}`);
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  assert.equal(player.count("undoable"), 0);
+});
+
+test("rewind: a pin survives a restart, and loading a map drops it", () => {
+  const d = disk();
+  const first = d.open();
+  const { dm, code } = seated(first);
+  const state = first.get(code).state;
+  const before = withoutDice(state);
+  fightHere(dm, state);
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  d.flush(first, code);
+  const second = d.open();
+  const dm2 = sitDM(second, code, dm.last("welcome").token);
+  assert.deepEqual(dm2.last("undoable").pins, { fight: true, rest: false });
+  dm2.say({ t: "rewind", to: "fight" });
+  assert.equal(withoutDice(second.get(code).state), before);
+  dm2.say({ t: "act", action: { type: "loadMap", map: second.get(code).state.map } });
+  assert.ok(!dm2.last("error") || dm2.last("error").error === undefined, dm2.last("error")?.error);
+  assert.deepEqual(dm2.last("undoable").pins, { fight: false, rest: false });
+});
+
+// ---------- one fight's record (docs/specs/table-ui.md, Decision 5, E11) ----------
+test("history by fight: one fight's record, start to end, redacted for players", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  const wolf = cryptWithWolf(dm, state);
+  dm.say({ t: "act", action: { type: "chronicle", title: "Before" } });
+  fightHere(dm, state);
+  const id = state.encounter.id;
+  turns(dm, state, 6);
+  dm.say({ t: "act", action: { type: "harm", actor: wolf, amount: 1 } });     // a hidden creature's line
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  dm.say({ t: "act", action: { type: "chronicle", title: "After" } });
+  fightHere(dm, state);                                                         // a second fight, still going
+
+  dm.say({ t: "history", fight: id });
+  const mine = dm.last("history");
+  assert.equal(mine.fight, id);
+  assert.equal(mine.entries[0].type, "encounterStart");
+  assert.equal(mine.entries.at(-1).type, "encounterEnd");
+  assert.equal(mine.entries.at(-1).fight, id);
+  assert.ok(!mine.entries.some((e) => e.title === "Before" || e.title === "After"));
+  assert.ok(mine.entries.some((e) => e.type === "damage" && e.target === wolf), "the DM sees it all");
+  assert.equal(mine.cut, false);
+
+  player.say({ t: "history", fight: id });
+  const theirs = player.last("history");
+  assert.equal(theirs.fight, id);
+  assert.equal(theirs.entries[0].fight, id);
+  assert.equal(theirs.entries.at(-1).type, "encounterEnd");
+  assert.ok(!JSON.stringify(theirs).includes(wolf), "nothing of the hidden wolf");
+  assert.ok(theirs.entries.length < mine.entries.length);
+
+  // The fight still going: from its start to now.
+  const now = state.encounter.id;
+  player.say({ t: "history", fight: now });
+  assert.equal(player.last("history").entries[0].fight, now);
+  assert.ok(!player.last("history").entries.some((e) => e.type === "encounterEnd"));
+  // No such fight, and a bad id.
+  player.say({ t: "history", fight: 9999 });
+  assert.deepEqual(player.last("history"), { t: "history", fight: 9999, entries: [], cut: false });
+  player.say({ t: "history", fight: "x" });
+  assert.equal(player.last("error").error, "Name a fight by its number.");
 });

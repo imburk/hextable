@@ -120,6 +120,47 @@ function summarise(def) {
 // Conditions the SRD treats as a benefit to whoever has them: putting one on a creature is not hostile.
 export const BENEFICIAL_CONDITIONS = ['invisible'];
 
+// What a spell is for, in four words a player sorts by (docs/specs/table-ui.md, E12): `damage`, `healing`,
+// `control` and `utility`, worked out from its effect steps, never entered by hand. A spell may be more than one.
+//   damage   a damage, fall or kill step; a modifier on the damage it or its caster deals (Hex, Divine Favor)
+//   healing  a heal, Temporary Hit Points or cure step
+//   control  a harmful condition, forced movement, a counter, difficult terrain, a modifier that hinders
+//   utility  a helpful modifier or condition (Invisible), a teleport, a reveal; and a spell with steps
+//            that none of the others fit
+// A spell whose only steps are `manual` (the DM applies it, its words in the step's text), perhaps behind
+// an attack roll or a save, gets no kind: the engine cannot tell what it is for and does not guess. The
+// client shows such a spell under every kind, marked as not known.
+export const SPELL_KINDS = ['damage', 'healing', 'control', 'utility'];
+function hinders(m) {
+  const neg = (typeof m.value === 'number' && m.value < 0) || (typeof m.value === 'string' && m.value.startsWith('-'));
+  if (m.on.startsWith('attack.received')) return m.op === 'advantage' || m.op === 'crit';
+  if (m.on.startsWith('damage.taken')) return m.op === 'vulnerable' || (m.op === 'add' && !neg);
+  if (['disadvantage', 'autoFail'].includes(m.op)) return true;
+  if (m.op === 'set' && m.on === 'speed') return true;
+  return m.op === 'add' && neg;
+}
+export function spellKinds(def) {
+  const k = new Set();
+  let steps = false;
+  walk(def.effects, (st, at) => {
+    if (at.includes('.blocked.')) return;                 // what befalls the caster when a teleport is blocked
+    const kind = stepKind(st);
+    if (!['manual', 'save', 'attack'].includes(kind)) steps = true;     // a roll whose result the DM applies says nothing of what the spell is for
+    if (kind === 'damage' || kind === 'fall' || kind === 'kill') k.add('damage');
+    else if (kind === 'heal' || kind === 'tempHp' || kind === 'cure') k.add('healing');
+    else if (kind === 'condition') k.add(BENEFICIAL_CONDITIONS.includes(st.condition) ? 'utility' : 'control');
+    else if (kind === 'move' || kind === 'counter') k.add('control');
+    else if (kind === 'teleport' || kind === 'reveal') k.add('utility');
+    else if (kind === 'modifier') {
+      const m = st.modifier;
+      k.add(m.on.startsWith('damage.dealt') ? 'damage' : hinders(m) ? 'control' : 'utility');
+    }
+  });
+  if (def.terrain) k.add('control');
+  if (!k.size && steps) k.add('utility');
+  return SPELL_KINDS.filter((x) => k.has(x));
+}
+
 // Everything the engine and the UI need to know about a spell, worked out once from its data.
 export function spellProfile(def) {
   let harmful = false, heals = false, healStep = null;
@@ -141,6 +182,7 @@ export function spellProfile(def) {
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
+    kinds: spellKinds(def),                        // what it is for: damage, healing, control, utility
     // A teleport: the `cast` action names the destination in `hex` (docs/specs/rules-expansion.md).
     ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
     ...summarise(def),

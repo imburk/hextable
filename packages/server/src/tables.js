@@ -36,6 +36,8 @@ export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 // Lines of a scene's transcript (`say`) one member may send in a minute. The engine caps a line's
 // length and a scene's number of lines; this keeps one member from filling the record for everyone.
 export const MAX_SAYS_PER_MINUTE = 30;
+// The most entries one fight's record is sent with ({t:"history",fight}).
+export const FIGHT_ENTRIES = 500;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
 export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
@@ -119,7 +121,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // The DM's undo history is not part of the game state and is never sent to a player or put in an
   // export. It is saved beside the table (see exportHistory) so that it survives a restart.
   // What the DM's Undo and Redo buttons would do, newest first.
-  const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
+  // `pins` says whether the DM can go back to the start of the last fight or to the last rest (rewind).
+  const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo(), pins: undoOf(t).pins() });
   const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
 
   // Put a state back as mark() found it: every key in its place, the timeline cut back to its length then.
@@ -185,6 +188,17 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const from = typeof since === "number" && Number.isFinite(since) ? since : undefined;
     const all = recall(t.state, { types: wanted?.length ? wanted : undefined, since: from, limit: Infinity });
     return viewEvents(all, t.state, { role: m.role, userId: m.id }).slice(-max);
+  };
+  // One fight's record, from its encounterStart to its encounterEnd (or to now, while it goes on), as
+  // this member may see it: at most FIGHT_ENTRIES, from the start; `cut` says the rest was left out.
+  const fightHistory = (t, m, fight) => {
+    const tl = t.state.timeline ?? [];
+    const from = tl.findIndex((e) => e.type === "encounterStart" && e.fight === fight);
+    if (from < 0) return { entries: [], cut: false };
+    let to = tl.findIndex((e, i) => i > from && e.type === "encounterEnd" && e.fight === fight);
+    if (to < 0) to = tl.length - 1;
+    const seen = viewEvents(tl.slice(from, to + 1), t.state, { role: m.role, userId: m.id });
+    return { entries: seen.slice(0, FIGHT_ENTRIES), cut: seen.length > FIGHT_ENTRIES };
   };
   const welcome = (t, m) => ({ t: "welcome", role: m.role, userId: m.id, name: m.name, code: t.code, token: m.token, approved: m.approved });
 
@@ -276,6 +290,11 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       },
       history(msg) {
         if (!me.approved) return error("Waiting for the DM to let you in.");
+        // One fight's blow-by-blow (docs/specs/table-ui.md, Decision 5): the answer names the fight.
+        if (msg.fight !== undefined) {
+          if (!Number.isInteger(msg.fight)) return error("Name a fight by its number.");
+          return conn.send({ t: "history", fight: msg.fight, ...fightHistory(table, me, msg.fight) });
+        }
         // The answer names the types asked for, so a client with several requests out can tell them apart.
         const types = Array.isArray(msg.types) ? msg.types.filter((x) => typeof x === "string").slice(0, 20) : undefined;
         conn.send({ t: "history", entries: history(table, me, msg), ...(types && { types }) });
@@ -313,6 +332,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           // The timeline is capped here, not in apply(); what is dropped goes in the undo step so undo is exact.
           const dropped = capTimeline(table.state.timeline, timelineCap);
           undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state), dropped);
+          undoOf(table).track(action, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
         touch(table);
@@ -335,6 +355,22 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       };
     }
 
+    // The DM takes the table back to the start of the last fight or to the last rest (docs/specs/table-ui.md,
+    // Decision 1). Not an action: like undo it changes the history, and it is one step that undo takes back.
+    // The dice go on from where they are, so the fight fought again rolls new dice.
+    handlers.rewind = (msg) => {
+      if (me.role !== "dm") return error("Only the DM can rewind.");
+      const to = msg.to;
+      if (to !== "fight" && to !== "rest") return error("Rewind to the start of the fight or to the last rest.");
+      const step = undoOf(table).rewind(table.state, to);
+      if (!step) return error(to === "fight" ? "No fight to go back to." : "No rest to go back to.");
+      dirtyHistory.add(table.code);
+      touch(table);
+      save(table);
+      tellUndo(table);
+      resend(table, { dm: { type: "rewound", to, label: step.label }, players: { type: "rewound", to } });
+    };
+
     // Leaving for good: a player's character is freed for someone else and their seat is removed.
     // The DM's seat is kept, since a table with no DM cannot let anyone in.
     handlers.leave = () => {
@@ -356,7 +392,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "undo", "redo", "leave", "history", "sync", "export"].includes(msg.t);
+        const seated = ["approve", "act", "undo", "redo", "rewind", "leave", "history", "sync", "export"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },

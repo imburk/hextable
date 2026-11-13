@@ -1,6 +1,6 @@
 // How the client reaches a game. Both transports expose the same shape, so the UI
 // doesn't know whether the rules engine is running in this tab or on a server.
-//   { you, send(action), undo(), redo(), undoInfo: { undo, redo },
+//   { you, send(action), undo(), redo(), undoInfo: { undo, redo, pins }, rewind(to) (solo; online, the DM sends {t:'rewind'}),
 //     on: { update(state, events), error(msg), lobby(info), welcome(you), undoable(info) } }
 import { apply } from './shared/engine.js';
 import { newGame } from './shared/scenario.js';
@@ -30,9 +30,19 @@ export function localTransport({ timelineCap = TIMELINE_CAP } = {}) {
   let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
   if (!state || state.version !== VERSION) state = newGame((Math.random() * 1e9) | 0);
   capTimeline(state.timeline, timelineCap);       // a game saved before the cap, or under a larger one
-  // The undo history lives in this tab only: a reload starts it afresh.
+  // The undo history lives in this tab only: a reload starts it afresh. The pins for rewind (the start of
+  // the last fight, the last rest) are kept in this browser beside the game, since the history is not;
+  // `pinsError` says why there are none if the browser refused the space.
   const history = createHistory();
-  const told = () => { t.undoInfo = { undo: history.list(), redo: history.listRedo() }; t.on.undoable?.(t.undoInfo); };
+  const PINS = 'hextable.solo.pins';
+  let pinsError = null;
+  const saved = store.get(PINS);
+  if (saved && Object.values(saved).every((p) => !p || p.tree?.version === VERSION)) history.restore({ v: 2, undos: [], redos: [], pins: saved });
+  const keepPins = () => {
+    try { localStorage.setItem(PINS, JSON.stringify(history.dump().pins)); pinsError = null; }
+    catch { history.clear(); store.del(PINS); pinsError = 'This browser has no room left to keep a copy of the table to go back to.'; }
+  };
+  const told = () => { t.undoInfo = { undo: history.list(), redo: history.listRedo(), pins: history.pins(), ...(pinsError && { pinsError }) }; t.on.undoable?.(t.undoInfo); };
   const step = (kind, done) => {
     const s = history[kind](state);
     if (!s) return t.on.error(`Nothing to ${kind}.`);
@@ -47,19 +57,31 @@ export function localTransport({ timelineCap = TIMELINE_CAP } = {}) {
       const before = undoable(action) ? mark(state) : null;
       const res = apply(state, action, { role: 'dm', userId: 'local' });
       if (!res.ok) return t.on.error(res.error);
-      if (before) { history.record(before, state, describeStep(action, res.events, before, state), capTimeline(state.timeline, timelineCap)); told(); }
+      if (before) {
+        history.record(before, state, describeStep(action, res.events, before, state), capTimeline(state.timeline, timelineCap));
+        if (history.track(action, res.events, before, state)) keepPins();
+        told();
+      }
       store.set('hextable.solo', state);
       t.on.update(state, res.events);
     },
     undo: () => step('undo', 'undone'),
     redo: () => step('redo', 'redone'),
+    // Go back to the start of the last fight or to the last rest, with new dice; undo takes it back.
+    rewind(to) {
+      const s = to === 'fight' || to === 'rest' ? history.rewind(state, to) : null;
+      if (!s) return t.on.error(to === 'rest' ? 'No rest to go back to.' : 'No fight to go back to.');
+      store.set('hextable.solo', state);
+      told();
+      t.on.update(state, [{ type: 'rewound', to, label: s.label }]);
+    },
     // The state and the files this tab keeps, as the server's export has them. Nothing leaves this tab.
     export: async () => {
       let files = { assets: [], skipped: [], limit: EXPORT_ASSET_BYTES };
       try { files = await t.assets.pack({ first: assetRefs(state) }); } catch { /* this browser keeps no files: the export has the game only */ }
       return { code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state), assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit };
     },
-    reset() { state = newGame((Math.random() * 1e9) | 0); history.clear(); told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
+    reset() { state = newGame((Math.random() * 1e9) | 0); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
   };
   return t;
 }

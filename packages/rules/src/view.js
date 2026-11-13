@@ -393,7 +393,7 @@ export function viewEvents(events, state, viewer) {
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
         break;
       case 'encounterStart':
-        out.push({ type: ev.type, center: ev.center, radius: ev.radius,
+        out.push({ type: ev.type, ...(ev.fight !== undefined && { fight: ev.fight, where: ev.where }), center: ev.center, radius: ev.radius,
           order: ev.order.filter((o) => cls(o.id) !== 'hidden').map((o) => (cls(o.id) === 'open' ? { ...o } : { id: o.id })) });
         break;
       case 'joined':

@@ -289,11 +289,30 @@ function build(root, ch, options) {
   const onList = (k) => c.skills.from === 'any' || c.skills.from.includes(k);
   // Choices of features that ask for one, resolved below; they can change what a feature grants, so they come first.
   const names = [...kids(kid(ch, 'featurelist')), ...kids(kid(ch, 'featlist'))].map((f) => norm(txt(f, 'name')));
+  // Options picked as a list (Metamagic) are often named only in the powers list ("Metamagic (Quickened Spell)").
+  const pickNames = [...names, ...kids(kid(ch, 'powers')).map((p) => norm(txt(p, 'name')))].filter(Boolean);
+  const unpicked = new Set();
+  const isNamed = (o, list) => o.name && list.some((n) => ` ${n} `.includes(` ${norm(o.name)} `));
+  // A feature that takes a list of options (Metamagic at 2, 10 and 17): each option once across the features of that
+  // name (derive.js refuses an option chosen twice), in the order the sheet's features come; what is not named is
+  // left for the DM, which the engine allows for these; what is named beyond the places there are is reported.
+  const resolvePick = (f) => {
+    const same = featuresOf(sheet).filter((y) => y.f.pick && y.f.name === f.name && y.f.id !== f.id);
+    const taken = new Set(same.flatMap((y) => [sheet.choices?.[y.f.id] ?? []].flat()));
+    const named = f.options.filter((o) => !taken.has(o.id) && isNamed(o, pickNames));
+    const later = same.filter((y) => !sheet.choices?.[y.f.id] && !unpicked.has(y.f.id)).length;   // places still to fill
+    const mine = named.slice(0, f.pick);
+    if (mine.length) (sheet.choices ??= {})[f.id] = mine.map((o) => o.id);
+    else unpicked.add(f.id);
+    if (mine.length < f.pick) note('features', `${f.name} (level ${f.level})`, `${f.pick - mine.length} option${f.pick - mine.length === 1 ? '' : 's'} not named on the sheet, or named for an earlier ${f.name}: left unchosen for the DM to choose.`, { level: f.level });
+    if (!later) for (const o of named.slice(f.pick)) note('features', `${f.name}: ${o.name}`, `Named on the sheet more times than ${f.name} has places, or twice; an option is known once, so it is left out.`);
+  };
   const resolveChoices = () => {
-    for (let pass = 0; pass < 4; pass++) {
-      const ask = featuresOf(sheet).filter((x) => x.f.options && !x.option && !sheet.choices?.[x.f.id]);
+    for (let pass = 0; pass < 12; pass++) {
+      const ask = featuresOf(sheet).filter((x) => x.f.options && !x.option && !sheet.choices?.[x.f.id] && !unpicked.has(x.f.id));
       if (!ask.length) return;
       const x = ask[0], f = x.f;
+      if (f.pick) { resolvePick(f); continue; }
       const named = f.options.find((o) => o.name && names.some((n) => ` ${n} `.includes(` ${norm(o.name)} `)));
       let pick = named, why = 'It is named on the sheet.';
       if (!pick) {
