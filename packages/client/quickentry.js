@@ -4,6 +4,7 @@
 import { ABILITIES, DAMAGE_TYPES, SIZES, SKILLS, lintRecord } from './shared/content/schema.js';
 import { SPELLS } from './shared/content/index.js';
 import { initBuild } from './buildsheet.js';
+import { initImport } from './importfg.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -119,8 +120,9 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
   const sure = el('div', { class: 'qe-sure', id: 'qe-sure', hidden: true });
   const bBuild = el('button', { type: 'button', id: 'qb-add', text: 'Build from class' });
   const bLevel = el('button', { type: 'button', id: 'qb-levelup', text: 'Level up', disabled: true });
-  host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bBuild, bEdit, bLevel, bRemove), sure);
-  const B = initBuild({ act, toast, getState, getSelected });
+  const IM = initImport({ act, toast, getState, getSelected });      // a Fantasy Grounds character, read and shown before it is set up
+  host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bBuild, IM.button(), bEdit, bLevel, bRemove), sure);
+  const B = initBuild({ act, toast, getState, getSelected, importButton: () => IM.button() });
   bBuild.onclick = () => B.open({ mode: 'add' });
   bLevel.onclick = () => { const e = getState()?.entities[getSelected()]; if (e?.sheet) B.open({ mode: 'levelup', entity: e }); };
 
@@ -296,13 +298,14 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
     },
     // Called with each batch of events: an added or corrected character closes the form.
     events(events) {
-      B.events(events);
+      B.events(events); IM.events(events);
       if (!pending) return;
       const done = events.find((ev) => ev.type === pending);
       if (!done) return;
       const name = getState()?.entities[done.id]?.name ?? 'The character';
       close(); toast(pending === 'edited' ? `${name} corrected.` : `${name} joins the party.`, true);
     },
+    refused: (msg) => IM.refused(msg),
     open, recordOf, toRecord, fromRecord,
   };
 }

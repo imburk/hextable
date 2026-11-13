@@ -20,6 +20,7 @@ import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
 import { initScenes } from './scenes.js';
+import { initReactionPrompt } from './reactionprompt.js';
 import { createDice, MAX_DICE } from './dice.js';
 import { objectDef } from './shared/walls.js';
 
@@ -268,7 +269,7 @@ function onUpdate(state, events, fresh) {
   const first = !S || fresh;
   S = state;
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh();
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
   QE.events(events);
@@ -550,6 +551,7 @@ function refresh() {
   if (isDM()) renderDM();
   HO.refresh();
   SC.refresh();
+  RP.refresh();
 }
 
 function renderLog() {
@@ -825,7 +827,7 @@ function leaveTable(btn) {
     return;
   }
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
-  T.leave?.(); T = null; S = null; SC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
+  T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   for (const id of ['dm', 'sheet', 'log', 'card', 'handouts', 'viewer']) $(id).hidden = true;
   $('btn-dm').hidden = $('btn-leave').hidden = $('btn-undo').hidden = true;
   lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
@@ -850,6 +852,7 @@ addEventListener('keydown', (ev) => {
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
+const RP = initReactionPrompt({ act, state: () => S, isDM });
 
 // For the browser console, tests and future automation.
 window.hextable = { R, ED, act, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
@@ -868,7 +871,7 @@ function start(transport) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    SC.refused();
+    SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => S && showUndo();

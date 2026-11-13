@@ -33,3 +33,16 @@
 .qb-stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; text-align: center; } .qb-stat small { display: block; color: var(--muted); font-size: 12px; } .qb-stat b { font: 700 20px var(--display); color: var(--accent); }
 .qb-derived table { width: 100%; } .qb-gain { border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; }
 .qb .qe-foot .qe-problems { max-height: 28vh; overflow-y: auto; }
+
+/* Import from Fantasy Grounds (importfg.js) */
+.fgi { width: min(620px, 100%); z-index: 9; overflow-x: hidden; }
+.fgi .close { float: none; }
+.fgi h3 { margin: 0 0 6px; }
+.fgi-list { margin: 0; padding: 0 0 0 18px; font-size: 14px; overflow-wrap: anywhere; } .fgi-list li { margin-bottom: 6px; } .fgi-list small { color: var(--muted); }
+.fgi-sec { border: 1px solid var(--line); border-radius: var(--radius); padding: 0 10px 8px; margin-bottom: 8px; }
+.fgi-sec summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.fgi-n { margin-left: auto; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.fgi-adj { border: 1px solid var(--accent) !important; border-radius: var(--radius); padding: 10px !important; background: #0003; }
+.fgi-error { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--radius); background: var(--bad); color: #fff; font-weight: 600; overflow-wrap: anywhere; }
+.fgi-keep .row { margin-top: 6px; } .fgi-keep .check input { width: 22px; height: 22px; }
+.fgi .qe-foot .row button { flex: 1 1 140px; }
