@@ -2127,6 +2127,22 @@ const handlers = {
     s.encounter.budget[time]--; s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
     ev.push({ type: 'std', id: e.id, action: 'Dash' });
   },
+  // Stand up from Prone (E14). In a fight, on its own turn, for half its Speed (the SRD lets it be done
+  // during a move); outside one, at no cost. A creature with a Speed of 0 cannot.
+  stand(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    e.cond.prone || fail(`${e.name} is not Prone.`);
+    if (s.encounter && inFight(s, e.id)) {
+      current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
+      const speed = speedOf(s, e), cost = Math.floor(speed / 2 / FT) * FT;
+      speed > 0 || fail(`${e.name} has a Speed of 0 and cannot stand up.`);
+      s.encounter.budget.move >= cost || fail(`Standing up takes ${cost} ft of movement; ${e.name} has ${s.encounter.budget.move} ft left.`);
+      s.encounter.budget.move -= cost;
+    }
+    delete e.cond.prone;
+    ev.push({ type: 'stood', id: e.id });
+  },
   disengage(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
