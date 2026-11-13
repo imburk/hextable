@@ -103,6 +103,20 @@ export const barbarian = {
     ]
   },
   "casting": null,
+  "multiclass": {
+    "requires": {
+      "all": [
+        "str"
+      ]
+    },
+    "armour": [
+      "shield"
+    ],
+    "weapons": [
+      "martial"
+    ],
+    "caster": null
+  },
   "features": [
     {
       "id": "rage",

@@ -148,6 +148,18 @@ export const warlock = {
       5
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "cha"
+      ]
+    },
+    "armour": [
+      "light"
+    ],
+    "weapons": [],
+    "caster": "pact"
+  },
   "features": [
     {
       "id": "eldritch-invocations",

@@ -211,6 +211,27 @@ export const ranger = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "dex",
+        "wis"
+      ]
+    },
+    "armour": [
+      "light",
+      "medium",
+      "shield"
+    ],
+    "weapons": [
+      "martial"
+    ],
+    "skills": {
+      "choose": 1,
+      "from": "class"
+    },
+    "caster": "half"
+  },
   "features": [
     {
       "id": "spellcasting",

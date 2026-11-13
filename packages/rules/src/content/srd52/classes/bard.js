@@ -247,6 +247,23 @@ export const bard = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "cha"
+      ]
+    },
+    "armour": [
+      "light"
+    ],
+    "weapons": [],
+    "skills": {
+      "choose": 1,
+      "from": "any"
+    },
+    "tools": "One Musical Instrument",
+    "caster": "full"
+  },
   "features": [
     {
       "id": "bardic-inspiration",
