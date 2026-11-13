@@ -110,7 +110,7 @@ export function serverTransport(first) {
       else if (msg.t === 'export') { pendingExport?.resolve(msg.table); }
       else if (msg.t === 'error' && pendingExport && !msg.expired) pendingExport.reject(new Error(msg.error));
       else if (msg.t === 'history') t.on.history?.(msg);
-      else if (msg.t === 'undoable') { t.undoInfo = { undo: msg.undo, redo: msg.redo }; t.on.undoable?.(t.undoInfo); }
+      else if (msg.t === 'undoable') { t.undoInfo = { undo: msg.undo, redo: msg.redo, ...(msg.pins && { pins: msg.pins }) }; t.on.undoable?.(t.undoInfo); }
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
     };
@@ -135,6 +135,9 @@ export function serverTransport(first) {
   // The DM takes back the last action, or does it again. The server answers with a fresh update.
   t.undo = () => (ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'undo' })) : t.on.error('Reconnecting to the table…'));
   t.redo = () => (ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'redo' })) : t.on.error('Reconnecting to the table…'));
+  // The DM takes the table back to the start of the last fight (to: 'fight') or to the last rest (to: 'rest'). The server answers
+  // with a whole update, or with its own refusal ("No fight to go back to.") on on.error.
+  t.rewind = (to) => (ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'rewind', to })) : t.on.error('Reconnecting to the table…'));
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
 }

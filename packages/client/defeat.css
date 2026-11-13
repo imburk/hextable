@@ -1,0 +1,24 @@
+/* The party has fallen (defeat.js). Above the drawer, under a reaction question. The map stays visible and tappable around the card. */
+#df { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 13; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); background: #0006; pointer-events: none; }
+#df[hidden], #df-chip[hidden] { display: none; }
+.df-card { pointer-events: auto; width: min(440px, 100%); max-height: 100%; overflow-y: auto; background: var(--panel-2); color: var(--ink); border: 2px solid var(--line); border-top: 4px solid var(--bad); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; animation: df-in .2s ease-out; }
+@keyframes df-in { from { opacity: 0; transform: translateY(10px); } } @media (prefers-reduced-motion: reduce) { .df-card { animation: none; } }
+.df-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.df-card h2 { margin: 0 0 10px; font-size: 22px; }
+.df-card h2:focus { outline: none; }
+.df-x { min-width: 44px; min-height: 44px; padding: 0; font-size: 22px; line-height: 1; margin: -8px -8px 0 0; }
+.df-who { list-style: none; margin: 0 0 12px; padding: 0; }
+.df-who li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.df-who li span { color: var(--muted); }
+.df-next, .df-sure { margin: 0 0 12px; }
+.df-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.df-actions button { flex: 1 1 140px; min-height: 48px; }
+.df-actions .df-go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.df-choice { margin-bottom: 10px; }
+.df-choice button { width: 100%; min-height: 48px; text-align: left; font-weight: 700; }
+.df-choice p { margin: 4px 2px 0; font-size: 14px; color: var(--muted); }
+.df-choice.off p { color: var(--ink); }
+.df-err { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radius); background: var(--bad); color: #fff; font-weight: 600; }
+#df-chip { position: fixed; z-index: 13; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); top: calc(max(10px, env(safe-area-inset-top)) + 100px); min-height: 44px; max-width: calc(100% - 24px); padding: 8px 16px; border-radius: 999px; background: var(--panel-2); border: 2px solid var(--bad); font-weight: 600; box-shadow: 0 4px 20px #0006; }
+body.drawer-modal #df-chip, body.rp-open #df-chip { display: none; }
+body.df-open #gl { touch-action: auto; }

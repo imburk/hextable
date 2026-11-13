@@ -31,6 +31,7 @@ import { createDice, MAX_DICE } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
 import { initTableControls, importLine } from './tablecontrols.js';
+import { initDefeat } from './defeat.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -274,6 +275,7 @@ function describe(ev) {
     case 'light': return [ev.bright || ev.dim ? `${n(ev.id)} carries ${ev.name ? `a ${ev.name.toLowerCase()}` : 'a light'}.` : `${n(ev.id)}'s light goes out.`];
     case 'follow': return [ev.leader ? `${n(ev.id)} follows ${n(ev.leader)}.` : ev.why ? `${n(ev.id)} couldn't keep up with ${n(ev.was)} and stops following.` : `${n(ev.id)} stops following ${n(ev.was)}.`];
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
+    case 'rewound': return [`The DM took the table back to ${ev.to === 'rest' ? 'the last rest' : 'the start of the fight'}.`, 'head'];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     // The transcript of a scene, one line each, until the scene screen is built.
@@ -320,7 +322,7 @@ function onUpdate(state, events, fresh) {
   S = state;
   TL.setPace(pace());
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); D.reset();
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); DF.fresh(); D.reset();
     if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
@@ -351,6 +353,7 @@ function idled() {
   played.push({ type: 'idle', t: performance.now() });
   syncPlaying();
   refresh();
+  syncCards();
   const cur = S.entities[current(S)];
   if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack) {
     clearTimeout(aiTimer);
@@ -616,6 +619,7 @@ function refresh() {
   CLS.sync(mode);
   D.sync(S);
   ST.sync(S);
+  syncCards();
   if (!$('about').hidden) renderAbout();
 }
 
@@ -893,7 +897,7 @@ function leaveTable(btn) {
     return;
   }
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
-  TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
+  TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); DF.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
   $('btn-leave').hidden = $('btn-undo').hidden = true;
@@ -923,6 +927,9 @@ const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, 
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => S, isDM });
+// The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
+const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
+function syncCards() { const calm = !TL.busy(); DF.sync(S, { calm }); }
 // Class features that need a choice first (classes.js): Divine Spark's mode, a Wild Shape form, Metamagic...
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
@@ -956,10 +963,10 @@ function start(transport, map = null) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    CLS.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
+    CLS.refused(msg); DF.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
-  T.on.undoable = () => S && showUndo();
+  T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };
   T.on.history = (msg) => {
     if (!S) return;
     if (msg.recent) {             // what happened before we sat down, so the log has some context
