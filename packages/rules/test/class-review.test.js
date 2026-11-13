@@ -123,3 +123,27 @@ test("Divine Intervention through `feature` is refused and keeps its use; `cast`
   ok(apply(s, { type: "cast", actor: "hero", spell: "healing-word", target: "hero", via: "divine-intervention" }, DM));
   assert.equal(s.entities.hero.uses["divine-intervention"], 0);
 });
+
+const paladin = (level, more = {}) => ({ name: "Ka", class: "paladin", level, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 },
+  skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword", "light-crossbow", "unarmed-strike"], ...more });
+
+// M4. Radiant Strikes: "When you hit a target with an attack roll using a Melee weapon or an Unarmed
+// Strike, the target takes an extra 1d8 Radiant damage" (Paladin, level 11).
+test("Radiant Strikes through apply(): a melee weapon or Unarmed Strike hit adds 1d8 Radiant; a ranged one, a miss or level 10 does not", () => {
+  const strike = (level, attack, ac) => {
+    const s = field(paladin(level));
+    ok(apply(s, { type: "place", actor: "m1", to: { q: 1, r: 0 } }, DM));
+    s.entities.m1.ac = ac;
+    fight(s); turnOf(s, "hero");
+    return ok(apply(s, { type: "attack", actor: "hero", target: "m1", attack }, DM)).events.filter((x) => x.type === "damage");
+  };
+  for (const w of ["longsword", "unarmed-strike"]) {
+    const d = strike(11, w, -30), rad = d.filter((x) => x.dtype === "radiant");
+    assert.equal(rad.length, 1, w);
+    assert.ok(rad[0].dice.length >= 1 && rad[0].dice.every((x) => x.sides === 8) && rad[0].bonus === 0, w);
+    assert.equal(rad[0].by, "hero");
+  }
+  assert.equal(strike(11, "light-crossbow", -30).filter((x) => x.dtype === "radiant").length, 0, "a ranged weapon");
+  assert.equal(strike(11, "longsword", 99).length, 0, "a miss");
+  assert.equal(strike(10, "longsword", -30).filter((x) => x.dtype === "radiant").length, 0, "before level 11");
+});
