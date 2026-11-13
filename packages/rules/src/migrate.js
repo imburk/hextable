@@ -12,7 +12,7 @@ import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
 
-export const VERSION = 19;
+export const VERSION = 20;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -96,6 +96,14 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) if (e.kind === 'pc' && !(Number.isInteger(e.xp) && e.xp >= 0)) e.xp = xpFor(e.level ?? 1);
   if (state.conclusion === undefined || !validConclusion(state.conclusion)) state.conclusion = null;
   if (state.settings) { state.settings.conclusion ??= 'dm'; state.settings.xpShare ??= 'split'; }
+  // Version 20: a built character's sheet may hold magic items (`items`) and the one it will attune to at its next
+  // Short Rest (`attuning`; derive.js). A table saved before then has none, so its characters play as they did. An
+  // `attuning` that names no item on the sheet is dropped.
+  for (const e of Object.values(state.entities)) {
+    const sh = e.sheet;
+    if (!sh || typeof sh !== 'object' || sh.attuning === undefined) continue;
+    if (!(Array.isArray(sh.items) && sh.items.some((x) => x?.id === sh.attuning?.item))) delete sh.attuning;
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

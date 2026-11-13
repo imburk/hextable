@@ -474,7 +474,12 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'gear':                                     // an item came or went, for a creature of theirs; who with, if they know of them
-        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}) });
+        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why', 'key', 'pack', 'nameOnly']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}) });
+        break;
+      case 'equip':                                    // a magic item put on or taken off, attuning chosen, an Attunement made or ended:
+      case 'attuning':                                 // a party creature's, whose sheet the party is sent; never another's
+      case 'attuned':
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'on', 'end', 'cleared', 'failed']));
         break;
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));

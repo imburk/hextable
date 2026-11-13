@@ -14,6 +14,7 @@
 // whole amount); loot is what the DM enters, never rolled.
 import { CONTENT } from './content/index.js';
 import { unknown } from './vision.js';
+import { itemName } from './derive.js';
 
 export const REWARD_LIMITS = { loot: 40, bonus: 20, name: 60, reason: 80, xp: 1000000, qty: 9999 };
 
@@ -38,7 +39,7 @@ function share(s, c) {
 
 // At the end of a fight (engine.js, endEncounter), before the fight is cleared. `who` is the fight's
 // creatures; `enc` the fight.
-export function concludeFight(s, ev, result, enc, who) {
+export function concludeFight(s, ev, result, enc, who, land = null) {
   if (result !== 'victory' && result !== 'ended') return;
   const mode = s.settings.conclusion ?? 'dm';
   if (mode === 'off') return;
@@ -49,11 +50,13 @@ export function concludeFight(s, ev, result, enc, who) {
   share(s, c);
   s.conclusion = c;
   ev.push({ type: 'conclusionReady', fight: c.fight });
-  if (mode === 'auto') publish(s, ev);
+  if (mode === 'auto') publish(s, ev, land);
 }
 
 // Publish: shares into `xp`, assigned loot into `gear`, the record into the timeline.
-function publish(s, ev) {
+// A loot line that names a magic item of the pack (`item`) lands on a built character's sheet as that item, through
+// `land` (engine.js); a character typed in by hand, or a sheet that cannot take it, gets its name in `gear`.
+function publish(s, ev, land = null) {
   const c = s.conclusion;
   // Who the party knew of, now: the published record names only those (view.js shapes it per viewer).
   for (const f of c.foes) f.seen = !!s.entities[f.id] && !unknown(s, s.entities[f.id]);
@@ -69,6 +72,11 @@ function publish(s, ev) {
   for (const l of c.loot) {
     const e = l.to && s.entities[l.to];
     if (!e) continue;
+    if (l.item && land && e.sheet && l.qty <= 20) {
+      const spec = { item: l.item, ...(l.base !== undefined ? { base: l.base } : {}), ...(l.type !== undefined ? { type: l.type } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}) };
+      const got = land(s, e, Array.from({ length: l.qty }, () => ({ ...spec })), ev);
+      if (got) { for (const x of got) ev.push({ type: 'gear', id: e.id, item: l.name, key: x.id, pack: l.item, why: 'loot' }); continue; }
+    }
     const item = l.qty > 1 ? `${l.name} x${l.qty}` : l.name;
     e.gear.push(item);
     ev.push({ type: 'gear', id: e.id, item, why: 'loot' });
@@ -89,7 +97,7 @@ function publish(s, ev) {
 const record = (c) => structuredClone({ fight: c.fight, result: c.result, rounds: c.rounds, where: c.where, foes: c.foes, party: c.party, xp: c.xp, loot: c.loot });
 
 // The DM's action. { type: 'conclusion', edit: { foes?, bonus?, per?, loot? } } | { publish: true } | { skip: true }
-export function rewardActions(fail) {
+export function rewardActions(fail, land = null) {
   return {
     conclusion(s, a, ctx, ev) {
       ctx.role === 'dm' || fail('Only the DM can settle the rewards.');
@@ -105,7 +113,7 @@ export function rewardActions(fail) {
       }
       if (a.publish !== undefined) {
         a.publish === true || fail('Publish is true.');
-        publish(s, ev);
+        publish(s, ev, land);
         return;
       }
       // Every change is checked on a copy first, so a refused edit changes nothing.
@@ -156,12 +164,15 @@ export function rewardActions(fail) {
           Array.isArray(l.add) || fail('Loot to add is a list.');
           for (const x of l.add) {
             (x && typeof x === 'object') || fail('A loot line has a name.');
-            const name = text(x.name), from = x.from === undefined ? undefined : text(x.from);
+            // `item`: a magic item of the pack (and its base, type or spell), so the line lands as that item; its name is the item's unless given.
+            const def = x.item === undefined ? null : (typeof x.item === 'string' && Object.hasOwn(CONTENT.items, x.item) ? CONTENT.items[x.item] : fail(`"${String(x.item)}" is not a magic item of the pack.`));
+            for (const k of ['base', 'type', 'spell']) (x[k] === undefined || (def && typeof x[k] === 'string' && x[k].length <= 40)) || fail(`A loot line's ${k} goes with a magic item.`);
+            const name = x.name === undefined && def ? itemName(def, x) : text(x.name), from = x.from === undefined ? undefined : text(x.from);
             (name && name.length <= REWARD_LIMITS.name) || fail(`Name each item in at most ${REWARD_LIMITS.name} characters.`);
             const qty = x.qty ?? 1;
             (isInt(qty) && qty >= 1 && qty <= REWARD_LIMITS.qty) || fail('A quantity is a whole number, 1 or more.');
             (from === undefined || from.length <= REWARD_LIMITS.name) || fail(`Say where it came from in at most ${REWARD_LIMITS.name} characters.`);
-            next.loot.push({ id: `l${next.next++}`, name, qty, ...(from ? { from } : {}), to: holder(x.to) });
+            next.loot.push({ id: `l${next.next++}`, name, qty, ...(from ? { from } : {}), to: holder(x.to), ...(def ? { item: x.item, ...Object.fromEntries(['base', 'type', 'spell'].filter((k) => x[k] !== undefined).map((k) => [k, x[k]])) } : {}) });
           }
         }
         if (l.assign !== undefined) {
@@ -188,6 +199,6 @@ export function playerConclusion(c, name = (f) => f.name) {
     foes: c.foes.filter((f) => f.seen).map((f) => ({ id: f.id, name: name(f), counts: f.counts })),
     party: [...c.party],
     xp: { bonus: c.xp.bonus.map((b) => ({ amount: b.amount, reason: b.reason })), per: { ...c.xp.per } },
-    loot: c.loot.map((l) => ({ id: l.id, name: l.name, qty: l.qty, ...(l.from ? { from: l.from } : {}), to: l.to })),
+    loot: c.loot.map((l) => ({ id: l.id, name: l.name, qty: l.qty, ...(l.from ? { from: l.from } : {}), to: l.to, ...(l.item ? { item: l.item } : {}) })),
   };
 }

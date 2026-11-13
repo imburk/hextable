@@ -588,7 +588,11 @@ export const RESTS = ['short', 'long'];
 export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
 export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
 export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
-  'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists'];
+  'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists',
+  // Since the magic items (#189): a score that becomes a number unless already as high (Amulet of Health), a bonus to
+  // Armor Class while wearing no armour and holding no Shield (Bracers of Defense), a sense gained or its range increased
+  // (Goggles of Night).
+  'setAbility', 'bareAc', 'senseRange'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -743,7 +747,12 @@ function lintGrants(g, cls, say) {
   if (g.ac !== undefined && !(g.ac && isInt(g.ac.base) && allOf(ABILITIES)(g.ac.abilities) && typeof g.ac.shield === 'boolean')) say('ac is { base, abilities, shield }');
   for (const k of ['armouredAc', 'rangedAttack', 'extraAttack', 'expertise', 'cantrips']) if (g[k] !== undefined && !(isInt(g[k]) && g[k] > 0 && g[k] <= 5)) say(`${k} is a small whole number`);
   if (g.speed !== undefined) { lintAmount(g.speed.add, cls, say, 'speed.add'); if (!['heavy', 'armour', undefined].includes(g.speed.unless)) say('speed.unless is heavy or armour'); }
-  if (g.speeds !== undefined && !(allOf(['climb', 'swim'])(g.speeds) && g.speeds.length)) say('speeds lists climb and/or swim (equal to Speed)');
+  // `speeds`: climb and/or swim equal to Speed, or feet for climb, swim or fly ({ swim: 40 }: Ring of Swimming).
+  if (g.speeds !== undefined && !(Array.isArray(g.speeds) ? allOf(['climb', 'swim'])(g.speeds) && g.speeds.length
+    : g.speeds && typeof g.speeds === 'object' && Object.keys(g.speeds).length && Object.entries(g.speeds).every(([m, v]) => ['climb', 'swim', 'fly'].includes(m) && isInt(v) && v > 0 && v % 5 === 0 && v <= 300))) say('speeds lists climb and/or swim (equal to Speed), or gives feet for climb, swim or fly');
+  if (g.setAbility !== undefined && !(g.setAbility && typeof g.setAbility === 'object' && Object.keys(g.setAbility).length && Object.entries(g.setAbility).every(([a, v]) => ABILITIES.includes(a) && isInt(v) && v >= 1 && v <= 30))) say('setAbility gives scores (1 to 30) for abilities');
+  if (g.bareAc !== undefined && !(isInt(g.bareAc) && g.bareAc > 0 && g.bareAc <= 5)) say('bareAc is a small whole number');
+  if (g.senseRange !== undefined && !validSenses(g.senseRange)) say('senseRange gives feet for special senses');
   if (g.senses !== undefined && !validSenses(g.senses)) say('senses gives feet for special senses');
   if (g.saves !== undefined && !(g.saves === 'all' || allOf(ABILITIES)(g.saves))) say('saves lists abilities, or is "all"');
   for (const k of ['sneak', 'martialArts']) if (g[k] !== undefined) lintAmount(g[k], cls, say, k);
@@ -918,10 +927,75 @@ function lintFeatDef(e, say) {
   if (findFunction(e)) say('content is data only');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, multiclass, advancement }) {
+// ---------- magic items (content/srd52/magic-items.js) ----------
+// A magic item (SRD "Magic Items"): what it is, whether it needs Attunement and from whom, where it must
+// be worn or held for its magic, the mundane item it is made from, its bonus, and what it grants while
+// active (worn or held, and attuned if it needs it). `activate` describes a use for a later action (E18);
+// nothing runs it yet. Design: docs/specs/rules-expansion.md, "Magic items" amendment.
+export const ITEM_CATEGORIES = ['armor', 'potion', 'ring', 'rod', 'scroll', 'staff', 'wand', 'weapon', 'wondrous'];
+export const RARITIES = ['common', 'uncommon', 'rare', 'very-rare', 'legendary', 'artifact', 'varies'];
+// Where an item is worn or held. The SRD lets a creature wear one of each of the first six at a time ("Multiple
+// Items of the Same Kind"), one Shield, and up to three Ioun Stones orbiting its head.
+export const WEAR = ['feet', 'hands', 'wrists', 'armour', 'head', 'cloak', 'shield', 'weapon', 'ring', 'neck', 'waist', 'body', 'eyes', 'orbit', 'carried'];
+export const WEAR_ONE = ['feet', 'hands', 'wrists', 'armour', 'head', 'cloak', 'shield'];
+export const ITEM_VARIANTS = ['damageType', 'spell'];
+function lintItem(e, say, ctx = {}) {
+  if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source) || !isText(e.text)) say('needs a kebab-case id, a name, a source and text');
+  for (const k of Object.keys(e)) if (!['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'].includes(k)) say(`"${k}" is not something an item has`);
+  if (typeof e.checked !== 'boolean') say('needs `checked`');
+  if (!TIERS.includes(e.tier)) say(`tier is one of ${TIERS.join(', ')}`);
+  if (!ITEM_CATEGORIES.includes(e.category)) say(`category is one of ${ITEM_CATEGORIES.join(', ')}`);
+  if (!RARITIES.includes(e.rarity)) say(`rarity is one of ${RARITIES.join(', ')}`);
+  if (!WEAR.includes(e.wear)) say(`wear is one of ${WEAR.join(', ')}`);
+  const at = e.attune;
+  if (at !== undefined && !(at === true || (at && typeof at === 'object' && Object.keys(at).length === 1 && ((Array.isArray(at.by) && at.by.length && at.by.every((x) => ID.test(x))) || at.spellcaster === true)))) say('attune is true, { by: [class ids] } or { spellcaster: true }');
+  const b = e.base;
+  if (b !== undefined) {
+    const list = (v, ids) => v === 'any' || (Array.isArray(v) && v.length && v.every((x) => !ids || ids.has(x)));
+    if (!b || typeof b !== 'object' || Object.keys(b).length !== 1) say('base is { weapon } or { armour }');
+    else if (b.weapon !== undefined) { if (!(list(b.weapon, ctx.weapons) || b.weapon === 'melee')) say('base.weapon is "any", "melee" or weapon ids of the pack'); if (e.wear !== 'weapon') say('a weapon is worn as a weapon'); }
+    else if (b.armour !== undefined) { if (!list(b.armour, ctx.armour)) say('base.armour is "any" or armour ids of the pack'); if (e.wear !== 'armour') say('armour is worn as armour'); }
+    else say('base is { weapon } or { armour }');
+  }
+  if (e.bonus !== undefined && !(isInt(e.bonus) && e.bonus >= 1 && e.bonus <= 3 && (b || e.wear === 'shield'))) say('bonus is 1 to 3, on a weapon, armour or a Shield');
+  if (e.damageType !== undefined && !(DAMAGE_TYPES.includes(e.damageType) && b?.weapon)) say('damageType is a damage type, on a weapon');
+  if (e.properties !== undefined && !(allOf(WEAPON_PROPERTIES)(e.properties) && e.properties.length && b?.weapon)) say('properties are weapon properties, on a weapon');
+  if (e.trained !== undefined && !(e.trained === true && b?.armour)) say('trained is true, on armour');
+  if (e.variant !== undefined && !ITEM_VARIANTS.includes(e.variant)) say(`variant is one of ${ITEM_VARIANTS.join(', ')}`);
+  if (e.charges !== undefined && !(e.charges && isInt(e.charges.max) && e.charges.max > 0 && e.charges.max <= 50 && Object.keys(e.charges).every((k) => ['max', 'regain'].includes(k)) && (e.charges.regain === undefined || isDice(e.charges.regain)))) say('charges is { max, regain? }');
+  if (e.grants !== undefined) {
+    lintGrants(e.grants, FEAT_CLASS, say);
+    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
+    const chosen = JSON.stringify(e.grants).includes('"chosen"');
+    if (chosen !== (e.variant === 'damageType' && !!e.grants)) say('a modifier\'s "chosen" damage type goes with variant "damageType"');
+  }
+  if (e.activate !== undefined) {
+    if (!Array.isArray(e.activate) || !e.activate.length) say('activate is a list of uses');
+    else for (const u of e.activate) {
+      const us = (m) => say(`activate: ${m}`);
+      if (!u || typeof u !== 'object' || !Object.keys(u).every((k) => ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'dc', 'effects'].includes(k))) { us('a use is { name?, time, cost?, consumed?, spell?, level?, dc?, effects? }'); continue; }
+      if (!ACTION_TIMES.includes(u.time)) us(`time is one of ${ACTION_TIMES.join(', ')}`);
+      if (u.cost !== undefined && !(isInt(u.cost) && u.cost > 0 && e.charges)) us('cost is charges, on an item with charges');
+      if (u.consumed !== undefined && u.consumed !== true) us('consumed is true or left out');
+      if (u.spell !== undefined && !(ID.test(u.spell) && (!ctx.spells || ctx.spells.has(u.spell)))) us(`spell "${u.spell}" is not in the pack`);
+      if (u.level !== undefined && !(isInt(u.level) && u.level >= 1 && u.level <= 9 && u.spell)) us('level is a spell level, with a spell');
+      if (u.dc !== undefined && !(isInt(u.dc) && u.dc >= 5 && u.dc <= 30 && u.spell)) us('dc is a save DC, with a spell');
+      if ((u.spell === undefined) === (u.effects === undefined)) us('a use casts a spell or has effects');
+      if (u.effects !== undefined) lintSteps(u.effects, us);
+      if (u.name !== undefined && !isText(u.name)) us('name is text');
+    }
+  }
+  const gives = e.grants || e.bonus || e.base || e.wear === 'shield';
+  if (e.tier === 'auto' && !gives) say('marked auto but gives nothing the engine applies');
+  if (e.tier === 'manual' && (e.grants || e.bonus)) say('marked manual but gives something');
+  if (findFunction(e)) say('content is data only');
+}
+
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
-  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef]]) {
+  const itemCtx = { weapons: new Set(weapons.map((w) => w.id)), armour: new Set(armour.filter((a) => a.category !== 'shield').map((a) => a.id)), spells: spells.length ? new Set(spells.map((x) => x.id)) : null };
+  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);
