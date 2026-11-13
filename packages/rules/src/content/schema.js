@@ -32,7 +32,10 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
-  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated'];
+  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip'];
+
+// The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
+export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
 
 // Things on a map (docs/specs/maps-and-objects.md).
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
@@ -96,7 +99,8 @@ function lintModifier(m, say) {
   // `uses: 1`: the first roll it applies to uses it up (Guiding Bolt, Vicious Mockery).
   if (m.uses !== undefined && m.uses !== 1) say('`uses` is 1 or left out');
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
-  if (m.once !== undefined && !(m.once === 'turn' && m.on === 'damage.taken' && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken');
+  // On damage.dealt (Divine Strike) it is once on each of the creature's own turns.
+  if (m.once !== undefined && !(m.once === 'turn' && ['damage.taken', 'damage.dealt'].includes(m.on) && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken or damage.dealt');
   lintWhen(m.when, say);
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
@@ -171,7 +175,7 @@ function lintSteps(steps, say, seen = { manual: false }) {
     if (kind === 'condition' || kind === 'modifier') {
       const ends = step.ends;
       if (ends !== undefined) {
-        if (!['turnStart', 'turnEnd', 'save'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd or save');
+        if (!['turnStart', 'turnEnd', 'save', 'damaged'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd, save or damaged');
         if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart or turnEnd)');
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
       }
@@ -211,6 +215,8 @@ function lintTarget(target, say) {
     // A Line's width in feet (5 when not given); `exceptCaster` for "each creature other than you".
     if (target.area.width !== undefined && !(target.area.shape === 'line' && isInt(target.area.width) && target.area.width > 0 && target.area.width % 5 === 0)) say('`width` is for a line: feet, a multiple of 5');
     if (target.area.exceptCaster !== undefined && target.area.exceptCaster !== true) say('`exceptCaster` is true or left out');
+    // `types`: only creatures of these types in the area are affected (Turn Undead's Undead).
+    if (target.area.types !== undefined && !(allOf(CREATURE_TYPES)(target.area.types) && target.area.types.length)) say('`types` lists creature types');
     // `choose`: up to so many creatures of the caster's choice in the area. `count`: so many of
     // these shapes, which the caster arranges (Fire Storm's ten cubes); the engine lays out one.
     for (const k of ['choose', 'count']) if (target.area[k] !== undefined && !(isInt(target.area[k]) && target.area[k] > 1 && target.area[k] <= 20)) say(`\`${k}\` is a whole number from 2 to 20`);
@@ -517,38 +523,49 @@ function lintArmour(e, say) {
 export const RESTS = ['short', 'long'];
 export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
 export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
-export const GRANTS = ['modifiers', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
+export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
   'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
-function lintAmount(x, cls, say, what) {
+// `{ mod, min, die }` is so many of that die as the modifier (Sear Undead), for dice only;
+// `{ byLevel: { level: value } }` is the value for the highest class level reached (Divine Strike).
+function lintAmount(x, cls, say, what, diceOk = false) {
   if (isInt(x)) return;
-  if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel'].includes(k))) {
+  if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel', 'die', 'byLevel'].includes(k))) {
     if (x.column !== undefined && !Object.hasOwn(cls.table ?? {}, x.column)) say(`${what}: no column "${x.column}" in the class table`);
     if (x.mod !== undefined && !ABILITIES.includes(x.mod)) say(`${what}: mod is an ability`);
     if (x.perLevel !== undefined && !isInt(x.perLevel)) say(`${what}: perLevel is a whole number`);
     if (x.min !== undefined && !isInt(x.min)) say(`${what}: min is a whole number`);
-    if ([x.column, x.mod, x.perLevel].filter((v) => v !== undefined).length !== 1) say(`${what}: give one of column, mod, perLevel`);
+    if (x.die !== undefined && !(diceOk && x.mod !== undefined && [4, 6, 8, 10, 12].includes(x.die))) say(`${what}: die (4 to 12) goes with mod, for dice`);
+    if (x.byLevel !== undefined && !(x.byLevel && typeof x.byLevel === 'object' && Object.keys(x.byLevel).length
+      && Object.entries(x.byLevel).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= LEVELS && (isInt(v) || (diceOk && isDice(v)))))) say(`${what}: byLevel gives a ${diceOk ? 'number or dice' : 'number'} for class levels`);
+    if ([x.column, x.mod, x.perLevel, x.byLevel].filter((v) => v !== undefined).length !== 1) say(`${what}: give one of column, mod, perLevel, byLevel`);
     return;
   }
-  say(`${what} is a number, { column }, { mod, min } or { perLevel }`);
+  say(`${what} is a number, { column }, { mod, min } , { perLevel } or { byLevel }`);
 }
+const amountish = (v) => !!v && typeof v === 'object' && ['column', 'mod', 'perLevel', 'byLevel'].some((k) => v[k] !== undefined);
 // A modifier's value in a class feature may grow with the class ({ column }) or be an ability
 // modifier ({ mod, min }); derive() puts in the number. For the linter it stands for a number.
 // A heal or tempHp step may add the class level (`addLevel`), which derive() also bakes in.
 function bakeValues(list, cls, say) {
   const out = structuredClone(list);
-  const fix = (m) => { if (m && typeof m.value === 'object' && m.value !== null && (m.value.column !== undefined || m.value.mod !== undefined)) { lintAmount(m.value, cls, say, 'modifier value'); m.value = 1; } };
+  const fix = (m) => {
+    if (!m || !amountish(m.value)) return;
+    lintAmount(m.value, cls, say, 'modifier value', m.op === 'add');
+    m.value = m.value.byLevel && Object.values(m.value.byLevel).some((v) => typeof v === 'string') ? '1d6' : 1;
+  };
   for (const x of out) {
     fix(x); fix(x.modifier);
     if (x.addLevel !== undefined && x.addLevel !== true) say('addLevel is true or left out');
     // A heal or tempHp step may roll a die from the class table ({ column }) and add an ability's
     // modifier (`addMod: "wis"`); a save step's DC may be the class's own, 8 + Proficiency Bonus +
     // an ability modifier (`dc: "wis"`). derive() bakes all three into plain dice and numbers.
-    for (const k of ['heal', 'tempHp']) if (x[k] && typeof x[k] === 'object') { lintAmount(x[k], cls, say, k); x[k] = '1d6'; }
+    for (const k of ['heal', 'tempHp', 'damage']) if (x[k] && typeof x[k] === 'object') { lintAmount(x[k], cls, say, k, true); x[k] = '1d6'; }
     if (typeof x.addMod === 'string') { if (!ABILITIES.includes(x.addMod)) say('addMod is true or an ability'); x.addMod = true; }
     if ('save' in x && typeof x.dc === 'string') { if (!ABILITIES.includes(x.dc)) say('a save step\'s dc in a class feature is a number or an ability'); x.dc = 10; }
+    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (Array.isArray(x[b])) x[b] = bakeValues(x[b], cls, say);
   }
   return out;
 }
@@ -556,9 +573,21 @@ function lintGrants(g, cls, say) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
   for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
   if (g.modifiers !== undefined) { if (!Array.isArray(g.modifiers) || !g.modifiers.length) say('modifiers is a list'); else for (const m of bakeValues(g.modifiers, cls, say)) lintModifier(m, say); }
+  // An aura: an Emanation of `range` feet from its holder, giving it and its allies there
+  // `modifiers` and Immunity to the conditions in `immune`, while the holder is not Incapacitated.
+  if (g.aura !== undefined) {
+    const au = g.aura;
+    if (!au || typeof au !== 'object' || !Object.keys(au).every((k) => ['range', 'modifiers', 'immune'].includes(k))) say('aura is { range, modifiers?, immune? }');
+    else {
+      if (!(isInt(au.range) && au.range > 0 && au.range % 5 === 0)) say('aura.range is feet, a multiple of 5');
+      if (au.modifiers !== undefined) { if (!Array.isArray(au.modifiers) || !au.modifiers.length) say('aura.modifiers is a list'); else for (const m of bakeValues(au.modifiers, cls, say)) lintModifier(m, say); }
+      if (au.immune !== undefined && !(allOf(CONDITIONS)(au.immune) && au.immune.length)) say('aura.immune lists conditions');
+      if (!au.modifiers && !au.immune) say('an aura gives modifiers or immunities');
+    }
+  }
   if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
     if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
     if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
@@ -570,8 +599,23 @@ function lintGrants(g, cls, say) {
       if (gn?.attacks !== undefined) { if (!ID.test(gn.attacks.with ?? '')) say('gain.attacks is { with: attack id, n }'); lintAmount(gn.attacks.n, cls, say, 'gain.attacks.n'); }
     } else if (a?.pool) {
       if (!a.target?.creature) say('a pool of healing is aimed at a creature');
+      // `cure`: the pool may also remove these conditions, `cost` points each (Lay On Hands' Poisoned).
+      if (a.cure !== undefined && !(a.cure && allOf(CONDITIONS)(a.cure.conditions) && a.cure.conditions.length && isInt(a.cure.cost) && a.cure.cost > 0 && Object.keys(a.cure).length === 2)) say('cure is { conditions, cost }');
     } else if (a) {
-      lintTarget(a.target, say);
+      if (a.cure !== undefined) say('cure is for a pool of healing');
+      // In class content a target's count may grow with the class ({ mod, min }: Abjure Foes); derive() puts in the number.
+      const count = a.target?.creature?.count;
+      if (amountish(count)) lintAmount(count, cls, say, 'target count');
+      lintTarget(amountish(count) ? { ...a.target, creature: { ...a.target.creature, count: 1 } } : a.target, say);
+      // `modes`: the feature does one of these, chosen when it is used ({ id, name, effects }), in place of `effects`.
+      if (a.modes !== undefined) {
+        if (a.effects !== undefined) say('an action has effects or modes, not both');
+        if (!(Array.isArray(a.modes) && a.modes.length >= 2)) say('modes lists two or more');
+        else for (const m of a.modes) {
+          if (!(m && ID.test(m.id ?? '') && isText(m.name) && Object.keys(m).every((k) => ['id', 'name', 'effects'].includes(k)))) say('a mode is { id, name, effects }');
+          if (lintSteps(bakeValues(m?.effects, cls, say), say).counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
+        }
+      } else
       if (lintSteps(bakeValues(a.effects, cls, say), say).counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
     }
     for (const k of ['renew', 'noSpells', 'pool', 'firstAttack', 'endsWhenIncapacitated']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
@@ -591,6 +635,11 @@ function lintGrants(g, cls, say) {
       if (r.types !== undefined && !(allOf(DAMAGE_TYPES)(r.types) && r.types.length)) say('reaction.types lists damage types');
     }
   }
+  // `freeCast`: for one of the feature's uses, cast a spell with no slot as a Magic action: any
+  // spell of a class's list up to a level ({ list, maxLevel }), or one of these ({ spells }).
+  if (g.freeCast !== undefined && !validFreeCast(g.freeCast)) say('freeCast is { list, maxLevel } or { spells }');
+  // `cure`: more conditions another feature's pool may remove, at that pool's cost (Restoring Touch).
+  if (g.cure !== undefined && !(g.cure && ID.test(g.cure.of ?? '') && allOf(CONDITIONS)(g.cure.conditions) && g.cure.conditions.length && Object.keys(g.cure).length === 2)) say('cure is { of: feature id, conditions }');
   if (g.ac !== undefined && !(g.ac && isInt(g.ac.base) && allOf(ABILITIES)(g.ac.abilities) && typeof g.ac.shield === 'boolean')) say('ac is { base, abilities, shield }');
   for (const k of ['armouredAc', 'rangedAttack', 'extraAttack', 'expertise', 'cantrips']) if (g[k] !== undefined && !(isInt(g[k]) && g[k] > 0 && g[k] <= 5)) say(`${k} is a small whole number`);
   if (g.speed !== undefined) { lintAmount(g.speed.add, cls, say, 'speed.add'); if (!['heavy', 'armour', undefined].includes(g.speed.unless)) say('speed.unless is heavy or armour'); }
@@ -609,6 +658,8 @@ function lintGrants(g, cls, say) {
   if (g.spellLists !== undefined && !(Array.isArray(g.spellLists) && g.spellLists.length && g.spellLists.every((x) => ID.test(x)))) say('spellLists names classes whose spell lists it opens');
   if (g.critOn !== undefined && !(isInt(g.critOn) && g.critOn >= 15 && g.critOn <= 19)) say('critOn is the lowest d20 roll that is a Critical Hit');
 }
+const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
+  || (Object.keys(x).length === 1 && Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))));
 function lintFeature(f, cls, say, ids) {
   const sub = (m) => say(`feature ${f?.id}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
@@ -637,10 +688,21 @@ function lintFeature(f, cls, say, ids) {
       if (o?.grants !== undefined) lintGrants(o.grants, cls, os);
     }
   }
-  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !['spellcasting', 'pact-magic'].includes(f.id)) sub('marked auto but grants nothing');
+  // A feature that only adds steps to another's (`with`: Sear Undead in Turn Undead) grants nothing of its own.
+  if (f.grants?.freeCast && !f.uses) sub('a freeCast needs uses');
+  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id)) sub('marked auto but grants nothing');
   // A manual feature may still have its cost enforced: an action whose only steps are manual.
   const costOnly = (g) => Object.keys(g).length === 1 && g.action?.effects?.every((st) => 'manual' in st);
   if (f.tier === 'manual' && f.grants && !costOnly(f.grants)) sub('marked manual but grants something');
+}
+// The features a class's steps name in `with` (a step kept only for a character that has that feature).
+function withRefs(cls) {
+  const out = new Set();
+  const visit = (steps) => { for (const st of Array.isArray(steps) ? steps : []) { if (st?.with !== undefined) out.add(st.with); for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) visit(st?.[b]); } };
+  for (const f of [...(cls.features ?? []), ...(cls.subclass?.features ?? [])]) for (const g of [f.grants, ...(f.options ?? []).map((o) => o.grants)]) {
+    visit(g?.action?.effects); for (const m of g?.action?.modes ?? []) visit(m.effects);
+  }
+  return out;
 }
 const tableRow = (row) => Array.isArray(row) && row.length === LEVELS;
 function lintClass(e, say) {
@@ -678,6 +740,8 @@ function lintClass(e, say) {
     for (const f of sc.features ?? []) lintFeature(f, e, (m) => say(`subclass ${sc.id}: ${m}`), ids);
     if (sc.spells !== undefined && !Object.entries(sc.spells).every(([l, list]) => isInt(+l) && +l >= 1 && +l <= LEVELS && Array.isArray(list) && list.every((x) => ID.test(x)))) say('subclass spells are lists of spell ids by class level');
   }
+  const known = new Set([...(e.features ?? []), ...(sc?.features ?? [])].map((f) => f?.id));
+  for (const id of withRefs(e)) if (!known.has(id)) say(`a step comes \`with\` "${id}", which is not a feature of this class`);
   if (findFunction(e)) say('content is data only');
 }
 
@@ -730,7 +794,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
-const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction'];
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -743,12 +807,25 @@ function lintFeat(f, say) {
   if (f.action !== undefined) {
     const a = f.action;
     if (!a || !ACTION_TIMES.includes(a.time)) sub('its action has a time.');
-    else if (!a.gain && !a.pool) { lintTarget(a.target, sub); lintSteps(a.effects, sub); }
+    else if (!a.gain && !a.pool) {
+      lintTarget(a.target, sub);
+      if (a.modes === undefined) lintSteps(a.effects, sub);
+      else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects }.');
+      else for (const m of a.modes) lintSteps(m.effects, sub);
+    }
     if (a?.cost !== undefined && !(a.cost && ID.test(a.cost.resource ?? '') && (a.cost.n === undefined || (isInt(a.cost.n) && a.cost.n > 0)))) sub('its cost is { resource, n? }.');
     if (a?.gain?.attacks !== undefined && !(ID.test(a.gain.attacks.with ?? '') && isInt(a.gain.attacks.n) && a.gain.attacks.n > 0 && a.gain.attacks.n <= 5)) sub('it gains attacks { with, n }.');
     if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
+    if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
   }
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
+  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && f.uses)) sub('its freeCast is { list, maxLevel } or { spells }, with uses.');
+  if (f.aura !== undefined) {
+    const au = f.aura;
+    if (!(au && Object.keys(au).every((k) => ['range', 'modifiers', 'immune'].includes(k)) && isInt(au.range) && au.range > 0 && au.range <= 300 && au.range % 5 === 0
+      && (au.immune === undefined || (allOf(CONDITIONS)(au.immune) && au.immune.length)) && (au.modifiers === undefined || (Array.isArray(au.modifiers) && au.modifiers.length <= 10)))) sub('its aura is { range, modifiers?, immune? }.');
+    else for (const m of au.modifiers ?? []) lintModifier(m, sub);
+  }
   if (f.reaction !== undefined) {
     const r = f.reaction;
     if (!(r && r.on === 'hit' && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))

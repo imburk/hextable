@@ -285,7 +285,7 @@ function exec(s, ev, kit, f, step, at) {
     if (f.src.blocked?.includes(t.id)) return;
     const cut = f.cut;
     if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
-    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
   }
   // The spell that set this reaction off fails (Counterspell). Only a reaction to a spell being
   // cast has one to stop (engine.js, castReaction marks its source `counters`).

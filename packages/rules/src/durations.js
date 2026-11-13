@@ -7,6 +7,7 @@
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
 //          or { target, temp: true }. `born` names the turn it was made in (turnKey).
+// A part with `ends.on: 'damaged'` ends when its creature takes damage (damaged()).
 // A part with its own turn boundary (`ends.on` turnStart or turnEnd) keeps to it: "until the end
 // of your next turn" outlasts a spell's "1 round" (Guiding Bolt), and the effect stays until it
 // ends. A spell with no duration of its own whose parts carry such an ending (Ray of Frost) gets
@@ -119,6 +120,15 @@ export function fightOver(s, ev) {
     if (spent(fx)) endEffect(s, ev, fx, 'the fight ended');
   }
   tick(s, ev);
+}
+
+// A creature took damage: what was to end when it did ends (`ends.on: 'damaged'`: Turn Undead's
+// and Abjure Foes' Frightened, "until it takes any damage").
+export function damaged(s, ev, t) {
+  for (const fx of [...effectsOf(s)]) {
+    for (const p of fx.parts) if (!p.ended && p.ends?.on === 'damaged' && p.target === t.id) endPart(s, ev, fx, p);
+    if (spent(fx)) endEffect(s, ev, fx, `${t.name} took damage`);
+  }
 }
 
 // Parts used up (a modifier with `uses: 1` that has just applied: Guiding Bolt's Advantage).

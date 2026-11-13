@@ -363,9 +363,9 @@ export const cleric = {
       "id": "divine-spark",
       "name": "Divine Spark",
       "level": 2,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "As a Magic action, spend Channel Divinity on a creature within 30 feet: it regains or (Constitution save for half) takes Necrotic or Radiant damage of 1d8 + Wisdom modifier (more d8s at 7, 13, 18). The engine spends the use; the DM applies the choice.",
+      "text": "As a Magic action, spend Channel Divinity on another creature within 30 feet: roll the Divine Spark dice + Wisdom modifier, and either it regains that many Hit Points or it makes a Constitution save, taking that much Radiant or Necrotic damage (your choice) on a failure and half on a success.",
       "grants": {
         "action": {
           "time": "action",
@@ -380,9 +380,56 @@ export const cleric = {
               ]
             }
           },
-          "effects": [
+          "modes": [
             {
-              "manual": "Divine Spark: roll the Divine Spark dice + Wisdom modifier, and either heal the creature that much or have it make a Constitution save against your spell save DC, taking that much Necrotic or Radiant damage on a failure and half on a success."
+              "id": "heal",
+              "name": "Heal",
+              "effects": [
+                {
+                  "heal": {
+                    "column": "divine-spark"
+                  },
+                  "addMod": "wis"
+                }
+              ]
+            },
+            {
+              "id": "radiant",
+              "name": "Radiant",
+              "effects": [
+                {
+                  "save": "con",
+                  "half": true,
+                  "onFail": [
+                    {
+                      "damage": {
+                        "column": "divine-spark"
+                      },
+                      "addMod": "wis",
+                      "type": "radiant"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "necrotic",
+              "name": "Necrotic",
+              "effects": [
+                {
+                  "save": "con",
+                  "half": true,
+                  "onFail": [
+                    {
+                      "damage": {
+                        "column": "divine-spark"
+                      },
+                      "addMod": "wis",
+                      "type": "necrotic"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -392,21 +439,56 @@ export const cleric = {
       "id": "turn-undead",
       "name": "Turn Undead",
       "level": 2,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "As a Magic action, spend Channel Divinity: Undead of your choice within 30 feet make a Wisdom save or are Frightened and Incapacitated for 1 minute, fleeing; it ends on damage. The engine spends the use; the DM applies it.",
+      "text": "As a Magic action, spend Channel Divinity: each Undead within 30 feet makes a Wisdom save or is Frightened and Incapacitated for 1 minute; it ends on a creature that takes damage, and on all if you are Incapacitated or die (applied). That a turned creature flees from you, and choosing to spare an Undead, are the DM's.",
       "grants": {
         "action": {
           "time": "action",
           "cost": {
             "resource": "channel-divinity"
           },
+          "duration": "1 minute",
+          "endsWhenIncapacitated": true,
           "target": {
-            "self": true
+            "area": {
+              "shape": "emanation",
+              "size": 30,
+              "exceptCaster": true,
+              "types": [
+                "undead"
+              ]
+            }
           },
           "effects": [
             {
-              "manual": "Turn Undead: each Undead of your choice within 30 feet makes a Wisdom save against your spell save DC or is Frightened and Incapacitated for 1 minute (it ends early if the creature takes damage)."
+              "save": "wis",
+              "onFail": [
+                {
+                  "damage": {
+                    "mod": "wis",
+                    "min": 1,
+                    "die": 8
+                  },
+                  "type": "radiant",
+                  "with": "sear-undead"
+                },
+                {
+                  "condition": "frightened",
+                  "ends": {
+                    "on": "damaged"
+                  }
+                },
+                {
+                  "condition": "incapacitated",
+                  "ends": {
+                    "on": "damaged"
+                  }
+                },
+                {
+                  "manual": "Turn Undead: a turned creature tries to move as far from the cleric as it can on its turns."
+                }
+              ]
             }
           ]
         }
@@ -448,29 +530,66 @@ export const cleric = {
       "id": "sear-undead",
       "name": "Sear Undead",
       "level": 5,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Turn Undead also deals Radiant damage (Wisdom modifier d8s) to Undead that fail the save."
+      "text": "Turn Undead also deals Radiant damage, Wisdom modifier d8s (at least one), rolled once, to each Undead that fails the save; this damage does not end the turning."
     },
     {
       "id": "blessed-strikes",
       "name": "Blessed Strikes",
       "level": 7,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
       "text": "Choose Divine Strike or Potent Spellcasting.",
       "options": [
         {
           "id": "divine-strike",
           "name": "Divine Strike",
-          "tier": "manual",
-          "text": "Once a turn when you hit with a weapon attack, deal an extra 1d8 Necrotic or Radiant (your choice). The DM applies the choice."
+          "tier": "auto",
+          "text": "Once on each of your turns when you hit with a weapon attack, deal an extra 1d8 Necrotic or Radiant damage (2d8 from level 14); the engine picks the type that hurts the target most.",
+          "grants": {
+            "modifiers": [
+              {
+                "on": "damage.dealt",
+                "op": "add",
+                "value": {
+                  "byLevel": {
+                    "7": "1d8",
+                    "14": "2d8"
+                  }
+                },
+                "types": [
+                  "necrotic",
+                  "radiant"
+                ],
+                "once": "turn",
+                "when": [
+                  "attack.hit",
+                  "attack.weapon"
+                ]
+              }
+            ]
+          }
         },
         {
           "id": "potent-spellcasting",
           "name": "Potent Spellcasting",
-          "tier": "manual",
-          "text": "Add your Wisdom modifier to damage from Cleric cantrips. The DM adds it."
+          "tier": "auto",
+          "text": "Add your Wisdom modifier to the damage your Cleric cantrips deal.",
+          "grants": {
+            "modifiers": [
+              {
+                "on": "damage.dealt",
+                "op": "add",
+                "value": {
+                  "mod": "wis"
+                },
+                "when": [
+                  "spell.cantrip"
+                ]
+              }
+            ]
+          }
         }
       ]
     },
@@ -478,21 +597,27 @@ export const cleric = {
       "id": "divine-intervention",
       "name": "Divine Intervention",
       "level": 10,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "As a Magic action, cast a Cleric spell of level 5 or lower without a slot or Material components, once per Long Rest. The DM applies it.",
+      "text": "Once per Long Rest, as a Magic action, cast any Cleric spell of level 5 or lower that is not a Reaction, without a slot or Material components and whether prepared or not (cast it through this feature).",
       "uses": {
         "max": 1,
         "recharge": "long"
+      },
+      "grants": {
+        "freeCast": {
+          "list": "cleric",
+          "maxLevel": 5
+        }
       }
     },
     {
       "id": "improved-blessed-strikes",
       "name": "Improved Blessed Strikes",
       "level": 14,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "Divine Strike becomes 2d8; Potent Spellcasting cantrips can also give Temporary Hit Points equal to twice your Wisdom modifier."
+      "text": "Divine Strike becomes 2d8 (applied through Blessed Strikes). With Potent Spellcasting, when a Cleric cantrip deals damage you may give yourself or a creature within 60 feet Temporary Hit Points equal to twice your Wisdom modifier: the DM applies that."
     },
     {
       "id": "epic-boon",

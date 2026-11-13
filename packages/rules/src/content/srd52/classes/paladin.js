@@ -215,9 +215,9 @@ export const paladin = {
       "id": "lay-on-hands",
       "name": "Lay On Hands",
       "level": 1,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "A pool of five times your Paladin level Hit Points, refilled on a Long Rest. As a Bonus Action, touch a creature (or yourself) and restore Hit Points from it (applied); spending 5 to remove Poisoned instead is the DM's.",
+      "text": "A pool of five times your Paladin level Hit Points, refilled on a Long Rest. As a Bonus Action, touch a creature (or yourself) and restore Hit Points from it, or spend 5 from it to remove Poisoned.",
       "uses": {
         "max": {
           "perLevel": 5
@@ -232,6 +232,12 @@ export const paladin = {
             "creature": {
               "reach": 5
             }
+          },
+          "cure": {
+            "conditions": [
+              "poisoned"
+            ],
+            "cost": 5
           }
         }
       }
@@ -410,44 +416,65 @@ export const paladin = {
       "id": "aura-of-protection",
       "name": "Aura of Protection",
       "level": 6,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "You and allies within 10 feet add your Charisma modifier (at least +1) to saving throws while you are not Incapacitated. The engine applies it to you only; auras on others are not built, so the DM applies it to allies.",
+      "text": "You and allies within 10 feet add your Charisma modifier (at least +1) to saving throws, while you are not Incapacitated. One Aura of Protection at a time: the best one applies.",
       "grants": {
-        "modifiers": [
-          {
-            "on": "save",
-            "op": "add",
-            "value": {
-              "mod": "cha",
-              "min": 1
-            },
-            "when": [
-              "self.notIncapacitated"
-            ]
-          }
-        ]
+        "aura": {
+          "range": 10,
+          "modifiers": [
+            {
+              "on": "save",
+              "op": "add",
+              "value": {
+                "mod": "cha",
+                "min": 1
+              }
+            }
+          ]
+        }
       }
     },
     {
       "id": "abjure-foes",
       "name": "Abjure Foes",
       "level": 9,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "As a Magic action, spend Channel Divinity: up to Charisma modifier creatures within 60 feet make a Wisdom save or are Frightened for 1 minute or until damaged, and can only move, act or take a Bonus Action on their turns.",
+      "text": "As a Magic action, spend Channel Divinity: up to Charisma modifier (at least one) creatures within 60 feet make a Wisdom save or are Frightened for 1 minute or until they take damage (applied). That they can only move, act or take a Bonus Action on their turns is the DM's.",
       "grants": {
         "action": {
           "time": "action",
           "cost": {
             "resource": "channel-divinity"
           },
+          "duration": "1 minute",
           "target": {
-            "self": true
+            "creature": {
+              "range": [
+                60,
+                60
+              ],
+              "count": {
+                "mod": "cha",
+                "min": 1
+              }
+            }
           },
           "effects": [
             {
-              "manual": "Abjure Foes: up to Charisma modifier (at least one) creatures you can see within 60 feet make a Wisdom save against your spell save DC or are Frightened for 1 minute or until they take damage."
+              "save": "wis",
+              "onFail": [
+                {
+                  "condition": "frightened",
+                  "ends": {
+                    "on": "damaged"
+                  }
+                },
+                {
+                  "manual": "Abjure Foes: while Frightened this way, the creature can do only one of these on each of its turns: move, take an action, or take a Bonus Action."
+                }
+              ]
             }
           ]
         }
@@ -457,9 +484,17 @@ export const paladin = {
       "id": "aura-of-courage",
       "name": "Aura of Courage",
       "level": 10,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "You and allies in your Aura of Protection are immune to Frightened. Auras are not built; the DM applies it."
+      "text": "You and allies in your Aura of Protection are immune to Frightened; a Frightened ally there is not affected by it while there.",
+      "grants": {
+        "aura": {
+          "range": 10,
+          "immune": [
+            "frightened"
+          ]
+        }
+      }
     },
     {
       "id": "radiant-strikes",
@@ -490,9 +525,22 @@ export const paladin = {
       "id": "restoring-touch",
       "name": "Restoring Touch",
       "level": 14,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Lay On Hands can also remove Blinded, Charmed, Deafened, Frightened, Paralyzed or Stunned for 5 points each. The DM applies it."
+      "text": "Lay On Hands can also remove Blinded, Charmed, Deafened, Frightened, Paralyzed or Stunned, for 5 points from the pool each.",
+      "grants": {
+        "cure": {
+          "of": "lay-on-hands",
+          "conditions": [
+            "blinded",
+            "charmed",
+            "deafened",
+            "frightened",
+            "paralyzed",
+            "stunned"
+          ]
+        }
+      }
     },
     {
       "id": "aura-expansion",
@@ -568,9 +616,17 @@ export const paladin = {
         "id": "aura-of-devotion",
         "name": "Aura of Devotion",
         "level": 7,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "You and allies in your Aura of Protection are immune to Charmed."
+        "text": "You and allies in your Aura of Protection are immune to Charmed; a Charmed ally there is not affected by it while there.",
+        "grants": {
+          "aura": {
+            "range": 10,
+            "immune": [
+              "charmed"
+            ]
+          }
+        }
       },
       {
         "id": "smite-of-protection",
@@ -578,7 +634,7 @@ export const paladin = {
         "level": 15,
         "tier": "manual",
         "checked": true,
-        "text": "When you cast Divine Smite, you and allies in your aura have Half Cover until the start of your next turn."
+        "text": "When you cast Divine Smite, you and allies in your Aura of Protection have Half Cover until the start of your next turn. The engine has no trigger on casting a named spell yet; the DM applies it."
       },
       {
         "id": "holy-nimbus",

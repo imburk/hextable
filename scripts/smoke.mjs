@@ -124,8 +124,16 @@ async function selectAndMove(page, touch, id, name) {
   for (let attempt = 0; attempt < 6; attempt++) {
     await settle(page, id);
     const dir = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]][attempt];
-    const pt = await page.evaluate(([i, d]) => { const e = window.hextable.state.entities[i]; return window.hextable.R.screenOf({ q: e.pos.q + d[0], r: e.pos.r + d[1], z: e.pos.z }); }, [id, dir]);
+    // A hex where someone stands would select that creature, not move this one (the party may be
+    // set down close together, on a map's starts): try another side. A tap a neighbouring pawn
+    // caught selects that pawn, so this one is selected again before each tap.
+    const pt = await page.evaluate(([i, d]) => {
+      const S = window.hextable.state, e = S.entities[i], h = { q: e.pos.q + d[0], r: e.pos.r + d[1] };
+      if (Object.values(S.entities).some((o) => o.id !== i && o.pos?.q === h.q && o.pos?.r === h.r)) return null;
+      return window.hextable.R.screenOf({ q: h.q, r: h.r, z: e.pos.z });
+    }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
+    await page.click(`#party button:has-text("${name}")`);                              // still the one selected
     await tapAt(page, touch, pt.x, pt.y);
     try {
       await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 2500);

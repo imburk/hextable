@@ -48,22 +48,38 @@ export function featuresOf(sheet) {
 export function amount(x, c, level, abil) {
   if (typeof x === 'number') return x;
   if (x?.column !== undefined) return c.table[x.column][level - 1];
+  // { mod, min, die }: so many of that die as the modifier (Sear Undead: Wisdom modifier d8s, at least one).
+  if (x?.mod !== undefined && x.die !== undefined) return `${Math.max(x.min ?? 0, mod(abil[x.mod]))}d${x.die}`;
   if (x?.mod !== undefined) return Math.max(x.min ?? -Infinity, mod(abil[x.mod]));
   if (x?.perLevel !== undefined) return x.perLevel * level;
+  // { byLevel: { 7: "1d8", 14: "2d8" } }: the value for the highest class level reached (Divine Strike).
+  if (x?.byLevel !== undefined) { const at = Object.keys(x.byLevel).map(Number).filter((l) => l <= level).sort((a, b) => b - a)[0]; return at === undefined ? null : x.byLevel[at]; }
   return x;
 }
+const isAmount = (v) => !!v && typeof v === 'object' && ['column', 'mod', 'perLevel', 'byLevel'].some((k) => v[k] !== undefined);
 // A class feature's modifiers and steps with their numbers put in.
 function bake(list, c, level, abil) {
   return structuredClone(list).map((x) => {
-    const fix = (m) => { if (m && m.value && typeof m.value === 'object' && (m.value.column !== undefined || m.value.mod !== undefined || m.value.perLevel !== undefined)) m.value = amount(m.value, c, level, abil); };
+    const fix = (m) => { if (m && isAmount(m.value)) m.value = amount(m.value, c, level, abil); };
     fix(x); fix(x.modifier);
     if (x.addLevel) { x.heal = dice(x.heal, level); delete x.addLevel; }
-    for (const k of ['heal', 'tempHp']) {
+    for (const k of ['heal', 'tempHp', 'damage']) {
       if (x[k] && typeof x[k] === 'object') x[k] = amount(x[k], c, level, abil);                  // a die from the class table
       if (k in x && typeof x.addMod === 'string') { x[k] = dice(x[k], mod(abil[x.addMod])); delete x.addMod; }
     }
     if ('save' in x && typeof x.dc === 'string') x.dc = 8 + proficiencyFor(level) + mod(abil[x.dc]);   // the class's own DC
+    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (Array.isArray(x[b])) x[b] = bake(x[b], c, level, abil);   // and inside branches
     return x;
+  });
+}
+
+// Steps that come with a later feature (`with: feature id`: Sear Undead's damage in Turn Undead)
+// are kept only if the character has that feature, and lose the mark.
+function prune(steps, held) {
+  return steps.filter((x) => x.with === undefined || held.has(x.with)).map((x) => {
+    const { with: _w, ...y } = x;
+    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (Array.isArray(y[b])) y[b] = prune(y[b], held);
+    return y;
   });
 }
 
@@ -205,11 +221,17 @@ export function derive(sheet) {
     if (g.modifiers) out.modifiers = bake(g.modifiers, c, level, abil);
     if (g.action) {
       const a = structuredClone(g.action);
-      if (a.effects) a.effects = bake(a.effects, c, level, abil);
+      const held = new Set(feats.map((y) => y.f.id));
+      if (a.effects) a.effects = prune(bake(a.effects, c, level, abil), held);
+      for (const m of a.modes ?? []) m.effects = prune(bake(m.effects, c, level, abil), held);
+      if (isAmount(a.target?.creature?.count)) a.target.creature.count = amount(a.target.creature.count, c, level, abil);
       if (a.gain?.attacks) a.gain.attacks.n = amount(a.gain.attacks.n, c, level, abil);
       out.action = a;
     }
     if (g.recover) out.recover = { ...g.recover };
+    if (g.freeCast) out.freeCast = structuredClone(g.freeCast);
+    // An aura (Aura of Protection): what it gives its holder and allies within range (modifiers.js, aurasOn).
+    if (g.aura) out.aura = { range: amount(g.aura.range, c, level, abil), ...(g.aura.modifiers ? { modifiers: bake(g.aura.modifiers, c, level, abil) } : {}), ...(g.aura.immune ? { immune: [...g.aura.immune] } : {}) };
     // A reaction's cut with its class numbers put in (Deflect Attacks: 1d10 + Dexterity + Monk level).
     if (g.reaction) {
       const r = structuredClone(g.reaction);
@@ -222,6 +244,12 @@ export function derive(sheet) {
     for (const b of g.bonusActs ?? []) bonusActs.add(b);
     for (const t of g.resist ?? []) resist.add(t);
     feat.push(out);
+  }
+
+  // Conditions a later feature lets a pool remove (Restoring Touch), added to that pool's own.
+  for (const x of feats) {
+    const cu = x.f.grants?.cure, to = cu && feat.find((o) => o.id === cu.of)?.action;
+    if (to?.cure) to.cure.conditions = [...new Set([...to.cure.conditions, ...cu.conditions])];
   }
 
   const cls = sheet.subclass === c.subclass.id && level >= 3 ? `${c.name} (${c.subclass.name})` : c.name;
