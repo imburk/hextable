@@ -161,5 +161,6 @@ Rules that keep parallel work safe:
 
 ## Where things are written down
 
+`docs/USAGE.md` (usage readings and what each job cost; the lead keeps it),
 `docs/DEBT.md` (what is wrong or missing, by area), `docs/srd-audit.md`,
 `docs/ROADMAP.md`, specs in `docs/specs`, the SRD in `reference/srd52`.
