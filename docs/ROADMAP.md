@@ -1,46 +1,37 @@
 # Roadmap
 
-Each milestone ends with something playable. What is known to be missing is in
-[DEBT.md](DEBT.md); designs are in [specs](specs/README.md).
+What is known to be missing is in [DEBT.md](DEBT.md); designs are in [specs](specs/README.md).
 
 ## Done
 
-- **Playable solo game.** Free roaming, hex-locked fights, enforced SRD 5.2
-  combat, character sheets, DM tools, themes, monster AI. Runs on PC and phone.
-- **Repo, tests and CI.** Rules and server tests run on every push; `npm run smoke`
-  drives the page in a headless browser (run by hand).
-- **Online (solo).** Every merge to `main` deploys to GitHub Pages.
-- **Table server.** Host a table, join by code, DM approval, one character per
-  player, saved between restarts, automatic rejoin, a limit on what one address
-  can ask for. Hosted on Railway.
-- **Hidden information.** Players are not sent the dice seed, monster numbers,
-  the timeline or hidden creatures; updates carry only what changed.
-- **SRD content as data.** 339 spells, 329 monsters and 24 map objects, each at an
-  honest tier (`npm run content`). Multiattack, Extra Attack, recharge, conditions,
-  concentration, Temporary Hit Points, areas (lines and cubes too), spells with
-  several targets, dice in modifiers.
-- **Maps.** Levels, height, walls, doors, regions, objects and traps, creature
-  sizes; a map editor with tracing over a picture and Universal VTT import;
-  level pictures.
+- **Playable solo game.** Free roaming, hex-locked fights, enforced SRD 5.2 combat, character sheets, DM tools, themes, monster AI. Runs on PC and phone.
+- **Online.** Every merge to `main` deploys the solo game to GitHub Pages. The table server hosts multiplayer tables on Railway: join by code, DM approval, one character per player, saved between restarts, automatic rejoin.
+- **Hidden information and sight.** Players are sent only what their characters can see: no dice seed, no monster numbers, no hidden creatures. Line of sight, light and darkness, hiding and searching.
+- **SRD content as data.** 339 spells, 329 monsters, 24 map objects, 17 feats and 75 magic items, each at an honest tier (`npm run content`). Multiattack, recharge, conditions, Concentration, Temporary Hit Points, areas and zones that last.
+- **Characters.** Twelve classes entered to level 20, build from class and level, levelling, multiclassing, feats, magic items with attunement, short rests and Hit Dice. Class features built for levels 1 to 6 of every class, and to level 15 for Paladin, Cleric, Druid, Sorcerer and Bard. Import from Fantasy Grounds.
+- **Reactions.** Shield, Uncanny Dodge, Deflect Attacks, Counterspell and opportunity attacks, by standing instruction or a prompt.
+- **Maps.** Levels, height, walls, doors, regions, objects and traps, creature sizes; five stock maps; a map editor with tracing and Universal VTT import.
 - **Sharing.** Handouts, private notes, table files, export of a table with its files.
-- **Sight, in part.** Line of sight, cover, light and darkness, and `canSee` (used
-  by Dodge, attacks and Invisible).
-- **DM conveniences.** Undo and redo (saved with the table), a chronicle, quick entry of
-  characters, a marching order and followers.
+- **DM tools.** Undo and redo, rewind to the start of a fight or rest, a chronicle, a marching order and followers, defeat and rewards at the end of a fight.
+- **Two renderers.** The default view and a Three.js one at parity, with the Three.js library vendored.
+- **Table UI, first part.** A drawer with settings, About and the tracker; the defeat card; the rewards form and card.
 
 ## Next
 
+In this order:
+
 | # | Milestone | Done when |
 |---|---|---|
-| 1 | Characters | Character building and levelling, and the class features that are missing (Action Surge, Rage, Channel Divinity, Wild Shape...), so a campaign's characters can be played at any level |
-| 2 | Reactions and the rest of combat | Reactions (Shield, Counterspell, choosing an opportunity attack), grapple and shove, short rests and Hit Dice |
-| 3 | More of the SRD plays by the rules | Spells that leave a zone, summoned creatures, monster spellcasting and legendary actions, so that more of the 329 monsters and 339 spells leave the DM's hands |
-| 4 | Sight for players | Hiding and finding, senses in use, and players sent only what their characters can see |
-| 5 | Maps, the rest | Scenes, import of a table export, a map's files in its export |
+| 1 | Engine and smoke-test refactors | The engine and the browser smoke test are split into smaller files behind the same behaviour, so several jobs can run side by side |
+| 2 | Table UI | The rest of the table UI spec: the action panel, the combat log by fight, and screens for feats, equipping and attuning items, multiclass level-up, teleport aiming and terrain drawing |
+| 3 | Remaining class levels | Levels 7 and up for the seven classes still at level 6, then the manual features of the rest |
+| 4 | Items in use | Potions, scrolls and charges, and items passed, dropped and picked up |
+| 5 | More of the SRD plays by the rules | Effect steps for the spells the DM applies by hand; summoned creatures, monster spellcasting and legendary actions |
+| 6 | A real table | Play sessions with real groups on real phones, and fix what breaks |
 
 ## Later
 
 - 3D character models, then animation (a renderer plan is drafted in specs)
+- Scenes, and import of a table export
 - Persistent world across sessions
 - AI DM and AI characters reading the timeline
-- Model import and full skins
