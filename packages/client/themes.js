@@ -2,17 +2,25 @@
 // and touches no rules. Add a theme by adding an entry; later a theme can also point at
 // model packs and animation sets for its presenters.
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-// How floors are drawn on levels with walls or regions: 'rooms' (the default: one floor per room with a faint
-// grid, docs/specs/renderer.md) or 'hex' (each hex raised on its own, the old look). ?hex in the address gives 'hex'.
-const FLOORS = (() => { try { return new URLSearchParams(globalThis.location?.search ?? '').has('hex') ? 'hex' : 'rooms'; } catch { return 'rooms'; } })();
-
-// Whether walls between the camera and a room are cut down to a stub so the room can be seen into, the rest standing at
-// full height (rooms look only). false: every wall is low, as it was. ?nocut in the address turns it off for a look.
-const CUTAWAY = (() => { try { return !new URLSearchParams(globalThis.location?.search ?? '').has('nocut'); } catch { return true; } })();
-
-// Whether a level that is mostly rock with open hexes carved out is drawn as a cave (floors.js, caveOf): a ragged edge of rock
-// pushed out by seeded noise. ?nocave in the address turns it off for a look.
-const CAVES = (() => { try { return !new URLSearchParams(globalThis.location?.search ?? '').has('nocave'); } catch { return true; } })();
+// The look of floors and walls. Three client preferences (hextable.floors, hextable.cutaway, hextable.caves, kept by Settings), and
+// an address parameter still wins for one visit, so a test or a bug report can force a look:
+//   floors:  'rooms' (the default: one floor per room with a faint grid, docs/specs/renderer.md) or 'hex' (each hex raised on its own,
+//            the old look). ?hex in the address gives 'hex'.
+//   cutaway: whether walls between the camera and a room are cut down to a stub so the room can be seen into (rooms look only).
+//            ?nocut turns it off.
+//   caves:   whether a level that is mostly rock with open hexes carved out is drawn as a cave (floors.js, caveOf). ?nocave turns it off.
+const query = () => { try { return new URLSearchParams(globalThis.location?.search ?? ''); } catch { return new URLSearchParams(); } };
+const stored = (k) => { try { return JSON.parse(globalThis.localStorage?.getItem(`hextable.${k}`)); } catch { return null; } };
+export const lookLocked = () => { const q = query(); return { floors: q.has('hex'), cutaway: q.has('nocut'), caves: q.has('nocave') }; };
+export const LOOK = (() => {
+  const q = query(), lk = lookLocked();
+  return {
+    floors: lk.floors ? 'hex' : stored('floors') === 'hex' ? 'hex' : 'rooms',
+    cutaway: lk.cutaway ? false : stored('cutaway') !== false,
+    caves: lk.caves ? false : stored('caves') !== false,
+  };
+})();
+const FLOORS = LOOK.floors, CUTAWAY = LOOK.cutaway, CAVES = LOOK.caves;
 
 export const THEMES = {
   classic: {
@@ -59,3 +67,11 @@ export const THEMES = {
   },
 };
 export const hexColor = rgb;
+
+// Change one of the three looks on every theme (they all carry them); the caller then hands the theme to the renderer again.
+export function setLook(key, value) {
+  if (!(key in LOOK) || lookLocked()[key]) return false;
+  LOOK[key] = value;
+  for (const t of Object.values(THEMES)) t[key] = value;
+  return true;
+}

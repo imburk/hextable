@@ -1,0 +1,77 @@
+/* The drawer (drawer.js, docs/specs/table-ui.md Decision 2), the burger, the splash, and the room a pinned drawer takes.
+   Colour, type and radius come from the theme tokens only. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* the burger */
+#btn-menu { position: relative; width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; background: var(--panel); }
+#btn-menu .burger { display: grid; gap: 4px; width: 20px; } #btn-menu .burger i { display: block; height: 2px; border-radius: 1px; background: currentColor; }
+#menu-badge { position: absolute; top: -6px; right: -6px; background: var(--bad); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; font-size: 12px; line-height: 20px; text-align: center; }
+#tools { align-items: flex-start; } #tools button { min-height: 44px; }
+body[data-drawer="left"] #top { flex-direction: row-reverse; }
+
+/* where a pinned drawer is, the rest of the table keeps clear of it */
+body { --inset-l: 0px; --inset-r: 0px; }
+canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--inset-l) - var(--inset-r)); height: 100%; }
+#labels { inset: 0 var(--inset-r) 0 var(--inset-l); }
+#top { left: var(--inset-l); right: var(--inset-r); }
+#order { left: calc(12px + var(--inset-l)); right: calc(12px + var(--inset-r)); }
+#order li { pointer-events: auto; cursor: pointer; }
+#hint { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
+#cam { right: calc(12px + var(--inset-r)); }
+#dock, #editor { left: var(--inset-l); right: var(--inset-r); }
+
+/* the drawer */
+#drawer { position: fixed; top: 0; bottom: var(--dock-h, 0px); right: 0; z-index: 5; width: min(92vw, 420px); display: flex; flex-direction: column;
+  background: var(--panel); color: var(--ink); border-left: 1px solid var(--line); backdrop-filter: blur(6px);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0; transform: translateX(100%); transition: transform .2s ease; }
+#drawer.open { transform: none; }
+body[data-drawer="left"] #drawer { right: auto; left: 0; border-left: 0; border-right: 1px solid var(--line); padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left); transform: translateX(-100%); }
+body[data-drawer="left"] #drawer.open { transform: none; }
+#drawer.held { display: none; }
+body.drawer-pretable #drawer, body.drawer-pinned #drawer { bottom: 0; }
+body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-index: 11; }
+#drawer-scrim { position: fixed; inset: 0 0 var(--dock-h, 0px) 0; z-index: 4; background: #0006; }
+body.drawer-pretable #drawer-scrim { bottom: 0; }
+@media (min-width: 900px) { #drawer { width: 360px; } }
+@media (min-width: 1480px) { #drawer { bottom: 0; } }      /* the dock (max 760 wide, centred) is clear of it from here */
+@media (max-width: 899px) { #drawer-pin, #set-pin-row, #set-pin-note { display: none; } }
+@media (prefers-reduced-motion: reduce) { #drawer { transition: none; } }
+
+#drawer-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px 14px; touch-action: pan-y; cursor: grab; user-select: none; }
+#drawer-title { flex: 1; margin: 0; font-size: 20px; outline: none; } #drawer-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#drawer-head button { min-width: 44px; min-height: 44px; padding: 0 10px; } #drawer-head #drawer-close { font-size: 26px; line-height: 1; }
+#drawer-pin.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+#drawer-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); padding: 0 6px; flex: none; overscroll-behavior-x: contain; }
+#drawer-tabs button { flex: 1 0 auto; position: relative; min-width: 64px; min-height: 44px; padding: 6px 12px; background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; color: var(--muted); font-weight: 600; white-space: nowrap; }
+#drawer-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+#drawer-tabs button b { position: absolute; top: 2px; right: 0; background: var(--bad); color: #fff; border-radius: 10px; min-width: 18px; height: 18px; font-size: 11px; line-height: 18px; text-align: center; }
+#dm-badge, #ho-badge { position: absolute; top: 2px; right: 0; }
+
+#drawer-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px 24px; }
+#drawer-body > .tabpanel:not([hidden]) { display: block; }
+.tabpanel > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.tabpanel > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+#drawer-body h2 { margin: 0 0 8px; }
+#dm h2 { display: none; }
+.set-rules { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
+.set-rules a, .set-rules button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; margin-left: 6px; }
+#set-theme, #set-floors, #set-side { max-width: 60%; }
+.ab-sec h3 { margin-bottom: 6px; } .ab-sec p { margin: 0 0 8px; overflow-wrap: anywhere; } .ab-sec a { color: var(--accent); }
+.ab-list { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.ab-pre { white-space: pre-wrap; font: 12px/1.4 var(--body); margin: 8px 0 0; color: var(--muted); }
+.ab-sec summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+#ab-srd-text { font-size: 15px; }
+
+/* the splash while the page loads or connects; it goes by itself, and by CSS alone if the script never runs */
+#splash { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg); opacity: 1; transition: opacity .25s ease; animation: splash-out .3s ease 12s forwards; }
+#splash.done { opacity: 0; pointer-events: none; }
+@keyframes splash-out { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+#splash-card { display: grid; gap: 10px; justify-items: center; text-align: center; padding: 20px; }
+#splash-card h1 { margin: 0; font-size: 40px; color: var(--accent); } #splash-card p { margin: 0; color: var(--muted); }
+.splash-bar { width: 160px; height: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; } .splash-bar i { display: block; width: 40%; height: 100%; background: var(--accent); animation: splash-run 1.1s ease-in-out infinite alternate; }
+@keyframes splash-run { from { transform: translateX(-10%); } to { transform: translateX(150%); } }
+@media (prefers-reduced-motion: reduce) { .splash-bar i { animation: none; width: 100%; } #splash { transition: none; } }
+#splash-about { min-height: 44px; }
+#lobby-about { min-height: 44px; }
+@media (min-width: 900px) { #drawer-tabs button { min-width: 0; padding: 6px 8px; } }
