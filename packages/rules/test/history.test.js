@@ -169,3 +169,75 @@ test("following, marching, handouts, notes and monster actions read in plain wor
   assert.ok(apply(s, { type: "place", actor: wolf.id, to: near }, DM).ok);
   assert.equal(label({ type: "act", actor: wolf.id, action: "bite", target: "fighter" }).label.replace(wolf.name, "Wolf"), "Wolf used Bite");
 });
+
+// ---------- pins and rewind (docs/specs/table-ui.md, Decision 1, E2) ----------
+function tracked(s, h, action) {
+  const before = mark(s);
+  const res = apply(s, action, DM);
+  assert.ok(res.ok, `${action.type}: ${res.error}`);
+  h.record(before, s, describeStep(action, res.events, before, s));
+  h.track(action, res.events, before, s);
+  return res;
+}
+
+test("pins: a fight pins the state before it, a rest the state after it, a new map drops both", () => {
+  const s = newGame(9), h = createHistory();
+  assert.deepEqual(h.pins(), { fight: false, rest: false });
+  tracked(s, h, { type: "rest" });
+  const rested = JSON.stringify({ ...s, timeline: null });
+  assert.deepEqual(h.pins(), { fight: false, rest: true });
+  const beforeFight = JSON.stringify({ ...s, timeline: null });
+  tracked(s, h, { type: "startEncounter", center: s.entities.m1.pos, radius: 30 });
+  assert.deepEqual(h.pins(), { fight: true, rest: true });
+  assert.equal(h.dump().v, 2);
+  assert.equal(JSON.stringify(h.dump().pins.fight.tree), beforeFight);
+  assert.equal(JSON.stringify(h.dump().pins.rest.tree), rested);
+  tracked(s, h, { type: "endEncounter" });
+  tracked(s, h, { type: "shortRest" });
+  assert.deepEqual(h.pins(), { fight: false, rest: true }, "a rest drops the fight pin");
+  tracked(s, h, { type: "loadMap", map: s.map });
+  assert.deepEqual(h.pins(), { fight: false, rest: false });
+});
+
+test("pins count in the byte budget and are never trimmed to make room; steps are", () => {
+  const s = newGame(9), size = JSON.stringify({ ...s, timeline: null }).length;
+  const h = createHistory({ maxBytes: size + 2000 });
+  tracked(s, h, { type: "startEncounter", center: s.entities.m1.pos, radius: 30 });
+  for (let i = 0; i < 20 && s.encounter; i++) tracked(s, h, { type: "endTurn", actor: current(s) });
+  assert.ok(h.bytes >= size);
+  assert.equal(h.pins().fight, true);
+  assert.ok(h.list().length < 21, "steps went first");
+});
+
+test("rewind: one undoable step; the dice and the id counter go on; undo and redo are exact", () => {
+  const s = newGame(9), h = createHistory();
+  const before = JSON.stringify({ ...s, timeline: null, rng: null, seq: null });
+  tracked(s, h, { type: "startEncounter", center: s.entities.m1.pos, radius: 30 });
+  for (let i = 0; i < 12 && s.encounter; i++) tracked(s, h, aiStep(s, current(s)) ?? { type: "endTurn", actor: current(s) });
+  const lost = JSON.stringify(s), rng = s.rng, seq = s.seq;
+  const r = h.rewind(s, "fight");
+  assert.equal(r.label, "The table went back to the start of the fight");
+  assert.equal(JSON.stringify({ ...s, timeline: null, rng: null, seq: null }), before);
+  assert.deepEqual([s.rng, s.seq], [rng, seq]);
+  const after = JSON.stringify(s);
+  assert.equal(h.list()[0], r.label);
+  h.undo(s);
+  assert.equal(JSON.stringify(s), lost);
+  h.redo(s);
+  assert.equal(JSON.stringify(s), after);
+  assert.equal(h.rewind(s, "rest"), null, "no rest pin");
+});
+
+test("a history dump keeps its pins; one from before pins (v 1) loads with none; a damaged pin is refused", () => {
+  const s = newGame(9), h = createHistory();
+  tracked(s, h, { type: "startEncounter", center: s.entities.m1.pos, radius: 30 });
+  const d = JSON.parse(JSON.stringify(h.dump()));
+  const back = createHistory();
+  assert.equal(back.restore(d), true);
+  assert.deepEqual(back.pins(), { fight: true, rest: false });
+  assert.equal(back.restore({ v: 1, undos: d.undos, redos: d.redos }), true);
+  assert.deepEqual(back.pins(), { fight: false, rest: false });
+  assert.equal(back.list().length, 1);
+  assert.equal(back.restore({ ...d, pins: { fight: { tree: { entities: {} }, tl: 0 } } }), false);
+  assert.deepEqual(back.pins(), { fight: false, rest: false });
+});

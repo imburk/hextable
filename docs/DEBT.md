@@ -20,7 +20,7 @@ players are sent). **any** can be handed to any agent.
 | W7 | ~~A tool used with a skill the creature is proficient in should give Advantage~~ (#65) | engine |
 | W8 | ~~A `condition` step is always treated as hostile, so a helpful one (Invisibility) is refused on oneself and starts a fight on an ally~~ (#68) | engine |
 | W9 | Size limits on Prone, Grappled and pushes are not applied; any size is affected. Not fixable in the engine alone: no step can say a size limit (the Wolf's `{ condition: "prone" }` carries none), so it needs a vocabulary change first, such as a `when` tag on the target's size or a `maxSize` on condition and move steps (looked at in #68) | engine |
-| W10 | Death Saving Throws are rolled only in a fight, and a Stable creature's 1 Hit Point after 1d4 hours happens only across a Long Rest; a dying creature at a Long Rest is handed to the DM (#65) | engine |
+| W10 | Death Saving Throws are rolled only in a fight, and a Stable creature's 1 Hit Point after 1d4 hours happens only across a Long Rest; a dying creature at a Long Rest is handed to the DM (#65). ~~A party all at 0 Hit Points ended the fight at once, so its saves were never rolled~~ (#181 T5e: defeat waits until nobody is dying). Still open: outside a fight nobody rolls | engine |
 | W11 | A creature that ends its turn in another creature's space is not knocked Prone (SRD "Moving around Other Creatures"); only reachable today by being pushed or falling there, which the DM handles (P4) | engine |
 
 ## Monsters

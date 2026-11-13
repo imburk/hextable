@@ -119,7 +119,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // The DM's undo history is not part of the game state and is never sent to a player or put in an
   // export. It is saved beside the table (see exportHistory) so that it survives a restart.
   // What the DM's Undo and Redo buttons would do, newest first.
-  const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
+  // `pins` says whether the DM can go back to the start of the last fight or to the last rest (rewind).
+  const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo(), pins: undoOf(t).pins() });
   const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
 
   // Put a state back as mark() found it: every key in its place, the timeline cut back to its length then.
@@ -313,6 +314,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           // The timeline is capped here, not in apply(); what is dropped goes in the undo step so undo is exact.
           const dropped = capTimeline(table.state.timeline, timelineCap);
           undoOf(table).record(before, table.state, describeStep(action, res.events, before, table.state), dropped);
+          undoOf(table).track(action, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
         touch(table);
@@ -335,6 +337,22 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       };
     }
 
+    // The DM takes the table back to the start of the last fight or to the last rest (docs/specs/table-ui.md,
+    // Decision 1). Not an action: like undo it changes the history, and it is one step that undo takes back.
+    // The dice go on from where they are, so the fight fought again rolls new dice.
+    handlers.rewind = (msg) => {
+      if (me.role !== "dm") return error("Only the DM can rewind.");
+      const to = msg.to;
+      if (to !== "fight" && to !== "rest") return error("Rewind to the start of the fight or to the last rest.");
+      const step = undoOf(table).rewind(table.state, to);
+      if (!step) return error(to === "fight" ? "No fight to go back to." : "No rest to go back to.");
+      dirtyHistory.add(table.code);
+      touch(table);
+      save(table);
+      tellUndo(table);
+      resend(table, { dm: { type: "rewound", to, label: step.label }, players: { type: "rewound", to } });
+    };
+
     // Leaving for good: a player's character is freed for someone else and their seat is removed.
     // The DM's seat is kept, since a table with no DM cannot let anyone in.
     handlers.leave = () => {
@@ -356,7 +374,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "undo", "redo", "leave", "history", "sync", "export"].includes(msg.t);
+        const seated = ["approve", "act", "undo", "redo", "rewind", "leave", "history", "sync", "export"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         handlers[msg.t]?.(msg);
       },
