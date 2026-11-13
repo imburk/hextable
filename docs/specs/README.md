@@ -14,4 +14,5 @@ that whoever builds a piece, on whatever model, builds the same thing.
 | Prompts: reactions and decisions made after a roll | To write |
 | Companions and summons | To write |
 | [Renderer](renderer.md): rooms drawn from the map instead of hexes, the event timeline and waiting for animations, models and sizes, doors, traps and spells, phones, light and memory, the renderer interface, and the move to Three.js | Draft by an agent, to be reviewed by the design owner |
+| [Table UI](table-ui.md): the slide-out drawer, the tracker in it, the context action panel, defeat, combat conclusion with XP and loot, the log by combat, preferences and table settings (#181, folds in #173) | Draft by an agent, to be reviewed by the design owner |
 | Persistent world and the AI DM interface | To write |
