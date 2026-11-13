@@ -251,6 +251,7 @@ export function describeStep(action, events, before, after) {
     case 'advanceTime': label = `${a.minutes} minutes passed`; break;
     case 'chronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
     case 'setting': label = 'A table rule was changed'; break;
+    case 'conclusion': label = a.publish ? 'The rewards were given out' : a.skip ? 'The rewards were skipped' : 'The rewards were changed'; break;
     case 'act': label = `${who} used ${after.entities[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? prior?.entities?.[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? 'an action'}`; break;
     case 'follow': label = a.leader === null || a.leader === undefined ? `${who} stopped following` : `${who} started following ${name(a.leader)}`; break;
     case 'partyFollow': label = `The party fell in behind ${name(a.leader)}`; break;

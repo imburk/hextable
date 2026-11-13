@@ -361,6 +361,18 @@ in the record) and who holds which character. Everyone is sent a whole view; the
 file from before pins, `v: 1`, loads with none), count in its 8 MB, and are never trimmed to make
 room: undo steps go first.
 
+## Rewards at the end of a fight
+
+Nothing here is a server message: it is all the `conclusion` action and the state (rules
+`rewards.js`, `docs/specs/table-ui.md`, Decision 4). A fight won or ended by the DM leaves
+`state.conclusion` (table setting `conclusion`: `dm` reviews first, `auto` publishes at once, `off`
+makes none; `xpShare`: `split` or `full`). The DM's view holds it all; a player's holds
+`{id, fight, pending: true}` until the DM publishes, then the published card: the foes the party
+knew of (no XP each, no total), each character's share, the bonus lines with reasons and the loot.
+The DM's events `conclusionReady` and `conclusionEdited` are never sent to players; `conclusion`
+(shaped like the card), `xp`, `levelReady`, `gear` (for their own creatures, with `why`) and
+`conclusionSkipped` are.
+
 ## The timeline cap
 
 `state.timeline` is the table's record of events. Every `chronicle` entry is kept forever; of all

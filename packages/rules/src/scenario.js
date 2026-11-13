@@ -28,7 +28,7 @@ export function newGame(seed = 7) {
   const s = {
     version: VERSION, rng: seed | 0, seq: 0, clock: 8 * 60, 
     map: newMap({ id: 'valley', name: 'The valley', levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: -6, r: 2 }] }),
-    entities: {}, encounter: null, scene: null, effects: [], handouts: [], timeline: [], settings: { sight: 'rooms', autoEngage: true, passiveFind: 'off', vertical: 'max', climbing: 'on', cover: 'on', creatureCover: 'on', engageRange: 10, unseenTurns: 'say', diceThrow: 'auto', pace: 'wait' },
+    entities: {}, encounter: null, conclusion: null, scene: null, effects: [], handouts: [], timeline: [], settings: { sight: 'rooms', autoEngage: true, passiveFind: 'off', vertical: 'max', climbing: 'on', cover: 'on', creatureCover: 'on', engageRange: 10, unseenTurns: 'say', diceThrow: 'auto', pace: 'wait', conclusion: 'dm', xpShare: 'split' },
   };
   const add = (tpl, over) => { flat(over.pos); s.entities[over.id] = makeEntity(tpl, over); };
   const colors = { fighter: '#c8553d', rogue: '#4a7c59', cleric: '#d9a441', wizard: '#5b6fb5' };

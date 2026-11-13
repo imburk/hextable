@@ -385,6 +385,7 @@ function lintMonster(e, say) {
   if (!SIZES.includes(e.size)) say(`unknown size "${e.size}"`);
   if (!isText(e.type)) say('needs a creature type');
   if (!(typeof e.cr === 'number' && e.cr >= 0)) say('cr must be a number');
+  if (!(isInt(e.xp) && e.xp >= 0)) say('xp must be a whole number of Experience Points');
   for (const k of ['ac', 'hp', 'pb']) if (!(isInt(e[k]) && e[k] > 0)) say(`${k} must be a positive whole number`);
   if (!e.speed || !Object.keys(e.speed).length || !Object.entries(e.speed).every(([m, v]) => MOVE_MODES.includes(m) && v >= 0)) say(`speed must give feet for one or more of: ${MOVE_MODES.join(', ')}`);
   if (!e.abilities || !ABILITIES.every((a) => isInt(e.abilities[a]))) say('abilities must give all six scores');
@@ -869,7 +870,7 @@ function lintClass(e, say) {
   if (findFunction(e)) say('content is data only');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], multiclass }) {
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], multiclass, advancement }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
   for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour]]) {
@@ -896,6 +897,13 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
   // The Multiclass Spellcaster table: 20 rows of slots by spell level.
   if (multiclass !== undefined && !(multiclass && tableRow(multiclass.slots) && multiclass.slots.every((r) => Array.isArray(r) && r.length >= 1 && r.length <= 9 && r.every((n) => isInt(n) && n > 0)) && typeof multiclass.checked === 'boolean'))
     problems.push('multiclass: the Multiclass Spellcaster table is 20 rows of slots by spell level, with `checked`');
+  // The Character Advancement table: levels 1 to 20 in order, XP rising from 0, Proficiency Bonus +2 to +6 never falling.
+  if (advancement !== undefined) {
+    const rows = advancement?.levels;
+    const good = tableRow(rows) && typeof advancement.checked === 'boolean' && rows.every((r, i) => r && Object.keys(r).length === 3 && r.level === i + 1 && isInt(r.xp) && isInt(r.prof) && r.prof >= 2 && r.prof <= 6
+      && (i === 0 ? r.xp === 0 && r.prof === 2 : r.xp > rows[i - 1].xp && r.prof >= rows[i - 1].prof));
+    if (!good) problems.push('advancement: the Character Advancement table is levels 1 to 20 of { level, xp, prof }, XP rising from 0, with `checked`');
+  }
   for (const p of pregens) {
     const say = (m) => problems.push(`pregens/${p?.id ?? '?'}: ${m}`);
     if (!ID.test(p.id ?? '')) say('id must be kebab-case');

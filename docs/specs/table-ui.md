@@ -1097,3 +1097,29 @@ What was settled while building, and where the build differs from the text above
 - **E13** was done by #182 (`e.spellClass`, `e.classes`); nothing added here.
 - **E14.** `stand { actor }`: in a fight only on its own turn and for half its Speed (refused with
   the feet needed if too little is left); outside a fight it costs nothing.
+
+### Engine, part 2 (T6e)
+
+- **E4.** `content/srd52/advancement.js`, read from `reference/srd52/srd52-flow.txt` (the Character
+  Advancement table under Level Advancement) and checked against the page layout copy; linted
+  (levels 1 to 20, XP rising from 0, Proficiency Bonus +2 to +6). `lintMonster` requires `xp`.
+  `xpFor(level)` and `levelForXp(xp)` in `rewards.js`.
+- **E5.** State version **19** (the spec said 18; #182 took 18). `xp` on every party character,
+  set by `makeEntity` from its level and kept across `setSheet` and `levelUp` (never below the new
+  level's threshold). `state.conclusion` is `null` in a new game; the migration drops one that is not
+  whole. The settings are filled in by the migration and in a new game.
+- **E6, E7.** In `rewards.js` (`concludeFight`, `rewardActions`), called from `endEncounter`. The
+  conclusion's `id` is the fight's id. Events about it carry **`fight`, not `id`**, for the reason
+  given for E10. Settled beyond the text: `edit.bonus` replaces the whole list; `edit.per` sets a
+  share by hand, and that share is then kept when foes or bonus change (`xp.fixed` lists them),
+  until `per: { id: null }` gives it back to the engine; loot lines have ids `l1, l2...`, bonus
+  lines `b1...`; `edit.loot.add` takes `from` and `to`. A bonus is 0 or more (a penalty is a lower
+  share). An unpublished conclusion is replaced by the next fight's. Publishing records `seen` on
+  each foe (whether the party knew of it at that moment), which the players' card and the public
+  chronicle use. `skip` sends `conclusionSkipped { fight }`, to players too. `levelReady { id, level }`
+  is sent when this publish takes a character's total past a threshold above its level; `level` is
+  the level its XP now reaches.
+- **E8.** `gear` now has `why` (`dm` from `give`, `loot` from a conclusion) and goes to players for
+  their own creatures; `with` is sent only if they know of that creature (E17 will use it).
+- **E9.** As written.
+- Levelling up from XP is not automatic, as the spec says.
