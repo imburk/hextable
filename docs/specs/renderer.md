@@ -603,3 +603,5 @@ can run in parallel after R2. R10 decides the rest.
   Picking, highlights, levels above, objects, sizes and the DM's dimming are
   untouched. Not done: clipping and filling to walls, so a room's outline still
   follows hex edges (R2).
+- **R1 turned on** (13 November, owner's decision). `floors` is `'rooms'` unless the page address has `?hex`.
+  Decision 8 (Three.js) is accepted by the owner on the same day.
