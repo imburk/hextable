@@ -258,7 +258,12 @@ function exec(s, ev, kit, f, step, at) {
     const dc = step.dc ?? f.src.dc;
     if (dc === undefined) return handOver(`${f.src.name} calls for a ${step.save.toUpperCase()} save with no DC entered. The DM applies it.`);
     kit.renew?.(s, e, t);                                               // making an enemy save keeps a Rage going
-    const { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e);      // cover is judged from where the effect starts
+    // Careful Spell: a creature its caster protects succeeds, and takes nothing where it would take half.
+    if (f.src.careful?.includes(t.id)) {
+      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
+      return step.half ? undefined : branch('onSuccess', { half: false });
+    }
+    const { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
 

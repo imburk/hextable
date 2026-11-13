@@ -12,7 +12,7 @@ import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/ind
 import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
 import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from './effects.js';
 import { leaveForm, takeForm } from './forms.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, durationMinutes, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
@@ -1084,9 +1084,10 @@ function bestType(s, t, types) {
 // `extra` names a second hook to gather modifiers from, such as 'concentration'. The result carries
 // `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
-function savingThrow(s, t, abil, dc, extra = null, from = null) {
+function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null) {
   const sit = { target: t, ability: abil };
   const m = modifiers(s, t, `save.${abil}`, sit, '');
+  if (dis) m.disadvantage.push(dis);                       // Disadvantage from the caster's side (Heightened Spell)
   const cover = abil === 'dex' && from && !from.object ? coverOf(s, from, t, living(s)) : 'none';
   m.add += COVER[cover] ?? 0;
   // `save` applies to every saving throw (Bless, Bane); `extra` names one more hook, such as 'concentration'.
@@ -1649,6 +1650,59 @@ function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
 const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
 
+// ---------- Metamagic ----------
+// The options a creature knows are its features that grant `metamagic: { id, cost, pool }`
+// (Sorcerer; content/srd52/classes/sorcerer.js); `a.metamagic` names those used on this casting,
+// paid for from the pool (Sorcery Points). One a spell, or more while a feature with
+// `metamagicMax: { n, while }` is in its `while` feature's effect (Sorcery Incarnate during Innate
+// Sorcery). What each does is the engine's, by its id; Empowered and Seeking are decided after a
+// roll, which the engine does not offer, so they are refused here and the DM applies them.
+const TRANSMUTE = ['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder'];
+const METAMAGIC = ['careful', 'distant', 'extended', 'heightened', 'quickened', 'subtle', 'transmuted', 'twinned'];
+function metamagicFor(s, e, sp, a, slot) {
+  const none = { list: [], names: [], has: {}, cost: 0 };
+  for (const k of ['careful', 'heightened', 'transmute']) if (a[k] !== undefined && !(a.metamagic ?? []).includes(k === 'transmute' ? 'transmuted' : k)) fail(`"${k}" goes with that Metamagic option.`);
+  if (a.metamagic === undefined) return none;
+  const ids = a.metamagic;
+  (Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length) || fail('Name the Metamagic options used.');
+  const known = (e.feats ?? []).filter((f) => f.metamagic);
+  const opts = ids.map((id) => known.find((f) => f.metamagic.id === id)?.metamagic ?? fail(`${e.name} doesn't know that Metamagic option.`));
+  for (const o of opts) METAMAGIC.includes(o.id) || fail(`${nice(o.id)} Spell is decided after a roll; the engine does not offer that, so the DM applies it.`);
+  const extra = (e.feats ?? []).filter((f) => f.metamagicMax && effectsOf(s).some((fx) => fx.source === e.id && fx.feature === f.metamagicMax.while));
+  const max = Math.max(1, ...extra.map((f) => f.metamagicMax.n));
+  ids.length <= max || fail(max === 1 ? 'One Metamagic option a spell.' : `${max} Metamagic options a spell at most.`);
+  const pool = opts[0].pool, cost = opts.reduce((n, o) => n + o.cost, 0);
+  (e.uses[pool] ?? 0) >= cost || fail(`${e.name} has ${e.uses[pool] ?? 0} Sorcery Points; that costs ${cost}.`);
+  const has = Object.fromEntries(ids.map((id) => [id, true]));
+  const out = { list: ids, names: ids.map((id) => `${nice(id)} Spell`), has, cost, pool };
+  let saves = false, types = [];
+  walkSteps(sp.def.effects, (st) => { if ('save' in st) saves = true; if ('damage' in st) types.push(st.type); });
+  if (has.careful) {
+    (saves) || fail('Careful Spell is for a spell that calls for saving throws.');
+    const n = Math.max(1, mod(e.abil.cha));
+    (Array.isArray(a.careful) && a.careful.length >= 1 && a.careful.length <= n && new Set(a.careful).size === a.careful.length) || fail(`Careful Spell protects up to ${n} creature${n === 1 ? '' : 's'}: name them.`);
+  }
+  if (has.heightened) { saves || fail('Heightened Spell is for a spell that calls for saving throws.'); typeof a.heightened === 'string' || fail('Name the target Heightened Spell picks.'); }
+  if (has.quickened) sp.time === 'action' || fail('Quickened Spell is for a spell cast as an action.');
+  if (has.distant) {
+    const r = sp.def.range;
+    out.range = r === 'touch' ? 30 : typeof r === 'number' && r >= 5 ? sp.range * 2 : fail('Distant Spell is for a spell with a range of Touch or of 5 feet or more.');
+  }
+  if (has.extended) {
+    const m = durationMinutes(sp.def.duration);
+    (m !== null && m >= 1) || fail('Extended Spell is for a spell that lasts 1 minute or longer.');
+    const twice = Math.min(1440, m * 2);
+    out.duration = twice % 60 === 0 ? `${twice / 60} hour${twice === 60 ? '' : 's'}` : `${twice} minutes`;
+  }
+  if (has.transmuted) {
+    types.some((t) => TRANSMUTE.includes(t)) || fail('Transmuted Spell is for a spell that deals Acid, Cold, Fire, Lightning, Poison or Thunder damage.');
+    (TRANSMUTE.includes(a.transmute) && !types.includes(a.transmute)) || fail(`Choose the damage type Transmuted Spell makes it: ${TRANSMUTE.filter((t) => !types.includes(t)).join(', ')}.`);
+  }
+  if (has.twinned) targetCount(sp.def, e.level, Math.max(slot, sp.level) + 1) > targetCount(sp.def, e.level, Math.max(slot, sp.level)) || fail('Twinned Spell is for a spell that targets another creature at a higher level.');
+  return out;
+}
+const nice = (id) => id[0].toUpperCase() + id.slice(1);
+
 const handlers = {
   move(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
@@ -1770,7 +1824,7 @@ const handlers = {
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
     if (!sp.turn && s.encounter && !via) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
-    const time = via ? (via.freeCast.time ?? 'action') : sp.time;
+    let time = via ? (via.freeCast.time ?? 'action') : sp.time;
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
@@ -1783,14 +1837,18 @@ const handlers = {
     }
     // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
     const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
-    const most = targetCount(sp.def, e.level, Math.max(slot, sp.level));
+    const mm = metamagicFor(s, e, sp, a, slot);
+    const range = mm.range ?? sp.range;
+    const most = targetCount(sp.def, e.level, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
-      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, sp.range, a.hex));
+      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
-      targets = creatures(s, e, sp.name, { range: sp.range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
+      targets = creatures(s, e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
     } else if (sp.aim === 'self') targets = [e];
+    if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
+    if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
 
     // What it costs.
     if (sp.level > 0 && !via) {
@@ -1801,8 +1859,10 @@ const handlers = {
     if (!s.encounter && sp.harmful && aimed) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
     const slotted = sp.level > 0 && !via;
+    if (mm.has.quickened) time = 'bonus';
     if (s.encounter) {
       need(s, e, time);
+      if (mm.has.quickened && s.encounter.flags.slot) fail('Quickened Spell can\'t be used after a level 1+ spell this turn.');
       if (slotted && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
       // Action Surge gives an action that can't be the Magic action: with it, one action spell a turn.
       if (time === 'action' && s.encounter.flags[`surge:${e.id}`] && s.encounter.flags[`magic:${e.id}`]) fail('The extra action from Action Surge can\'t be used to cast a spell.');
@@ -1813,12 +1873,15 @@ const handlers = {
     }
     if (slotted) e.slots[slot]--;
     if (via) e.uses[via.id]--;
-    if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
+    if (mm.cost) e.uses[mm.pool] -= mm.cost;
+    if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
+    if (mm.list.length) ev.push({ type: 'std', id: e.id, action: `Metamagic: ${mm.names.join(', ')}` });
+    if (sp.def.components?.includes('v') && !mm.has.subtle) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
     showPlace(s, e, ev);
     // Someone who sees it being cast may counter it (Counterspell). Then it dissipates with no
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
-    const counteredBy = counterWindow(s, e, sp, ev);
+    const counteredBy = mm.has.subtle ? null : counterWindow(s, e, sp, ev);      // Subtle Spell: nothing to see being cast
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
@@ -1829,6 +1892,7 @@ const handlers = {
     // What it does: run its effect steps.
     const st = spellStats(e, s), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     if (pick) chooseIn(steps, pick.of, a.choice);
+    if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}) });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
@@ -1837,7 +1901,9 @@ const handlers = {
     let fx = null;
     if (sp.def.duration !== 'instant') {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
-      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration });
+      // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
+      if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
     } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
@@ -1855,7 +1921,8 @@ const handlers = {
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}) },
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}),
+        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared: sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
@@ -1950,6 +2017,7 @@ const handlers = {
   feature(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
+    if (f.exchange) return exchange(s, e, f, a, ev);
     const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
@@ -1968,7 +2036,10 @@ const handlers = {
       for (const p of live.parts) if (!p.ended && p.ends?.on === 'turnEnd') p.born = now;
       return ev.push({ type: 'std', id: e.id, action: `${f.name} (extended)` });
     }
-    const res = act.cost?.resource ?? (f.uses ? f.id : null), n = act.cost?.n ?? 1;
+    let res = act.cost?.resource ?? (f.uses ? f.id : null), n = act.cost?.n ?? 1;
+    // `orCost`: with none of its own uses left, it may be paid for from another pool instead
+    // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
+    if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
     if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.`);
     if (time && fighting) need(s, e, time);
     if ((act.gain || act.firstAttack) && !(fighting && current(s) === e.id)) fail(`${f.name} is used on ${e.name}'s turn in a fight.`);
@@ -2569,6 +2640,16 @@ const handlers = {
       n <= (e.hd ?? 0) || fail(`${e.name} has ${e.hd ?? 0} Hit Point Dice left.`);
       e.hp > 0 || fail(`${e.name} is at 0 Hit Points and can't take a Short Rest.`);
     }
+    // `restore`: those who use a feature that gives points back on a Short Rest (Sorcerous Restoration:
+    // `restore: { of, max }`), regaining what was spent up to its most, for one of its uses.
+    const restore = a.restore ?? [];
+    Array.isArray(restore) || fail('Name who restores points.');
+    const refills = restore.map((id) => {
+      const e = ent(s, id), f = (e.feats ?? []).find((x) => x.restore && (e.uses[x.id] ?? 0) > 0);
+      who.includes(e) || fail(`${e.name} isn't resting.`);
+      f || fail(`${e.name} has nothing that restores points now.`);
+      return { e, f };
+    });
     const plans = [];
     for (const [id, levels] of Object.entries(recover)) {
       const e = ent(s, id), f = (e.feats ?? []).find((x) => x.recover && (e.uses[x.id] ?? 0) > 0);
@@ -2600,6 +2681,12 @@ const handlers = {
       for (const l of levels) e.slots[l]++;
       ev.push({ type: 'std', id: e.id, action: `${f.name} (${levels.map((l) => `level ${l}`).join(', ')})` });
     }
+    for (const { e, f } of refills) {
+      const pool = featOf(e, f.restore.of), gain = pool ? Math.min(f.restore.max, pool.uses.max - (e.uses[pool.id] ?? 0)) : 0;
+      e.uses[f.id]--;
+      if (pool) e.uses[pool.id] = (e.uses[pool.id] ?? 0) + gain;
+      ev.push({ type: 'std', id: e.id, action: `${f.name} (${gain} point${gain === 1 ? '' : 's'})` });
+    }
     s.clock += 60;
     ev.push({ type: 'rest', short: true });
     tick(s, ev);
@@ -2628,6 +2715,35 @@ const handlers = {
     s.settings[a.key] = a.value;
   },
 };
+
+// A pool of points traded with spell slots (Font of Magic: `exchange: { costs, minLevel }`, by slot
+// level). { type: 'feature', actor, feature, make: level } makes a slot of that level as a Bonus
+// Action for its cost in points, if the creature's level reaches the table's; a made slot is gone
+// at the next Long Rest (slots come back to their maximum). { ..., spend: level } spends a slot of
+// that level for as many points, with no action, never above the pool's maximum.
+function exchange(s, e, f, a, ev) {
+  up(e) || fail(`${e.name} is down.`);
+  able(e);
+  const x = f.exchange, have = e.uses[f.id] ?? 0, fighting = !!s.encounter && inFight(s, e.id);
+  if (a.make !== undefined) {
+    const cost = x.costs[a.make] ?? fail(`${f.name} makes spell slots of level 1 to ${Object.keys(x.costs).length}.`);
+    e.level >= x.minLevel[a.make] || fail(`${f.name} makes a level ${a.make} slot from level ${x.minLevel[a.make]}.`);
+    have >= cost || fail(`A level ${a.make} slot costs ${cost} points; ${e.name} has ${have}.`);
+    if (fighting) need(s, e, 'bonus');
+    if (fighting) s.encounter.budget.bonus--;
+    e.uses[f.id] -= cost;
+    e.slots[a.make] = (e.slots[a.make] ?? 0) + 1;
+    return ev.push({ type: 'std', id: e.id, action: `${f.name}: a level ${a.make} spell slot` });
+  }
+  if (a.spend !== undefined) {
+    (Number.isInteger(a.spend) && (e.slots?.[a.spend] ?? 0) > 0) || fail(`${e.name} has no level ${a.spend} spell slot to spend.`);
+    have + a.spend <= f.uses.max || fail(`${e.name} can't have more than ${f.uses.max} points.`);
+    e.slots[a.spend]--;
+    e.uses[f.id] += a.spend;
+    return ev.push({ type: 'std', id: e.id, action: `${f.name}: ${a.spend} point${a.spend === 1 ? '' : 's'} from a spell slot` });
+  }
+  fail(`Say whether ${f.name} makes a spell slot (make) or spends one (spend).`);
+}
 
 // A feature that lays a form over its creature (Wild Shape; forms.js): { type: 'feature', actor,
 // feature, form: monster id } takes that form for one use, ending any form it is in; with no `form`,

@@ -37,8 +37,9 @@ export function featuresOf(sheet) {
   for (const f of [...c.features, ...sub].filter((x) => x.level <= level).sort((a, b) => a.level - b.level)) {
     out.push({ f });
     if (f.options) {
-      const o = f.options.find((x) => x.id === sheet.choices?.[f.id]);
-      if (o) out.push({ f: { ...o, id: `${f.id}-${o.id}`, level: f.level, checked: f.checked }, option: true, of: f.id });
+      // A feature with `pick: n` takes a list of n options (Metamagic); otherwise one.
+      const chose = sheet.choices?.[f.id], ids = Array.isArray(chose) ? (f.pick ? chose : []) : [chose];   // a picked list, or one option
+      for (const o of f.options.filter((x) => ids.includes(x.id))) out.push({ f: { ...o, id: `${f.id}-${o.id}`, level: f.level, checked: f.checked }, option: true, of: f.id });
     }
   }
   return out;
@@ -222,6 +223,7 @@ export function derive(sheet) {
     if (g.action) {
       const a = structuredClone(g.action);
       const held = new Set(feats.map((y) => y.f.id));
+      if (a.orCost?.with !== undefined) { if (held.has(a.orCost.with)) delete a.orCost.with; else delete a.orCost; }   // Sorcery Incarnate
       if (a.effects) a.effects = prune(bake(a.effects, c, level, abil), held);
       for (const m of a.modes ?? []) m.effects = prune(bake(m.effects, c, level, abil), held);
       if (a.form) for (const k of ['maxCr', 'fly', 'hours', 'tempHp']) if (isAmount(a.form[k])) a.form[k] = amount(a.form[k], c, level, abil);
@@ -231,6 +233,8 @@ export function derive(sheet) {
     }
     if (g.recover) out.recover = { ...g.recover };
     if (g.freeCast) out.freeCast = structuredClone(g.freeCast);
+    for (const k of ['metamagic', 'metamagicMax', 'exchange']) if (g[k]) out[k] = structuredClone(g[k]);
+    if (g.restore) out.restore = { of: g.restore.of, max: amount(g.restore.max, c, level, abil) };
     // An aura (Aura of Protection): what it gives its holder and allies within range (modifiers.js, aurasOn).
     if (g.aura) out.aura = { range: amount(g.aura.range, c, level, abil), ...(g.aura.modifiers ? { modifiers: bake(g.aura.modifiers, c, level, abil) } : {}), ...(g.aura.immune ? { immune: [...g.aura.immune] } : {}) };
     // A reaction's cut with its class numbers put in (Deflect Attacks: 1d10 + Dexterity + Monk level).
@@ -325,7 +329,14 @@ export function validate(sheet) {
     const f = x.f;
     if (!f.options) continue;
     const pick = sheet.choices?.[f.id];
-    if (pick === undefined) say(`Choose an option for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
+    // Options picked as a list (Metamagic) may be left unchosen: the character then knows none of
+    // them yet, and plays as before they were built (the build screen has no list picker yet).
+    if (f.pick) {
+      if (pick === undefined) continue;
+      const list = typeof pick === 'string' ? [pick] : pick;          // one option may be named alone
+      if (!(Array.isArray(list) && list.length <= f.pick && new Set(list).size === list.length)) say(`Choose up to ${f.pick} different options for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
+      else for (const p of list) if (!f.options.some((o) => o.id === p)) say(`${f.name} has no option "${p}".`);
+    } else if (pick === undefined) say(`Choose an option for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
     else if (!f.options.some((o) => o.id === pick)) say(`${f.name} has no option "${pick}".`);
   }
   if (sheet.choices?.['additional-fighting-style'] && sheet.choices['additional-fighting-style'] === sheet.choices['fighting-style']) say('Additional Fighting Style must be a different Fighting Style.');
@@ -364,7 +375,10 @@ export function validate(sheet) {
     if (prepared > maxP) say(`A level ${level} ${c.name} prepares ${maxP} spells; ${prepared} chosen (spells the class always has prepared are added and do not count).`);
   }
   for (const k of ['tools', 'gear', 'weapons']) if (sheet[k] !== undefined && !(Array.isArray(sheet[k]) && sheet[k].length <= 60 && sheet[k].every((x) => typeof x === 'string' && x.length <= 60))) say(`Its ${k} are a list of short names.`);
-  if (sheet.choices !== undefined && !(sheet.choices && typeof sheet.choices === 'object' && Object.values(sheet.choices).every((v) => typeof v === 'string'))) say('Its choices name options.');
+  if (sheet.choices !== undefined && !(sheet.choices && typeof sheet.choices === 'object' && Object.values(sheet.choices).every((v) => typeof v === 'string' || (Array.isArray(v) && v.length <= 10 && v.every((x) => typeof x === 'string'))))) say('Its choices name options.');
+  // The same option twice across features that pick from one list (Metamagic at 2 and at 10).
+  const picked = feats.filter((x) => x.f.pick).flatMap((x) => [sheet.choices?.[x.f.id] ?? []].flat().map((o) => `${x.f.name}:${o}`));
+  if (new Set(picked).size !== picked.length) say('An option is chosen twice.');
   if (sheet.shield !== undefined && typeof sheet.shield !== 'boolean') say('Shield is true or false.');
   void abil;
   return bad;

@@ -185,6 +185,9 @@ export const bounded = (m, n) => Math.min(m.max ?? Infinity, Math.max(m.min ?? -
 // A creature's Speed after everything that changes it. Never below 0.
 // `mode` is walk (the default), climb, swim, fly or burrow; a creature without that way of moving has 0.
 export function speedOf(s, e, mode = 'walk') {
-  const base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0, m = modifiers(s, e, 'speed');
+  let base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0;
+  // A Fly Speed something gives for a while (Dragon Wings: `speed.fly` set 60), if it is more than its own.
+  if (mode === 'fly') { const f = modifiers(s, e, 'speed.fly'); if (f.set !== null) base = Math.max(base, f.set); }
+  const m = modifiers(s, e, 'speed');
   return base > 0 ? Math.max(0, bounded(m, m.set !== null ? m.set : base + m.add)) : 0;
 }

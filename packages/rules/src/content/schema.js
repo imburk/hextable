@@ -27,7 +27,7 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
-  'spell.dc', 'spell.attack', 'hp.max', 'carry'];
+  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
@@ -523,7 +523,7 @@ function lintArmour(e, say) {
 export const RESTS = ['short', 'long'];
 export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
 export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
-export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
+export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
   'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
@@ -587,11 +587,13 @@ function lintGrants(g, cls, say) {
   }
   if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
     if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
     if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
     if (a?.cost !== undefined && !(a.cost && ID.test(a.cost.resource ?? '') && (a.cost.n === undefined || (isInt(a.cost.n) && a.cost.n > 0)))) say('cost is { resource, n? }');
+    // `orCost`: paid from another pool when the feature's own uses are gone; `with`: only for a character that has that feature.
+    if (a?.orCost !== undefined && !(a.orCost && ID.test(a.orCost.resource ?? '') && isInt(a.orCost.n) && a.orCost.n > 0 && Object.keys(a.orCost).every((k) => ['resource', 'n', 'with'].includes(k)) && (a.orCost.with === undefined || ID.test(a.orCost.with)))) say('orCost is { resource, n, with? }');
     if (a?.gain !== undefined) {
       const gn = a.gain;
       if (!gn || !Object.keys(gn).every((k) => ['action', 'attacks'].includes(k))) say('gain gives an action or attacks');
@@ -653,6 +655,16 @@ function lintGrants(g, cls, say) {
   // `freeCast`: for one of the feature's uses, cast a spell with no slot as a Magic action: any
   // spell of a class's list up to a level ({ list, maxLevel }), or one of these ({ spells }).
   if (g.freeCast !== undefined && !validFreeCast(g.freeCast)) say('freeCast is { list, maxLevel } or { spells }');
+  // `metamagic`: a Metamagic option known, by its id, its cost from a pool (engine.js, metamagicFor);
+  // `metamagicMax`: so many options a spell while the feature `while` names has its effect going.
+  if (g.metamagic !== undefined && !(g.metamagic && ['careful', 'distant', 'empowered', 'extended', 'heightened', 'quickened', 'seeking', 'subtle', 'transmuted', 'twinned'].includes(g.metamagic.id)
+    && isInt(g.metamagic.cost) && g.metamagic.cost > 0 && ID.test(g.metamagic.pool ?? '') && Object.keys(g.metamagic).length === 3)) say('metamagic is { id, cost, pool }');
+  if (g.metamagicMax !== undefined && !(g.metamagicMax && isInt(g.metamagicMax.n) && g.metamagicMax.n >= 2 && ID.test(g.metamagicMax.while ?? ''))) say('metamagicMax is { n, while }');
+  // `exchange`: the feature's points buy spell slots by level (`costs`, from class level `minLevel`) and are bought by them.
+  if (g.exchange !== undefined && !(g.exchange && Object.keys(g.exchange).length === 2 && ['costs', 'minLevel'].every((k) => g.exchange[k] && typeof g.exchange[k] === 'object'
+    && Object.entries(g.exchange[k]).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= 9 && isInt(v) && v > 0)))) say('exchange is { costs, minLevel } by slot level');
+  // `restore`: on a Short Rest, points back to another feature's pool, at most `max`, for one use.
+  if (g.restore !== undefined) { if (!(g.restore && ID.test(g.restore.of ?? '') && g.restore.max !== undefined && Object.keys(g.restore).length === 2)) say('restore is { of, max }'); else lintAmount(g.restore.max, cls, say, 'restore.max'); }
   // `cure`: more conditions another feature's pool may remove, at that pool's cost (Restoring Touch).
   if (g.cure !== undefined && !(g.cure && ID.test(g.cure.of ?? '') && allOf(CONDITIONS)(g.cure.conditions) && g.cure.conditions.length && Object.keys(g.cure).length === 2)) say('cure is { of: feature id, conditions }');
   if (g.ac !== undefined && !(g.ac && isInt(g.ac.base) && allOf(ABILITIES)(g.ac.abilities) && typeof g.ac.shield === 'boolean')) say('ac is { base, abilities, shield }');
@@ -696,6 +708,8 @@ function lintFeature(f, cls, say, ids) {
   }
   if (f.grants !== undefined) lintGrants(f.grants, cls, sub);
   if (f.grants?.action?.cost && !f.grants.action.cost.resource) sub('a cost names a resource');
+  // `pick`: so many different options are chosen (Metamagic: 2), as a list; otherwise one.
+  if (f.pick !== undefined && !(isInt(f.pick) && f.pick >= 2 && Array.isArray(f.options) && f.pick < f.options.length)) sub('pick is how many options are chosen, 2 or more and fewer than there are');
   if (f.options !== undefined) {
     if (!Array.isArray(f.options) || f.options.length < 2) sub('options lists two or more choices');
     else for (const o of f.options) {
@@ -810,7 +824,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
-const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast'];
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -840,6 +854,11 @@ function lintFeat(f, say) {
   }
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
   if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && f.uses)) sub('its freeCast is { list, maxLevel } or { spells }, with uses.');
+  if (f.metamagic !== undefined && !(f.metamagic && typeof f.metamagic.id === 'string' && isInt(f.metamagic.cost) && f.metamagic.cost > 0 && f.metamagic.cost <= 10 && ID.test(f.metamagic.pool ?? ''))) sub('its metamagic is { id, cost, pool }.');
+  if (f.metamagicMax !== undefined && !(f.metamagicMax && isInt(f.metamagicMax.n) && f.metamagicMax.n >= 2 && f.metamagicMax.n <= 3 && ID.test(f.metamagicMax.while ?? ''))) sub('its metamagicMax is { n, while }.');
+  if (f.exchange !== undefined && !(f.uses && f.exchange && ['costs', 'minLevel'].every((k) => f.exchange[k] && Object.values(f.exchange[k]).every((v) => isInt(v) && v > 0)))) sub('its exchange is { costs, minLevel }, with uses.');
+  if (f.restore !== undefined && !(f.uses && f.restore && ID.test(f.restore.of ?? '') && isInt(f.restore.max) && f.restore.max >= 0 && f.restore.max <= 20)) sub('its restore is { of, max }, with uses.');
+  if (f.action?.orCost !== undefined && !(ID.test(f.action.orCost.resource ?? '') && isInt(f.action.orCost.n) && f.action.orCost.n > 0)) sub('its orCost is { resource, n }.');
   if (f.aura !== undefined) {
     const au = f.aura;
     if (!(au && Object.keys(au).every((k) => ['range', 'modifiers', 'immune'].includes(k)) && isInt(au.range) && au.range > 0 && au.range <= 300 && au.range % 5 === 0
