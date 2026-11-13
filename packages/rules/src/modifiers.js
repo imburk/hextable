@@ -118,6 +118,8 @@ function* sources(s, e) {
   }
   for (const a of auras) if (a.modifiers.length) yield { name: a.name, modifiers: a.modifiers, level: 1 };
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
+  // A form's stat block brings its traits (a wolf's Pack Tactics in Wild Shape; forms.js).
+  for (const trait of CONTENT.monsters[e.form?.block]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
   // A built character's features that are always on (Danger Sense, Feral Instinct), as derive() made them.
   for (const f of e.feats ?? []) if (f.modifiers) yield { name: f.name, modifiers: f.modifiers, level: 1 };
 }

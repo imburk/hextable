@@ -14,6 +14,7 @@
 // an effect anyway, `bound`, that ends when its parts do.
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { incapacitated } from './modifiers.js';
+import { leaveForm } from './forms.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
 const EPS = 1e-6;                         // rounds are added as 0.1, which does not sum exactly
@@ -49,6 +50,8 @@ function endPart(s, ev, fx, p) {
   if (p.cond && t?.cond[p.cond]?.effect === fx.id) { delete t.cond[p.cond]; ev.push({ type: 'condEnd', id: t.id, cond: p.cond }); }
   // A Hit Point maximum it raised comes down again; current Hit Points stay within it.
   if (p.hpMax && t && !t.dead) { t.maxHp -= p.hpMax; t.hp = Math.min(t.hp, t.maxHp); ev.push({ type: 'maxHp', id: t.id, maxHp: t.maxHp, hp: t.hp }); }
+  // A form it held ends: what the form replaced is put back (forms.js).
+  if (p.form && t?.form?.fx === fx.id) { leaveForm(t); ev.push({ type: 'form', id: t.id, form: null }); }
   // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }

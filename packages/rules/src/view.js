@@ -43,6 +43,7 @@ function seenRecord(e) {
     pos: { q: e.pos.q, r: e.pos.r, z: e.pos.z }, look: e.look ? structuredClone(e.look) : undefined,
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
+    ...(e.form ? { form: e.form.block } : {}),                                       // the shape it has taken is plain to see (Wild Shape)
   };
 }
 
@@ -400,6 +401,9 @@ export function viewEvents(events, state, viewer) {
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) out.push({ ...pick(ev, ['type', 'fx', 'name', 'source', 'conc', 'lasts', 'why']), targets });
         break;
       }
+      case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known
+        if (cls(ev.id) !== 'hidden') out.push(pick(ev, ['type', 'id', 'form', 'name']));
+        break;
       case 'concentration':
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));
         break;

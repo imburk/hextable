@@ -11,6 +11,7 @@ import { d20Faces, die, faceSum, negate, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
 import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
 import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from './effects.js';
+import { leaveForm, takeForm } from './forms.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
 import { FT, HEADROOM, STEP_FREE, STEP_MAX, WALL_HEIGHT, apart, apartAt, concealed, footprint, gap, ground, hasColumn, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, surfaces, under, unseenAt } from './space.js';
 import { SIZES } from './content/sizes.js';
@@ -1765,6 +1766,7 @@ const handlers = {
     if (sp.time === 'reaction') fail(sp.def.reaction
       ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
       : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+    !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
     if (!sp.turn && s.encounter && !via) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
@@ -1953,6 +1955,7 @@ const handlers = {
     up(e) || fail(`${e.name} is down.`);
     able(e);
     act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
+    if (act.form) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
@@ -2626,9 +2629,52 @@ const handlers = {
   },
 };
 
+// A feature that lays a form over its creature (Wild Shape; forms.js): { type: 'feature', actor,
+// feature, form: monster id } takes that form for one use, ending any form it is in; with no `form`,
+// it leaves the one it is in, for its time and no use. The form lasts `hours` hours and ends early
+// if the creature is Incapacitated or drops to 0 Hit Points (a fragile effect), or if the effect is ended.
+const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
+function shapeShift(s, e, f, act, a, ev) {
+  const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
+  const holding = e.form ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
+  if (a.form === undefined || a.form === null) {
+    e.form || fail(`Choose a form for ${f.name}.`);
+    if (time && fighting) { need(s, e, time); enc.budget[time]--; }
+    if (holding) return endEffect(s, ev, holding, `${e.name} left the form`);
+    leaveForm(e);
+    return ev.push({ type: 'form', id: e.id, form: null });
+  }
+  const F = act.form, m = typeof a.form === 'string' ? CONTENT.monsters[a.form] : null, tpl = m && MONSTERS[a.form];
+  tpl || fail('No such creature.');
+  F.types.includes(m.type) || fail(`${f.name} takes the form of a ${F.types.join(' or ')}; the ${m.name} is not one.`);
+  m.cr <= F.maxCr || fail(`At ${e.name}'s level ${f.name} takes forms of Challenge Rating ${crText(F.maxCr)} or lower; the ${m.name} is ${crText(m.cr)}.`);
+  (!m.speed.fly || F.fly) || fail(`At ${e.name}'s level ${f.name} can't take a form with a Fly Speed.`);
+  (e.uses[f.id] ?? 0) >= 1 || fail(`${e.name} has no uses of ${f.name} left.`);
+  if (time && fighting) need(s, e, time);
+  const body = { size: tpl.size };
+  (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for a ${m.name} there.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} becoming a ${m.name}.`);
+
+  // Paid for: from here it happens.
+  if (time && fighting) enc.budget[time]--;
+  e.uses[f.id]--;
+  if (holding) endEffect(s, ev, holding, `${e.name} took another form`);
+  else if (e.form) leaveForm(e);
+  const fx = startEffect(s, { name: `${f.name} (${m.name})`, spell: null, source: e.id, conc: false, duration: `${F.hours} hour${F.hours === 1 ? '' : 's'}` });
+  Object.assign(fx, { feature: f.id, fragile: true });
+  fx.parts.push({ target: e.id, form: true });
+  const was = e.size;
+  takeForm(e, a.form, m.name, tpl, MONSTER_ACTIONS[a.form] ?? [], fx.id);
+  ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: fx.lasts, targets: [e.id] });
+  ev.push({ type: 'form', id: e.id, form: a.form, name: m.name });
+  if (e.size !== was) ev.push({ type: 'size', id: e.id, size: e.size });
+  if (F.tempHp) tempHp(s, e, F.tempHp, ev);
+}
+
 // Make a character again from a new record, carrying over what play has done to it. Validates
 // everything before it changes anything.
 function remake(s, e, record, sheet, ev) {
+  !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
   const problems = lintRecord(record, { spells: SPELLS });
   problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);

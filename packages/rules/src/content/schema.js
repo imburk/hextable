@@ -523,7 +523,7 @@ function lintArmour(e, say) {
 export const RESTS = ['short', 'long'];
 export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
 export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
-export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
+export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
   'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
@@ -587,7 +587,7 @@ function lintGrants(g, cls, say) {
   }
   if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
     if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
     if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
@@ -597,6 +597,21 @@ function lintGrants(g, cls, say) {
       if (!gn || !Object.keys(gn).every((k) => ['action', 'attacks'].includes(k))) say('gain gives an action or attacks');
       if (gn?.action !== undefined && gn.action !== 1) say('gain.action is 1');
       if (gn?.attacks !== undefined) { if (!ID.test(gn.attacks.with ?? '')) say('gain.attacks is { with: attack id, n }'); lintAmount(gn.attacks.n, cls, say, 'gain.attacks.n'); }
+    } else if (a?.form) {
+      // A form (Wild Shape; forms.js): the creature takes the shape of a pack monster of one of
+      // `types`, of Challenge Rating up to `maxCr`, with a Fly Speed only if `fly` is 1, for
+      // `hours` hours, gaining `tempHp` Temporary Hit Points. Each may grow with the class.
+      const fm = a.form, num = (x, ok) => (typeof x === 'number' ? ok(x) : x && typeof x === 'object' && x.byLevel && Object.keys(x).length === 1
+        && Object.entries(x.byLevel).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= LEVELS && typeof v === 'number' && ok(v)));
+      if (!(fm && typeof fm === 'object' && Object.keys(fm).every((k) => ['types', 'maxCr', 'fly', 'hours', 'tempHp'].includes(k)))) say('form is { types, maxCr, fly, hours, tempHp? }');
+      else {
+        if (!(allOf(CREATURE_TYPES)(fm.types) && fm.types.length)) say('form.types lists creature types');
+        if (!num(fm.maxCr, (v) => v >= 0 && v <= 30)) say('form.maxCr is a Challenge Rating, or one by level');
+        if (!num(fm.fly, (v) => v === 0 || v === 1)) say('form.fly is 0 or 1, or one by level');
+        if (!num(fm.hours, (v) => isInt(v) && v >= 1 && v <= 24)) say('form.hours is whole hours, or by level');
+        if (fm.tempHp !== undefined) lintAmount(fm.tempHp, cls, say, 'form.tempHp');
+      }
+      if (!a.target?.self || a.effects !== undefined) say('a form is taken by its creature itself, with no effects');
     } else if (a?.pool) {
       if (!a.target?.creature) say('a pool of healing is aimed at a creature');
       // `cure`: the pool may also remove these conditions, `cost` points each (Lay On Hands' Poisoned).
@@ -655,6 +670,7 @@ function lintGrants(g, cls, say) {
   if (g.proficiency !== undefined && !(g.proficiency && Object.keys(g.proficiency).every((k) => ['weapons', 'armour'].includes(k)) && allOf(['martial'])(g.proficiency.weapons ?? []) && allOf(ARMOUR_CATEGORIES)(g.proficiency.armour ?? []))) say('proficiency gives weapons (martial) and armour categories');
   if (g.recover !== undefined && !(g.recover && g.recover.levels === 'half-up' && isInt(g.recover.max))) say('recover is { levels: "half-up", max }');
   if (g.resist !== undefined && !allOf(DAMAGE_TYPES)(g.resist)) say('resist lists damage types');
+  if (g.conditionImmune !== undefined && !(allOf(CONDITIONS)(g.conditionImmune) && g.conditionImmune.length)) say('conditionImmune lists conditions');
   if (g.spellLists !== undefined && !(Array.isArray(g.spellLists) && g.spellLists.length && g.spellLists.every((x) => ID.test(x)))) say('spellLists names classes whose spell lists it opens');
   if (g.critOn !== undefined && !(isInt(g.critOn) && g.critOn >= 15 && g.critOn <= 19)) say('critOn is the lowest d20 roll that is a Critical Hit');
 }
@@ -789,7 +805,7 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
 const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
   'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look',
   // Made by derive() from a sheet (derive.js): features as the engine plays them, the Hit Die, what is worn.
-  'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact'];
+  'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact', 'conditionImmune'];
 // `abil` (the ability it uses), `weapon` (its equipment id) and `time: 'bonus'` (a Bonus Action
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
@@ -807,7 +823,11 @@ function lintFeat(f, say) {
   if (f.action !== undefined) {
     const a = f.action;
     if (!a || !ACTION_TIMES.includes(a.time)) sub('its action has a time.');
-    else if (!a.gain && !a.pool) {
+    else if (a.form) {
+      const fm = a.form;
+      if (!(fm && allOf(CREATURE_TYPES)(fm.types) && typeof fm.maxCr === 'number' && [0, 1].includes(fm.fly) && isInt(fm.hours) && fm.hours >= 1 && fm.hours <= 24
+        && (fm.tempHp === undefined || (isInt(fm.tempHp) && fm.tempHp >= 0 && fm.tempHp <= 100)))) sub('its form is { types, maxCr, fly, hours, tempHp? }.');
+    } else if (!a.gain && !a.pool) {
       lintTarget(a.target, sub);
       if (a.modes === undefined) lintSteps(a.effects, sub);
       else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects }.');
@@ -841,6 +861,7 @@ export function lintRecord(r, { spells = {} } = {}) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return ['A character is a record.'];
   if (findFunction(r)) return ['A character is data only.'];
   for (const k of Object.keys(r)) if (!RECORD_FIELDS.includes(k)) say(`"${k}" is not something a character record has.`);
+  if (r.conditionImmune !== undefined && !(allOf(CONDITIONS)(r.conditionImmune) && r.conditionImmune.length)) say('Its condition immunities are a list of conditions.');
   const within = (v, lo, hi) => isInt(v) && v >= lo && v <= hi;
   const list = (v, ok, max = 40) => Array.isArray(v) && v.length <= max && v.every(ok);
   if (!(isText(r.name) && r.name.length <= 40)) say('It needs a name of up to 40 letters.');

@@ -210,7 +210,7 @@ export function derive(sheet) {
   const feat = [];
   const legacy = {};
   let critOn = 20;
-  const bonusActs = new Set(), resist = new Set();
+  const bonusActs = new Set(), resist = new Set(), condImmune = new Set();
   for (const x of feats) {
     const f = x.f, g = f.grants ?? {};
     const out = { id: f.id, name: f.name, tier: f.tier, text: f.text };
@@ -224,6 +224,7 @@ export function derive(sheet) {
       const held = new Set(feats.map((y) => y.f.id));
       if (a.effects) a.effects = prune(bake(a.effects, c, level, abil), held);
       for (const m of a.modes ?? []) m.effects = prune(bake(m.effects, c, level, abil), held);
+      if (a.form) for (const k of ['maxCr', 'fly', 'hours', 'tempHp']) if (isAmount(a.form[k])) a.form[k] = amount(a.form[k], c, level, abil);
       if (isAmount(a.target?.creature?.count)) a.target.creature.count = amount(a.target.creature.count, c, level, abil);
       if (a.gain?.attacks) a.gain.attacks.n = amount(a.gain.attacks.n, c, level, abil);
       out.action = a;
@@ -243,6 +244,7 @@ export function derive(sheet) {
     if (g.critOn) critOn = Math.min(critOn, g.critOn);
     for (const b of g.bonusActs ?? []) bonusActs.add(b);
     for (const t of g.resist ?? []) resist.add(t);
+    for (const t of g.conditionImmune ?? []) condImmune.add(t);
     feat.push(out);
   }
 
@@ -264,7 +266,7 @@ export function derive(sheet) {
     ...(Object.keys(legacy).length ? { features: legacy } : {}),
     feats: feat, hitDie: c.hitDie,
     armour: armour?.category ?? 'none', ...(shield ? { shield: true } : {}),
-    ...(critOn < 20 ? { critOn } : {}), ...(bonusActs.size ? { bonusActs: [...bonusActs] } : {}), ...(resist.size ? { resist: [...resist] } : {}),
+    ...(critOn < 20 ? { critOn } : {}), ...(bonusActs.size ? { bonusActs: [...bonusActs] } : {}), ...(resist.size ? { resist: [...resist] } : {}), ...(condImmune.size ? { conditionImmune: [...condImmune] } : {}),
     ...(sheet.gear?.length ? { gear: [...sheet.gear] } : {}),
     ...(sheet.look ? { look: { ...sheet.look } } : {}),
   };
