@@ -4,6 +4,12 @@ Read `docs/DESIGN.md` before changing architecture and `docs/ROADMAP.md` to see
 what is in scope right now. Agreed designs are in `docs/specs`; build to them.
 `AGENTS.md` has the working agreement for every coding agent, including you.
 
+If you are the lead conversation: the hand-over note, the agent brief, the usage
+log and the session records are in the private repo `imburk/hextable-ops`
+(`HANDOVER.md`, `agents/AGENT-BRIEF.md`, `USAGE.md`, `sessions/`). Add that repo
+to your session and read `HANDOVER.md` first; write the end-of-session notes
+there, never here.
+
 ## What this is
 
 A browser-based 3D virtual tabletop for D&D: free roaming until combat starts,
