@@ -519,7 +519,7 @@ test("the server upgrades tables saved by the previous version when it loads the
   saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
   const tables = createTables({ load: () => [saved] });
   const state = tables.get("FIXTR1").state;
-  assert.equal(state.version, 13);
+  assert.equal(state.version, 14);
   assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
   const dm = client(tables);
   dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });
@@ -1018,4 +1018,28 @@ test("scenes: a player speaks only as their own character, and only so fast", ()
   assert.ok(!say(dm, { as: null, text: "the DM is counted apart" }).some((m) => m.t === "error"));
   t += 61_000;
   assert.ok(!say(player, { as: "rogue", text: "a minute later" }).some((m) => m.t === "error"));
+});
+
+test("standing instructions for reactions go to their player and the DM, and to no other player", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player: pat, code } = seated(tables);
+  const kim = client(tables);
+  kim.say({ t: "join", code, name: "Kim" });
+  dm.say({ t: "approve", userId: kim.last("welcome").userId, ok: true });
+  pat.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  kim.say({ t: "act", action: { type: "claim", entity: "fighter" } });
+  const kimRaw = kim.raw.length;
+  pat.say({ t: "act", action: { type: "reactions", actor: "rogue", set: { "opportunity-attack": "ask" } } });
+  assert.deepEqual(pat.last("update").state.reactions, { rogue: { "opportunity-attack": "ask" } });
+  assert.equal(dm.last("update").state.entities.rogue.reactions["opportunity-attack"], "ask");
+  assert.ok(!JSON.stringify(kim.raw.slice(kimRaw)).includes('"opportunity-attack":"ask"'), "nothing of it reaches Kim");
+  assert.deepEqual(kim.last("update")?.state.reactions ?? kim.receiver.state.reactions, {});
+  // Kim cannot set them for Pat's rogue.
+  kim.say({ t: "act", action: { type: "reactions", actor: "rogue", set: { "opportunity-attack": "never" } } });
+  assert.match(kim.last("error").error, /isn't yours/);
+  // A fresh full view (a reconnect) carries them too, for Pat alone.
+  pat.say({ t: "sync" }); kim.say({ t: "sync" });
+  assert.deepEqual(pat.receiver.state.reactions, { rogue: { "opportunity-attack": "ask" } });
+  assert.deepEqual(kim.receiver.state.reactions, {});
+  assert.equal(kim.receiver.state.entities.rogue.reactions, undefined);
 });

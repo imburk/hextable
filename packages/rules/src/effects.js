@@ -200,9 +200,12 @@ export function begin(s, { steps, actor, targets, src, shared = null }) {
 
 // Run until the stack is empty. `kit` is the engine's own machinery: rollToHit, savingThrow,
 // damage, heal, condition, judge. Passing it in keeps this file free of the engine's internals.
-export function run(s, ev, kit) {
+// `floor` is how many frames were already on the stack when this run began: a reaction resolved
+// inside another effect (Shield, cast while an attack step is running) runs only its own frames,
+// and the frames below carry on when control returns to them.
+export function run(s, ev, kit, floor = 0) {
   const stack = s.stack ?? [];
-  while (stack.length) {
+  while (stack.length > floor) {
     const f = stack.at(-1);
     if (f.kind === 'each') {
       if (f.t >= f.targets.length) { stack.pop(); continue; }
@@ -214,7 +217,7 @@ export function run(s, ev, kit) {
     const index = f.i++;
     exec(s, ev, kit, f, f.steps[index], `${f.path}${index}`);
   }
-  delete s.stack;
+  if (!floor) delete s.stack;
 }
 
 function exec(s, ev, kit, f, step, at) {
@@ -244,8 +247,12 @@ function exec(s, ev, kit, f, step, at) {
     const atk = step.kind === 'spell'
       ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
+    // The damage types under the hit, for a reaction that cares (Deflect Attacks).
+    atk.dtypes = (step.onHit ?? []).filter((x) => 'damage' in x).map((x) => x.type);
     const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
-    return branch(r.hit ? 'onHit' : 'onMiss', { crit: r.crit, mode: r.mode, half: false, hit: r.hit, weapon: step.kind === 'weapon' });
+    // `cut`: a reaction cut this attack's damage (Uncanny Dodge). It holds for the damage steps
+    // right under the hit, not for those under a save the hit calls for.
+    return branch(r.hit ? 'onHit' : 'onMiss', { crit: r.crit, mode: r.mode, half: false, hit: r.hit, weapon: step.kind === 'weapon', ...(r.cut ? { cut: r.cut } : {}) });
   }
   if (kind === 'save') {
     const dc = step.dc ?? f.src.dc;
@@ -274,7 +281,11 @@ function exec(s, ev, kit, f, step, at) {
       if (ok) parts.push({ ...amount(next, `${f.path}${f.i}`), type: next.type });
       f.i++;
     }
-    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit });
+    // A spell a reaction blocks does it no damage (Shield against Magic Missile).
+    if (f.src.blocked?.includes(t.id)) return;
+    const cut = f.cut;
+    if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
+    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal' || kind === 'tempHp') {

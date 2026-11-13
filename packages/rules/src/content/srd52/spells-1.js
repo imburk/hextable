@@ -491,9 +491,10 @@ export const spells1 = [
     time: "reaction", range: "self", components: ["v", "s"],
     duration: "1 round", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"modifier": {"on": "ac", "op": "add", "value": 5}}],
-    tier: "assist", checked: true,
-    text: "Cast as a reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the triggering attack. The engine does not check the trigger or undo the attack that already hit, and the caster takes no damage from Magic Missile; the DM handles both of those.",
+    reaction: { on: "hit", blocks: ["magic-missile"] },
+    effects: [{"modifier": {"on": "ac", "op": "add", "value": 5}, "ends": {"on": "turnStart"}}],
+    tier: "auto", checked: true,
+    text: "Cast as a Reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the attack that set it off, and no damage from Magic Missile meanwhile. Cast by standing instruction: never, only if it turns the hit into a miss, or always.",
   },
   {
     id: "silent-image", name: "Silent Image", source: "SRD 5.2.1",

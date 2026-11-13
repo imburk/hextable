@@ -38,7 +38,8 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 
 - `src/tables.js` — who is at which table and what each person is told. No
   network code, so the tests drive it directly. The players' view is built once per change of
-  the table and shared by every player (each copy adds only their own handouts): the party sees as
+  the table and shared by every player (each copy adds only their own handouts and their own
+  creatures' standing instructions for reactions, `reactions`): the party sees as
   one (`docs/specs/sight.md`). Under the `sight` table rules `los` and `light` a player's view also
   carries `sight: { rule, now, light? }`, the tiles the party sees now and the light on them.
 - `src/limits.js` — the per-address and per-connection limits, with an injectable clock.
@@ -60,6 +61,21 @@ Scenes are ordinary actions too (`scene`, `endScene`, `sceneNpc`, `say`, `askChe
 name the player joined by (and drops it from the DM's), and refuses a member's line beyond
 `MAX_SAYS_PER_MINUTE` (30) in a rolling minute, counting refused lines; the DM is counted apart
 from each player. Everything else, including who may speak as whom, is the engine's.
+
+### Reactions
+
+Standing instructions for a creature's reactions are an ordinary action (rules
+`reactions.js`; design `docs/specs/rules-expansion.md`, Decision 4 build notes):
+
+| Action | Who | Events (as the DM gets them) |
+|---|---|---|
+| `{type:"reactions", actor, set:{[reactionId]: "always"\|"never"\|"miss"\|"ask"}}` | the creature's controller or the DM, at any time | `reactionsSet {id,set}` (never sent to a player) |
+
+Which values a reaction takes depends on it (`miss` only for one that adds to AC, `ask` only for
+the Opportunity Attack). A player's view carries `reactions: { [creatureId]: { [reactionId]: when } }`
+for their own creatures only, with only what differs from the default; the shared part of the
+view never has a creature's `reactions`. A reaction taken sends `reaction {id,reaction,name,trigger,against?}`
+to everyone who could see it.
 
 ### Scene actions, events and view
 

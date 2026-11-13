@@ -38,7 +38,11 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
 export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
 export const OBJECT_BLOCKS = ['move', 'sight'];
 export const USE_TIMES = ['free', 'action'];
-export const TRIGGERS = ['enter', 'leave', 'near'];   // a creature steps onto a thing's hex, steps off it, or comes within so many feet
+export const TRIGGERS = ['enter', 'leave', 'near'];
+// What sets off a reaction given in data (a spell's or a feature's `reaction`; reactions.js).
+// `hit`: its creature is hit by an attack roll. (Leaving reach, for the Opportunity Attack, is the
+// engine's own and needs no data.) Others (seeing a spell cast, taking damage) come with stage B.
+export const REACTION_TRIGGERS = ['hit'];   // a creature steps onto a thing's hex, steps off it, or comes within so many feet
 export const SKILLS = { acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int',
   insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha',
   persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis' };
@@ -242,6 +246,16 @@ function lintSpell(e, say) {
   lintHigher(e, say);
   lintChoice(e, say);
   lintZone(e, say);
+  if (e.reaction !== undefined) {
+    // A spell cast as a Reaction by standing instruction: { on, blocks? }. `blocks` names spells
+    // whose being aimed at the caster also sets it off, and which then do the caster no damage
+    // while it lasts (Shield and Magic Missile).
+    const r = e.reaction;
+    if (e.time !== 'reaction') say('`reaction` is for a spell cast as a Reaction');
+    if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'blocks'].includes(k)) || !REACTION_TRIGGERS.includes(r.on)) say(`\`reaction\` is { on: ${REACTION_TRIGGERS.join(' | ')}, blocks? }`);
+    if (r?.blocks !== undefined && !(Array.isArray(r.blocks) && r.blocks.length && r.blocks.every((x) => ID.test(x)))) say('`reaction.blocks` lists spell ids');
+    if (!e.target?.self) say('a reaction spell is aimed at its caster');
+  }
   const seen = lintSteps(e.effects, say);
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
@@ -460,7 +474,7 @@ function lintArmour(e, say) {
 export const RESTS = ['short', 'long'];
 export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
 export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
-export const GRANTS = ['modifiers', 'action', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
+export const GRANTS = ['modifiers', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
   'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
@@ -518,6 +532,21 @@ function lintGrants(g, cls, say) {
       lintSteps(bakeValues(a.effects, cls, say), say);
     }
     for (const k of ['renew', 'noSpells', 'pool', 'firstAttack', 'endsWhenIncapacitated']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
+  }
+  if (g.reaction !== undefined) {
+    // A Reaction taken by standing instruction that cuts the damage of the attack that hit:
+    // { on: 'hit', cut: 'half' | { dice, add? }, seen?, types? }. `add` lists amounts that grow
+    // with the class ({ mod }, { perLevel }); derive() bakes them into the dice. `seen`: only
+    // against an attacker its creature can see. `types`: only if the attack deals one of them.
+    const r = g.reaction;
+    if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
+    else {
+      if (!REACTION_TRIGGERS.includes(r.on)) say(`reaction.on is one of ${REACTION_TRIGGERS.join(', ')}`);
+      if (r.cut !== 'half' && !(r.cut && typeof r.cut === 'object' && isDice(r.cut.dice) && Object.keys(r.cut).every((k) => ['dice', 'add'].includes(k)))) say('reaction.cut is "half" or { dice, add? }');
+      if (r.cut?.add !== undefined) { if (!Array.isArray(r.cut.add)) say('reaction.cut.add is a list'); else for (const x of r.cut.add) lintAmount(x, cls, say, 'reaction.cut.add'); }
+      if (r.seen !== undefined && r.seen !== true) say('reaction.seen is true or left out');
+      if (r.types !== undefined && !(allOf(DAMAGE_TYPES)(r.types) && r.types.length)) say('reaction.types lists damage types');
+    }
   }
   if (g.ac !== undefined && !(g.ac && isInt(g.ac.base) && allOf(ABILITIES)(g.ac.abilities) && typeof g.ac.shield === 'boolean')) say('ac is { base, abilities, shield }');
   for (const k of ['armouredAc', 'rangedAttack', 'extraAttack', 'expertise', 'cantrips']) if (g[k] !== undefined && !(isInt(g[k]) && g[k] > 0 && g[k] <= 5)) say(`${k} is a small whole number`);
@@ -658,7 +687,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
-const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover'];
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -677,6 +706,12 @@ function lintFeat(f, say) {
     if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
   }
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
+  if (f.reaction !== undefined) {
+    const r = f.reaction;
+    if (!(r && REACTION_TRIGGERS.includes(r.on) && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))
+      && Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k)) && (r.seen === undefined || r.seen === true)
+      && (r.types === undefined || (allOf(DAMAGE_TYPES)(r.types) && r.types.length)))) sub('its reaction is { on, cut: "half" | { dice }, seen?, types? }.');
+  }
   if (findFunction(f)) sub('it is data only.');
 }
 // extraAttack: the Attack action makes 1 + n attacks (Extra Attack at Fighter 5 is 1, at 11 is 2, at 20 is 3).

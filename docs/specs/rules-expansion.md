@@ -24,7 +24,9 @@ typed in:
 - Conditions are booleans on the creature (`cond.prone`), each with its rules
   written inline in the engine. Two exist (Prone, Unconscious) of fifteen.
 - Nothing lasts: there are no durations and no concentration.
-- The only reaction is the opportunity attack, taken automatically.
+- The only reaction is the opportunity attack, taken automatically. (Since reactions part 1:
+  a general mechanism with standing instructions, Shield, Uncanny Dodge and Deflect Attacks;
+  see the Decision 4 build notes.)
 - All content is one 87-line file.
 
 This got a playable game fast. It will not carry a campaign: the SRD has
@@ -199,6 +201,83 @@ So task R2 builds action resolution as a queue of small steps stored in the
 game state from the start, even though nothing pauses yet. That costs a
 little more in R2 and avoids rebuilding it for stage B. Standing instructions
 then become one way of answering a pause point, and a live prompt another.
+
+#### Build notes: reactions, part 1 (amendment, stage A)
+
+**What was built.** `packages/rules/src/reactions.js` holds the mechanism; the engine calls it at
+two trigger points.
+
+- *One Reaction a round.* `reactionUsed` (already in state) is spent when a reaction is taken and
+  cleared at the start of the creature's own turn, as before. `canReact()` refuses a creature that
+  is down, dead, has spent it, or is Incapacitated (or has a condition that includes it): SRD
+  "Inactive". The sheet's Reaction pip shows it, as before.
+- *What a creature can react with* (`reactionsOf`): the Opportunity Attack (any creature with a
+  melee attack, built in), every known spell whose data has `reaction`, and every built feature
+  whose grants include `reaction`. Considered in that order at a trigger; the first one its
+  instruction lets fire and it can pay for is taken, and no more (one Reaction).
+- *Standing instructions.* `e.reactions = { [reaction id]: when }`, set with
+  `{ type: 'reactions', actor, set: { id: when } }` by the creature's controller or the DM, at any
+  time, in or out of a fight, on or off its turn. Validated whole before anything changes. Values:
+  `always`, `never`, `miss` (only for a reaction that adds to AC: only if it turns this hit into a
+  miss), `ask` (Opportunity Attack only: the engine does not take it; a DM-only `manual` event says
+  it could have, and the DM decides and applies it by hand). Only non-default values are stored.
+  Defaults: `always` for a reaction that costs only the Reaction (Opportunity Attack, Uncanny Dodge,
+  Deflect Attacks), `never` for one that spends a spell slot (Shield), so nothing is spent that
+  nobody chose. Monsters keep `always` for the Opportunity Attack: no behaviour change.
+- *Triggers.* `leave` (walk(): the Opportunity Attack, re-seated on the instruction) and `hit`
+  (rollToHit(): after the hit is known, before the attack event and before damage). Shield's
+  "targeted by Magic Missile" is the spell's `blocks` list, checked in `cast` after the cast event.
+- *Resolution inside the triggering action.* No pause. A reaction spell's steps are begun on the
+  effect stack above the frames already there, and `run(s, ev, kit, floor)` (new `floor`
+  argument) runs only those, so the attack step that set it off carries on afterwards. Its events
+  come between the triggering roll and the attack event (`reaction`, then `cast` with
+  `reaction: true`, `effectStart`), and the attack event carries the Armor Class it was finally
+  compared with. A damage cut is passed from the hit to the damage under it (`cut`, applied with
+  the other adjustments before Resistance, SRD "Order of Application").
+- *Consumers.* Shield (auto): the lowest slot it can use is spent (one slot a turn per caster, kept
+  per creature off its own turn as `flags["slot:<id>"]`); +5 AC to the start of the caster's next
+  turn, including against the triggering attack; while it lasts, Magic Missile does the caster no
+  damage. Uncanny Dodge (auto): halves the hit's damage, rounded down, against an attacker it can
+  see. Deflect Attacks (assist): cuts a hit whose damage includes Bludgeoning, Piercing or Slashing
+  by 1d10 + Dexterity modifier + Monk level, rolled when it is taken; the Focus Point redirect is a
+  choice in the moment and goes to the DM.
+
+**Vocabulary added** (schema.js), the minimum for these three:
+
+- `REACTION_TRIGGERS = ['hit']`: the triggers data may name. `leave` is the engine's own.
+- A spell's `reaction: { on, blocks? }` (only with `time: 'reaction'` and a self target).
+- A class feature's grant `reaction: { on, cut: 'half' | { dice, add? }, seen?, types? }`; `add`
+  takes class amounts (`{ mod }`, `{ perLevel }`), which `derive()` bakes into the dice. A record's
+  feature may carry the baked `reaction` (FEAT_FIELDS).
+- Events: `reaction` { id, reaction, name, trigger, against?, amount? } (sent to players as anyone
+  watching would see it; `amount` and its dice only for one of theirs), and `reactionsSet` (the
+  DM's alone). `cast` may carry `reaction: true`.
+- State version 14: `reactions` on a creature. Migration drops one that is not a record of words.
+
+**Privacy.** An instruction is its controller's and the DM's. `playerView()` strips `reactions`
+from every creature; `viewReactions(state, viewer)` gives a player those of their own creatures,
+and the table server adds it to each player's view and patch beside their handouts (the one change
+to `tables.js`). A Seen creature's record never had `reactionUsed` or `reactions`. Declining sends
+nothing; `ask` is a DM-only `manual`; the event setting one is never sent. Tests prove each channel
+(rules `reactions.test.js`, server `tables.test.js`).
+
+**Settled.** Standing instructions are read at the trigger, never cached. A reaction that adds to
+AC is considered before one that cuts damage, so with `miss` set Shield yields to Uncanny Dodge
+when it would not help. A spell barred by Rage or by the one-slot-a-turn rule is passed over, not
+refused. Halving rounds down on the total of the attack's damage, not part by part.
+
+**Part 2 (stage B) needs.** Prompts: a pause point on the stack where a player answers in the
+moment (Counterspell, and anything decided after a roll is seen: Dark One's Own Luck, the Deflect
+Attacks redirect, Hellish Rebuke's choice to use a slot), with timeouts and what a hidden reactor
+shows while the table waits. Triggers still to add then: `damaged` (taking damage from a creature
+it can see: Hellish Rebuke), `cast` (seeing a spell cast: Counterspell), `fall` (Feather Fall),
+and monster reactions as data (DEBT M3: Parry and the like fit the `hit` trigger with an AC
+modifier). The client screen for setting instructions (below) and letting a player throw the
+dice of a reaction (DEBT T6).
+
+**Not built in part 1.** No screen sets instructions yet: the action is there and tested, and the
+sheet's Reaction pip shows available or spent, but choosing "always / never / only if it misses"
+waits for a sheet job.
 
 ## Four more decisions, from play experience
 
@@ -411,7 +490,8 @@ What the engine does with a spell today (task R2):
   cylinders, emanations, lines and cubes are laid out on the hexes (see the
   build notes on the vocabulary below for lines and cubes).
 - Charges for it: the action or Bonus Action, the slot, the range. Spells
-  cast as a Reaction are refused for now; spells that take longer than a
+  cast as a Reaction are refused as actions: one with a `reaction` trigger is cast by
+  standing instruction (Decision 4 build notes), the rest go to the DM; spells that take longer than a
   turn can only be cast outside a fight.
 - Runs its steps. In an area, damage is rolled once and shared.
 - Says what it did not do. A `manual` step shows its text to the table. A
@@ -904,7 +984,7 @@ each other and with the engine tasks.
 | R3 (built) | Modifier system and the fifteen conditions as data; state version 2 and `migrate()`. Version 2 makes conditions records; the split of a creature into record, sheet and state moves to R7, where `derive()` needs it | Fable | `engine.js`, new `modifiers.js`, `view.js`, `conditions.js` | Every existing advantage and disadvantage case comes from data; saved version 1 table loads |
 | R4 (built) | Durations, `state.effects`, concentration | Fable | `engine.js`, `effects.js` | An effect ends at each kind of boundary; concentration breaks on each trigger |
 | R5 | Quick entry: form, manual sheets, DM adds a character to the table | any agent, reviewed | `app.js`, `index.html`, small engine action | A level 5 character typed from a paper sheet can be claimed and played |
-| R6 | Standing-instruction reactions | Fable | `engine.js` | Opportunity Attack honours always / never; one spell reaction works |
+| R6 (part 1 built) | Standing-instruction reactions | Fable | `engine.js` | Opportunity Attack honours always / never; one spell reaction works |
 | R7 | `derive()` and `validate()` for built sheets: species, backgrounds, one class to level 5 | Fable | new `derive.js` | A built Fighter 1 to 5 matches hand-checked numbers at each level |
 | R8 | Character builder UI and `levelUp` | any agent, reviewed | `app.js`, `index.html` | A new player can make a level 1 Fighter on a phone |
 | D1 | Spells, in batches by level | any agent | `content/srd52/spells-*.js` | Linter passes; tier set honestly; SRD headings quoted in the PR |

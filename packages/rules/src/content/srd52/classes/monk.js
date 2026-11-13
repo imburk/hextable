@@ -251,9 +251,12 @@ export const monk = {
       "id": "deflect-attacks",
       "name": "Deflect Attacks",
       "level": 3,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "When hit by an attack dealing Bludgeoning, Piercing or Slashing damage, use your Reaction to reduce it by 1d10 + Dexterity modifier + Monk level, and redirect it for 1 Focus Point if reduced to 0. Reactions are not prompted yet."
+      "text": "When hit by an attack roll whose damage includes Bludgeoning, Piercing or Slashing, use your Reaction to reduce the attack's total damage by 1d10 + Dexterity modifier + Monk level (taken by standing instruction). If that brings it to 0, the monk may spend 1 Focus Point to redirect it: a creature within 5 feet (melee) or 60 feet (ranged) makes a Dexterity save or takes two Martial Arts dice + Dexterity modifier. The DM applies the redirect.",
+      "grants": {
+        "reaction": { "on": "hit", "types": ["bludgeoning", "piercing", "slashing"], "cut": { "dice": "1d10", "add": [{ "mod": "dex" }, { "perLevel": 1 }] } }
+      }
     },
     {
       "id": "ability-score-improvement-4",

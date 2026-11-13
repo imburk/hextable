@@ -134,7 +134,7 @@ test("the table rule diceThrow: auto or throw, the DM's to set, and an old game 
   delete old.settings.diceThrow; old.version = 11;
   migrate(old);
   assert.equal(old.settings.diceThrow, "auto");
-  assert.equal(old.version, 13);
+  assert.equal(old.version, 14);
 });
 
 test("a healing spell and a saving throw carry their faces too", () => {

@@ -210,6 +210,12 @@ export function derive(sheet) {
       out.action = a;
     }
     if (g.recover) out.recover = { ...g.recover };
+    // A reaction's cut with its class numbers put in (Deflect Attacks: 1d10 + Dexterity + Monk level).
+    if (g.reaction) {
+      const r = structuredClone(g.reaction);
+      if (r.cut?.add) { r.cut = { dice: dice(r.cut.dice, r.cut.add.reduce((n, x) => n + amount(x, c, level, abil), 0)) }; }
+      out.reaction = r;
+    }
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
     if (g.critOn) critOn = Math.min(critOn, g.critOn);

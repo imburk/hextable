@@ -23,6 +23,7 @@ import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { derive, validate } from './derive.js';
+import { OPPORTUNITY, canReact, checkInstructions, instruction, opportunityAttack, reactionsOf } from './reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
@@ -207,17 +208,15 @@ export function moveOptions(s, e) {
   return reach;
 }
 
+// Who could make an Opportunity Attack on `e` standing at `pos`: hostile, able to take a Reaction
+// (reactions.js, canReact), armed for one, within reach and able to see it (SRD). Whether each
+// one takes it is its standing instruction, read in walk().
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
-    o.id !== e.id && up(o) && hostile(o, e) && !o.reactionUsed && !incapacitated(o) &&
+    o.id !== e.id && up(o) && hostile(o, e) && canReact(o) &&
     !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && canSee(s, o, e) !== 'no');     // SRD: a creature it can see
 }
-// What a creature makes an Opportunity Attack with: its first melee attack action, or for a
-// creature with flat attack records, its first melee attack.
-export function opportunityAttack(o) {
-  if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
-  return o.attacks.find((a) => a.type === 'melee') ?? null;
-}
+export { opportunityAttack };
 
 // Is there nothing solid between two positions? A wall or a shut door stops attacks, spells and
 // notice. This is the straight line between hex centres; cover and light come with the sight spec.
@@ -609,7 +608,9 @@ function rollDice(s, list) {
 // but the creature takes them as one instance of damage, so a dying creature fails one death
 // save for it (two on a critical hit), and Concentration is tested once, against the total.
 // Temporary Hit Points are lost first (SRD); `raw` (the DM setting Hit Points) leaves them alone.
-function damage(s, t, amount, dtype, ev, { crit = false, raw = false } = {}) {
+// `cut` is a reaction that cuts this damage (Uncanny Dodge: { half }, Deflect Attacks: { less }),
+// taken with the other adjustments, before Resistance (SRD "Order of Application").
+function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null } = {}) {
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const dying = t.hp <= 0, before = t.hp;
@@ -626,15 +627,22 @@ function damage(s, t, amount, dtype, ev, { crit = false, raw = false } = {}) {
     const r = typeof x.value === 'string' ? rollDice(s, [{ dice: x.value, name: x.name }]).total : x.value;
     adjust[i] += r; noted[i].push({ name: x.name, ...(typeof x.value === 'string' ? { dice: x.value } : {}), roll: r });
   }
+  const base = parts.map((p, i) => Math.max(0, p.amount + adjust[i]));
+  if (cut) {
+    const all = base.reduce((a, n) => a + n, 0);
+    let less = cut.half ? all - Math.floor(all / 2) : Math.min(all, cut.less);
+    for (let i = 0; i < base.length && less > 0; i++) { const n = Math.min(base[i], less); base[i] -= n; less -= n; if (n) noted[i].push({ name: cut.name, roll: -n }); }
+  }
   let total = 0, lost = 0;
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
     const resisted = applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
-    let n = Math.max(0, p.amount + adjust[pi]);
+    let n = base[pi];
     if (applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
-    const note = n === 0 && p.amount > 0 ? 'immune' : resisted && vulnerable && p.amount > 0 ? 'resisted and vulnerable' : n < p.amount ? 'resisted' : n > p.amount ? 'vulnerable' : undefined;
+    const ref = cut ? base[pi] : p.amount;                 // after a reaction's cut, Resistance is judged against what was left
+    const note = n === 0 && ref > 0 ? 'immune' : resisted && vulnerable && ref > 0 ? 'resisted and vulnerable' : n < ref ? 'resisted' : n > ref ? 'vulnerable' : undefined;
     total += n;
     const soak = raw ? 0 : Math.min(t.tempHp ?? 0, n);
     if (soak) t.tempHp -= soak;
@@ -734,15 +742,111 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   const cover = e.object ? 'none' : coverOf(s, e, t, living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
   // Improved Critical: a weapon attack scores a Critical Hit, and so hits, on a lower roll (`critOn`).
   const critRoll = nat === 20 || (!atk.spell && e.critOn && nat >= e.critOn);
-  const hit = nat !== 1 && (critRoll || nat + bonus >= ac);
+  let hit = nat !== 1 && (critRoll || nat + bonus >= ac), ac2 = ac, cut = null;
+  // The target may react to being hit (reactions.js): Shield raises its Armor Class against this
+  // very attack, so the roll is compared again; Uncanny Dodge and Deflect Attacks cut the damage.
+  if (hit) {
+    const r = reactToHit(s, t, e, atk, { total: nat + bonus, ac, critRoll }, ev);
+    if (r?.ac) { ac2 = acOf(s, t) + (COVER[cover] ?? 0); hit = critRoll || nat + bonus >= ac2; }
+    if (r?.cut) cut = r.cut;
+  }
   const crit = hit && (critRoll || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
+    total: nat + bonus, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   renew(s, e, t);
-  return { hit, crit, mode };
+  return { hit, crit, mode, ...(cut ? { cut } : {}) };
+}
+
+// ---------- reactions (reactions.js; docs/specs/rules-expansion.md, Decision 4) ----------
+
+// Can this creature cast this reaction spell now? It knows it, has a slot for it, is not barred
+// from spells (Rage), and has not spent a spell slot already this turn (SRD: one a turn).
+function slotFor(s, e, sp) {
+  if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return null;
+  if (sp.level === 0) return 0;
+  if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return null;
+  for (let l = sp.level; l <= 9; l++) if ((e.slots?.[l] ?? 0) > 0) return l;
+  return null;
+}
+
+// Cast a spell as a Reaction: the Reaction and the lowest slot it can use are spent, and its
+// steps run on the caster at once, inside whatever action set it off (on the effect stack, above
+// the frames already there, which carry on afterwards).
+function castReaction(s, e, sp, slot, trigger, against, ev) {
+  e.reactionUsed = true;
+  if (slot > 0) {
+    e.slots[slot]--;
+    if (s.encounter) { if (current(s) === e.id) s.encounter.flags.slot = true; else s.encounter.flags[`slot:${e.id}`] = true; }
+  }
+  ev.push({ type: 'reaction', id: e.id, reaction: sp.id, name: sp.name, trigger, ...(against ? { against } : {}) });
+  if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');
+  ev.push({ type: 'cast', actor: e.id, spell: sp.id, name: sp.name, hexes: null, targets: [e.id], reaction: true, ...(slot > sp.level ? { slot } : {}) });
+  const { steps } = scaleSteps(sp.def, e.level, slot || sp.level);
+  let fx = null;
+  if (sp.def.duration !== 'instant') {
+    fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [e.id] });
+  }
+  const st = spellStats(e, s), depth = s.stack?.length ?? 0;
+  begin(s, { steps, actor: e.id, targets: [e.id], src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) } });
+  run(s, ev, KIT, depth);
+  if (sp.def.tier !== 'auto') ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true });
+}
+
+// The damage types an attack deals, as far as its data says.
+function attackTypes(atk) { return atk.dtypes ?? (atk.dtype ? [atk.dtype] : []); }
+
+// `t` was hit by `e`'s attack roll. Its first reaction for a hit that its instruction lets fire
+// and it can take, if any, is taken. Returns { ac: true } if its Armor Class may have changed,
+// { cut } to cut the attack's damage, or null.
+function reactToHit(s, t, e, atk, roll_, ev) {
+  if (!canReact(t) || t.object) return null;
+  for (const r of reactionsOf(t)) {
+    if (r.on !== 'hit') continue;
+    const w = instruction(t, r);
+    if (w === 'never') continue;
+    if (r.kind === 'spell') {
+      const sp = SPELLS[r.id], slot = slotFor(s, t, sp);
+      if (slot === null) continue;
+      if (w === 'miss' && (roll_.critRoll || roll_.total >= roll_.ac + r.ac)) continue;     // it would hit anyway
+      castReaction(s, t, sp, slot, 'hit', e.object ? null : e.id, ev);
+      return { ac: true };
+    }
+    if (r.kind === 'feature') {
+      const x = r.reaction;
+      if (x.seen && (e.object || canSee(s, t, e) === 'no')) continue;                      // "an attacker that you can see"
+      if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;          // Deflect Attacks: Bludgeoning, Piercing or Slashing
+      t.reactionUsed = true;
+      let cut;
+      if (x.cut === 'half') cut = { half: true, name: r.name };
+      else { const rr = roll(s, x.cut.dice); cut = { less: Math.max(0, rr.total), name: r.name, dice: rr.dice, bonus: rr.bonus }; }
+      ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'hit', ...(e.object ? {} : { against: e.id }), ...(cut.less !== undefined ? { amount: cut.less, dice: cut.dice, bonus: cut.bonus, by: t.id } : {}) });
+      if (r.tier !== 'auto') ev.push({ type: 'manual', actor: t.id, name: r.name, text: r.text, partial: true });
+      return { cut: cut.half ? { half: true, name: r.name } : { less: cut.less, name: r.name } };
+    }
+  }
+  return null;
+}
+
+// Targets of a spell that a reaction keeps from taking its damage (Shield against Magic Missile):
+// one that has the blocking spell going already, or casts it now by its instruction. Returns their ids.
+function blockSpell(s, caster, spellId, targets, ev) {
+  const out = [];
+  for (const t of new Set(targets)) {
+    const has = (r) => r.blocks?.includes(spellId);
+    const going = effectsOf(s).some((fx) => fx.source === t.id && SPELLS[fx.spell]?.def.reaction?.blocks?.includes(spellId) && fx.parts.some((p) => !p.ended));
+    if (going) { out.push(t.id); continue; }
+    if (!canReact(t) || t.id === caster.id) continue;
+    const r = reactionsOf(t).find((x) => x.kind === 'spell' && has(x) && instruction(t, x) !== 'never');
+    const sp = r && SPELLS[r.id], slot = sp ? slotFor(s, t, sp) : null;
+    if (!r || slot === null) continue;
+    castReaction(s, t, sp, slot, 'targeted', caster.id, ev);
+    out.push(t.id);
+  }
+  return out;
 }
 // Rage goes on while its creature keeps fighting: an attack roll against an enemy, or making an
 // enemy save, carries it to the end of its next turn again (its parts are made new this turn).
@@ -755,7 +859,7 @@ function renew(s, e, t) {
 // A weapon attack by a creature whose attacks are still flat records (monsters and
 // hand-entered characters). Spells resolve through effect steps instead.
 function resolveAttack(s, e, t, atk, ev, extra = {}) {
-  const { hit, crit, mode } = rollToHit(s, e, t, atk, ev, extra);
+  const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra);
   if (!hit) return;
   const rs = [roll(s, atk.damage, { crit })];
   const notes = [];
@@ -771,7 +875,7 @@ function resolveAttack(s, e, t, atk, ev, extra = {}) {
   }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
   const r = together(...rs);
-  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit });
+  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
 }
 
@@ -1232,8 +1336,18 @@ function walk(s, e, reach, tk, ev, fighting) {
     if (fighting && s.encounter && !e.cond.disengaged) {
       for (const o of threatsAt(s, e, prev)) {
         if (apartAt(s, o, o.pos, e, step) <= 1) continue;
+        // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
+        // happens and nothing is said. `ask`: the DM alone is told and decides by hand.
+        const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY));
+        if (w === 'never') continue;
+        if (w === 'ask') {
+          ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
+            text: `${e.name} leaves ${o.name}'s reach. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack, the DM makes it and marks its Reaction used.` });
+          continue;
+        }
         flush();
         o.reactionUsed = true;
+        ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: e.id });
         const oa = opportunityAttack(o);
         if (o.actions) runAction(s, o, oa, [e], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, e, oa, ev, { opportunity: true });
@@ -1498,7 +1612,9 @@ const handlers = {
     (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
-    if (sp.time === 'reaction') fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+    if (sp.time === 'reaction') fail(sp.def.reaction
+      ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
+      : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
     if (!sp.turn && s.encounter) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
@@ -1549,6 +1665,8 @@ const handlers = {
     const st = spellStats(e, s), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     if (pick) chooseIn(steps, pick.of, a.choice);
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}) });
+    // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
+    const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
@@ -1572,7 +1690,7 @@ const handlers = {
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}) },
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared: sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
@@ -1612,6 +1730,18 @@ const handlers = {
     s.encounter.budget.action--; e.cond.dodging = {};
     ev.push({ type: 'std', id: e.id, action: 'Dodge' });
   },
+  // { type: 'reactions', actor, set: { [reaction id]: when } }: standing instructions for a
+  // creature's reactions (reactions.js), set by whoever controls it at any time, even off its turn.
+  // Private to its controller and the DM: the event is the DM's alone (view.js).
+  reactions(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    const bad = checkInstructions(e, a.set);
+    if (bad) fail(bad);
+    const mine = reactionsOf(e), out = { ...(e.reactions ?? {}) };
+    for (const [k, w] of Object.entries(a.set)) { if (w === mine.find((r) => r.id === k).dflt) delete out[k]; else out[k] = w; }
+    if (Object.keys(out).length) e.reactions = out; else delete e.reactions;
+    ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
+  },
   secondWind(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     e.uses.secondWind > 0 || fail(`${e.name} has no uses of Second Wind left.`);
@@ -1636,7 +1766,7 @@ const handlers = {
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
-    act.time !== 'reaction' || fail(`${f.name} is a Reaction. The engine does not prompt for reactions yet; the DM applies it.`);
+    act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not prompt for reactions yet; the DM applies it.`);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
@@ -1986,7 +2116,7 @@ const handlers = {
     !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
     const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
     const lost = e.maxHp - e.hp;
-    Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed });
+    Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed, ...(e.reactions ? { reactions: e.reactions } : {}) });
     for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots already spent stay spent
     if (e.look && !a.record.look) fresh.look = e.look;
     s.entities[e.id] = fresh;
@@ -2293,7 +2423,7 @@ function remake(s, e, record, sheet, ev) {
   const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
   const lost = e.maxHp - e.hp;
   fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
-  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);

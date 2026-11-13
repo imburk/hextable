@@ -216,7 +216,7 @@ test("a saved table from before scenes has none going on", () => {
   const old = JSON.parse(JSON.stringify(s));
   migrate(old);
   assert.equal(old.scene, null);
-  assert.equal(old.version, 13, "scenes are version 13, after main's 12");
+  assert.equal(old.version, 14, "scenes came with version 13; reactions made it 14");
   ok(apply(old, { type: "scene", scene: { title: "After" } }, DM));
   migrate(old);
   assert.equal(old.scene.title, "After", "migrating again keeps it");
