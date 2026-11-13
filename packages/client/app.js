@@ -54,15 +54,15 @@ const R = new Renderer($('gl'), $('labels'), THEMES[themeId]);
 const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 const pace = () => paceFor({ table: S?.settings?.pace, mine: prefs.get('hextable.pace'), reduced: reducedMotion() });
 const AI_PAUSE = 350;       // ms after the picture is still before a monster's next step, in `wait`
-let tookBack = false, floatRun = { id: 0, n: 0 };
+let tookBack = false, snapping = false, floatRun = { id: 0, n: 0 };      // snapping: the update being pushed is shown at once (R4: the renderer then animates nothing)
 const played = [];          // the last beats played on this device with their times, for tests: window.hextable.played
 const TL = createTimeline({
   clock: () => performance.now() / 1000,
   pace: pace(),
   onBeat: (ev, ctx) => beat(ev, ctx),
-  onShow: (state, events) => { if (S) R.setState(state, events); },
+  onShow: (state, events) => { if (S) R.setState(state, events, { instant: TL.pace === 'instant' || snapping }); },
   onDone: (u) => { if (S && u.meta.first && selId) R.focus(selId, true); },
-  onIdle: () => idled(),
+  onIdle: () => { R.settle(); idled(); },        // whatever the renderer is still easing (a door, a fall) is brought to its end state
 });
 setInterval(() => TL.tick(), 33);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) TL.skip(); });      // a tab that was hidden shows everything at once on its return
@@ -329,7 +329,9 @@ function onUpdate(state, events, fresh) {
   tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
   // Undo and redo take the table back, and a question waiting for an answer must not sit behind queued beats: both show at once.
   const urgent = !!(S.prompt || S.pending);
+  snapping = first || tookBack || urgent;
   TL.push(S, events, { first, fresh: first, flush: tookBack || urgent, instant: tookBack || urgent });
+  snapping = false;
   syncPlaying();
 }
 // The beats of everything received have played: the screen is in line with the table.
