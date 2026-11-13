@@ -832,5 +832,5 @@ can run in parallel after R2. R10 decides the rest.
     dungeon and the cave: `screenOf` for 81 hexes, `screenPoint`, `planePoint`, `screenAxes` and the hex picked by a tap at 23 to 26 points
     agree to under 0.01 px with the default renderer, and screenshots differ in under 0.1 % of pixels by more than 40/255. The game plays on
     it (a tap moves a character, a fight starts and the curtain is drawn, a goblin falls, doors swing and close). Frame times (software GL,
-    so only comparable): the medians are equal to the 60 Hz tick (desktop dungeon 266.7 ms both, phone dungeon 116.7 ms both), and draw calls are
+    so only comparable): the medians are the same in both, set by the display tick under software GL (desktop dungeon 266.7 ms both, phone dungeon 116.7 ms both), and draw calls are
     equal (11 on the dungeon): the two renderers cost the same here, and neither number says anything about a device.
