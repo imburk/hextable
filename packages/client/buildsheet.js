@@ -34,7 +34,7 @@ export function usesText(u) {
   return `${n}, back on a Long Rest${u.short ? ` (${u.short} on a Short Rest)` : ''}`;
 }
 
-export function initBuild({ act, toast, getState, getSelected }) {
+export function initBuild({ act, toast, getState, getSelected, importButton }) {
   const classIds = Object.keys(CONTENT.classes);
   let b = fresh(), mode = 'add', target = null, base = null, pending = null;
   const open = new Set(['spells-0']);          // spell groups left open across redraws
@@ -98,6 +98,7 @@ export function initBuild({ act, toast, getState, getSelected }) {
     const head = el('div', { class: 'qe-head' }, el('h2', { text: title }), el('button', { type: 'button', class: 'close', id: 'qb-close', text: 'Close', onclick: close }));
     const parts = [head];
     if (mode === 'levelup') parts.push(gainedBox());
+    if (mode === 'add' && importButton) parts.push(el('div', { class: 'row' }, importButton(), el('small', { class: 'note', text: 'Or start from a Fantasy Grounds export.' })));
 
     // Who: name, colour, class, subclass, level
     const sel = (label, id, options, value, onchange, disabled) => {
