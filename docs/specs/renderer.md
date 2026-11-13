@@ -578,7 +578,7 @@ Ordered so that the first three each give a visible improvement on their own.
 | R2 | Floors module: patches, clip and fill to walls, outlines, wall posts and cutaways, as a pure module with tests; R1 drawn from it | any agent | new `client/floors.js`, its test, `render.js`, `package.json` test script | A traced diagonal wall gives a straight floor edge; a corridor between two traced walls is filled; tests pass in Node |
 | R3 | Timeline and pace: beats, grouping, the shown state, skip, catch-up, `onBeat`, `onIdle`; log lines and floaters moved onto beats; the AI waits for idle; the `pace` setting | any agent; the one-line `SETTINGS` change by the design owner | new `client/timeline.js`, `render.js`, `app.js`, `engine.js` (one line) | A goblin's attack, damage and fall play in order before the player's buttons wake; a tap skips; an `instant` table plays as today |
 | R4 | Beats in today's renderer: doors swing, falls, deaths and Prone, region fade-in, fade in and out, the arena rising | any agent | `render.js` | Each row of the event table that needs no model has its animation |
-| R5 | The interface: `createRenderer`, only the listed members used by `app.js` and `editor.js`, `stats()`, the quality governor (pixel ratio steps) | any agent | `render.js`, `app.js`, `editor.js` | A second, empty renderer class can be selected and the UI still loads |
+| R5 | (built, see build notes) The interface: `createRenderer`, only the listed members used by `app.js` and `editor.js`, `stats()`, the quality governor (pixel ratio steps) | any agent | `render.js`, `app.js`, `editor.js` | A second, empty renderer class can be selected and the UI still loads |
 | R6 | Outdoors: height field, blended colours, scattered trees, boulders, banks at rules steps; behind a theme flag until the owner approves | any agent, look approved by the design owner | `floors.js`, `render.js` | The valley reads as a valley with no hex rims, and its picking is unchanged |
 | R7 | Caves: rock edges with seeded noise, open floor as patches | any agent | `floors.js` | A cave painted as rock with open hexes looks like a cave |
 | R8 | `level.image`: stored in the map document, linted, kept with exports; the UVTT import fills it; floors textured by it | design owner (map format), then any agent (drawing) | `map.js`, `import-uvtt.js`, assets (M9), `render.js` | An imported map shows its picture as the floor with walls on its painted walls |
@@ -738,3 +738,46 @@ can run in parallel after R2. R10 decides the rest.
     model (R5). Animations keep the table's nominal times: a beat the timeline scaled down or ran at 2x is not matched, as
     `onBeat` hands over no length (a timeline change). Checked at 1280x800 and 390x844 with touch on the valley (fight rise and
     sink, a goblin killed) and the stock dungeon (a door, a region); `SMOKE_ONLY=beats`.
+- **R5 the interface** (`interface-r5`). `packages/client/renderer.js` is the one way the app gets a renderer:
+  `createRenderer(kind, canvas, labels, theme)` with kind `'gl'` (render.js, the default) or `'none'` (`EmptyRenderer`: draws
+  nothing, implements everything, never throws), and `rendererKind(search, pref)`, which reads `?renderer=none` in the address,
+  then the device preference `hextable.renderer`, else `'gl'`. `packages/client/governor.js` is the quality governor, pure.
+  `test/renderer.test.js` reads `app.js` and `editor.js` and fails on any `R.x` / `this.R.x` that is not in `MEMBERS`, on any
+  other way the renderer object is passed around, checks that the empty renderer and the GL renderer have every method, and
+  tests the governor. **The final interface** (what `app.js` and `editor.js` may use, and nothing else):
+  - What to draw: `setState(state, events, { instant })`, `settle()`, `setTheme(theme)`, `setCeiling(feet)`,
+    `setHighlights({ move, area, targets, allies, selected, turn })`, `setPins(points, levelZ)`, `setBars(bars, levelZ)`.
+  - Camera: `focus(id, snap)`, `rotate(radians)`, `zoom(factor)`, `inset` (px of screen covered by the UI at the bottom).
+  - Floating words: `floater(id, text, cls, delay)`.
+  - Input: callbacks `onTap({ hex, id })`, `onHover(hex | null)`, `onPoint(x, y) | null`, `onDrag { down, move, end, cancel } | null`;
+    questions `planeHex(px, py, feet)`, `planePoint(px, py, feet)` (a point in map feet), `screenOf(hex)`,
+    `screenPoint(x, y, feet)`, `screenAxes()`, `zonesAt(hex)`.
+  - Pictures: `hasPicture(levelId)`, `onPicture` (called when a level's picture has arrived), `assetUrl(id)` (set by the app).
+  - Housekeeping: `stats()` -> `{ frameMs, quality, pixelRatio, drawCalls }`, `dispose()`.
+  **Changes to Decision 7's list, and why.** Added, because the code already used them and each is real: `settle()` (R4: the
+  timeline's `onIdle` ends whatever the renderer is still easing); `planePoint`, `screenPoint`, `screenAxes`, `setPins`, `setBars`,
+  `hasPicture`, `onPicture`, `assetUrl` (the editor's picture, scale and trace tools, and the picture floors of M9);
+  `zonesAt` (hover and tap name the zones over a hex); the `delay` of `floater` and the `{ instant }` option of `setState` (the
+  pace). Not members, though the spec listed them: `busy`, `skip`, `onBeat`, `onIdle` and `setPace`. The timeline is
+  written once and lives in `app.js` (`TL`), which calls `setState` and `settle` when its beats say so; a renderer is told what
+  the state is now and animates the change, it does not run a queue of its own, so there is nothing for `busy` or `skip`
+  to report on the renderer. Pace reaches it as `{ instant }`. If a renderer ever needs the beats themselves, they come as
+  `events`, as now. `labels` is not a member: the editor puts its hex numbers into the page's `#labels` element itself. `stats()` also
+  reports `pixelRatio` and `drawCalls`.
+  **The governor** (`governor.js`; the renderer feeds it every frame's time and applies the pixel ratio it names). The steps are
+  2, 1.5, 1, each at most the screen's own ratio (a screen of ratio 1 has one step and the governor does nothing).
+  The spec's numbers are used as written: down one step when the median of the last 120 frames stays above 28 ms for
+  2 s, up one when it stays under 14 ms for 10 s. Added, to keep it from bouncing: the window is emptied after a step and 30 new
+  frames come before anything is judged; the level just left is not tried again for 2 minutes; a step up that is followed by a
+  step down inside a minute bans that level until the canvas changes size (a model of a device that cannot hold 1.5 steps down,
+  up once, down, and then stays, all in the first few minutes); frames over 1 s (a hidden tab) are not counted. One more change to
+  the spec's thresholds: a display locked to 60 Hz can never show a median under 14 ms, so the governor would never step up
+  there; once it has seen a full window with a median between 14 and 18 ms, it counts a median 12 % over that as recovered
+  (18.7 ms on a 60 Hz screen). `frameMs` is the time between frames, as the player sees it, not the renderer's own work. Only the
+  pixel ratio is governed; the rest of the cut list (shadows, lights, particles, decor) has nothing to cut yet.
+  Checked at 1280x800 and 390x844 with touch, solo, on the valley and the stock dungeon: screenshots before and after are
+  identical to the pixel (with `Math.random` fixed, since the valley's trees are drawn from a random seed per game).
+  `SMOKE_ONLY=interface`: the page loads with the empty renderer (address flag on a desktop, preference on a phone), a table is
+  hosted, a character moves by action, the tracker, sheet, undo, a fight and a map change work, no page or console errors; and
+  the default renderer reports `stats()`. The smoke script still reads the default renderer's insides through
+  `window.hextable.R` (`cam`, `floorData`, `actors`, `doors`...): that is its documented test surface and the app does not use it.
