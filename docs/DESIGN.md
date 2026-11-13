@@ -18,7 +18,7 @@
 | Topic | Decision |
 |---|---|
 | Rules | SRD 5.2, fully enforced |
-| Licence of the project | Open source (MIT) |
+| Licence of the project | Open source (AGPL-3.0-or-later) |
 | Access | Cloud link, with login or DM approval |
 | Terrain mapping | Can come now or later; not blocking |
 | Presentation | Staged: tokens, then 3D, then animated |
@@ -35,7 +35,7 @@ brought in as the codebase. It set the stack:
 | 3D | The prototype's own WebGL renderer today; **Three.js** (vendored, pinned to r187) for models, accepted by the owner on 13 November, 2026 | Models and animation (glTF loading, skinned meshes, blended clips, materials, real shadows, many lights, instancing) are a large body of general GPU code that Three.js already has, tested by a great many users; written here it would be written and debugged without tests. The cost is a download of about 458 KB gzipped, once and only when the Three renderer is used, a vendoring step, and a pinned version to keep. It is the one runtime dependency, and it is not installed: its files are copied into `packages/client/vendor/`, with the exact release, upstream commit and SHA-256 of each file in the `README` there. Upgrades are deliberate, with that README's steps. Everything specific to Hextable (rooms, timeline, sight, picking) stays our own code in plain modules, and the renderer sits behind the interface of `renderer.js`, so the hand-written renderer stays the default until the Three one passes the same checks, then goes. Full reasoning: `docs/specs/renderer.md`, Decision 8 |
 | Server | Node.js, WebSockets written on the built-in `http` module | Same language as the rules; nothing to install |
 | Storage | Browser storage for solo play; one JSON file per table on the server | A table is one JSON document; move to a database when a persistent world needs queries |
-| Licence | MIT | Simplest permissive licence |
+| Licence | AGPL-3.0-or-later | Changed from MIT on 13 November 2026: anyone who runs a modified table server must offer its source |
 | Hex layout | Pointy-top hexes, 5 ft each, axial coordinates, per-hex height | Matches SRD distances |
 
 One earlier proposal is deferred, not dropped:
