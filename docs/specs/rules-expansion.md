@@ -1054,6 +1054,45 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   - *Not built*: Savage Attacker, Great Weapon Fighting and Two-Weapon Fighting (dice the engine rolls once), Alert's
     Initiative swap, Grappler's grapple parts (grappling is not built), and each Epic Boon's benefit but the score
     and Truesight: the DM applies them. Magic Initiate's spell swap on gaining a level is a sheet edit.
+- **Amendment (magic items, #189). State version 20.** Decision 6 built in part, to the SRD 5.2.1 "Magic Items" rules
+  (Attunement, Wearing and Wielding Items, Multiple Items of the Same Kind, Attunement Prerequisites;
+  `test/items.test.js`).
+  - *Data*: a new kind, `items` (`srd52/magic-items.js`, `lintItem`): `{ id, name, category, rarity, attune?: true |
+    { by: [classes] } | { spellcaster: true }, wear, base?: { weapon: [ids] | "any" | "melee" } | { armour: [ids] |
+    "any" }, bonus?, damageType?, properties?, trained?, grants?, variant?: damageType | spell, charges?: { max,
+    regain? }, activate?: [{ name?, time, cost?, consumed?, spell?, level?, dc?, effects? }], tier, checked, source,
+    text }`. `wear` is where its magic works (`carried`: on the person). 75 items: 36 auto, 15 assist, 24 manual.
+  - *Grants*, general: `setAbility` (a score becomes this unless already as high; of two, the higher), `bareAc` (with no
+    armour and no Shield), `senseRange` (a sense gained or lengthened), and `speeds` may give feet (`{ swim: 40 }`).
+    A modifier's damage type `"chosen"` is the item's `type`.
+  - *Sheet*: `items: [{ id, item, base?, type?, spell?, equipped?, attuned?, charges? }]` and `attuning: { item, end? }`.
+    The sheet is the place: a built character holds items; one typed in by hand gets a pack item's name in `gear`.
+    *States*: Decision 6's `carried`, `equipped` and `attuned` are built; `active` (switched on) is not: that is the
+    later use action (table-ui E18), for which `activate` and `charges` are the data.
+  - *Derive*: an item works while worn (`equipped`, or `wear: carried`) and attuned if it needs it; without the
+    Attunement it needs it gives only its mundane item (a magic weapon its plain attack, armour its plain AC). Magic
+    armour or a Shield worn is the armour or Shield; a magic weapon held adds an attack `item-<id>` with its bonus,
+    damage type and properties. An active item with grants is a record feature `item-<id>`; its flat Armor Class
+    bonuses are put in `ac` (with the reason in `why.ac`), its other modifiers read by modifiers.js. Scores: as typed,
+    then feats, then bonuses (`abilityBonus`, never lowering a higher score), then `setAbility`.
+  - *Validate*: what it is made from, its variant, charges; one each of footwear, gloves, bracers, armour (with the
+    sheet's own), headwear, cloak and Shield (with the sheet's own); three Ioun Stones orbiting; armour, Shield and
+    weapon training as for mundane gear (Elven Chain counts as trained); at most three attuned, one copy of an item,
+    and its prerequisite (a class, or a spellcaster by its own features).
+  - *Actions*: `equip { actor, item, on? }` and `attune { actor, item | null, end? }`, by the controller or the DM,
+    outside a fight. Attuning and ending Attunement take a Short Rest focused on the item (SRD): `attune` records the
+    choice, and the next `shortRest` the character takes makes it, or fails it with the reason (event `attuned`, with
+    `failed`). `give` takes a pack item id (with `base`, `damageType`, `spell`) and takes one back by its key; a loot
+    line may name `item` (with `base`, `type`, `spell`) and lands as that item on a built character, as a name
+    otherwise. Gear handed over in play is kept when a character is made again from a sheet whose gear list is unchanged.
+  - *View*: the party's sheets are open to the party as before, so a player sees their own items and the party's;
+    `equip`, `attuning`, `attuned` and `gear` events only for open creatures; nothing about a foe's items.
+  - *Migration to 20*: nothing to convert (a sheet without items plays as before); an `attuning` that names no item is
+    dropped.
+  - *Not built*: using an item (potions, scrolls, wands, charges spent: E18); Attunement ending on death, distance or
+    another's Attunement; curses; identifying (an item is always known); encumbrance; drawing a weapon in a fight;
+    Sun Blade's proficiency through Shortswords for a class trained only with Light martial weapons; a Luckstone's +1 on
+    Initiative (the engine's Initiative reads its own hook, not ability checks).
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and
