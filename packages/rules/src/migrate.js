@@ -8,8 +8,9 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
+import { validPending } from './reactions.js';
 
-export const VERSION = 14;
+export const VERSION = 15;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -54,6 +55,11 @@ export function migrate(state) {
     if (e.reactions === undefined) continue;
     if (!e.reactions || typeof e.reactions !== 'object' || Array.isArray(e.reactions) || !Object.values(e.reactions).every((w) => typeof w === 'string')) delete e.reactions;
   }
+  // Version 15: an action may wait for a player's answer about a reaction (`pending`, with the
+  // count of questions asked so far, `asked`). A table saved before then has none. One that is not
+  // whole is dropped, and the table simply is not waiting: the action it held never happened.
+  if (state.pending !== undefined && !validPending(state.pending)) delete state.pending;
+  if (state.asked !== undefined && !(Number.isInteger(state.asked) && state.asked >= 0)) delete state.asked;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

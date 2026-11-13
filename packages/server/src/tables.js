@@ -14,7 +14,7 @@ import { createHistory, describeStep, mark, undoable } from "../../rules/src/his
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate } from "../../rules/src/migrate.js";
 import { newGame } from "../../rules/src/scenario.js";
-import { playerView, view, viewEvents, viewHandouts, viewReactions } from "../../rules/src/view.js";
+import { playerView, view, viewEvents, viewHandouts, viewPrompt, viewReactions } from "../../rules/src/view.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I/L
 const makeCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
@@ -86,13 +86,15 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return out;
   };
   const stateFor = (t, m) => (m.role === "dm" ? { ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined }
-    : { ...forPlayers(t).base, handouts: viewHandouts(t.state, { role: m.role, userId: m.id }), reactions: viewReactions(t.state, { role: m.role, userId: m.id }) });
-  // What was sent, for the next difference: a player's is the shared one with their handouts and
-  // their own creatures' standing instructions for reactions.
+    : { ...forPlayers(t).base, handouts: viewHandouts(t.state, { role: m.role, userId: m.id }), reactions: viewReactions(t.state, { role: m.role, userId: m.id }),
+      prompt: viewPrompt(t.state, { role: m.role, userId: m.id }) });
+  // What was sent, for the next difference: a player's is the shared one with their handouts, their
+  // own creatures' standing instructions for reactions, and a reaction they are asked about (or
+  // only that the table is waiting).
   const snapFor = (t, m, state) => {
     if (m.role === "dm") return snapshot(state);
     const { snap } = forPlayers(t);
-    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions) } };
+    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt) } };
   };
   const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
 

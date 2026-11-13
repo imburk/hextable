@@ -313,10 +313,11 @@ export const spells1 = [
     time: "reaction", range: 60, components: ["v", "s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
+    reaction: { on: "damaged" },
     effects: [{"save": "dex", "half": true, "onFail": [{"damage": "2d10", "type": "fire"}]}],
     higher: {"slot": {"damage": "1d10"}},
-    tier: "assist", checked: true,
-    text: "Cast as a reaction when the caster takes damage from a creature within 60 feet that the caster can see. That creature makes a Dexterity save, taking fire damage on a failure or half on a success; damage grows with higher slots. The engine does not check the trigger, so the DM does.",
+    tier: "auto", checked: true,
+    text: "Cast as a Reaction when the caster takes damage from a creature within 60 feet that the caster can see. That creature makes a Dexterity save, taking fire damage on a failure or half on a success; damage grows with higher slots. Cast by standing instruction (never, always, or ask its player, who also picks the slot).",
   },
   {
     id: "heroism", name: "Heroism", source: "SRD 5.2.1",
@@ -494,7 +495,7 @@ export const spells1 = [
     reaction: { on: "hit", blocks: ["magic-missile"] },
     effects: [{"modifier": {"on": "ac", "op": "add", "value": 5}, "ends": {"on": "turnStart"}}],
     tier: "auto", checked: true,
-    text: "Cast as a Reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the attack that set it off, and no damage from Magic Missile meanwhile. Cast by standing instruction: never, only if it turns the hit into a miss, or always.",
+    text: "Cast as a Reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the attack that set it off, and no damage from Magic Missile meanwhile. Cast by standing instruction: never, only if it turns the hit into a miss, always, or ask its player.",
   },
   {
     id: "silent-image", name: "Silent Image", source: "SRD 5.2.1",

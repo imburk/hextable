@@ -56,7 +56,7 @@ test("what a creature can react with, and its defaults", () => {
   const s = field();
   const w = reactionsOf(s.entities.wizard), g = reactionsOf(s.entities.m1);
   assert.deepEqual(w.map((r) => [r.id, r.on, r.dflt]), [["opportunity-attack", "leave", "always"], ["shield", "hit", "never"]]);
-  assert.deepEqual(w[1].options, ["never", "miss", "always"]);
+  assert.deepEqual(w[1].options, ["never", "miss", "always", "ask"]);             // part 2: a player may be asked
   assert.deepEqual(g.map((r) => r.id), ["opportunity-attack"]);
 });
 
