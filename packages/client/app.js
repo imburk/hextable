@@ -287,7 +287,7 @@ function onUpdate(state, events, fresh) {
   else if (events.some((e) => e.type === 'moved' && e.id === selId)) R.focus(selId);
   if (events.some((e) => e.type === 'map')) R.focus(selId ?? Object.values(S.entities).find((e) => e.side === 'party')?.id, true);     // a new place: look at the party
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
-  if (mode.kind === 'attack' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
+  if (mode.kind === 'attack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
   refresh();
   clearTimeout(aiTimer);
   aiSent = null;
@@ -452,7 +452,10 @@ function refresh() {
           bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
             pick));
         }
-        for (const fb of featureButtons(S, e)) bar.append(button(fb.label, fb.sub, fb.cls, fb.why, () => act(fb.send)));
+        for (const fb of featureButtons(S, e)) {
+          const armed = fb.aim && mode.kind === 'feature' && mode.id === fb.aim;
+          bar.append(button(fb.label, fb.sub, `${fb.cls} ${armed ? 'armed' : ''}`, fb.why, () => (fb.aim ? setMode(armed ? MOVE : { kind: 'feature', id: fb.aim, name: fb.label }) : act(fb.send))));
+        }
         if (e.features.secondWind && !hasFeat(e, 'second-wind') && (enc || e.hp < e.maxHp))
           bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
             blocked(S, e, 'bonus') || (!e.uses.secondWind && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '',
@@ -497,6 +500,7 @@ function refresh() {
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
         hint = hl.targets.length ? `${a.name}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
+      if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
@@ -685,6 +689,7 @@ R.onTap = ({ hex, id }) => {
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id }) : setMode(MOVE);
+  if (mode.kind === 'feature') { const f = mode.id; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id }) : undefined; }
   if (mode.kind === 'action') {
     if (mode.area) { mode.aim = hex; return refresh(); }
     return tapped && tapped.id !== selId ? act({ type: 'act', actor: selId, action: mode.id, target: id }) : setMode(MOVE);
