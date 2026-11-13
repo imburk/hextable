@@ -159,3 +159,18 @@ test("a Short Rest's restore names each creature once; a duplicate is refused an
   assert.equal(s.entities.hero.uses["sorcerous-restoration"], 0);
   assert.equal(s.entities.hero.uses["font-of-magic"], 5);
 });
+
+// L3. Subtle Spell casts "without any Verbal, Somatic, or Material components, except Material
+// components that are consumed by the spell or that have a cost specified in the spell"; Counterspell
+// answers a spell "with Verbal, Somatic, or Material components". Chromatic Orb's diamond has a cost.
+test("Subtle Spell with a costly Material component can still be Counterspelled; without one it cannot", () => {
+  const tryCast = (spell, extra) => {
+    const s = caster({ ...sorc(15, ["subtle", "quickened"]), spells: ["fire-bolt", "chromatic-orb", "counterspell"] });
+    const foe = s.entities.foe = makeEntity(derive({ ...sorc(15), name: "Foe", spells: ["counterspell"] }).record, { id: "foe", kind: "npc", side: "foe", pos: { q: -2, r: 0, z: 0 } });
+    foe.reactions = { counterspell: "always" };
+    const r = ok(apply(s, { type: "cast", actor: "hero", spell, target: "m1", metamagic: ["subtle"], ...extra }, DM));
+    return r.events.some((x) => x.type === "reaction" && x.id === "foe" && x.reaction === "counterspell");
+  };
+  assert.equal(tryCast("chromatic-orb", { slot: 1, choice: "fire" }), true, "the diamond is still there to see");
+  assert.equal(tryCast("fire-bolt", {}), false, "nothing to see");
+});

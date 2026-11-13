@@ -325,6 +325,8 @@ function lintSpell(e, say) {
   if (!CAST_TIMES.includes(e.time)) say(`unknown casting time "${e.time}"`);
   if (!(e.range === 'self' || e.range === 'touch' || e.range > 0)) say('range must be "self", "touch" or a number of feet');
   if (!allOf(['v', 's', 'm'])(e.components)) say('components must be a list drawn from v, s, m');
+  // `costly`: its Material component has a cost given in the spell or is consumed by it (Subtle Spell keeps such a component).
+  if (e.costly !== undefined && !(e.costly === true && e.components?.includes('m'))) say('`costly: true` is for a spell whose Material component has a cost or is consumed');
   if (!isDuration(e.duration)) say('duration must be \"instant\", a number of rounds, minutes, hours or days (\"10 minutes\"), \"until dispelled\" or \"special\"');
   if (typeof e.concentration !== 'boolean' || typeof e.ritual !== 'boolean') say('concentration and ritual must be true or false');
   if (!Array.isArray(e.classes)) say('classes must be a list');

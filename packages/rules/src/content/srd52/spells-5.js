@@ -36,7 +36,7 @@ export const spells5 = [
   {
     id: "awaken", name: "Awaken", source: "SRD 5.2.1",
     level: 5, school: "transmutation", classes: ["bard","druid"],
-    time: "8 hours", range: "touch", components: ["v","s","m"],
+    time: "8 hours", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Awaken: after 8 hours of work the caster touches a Beast or Plant creature with Intelligence 3 or less, or a natural plant that is not a creature. The target gains Intelligence 10 and the ability to speak one language the caster knows; a natural plant becomes a Plant creature that can move and sense like a human. The DM picks suitable statistics (such as the Awakened Shrub or Tree). The target is Charmed by the caster for 30 days or until the caster or allies damage it, then chooses its own attitude. The DM applies it."}],
@@ -179,7 +179,7 @@ export const spells5 = [
   {
     id: "greater-restoration", name: "Greater Restoration", source: "SRD 5.2.1",
     level: 5, school: "abjuration", classes: ["bard","cleric","druid","paladin","ranger"],
-    time: "action", range: "touch", components: ["v","s","m"],
+    time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Greater Restoration: the caster touches a creature and removes one of: 1 Exhaustion level; the Charmed or Petrified condition; a curse, including attunement to a cursed magic item; any reduction to one of its ability scores; any reduction to its Hit Point maximum. The DM removes the chosen effect."}],
@@ -189,7 +189,7 @@ export const spells5 = [
   {
     id: "hallow", name: "Hallow", source: "SRD 5.2.1",
     level: 5, school: "abjuration", classes: ["cleric"],
-    time: "24 hours", range: "touch", components: ["v","s","m"],
+    time: "24 hours", range: "touch", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Hallow: after 24 hours of casting, the caster infuses an area of up to a 60-foot radius around a touched point with holy or unholy power (it fails if it overlaps another Hallow). Hallowed Ward: chosen creature types (Aberration, Celestial, Elemental, Fey, Fiend, Undead) cannot willingly enter, and creatures possessed, Charmed or Frightened by them are freed while inside. Extra Effect, one of: Courage, Darkness, Daylight, Peaceful Rest, Extradimensional Interference, Fear, Resistance, Silence, Tongues or Vulnerability, as described in the SRD. The DM applies it."}],
@@ -222,7 +222,7 @@ export const spells5 = [
   {
     id: "legend-lore", name: "Legend Lore", source: "SRD 5.2.1",
     level: 5, school: "divination", classes: ["bard","cleric","wizard"],
-    time: "10 minutes", range: "self", components: ["v","s","m"],
+    time: "10 minutes", range: "self", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Legend Lore: the caster names or describes a famous person, place or object and the DM gives a brief summary of its significant lore, perhaps secret and perhaps in figurative language, more detailed the more the caster already knows. If the subject is not actually famous the spell fails. The DM answers."}],
@@ -273,7 +273,7 @@ export const spells5 = [
   {
     id: "planar-binding", name: "Planar Binding", source: "SRD 5.2.1",
     level: 5, school: "abjuration", classes: ["bard","cleric","druid","warlock","wizard"],
-    time: "hour", range: 60, components: ["v","s","m"],
+    time: "hour", range: 60, components: ["v","s","m"], costly: true,
     duration: "24 hours", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Planar Binding: over an hour of casting, the caster tries to bind a Celestial, Elemental, Fey or Fiend that stays in range the whole time (usually trapped in an inverted Magic Circle). At the end it makes a Charisma save or is bound to serve for 24 hours (10 days with a level 6 slot, 30 at 7, 180 at 8, 366 at 9), extending any summoning spell on it. A bound creature follows commands as best it can, and a Hostile one twists them to its own ends; when done it reports to the caster, or returns to where it was bound. The DM runs the save and the binding."}],
@@ -283,7 +283,7 @@ export const spells5 = [
   {
     id: "raise-dead", name: "Raise Dead", source: "SRD 5.2.1",
     level: 5, school: "necromancy", classes: ["bard","cleric","paladin"],
-    time: "hour", range: "touch", components: ["v","s","m"],
+    time: "hour", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Raise Dead: the caster touches a creature dead no longer than 10 days that was not Undead when it died, and it returns to life with 1 Hit Point; poisons affecting it at death are neutralised. It closes mortal wounds but does not restore missing body parts, and fails if the creature lacks parts or organs vital to survival. The creature takes a -4 penalty to D20 Tests, reduced by 1 after each Long Rest. The DM restores the creature and tracks the penalty."}],
@@ -293,7 +293,7 @@ export const spells5 = [
   {
     id: "reincarnate", name: "Reincarnate", source: "SRD 5.2.1",
     level: 5, school: "necromancy", classes: ["druid"],
-    time: "hour", range: "touch", components: ["v","s","m"],
+    time: "hour", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Reincarnate: the caster touches a dead Humanoid, or a piece of one, dead no longer than 10 days. The spell forms a new body and calls the soul into it; the caster rolls 1d10 on the SRD species table (or the DM picks another playable species). The creature makes any choices its new species offers, recalls its former life, keeps its capabilities, but swaps the traits of its old species for those of the new one. The DM applies it."}],
@@ -303,7 +303,7 @@ export const spells5 = [
   {
     id: "scrying", name: "Scrying", source: "SRD 5.2.1",
     level: 5, school: "divination", classes: ["bard","cleric","druid","warlock","wizard"],
-    time: "10 minutes", range: "self", components: ["v","s","m"],
+    time: "10 minutes", range: "self", components: ["v","s","m"], costly: true,
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Scrying: the caster sees and hears a chosen creature on the same plane. The target makes a Wisdom save modified by how well the caster knows it (secondhand +5, firsthand +0, extensive -5) and by a physical connection (likeness -2, possession -4, body part -10). On a success the target is unaffected and the spell cannot be used on it for 24 hours; on a failure an Invisible, intangible sensor appears within 10 feet of the target, moves with it, and lasts up to 10 minutes. A location the caster has seen can be targeted instead, with a fixed sensor. The DM runs the save and the sensor."}],
@@ -323,7 +323,7 @@ export const spells5 = [
   {
     id: "summon-dragon", name: "Summon Dragon", source: "SRD 5.2.1",
     level: 5, school: "conjuration", classes: ["wizard"],
-    time: "action", range: 60, components: ["v","s","m"],
+    time: "action", range: 60, components: ["v","s","m"], costly: true,
     duration: "1 hour", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Summon Dragon: the caster calls a Dragon spirit into an unoccupied space in range for up to 1 hour, using the Draconic Spirit stat block with the spell slot level as the spell level. It is an ally that acts right after the caster, obeys verbal commands, or Dodges if given none. The DM adds and runs it from the stat block in the SRD."}],
@@ -353,7 +353,7 @@ export const spells5 = [
   {
     id: "teleportation-circle", name: "Teleportation Circle", source: "SRD 5.2.1",
     level: 5, school: "conjuration", classes: ["bard","sorcerer","warlock","wizard"],
-    time: "minute", range: 10, components: ["v","m"],
+    time: "minute", range: 10, components: ["v","m"], costly: true,
     duration: "1 round", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Teleportation Circle: the caster draws a 5-foot-radius circle linked to a permanent teleportation circle whose sigil sequence the caster knows on the same plane. A portal stays open in it until the end of the caster's next turn, and a creature entering appears within 5 feet of the destination circle. The caster knows two Material Plane sigil sequences when first able to cast it and can learn more, committing a new one to memory by studying it for 1 minute. Casting it in the same place every day for 365 days makes a permanent circle. The DM moves the creatures."}],

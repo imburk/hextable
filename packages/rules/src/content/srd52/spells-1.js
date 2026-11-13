@@ -41,7 +41,7 @@ export const spells1 = [
   {
     id: "bless", name: "Bless", source: "SRD 5.2.1",
     level: 1, school: "enchantment", classes: ["cleric", "paladin"],
-    time: "action", range: 30, components: ["v", "s", "m"],
+    time: "action", range: 30, components: ["v", "s", "m"], costly: true,
     duration: "1 minute", concentration: true, ritual: false,
     target: {"creature": {"count": 3}},
     effects: [{"modifier": {"on": "attack.roll", "op": "add", "value": "1d4"}}, {"modifier": {"on": "save", "op": "add", "value": "1d4"}}],
@@ -63,7 +63,7 @@ export const spells1 = [
   {
     id: "chromatic-orb", name: "Chromatic Orb", source: "SRD 5.2.1",
     level: 1, school: "evocation", classes: ["sorcerer", "wizard"],
-    time: "action", range: 90, components: ["v", "s", "m"],
+    time: "action", range: 90, components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
     choice: {"of": "damageType", "from": ["acid", "cold", "fire", "lightning", "poison", "thunder"]},
@@ -249,7 +249,7 @@ export const spells1 = [
   {
     id: "find-familiar", name: "Find Familiar", source: "SRD 5.2.1",
     level: 1, school: "conjuration", classes: ["wizard"],
-    time: "hour", range: 10, components: ["v", "s", "m"],
+    time: "hour", range: 10, components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Find Familiar: the caster gains a familiar in an animal form the caster chooses, a spirit companion that can communicate telepathically within 100 feet and can deliver the caster's touch spells using its Reaction. The DM adds and runs the familiar."}],
@@ -378,7 +378,7 @@ export const spells1 = [
   {
     id: "identify", name: "Identify", source: "SRD 5.2.1",
     level: 1, school: "divination", classes: ["bard", "wizard"],
-    time: "minute", range: "touch", components: ["v", "s", "m"],
+    time: "minute", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Identify: the caster touches an object and learns its magic properties, how to use them, whether it needs attunement, and how many charges it has; or touches a creature and learns which spells are affecting it. It takes a minute to cast, and can be a ritual. The DM tells the caster."}],
@@ -388,7 +388,7 @@ export const spells1 = [
   {
     id: "illusory-script", name: "Illusory Script", source: "SRD 5.2.1",
     level: 1, school: "illusion", classes: ["bard", "warlock", "wizard"],
-    time: "minute", range: "touch", components: ["s", "m"],
+    time: "minute", range: "touch", components: ["s", "m"], costly: true,
     duration: "10 days", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Illusory Script: the caster writes on a surface, and for 10 days the writing seems to be nonsense or another message to everyone except the caster and creatures the caster names; a creature with Truesight can read it. The DM applies it."}],
@@ -441,7 +441,7 @@ export const spells1 = [
   {
     id: "protection-from-evil-and-good", name: "Protection from Evil and Good", source: "SRD 5.2.1",
     level: 1, school: "abjuration", classes: ["cleric", "druid", "paladin", "warlock", "wizard"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
     effects: [{"manual": "Protection from Evil and Good: a willing creature the caster touches is protected from Aberrations, Celestials, Elementals, Fey, Fiends and Undead for up to 10 minutes. Those creatures have Disadvantage on attack rolls against it, cannot possess it or Charm or Frighten it, and if it is already so affected it has Advantage on any new save against that effect. The DM applies it."}],

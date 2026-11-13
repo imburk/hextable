@@ -48,7 +48,7 @@ export const spells2 = [
   {
     id: "arcane-lock", name: "Arcane Lock", source: "SRD 5.2.1",
     level: 2, school: "abjuration", classes: ["wizard"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self": true},
     effects: [{"manual": "Arcane Lock: the caster touches a closed door, window, gate, container or hatch and locks it until the spell is dispelled. No nonmagical means can unlock it. The caster and creatures designated at casting can open and close it, and a password spoken within 5 feet unlocks it for 1 minute. The DM tracks the lock (Knock suppresses it for 10 minutes)."}],
@@ -68,7 +68,7 @@ export const spells2 = [
   {
     id: "augury", name: "Augury", source: "SRD 5.2.1",
     level: 2, school: "divination", classes: ["cleric", "druid", "wizard"],
-    time: "minute", range: "self", components: ["v", "s", "m"],
+    time: "minute", range: "self", components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Augury: the caster plans a course of action for the next 30 minutes and the DM gives an omen: Weal (good), Woe (bad), Weal and woe (good and bad) or Indifference (neither). It does not account for circumstances that change the result. Each casting after the first before a Long Rest has a cumulative 25 percent chance of no answer. The DM chooses the omen."}],
@@ -119,7 +119,7 @@ export const spells2 = [
   {
     id: "continual-flame", name: "Continual Flame", source: "SRD 5.2.1",
     level: 2, school: "evocation", classes: ["cleric", "druid", "wizard"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self": true},
     effects: [{"manual": "Continual Flame: a flame springs from an object the caster touches, casting Bright Light in a 20-foot radius and Dim Light for 20 feet more, until dispelled. It gives no heat, uses no fuel, and can be covered but not put out. The DM tracks it."}],
@@ -241,7 +241,7 @@ export const spells2 = [
   {
     id: "gentle-repose", name: "Gentle Repose", source: "SRD 5.2.1",
     level: 2, school: "necromancy", classes: ["cleric", "paladin", "wizard"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "10 days", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Gentle Repose: a touched corpse or other remains is protected from decay and cannot become Undead for 10 days. Days spent under the spell do not count against the time limit of spells like Raise Dead. The DM tracks it."}],
@@ -344,7 +344,7 @@ export const spells2 = [
   {
     id: "magic-mouth", name: "Magic Mouth", source: "SRD 5.2.1",
     level: 2, school: "illusion", classes: ["bard", "wizard"],
-    time: "minute", range: 30, components: ["v", "s", "m"],
+    time: "minute", range: 30, components: ["v", "s", "m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: true,
     target: {"self": true},
     effects: [{"manual": "Magic Mouth: the caster implants a message of 25 words or fewer in an object it can see that is not worn or carried by another creature, to be spoken (over up to 10 minutes) in the caster's voice when a trigger occurs. The trigger must rest on visual or audible conditions within 30 feet of the object. A magical mouth appears on the object, and the spell can end after one delivery or repeat on each trigger. It lasts until dispelled. The DM tracks the trigger."}],
@@ -566,7 +566,7 @@ export const spells2 = [
   {
     id: "warding-bond", name: "Warding Bond", source: "SRD 5.2.1",
     level: 2, school: "abjuration", classes: ["cleric", "paladin"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "1 hour", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
     effects: [{"modifier": {"on": "ac", "op": "add", "value": 1}}, {"modifier": {"on": "save.str", "op": "add", "value": 1}}, {"modifier": {"on": "save.dex", "op": "add", "value": 1}}, {"modifier": {"on": "save.con", "op": "add", "value": 1}}, {"modifier": {"on": "save.int", "op": "add", "value": 1}}, {"modifier": {"on": "save.wis", "op": "add", "value": 1}}, {"modifier": {"on": "save.cha", "op": "add", "value": 1}}, {"modifier": {"on": "damage.taken", "op": "resist"}}],

@@ -982,6 +982,14 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     form is seen only as the Beast (amended, #169: `seenRecord` sends the Beast's name and `tpl`,
     kind `npc`, no `look` and no `form`; history labels name it the same way, `seenName`). **State version 17**: the migration keeps a whole form, puts back one
     whose effect is gone, and drops a broken one.
+- **Amendment (review fixes, #169).** Found by the independent review (#166) and fixed each with a test
+  (`test/class-review.test.js`):
+  - A spell may say `costly: true`: its Material component has a cost given in the spell or is consumed
+    by it (57 SRD spells, each compared with the SRD's Components line). Subtle Spell leaves such a
+    component, so the spell can still be seen being cast and Counterspelled.
+  - Careful Spell protects other creatures, never the caster. Malformed `metamagic` is a refusal. A
+    feature that casts (`freeCast`, Divine Intervention) is refused through `feature` and keeps its use.
+    `shortRest` refuses a creature named twice in `restore`.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

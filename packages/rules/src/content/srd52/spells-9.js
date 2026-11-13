@@ -6,7 +6,7 @@ export const spells9 = [
   {
     id: "astral-projection", name: "Astral Projection", source: "SRD 5.2.1",
     level: 9, school: "necromancy", classes: ["cleric","warlock","wizard"],
-    time: "hour", range: 10, components: ["v","s","m"],
+    time: "hour", range: 10, components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Astral Projection: the caster and up to eight willing creatures in range project their astral bodies into the Astral Plane (the spell ends instantly if the caster is already there). Each body is left in suspended animation (Unconscious, needing no food or air, not aging). An astral form replicates the target's game statistics and possessions, with a silvery cord that fades after 1 foot; if the cord is cut, which happens only when an effect says so, both body and form die. When an astral form leaves the plane the body and possessions follow along the cord. Damage and effects to the form do not affect the body and vice versa; if either drops to 0 Hit Points the spell ends for that target, and a Magic action by the caster ends it for all. The DM runs it."}],
@@ -26,7 +26,7 @@ export const spells9 = [
   {
     id: "gate", name: "Gate", source: "SRD 5.2.1",
     level: 9, school: "conjuration", classes: ["cleric","sorcerer","warlock","wizard"],
-    time: "action", range: 60, components: ["v","s","m"],
+    time: "action", range: 60, components: ["v","s","m"], costly: true,
     duration: "1 minute", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Gate: the caster conjures a circular portal 5 to 20 feet across, in any orientation, linking an unoccupied space in range to a precise location on another plane for up to 1 minute, with the destination visible through it. It has a front and back on each plane; only moving through the front transports a creature, to the nearest unoccupied space at the other end. Deities and planar rulers can stop portals opening in their domains. The caster can speak the true name of a creature on another plane, and the portal opens next to it and brings it to the caster's side, but the caster gains no control over it. The DM runs it."}],
@@ -36,7 +36,7 @@ export const spells9 = [
   {
     id: "imprisonment", name: "Imprisonment", source: "SRD 5.2.1",
     level: 9, school: "abjuration", classes: ["warlock","wizard"],
-    time: "minute", range: 30, components: ["v","s","m"],
+    time: "minute", range: 30, components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"save":"wis","onFail":[{"manual":"Imprisonment, failed save: the target is imprisoned: it needs no air, food or drink, does not age, cannot be located or perceived by Divination spells and cannot teleport, and one chosen effect also applies: Burial (entombed in a hollow globe of force nothing can pass), Chaining (Restrained and immovable), Hedged Prison (trapped in a demiplane warded against teleportation and planar travel), Minimus Containment (shrunk to 1 inch inside an indestructible gemstone that only light passes), or Slumber (Unconscious and cannot be awoken). The caster specifies a trigger that ends it, an observable action the DM agrees is likely within a decade. Dispel Magic ends it only if cast with a level 9 slot at the prison or its component. The DM runs it."}],"onSuccess":[{"manual":"Imprisonment, successful save: the target is unaffected and immune to this spell for 24 hours. The DM tracks the immunity."}]}],
@@ -96,7 +96,7 @@ export const spells9 = [
   {
     id: "shapechange", name: "Shapechange", source: "SRD 5.2.1",
     level: 9, school: "transmutation", classes: ["druid","wizard"],
-    time: "action", range: "self", components: ["v","s","m"],
+    time: "action", range: "self", components: ["v","s","m"], costly: true,
     duration: "1 hour", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Shapechange: the caster shape-shifts into a creature of Challenge Rating no higher than their level or Challenge Rating that they have seen before, not a Construct or Undead, for up to 1 hour, and can use a Magic action to change into a different eligible form. The caster gains Temporary Hit Points equal to the Hit Points of the first form (lost when the spell ends). The form's statistics replace the caster's, but the caster keeps creature type, alignment, personality, Intelligence, Wisdom and Charisma, Hit Points, Hit Point Dice, proficiencies, ability to communicate and Spellcasting feature. On each change the caster decides whether equipment drops or resizes to fit. The DM runs the new form."}],
@@ -136,7 +136,7 @@ export const spells9 = [
   {
     id: "true-resurrection", name: "True Resurrection", source: "SRD 5.2.1",
     level: 9, school: "necromancy", classes: ["cleric","druid"],
-    time: "hour", range: "touch", components: ["v","s","m"],
+    time: "hour", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"True Resurrection: the caster touches a creature dead no more than 200 years that did not die of old age, and it is revived with all its Hit Points. The spell closes all wounds, neutralises poison, cures magical contagions, lifts curses that affected it at death, and replaces damaged or missing organs and limbs; an Undead is restored to its non-Undead form. It can provide a new body if the original no longer exists, in which case the caster speaks the creature's name and it appears in an unoccupied space the caster chooses within 10 feet. The DM restores the creature."}],

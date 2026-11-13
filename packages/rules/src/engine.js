@@ -2026,7 +2026,8 @@ const handlers = {
     // Someone who sees it being cast may counter it (Counterspell). Then it dissipates with no
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
-    const counteredBy = mm.has.subtle ? null : counterWindow(s, e, sp, ev);      // Subtle Spell: nothing to see being cast
+    // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
+    const counteredBy = mm.has.subtle && !sp.def.costly ? null : counterWindow(s, e, sp, ev);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });

@@ -6,7 +6,7 @@ export const spells7 = [
   {
     id: "arcane-sword", name: "Arcane Sword", source: "SRD 5.2.1",
     level: 7, school: "evocation", classes: ["bard","wizard"],
-    time: "action", range: 90, components: ["v","s","m"],
+    time: "action", range: 90, components: ["v","s","m"], costly: true,
     duration: "1 minute", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Arcane Sword: a spectral sword hovers in range for up to 1 minute. When it appears the caster makes a melee spell attack against a target within 5 feet of the sword, dealing Force damage equal to 4d12 plus the spellcasting ability modifier on a hit. On later turns the caster can use a Bonus Action to move the sword up to 30 feet to a spot the caster can see and repeat the attack against the same or another target. The DM runs the sword and its attacks."}],
@@ -76,7 +76,7 @@ export const spells7 = [
   {
     id: "forcecage", name: "Forcecage", source: "SRD 5.2.1",
     level: 7, school: "evocation", classes: ["bard","warlock","wizard"],
-    time: "action", range: 100, components: ["v","s","m"],
+    time: "action", range: 100, components: ["v","s","m"], costly: true,
     duration: "1 hour", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Forcecage: an immobile, Invisible, Cube-shaped prison of force appears around an area in range for up to 1 hour. It is either a cage up to 20 feet on a side with 1/2-inch bars spaced 1/2 inch apart, or a solid box up to 10 feet on a side that blocks all matter and any spells cast into or out of it. A creature completely inside is trapped; others partly inside or too large are pushed out. A trapped creature cannot leave by nonmagical means, and to use teleportation or interplanar travel to leave it must first make a Charisma save, succeeding to use that magic and wasting it on a failure. It extends into the Ethereal Plane and cannot be dispelled by Dispel Magic. The DM runs it."}],
@@ -86,7 +86,7 @@ export const spells7 = [
   {
     id: "magnificent-mansion", name: "Magnificent Mansion", source: "SRD 5.2.1",
     level: 7, school: "conjuration", classes: ["bard","wizard"],
-    time: "minute", range: 300, components: ["v","s","m"],
+    time: "minute", range: 300, components: ["v","s","m"], costly: true,
     duration: "24 hours", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Magnificent Mansion: the caster conjures a shimmering door 5 feet wide and 10 feet tall in range for 24 hours, leading to an extradimensional dwelling the caster designs (up to 50 contiguous 10-foot Cubes, furnished, with food for a nine-course banquet for 100 and a staff of 100 invulnerable servants who cannot attack or directly harm anyone and cannot leave). The caster and creatures designated at casting can enter while the door is open; the caster can open or close it (no action) within 30 feet, and while closed it is imperceptible. Created furnishings dissipate if removed, and when the spell ends anyone inside is expelled near the entrance. The DM applies it."}],
@@ -106,7 +106,7 @@ export const spells7 = [
   {
     id: "plane-shift", name: "Plane Shift", source: "SRD 5.2.1",
     level: 7, school: "conjuration", classes: ["cleric","druid","sorcerer","warlock","wizard"],
-    time: "action", range: "touch", components: ["v","s","m"],
+    time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Plane Shift: the caster and up to eight willing creatures who link hands in a circle are transported to a different plane of existence. The caster names a destination in general terms (the DM decides where they appear in or near it), or, knowing the sigil sequence of a teleportation circle on another plane, can be taken to that circle, the others appearing in the closest free spaces. The DM moves the party."}],
@@ -126,7 +126,7 @@ export const spells7 = [
   {
     id: "project-image", name: "Project Image", source: "SRD 5.2.1",
     level: 7, school: "illusion", classes: ["bard","wizard"],
-    time: "action", range: 2640000, components: ["v","s","m"],
+    time: "action", range: 2640000, components: ["v","s","m"], costly: true,
     duration: "1 day", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Project Image: the caster creates an intangible illusory copy of themselves (range 500 miles) that can appear anywhere in range the caster has seen before, regardless of obstacles, for up to 1 day. It looks and sounds like the caster and disappears, ending the spell, if it takes any damage. The caster sees and hears through it, and with a Magic action can move it up to 60 feet and make it act and speak. Physical interaction reveals it, and a Study action with an Intelligence (Investigation) check against the spell save DC sees through it. The DM applies it."}],
@@ -146,7 +146,7 @@ export const spells7 = [
   {
     id: "resurrection", name: "Resurrection", source: "SRD 5.2.1",
     level: 7, school: "necromancy", classes: ["bard","cleric"],
-    time: "hour", range: "touch", components: ["v","s","m"],
+    time: "hour", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Resurrection: the caster touches a creature dead no more than a century that did not die of old age and was not Undead, and it returns to life with all its Hit Points; poisons at death are neutralised, mortal wounds close and missing body parts are restored. The creature takes a -4 penalty to D20 Tests, reduced by 1 after each Long Rest. Reviving one dead 365 days or more leaves the caster unable to cast spells and with Disadvantage on D20 Tests until a Long Rest. The DM restores the creature and tracks the penalties."}],
@@ -166,7 +166,7 @@ export const spells7 = [
   {
     id: "sequester", name: "Sequester", source: "SRD 5.2.1",
     level: 7, school: "transmutation", classes: ["wizard"],
-    time: "action", range: "touch", components: ["v","s","m"],
+    time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Sequester: the caster touches an object or willing creature, which has the Invisible condition and cannot be targeted by Divination spells, detected by magic or viewed remotely. A creature enters suspended animation (Unconscious, not aging, needing no food, water or air). The caster can set a condition to end it early, which must occur or be visible within 1 mile of the target, and it also ends if the target takes any damage. The DM applies it."}],
@@ -176,7 +176,7 @@ export const spells7 = [
   {
     id: "simulacrum", name: "Simulacrum", source: "SRD 5.2.1",
     level: 7, school: "illusion", classes: ["wizard"],
-    time: "12 hours", range: "touch", components: ["v","s","m"],
+    time: "12 hours", range: "touch", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Simulacrum: after 12 hours the caster touches a Beast or Humanoid that stayed within 10 feet for the whole casting and a pile of ice or snow of the same size, which becomes a simulacrum: it uses the original's statistics at the time of casting except that it is a Construct, has half the Hit Point maximum, and cannot cast this spell. It is Friendly to the caster and designated creatures, obeys commands and acts on the caster's turn. It cannot gain levels or take rests; repairing damage takes a Long Rest and components worth 100 GP per Hit Point restored, with it within 5 feet. It lasts until it drops to 0 Hit Points (it melts), and casting the spell again destroys any earlier simulacrum. The DM adds and runs it."}],
@@ -186,7 +186,7 @@ export const spells7 = [
   {
     id: "symbol", name: "Symbol", source: "SRD 5.2.1",
     level: 7, school: "abjuration", classes: ["bard","cleric","druid","wizard"],
-    time: "minute", range: "touch", components: ["v","s","m"],
+    time: "minute", range: "touch", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Symbol: the SRD duration is until dispelled or triggered. The caster inscribes a nearly imperceptible harmful glyph (Wisdom (Perception) against the spell save DC to notice) up to 10 feet across on a surface or inside a closable object, with a chosen trigger and effect: Death, Discord, Fear, Pain, Sleep or Stunning. When triggered it fills a 60-foot-radius Sphere with Dim Light for 10 minutes, then the spell ends, targeting each creature in it and each creature that enters or ends its turn there (once per turn). Death: Constitution save, 10d10 Necrotic damage or half. Discord: Wisdom save or argue for 1 minute, with Disadvantage on attack rolls and ability checks. Fear: Wisdom save or Frightened for 1 minute, moving at least 30 feet away each turn. Pain: Constitution save or Incapacitated for 1 minute. Sleep: Wisdom save or Unconscious for 10 minutes (waking on damage or being shaken). Stunning: Wisdom save or Stunned for 1 minute. The DM runs the glyph."}],

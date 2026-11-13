@@ -142,7 +142,7 @@ export const spells4 = [
   {
     id: "divination", name: "Divination", source: "SRD 5.2.1",
     level: 4, school: "divination", classes: ["cleric","druid","wizard"],
-    time: "action", range: "self", components: ["v","s","m"],
+    time: "action", range: "self", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: true,
     target: {"self":true},
     effects: [{"manual":"Divination: the caster asks one question about a goal, event or activity within the next 7 days and the DM gives a truthful reply, perhaps a short phrase or cryptic rhyme, that does not account for circumstances that might change it. Each casting after the first before a Long Rest has a cumulative 25 percent chance of no answer. It can be cast as a Ritual (taking 10 extra minutes). The DM answers."}],
@@ -287,7 +287,7 @@ export const spells4 = [
   {
     id: "private-sanctum", name: "Private Sanctum", source: "SRD 5.2.1",
     level: 4, school: "abjuration", classes: ["wizard"],
-    time: "10 minutes", range: 120, components: ["v","s","m"],
+    time: "10 minutes", range: 120, components: ["v","s","m"], costly: true,
     duration: "24 hours", concentration: false, ritual: false,
     target: {"area":{"shape":"cube","size":100}},
     effects: [{"manual":"Private Sanctum: the caster makes a Cube from 5 to 100 feet on a side within range magically secure for 24 hours (+100 feet per slot level above 4), choosing any of: sound cannot cross the edge; the edge is dark and foggy, blocking vision including Darkvision; Divination sensors cannot appear inside or pass through; creatures inside cannot be targeted by Divination spells; nothing can teleport in or out; planar travel is blocked. Casting it on the same spot every day for 365 days makes it last until dispelled. The DM applies it."}],
@@ -307,7 +307,7 @@ export const spells4 = [
   {
     id: "secret-chest", name: "Secret Chest", source: "SRD 5.2.1",
     level: 4, school: "conjuration", classes: ["wizard"],
-    time: "action", range: "touch", components: ["v","s","m"],
+    time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Secret Chest: the caster hides a chest (up to 12 cubic feet of nonliving material) on the Ethereal Plane, touching the chest and its Tiny replica. A Magic action touching the replica recalls the chest to an unoccupied space within 5 feet; another Magic action sends it back. After 60 days there is a cumulative 5 percent chance at the end of each day that the spell ends, and it also ends if cast again or if the replica is destroyed; the chest then stays on the Ethereal Plane. The DM tracks it."}],
@@ -327,7 +327,7 @@ export const spells4 = [
   {
     id: "stoneskin", name: "Stoneskin", source: "SRD 5.2.1",
     level: 4, school: "transmutation", classes: ["druid","ranger","sorcerer","wizard"],
-    time: "action", range: "touch", components: ["v","s","m"],
+    time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"modifier":{"on":"damage.taken","op":"resist","types":["bludgeoning","piercing","slashing"]}}],

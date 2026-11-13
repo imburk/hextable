@@ -57,7 +57,7 @@ export const spells3 = [
   {
     id: "clairvoyance", name: "Clairvoyance", source: "SRD 5.2.1",
     level: 3, school: "divination", classes: ["bard", "cleric", "sorcerer", "wizard"],
-    time: "10 minutes", range: 5280, components: ["v", "s", "m"],
+    time: "10 minutes", range: 5280, components: ["v", "s", "m"], costly: true,
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"self": true},
     effects: [{"manual": "Clairvoyance: the caster creates an Invisible, intangible, invulnerable sensor within range (1 mile) in a place it knows or in an obvious unfamiliar location (behind a door, around a corner, in a grove). It stays for up to 10 minutes (Concentration). The caster chooses seeing or hearing and uses that sense through the sensor as if in its space, and can switch between them as a Bonus Action. A creature that can see the sensor (for example with See Invisibility or Truesight) sees a luminous orb the size of a fist. The DM answers what the sensor perceives."}],
@@ -161,7 +161,7 @@ export const spells3 = [
   {
     id: "glyph-of-warding", name: "Glyph of Warding", source: "SRD 5.2.1",
     level: 3, school: "abjuration", classes: ["bard", "cleric", "wizard"],
-    time: "hour", range: "touch", components: ["v", "s", "m"],
+    time: "hour", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self": true},
     effects: [{"manual": "Glyph of Warding: the caster inscribes a glyph, no larger than 10 feet across, on a surface or within a closable object; it is nearly imperceptible (Wisdom (Perception) against the spell save DC to notice) and breaks if the surface or object moves more than 10 feet. The caster sets the trigger (touching, stepping on, opening, approaching, seeing it, with limits by creature type or password), and the spell ends once triggered. Explosive Rune: a 20-foot-radius Sphere centred on the glyph; each creature makes a Dexterity save, taking 5d8 Acid, Cold, Fire, Lightning or Thunder damage (chosen at creation) on a failure or half on a success (1d8 more per slot level above 3). Spell Glyph: the caster stores a prepared spell of level 3 or lower that targets one creature or an area, cast as part of making the glyph; when triggered it targets the triggering creature or is centred on it, and hostile summons appear next to the intruder. With a higher slot it can hold a spell up to that slot's level. The DM runs it."}],
@@ -202,7 +202,7 @@ export const spells3 = [
   {
     id: "magic-circle", name: "Magic Circle", source: "SRD 5.2.1",
     level: 3, school: "abjuration", classes: ["cleric", "paladin", "warlock", "wizard"],
-    time: "minute", range: 10, components: ["v", "s", "m"],
+    time: "minute", range: 10, components: ["v", "s", "m"], costly: true,
     duration: "1 hour", concentration: false, ritual: false,
     target: {"self": true},
     effects: [{"manual": "Magic Circle: a 10-foot-radius, 20-foot-tall Cylinder of magical energy centred on a point on the ground the caster can see in range lasts 1 hour (the casting takes 1 minute), with glowing runes where it meets surfaces. The caster picks one or more of Celestials, Elementals, Fey, Fiends or Undead. A creature of a chosen type cannot willingly enter by nonmagical means (using teleportation or interplanar travel to enter requires a Charisma save), has Disadvantage on attack rolls against targets within, and cannot possess or Charm or Frighten targets within. The caster can instead reverse it so such creatures cannot leave and targets outside are protected. One more hour per slot level above 3. The DM applies it."}],
@@ -243,7 +243,7 @@ export const spells3 = [
   {
     id: "nondetection", name: "Nondetection", source: "SRD 5.2.1",
     level: 3, school: "abjuration", classes: ["bard", "ranger", "wizard"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "8 hours", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
     effects: [{"manual": "Nondetection: for 8 hours the caster hides a touched target from Divination spells. The target can be a willing creature, or a place or object no larger than 10 feet in any dimension. It cannot be targeted by any Divination spell or perceived through magical scrying sensors. The DM applies it."}],
@@ -294,7 +294,7 @@ export const spells3 = [
   {
     id: "revivify", name: "Revivify", source: "SRD 5.2.1",
     level: 3, school: "necromancy", classes: ["cleric", "druid", "paladin", "ranger"],
-    time: "action", range: "touch", components: ["v", "s", "m"],
+    time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
     effects: [{"manual": "Revivify: the caster touches a creature that died within the last minute, and it revives with 1 Hit Point. The spell cannot revive a creature that died of old age, and does not restore any missing body parts. The engine does not bring a dead creature back, so the DM does."}],
