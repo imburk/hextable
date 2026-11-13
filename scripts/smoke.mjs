@@ -42,6 +42,7 @@ const REGISTRY = {
   rewards: ['rewards'],
   'three-parity': ['three-parity'],
   maps: ['maps'],
+  pinch: ['pinch'],
 };
 
 const only = process.env.SMOKE_ONLY;
