@@ -278,7 +278,7 @@ export class Editor {
   #heightNums() {
     const want = this.on && this.tool === 'height' && !!this.S;
     if (!want) { cancelAnimationFrame(this.hRaf); this.hRaf = 0; this.hBox?.remove(); this.hBox = null; this.hKey = ''; return; }
-    if (!this.hBox) { this.hBox = document.createElement('div'); this.hBox.id = 'ed-hnums'; this.R.labels.append(this.hBox); }
+    if (!this.hBox) { this.hBox = document.createElement('div'); this.hBox.id = 'ed-hnums'; $('labels').append(this.hBox); }
     const l = this.level(), tiles = Object.entries(l.tiles).slice(0, 600), sig = `${l.id}|${tiles.map(([k, t]) => `${k}:${t.h ?? 0}`).join(',')}`;
     if (sig !== this.hKey) {
       this.hKey = sig; this.hBox.textContent = '';
