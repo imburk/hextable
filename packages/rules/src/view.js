@@ -110,10 +110,11 @@ export function view(state, viewer) {
 }
 
 // The scene going on, as players are told of it: its title and picture and who is in it, with
-// names and portraits. Never the DM's notes on anyone. The transcript is the `say` events.
+// names and portraits. Never the DM's notes on anyone, nor anything of a scene that is not open
+// (one being prepared, or set aside): to a player that is no scene at all. The transcript is the `say` events.
 export function viewScene(state) {
   const sc = state.scene;
-  if (!sc) return null;
+  if (!sc?.open) return null;
   return { id: sc.id, title: sc.title, ...(sc.image !== undefined && { image: sc.image }),
     present: sc.present.map((p) => ({ id: p.id, name: p.name, ...(p.portrait !== undefined && { portrait: p.portrait }) })), open: true };
 }
@@ -394,10 +395,10 @@ export function viewEvents(events, state, viewer) {
       case 'sceneStart':
       case 'sceneEdit':
       case 'sceneEnd':                                 // a scene began, was renamed or ended: its title, as everyone sees it
-        out.push(pick(ev, ['type', 'scene', 'title', 'why']));
+        if (ev.prep !== true) out.push(pick(ev, ['type', 'scene', 'title', 'why']));    // never one not open (scenes.js)
         break;
       case 'sceneNpc':                                 // someone came or left, or a name or face changed; not a change to the DM's notes
-        if (ev.change !== 'edited' || ev.changed?.some((k) => k !== 'notes')) out.push(pick(ev, ['type', 'scene', 'npc', 'name', 'change']));
+        if (ev.prep !== true && (ev.change !== 'edited' || ev.changed?.some((k) => k !== 'notes'))) out.push(pick(ev, ['type', 'scene', 'npc', 'name', 'change']));
         break;
       case 'say':                                      // what is said at the table, everyone hears
         out.push(pick(ev, ['type', 'from', 'as', 'name', 'text', 'scene', 'line']));

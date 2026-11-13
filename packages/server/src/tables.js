@@ -32,6 +32,9 @@ const SAVE_STALE_MS = 3600 * 1000;      // sitting down only rewrites the file w
 // may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes.
 export const MAX_ACTION_BYTES = 4 * 1024;
 export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
+// Lines of a scene's transcript (`say`) one member may send in a minute. The engine caps a line's
+// length and a scene's number of lines; this keeps one member from filling the record for everyone.
+export const MAX_SAYS_PER_MINUTE = 30;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
 export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
@@ -97,6 +100,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
   const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
 
+  // When each member last spoke in a scene, for MAX_SAYS_PER_MINUTE.
+  const saidAt = new WeakMap();
   // What each connection was last sent, so the next update can be only what changed.
   const sent = new WeakMap();
   // The whole view, to one connection: on sitting down, on being let in, and on request.
@@ -243,7 +248,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
         // Out of character, a player's line is signed with the name they joined by, never one they send.
-        if (action.type === "say") { if (me.role === "dm") delete action.userName; else action.userName = me.name; }
+        if (action.type === "say") {
+          if (me.role === "dm") delete action.userName; else action.userName = me.name;
+          const t0 = now(), times = (saidAt.get(me) ?? []).filter((t) => t > t0 - 60_000);
+          saidAt.set(me, times);                   // kept beside the member, never saved or sent
+          if (times.length >= MAX_SAYS_PER_MINUTE) return error("You are speaking too fast. Wait a moment.");
+          times.push(t0);
+        }
         // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
         if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;

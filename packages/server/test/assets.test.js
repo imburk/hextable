@@ -254,6 +254,11 @@ test("a scene's picture and its NPCs' portraits are fetched by players while the
   for (let i = 0; i < 3; i++) ids.push((await (await upload(port, code, dm.token, PNG)).json()).asset.id);
   const [picture, face, unused] = ids, path = (id) => `/assets/${code}/${id}`;
   for (const id of ids) assert.equal((await get(port, path(id), pat.token)).status, 404);
+  // A scene the DM prepares is not the players' yet: nor are its files.
+  assert.equal((await act(dm, { type: "scene", scene: { title: "Later", image: unused, open: false } })).t, "update");
+  assert.equal((await act(dm, { type: "sceneNpc", npc: { name: "Later NPC", portrait: unused } })).t, "update");
+  assert.equal((await get(port, path(unused), pat.token)).status, 404, "a prepared scene's file");
+  assert.equal((await act(dm, { type: "endScene" })).t, "update");
   assert.equal((await act(dm, { type: "scene", scene: { title: "The study", image: picture } })).t, "update");
   assert.equal((await act(dm, { type: "sceneNpc", npc: { name: "Ostrin", portrait: face, notes: "PRIVATE-zq he lies" } })).t, "update");
   for (const p of [pat, sam]) {

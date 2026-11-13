@@ -212,10 +212,11 @@ test("undo labels for every scene action, never with what was said or an NPC's n
 
 test("a saved table from before scenes has none going on", () => {
   const s = newGame(3);
-  delete s.scene;
+  delete s.scene; s.version = 12;
   const old = JSON.parse(JSON.stringify(s));
   migrate(old);
   assert.equal(old.scene, null);
+  assert.equal(old.version, 13, "scenes are version 13, after main's 12");
   ok(apply(old, { type: "scene", scene: { title: "After" } }, DM));
   migrate(old);
   assert.equal(old.scene.title, "After", "migrating again keeps it");
@@ -249,8 +250,12 @@ test("over many random scene actions, nothing private reaches a player", () => {
       for (const e of [...evs, ...rec]) if (e.type === "check") assert.ok(!("dc" in e) && !("success" in e), `step ${step}: a check's DC or outcome reached ${p.userId}`);
       // Asking for a check is between the asker and the DM.
       for (const e of evs) if (e.type === "checkAsked") assert.equal(e.by, p.userId);
-      // Files: exactly the scene's picture and portraits (no handouts or level pictures here).
-      const expected = new Set([...(s.scene?.image ? [s.scene.image] : []), ...(s.scene?.present ?? []).map((x) => x.portrait).filter(Boolean)]);
+      // A scene that is not open is no scene at all to a player.
+      if (!s.scene?.open) assert.equal(v.scene, null, `step ${step}`);
+      for (const e of [...evs, ...rec]) assert.ok(!("prep" in e), `step ${step}: an event of a scene not open reached ${p.userId}`);
+      // Files: exactly the open scene's picture and portraits (no handouts or level pictures here).
+      const sc = s.scene?.open ? s.scene : null;
+      const expected = new Set([...(sc?.image ? [sc.image] : []), ...(sc?.present ?? []).map((x) => x.portrait).filter(Boolean)]);
       assert.deepEqual([...assetRefs(v)].sort(), [...expected].sort(), `step ${step}`);
     }
   };
@@ -259,7 +264,7 @@ test("over many random scene actions, nothing private reaches a player", () => {
     const anyNpc = () => npcs[rnd(npcs.length)];
     let action, who = DM;
     switch (rnd(12)) {
-      case 0: action = { type: "scene", scene: { title: `Scene ${step}`, ...(rnd(2) ? { image: asset(step) } : {}) } }; break;
+      case 0: action = { type: "scene", scene: { title: `Scene ${step}`, ...(rnd(2) ? { image: asset(step) } : {}), ...(rnd(3) === 0 ? { open: !s.scene?.open } : {}) } }; break;
       case 1: action = rnd(4) === 0 && { type: "endScene" }; break;
       case 2: { n++; const notes = `NOTE-${n}-zq`; secrets.add(notes); action = { type: "sceneNpc", npc: { name: `Npc${n}`, notes, ...(rnd(2) ? { portrait: asset(5000 + n) } : {}) } }; break; }
       case 3: { n++; const notes = `NOTE-${n}-zq`; secrets.add(notes); notesEdits++; action = npcs.length && { type: "sceneNpc", npc: { id: anyNpc(), notes } }; break; }
@@ -287,4 +292,109 @@ test("over many random scene actions, nothing private reaches a player", () => {
     checkAll(step, res.events, label.shown);
   }
   assert.ok(refused > 30 && notesEdits > 20 && dcs > 20 && undos > 10, `the sequence exercised enough (${refused} refused, ${notesEdits} notes edits, ${dcs} DCs, ${undos} undos)`);
+});
+
+test("a scene the DM prepares, or steps out of, is nothing to the players until it is opened", () => {
+  const s = table();
+  const h = createHistory({ limit: 100 });
+  const all = [];
+  const act = (a, who = DM, shown = false) => {
+    const before = mark(s), r = ok(apply(s, a, who)), label = describeStep(a, r.events, before, s);
+    h.record(before, s, label); all.push(...r.events);
+    if (!shown) assert.equal(label.shown, null, `${a.type} while prepared shows no undo label`);
+    return r;
+  };
+  const secrets = ["Ambush at Dawn", "Gorlak the Traitor", "Wears the stolen ring", "Removed Rival", asset(7), asset(8)];
+  const hidden = () => {
+    for (const p of [PAT, SAM]) {
+      const v = view(s, p), text = JSON.stringify([v, viewEvents(all, s, p), viewEvents(recall(s, { limit: Infinity }), s, p)]);
+      assert.equal(v.scene, null);
+      assert.equal(assetRefs(v).size, 0, "no file of a prepared scene may be fetched");
+      for (const x of secrets) assert.ok(!text.includes(x), `${x} reached ${p.userId}`);
+    }
+  };
+  act({ type: "scene", scene: { title: "Thrown Away", open: false } });
+  act({ type: "endScene" });
+  act({ type: "scene", scene: { title: "Ambush at Dawn", image: asset(7), open: false } });
+  act({ type: "sceneNpc", npc: { name: "Removed Rival" } });
+  act({ type: "sceneNpc", npc: { name: "Gorlak the Traitor", notes: "Wears the stolen ring", portrait: asset(8) } });
+  act({ type: "sceneNpc", npc: { id: "npc1" }, remove: true });
+  secrets.push("Thrown Away");
+  act({ type: "scene", scene: { title: "Ambush at Dawn" } });
+  assert.ok(all.every((e) => e.prep === true), "every event of a prepared scene is marked");
+  hidden();
+  // Nobody speaks in a scene that is not open: not as an NPC in it, and a line has no number.
+  no(apply(s, { type: "say", as: "npc2", text: "Hah" }, DM), /Nobody of that name/);
+  assert.equal(ok(apply(s, { type: "say", as: "fighter", text: "hm" }, PAT)).events[0].line, undefined);
+  // The same refusal for a player guessing the prepared NPC's id as for an id that is nothing.
+  assert.equal(apply(s, { type: "say", as: "npc2", text: "x" }, PAT).error, apply(s, { type: "say", as: "npc99", text: "x" }, PAT).error);
+  // A fight leaves a prepared scene alone; the table cannot go into it during one, but the DM can keep preparing.
+  ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 3 }, DM));
+  assert.equal(s.scene.title, "Ambush at Dawn");
+  no(apply(s, { type: "scene", scene: { open: true } }, DM), /End the fight/);
+  ok(apply(s, { type: "sceneNpc", npc: { id: "npc2", notes: "Wears the stolen ring" } }, DM));
+  ok(apply(s, { type: "endEncounter" }, DM));
+  hidden();
+  // Open: now the players are sent the scene as it stands, and still never the notes or the one who left.
+  const r = act({ type: "scene", scene: { open: true } }, DM, true);
+  assert.deepEqual(viewEvents(r.events, s, PAT), [{ type: "sceneStart", scene: s.scene.id, title: "Ambush at Dawn" }]);
+  // Ids are given on opening, so neither the scene thrown away nor the NPC taken out leaves a gap.
+  assert.equal(s.scene.id, "sc1");
+  const v = view(s, PAT);
+  assert.deepEqual(v.scene.present, [{ id: "npc1", name: "Gorlak the Traitor", portrait: asset(8) }]);
+  const rec = JSON.stringify(viewEvents(recall(s, { limit: Infinity }), s, PAT));
+  assert.ok(!rec.includes("Removed Rival") && !rec.includes("stolen ring"), "the record of the preparation stays the DM's");
+  // Stepping out to the map: players are told it was set aside, and nothing after.
+  const out = ok(apply(s, { type: "scene", scene: { open: false } }, DM));
+  assert.deepEqual(viewEvents(out.events, s, SAM), [{ type: "sceneEnd", scene: "sc1", title: "Ambush at Dawn", why: "set aside" }]);
+  const later = ok(apply(s, { type: "sceneNpc", npc: { name: "Second Twist" } }, DM));
+  assert.deepEqual(viewEvents(later.events, s, SAM), []);
+  assert.equal(view(s, SAM).scene, null);
+  const ended = ok(apply(s, { type: "endScene" }, DM));
+  assert.deepEqual(viewEvents(ended.events, s, SAM), [], "ending a scene not open tells the players nothing");
+});
+
+test("line numbers stay right under undo and redo, and a long scene is capped", () => {
+  const s = table();
+  const h = createHistory({ limit: 100 });
+  const act = (a, who = DM) => { const before = mark(s), r = ok(apply(s, a, who)); h.record(before, s, describeStep(a, r.events, before, s)); return r; };
+  act({ type: "scene", scene: { title: "Tavern" } });
+  act({ type: "sceneNpc", npc: { name: "Barkeep" } });
+  const lines = [1, 2, 3].map((i) => act({ type: "say", as: "fighter", text: `l${i}` }, PAT).events[0].line);
+  assert.deepEqual(lines, [1, 2, 3]);
+  const at3 = JSON.stringify(s);
+  h.undo(s);
+  assert.equal(s.scene.said, 2);
+  assert.equal(recall(s, { types: ["say"], limit: Infinity }).length, 2);
+  h.redo(s);
+  assert.equal(JSON.stringify(s), at3, "redo puts the line back exactly");
+  h.undo(s); h.undo(s);
+  assert.equal(act({ type: "say", as: "npc1", text: "Again" }).events[0].line, 2, "a line said after an undo takes the number freed");
+  assert.equal(h.listRedo().length, 0);
+  const said = recall(s, { types: ["say"], limit: Infinity });
+  assert.deepEqual(said.map((e) => e.line), [1, 2]);
+  // The cap on lines in one scene.
+  s.scene.said = SCENE_LIMITS.said;
+  no(apply(s, { type: "say", as: null, text: "one more" }, DM), /gone on long enough/);
+});
+
+test("a game with scenes replays exactly from its seed", () => {
+  const actions = [
+    [{ type: "scene", scene: { title: "Parley" } }, DM],
+    [{ type: "sceneNpc", npc: { name: "Envoy", notes: "lying" } }, DM],
+    [{ type: "say", as: "fighter", text: "We come in peace." }, PAT],
+    [{ type: "askCheck", actor: "fighter", skill: "insight" }, PAT],
+    [{ type: "check", actor: "fighter", skill: "insight", dc: 14 }, DM],
+    [{ type: "say", as: "npc1", text: "Of course." }, DM],
+    [{ type: "sceneChronicle", title: "The parley", lines: [1, 2] }, DM],
+    [{ type: "scene", scene: { open: false } }, DM],
+    [{ type: "startEncounter", center: null, radius: 3 }, DM],
+  ];
+  const play = () => {
+    const s = table(), evs = [];
+    actions[8][0].center = s.entities.fighter.pos;
+    for (const [a, who] of actions) evs.push(ok(apply(s, structuredClone(a), who)).events);
+    return JSON.stringify([s, evs]);
+  };
+  assert.equal(play(), play());
 });
