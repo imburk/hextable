@@ -1200,3 +1200,18 @@ test("a saved table with a 32-bit seed is given a key when loaded, and its undo 
   dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin" } });
   assert.ok(t.state.rng.n > 0 || t.state.encounter, "it plays on, from the key");
 });
+
+// Security review #132, L6 (issue #136): an action that throws part way leaves the game as it was.
+test("an action that throws part way through leaves the table's game exactly as it was", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, code } = seated(tables);
+  const t = tables.get(code);
+  const before = JSON.stringify(t.state);
+  // advanceTime moves the clock, then the record is written; make writing it fail.
+  t.state.timeline.push = () => { throw new TypeError("disk on fire"); };
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 60 } });
+  assert.equal(dm.last("error").error, "The table couldn't make sense of that action.");
+  delete t.state.timeline.push;
+  assert.equal(t.state.clock, JSON.parse(before).clock, "the clock is put back");
+  assert.ok(JSON.stringify(t.state) === before, "and so is everything else");
+});

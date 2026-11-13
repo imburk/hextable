@@ -118,6 +118,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
   const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
 
+  // Put a state back as mark() found it: every key in its place, the timeline cut back to its length then.
+  const putBack = (state, m) => {
+    const tl = state.timeline;
+    for (const k of Object.keys(state)) delete state[k];
+    for (const [k, v] of Object.entries(m.tree)) state[k] = k === "timeline" ? tl : v;
+    if (Array.isArray(tl)) tl.length = m.tl;
+  };
   // When each member last spoke in a scene, for MAX_SAYS_PER_MINUTE.
   const saidAt = new WeakMap();
   // What each connection was last sent, so the next update can be only what changed.
@@ -288,10 +295,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
         if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;
-        const before = undoable(action) ? mark(table.state) : null;        // claiming a seat is not undone
+        // Taken before every action: for the undo history (claiming a seat is not undone), and to
+        // put the game back if the engine throws part way through (review #132, L6).
+        const was = mark(table.state), before = undoable(action) ? was : null;
         try {
           res = apply(table.state, action, { role: me.role, userId: me.id });
         } catch {
+          putBack(table.state, was);
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) return error(res.error);
