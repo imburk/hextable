@@ -71,10 +71,10 @@ export const spells6 = [
     time: "action", range: 60, components: ["v","s","m"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"save":"dex","onFail":[{"damage":"10d6+40","type":"force"}]}],
+    effects: [{"save":"dex","onFail":[{"damage":"10d6+40","type":"force","onZero":[{"kill":true},{"remains":"dust"}]}]}],
     higher: {"slot":{"damage":"3d6"}},
     tier: "assist", checked: true,
-    text: "A creature makes a Dexterity save or takes force damage (nothing on a success); damage grows with higher slots. The DM handles the rest: a creature reduced to 0 Hit Points is turned to gray dust with its nonmagical gear and can only be revived by True Resurrection or Wish, and the spell can instead disintegrate a nonmagical object or force creation (a Large or smaller one entirely, a 10-foot cube of a bigger one).",
+    text: "A creature makes a Dexterity save or takes force damage (nothing on a success); damage grows with higher slots. One it reduces to 0 Hit Points dies and is turned to gray dust with its nonmagical gear, which the engine records; that only True Resurrection or Wish revives it is the DM's. The DM also handles the spell aimed at a nonmagical object or a creation of force (a Large or smaller one disintegrated entirely, a 10-foot cube of a bigger one)",
   },
   {
     id: "eyebite", name: "Eyebite", source: "SRD 5.2.1",

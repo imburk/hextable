@@ -245,3 +245,53 @@ test("Protection from Poison: auto; ends Poisoned, then Resistance to Poison and
   ok(apply(s, { type: "harm", actor: "fighter", amount: 10, dtype: "poison" }, DM));
   assert.equal(hp - f.hp, 5);
 });
+
+// ---------- 3. a rider on a kill ----------
+
+test("onZero, onKill, kill, remains: the linter keeps them on damage steps and under those branches", () => {
+  const b = { ...base, level: 5, time: "action", range: 60, target: { creature: { count: 1 } } };
+  assert.deepEqual(lint({ ...b, effects: [{ damage: "1d6", type: "cold", onKill: [{ remains: "frozen-statue" }] }] }), []);
+  assert.deepEqual(lint({ ...b, effects: [{ damage: "1d6", type: "force", onZero: [{ kill: true }, { remains: "dust" }] }] }), []);
+  assert.match(lint({ ...b, effects: [{ heal: "1d6", onKill: [{ remains: "dust" }] }] }).join(), /`onKill` is for a damage step/);
+  assert.match(lint({ ...b, effects: [{ remains: "dust" }] }).join(), /goes under a damage step's onZero or onKill/);
+  assert.match(lint({ ...b, effects: [{ damage: "1d6", type: "cold", onKill: [{ remains: "ice" }] }] }).join(), /`remains` is one of/);
+});
+
+test("Cone of Cold: auto; a creature it kills is a frozen statue, one it does not kill is not, even on a successful save", () => {
+  const d = SPELLS["cone-of-cold"].def;
+  assert.deepEqual([d.tier, d.checked, d.level, d.range, d.target.area.shape, d.target.area.size], ["auto", true, 5, "self", "cone", 60]);
+  const s = field(); learn(s, "wizard", "cone-of-cold");
+  const weak = spawn(s, 3, 0), tough = spawn(s, 4, 0);
+  weak.hp = 1; weak.abil.con = 30;              // it saves, and half the damage still kills it
+  tough.hp = tough.maxHp = 500;
+  fight(s); turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "cone-of-cold", hex: { q: 3, r: 0 } }, DM));
+  assert.ok(r.events.some((e) => e.type === "save" && e.id === weak.id && e.success));
+  assert.equal(weak.dead, true);
+  assert.equal(weak.remains, "frozen-statue");
+  assert.ok(r.events.some((e) => e.type === "remains" && e.id === weak.id));
+  assert.equal(tough.dead, false); assert.equal(tough.remains, undefined);
+  // Players see the statue where the creature is known.
+  s.entities.wizard.owner = "pat";
+  assert.equal(view(s, PAT).entities[weak.id].remains, "frozen-statue");
+  assert.ok(viewEvents(r.events, s, PAT).some((e) => e.type === "remains" && e.id === weak.id));
+  // A DM who raises it takes the statue away.
+  ok(apply(s, { type: "setHp", actor: weak.id, hp: 5 }, DM));
+  assert.equal(weak.remains, undefined);
+});
+
+test("Disintegrate: a character it brings to 0 Hit Points dies outright and is dust; one above 0 does not", () => {
+  const s = field(); learn(s, "wizard", "disintegrate");
+  const f = s.entities.fighter;
+  f.abil.dex = 1; f.hp = 30; f.maxHp = 300;
+  spawn(s, 9, 0); fight(s); turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "disintegrate", target: "fighter" }, DM));
+  assert.ok(r.events.some((e) => e.type === "save" && e.id === "fighter" && !e.success), "Dexterity 1 fails");
+  assert.equal(f.dead, true, "no death saves");
+  assert.equal(f.remains, "dust");
+  assert.ok(r.events.some((e) => e.type === "died" && e.id === "fighter"));
+  const c = s.entities.cleric; c.abil.dex = 1; c.hp = c.maxHp = 400;
+  s.encounter.budget.action = 1; s.encounter.flags = {}; s.entities.wizard.slots[6] = 1;
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "disintegrate", target: "cleric" }, DM));
+  assert.equal(c.dead, false); assert.equal(c.remains, undefined);
+});

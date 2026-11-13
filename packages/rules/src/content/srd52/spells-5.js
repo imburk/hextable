@@ -80,10 +80,10 @@ export const spells5 = [
     time: "action", range: "self", components: ["v","s","m"],
     duration: "instant", concentration: false, ritual: false,
     target: {"area":{"shape":"cone","size":60}},
-    effects: [{"save":"con","half":true,"onFail":[{"damage":"8d8","type":"cold"}]}],
+    effects: [{"save":"con","half":true,"onFail":[{"damage":"8d8","type":"cold","onKill":[{"remains":"frozen-statue"}]}]}],
     higher: {"slot":{"damage":"1d8"}},
-    tier: "assist", checked: true,
-    text: "Each creature in a 60-foot cone makes a Constitution save, taking cold damage on a failure or half on a success; damage grows with higher slots. The DM turns a creature this kills into a frozen statue until it thaws.",
+    tier: "auto", checked: true,
+    text: "Each creature in a 60-foot cone makes a Constitution save, taking cold damage on a failure or half on a success; damage grows with higher slots. A creature it kills becomes a frozen statue until it thaws.",
   },
   {
     id: "conjure-elemental", name: "Conjure Elemental", source: "SRD 5.2.1",

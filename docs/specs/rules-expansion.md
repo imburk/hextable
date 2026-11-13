@@ -830,6 +830,18 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   (Protection from Poison's Advantage against Poisoned). A save step is about the conditions in its
   `onFail`; a repeat save of a condition's `ends` is about that condition; a Countercharm reroll
   is about the conditions it rerolls against. `savingThrow()` takes them as `about`.
+- **A rider on a kill.** A `damage` step may have `onZero` (steps run on its target when this
+  damage took it from above 0 Hit Points to 0) and `onKill` (when it was alive and this damage
+  killed it, by the engine's rules: a monster at 0, a character by massive damage or death saves).
+  Damage steps that land together share them; a successful save's half damage counts (the branch
+  runs at full, not halved). Two steps that only make sense there (the linter keeps them under these
+  branches): `kill: true` (it dies outright, a character at 0 Hit Points too: Disintegrate) and
+  `remains: 'frozen-statue' | 'dust'` (what is left of the body, `creature.remains`, event
+  `remains`; players see it on a creature they know of, in the seen record and the event). Cone of
+  Cold's statue and Disintegrate's dust. The DM's `setHp` raising a dead creature clears `remains`.
+  Who can revive dust (True Resurrection, Wish) is not enforced: the engine has no revival step.
+  `remains` is a new optional field on a creature; old saves lack it and need no migration, so the
+  state version stays 17.
 
 ### A class
 

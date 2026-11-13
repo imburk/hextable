@@ -288,18 +288,26 @@ function exec(s, ev, kit, f, step, at) {
     const amount = (st, path) => { const r0 = f.shared?.[path] ?? rollDamage(s, st, !!f.crit), r = typeof r0 === 'number' ? { total: r0 } : r0;
       return { amount: f.half ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
     const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
-    const parts = [{ ...amount(step, at), type: step.type }];
+    const parts = [{ ...amount(step, at), type: step.type }], landed = [[step, at]];
     while (f.i < f.steps.length && stepKind(f.steps[f.i]) === 'damage') {
       const next = f.steps[f.i], ok = holds(next);
       if (ok === null) break;
-      if (ok) parts.push({ ...amount(next, `${f.path}${f.i}`), type: next.type });
+      if (ok) { parts.push({ ...amount(next, `${f.path}${f.i}`), type: next.type }); landed.push([next, `${f.path}${f.i}`]); }
       f.i++;
     }
     // A spell a reaction blocks does it no damage (Shield against Magic Missile).
     if (f.src.blocked?.includes(t.id)) return;
     const cut = f.cut;
     if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
-    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    const wasUp = !t.dead && t.hp > 0, wasAlive = !t.dead;
+    kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    // What this damage does to a creature it brought to 0 Hit Points (`onZero`) or killed
+    // (`onKill`), whatever the save did to the amount. The stack runs the last pushed first.
+    for (const [name, now] of [['onKill', wasAlive && t.dead], ['onZero', wasUp && t.hp <= 0]]) {
+      if (!now) continue;
+      for (const [st, path] of landed) if (st[name]) s.stack.push({ kind: 'seq', steps: st[name], path: `${path}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared, told: f.told, half: false });
+    }
+    return;
   }
   // The spell that set this reaction off fails (Counterspell). Only a reaction to a spell being
   // cast has one to stop (engine.js, castReaction marks its source `counters`).
@@ -322,6 +330,12 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
+  if (kind === 'kill') return kit.kill(s, t, ev);
+  if (kind === 'remains') {
+    if (!t.dead) return handOver(`${t.name} is not dead, so ${f.src.name} leaves no remains of it. The DM applies the rest.`);
+    t.remains = step.remains;
+    return ev.push({ type: 'remains', id: t.id, remains: step.remains });
+  }
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
     return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);

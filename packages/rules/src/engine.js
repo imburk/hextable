@@ -457,6 +457,13 @@ function teleport(s, t, step, to, ev) {
   return true;
 }
 
+// A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
+function kill(s, t, ev) {
+  if (t.dead) return;
+  t.dead = true; t.hp = 0;
+  ev.push({ type: 'died', id: t.id });
+  concentrationLost(s, ev, t, `${t.name} died`);
+}
 // A `cure` step: the conditions listed end on `t`, whatever put them there (a lasting effect's part
 // that held one is ended with it). One it does not have is passed over.
 function cure(s, t, list, ev) {
@@ -1777,7 +1784,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure };
+const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill };
 
 // ---------- Metamagic ----------
 // The options a creature knows are its features that grant `metamagic: { id, cost, pool }`
@@ -2702,7 +2709,7 @@ const handlers = {
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');
     const e = ent(s, a.actor), hp = Math.max(0, Math.min(e.maxHp, a.hp | 0));
-    if (hp > e.hp) { e.dead = false; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
+    if (hp > e.hp) { e.dead = false; delete e.remains; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },
   // The DM's damage and healing, by the rules: Resistance and the like, Temporary Hit Points first, Concentration, death saves.

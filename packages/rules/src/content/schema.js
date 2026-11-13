@@ -23,10 +23,13 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'manual'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
-// `blocked`: a teleport that cannot arrive (Dimension Door).
-export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked'];
+// `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
+// took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
+export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked', 'onZero', 'onKill'];
+// What is left of a creature a spell killed: a `remains` step records it on the body.
+export const REMAINS = ['frozen-statue', 'dust'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
@@ -154,7 +157,7 @@ const seenCounter = (actions) => { let n = false; for (const a of actions ?? [])
 function walkSteps(steps, visit) {
   for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of BRANCHES) if (st[b]) walkSteps(st[b], visit); }
 }
-function lintSteps(steps, say, seen = { manual: false }) {
+function lintSteps(steps, say, seen = { manual: false }, under = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   for (const step of steps) {
     const kinds = STEPS.filter((k) => k in step);
@@ -224,7 +227,13 @@ function lintSteps(steps, say, seen = { manual: false }) {
     // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
     // Exhaustion is not ended this way: a spell lowers it by levels.
     if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), or "chosen"');
-    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen);
+    for (const b of ['onZero', 'onKill']) if (step[b] !== undefined && kind !== 'damage') say(`\`${b}\` is for a damage step`);
+    // `kill: true`: the creature dies, a character at 0 Hit Points too; `remains`: what is left of
+    // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.
+    if ((kind === 'kill' || kind === 'remains') && !under) say(`a \`${kind}\` step goes under a damage step's onZero or onKill`);
+    if (kind === 'kill' && step.kill !== true) say('`kill` is true');
+    if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
+    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill');
   }
   return seen;
 }
