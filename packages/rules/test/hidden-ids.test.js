@@ -4,7 +4,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { apply, ACTION_TYPES } from "../src/engine.js";
+import { apply, ACTION_TYPES, current } from "../src/engine.js";
+import * as H from "../src/hex.js";
+import { newMap } from "../src/map.js";
+import { viewEvents } from "../src/view.js";
 import { newGame } from "../src/scenario.js";
 import { startEffect } from "../src/durations.js";
 import { unknown } from "../src/vision.js";
@@ -122,4 +125,33 @@ test("a lasting effect of a hidden creature is answered as an effect that is not
   // One the party can see, cast by a creature they know of, is just not theirs to end.
   const seen = startEffect(s, { name: "Goblin Ward", spell: null, source: "m2", conc: true, duration: "1 minute" });
   assert.match(apply(s, { type: "endEffect", effect: seen.id }, P).error, /isn't yours to end/);
+});
+
+// Review #132, L1: a reaction's `against` is recorded as unseen, so a history read after the
+// attacker comes into sight does not say who the unseen attacker was.
+test("a Shield cast against an attacker in the dark does not name it in the record once it is seen", () => {
+  const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 12).map((h) => [H.col(h), { t: "stone" }]));
+  const s = newGame(31);
+  ok(apply(s, { type: "loadMap", map: newMap({ id: "c", name: "Cave", starts: [{ q: -10, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles, light: "dark" }] }) }, DM));
+  ok(apply(s, { type: "setting", key: "sight", value: "light" }, DM));
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  for (const [id, q, r] of [["fighter", -10, 0], ["rogue", -10, 2], ["cleric", -10, 3], ["wizard", 0, 0]]) s.entities[id].pos = { q, r, z: 0 };
+  const w = s.entities.wizard; w.owner = "u1"; w.spells.push("shield");
+  ok(apply(s, { type: "reactions", actor: "wizard", set: { shield: "always" } }, DM));
+  const g = s.entities[ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 } }, DM)).events[0].id];
+  assert.ok(unknown(s, g));
+  s.rng = 1;
+  ok(apply(s, { type: "attack", actor: g.id, target: "wizard", attack: "scimitar" }, DM));      // initiative
+  for (let i = 0; i < 10 && current(s) !== g.id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  ok(apply(s, { type: "attack", actor: g.id, target: "wizard", attack: "scimitar" }, DM));
+  const rec = s.timeline.find((e) => e.type === "reaction");
+  assert.equal(rec?.against, g.id, "Shield was cast against the goblin");
+  assert.ok(unknown(s, g), "and the goblin is still in the dark");
+  assert.deepEqual(rec.unseen, [g.id]);
+  // Light comes: the goblin is seen now. What the record says of then does not change.
+  ok(apply(s, { type: "setLight", actor: "wizard", item: "torch" }, DM));
+  assert.ok(!unknown(s, g));
+  const told = viewEvents(s.timeline, s, P).find((e) => e.type === "reaction");
+  assert.ok(told, "players still read that Shield was cast");
+  assert.equal(told.against, undefined);
 });
