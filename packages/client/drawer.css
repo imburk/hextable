@@ -75,3 +75,5 @@ body.drawer-pretable #drawer-scrim { bottom: 0; }
 #splash-about { min-height: 44px; }
 #lobby-about { min-height: 44px; }
 @media (min-width: 900px) { #drawer-tabs button { min-width: 0; padding: 6px 8px; } }
+/* Wide and unpinned, the top bar stays clear above the drawer: the burger closes it again, and Undo stays one tap away. */
+@media (min-width: 900px) { body:not(.drawer-pinned) #drawer { top: calc(max(10px, env(safe-area-inset-top)) + 54px); padding-top: 0; } }

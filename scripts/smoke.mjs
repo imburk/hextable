@@ -497,6 +497,14 @@ async function drawerPass(browser, url, label, opts) {
         if (c2.w !== c2.vw) throw new Error('the canvas did not come back');
         await closeMenu(page);
       });
+      await run.do('a reaction question hides the drawer for as long as it is asked, and gives it back after', async () => {
+        await openTab(page, 'turns');
+        await page.evaluate(() => { const h = window.hextable; h.drawer.sync({ ...h.state, prompt: { waiting: true } }); });
+        await waitShown(page, '#drawer', false);
+        await page.evaluate(() => { const h = window.hextable; h.drawer.sync(h.state); });
+        await waitShown(page, '#drawer');
+        await closeMenu(page);
+      });
       await run.do('in a fight the tracker lists the turns in the engine\'s order, top to bottom, with initiative and the turn marked', async () => {
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; const h = window.hextable, S = h.state, foe = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden); h.act({ type: 'startEncounter', center: foe.pos }); });
         await wait(page, () => !!window.hextable.state.encounter);
@@ -562,6 +570,7 @@ async function drawerTable(browser, url) {
           for (let i = 0; i < 40 && !sp; i++) { await new Promise((r) => setTimeout(r, 100)); sp = Object.values(h.state.entities).find((e) => !known.has(e.id)); }
           if (!sp) return null;
           h.act({ type: 'condition', actor: sp.id, condition: 'invisible' });
+          h.act({ type: 'place', actor: 'fighter', to: { q: foe.pos.q - 1, r: foe.pos.r } });       // a party member in the fight, or it ends at once
           h.act({ type: 'startEncounter', center: foe.pos });
           return { id: sp.id, name: sp.name };
         });
@@ -588,7 +597,8 @@ async function drawerTable(browser, url) {
       });
       await run.do('when the invisible creature takes its turn the phone has one ghost row and no name', async () => {
         for (let i = 0; i < 30; i++) {
-          const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter.order[S.encounter.turn].id; });
+          const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn].id ?? null; });
+          if (cur === null) throw new Error('the fight ended before the invisible creature had a turn');
           if (cur === secret.id) break;
           await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
           await wait(host, () => window.hextable.waiting === 0, null, 20000);
@@ -840,6 +850,7 @@ async function scenes(browser, url) {
         await host.fill('#sc-new-title', 'The mayor\'s study');
         await host.click('#sc-new-prep');
         await wait(host, () => window.hextable.state.scene && window.hextable.state.scene.open === false);
+        await closeMenu(host);       // the scene's own panel is what the DM works in now
         await waitShown(host, '#scene'); await waitShown(host, '#sc-prep');
         await sleep(400);
         if (await phone.evaluate(() => window.hextable.state.scene !== null)) throw new Error('the phone was sent a prepared scene');

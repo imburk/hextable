@@ -1061,3 +1061,45 @@ proceeds on the default.
 7. **Items that do things.** The Items tab lists names until potions and
    scrolls exist as content with effects. Is that worth a milestone ahead of
    Reactions? *Default: later (E18), after Roadmap milestone 2.*
+
+## Build notes
+
+### T1 and T2: the drawer, Settings, About, the splash, the tracker (PR for #173 and #181)
+
+What was settled while building, where it differs from the text above, and what was left.
+
+- **Files.** `drawer.js` (the drawer), `settings.js` (the Settings tab and `rulesLines`), `about.js` (every word of About, as data),
+  `drawer.css`, and changes to `tracker.js`, `themes.js`, `index.html`, `style.css`, `app.js`. `.panel` stays in `style.css` because
+  `#qe` and `#fgi` are still fixed panels; the drawer's tabs use `.tabpanel`.
+- **Ids kept.** Every panel keeps its id (`tracker`, `sheet`, `log`, `handouts`, `dm`); `#btn-handouts` and `#ho-badge` are the Handouts
+  tab and its badge, so `handouts.js` and `scenes.js` needed no change. A tab's `hidden` attribute says it is not the open tab, so the
+  app draws only what is shown. New ids: `#btn-menu`, `#menu-badge`, `#drawer`, `#drawer-tabs`, `#tab-*`, `#set-*`, `#splash`, `#lobby-about`.
+- **Wide and unpinned**, the drawer starts below the top bar, not at the top of the screen: the burger can close it and Undo stays one
+  tap. Below 1480 px it also stops above the dock, because the dock (760 px, centred) would otherwise sit under it. Pinned, it is full
+  height and the map, top bar, order strip, hint, camera buttons, dock and editor move out of its way (`--inset-l`, `--inset-r`).
+- **Tablets (600 to 899 px)** get the phone behaviour (scrim, modal), since there is no room to pin.
+- **Handouts tab:** players with handouts only; the DM's are in the DM tab (no empty list for the DM).
+- **Splash:** static in `index.html`, so it shows before the script loads; it goes when a table or the lobby shows, after 10 s in any
+  case, and by CSS alone after 12 s if the script never runs. It never waits for anything.
+- **Settings.** Theme, floors look, cut-away, caves (stored as `hextable.floors`, `hextable.cutaway`, `hextable.caves`; `?hex`,
+  `?nocut` and `?nocave` still win, and then the control is off and says so), drawer side and pin, dice, animation, always throw my dice,
+  and for the DM the monsters' dice. The renderer choice stays out, as the table in Decision 7 says. The table's rules are listed in
+  plain words (`rulesLines`); for the DM each has a "Change" button that opens the DM tab. Not built: default action tab, spell sort and
+  log filters (their features do not exist yet).
+- **About.** The attribution is the SRD's own Legal Information text, which uses typographic quotation marks; `test/about.test.js`
+  compares it with `reference/srd52/srd52-flow.txt`, the two licences with `LICENSE` and `vendor/three/LICENSE`, the version with
+  `package.json` and the credited fonts with the ones `index.html` loads. The five fonts are SIL OFL 1.1; the copyright lines come from
+  the Fontsource packaging of the Google Fonts files (see DEBT T12). Model packs: an empty list, rendered as "None yet".
+- **Burger badge:** waiting players plus unseen handouts. The "undecided conclusion" part waits for Decision 4.
+- **T2, the tracker.** Rows come from `trackerRows(S, { dm })` and `rowHTML`, pure and tested from a `playerView` and from the full state.
+  Initiative shows where `order[i].init` is a number (own side for a player; everyone for the DM). A party member at 0 shows
+  `Dying 1/0` or `Stable` (player characters only). "Reaction used" is shown only where the record has `reactionUsed`, which only open
+  creatures do. The unseen slot is a ghost row, not a button, with no id. A tap on a row selects and focuses, and closes the drawer
+  below 900 px; each row with a full record has a Sheet button; the order strip opens the drawer on Turns. On a phone the DM's tick
+  boxes, amount, damage, heal and skip are behind an Edit button. The turn is spoken once per change in `#drawer-live`, and not when a
+  table is joined.
+- **Left out of T2, because the view does not send it:** an initiative number or Reaction used for a creature the party sees but does not
+  own. Nothing is computed on the client.
+- **Smoke.** `SMOKE_ONLY=drawer` is new. The other passes use `openTab(page, tab)` and `closeMenu(page)` where they used the old buttons.
+- **Not checked:** a real phone's swipe (the test drives pointer events), a screen reader, and the three themes beyond Classic and Sunlit.
+
