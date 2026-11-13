@@ -455,7 +455,7 @@ shadows, many lights, and instancing.
 | WebGL version | WebGL 1, every phone | Current Three.js needs WebGL 2: every current phone browser has it (iOS Safari since 15). Very old devices lose 3D |
 | Change upstream | None | Three.js breaks its API often between releases. Pin one version, record it and its hash, upgrade on purpose |
 | Who can work on it | Agents have done well on it so far, but GPU code has only a page smoke test (`npm run smoke`), and its bugs are the kind tests do not catch | Agents and people know Three.js widely; most problems have a known answer |
-| Licence | Ours (MIT) | MIT, compatible |
+| Licence | Ours (AGPL-3.0-or-later) | MIT, compatible |
 
 **Recommendation: move to Three.js, at the start of the model work, not
 before.** The reason, for `DESIGN.md`: models and animation are a large body
