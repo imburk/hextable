@@ -289,33 +289,37 @@ export const wizard = {
       "id": "ability-score-improvement-4",
       "name": "Ability Score Improvement",
       "level": 4,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-8",
       "name": "Ability Score Improvement",
       "level": 8,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-12",
       "name": "Ability Score Improvement",
       "level": 12,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-16",
       "name": "Ability Score Improvement",
       "level": 16,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "memorize-spell",
@@ -337,9 +341,10 @@ export const wizard = {
       "id": "epic-boon",
       "name": "Epic Boon",
       "level": 19,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Gain an Epic Boon feat or another feat you qualify for (Boon of Spell Recall is suggested). Feats are applied by the DM."
+      "text": "Gain an Epic Boon feat or another feat you qualify for (Boon of Spell Recall is suggested). Without one, nothing is added."
     },
     {
       "id": "signature-spells",

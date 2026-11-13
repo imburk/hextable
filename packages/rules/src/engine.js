@@ -1975,7 +1975,8 @@ const handlers = {
     const sp = SPELLS[a.spell];
     // Cast through a feature (`a.via`, a feature with `freeCast`: Divine Intervention): any spell
     // of its list up to its level, prepared or not, with no slot, as part of the feature's action,
-    // for one of its uses.
+    // for one of its uses. A feature that names its spells (`freeCast.spells`: Magic Initiate's level 1
+    // spell) casts one of them at its own level and casting time, with no slot, for one of its uses.
     const via = a.via !== undefined ? (featOf(e, a.via)?.freeCast ? featOf(e, a.via) : fail(`${e.name} has no feature that casts spells that way.`)) : null;
     if (via) {
       const fc = via.freeCast;
@@ -1991,8 +1992,9 @@ const handlers = {
     !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
-    if (!sp.turn && s.encounter && !via) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
-    let time = via ? (via.freeCast.time ?? 'action') : sp.time;
+    const asAction = !!via?.freeCast.list;                // Divine Intervention: the spell is the feature's Magic action
+    if (!sp.turn && s.encounter && !asAction) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
+    let time = asAction ? 'action' : sp.time;
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
