@@ -9,7 +9,7 @@ import { apart, FT } from '../space.js';
 import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers } from '../modifiers.js';
-import { current, diceMax, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { current, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
@@ -51,6 +51,8 @@ export function deathSave(s, e, ev) {
   ev.push({ type: 'deathSave', id: e.id, roll: d, ...(total !== d ? { total } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode }), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, d), ...more.dice], bonus: m.add + all.add, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
+
+// ---------- healing, rolls and their results ----------
 
 // `r`, if given, is the roll the amount came from, for the event's dice.
 export function heal(s, t, amount, ev, r = null) {
@@ -214,6 +216,13 @@ export function dealt(s, e, t, parts, sit, crit) {
   }
   return out;
 }
+
+// A die added to a D20 Test that failed (`onFail` modifiers: a Bardic Inspiration die on the
+// creature, `d20`; Peerless Skill, `attack.roll`, paid from a feature's uses only if it succeeds).
+// Used only where it could turn the failure (`short`, how much the roll fell short, is no more
+// than the dice can make), as a player would; the first that fits is rolled. Returns
+// { add, name, dice, success } or null.
+const diceMax = (d) => { const m = /^(\d+)d(\d+)([+-]\d+)?$/.exec(d); return m ? +m[1] * +m[2] + (+m[3] || 0) : 0; };
 export function rescue(s, t, hook, short, ev) {
   if (!t || t.object || !(short > 0)) return null;
   const list = [...modifiers(s, t, 'd20', { target: t }, '').rescue, ...modifiers(s, t, hook, { target: t }, '').rescue];

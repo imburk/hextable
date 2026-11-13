@@ -259,6 +259,7 @@ export function reveal(s, e, ev) {
   delete e.hidden;
   ev.push({ type: 'revealed', id: e.id });
 }
+// It stops hiding (the Hide rules are in features.js, with the hide action).
 export function unhide(s, e, ev, why, by = null) {
   if (!e.hiding) return;
   delete e.hiding;

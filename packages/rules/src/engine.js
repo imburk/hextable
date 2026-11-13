@@ -36,6 +36,8 @@ export { SETTINGS } from './engine/dm.js';
 export { FT };                       // feet per hex
 export { opportunityAttack };
 
+// Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
+// type is defined in one module only: if two defined it, the later spread would win silently.
 const handlers = {
   ...movement,
   ...attacks,

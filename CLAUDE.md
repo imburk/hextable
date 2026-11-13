@@ -25,6 +25,29 @@ by the engine. Must work on PC, phone and tablet.
   `walls.js` works out what walls and doors block.
   `content/sizes.js` is the table of creature sizes. Design:
   `docs/specs/maps-and-objects.md`, whose build notes say what was settled.
+- **Engine layout.** `engine.js` is the entry point: `apply()`, its
+  validation order, dispatch, the `react` handler (it re-runs a waiting
+  action), history and `recall()`; it re-exports everything importers use,
+  so import from `engine.js`, never from `engine/`. The handlers live in
+  `packages/rules/src/engine/`, one module per domain, each exporting a
+  `handlers` object that `engine.js` spreads into its table:
+  `movement.js` (move, dash, stand, disengage, follow, marching order;
+  walking itself), `attacks.js` (attack, act, dodge, reaction instructions,
+  endTurn; Multiattack pools), `casting.js` (cast, Metamagic, Counterspell,
+  teleport targets, endEffect), `features.js` (secondWind, feature with Font
+  of Magic and Wild Shape, use, check, search, hide), `characters.js`
+  (adding, editing, levelling, gear, attunement), `rests.js` (rests, time,
+  chronicle, rewards) and `dm.js` (DM tools, the map, light, settings,
+  handouts, scenes). Under them, helpers used by more than one domain, in
+  layers that import only downwards: `shared.js` (basics: `fail`, `ent`,
+  `control`, dice, asking a player) ← `world.js` (moving and fitting,
+  regions, objects, hidden creatures, areas and targets, marching) and
+  `rolls.js` (healing, rolls, saves, conditions, checks) ← `sheets.js`
+  (`makeEntity`, remaking a creature from its sheet) ← `resolve.js` (damage,
+  the attack roll, reactions, falls, pushes, teleports, the `KIT` lent to
+  `effects.js`, and starting, turning and ending fights). There are no
+  import cycles. Two actions must not share a name: the later spread would
+  win silently.
 - `packages/rules/src/content` — rules content. `srd52/` is a pack of data
   files; `schema.js` is the closed vocabulary they may use and the linter
   that enforces it; `index.js` loads packs. `npm run content` prints what is

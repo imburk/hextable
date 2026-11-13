@@ -18,6 +18,8 @@ import { catchUp, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround,
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { tryLand } from './sheets.js';
 
+// ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
+
 // Run a list of effect steps that come from a thing on the map against some creatures.
 export function objectEffects(s, o, steps, targets, ev) {
   if (!targets.length) return;
@@ -94,6 +96,8 @@ function teleport(s, t, step, to, ev) {
   return true;
 }
 
+// ---------- encounters (joining one, rollInit and fightPlace are in world.js) ----------
+
 export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
   const arena = {};
   for (const h of H.range(center, radius)) if (hasColumn(s.map, h)) arena[H.col(h)] = 1;    // a fight locks whole columns, every level
@@ -166,6 +170,8 @@ export function advanceTurn(s, ev) {
   }
   endEncounter(s, ev, 'stalemate');
 }
+
+// ---------- damage and attacks ----------
 
 // `amount` is a number of `dtype` damage, or a list of { amount, type } parts that land together
 // (one hit that does slashing and fire): each part is resisted on its own and logged on its own,
@@ -270,6 +276,8 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };
 }
+
+// ---------- reactions (asking a player is ask() in shared.js) ----------
 
 // Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
 // its player chose), and its steps run at once on `targets` (the caster, or the creature that set

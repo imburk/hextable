@@ -55,7 +55,7 @@ export function fallen(s) {
   return s.encounter ? !partyOf(fighters(s)).some((e) => up(e) || dying(e)) : !pcs.some(up);
 }
 
-// ---------- damage, healing, attacks ----------
+// ---------- dice ----------
 
 // Roll the dice that modifiers add to a roll (Bless's 1d4, Bane's -1d4). Returns the total and,
 // for the roll's event, what was rolled for what: [{ name, dice, roll }].
@@ -115,12 +115,7 @@ export function tellDM(t, r, what, ev) {
     text: `${what} ${t.name}'s instruction for ${r.name} is to ask the DM: if it takes it, the DM applies it and marks its Reaction used.` });
 }
 
-// A die added to a D20 Test that failed (`onFail` modifiers: a Bardic Inspiration die on the
-// creature, `d20`; Peerless Skill, `attack.roll`, paid from a feature's uses only if it succeeds).
-// Used only where it could turn the failure (`short`, how much the roll fell short, is no more
-// than the dice can make), as a player would; the first that fits is rolled. Returns
-// { add, name, dice, success } or null.
-export const diceMax = (d) => { const m = /^(\d+)d(\d+)([+-]\d+)?$/.exec(d); return m ? +m[1] * +m[2] + (+m[3] || 0) : 0; };
+// ---------- whether a creature can act ----------
 
 // Why this creature can't take an action/bonus action right now ('' if it can).
 export function blocked(s, e, time = 'action') {
