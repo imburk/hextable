@@ -107,6 +107,7 @@ function summarise(def) {
   if (kind === 'heal') return { short: `heal ${step.heal}`, long: `Heal ${step.heal}` };
   if (kind === 'tempHp') return { short: `${step.tempHp} temp HP`, long: `${step.tempHp} Temporary Hit Points` };
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
+  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
     const text = m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
@@ -264,7 +265,9 @@ function exec(s, ev, kit, f, step, at) {
       ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
       return step.half ? undefined : branch('onSuccess', { half: false });
     }
-    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, null, ev);      // cover is judged from where the effect starts
+    // The conditions a failure would bring, for a modifier on saves to avoid one (Protection from Poison).
+    const about = (step.onFail ?? []).filter((x) => 'condition' in x).map((x) => x.condition);
+    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, null, ev, about);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
     // A failed save against Charmed or Frightened may be rolled again (Countercharm).
@@ -318,6 +321,7 @@ function exec(s, ev, kit, f, step, at) {
     return kind === 'heal' ? kit.heal(s, t, n, ev, rolled) : kit.tempHp(s, t, n, ev, f, rolled);
   }
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
+  if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
     return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);

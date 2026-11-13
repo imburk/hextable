@@ -457,6 +457,21 @@ function teleport(s, t, step, to, ev) {
   return true;
 }
 
+// A `cure` step: the conditions listed end on `t`, whatever put them there (a lasting effect's part
+// that held one is ended with it). One it does not have is passed over.
+function cure(s, t, list, ev) {
+  for (const c of list) {
+    if (!t.cond[c]) continue;
+    const fxId = t.cond[c].effect;
+    delete t.cond[c];
+    ev.push({ type: 'condEnd', id: t.id, cond: c });
+    const fx = fxId && effectsOf(s).find((x) => x.id === fxId);
+    if (!fx) continue;
+    for (const p of fx.parts) if (p.target === t.id && p.cond === c) p.ended = true;
+    if (fx.parts.every((p) => p.ended)) endEffect(s, ev, fx, `${t.name} was cured`);
+  }
+}
+
 // What this creature could do right now with the objects in reach: [{ object, name, verb, label, time, why }].
 export function usesFor(s, e) {
   const out = [];
@@ -853,7 +868,7 @@ function rerollSave(s, t, abil, dc, onFail, from, ev) {
     if (!r || (o.id !== t.id && apart(s, o, t) * FT > r.reaction.range)) continue;
     o.reactionUsed = true;
     ev.push({ type: 'reaction', id: o.id, reaction: r.id, name: r.name, trigger: 'saveFailed', against: t.id });
-    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev);
+    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev, conds);
   }
   return null;
 }
@@ -1192,8 +1207,9 @@ function bestType(s, t, types) {
 // `extra` names a second hook to gather modifiers from, such as 'concentration'. The result carries
 // `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
-function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null) {
-  const sit = { target: t, ability: abil };
+// `about`: the conditions the save is to avoid or end, for a modifier scoped to one (Protection from Poison).
+function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null, about = null) {
+  const sit = { target: t, ability: abil, ...(about?.length ? { conditions: about } : {}) };
   const m = modifiers(s, t, `save.${abil}`, sit, '');
   if (dis) m.disadvantage.push(dis);                       // Disadvantage from the caster's side (Heightened Spell)
   if (adv) m.advantage.push(adv);                          // Advantage on a reroll (Countercharm)
@@ -1387,6 +1403,7 @@ function chooseIn(steps, of, value) {
     if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && k === of) m.scope[k] = value;
     if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
+    if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));
     for (const b of BRANCHES) if (st[b]) visit(st[b]);
   } };
   visit(steps);
@@ -1760,7 +1777,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport };
+const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure };
 
 // ---------- Metamagic ----------
 // The options a creature knows are its features that grant `metamagic: { id, cost, pool }`

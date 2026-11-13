@@ -163,10 +163,10 @@ export const spells6 = [
     time: "action", range: 60, components: ["v","s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"heal":"+70"}],
+    effects: [{"heal":"+70"},{"cure":["blinded","deafened","poisoned"]}],
     higher: {"slot":{"heal":"+10"}},
-    tier: "assist", checked: true,
-    text: "A creature regains 70 hit points, plus 10 for each slot level above 6. The engine heals the hit points; the DM also ends the Blinded, Deafened and Poisoned conditions on the target.",
+    tier: "auto", checked: true,
+    text: "A creature regains 70 hit points, plus 10 for each slot level above 6, and its Blinded, Deafened and Poisoned conditions end.",
   },
   {
     id: "heroes-feast", name: "Heroes’ Feast", source: "SRD 5.2.1",

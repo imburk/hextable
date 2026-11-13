@@ -817,6 +817,19 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   that does not yet aim teleports still casts the spell. `spellProfile()` gives
   `teleport: { feet, see }` so a client can arm a hex pick. A destination off the map, passengers and
   "a place you can describe" stay with the DM. Not run: a teleport aimed at another creature.
+- **`cure` step.** `{ cure: [conditions] }` ends those conditions on the creature it works on
+  (Heal: Blinded, Deafened, Poisoned), or `{ cure: ["chosen"] }` with the spell's
+  `choice: { of: 'condition', from: [...] }` (Lesser Restoration's one of four; `condition` is a new
+  kind of choice, made in the `cast` action's `choice` as the others are, and the client's choice
+  menu shows it with nothing new). A condition it does not have is passed over; one a lasting effect
+  holds ends with that effect's part, and an effect with nothing left ends (Hold Person). Exhaustion
+  is not ended this way (a spell lowers it by levels). This is the spell-step twin of the class
+  features' `cure` (Lay On Hands' pool), which stays a pool option.
+- **A save scoped to a condition.** A modifier on `save` (or `save.<ability>`) may say
+  `scope: { condition }`: it applies to a saving throw made to avoid or end that condition
+  (Protection from Poison's Advantage against Poisoned). A save step is about the conditions in its
+  `onFail`; a repeat save of a condition's `ends` is about that condition; a Countercharm reroll
+  is about the conditions it rerolls against. `savingThrow()` takes them as `about`.
 
 ### A class
 

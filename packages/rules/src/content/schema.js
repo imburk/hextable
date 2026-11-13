@@ -23,7 +23,7 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'manual'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door).
 export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked'];
@@ -76,7 +76,8 @@ function lintWhen(when, say) {
   for (const t of when) if (!TAGS.includes(t)) say(`unknown situation tag "${t}"`);
 }
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES };
+// `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion') };
 function lintModifier(m, say) {
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -89,8 +90,10 @@ function lintModifier(m, say) {
   // `scope` limits a check or a save to one skill or ability; "chosen" is the caster's choice.
   if (m.scope !== undefined) {
     const sc = m.scope;
-    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => k !== 'skill' && k !== 'ability')) say('`scope` gives a skill or an ability');
+    // `scope.condition`: a save to avoid or end that condition (Protection from Poison).
+    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition'].includes(k))) say('`scope` gives a skill, an ability or a condition');
     else {
+      if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.')))) say('`scope.condition` names a condition, on a save');
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
       if (!['check', 'save'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
@@ -138,7 +141,7 @@ function lintChoice(e, say) {
     if (m.scope?.ability === 'chosen') used.add('ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
-  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); });
+  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); });
   const c = e.choice;
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
@@ -217,6 +220,10 @@ function lintSteps(steps, say, seen = { manual: false }) {
       if (step.see !== undefined && step.see !== true) say('`see` is true or left out');
     }
     if (step.blocked !== undefined && kind !== 'teleport') say('`blocked` is for a teleport step');
+    // `cure: [conditions]`: the conditions end on the creature it works on (Heal); "chosen" is one
+    // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
+    // Exhaustion is not ended this way: a spell lowers it by levels.
+    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), or "chosen"');
     for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen);
   }
   return seen;

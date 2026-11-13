@@ -199,15 +199,15 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Spell | Sheets | Before | After | What is missing (the step, op, hook or field that would be needed) |
 |---|---|---|---|---|
 | Banishment (4) | 2 | assist | assist | A step that takes a creature off the map until the spell ends (a `removed` state with a return), and a `target.type` tag for the Aberration, Celestial, Elemental, Fey or Fiend that does not return |
-| Lesser Restoration (2) | 2 | manual | manual | **`cure`** step: ends one chosen condition (Blinded, Deafened, Paralyzed, Poisoned) |
+| Lesser Restoration (2) | 2 | manual | ~~manual~~ **auto** (#165) | ~~**`cure`** step: ends one chosen condition~~ (#165: `cure: ["chosen"]` with a `condition` choice). Nothing left |
 | Ice Storm (4) | 2 | assist | assist | **`terrain`** on an area: Difficult Terrain until the end of the caster's next turn (`ends` for an area with no zone) |
 | Dispel Magic (3) | 2 | manual | manual | **`dispel`** step: ends a spell on a target by level, an ability check against 10 + level above the slot |
 | Detect Magic (1) | 2 | manual | manual | A sense or `reveal` of magic within 30 feet; nothing to roll. The DM remains |
 | Revivify (3) | 1 | manual | manual | **`revive`** step, a way to aim a spell at a dead creature (`cast` refuses one: "is dead"), and a note of when it died (within a minute) |
-| Protection from Poison (2) | 1 | assist | assist | **`cure`** step (ends Poisoned) and a `save` modifier scoped to a condition (Advantage to avoid or end Poisoned) |
+| Protection from Poison (2) | 1 | assist | ~~assist~~ **auto** (#165) | ~~**`cure`** step (ends Poisoned) and a `save` modifier scoped to a condition~~ (#165: `cure` and `scope: { condition }`). Nothing left |
 | Shining Smite (2) | 1 | manual | assist | A cast trigger "right after a melee hit" that adds to that hit (`reaction.on: "hit"` for the caster's own hits), Bright Light on a creature, a tag or op for "cannot benefit from Invisible" |
 | Fire Storm (7) | 1 | assist | assist | **`area.count`** laid out by the caster: `cast` taking a list of cube hexes that must touch (the engine lays out one) |
-| Heal (6) | 1 | assist | assist | **`cure`** step (ends Blinded, Deafened, Poisoned) |
+| Heal (6) | 1 | assist | ~~assist~~ **auto** (#165) | ~~**`cure`** step (ends Blinded, Deafened, Poisoned)~~ (#165). Nothing left; "a creature you can see" is checked as every spell's target is (range and walls, not sight) |
 | Conjure Elemental (5) | 1 | manual | manual | Summoned creature with a stat block and a turn (S6), and a caster's choice among four damage types |
 | Blight (4) | 1 | assist | assist | **`target.type`** tag with an auto-fail (Plant creatures fail the save), and an object as a target |
 | Charm Monster (4) | 1 | assist | assist | `ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag "caster or an ally is fighting it" |

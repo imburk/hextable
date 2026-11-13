@@ -101,7 +101,7 @@ function boundary(s, ev, e, kit, when) {
       if (p.ended || !p.ends) continue;
       if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && p.born === now)) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
-        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc);
+        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
         ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name });
         useUp(s, ev, used ?? []);
         if (sv.success) endPart(s, ev, fx, p);

@@ -161,3 +161,87 @@ test("teleport and the player: a place in an unrevealed region is refused withou
   assert.deepEqual(viewEvents(r2.events, s, PAT).filter((e) => e.id === imp.id || e.actor === imp.id), []);
   assert.equal(view(s, PAT).entities[imp.id], undefined);
 });
+
+// ---------- 2. cure ----------
+
+test("cure: the linter takes conditions or \"chosen\" with a condition choice, never Exhaustion", () => {
+  const b = { ...base, range: "touch", target: { creature: { count: 1 } } };
+  assert.deepEqual(lint({ ...b, effects: [{ cure: ["blinded", "poisoned"] }] }), []);
+  assert.deepEqual(lint({ ...b, choice: { of: "condition", from: ["blinded", "deafened"] }, effects: [{ cure: ["chosen"] }] }), []);
+  assert.match(lint({ ...b, effects: [{ cure: ["chosen"] }] }).join(), /choice: \{ of: "condition" \}/);
+  assert.match(lint({ ...b, effects: [{ cure: ["exhaustion"] }] }).join(), /not exhaustion/);
+  assert.match(lint({ ...b, effects: [{ cure: [] }] }).join(), /`cure` lists/);
+  assert.match(lint({ ...b, effects: [{ modifier: { on: "check", op: "advantage", scope: { condition: "poisoned" } }, }], duration: "1 hour" }).join(), /on a save/);
+});
+
+test("Lesser Restoration: auto; ends the one condition chosen, a Bonus Action, touch", () => {
+  const d = SPELLS["lesser-restoration"].def;
+  assert.deepEqual([d.tier, d.checked, d.time, d.range, d.level], ["auto", true, "bonus", "touch", 2]);
+  const s = field(); learn(s, "cleric", "lesser-restoration");
+  const f = s.entities.fighter;
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: -1, r: 0 } }, DM));
+  for (const c of ["blinded", "poisoned"]) ok(apply(s, { type: "condition", actor: "fighter", condition: c, on: true }, DM));
+  no(apply(s, { type: "cast", actor: "cleric", spell: "lesser-restoration", target: "fighter", choice: "stunned" }, DM), /Choose a condition/);
+  assert.equal(s.entities.cleric.slots[2], 3, "nothing spent on a refusal");
+  const r = ok(apply(s, { type: "cast", actor: "cleric", spell: "lesser-restoration", target: "fighter", choice: "poisoned" }, DM));
+  assert.equal(f.cond.poisoned, undefined);
+  assert.ok(f.cond.blinded, "only the one chosen");
+  assert.ok(r.events.some((e) => e.type === "condEnd" && e.id === "fighter" && e.cond === "poisoned"));
+  assert.equal(r.events.some((e) => e.type === "manual"), false);
+  no(apply(s, { type: "cast", actor: "cleric", spell: "lesser-restoration", target: "rogue", choice: "blinded" }, DM), /reaches touch/);
+});
+
+test("Lesser Restoration ends a condition a spell holds, and the spell's part with it", () => {
+  const s = field(); learn(s, "wizard", "hold-person"); learn(s, "cleric", "lesser-restoration");
+  const g = spawn(s, 2, 0, "bandit"); g.abil.wis = 1;
+  fight(s); turnOf(s, "wizard");
+  let held = false;
+  for (let i = 0; i < 5 && !held; i++) { ok(apply(s, { type: "cast", actor: "wizard", spell: "hold-person", target: g.id }, DM)); held = !!g.cond.paralyzed; s.encounter.budget.action = 1; s.encounter.flags = {}; }
+  assert.ok(held, "the bandit is Paralyzed");
+  const fx = s.effects.find((x) => x.name === "Hold Person");
+  turnOf(s, "cleric");
+  ok(apply(s, { type: "place", actor: "cleric", to: { q: 1, r: 0 } }, DM));
+  const r = ok(apply(s, { type: "cast", actor: "cleric", spell: "lesser-restoration", target: g.id, choice: "paralyzed" }, DM));
+  assert.equal(g.cond.paralyzed, undefined);
+  assert.ok(r.events.some((e) => e.type === "effectEnd" && e.fx === fx.id), "nothing is left of Hold Person");
+});
+
+test("Heal: auto; 70 Hit Points (80 at level 7) and Blinded, Deafened and Poisoned end, others stay", () => {
+  const d = SPELLS.heal.def;
+  assert.deepEqual([d.tier, d.checked, d.range, d.time], ["auto", true, 60, "action"]);
+  const s = field(); learn(s, "cleric", "heal");
+  const f = s.entities.fighter; f.hp = 10;
+  for (const c of ["blinded", "deafened", "poisoned", "frightened"]) ok(apply(s, { type: "condition", actor: "fighter", condition: c, on: true }, DM));
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "heal", target: "fighter" }, DM));
+  assert.equal(f.hp, 80);
+  for (const c of ["blinded", "deafened", "poisoned"]) assert.equal(f.cond[c], undefined, c);
+  assert.ok(f.cond.frightened, "Frightened is not one Heal ends");
+  f.hp = 10;
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "heal", target: "fighter", slot: 7 }, DM));
+  assert.equal(f.hp, 90);
+});
+
+test("Protection from Poison: auto; ends Poisoned, then Resistance to Poison and Advantage on saves against Poisoned only", () => {
+  const d = SPELLS["protection-from-poison"].def;
+  assert.deepEqual([d.tier, d.checked, d.range, d.duration, d.concentration], ["auto", true, "touch", "1 hour", false]);
+  const s = field(); learn(s, "cleric", "protection-from-poison", "lesser-restoration");
+  const f = s.entities.fighter;
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: -1, r: 0 } }, DM));
+  ok(apply(s, { type: "condition", actor: "fighter", condition: "poisoned", on: true }, DM));
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "protection-from-poison", target: "fighter" }, DM));
+  assert.equal(f.cond.poisoned, undefined);
+  // Contagion's Constitution save is one to avoid Poisoned: Advantage.
+  learn(s, "wizard", "contagion");
+  ok(apply(s, { type: "place", actor: "wizard", to: { q: -1, r: -1 } }, DM));
+  spawn(s, 8, 0); fight(s); turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "contagion", target: "fighter" }, DM));
+  const sv = r.events.find((e) => e.type === "save" && e.id === "fighter");
+  assert.equal(sv.mode, "adv");
+  assert.ok(sv.why.includes("Protection from Poison"));
+  const dmg = r.events.filter((e) => e.type === "damage" && e.target === "fighter");
+  assert.ok(dmg.every((e) => e.dtype !== "poison" || e.note === "resisted"));
+  // Its Resistance: poison damage is halved.
+  const hp = f.hp;
+  ok(apply(s, { type: "harm", actor: "fighter", amount: 10, dtype: "poison" }, DM));
+  assert.equal(hp - f.hp, 5);
+});

@@ -133,6 +133,8 @@ function inScope(m, sit) {
   if (!m.scope) return true;
   if (m.scope.skill !== undefined && m.scope.skill !== sit.skill) return false;
   if (m.scope.ability !== undefined && m.scope.ability !== sit.ability) return false;
+  // A save to avoid or end a condition: `sit.conditions` are those the save is about.
+  if (m.scope.condition !== undefined && !(sit.conditions ?? []).includes(m.scope.condition)) return false;
   return true;
 }
 
