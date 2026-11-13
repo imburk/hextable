@@ -838,7 +838,9 @@ async function dice(browser, url, label, opts) {
 
       await run.do('a monster\'s save carries no dice to the player (the DM sees them); the player\'s own skill check is shown and matches', async () => {
         const sentAfter = async (page, k, type) => { for (let i = 0; i < 150; i++) { if (got[page].slice(k).some((e) => e.type === type && e.dice)) return true; await sleep(100); } return false; };
-        // Odessa joins the fight beside the goblin; on her turn the DM has her cast Sacred Flame at it.
+        // Odessa joins the fight beside a goblin still on its feet (the player's blow may have killed the first); on her turn the DM has her cast Sacred Flame at it.
+        const target = await host.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.dead && !e.hidden)?.id);
+        if (!target) throw new Error('no goblin left standing to cast at');
         await host.evaluate(async (f) => {
           const h = window.hextable, at = h.state.entities[f].pos;
           for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
@@ -847,7 +849,7 @@ async function dice(browser, url, label, opts) {
             const c = h.state.entities.cleric.pos;
             if (Math.max(Math.abs(c.q - at.q), Math.abs(c.r - at.r), Math.abs(c.q + c.r - at.q - at.r)) === 1) break;
           }
-        }, foe);
+        }, target);
         await idle();
         for (let i = 0; i < 30; i++) {
           const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
@@ -855,7 +857,7 @@ async function dice(browser, url, label, opts) {
           await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await idle();
         }
         const k = got.host.length, km = got.me.length;
-        await host.evaluate((f) => window.hextable.act({ type: 'cast', actor: 'cleric', spell: 'sacred-flame', target: f }), foe);
+        await host.evaluate((f) => window.hextable.act({ type: 'cast', actor: 'cleric', spell: 'sacred-flame', target: f }), target);
         if (!(await sentAfter('host', k, 'save'))) throw new Error(`the DM was sent no save with dice; toast "${await host.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`);
         await idle();
         if (got.me.slice(km).some((e) => e.type === 'save' && e.dice)) throw new Error('a monster\'s save came with dice to the player');
