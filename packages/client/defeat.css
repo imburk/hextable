@@ -1,5 +1,5 @@
 /* The party has fallen (defeat.js). Under the drawer (what the DM opened is in front of it), above the dock, far under a reaction question. The map stays visible and tappable around the card. */
-#df { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 3; display: grid; place-items: center; padding: calc(max(10px, env(safe-area-inset-top)) + 58px) 12px max(12px, env(safe-area-inset-bottom)); background: #0006; pointer-events: none; }
+#df { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 3; display: grid; place-items: center; padding: calc(max(10px, env(safe-area-inset-top)) + 58px) 12px calc(var(--dock-h, 0px) + 12px); background: #0006; pointer-events: none; }
 #df[hidden], #df-chip[hidden] { display: none; }
 .df-card { pointer-events: auto; width: min(440px, 100%); max-height: 100%; overflow-y: auto; background: var(--panel-2); color: var(--ink); border: 2px solid var(--line); border-top: 4px solid var(--bad); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; animation: df-in .2s ease-out; }
 @keyframes df-in { from { opacity: 0; transform: translateY(10px); } } @media (prefers-reduced-motion: reduce) { .df-card { animation: none; } }

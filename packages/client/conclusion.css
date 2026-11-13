@@ -1,5 +1,5 @@
 /* The rewards after a fight (conclusion.js). Under the drawer (what the DM opened is in front of it), above the dock, far under a reaction question. The map around the card stays tappable. */
-#cc { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 3; display: grid; place-items: center; padding: calc(max(10px, env(safe-area-inset-top)) + 58px) 12px max(12px, env(safe-area-inset-bottom)); background: #0006; pointer-events: none; }
+#cc { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 3; display: grid; place-items: center; padding: calc(max(10px, env(safe-area-inset-top)) + 58px) 12px calc(var(--dock-h, 0px) + 12px); background: #0006; pointer-events: none; }
 #cc[hidden], #cc-chip[hidden], #cc-wait[hidden] { display: none; }
 .cc-card { pointer-events: auto; width: min(520px, 100%); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-2); color: var(--ink); border: 2px solid var(--line); border-top: 4px solid var(--accent); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; animation: df-in .2s ease-out; }
 .cc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }

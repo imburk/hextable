@@ -2378,7 +2378,7 @@ async function classes(browser, url, label, opts) {
       });
 
       await run.do('Font of Magic: spending a slot for points, and a refusal in the engine\'s words when it is over the maximum', async () => {
-        await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await page.evaluate(() => { if (window.hextable.state.encounter) window.hextable.act({ type: 'endEncounter' }); });       // the last cast may already have won it (the dice are not fixed)
         await wait(page, () => !window.hextable.state.encounter && window.hextable.waiting === 0, null, 25000);
         await pick('Sorsha');
         await page.waitForSelector('#actions button:has-text("Font of Magic")', { timeout: 20000 });
@@ -2399,7 +2399,7 @@ async function classes(browser, url, label, opts) {
       });
 
       await run.do('a paladin and a bard join once the fight is over', async () => {
-        await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await page.evaluate(() => { if (window.hextable.state.encounter) window.hextable.act({ type: 'endEncounter' }); });       // the last cast may already have won it (the dice are not fixed)
         await wait(page, () => !window.hextable.state.encounter, null, 20000);
         sheets.Pala = { name: 'Pala', class: 'paladin', level: 13, subclass: 'devotion', abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ['athletics', 'persuasion'], choices: {}, spells: [] };
         sheets.Bardo = { name: 'Bardo', class: 'bard', level: 13, subclass: 'lore', abilities: { ...A, cha: 18 }, skills: ['arcana', 'history', 'performance'], choices: {}, spells: [] };
@@ -2647,6 +2647,9 @@ async function rewards(browser, url) {
           h.act({ type: 'startEncounter', center: foe.pos, radius: 40 });
           for (const e of Object.values(h.state.entities)) if (e.side === 'foe' && e.hp > 0) h.act({ type: 'harm', actor: e.id, amount: 999 });
         });
+        await waitShown(host, '#cc-chip');          // the DM's rewards wait as a line at the top, not over the map
+        if (await shown(host, '#cc')) throw new Error('the rewards form opened over the map by itself');
+        await host.click('#cc-chip');
         await waitShown(host, '#cc');
         if ((await host.textContent('#cc-title')).trim() !== 'The fight is won.') throw new Error('the DM card has the wrong title');
         await waitShown(phone, '#cc-wait');

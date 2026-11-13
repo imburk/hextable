@@ -62,7 +62,7 @@ export function initConclusion(ctx) {
   const names = CONTENT.weapons ? Object.values(CONTENT.weapons).map((w) => w.name) : [];
   const gear = [...names, ...Object.values(CONTENT.armour ?? {}).map((a) => a.name)];
 
-  let later = null, doneSolo = null, error = '', key = '', draft = { bonus: { amount: '', reason: '' }, loot: { name: '', qty: '1', to: '' } }, adding = null, last = '', focusNext = false, shownFight = null;
+  let offered = null, later = null, doneSolo = null, error = '', key = '', draft = { bonus: { amount: '', reason: '' }, loot: { name: '', qty: '1', to: '' } }, adding = null, last = '', focusNext = false, shownFight = null;
   const S = () => ctx.state();
   const nameOf = (id) => S()?.entities[id]?.name ?? 'Someone';
   const seenKeys = () => ctx.prefs.get(SEEN) ?? [];
@@ -123,6 +123,8 @@ export function initConclusion(ctx) {
   function sync(St, { calm = true } = {}) {
     const c = St?.conclusion, dm = ctx.isDM(), held = !!(St && (St.prompt || St.pending));
     const pendingDM = !!c && dm && c.published === false;
+    // A new fight's rewards wait as a line at the top, not over the map: the DM may still want to place, heal or look first.
+    if (pendingDM && offered !== c.fight) { offered = c.fight; later = c.fight; }
     wait.hidden = !(c?.pending && !dm);
     if (!wait.hidden) wait.textContent = 'The fight is over. The DM is working out the rewards.';
     const dmBox = $('dm-rewards');
@@ -194,7 +196,7 @@ export function initConclusion(ctx) {
     sync,
     // The engine refused an edit: show why, in its words, on the form.
     refused(msg) { adding = null; if (wrap.hidden) return; error = msg; redraw(); $('cc-err')?.scrollIntoView({ block: 'nearest' }); },
-    fresh() { later = doneSolo = null; error = ''; key = last = ''; adding = null; shownFight = null; wrap.hidden = wait.hidden = chip.hidden = true; wrap.textContent = ''; document.body.classList.remove('cc-open'); },
+    fresh() { later = doneSolo = offered = null; error = ''; key = last = ''; adding = null; shownFight = null; wrap.hidden = wait.hidden = chip.hidden = true; wrap.textContent = ''; document.body.classList.remove('cc-open'); },
     // The Log tab's button to bring the last published card back.
     reopenable: (St) => !!St?.conclusion?.published,
   };

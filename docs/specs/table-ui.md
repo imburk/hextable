@@ -1180,7 +1180,7 @@ What was settled while building, where it differs from the text above, and what 
   that started it). The card says "as it was when initiative was called".
 - **Rewards.** The DM's form edits with the `conclusion` action exactly as PR #188 documents it: foe ticks, the whole bonus list, shares (a hand-set share
   shows "Set by you. Reset"), loot add, assign and remove. Numbers are sent as typed (a whole number as a number) and the engine's refusal is shown on the
-  form. "Decide later" (or the close button) puts the form aside; a line at the top and the DM tab bring it back; the burger's badge counts it. Players
+  form. The form starts aside, so that a DM who wants to place, heal or look first is not covered: a new fight's rewards wait as a line at the top ("Rewards waiting. Show"), and "Decide later" (or the close button) puts it back; the line at the top and the DM tab bring it back; the burger's badge counts it. Players
   see "The fight is over. The DM is working out the rewards." and nothing else until it is published, then the card; "Continue" dismisses it (remembered per
   table and fight in `hextable.conclusionSeen`) and the Log tab has "Show the last rewards". In solo the form's one button is "Done" and no card follows;
   with `auto` solo sees the published card. The DM sees the published card too.
