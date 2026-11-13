@@ -674,7 +674,9 @@ test("undo: a hidden monster's spawn, taken back, reaches no player in any form"
   dm.say({ t: "undo" });
   assert.equal(id in state.entities, false);
   const sent = player.raw.slice(n);
-  assert.equal(sent.length, 3);
+  // Nothing of the player's changed, so they are sent nothing at all (#136: an empty whole view
+  // for each step used to go out, and said that the DM was doing something).
+  assert.equal(sent.length, 0);
   for (const m of sent) {
     const text = JSON.stringify(m);
     assert.equal(text.includes(id) || text.includes("Greyjaw"), false, `leaked: ${text}`);
@@ -1114,4 +1116,44 @@ test("a player who names a hidden creature in `targets` is told what an id that 
   assert.equal(player.raw.length, n + 2);                             // one refusal each, and no update
   assert.equal(JSON.stringify(t.state), before);
   assert.equal(t.state.encounter, null);
+});
+
+// Security review #132, M3 (issue #136): what the party cannot know of sends a player nothing at all,
+// not an empty update, and the updates they are sent still arrive in an unbroken sequence.
+test("a player is sent nothing when nothing they may know of changed, and stays in sequence, reconnect included", () => {
+  const tables = createTables({ seed: () => 12345 });
+  const { dm, player, code } = seated(tables);
+  player.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  dm.say({ t: "act", action: { type: "setting", key: "unseenTurns", value: "quiet" } });
+  dm.say({ t: "act", action: { type: "reveal", actor: "m1", hidden: true } });
+  const n = player.raw.length;
+  dm.say({ t: "act", action: { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 3 }, hidden: true } });
+  dm.say({ t: "act", action: { type: "place", actor: "m1", to: { q: 3, r: 0 } } });
+  dm.say({ t: "act", action: { type: "place", actor: "m1", to: { q: 3, r: 1 } } });
+  assert.deepEqual(player.raw.slice(n), []);
+  assert.equal(dm.raw.slice(n).filter((m) => m.t === "update").length >= 3, true);
+  // The next thing the player may see comes as a patch that follows on from the last one: no
+  // gap, so no request for the whole state.
+  dm.say({ t: "act", action: { type: "reveal", actor: "m1" } });
+  const u = player.raw.at(-1);
+  assert.equal(u.t, "update");
+  assert.ok(u.patch, "a patch, not a full state");
+  assert.ok(player.last("update").state.entities.m1, "the receiver used it");
+  const ups = player.raw.filter((m) => m.t === "update");
+  assert.ok(ups.slice(1).every((m, i) => m.seq === ups[0].seq + i + 1), "numbered without gaps");
+  assert.equal(ups.filter((m) => m.state).length, 1, "no request for the whole state was needed");
+  // A second connection for the same player (a reconnect) starts from a full state and is
+  // numbered on its own; hidden activity sends it nothing either.
+  const again = client(tables);
+  again.say({ t: "resume", code, token: player.last("welcome").token });
+  const m = again.raw.length;
+  dm.say({ t: "act", action: { type: "place", actor: "m2", to: { q: 2, r: 0 } } });
+  dm.say({ t: "act", action: { type: "reveal", actor: "m2", hidden: true } });
+  const k = again.raw.length;
+  dm.say({ t: "act", action: { type: "place", actor: "m2", to: { q: 2, r: 1 } } });
+  assert.deepEqual(again.raw.slice(k), []);
+  dm.say({ t: "act", action: { type: "reveal", actor: "m2" } });
+  const ups2 = again.raw.filter((x) => x.t === "update");
+  assert.ok(ups2[0].state && ups2.slice(1).every((x, i) => x.patch && x.seq === ups2[0].seq + i + 1));
+  assert.ok(m < again.raw.length && again.last("update").state.entities.m2);
 });

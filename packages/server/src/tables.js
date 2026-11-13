@@ -109,12 +109,19 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // What each connection was last sent, so the next update can be only what changed.
   const sent = new WeakMap();
   // The whole view, to one connection: on sitting down, on being let in, and on request.
+  // Updates are numbered per connection, not by the table's `seq`: a connection that is sent
+  // nothing for a change (nothing it may know of moved) must not see a gap in the numbers either,
+  // or the gap would tell it something happened (security review #132, M3).
+  const wire = new WeakMap();
+  const nextSeq = (c) => { const n = (wire.get(c) ?? 0) + 1; wire.set(c, n); return n; };
+  const quiet = (seen, patch) => !seen.length && !Object.keys(patch).length;
   function sendFull(t, m, c) {
     const state = stateFor(t, m);
     sent.set(c, snapFor(t, m, state));
-    c.send({ t: "update", seq: t.seq ?? 0, state, events: [] });
+    c.send({ t: "update", seq: nextSeq(c), state, events: [] });
   }
-  // Something happened: number it and send every approved connection its own difference.
+  // Something happened: count it, and send every approved connection its own difference. A
+  // connection for which nothing it may know of changed, no event and no difference, is sent nothing.
   function broadcast(t, events) {
     t.seq = (t.seq ?? 0) + 1;
     for (const m of t.members) {
@@ -123,8 +130,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       for (const c of conns(m)) {
         const prev = sent.get(c);
         sent.set(c, next);
-        if (prev) c.send({ t: "update", seq: t.seq, events: seen, patch: diff(prev, next, state) });
-        else c.send({ t: "update", seq: t.seq, state, events: seen });
+        if (!prev) { c.send({ t: "update", seq: nextSeq(c), state, events: seen }); continue; }
+        const patch = diff(prev, next, state);
+        if (!quiet(seen, patch)) c.send({ t: "update", seq: nextSeq(c), events: seen, patch });
       }
     }
   }
@@ -135,10 +143,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     t.seq = (t.seq ?? 0) + 1;
     for (const m of t.members) {
       if (!m.approved || !conns(m).size) continue;
-      const state = stateFor(t, m), ev = m.role === "dm" ? told.dm : told.players;
+      const state = stateFor(t, m), ev = m.role === "dm" ? told.dm : told.players, next = snapFor(t, m, state);
       for (const c of conns(m)) {
-        sent.set(c, snapFor(t, m, state));
-        c.send({ t: "update", seq: t.seq, state, events: ev ? [ev] : [] });
+        const prev = sent.get(c);
+        sent.set(c, next);
+        // Undoing what a player never saw changes nothing of theirs: they are sent nothing.
+        if (prev && !ev && quiet([], diff(prev, next, state))) continue;
+        c.send({ t: "update", seq: nextSeq(c), state, events: ev ? [ev] : [] });
       }
     }
   }
