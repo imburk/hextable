@@ -1,0 +1,26 @@
+/* Class feature choosers (classes.js). Above the panels, under the toast and the reaction question. */
+#cp { position: fixed; inset: 0; z-index: 14; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); background: #0009; overflow-y: auto; overscroll-behavior: contain; }
+.cp-card { width: min(440px, 100%); max-height: 100%; overflow-y: auto; background: var(--panel-2); border: 2px solid var(--accent); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; }
+.cp-card h2 { margin: 0 0 6px; font-size: 22px; color: var(--accent); }
+.cp-note { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+.cp-f { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-weight: 600; }
+.cp-f > span { font-size: 14px; color: var(--muted); }
+.cp-card select, .cp-card input[type="number"] { width: 100%; min-height: 44px; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+.cp-row { display: flex; gap: 8px; } .cp-row button { flex: none; }
+.cp-modes, .cp-levels { display: grid; gap: 8px; margin-bottom: 12px; }
+.cp-mode { min-height: 52px; font-size: 18px; font-weight: 700; }
+.cp-seg { display: flex; gap: 6px; margin-bottom: 10px; } .cp-seg button { flex: 1; min-height: 44px; }
+.cp-card button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.cp-levels button { min-height: 44px; text-align: left; }
+.cp-check { display: flex; gap: 10px; align-items: flex-start; min-height: 40px; padding: 4px 0; font-weight: 400; }
+.cp-check input { flex: none; width: 20px; height: 20px; min-height: 0; margin-top: 2px; accent-color: var(--accent); }
+.cp-check small { display: block; color: var(--muted); font-size: 13px; }
+.cp-opt.off { opacity: .6; }
+.cp-go { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; } .cp-go button { flex: 1 1 120px; min-height: 48px; }
+.cp-card .cp-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.cp-err { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radius); background: var(--bad); color: #fff; font-weight: 600; }
+.cp-form-now { margin: 0 0 10px; font-weight: 700; }
+.cp-form-banner { padding: 8px 10px; border: 1px solid var(--accent); border-radius: var(--radius); color: var(--ink); } .cp-form-banner button { margin-left: 8px; }
+.qb-use { min-height: 44px; }
+#c-res .form { color: var(--accent); font-weight: 700; }
+@media (max-width: 600px) { #cp { place-items: end center; padding-bottom: max(8px, env(safe-area-inset-bottom)); } .cp-card { max-height: 88vh; } }

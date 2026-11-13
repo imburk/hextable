@@ -32,19 +32,20 @@ brought in as the codebase. It set the stack:
 |---|---|---|
 | Platform | Web app | One codebase covers PC, phone and tablet with no app-store step |
 | Language | Plain JavaScript ES modules | The working prototype is written in it; no build step, runs straight from static hosting |
-| 3D | The prototype's own WebGL renderer, no library | Already works on phones with nothing to download |
+| 3D | The prototype's own WebGL renderer today; **Three.js** (vendored, pinned to r187) for models, accepted by the owner on 13 November, 2026 | Models and animation (glTF loading, skinned meshes, blended clips, materials, real shadows, many lights, instancing) are a large body of general GPU code that Three.js already has, tested by a great many users; written here it would be written and debugged without tests. The cost is a download of about 458 KB gzipped, once and only when the Three renderer is used, a vendoring step, and a pinned version to keep. It is the one runtime dependency, and it is not installed: its files are copied into `packages/client/vendor/`, with the exact release, upstream commit and SHA-256 of each file in the `README` there. Upgrades are deliberate, with that README's steps. Everything specific to Hextable (rooms, timeline, sight, picking) stays our own code in plain modules, and the renderer sits behind the interface of `renderer.js`, so the hand-written renderer stays the default until the Three one passes the same checks, then goes. Full reasoning: `docs/specs/renderer.md`, Decision 8 |
 | Server | Node.js, WebSockets written on the built-in `http` module | Same language as the rules; nothing to install |
 | Storage | Browser storage for solo play; one JSON file per table on the server | A table is one JSON document; move to a database when a persistent world needs queries |
 | Licence | MIT | Simplest permissive licence |
 | Hex layout | Pointy-top hexes, 5 ft each, axial coordinates, per-hex height | Matches SRD distances |
 
-Two earlier proposals are deferred, not dropped:
+One earlier proposal is deferred, not dropped:
 
 - **TypeScript.** Worth adding when the rules engine grows past what tests alone
   keep safe. Convert module by module; do not rewrite.
-- **Three.js.** Worth adding when imported glTF character models and animation
-  arrive, since that is where a hand-written renderer stops paying for itself.
-  The renderer sits behind a presenter interface so it can be swapped.
+
+The other, Three.js, is accepted: see the 3D row. It is brought in as vendored,
+pinned files, not as a package, because the project installs nothing from the
+network and has no bundler.
 
 ## Architecture
 
@@ -125,7 +126,8 @@ spells and monsters, equipment as rules objects, visibility.
 ### Server (`packages/server`)
 
 - One Node process serves the built game, `/api/ping`, and tables over a
-  WebSocket at `/ws`. No dependencies.
+  WebSocket at `/ws`. No dependencies. It compresses the game's text files
+  with Node's own `zlib` (gzip, once per file, kept until the file changes).
 - The DM hosts a table and gets a code; players join with the code and wait
   for the DM to let them in. A player controls the one character they claim.
 - The server holds each table's state, runs every action through `apply()`
