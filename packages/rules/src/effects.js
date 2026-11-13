@@ -331,6 +331,7 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'kill') return kit.kill(s, t, ev);
+  if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);
   if (kind === 'remains') {
     if (!t.dead) return handOver(`${t.name} is not dead, so ${f.src.name} leaves no remains of it. The DM applies the rest.`);
     t.remains = step.remains;

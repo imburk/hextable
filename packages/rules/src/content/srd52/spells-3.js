@@ -318,9 +318,10 @@ export const spells3 = [
     duration: "1 minute", concentration: true, ritual: false,
     target: {"area": {"shape": "cylinder", "size": 20, "height": 40}},
     zone: {"on": ["enter", "turnStart"], "once": "turn"},
-    effects: [{"save": "dex", "onFail": [{"condition": "prone"}, {"manual": "Sleet Storm: the creature that failed also loses Concentration on any spell it is concentrating on. The DM ends that effect."}]}],
+    terrain: {"difficult": true, "obscured": "heavy"},
+    effects: [{"save": "dex", "onFail": [{"condition": "prone"}, {"endConcentration": true}]}],
     tier: "assist", checked: true,
-    text: "Sleet falls in a 20-foot-radius, 40-foot-tall cylinder for up to a minute of Concentration. A creature entering it for the first time on a turn or starting its turn there makes a Dexterity save or falls Prone, which the engine runs. The DM ends the Concentration of one that fails, and handles the Heavily Obscured area, the doused flames and the Difficult Terrain.",
+    text: "Sleet falls in a 20-foot-radius, 40-foot-tall cylinder for up to a minute of Concentration: the area is Heavily Obscured and its ground Difficult Terrain. A creature entering it for the first time on a turn or starting its turn there makes a Dexterity save or falls Prone and loses Concentration. The engine runs all of that; the DM douses exposed flames in the area.",
   },
   {
     id: "slow", name: "Slow", source: "SRD 5.2.1",

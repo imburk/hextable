@@ -580,9 +580,10 @@ export const spells2 = [
     duration: "1 hour", concentration: true, ritual: false,
     target: {"area": {"shape": "cube", "size": 20}},
     zone: {"on": ["enter", "turnStart"], "once": "turn"},
+    terrain: {"difficult": true, "obscured": "light"},
     effects: [{"save": "dex", "onFail": [{"condition": "restrained"}]}],
     tier: "assist", checked: true,
-    text: "A 20-foot cube of sticky webbing for up to an hour of Concentration. The first time on a turn a creature enters it or starts its turn there, it makes a Dexterity save or is Restrained until the spell ends. The engine runs those saves; the DM handles the Difficult Terrain and Light Obscurement, the collapse at the start of the caster's next turn if nothing anchors the webs, the Athletics check (an action, against the spell save DC) that frees a creature, freeing one that leaves the webs, and the webs burning away.",
+    text: "A 20-foot cube of sticky webbing for up to an hour of Concentration. The first time on a turn a creature enters it or starts its turn there, it makes a Dexterity save or is Restrained until the spell ends. The engine runs those saves, the Difficult Terrain and the Light Obscurement; the DM handles the collapse at the start of the caster's next turn if nothing anchors the webs, the Athletics check (an action, against the spell save DC) that frees a creature, freeing one that leaves the webs, and the webs burning away.",
   },
   {
     id: "zone-of-truth", name: "Zone of Truth", source: "SRD 5.2.1",

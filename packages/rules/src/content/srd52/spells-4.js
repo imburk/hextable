@@ -247,10 +247,11 @@ export const spells4 = [
     time: "action", range: 300, components: ["v","s","m"],
     duration: "instant", concentration: false, ritual: false,
     target: {"area":{"shape":"cylinder","size":20,"height":40}},
+    terrain: {"difficult":true,"lasts":"nextTurnEnd"},
     effects: [{"save":"dex","half":true,"onFail":[{"damage":"2d10","type":"bludgeoning"},{"damage":"4d6","type":"cold"}]}],
     higher: {"slot":{"damage":"1d10"}},
-    tier: "assist", checked: true,
-    text: "Hail falls in a 20-foot-radius, 40-foot-high cylinder. Each creature there makes a Dexterity save, taking bludgeoning and cold damage on a failure or half on a success; the bludgeoning dice grow with higher slots. The DM makes the ground in the cylinder Difficult Terrain until the end of the caster's next turn.",
+    tier: "auto", checked: true,
+    text: "Hail falls in a 20-foot-radius, 40-foot-high cylinder. Each creature there makes a Dexterity save, taking bludgeoning and cold damage on a failure or half on a success; the bludgeoning dice grow with higher slots. The ground in the cylinder is Difficult Terrain until the end of the caster's next turn.",
   },
   {
     id: "locate-creature", name: "Locate Creature", source: "SRD 5.2.1",

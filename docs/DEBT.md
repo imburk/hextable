@@ -200,7 +200,7 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 |---|---|---|---|---|
 | Banishment (4) | 2 | assist | assist | A step that takes a creature off the map until the spell ends (a `removed` state with a return), and a `target.type` tag for the Aberration, Celestial, Elemental, Fey or Fiend that does not return |
 | Lesser Restoration (2) | 2 | manual | ~~manual~~ **auto** (#165) | ~~**`cure`** step: ends one chosen condition~~ (#165: `cure: ["chosen"]` with a `condition` choice). Nothing left |
-| Ice Storm (4) | 2 | assist | assist | **`terrain`** on an area: Difficult Terrain until the end of the caster's next turn (`ends` for an area with no zone) |
+| Ice Storm (4) | 2 | assist | ~~assist~~ **auto** (#165) | ~~**`terrain`** on an area: Difficult Terrain until the end of the caster's next turn~~ (#165: `terrain: { difficult, lasts: "nextTurnEnd" }`). Nothing left |
 | Dispel Magic (3) | 2 | manual | manual | **`dispel`** step: ends a spell on a target by level, an ability check against 10 + level above the slot |
 | Detect Magic (1) | 2 | manual | manual | A sense or `reveal` of magic within 30 feet; nothing to roll. The DM remains |
 | Revivify (3) | 1 | manual | manual | **`revive`** step, a way to aim a spell at a dead creature (`cast` refuses one: "is dead"), and a note of when it died (within a minute) |
@@ -211,7 +211,7 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Conjure Elemental (5) | 1 | manual | manual | Summoned creature with a stat block and a turn (S6), and a caster's choice among four damage types |
 | Blight (4) | 1 | assist | assist | **`target.type`** tag with an auto-fail (Plant creatures fail the save), and an object as a target |
 | Charm Monster (4) | 1 | assist | assist | `ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag "caster or an ally is fighting it" |
-| Sleet Storm (3) | 1 | assist | assist | `zone.terrain` (Difficult), `zone.obscures` (Heavily Obscured), a `breakConcentration` step on a failed save, and dousing flames |
+| Sleet Storm (3) | 1 | assist | assist | ~~`zone.terrain` (Difficult), `zone.obscures` (Heavily Obscured), a `breakConcentration` step on a failed save~~ (#165: `terrain` and an `endConcentration` step). Still: dousing exposed flames (lights are not tied to fire) |
 | Moonbeam (2) | 1 | assist | assist | `zone.moves`: a Magic action that moves the cylinder up to 60 feet and makes those it reaches save; reverting a shape-shifter. Left alone: the zone, its save and its damage are correct |
 | Pass without Trace (2) | 1 | assist | assist | A modifier that holds only while inside an emanation that moves with the caster (`modifier.while: "inAura"`) and leaving no tracks |
 | Faerie Fire (1) | 1 | manual | manual | A tag for "the attacker can see the target" (the engine has only the negative, `target.unseen`), light on a creature, and "cannot benefit from Invisible". Advantage without the sight test would be wrong, so it is not entered as assist |

@@ -786,7 +786,8 @@ entry names what was added to `schema.js` and what the engine does with it.
   only); players are not sent `fx.zone`. A `damage` step may say `type: 'chosen'` with a
   `choice` of damage type (Spirit Guardians' radiant or necrotic).
   Not built: moving a zone after it is cast (Moonbeam's Magic action), a zone that changes
-  something while a creature is inside it (Spirit Guardians' halved Speed, Difficult Terrain),
+  something while a creature is inside it (Spirit Guardians' halved Speed; Difficult Terrain and
+  obscuring came with #165, `terrain`),
   walls of free shape (Wall of Fire). The renderer draws each zone in the state it is given (a tinted patch by damage type, name on hover or tap); players are not sent zones yet.
 
 #### Build notes: what the party's spells asked for (amendment, #165)
@@ -842,6 +843,29 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   Who can revive dust (True Resurrection, Wish) is not enforced: the engine has no revival step.
   `remains` is a new optional field on a creature; old saves lack it and need no migration, so the
   state version stays 17.
+- **Terrain and obscuring on an area** (`terrain.js`). A spell may say
+  `terrain: { difficult?: true, obscured?: 'heavy' | 'light', lasts? }`: while its lasting effect
+  runs, its area (laid out as for its steps, one shape that stays where it was laid out: not an
+  Emanation, not `count` or `choose`) is Difficult Terrain and/or Heavily or Lightly Obscured. It is
+  `fx.terrain` on the effect: `{ area, hexes, origin, difficult?, obscured? }`, with the height of a
+  cylinder, cube or sphere judged from where it went off, as a zone's is. An instant spell says how
+  long with `lasts: 'nextTurnEnd'` and gets an effect of its own that ends at the end of the caster's
+  next turn (Ice Storm's hail; a part `{ target: caster, ends: { on: 'turnEnd', of: 'source' } }`
+  that holds nothing). **Movement:** a walking step onto such ground costs double (`moveOptions`;
+  Difficult Terrain does not stack with a crowd or a step up); a flyer is not on the ground.
+  **Sight:** by the SRD, a creature trying to see something in a Heavily Obscured space is Blinded
+  for it: `sees()` says `{ see: 'no', why: 'obscured' }` when every part of the target is in one, and
+  'dim' (Lightly Obscured) for a light one, whatever the light. Blindsight sees in it; Truesight
+  does not. Only the target's space counts (the SRD's wording), so a creature in the fog sees out.
+  That feeds everything sight feeds: attack rolls (Unseen Attackers and Targets), Hide (a creature
+  in the fog may Hide), Opportunity Attacks, a teleport's "a space you can see", and, under the
+  `light` sight rule, which creatures players are sent (the vision cache is keyed on the effects that
+  obscure). Under the `los` rule players' view of creatures is line of sight only, as it is for
+  darkness. What a player is shown of the map tiles in fog is unchanged (the client is not sent
+  `fx.terrain` and has nothing to draw it with yet). Ice Storm, Grease, Sleet Storm, Fog Cloud, Web,
+  Entangle.
+- **`endConcentration` step.** `{ endConcentration: true }`: the creature it works on loses
+  Concentration on whatever it holds (Sleet Storm's failed save).
 
 ### A class
 

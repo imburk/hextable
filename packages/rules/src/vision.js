@@ -76,7 +76,8 @@ export function seesPlace(s, v, pos, rule, sources) {
 // Everything partyView depends on, as text: if this is the same, so is the answer.
 function signature(s, rule) {
   const m = s.map, parts = [rule, barriers(m).sig, m.levels.map((l) => `${l.id}:${l.z}:${l.light ?? ''}:${Object.keys(l.tiles).length}`).join(),
-    m.regions.map((r) => `${r.id}:${r.level}:${r.revealed ? 1 : 0}:${r.light ?? ''}:${r.hexes.length}`).join(), s.settings?.vertical ?? ''];
+    m.regions.map((r) => `${r.id}:${r.level}:${r.revealed ? 1 : 0}:${r.light ?? ''}:${r.hexes.length}`).join(), s.settings?.vertical ?? '',
+    (s.effects ?? []).filter((fx) => fx.terrain?.obscured).map((fx) => fx.id).join()];        // a spell's fog (terrain.js)
   for (const e of Object.values(s.entities)) {
     const cond = Object.keys(e.cond ?? {}).filter((k) => e.cond[k]).sort().join('+');
     parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}`);

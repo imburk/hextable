@@ -4,6 +4,7 @@ import * as H from './hex.js';
 import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
 import { barriers, center, objectDef } from './walls.js';
 import { has } from './modifiers.js';
+import { obscuredAt, terrainsOf } from './terrain.js';
 
 const S3 = Math.sqrt(3), CORNER = (FT / S3) * 0.9;        // a little inside the true corner, so a wall on the hex's own edge is not "in front of" it
 const CORNERS = [0, 1, 2, 3, 4, 5].map((i) => { const a = (Math.PI / 180) * (30 + 60 * i); return [CORNER * Math.cos(a), CORNER * Math.sin(a)]; });
@@ -166,7 +167,8 @@ export function lightAt(s, pos, sources = lightSources(s)) {
 // ---------- seeing ----------
 // Can `viewer` see `target`? { see, why } where see is 'yes', 'dim' (seen, but Lightly Obscured)
 // or 'no', and `why` says what stops or dims it: 'blinded' (the viewer), 'out of sight' (something
-// in the way), 'invisible' or 'hidden' (the target), 'dark' or 'dim'. Senses by the SRD's Rules Glossary:
+// in the way), 'invisible' or 'hidden' (the target), 'dark' or 'dim', or 'obscured' (a spell's fog,
+// terrain.js). Senses by the SRD's Rules Glossary:
 // - Blindsight: within range, sees anything not behind Total Cover, even Blinded, in Darkness, or Invisible.
 // - Truesight: within range, sees in Darkness and sees the Invisible.
 // - Darkvision: within range, Dim Light is as Bright and Darkness as Dim.
@@ -184,10 +186,17 @@ export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) 
   const truesight = (senses.truesight ?? 0) >= d;
   if (!truesight && has(target, 'invisible')) return { see: 'no', why: 'invisible' };
   if (!truesight && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
-  if (truesight) return { see: 'yes' };
+  // SRD: a creature trying to see something in a Heavily Obscured space has the Blinded condition;
+  // in a Lightly Obscured one it sees as in Dim Light. The least obscured part of a big creature
+  // counts. Truesight does not see through fog; Blindsight (above) does.
+  let fog = 2;
+  if (terrainsOf(s).length) fog = Math.max(...(target.pos ? footprint(target) : [target]).map((p) => ({ heavy: 0, light: 1 })[obscuredAt(s, p)] ?? 2));
+  if (fog === 0) return { see: 'no', why: 'obscured' };
+  if (truesight) return fog === 1 ? { see: 'dim', why: 'obscured' } : { see: 'yes' };
   const src = sources ?? lightSources(s);
   let best = Math.max(...(target.pos ? footprint(target) : [target]).map((p) => LEVEL[lightAt(s, p, src)]));
   if ((senses.darkvision ?? 0) >= d) best = Math.min(2, best + 1);
+  if (fog < best) return { see: 'dim', why: 'obscured' };
   return best === 2 ? { see: 'yes' } : best === 1 ? { see: 'dim', why: 'dim' } : { see: 'no', why: 'dark' };
 }
 export const canSee = (s, viewer, target, opts) => sees(s, viewer, target, opts).see;

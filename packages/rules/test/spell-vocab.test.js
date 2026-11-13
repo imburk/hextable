@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SPELLS } from "../src/content/index.js";
 import { lintPack } from "../src/content/schema.js";
-import { apply, current } from "../src/engine.js";
+import { apply, current, moveOptions } from "../src/engine.js";
+import { canSee } from "../src/sight.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
 
@@ -294,4 +295,102 @@ test("Disintegrate: a character it brings to 0 Hit Points dies outright and is d
   s.encounter.budget.action = 1; s.encounter.flags = {}; s.entities.wizard.slots[6] = 1;
   ok(apply(s, { type: "cast", actor: "wizard", spell: "disintegrate", target: "cleric" }, DM));
   assert.equal(c.dead, false); assert.equal(c.remains, undefined);
+});
+
+// ---------- 4. terrain and obscuring ----------
+
+test("terrain: the linter takes difficult and obscured on one area that stays, and lasts only for an instant spell", () => {
+  const b = { ...base, level: 4, time: "action", range: 300, target: { area: { shape: "cylinder", size: 20, height: 40 } }, effects: [{ save: "dex", onFail: [{ damage: "1d6", type: "cold" }] }] };
+  assert.deepEqual(lint({ ...b, terrain: { difficult: true, lasts: "nextTurnEnd" } }), []);
+  assert.match(lint({ ...b, terrain: { difficult: true } }).join(), /terrain.lasts/);
+  assert.match(lint({ ...b, duration: "1 minute", terrain: { obscured: "heavy", lasts: "nextTurnEnd" } }).join(), /terrain.lasts/);
+  assert.match(lint({ ...b, duration: "1 minute", terrain: { obscured: "thick" } }).join(), /"heavy" or "light"/);
+  assert.match(lint({ ...b, duration: "1 minute", terrain: {} }).join(), /must be an object|difficult or obscured/);
+  assert.match(lint({ ...b, duration: "1 minute", target: { area: { shape: "emanation", size: 10 } }, terrain: { difficult: true } }).join(), /stays where it is laid out/);
+});
+
+// The cost of stepping from one hex to its neighbour, for this creature now.
+const stepCost = (s, e, to) => moveOptions(s, e).get(`${to.q},${to.r}`)?.cost;
+
+test("Ice Storm: auto; its cylinder is Difficult Terrain until the end of the caster's next turn, and walking there costs double", () => {
+  const d = SPELLS["ice-storm"].def;
+  assert.deepEqual([d.tier, d.checked, d.range, d.duration, d.target.area.size, d.target.area.height], ["auto", true, 300, "instant", 20, 40]);
+  const s = field(); learn(s, "wizard", "ice-storm");
+  const g = spawn(s, 8, 0);
+  fight(s); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "ice-storm", hex: { q: 8, r: 0 } }, DM));
+  const fx = s.effects.find((x) => x.name === "Ice Storm");
+  assert.ok(fx.terrain.difficult && fx.terrain.hexes.includes("9,0"));
+  turnOf(s, g.id);
+  assert.equal(stepCost(s, g, { q: 9, r: 0 }), 10, "into the hail: 10 ft for 5");
+  ok(apply(s, { type: "endTurn", actor: g.id }, DM));
+  turnOf(s, "wizard");
+  assert.ok(s.effects.includes(fx), "still there during the caster's next turn");
+  const end = ok(apply(s, { type: "endTurn", actor: "wizard" }, DM));
+  assert.ok(end.events.some((e) => e.type === "effectEnd" && e.fx === fx.id));
+  turnOf(s, g.id);
+  assert.equal(stepCost(s, g, { q: 9, r: 0 }), 5, "the ground is ordinary again");
+  // Players are not sent where the terrain is (the client has nothing to draw it with yet).
+  s.entities.wizard.owner = "pat";
+  ok(apply(s, { type: "endTurn", actor: g.id }, DM)); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "ice-storm", hex: { q: 8, r: 0 }, slot: 5 }, DM));
+  for (const x of view(s, PAT).effects) assert.equal("terrain" in x, false);
+});
+
+test("Grease: auto; Difficult Terrain for its minute, with the zone's saves as before", () => {
+  const d = SPELLS.grease.def;
+  assert.deepEqual([d.tier, d.checked, d.duration, d.target.area.size], ["auto", true, "1 minute", 10]);
+  const s = field(); learn(s, "wizard", "grease");
+  const g = spawn(s, 6, 0);
+  fight(s); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "grease", hex: { q: 4, r: 0 } }, DM));
+  const fx = s.effects.find((x) => x.name === "Grease");
+  assert.ok(fx.terrain.hexes.includes("5,0") && !fx.terrain.hexes.includes("6,0"), fx.terrain.hexes.join(" "));
+  turnOf(s, g.id);
+  if (g.cond.prone) ok(apply(s, { type: "condition", actor: g.id, condition: "prone", on: false }, DM));
+  assert.equal(stepCost(s, g, { q: 5, r: 0 }), 10, "onto the grease: 10 ft for 5");
+  assert.equal(stepCost(s, g, { q: 7, r: 0 }), 5, "away from it: 5 ft");
+  assert.ok(fx.terrain.difficult);
+});
+
+test("Sleet Storm: a creature in it cannot be seen, its ground is difficult, and a failed save knocks it Prone and ends its Concentration", () => {
+  const s = field(); learn(s, "wizard", "sleet-storm"); learn(s, "cleric", "bless");
+  const g = spawn(s, 8, 0);
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "bless", targets: ["cleric"] }, DM));
+  assert.ok(s.effects.some((x) => x.name === "Bless" && x.conc));
+  turnOf(s, "wizard");
+  const w = s.entities.wizard;
+  assert.equal(canSee(s, w, g), "yes");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "sleet-storm", hex: { q: 8, r: 0 } }, DM));
+  assert.equal(canSee(s, w, g), "no", "Heavily Obscured");
+  const fx = s.effects.find((x) => x.name === "Sleet Storm");
+  assert.deepEqual([fx.terrain.difficult, fx.terrain.obscured], [true, "heavy"]);
+  // The cleric walks in and fails: Prone, and Bless ends.
+  const c = s.entities.cleric; c.abil.dex = 1; c.saveProf = c.saveProf.filter((x) => x !== "dex");
+  turnOf(s, "cleric");
+  ok(apply(s, { type: "place", actor: "cleric", to: { q: 3, r: 0 } }, DM));
+  assert.equal(stepCost(s, c, { q: 4, r: 0 }), 10, "its ground is Difficult Terrain");
+  const r = ok(apply(s, { type: "move", actor: "cleric", to: { q: 4, r: 0 } }, DM));
+  const sv = r.events.find((e) => e.type === "save" && e.id === "cleric");
+  assert.ok(sv && !sv.success, "the cleric fails with Dexterity 1");
+  assert.ok(c.cond.prone);
+  assert.equal(s.effects.some((x) => x.name === "Bless"), false, "Concentration lost");
+});
+
+test("Fog Cloud: assist; nobody sees into it, a creature in it may Hide, and players are not sent a goblin inside it", () => {
+  const d = SPELLS["fog-cloud"].def;
+  assert.deepEqual([d.tier, d.checked, d.range, d.concentration, d.duration, d.target.area.size], ["assist", true, 120, true, "1 hour", 20]);
+  const s = field(); learn(s, "wizard", "fog-cloud");
+  s.settings.sight = "light";
+  const g = spawn(s, 6, 0);
+  s.entities.wizard.owner = "pat";
+  assert.ok(view(s, PAT).entities[g.id], "seen in the open");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "fog-cloud", hex: { q: 6, r: 0 } }, DM));
+  assert.equal(canSee(s, s.entities.wizard, g), "no");
+  assert.equal(view(s, PAT).entities[g.id], undefined, "not sent while it is in the fog");
+  // The rogue steps into the fog and hides from the goblin there.
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: 4, r: 0 } }, DM));
+  const h = apply(s, { type: "hide", actor: "rogue" }, DM);
+  assert.ok(h.ok, h.error);
 });

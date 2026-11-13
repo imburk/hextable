@@ -23,7 +23,7 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'manual'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -134,6 +134,22 @@ function lintZone(e, say) {
   if (e.duration === 'instant') say('a zone needs a duration');
 }
 
+// `terrain`: the spell's area is Difficult Terrain (`difficult: true`) and/or Heavily or Lightly
+// Obscured (`obscured: 'heavy' | 'light'`) while it lasts; an instant spell says how long with
+// `lasts: 'nextTurnEnd'` (until the end of the caster's next turn: Ice Storm). An Emanation that
+// moves with its caster cannot carry it yet.
+function lintTerrain(e, say) {
+  const t = e.terrain;
+  if (t === undefined) return;
+  if (!t || typeof t !== 'object' || !Object.keys(t).length) return say('`terrain` must be an object');
+  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
+  if (t.difficult !== undefined && t.difficult !== true) say('`terrain.difficult` is true or left out');
+  if (t.obscured !== undefined && !['heavy', 'light'].includes(t.obscured)) say('`terrain.obscured` is "heavy" or "light"');
+  if (!t.difficult && !t.obscured) say('`terrain` makes the area difficult or obscured');
+  if (!e.target?.area || e.target.area.count || e.target.area.choose || e.target.area.shape === 'emanation') say('`terrain` needs a single area that stays where it is laid out');
+  if (e.duration === 'instant' ? t.lasts !== 'nextTurnEnd' : t.lasts !== undefined) say('`terrain.lasts` is "nextTurnEnd", for an instant spell only (otherwise it lasts as the spell does)');
+}
+
 // Every "chosen" in a spell's steps needs a `choice` of the right kind.
 function lintChoice(e, say) {
   const used = new Set();
@@ -232,6 +248,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
     // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.
     if ((kind === 'kill' || kind === 'remains') && !under) say(`a \`${kind}\` step goes under a damage step's onZero or onKill`);
     if (kind === 'kill' && step.kill !== true) say('`kill` is true');
+    // `endConcentration: true`: the creature loses Concentration on whatever it holds (Sleet Storm).
+    if (kind === 'endConcentration' && step.endConcentration !== true) say('`endConcentration` is true');
     if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
     for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill');
   }
@@ -307,6 +325,7 @@ function lintSpell(e, say) {
   lintHigher(e, say);
   lintChoice(e, say);
   lintZone(e, say);
+  lintTerrain(e, say);
   if (e.reaction !== undefined) {
     // A spell cast as a Reaction by standing instruction: { on, blocks? }. `blocks` names spells
     // whose being aimed at the caster also sets it off, and which then do the caster no damage

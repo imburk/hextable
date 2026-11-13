@@ -20,6 +20,7 @@ import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
 import { fightEndsScene, sceneActions } from './scenes.js';
 import { entered, flushZones, snapshot, turnInZones } from './zones.js';
+import { difficultAt, terrainsOf } from './terrain.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
@@ -126,6 +127,8 @@ export function moveOptions(s, e) {
   const rank = (x) => SIZE_ORDER.indexOf(x.size ?? 'medium');
   const passable = (o) => !hostile(o, e) || !up(o) || incapacitated(o) || o.size === 'tiny' || Math.abs(rank(o) - rank(e)) >= 2;
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
+  // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
+  const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
   const big = shapeOf(e).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
@@ -159,7 +162,7 @@ export function moveOptions(s, e) {
           if (blocks(h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE || crowded(h) ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
+            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
           } else if (climbs) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.
@@ -535,7 +538,7 @@ export function hideProblem(s, e) {
     if (cover === 'threeQuarters' || cover === 'total') continue;
     const w = sees(s, o, e, { ignoreHiding: true });
     if (w.see !== 'no') return `${o.name} can see ${e.name}.`;
-    if (w.why !== 'dark' && w.why !== 'out of sight') return `${e.name} is neither Heavily Obscured nor behind cover from ${o.name}.`;
+    if (w.why !== 'dark' && w.why !== 'out of sight' && w.why !== 'obscured') return `${e.name} is neither Heavily Obscured nor behind cover from ${o.name}.`;
   }
   return '';
 }
@@ -790,7 +793,7 @@ function checkRange(s, e, t, atk) {
   } else if (d * FT > atk.range[1]) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.range[1]} ft.`);
 }
 
-const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'hidden' };
+const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'hidden', obscured: 'heavily obscured' };
 // Temporary Hit Points: they do not add up. A creature keeps the larger of what it has and what
 // it is given (the SRD lets it choose; nobody would choose fewer). From a lasting effect, they
 // vanish when it ends. They never wake a creature at 0 Hit Points.
@@ -1784,7 +1787,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill };
+const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration };
 
 // ---------- Metamagic ----------
 // The options a creature knows are its features that grant `metamagic: { id, cost, pool }`
@@ -2057,6 +2060,17 @@ const handlers = {
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
+    }
+    // Ground or air the spell changes for as long as it lasts (terrain.js). An instant one that says
+    // `lasts: 'nextTurnEnd'` (Ice Storm) gets an effect that ends at the end of the caster's next turn.
+    const ter = sp.def.terrain;
+    if (ter && hexes) {
+      if (!fx) {
+        fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round' });
+        fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
+        ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
+      }
+      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
     }
     const before = ev.length;
     begin(s, {
