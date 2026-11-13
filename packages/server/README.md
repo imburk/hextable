@@ -18,6 +18,10 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 | `LIMIT_UPLOADS` / `LIMIT_UPLOAD_WINDOW_MS` | `30` / `600000` | File uploads and deletions per address per window |
 | `LIMIT_ASSET_BYTES` | `5242880` | Largest file a DM may upload (5 MB) |
 | `LIMIT_TABLE_ASSET_BYTES` / `LIMIT_TABLE_ASSETS` | `52428800` / `200` | All the files of one table: bytes (50 MB) and count |
+| `LIMIT_ASSETS_TOTAL_BYTES` | `2147483648` | All the files of every table on the server (2 GiB) |
+| `LIMIT_UPLOADS_AT_ONCE` / `LIMIT_ADDRESS_UPLOADS_AT_ONCE` / `LIMIT_TABLE_UPLOADS_AT_ONCE` | `8` / `2` / `2` | Upload bodies read at the same time: on the whole server, from one address, to one table |
+| `LIMIT_UPLOAD_BODY_MS` / `LIMIT_UPLOAD_GRACE_MS` / `LIMIT_UPLOAD_MIN_RATE` | `180000` / `10000` / `32768` | An upload body must arrive within the deadline and, after the grace period, average at least this many bytes a second |
+| `LIMIT_ASSET_READ_BURST` / `LIMIT_ASSET_READ_RATE` | `120` / `10` | `GET` and `HEAD` requests under `/assets` per address: at once, and per second sustained |
 
 ## How a table works
 
@@ -168,8 +172,8 @@ Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/ma
 
 | Request | Who | Answer |
 |---|---|---|
-| `POST /assets/<code>`, body = the raw bytes, `Content-Type: image/png`, `image/jpeg` or `image/webp`; optional `X-Asset-Name` (URI-encoded) | the DM | `201 {asset}`; `403` anyone else; `415` not one of the three types *by its bytes*; `413` too big or the table is full; `429` over the upload limit |
-| `GET /assets/<code>` | the DM | `200 {assets, usage, limits}` |
+| `POST /assets/<code>`, body = the raw bytes, `Content-Type: image/png`, `image/jpeg` or `image/webp`; optional `X-Asset-Name` (URI-encoded) | the DM, with the table open (a live connection on that seat) | `201 {asset}`; `403` anyone else, or the DM's token with no live connection; `415` not one of the three types *by its bytes*; `413` too big or the table is full; `507` the server is full; `408` the body was too slow; `429` over the upload limit or too many uploads at once |
+| `GET /assets/<code>` | the DM | `200 {assets, usage, limits}`; any `GET` or `HEAD` over the read limit is `429` |
 | `GET /assets/<code>/<id>` | the DM: any file of the table. A player: only a file named by something in *their own view* of the game (a handout shown to them, the background of a level they are sent), worked out on the server for each request | `200` the bytes |
 | `DELETE /assets/<code>/<id>` | the DM | `204` |
 
@@ -187,8 +191,21 @@ Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/ma
   `Cross-Origin-Resource-Policy: same-origin`, and a CSP of its own (`default-src 'none'; sandbox`)
   so that a file opened on its own can never run anything.
 - **Uploads** must come from this site: a request with an `Origin` header for another host is
-  refused. Bodies are read into memory only up to the per-file limit (cut off as they arrive, or
-  refused at once by `Content-Length`), and at most 8 uploads are read at a time.
+  refused. Only the DM's seat may upload, and only while it has a live connection, so a token kept
+  from an old session is not enough. Bodies are read into memory only up to the per-file limit (cut
+  off as they arrive, or refused at once by `Content-Length`). A `Content-Length` larger than the
+  room left in the table (`413`) or on the server (`507`) is refused before the body is read. At most
+  8 uploads are read at a time on the whole server, 2 from one address and 2 to one table (a third
+  is `429`), and a body must arrive within 180 seconds and, after its first 10 seconds, average at
+  least 32 KiB a second (a 5 MB file at that rate takes 160 s); one that does not is cut off with
+  `408` and its place freed, so slow senders cannot hold every place.
+- **Disk.** Besides each table's 50 MB, all tables' files together are capped (2 GiB): an upload
+  past it is refused with `507` and `The server has no room left for files.`, so tables left idle
+  cannot fill the disk over time. A write that fails (a full disk) leaves no partial file, and at
+  start the server clears whatever a crash left in a table's folder (`.tmp` files, bytes with no
+  record, a record with no bytes).
+- **Reads** are limited per address (120 at once, 10 a second). What a player may read is worked
+  out from their view once per change of the table, not once per request.
 - **Solo play** keeps files in the browser's IndexedDB, at most 2 MB a file, 20 MB and 50 files.
 
 ### Threat model for table files
@@ -199,10 +216,10 @@ Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/ma
 4. A request must never reach a path outside `DATA_DIR/assets/<code>/`: ids are server-made, routes are matched raw against strict patterns, paths are re-checked.
 5. A player must get only files that something already sent to them names; the check runs on the server from that player's view, on every request, so hiding a handout takes the file back.
 6. Existence must not leak: every refusal to read is one identical 404, and ids (128 random bits) cannot be guessed.
-7. Disk and memory must not be exhausted: per-file, per-table and per-address limits, a cap on uploads read at once, and orphaned folders cleared at start.
+7. Disk and memory must not be exhausted: per-file, per-table and whole-server byte caps; per-address limits on uploads and reads; uploads read at once capped per address, per table and on the server, each with a deadline and a minimum rate; partial files and orphaned folders cleared.
 8. Another site must not upload or read with a visitor's session: the token is in a header (not a cookie, not a URL), so cross-site requests carry none, and uploads with a foreign `Origin` are refused.
 9. Tokens are compared in constant time and only seated, let-in members count.
-10. Not covered: a malformed image that exploits the browser's own decoder, a player who saves a picture they were shown, and per-address limits behind no proxy (see Address above).
+10. Not covered: a malformed image that exploits the browser's own decoder, a player who saves a picture they were shown, and per-address limits behind no proxy (see Address above). Anyone can host a table and so become a DM; uploads are bounded, not prevented. Many addresses together can still take the 8 server-wide upload places, each for at most the deadline.
 
 ## Exporting a table
 
