@@ -442,6 +442,10 @@ async function scenes(browser, url) {
       const host = await hostCtx.newPage(), phone = await phoneCtx.newPage();
       run.watch(host, ' (host)'); run.watch(phone, ' (phone)');
       const SECRET = 'secret-notes-xyzzy';
+      const heard = [], hostHeard = [];          // every event each is sent, read off its WebSocket (neither has a timeline of its own)
+      host.on('websocket', (ws) => ws.on('framereceived', (f) => { try { const m = JSON.parse(String(f.payload)); if (m.t === 'update' && m.events) hostHeard.push(...m.events); } catch { /* not JSON */ } }));
+      const hostGot = async (k, test, ms = 8000) => { for (let i = 0; i < ms / 100; i++) { if (hostHeard.slice(k).some(test)) return true; await sleep(100); } return false; };
+      phone.on('websocket', (ws) => ws.on('framereceived', (f) => { try { const m = JSON.parse(String(f.payload)); if (m.t === 'update' && m.events) heard.push(...m.events); } catch { /* not JSON */ } }));
       const lines = (page) => page.evaluate(() => [...document.querySelectorAll('#sc-lines li[data-line]')].map((li) => li.textContent));
       const sees = (page, text, on = true) => wait(page, ([t, want]) => [...document.querySelectorAll('#sc-lines li[data-line]')].some((li) => li.textContent.includes(t)) === want, [text, on], 8000);
 
@@ -516,6 +520,62 @@ async function scenes(browser, url) {
         if (l.length !== 2) throw new Error(`expected two lines on the phone, found ${l.length}`);
       });
 
+      await run.do('the DM calls for a check: it is rolled, and the phone is never sent the DC', async () => {
+        await host.click('#sc-tools');
+        const who = await host.evaluate(() => window.hextable.state.entities.fighter.name);
+        await host.selectOption('#sc-call-who', { label: who });
+        await host.selectOption('#sc-call-skill', 'insight');
+        await host.fill('#sc-call-dc', '12');
+        const n = hostHeard.length;
+        await host.click('#sc-call button[type=submit]');
+        if (!(await hostGot(n, (e) => e.type === 'check' && e.skill === 'insight' && e.dc === 12))) throw new Error('the DM was not sent the check');
+        await wait(phone, () => window.hextable.waiting === 0, null, 15000);
+        const seen = heard.filter((e) => e.type === 'check');
+        if (!seen.length) throw new Error('the phone was told nothing of the check');
+        if (seen.some((e) => e.dc !== undefined)) throw new Error(`the phone was sent the DC: ${JSON.stringify(seen)}`);
+        await host.click('#sc-tools');
+      });
+
+      await run.do('a player asks for a check: the DM sees the request, answers it with a DC, and a second is turned down', async () => {
+        await phone.locator('#sc-ask').tap();
+        await waitShown(phone, '#sc-skills');
+        await phone.locator('#sc-skills [data-skill="perception"]').tap();
+        await wait(host, () => document.querySelectorAll('#sc-asks li[data-i]').length === 1);
+        const said = await host.evaluate(() => document.querySelector('#sc-asks li').textContent);
+        if (!/asks for Perception/.test(said)) throw new Error(`the request reads "${said}"`);
+        const n = hostHeard.length;
+        await host.fill('#sc-asks li input', '10');
+        await host.click('#sc-asks [data-roll]');
+        if (!(await hostGot(n, (e) => e.type === 'check' && e.skill === 'perception' && e.dc === 10))) throw new Error('the answered request was not rolled with its DC');
+        await wait(host, () => document.querySelectorAll('#sc-asks li[data-i]').length === 0);
+        await phone.locator('#sc-ask').tap();
+        await phone.locator('#sc-skills [data-skill="history"]').tap();
+        await wait(host, () => document.querySelectorAll('#sc-asks li[data-i]').length === 1);
+        const m = hostHeard.length;
+        await host.click('#sc-asks [data-drop]');
+        await wait(host, () => document.querySelectorAll('#sc-asks li[data-i]').length === 0);
+        await sleep(300);
+        if (hostHeard.slice(m).some((e) => e.type === 'check')) throw new Error('a request turned down was rolled anyway');
+      });
+
+      await run.do('the chronicle: pick two lines, write them, and they land (the phone is not sent them)', async () => {
+        const nums = await host.evaluate(() => [...document.querySelectorAll('#sc-lines li[data-line]')].map((li) => li.dataset.line));
+        if (nums.length < 2) throw new Error('fewer than two lines to pick');
+        await host.click(`#sc-lines li[data-line="${nums[0]}"]`);
+        await waitShown(host, '#sc-chron');
+        if (!/Line /.test(await host.evaluate(() => document.getElementById('sc-chron-what').textContent))) throw new Error('one line picked, and the form does not say so');
+        await host.click(`#sc-lines li[data-line="${nums[1]}"]`);
+        await wait(host, () => /Lines \d+ to \d+/.test(document.getElementById('sc-chron-what').textContent));
+        await host.fill('#sc-chron-title', 'Meeting the mayor');
+        const n = hostHeard.length;
+        await host.click('#sc-chron button[type=submit]');
+        if (!(await hostGot(n, (e) => e.type === 'chronicle' && e.title === 'Meeting the mayor' && /Welcome, travellers/.test(e.text) && /We come in peace/.test(e.text) && e.scene))) throw new Error('the entry did not land with both lines');
+        await waitShown(host, '#sc-chron', false);
+        await host.click('#sc-tools'); await host.click('#sc-tools');          // keep the tools as they were
+        await sleep(300);
+        if (heard.some((e) => e.type === 'chronicle')) throw new Error('the phone was sent a chronicle entry that was not public');
+      });
+
       await run.do('a player who speaks too fast is refused and told so', async () => {
         // The connection allows 5 messages a second, the table 30 lines a minute: send under the first, over the second.
         await phone.evaluate(() => { let i = 0; const t = setInterval(() => { window.hextable.act({ type: 'say', as: null, text: `spam ${i}` }); if (++i >= 30) clearInterval(t); }, 230); });
@@ -531,7 +591,318 @@ async function scenes(browser, url) {
         await wait(host, () => window.hextable.state.scene?.open === false);
         await waitShown(host, '#btn-scene');
       });
+
+      // A scene has no turns: a fight ends one that is open, leaves one that is prepared alone, and the table cannot
+      // open one during a fight (packages/rules/src/scenes.js).
+      const startFight = async () => {
+        const n = hostHeard.length;
+        await host.evaluate(() => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden); window.hextable.act({ type: 'startEncounter', center: f.pos }); });
+        await wait(host, () => !!window.hextable.state.encounter, null, 10000);
+        await wait(phone, () => !!window.hextable.state.encounter, null, 10000);
+        return n;
+      };
+      const endFight = async () => {
+        await host.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await wait(host, () => !window.hextable.state.encounter, null, 15000);
+        await wait(phone, () => !window.hextable.state.encounter, null, 15000);
+      };
+
+      await run.do('a fight starts with the scene only prepared: it stays prepared, and cannot be opened until the fight ends', async () => {
+        if (!(await host.evaluate(() => window.hextable.state.scene?.open === false))) throw new Error('no prepared scene to start with');
+        await startFight();
+        if (!(await host.evaluate(() => window.hextable.state.scene?.open === false))) throw new Error('the fight took the prepared scene away');
+        if (await phone.evaluate(() => window.hextable.state.scene !== null)) throw new Error('the phone was sent the prepared scene by the fight');
+        await host.evaluate(() => { document.getElementById('toast').textContent = ''; window.hextable.act({ type: 'scene', scene: { open: true } }); });
+        await wait(host, () => /no turns/i.test(document.getElementById('toast')?.textContent ?? ''), null, 5000);
+        if (!(await host.evaluate(() => window.hextable.state.scene?.open === false))) throw new Error('the scene opened during a fight');
+        await endFight();
+        await host.evaluate(() => window.hextable.act({ type: 'scene', scene: { open: true } }));
+        await wait(host, () => window.hextable.state.scene?.open === true);
+        await wait(phone, () => window.hextable.state.scene?.open === true);
+      });
+
+      await run.do('a fight starts in an open scene: the scene ends for both, with the reason, and the phone is back on the map', async () => {
+        const n = await startFight();
+        await wait(phone, () => window.hextable.state.scene === null);
+        await waitShown(phone, '#scene', false);
+        await waitShown(host, '#scene', false);
+        if (!hostHeard.slice(n).some((e) => e.type === 'sceneEnd' && e.why === 'a fight began')) throw new Error('no sceneEnd with the reason');
+        if (!heard.some((e) => e.type === 'sceneEnd' && e.why === 'a fight began')) throw new Error('the phone was not told why the scene ended');
+        await endFight();
+      });
+
+      await run.do('the chronicle entry is in the DM panel\'s list', async () => {
+        await host.click('#btn-dm'); await waitShown(host, '#dm');
+        await wait(host, () => [...document.querySelectorAll('#chron-list li')].some((li) => /Meeting the mayor/.test(li.textContent)), null, 8000);
+        await host.click('#dm .close');
+      });
     } finally { await phoneCtx.close(); await hostCtx.close(); }
+  });
+}
+
+// ---------- armed class features ----------
+// Stunning Strike on the action bar (packages/client/app.js, features.js): arm it, then tap a creature. A monk
+// is added beside a goblin and the fight started; `touch` taps with a finger. Arm and cancel sends nothing; arm and
+// tap a creature out of reach is sent and refused by the engine, spending nothing; arm and tap the goblin sends it.
+async function armed(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch;
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const btn = () => page.locator('#actions button:has-text("Stunning Strike")');
+      const snap = () => state(page, (S, i) => ({ tl: S.timeline.length, focus: S.entities[i]?.uses?.['monks-focus'], hint: document.getElementById('hint-text')?.textContent }), lo);
+      const tapEntity = async (id) => {
+        await page.evaluate(async (i) => {          // put it in the middle of the map, clear of the panels
+          const H = await import('./shared/hex.js'), R = window.hextable.R, w = H.toWorld(window.hextable.state.entities[i].pos);
+          R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
+        }, id);
+        await settle(page, id);
+        const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), id);
+        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`${id} is not on screen where a tap can reach it: ${JSON.stringify(pt)} under ${await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? e.id || e.className || e.tagName : null; }, [pt?.x ?? 0, pt?.y ?? 0])}`);
+        await tapAt(page, touch, pt.x, pt.y);
+      };
+      let foe, far, lo;
+
+      await run.do('a level 5 monk beside a goblin, in a fight, on her turn', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(async () => {
+          const D = await import('./shared/derive.js'), h = window.hextable;
+          const rec = D.derive({ name: 'Lo', class: 'monk', level: 5, subclass: 'open-hand', abilities: { str: 16, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, skills: ['acrobatics', 'insight'], weapons: ['quarterstaff'] }).record;
+          h.act({ type: 'addCharacter', record: rec, at: { q: 0, r: 0, z: 0 } });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Lo'));
+        lo = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Lo').id);
+        const setup = await page.evaluate((LO) => {
+          const h = window.hextable, S = h.state;
+          document.getElementById('dm-auto').checked = false;
+          const foes = Object.values(S.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden);
+          const near = foes[0];
+          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
+            h.act({ type: 'place', actor: LO, to: { q: near.pos.q + dq, r: near.pos.r + dr } });
+            const p = h.state.entities[LO].pos, d = Math.max(Math.abs(p.q - near.pos.q), Math.abs(p.r - near.pos.r), Math.abs(p.q + p.r - near.pos.q - near.pos.r));
+            if (d === 1) break;
+          }
+          const lo = h.state.entities[LO];
+          const dist = (a, b) => Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.q + a.r - b.q - b.r));
+          const farthest = foes.slice().sort((a, b) => dist(b.pos, lo.pos) - dist(a.pos, lo.pos))[0];
+          h.act({ type: 'startEncounter', center: near.pos });
+          return { foe: near.id, far: farthest.id, d: dist(farthest.pos, lo.pos) };
+        }, lo);
+        foe = setup.foe; far = setup.far;
+        if (setup.d < 2) throw new Error('no creature out of reach to tap');
+        await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        for (let i = 0; i < 30; i++) {
+          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+          if (cur === lo) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+          await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        }
+        await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
+        await closePanels(page);
+        await page.click('#party button:has-text("Lo")');
+        await page.evaluate(async (a) => {          // both creatures in view
+          const H = await import('./shared/hex.js'), R = window.hextable.R, S = window.hextable.state;
+          const m = (p, q) => ({ q: (p.q + q.q) / 2, r: (p.r + q.r) / 2 });
+          const w = H.toWorld(m(S.entities[a[1]].pos, S.entities[a[0]].pos)); R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
+        }, [far, lo]);
+        await btn().waitFor({ state: 'visible', timeout: 5000 });
+      });
+
+      await run.do('arm Stunning Strike, then cancel: armed, hint shown, nothing sent', async () => {
+        const a = await snap();
+        await (touch ? btn().tap() : btn().click());
+        await wait(page, () => window.hextable.mode.kind === 'feature' && window.hextable.mode.id === 'stunning-strike');
+        if (!/Stunning Strike: tap a creature/.test((await snap()).hint ?? '')) throw new Error('no hint to tap a creature');
+        if (!/armed/.test(await btn().getAttribute('class'))) throw new Error('the button does not show as armed');
+        await (touch ? page.locator('#hint-cancel').tap() : page.click('#hint-cancel'));
+        await wait(page, () => window.hextable.mode.kind !== 'feature');
+        await sleep(300);
+        const b = await snap();
+        if (b.tl !== a.tl || b.focus !== a.focus) throw new Error('arming and cancelling changed the game');
+        if (/armed/.test(await btn().getAttribute('class'))) throw new Error('the button still shows as armed');
+      });
+
+      await run.do('arm and tap a creature out of reach: refused, nothing spent, disarmed', async () => {
+        const a = await snap();
+        await (touch ? btn().tap() : btn().click());
+        await wait(page, () => window.hextable.mode.kind === 'feature');
+        await tapEntity(far);
+        await wait(page, () => window.hextable.mode.kind !== 'feature');
+        await sleep(500);
+        const b = await snap();
+        if (b.tl !== a.tl || b.focus !== a.focus) throw new Error(`a refused feature changed the game: ${JSON.stringify([a, b])}`);
+        const toast = await page.evaluate(() => document.getElementById('toast')?.textContent ?? '');
+        if (!toast.trim()) throw new Error('the player was not told why it was refused');
+      });
+
+      await run.do('arm and tap the goblin: sent, a Focus Point spent, the save shown', async () => {
+        const a = await snap();
+        await (touch ? btn().tap() : btn().click());
+        await wait(page, () => window.hextable.mode.kind === 'feature');
+        await tapEntity(foe);
+        await wait(page, (n) => window.hextable.state.timeline.length > n, a.tl, 15000);
+        const r = await page.evaluate(([n, i]) => { const S = window.hextable.state; const ev = S.timeline.slice(n); return { types: ev.map((e) => e.type), save: ev.find((e) => e.type === 'save'), focus: S.entities[i].uses['monks-focus'] }; }, [a.tl, lo]);
+        if (!r.save) throw new Error(`no save came of it: ${r.types}`);
+        if (r.focus !== a.focus - 1) throw new Error(`Focus Points ${a.focus} -> ${r.focus}`);
+        if ((await state(page, () => window.hextable.mode.kind)) === 'feature') throw new Error('still armed after sending');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
+// ---------- dice on the screen (PR #117) ----------
+// A DM (desktop) and a player (`opts`: desktop or phone). The player's dice are thrown in the table's default
+// way: an attack and its damage, a save the DM's spell makes them roll, a skill check. For each, the dice shown
+// on the player's screen are the faces in the events that player was sent, and add up to their number. Then the
+// player is audited: no die from a roll the player was not told the number of (a monster's attack, save or
+// initiative; damage a monster rolled that was changed on the way). Under `throw`, the tray sits clear of
+// the action bar, and when nothing is in the air the dice canvas is gone and the action bar takes the touch.
+async function dice(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const hostCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const ctx = await browser.newContext(opts);
+    try {
+      const host = await hostCtx.newPage(), me = await ctx.newPage();
+      run.watch(host, ' (host)'); run.watch(me, ' (player)');
+      const touch = !!opts.hasTouch;
+      let pc, foe;
+      const idle = () => Promise.all([wait(host, () => window.hextable.waiting === 0, null, 20000), wait(me, () => window.hextable.waiting === 0, null, 20000)]);
+      // What each page was sent, read off its WebSocket (a player's state has no timeline of its own).
+      const got = { host: [], me: [], other: [] };
+      const tap = (page, key) => page.on('websocket', (ws) => ws.on('framereceived', (f) => { try { const m = JSON.parse(String(f.payload)); if (m.t === 'update' && m.events) got[key].push(...m.events); else if (m.t !== 'update' && m.t !== 'lobby') got.other = [...(got.other ?? []).slice(-4), String(f.payload).slice(0, 200)]; } catch { /* not JSON */ } }));
+      tap(host, 'host'); tap(me, 'me');
+      // The faces of every group thrown on the player's page against the events that player was sent. Returns what is wrong.
+      const audit = async (page) => {
+        const S = await page.evaluate(() => ({ ents: Object.fromEntries(Object.values(window.hextable.state.entities).map((e) => [e.id, e.side])), thrown: window.hextable.thrown }));
+        const bad = [], mine = (id) => S.ents[id] === 'party', events = got.me;
+        const sum = (e) => (e.dice ?? []).filter((d) => !d.drop).reduce((a, d) => a + (d.neg ? -d.value : d.value), 0) + (e.bonus ?? 0);
+        for (const e of events) {
+          if (e.type === 'encounterStart' && e.order.some((o) => o.dice && !mine(o.id))) bad.push('a monster\'s initiative came with dice');
+          if (!e.dice) continue;
+          const n = ['damage', 'heal', 'tempHp'].includes(e.type) ? (e.rolled ?? e.amount) : e.total ?? e.roll ?? e.init;
+          if (sum(e) !== n) bad.push(`${e.type}: faces make ${sum(e)}, the event says ${n}`);
+          if (['attack', 'save', 'check', 'concentration', 'deathSave'].includes(e.type) && !mine(e.actor ?? e.id)) bad.push(`${e.type} by ${e.actor ?? e.id} came with dice to a player`);
+        }
+        for (const g of S.thrown) {
+          if (g.type === 'initiative' || !g.dice?.length || /more rolls/.test(g.label)) continue;
+          if (!events.some((e) => e.dice && JSON.stringify(e.dice) === JSON.stringify(g.dice))) bad.push(`shown dice with no event: ${g.label} ${JSON.stringify(g.dice)}`);
+        }
+        return bad;
+      };
+      const groups = (page, type) => page.evaluate((ty) => window.hextable.thrown.filter((g) => g.type === ty).length, type);
+
+      await run.do('host, join, let in, claim a character', async () => {
+        await open(host, url);
+        await host.fill('#lobby-name', 'Dice DM'); await host.click('#lobby-host');
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
+        const code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
+        await open(me, url);
+        await me.fill('#lobby-name', 'Dice Player'); await me.fill('#lobby-code', code); await me.click('#lobby-join');
+        await wait(me, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await host.click('#btn-dm'); await waitShown(host, '#dm');
+        await host.click('#dm-table button:has-text("Let in")');
+        await wait(me, () => window.hextable.state?.entities?.fighter);
+        await host.click('#dm .close');
+        const b = me.locator('#party button:has-text("Play as")').first();
+        const name = (await b.textContent()).replace('Play as ', '').trim();
+        pc = await me.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
+        await (touch ? b.tap() : b.click());
+        await wait(host, (i) => !!window.hextable.state.entities[i].owner, pc);
+      });
+
+      await run.do('a fight; the player attacks: the d20 and the damage are shown and match the events', async () => {
+        ({ foe } = await diceDuel(host, me, pc));
+        await host.evaluate(() => window.hextable.act({ type: 'setting', key: 'diceThrow', value: 'auto' }));
+        await wait(me, () => window.hextable.state.settings.diceThrow === 'auto');
+        const n = await me.evaluate(() => window.hextable.thrown.length);
+        // Hit for certain: the faces are the engine's, so make the hit sure by making the foe easy to hit.
+        await host.evaluate((f) => { window.hextable.act({ type: 'setHp', actor: f, hp: window.hextable.state.entities[f].maxHp }); }, foe);
+        for (let i = 0; i < 8 && !(await me.evaluate((k) => window.hextable.thrown.slice(k).some((g) => g.type === 'attack'), n)); i++) {
+          await me.evaluate(([p, f]) => { const S = window.hextable.state, e = S.entities[p]; if (S.encounter?.order[S.encounter.turn]?.id !== p) return; window.hextable.act({ type: 'attack', actor: p, target: f, attack: e.attacks.find((a) => a.type === 'melee').id }); }, [pc, foe]);
+          await sleep(800); await idle();
+          if (!(await me.evaluate((k) => window.hextable.thrown.slice(k).some((g) => g.type === 'attack'), n))) {
+            const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter.order[S.encounter.turn].id; });
+            await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await idle();
+          }
+        }
+        if (!(await groups(me, 'attack'))) throw new Error('the player was shown no attack roll');
+        const atk = await me.evaluate(() => window.hextable.thrown.find((g) => g.type === 'attack'));
+        if (!atk.dice.some((d) => d.sides === 20)) throw new Error('an attack roll without a d20');
+        const bad = await audit(me); if (bad.length) throw new Error(bad.join('; '));
+        const hit = got.me.some((e) => e.type === 'attack' && e.hit && e.actor === pc);
+        if (hit && !(await groups(me, 'damage'))) throw new Error('a hit, and no damage dice shown');
+        if (!got.me.some((e) => e.type === 'attack' && e.dice)) throw new Error('the player\'s own attack came with no dice');
+      });
+
+      await run.do('a monster\'s save carries no dice to the player (the DM sees them); the player\'s own skill check is shown and matches', async () => {
+        const sentAfter = async (page, k, type) => { for (let i = 0; i < 150; i++) { if (got[page].slice(k).some((e) => e.type === type && e.dice)) return true; await sleep(100); } return false; };
+        // Odessa joins the fight beside a goblin still on its feet (the player's blow may have killed the first); on her turn the DM has her cast Sacred Flame at it.
+        const target = await host.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.dead && !e.hidden)?.id);
+        if (!target) throw new Error('no goblin left standing to cast at');
+        await host.evaluate(async (f) => {
+          const h = window.hextable, at = h.state.entities[f].pos;
+          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
+            h.act({ type: 'place', actor: 'cleric', to: { q: at.q + dq, r: at.r + dr } });
+            await new Promise((r) => setTimeout(r, 300));
+            const c = h.state.entities.cleric.pos;
+            if (Math.max(Math.abs(c.q - at.q), Math.abs(c.r - at.r), Math.abs(c.q + c.r - at.q - at.r)) === 1) break;
+          }
+        }, target);
+        await idle();
+        for (let i = 0; i < 30; i++) {
+          const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
+          if (cur === 'cleric') break;
+          await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await idle();
+        }
+        const k = got.host.length, km = got.me.length;
+        await host.evaluate((f) => window.hextable.act({ type: 'cast', actor: 'cleric', spell: 'sacred-flame', target: f }), target);
+        if (!(await sentAfter('host', k, 'save'))) throw new Error(`the DM was sent no save with dice; toast "${await host.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`);
+        await idle();
+        if (got.me.slice(km).some((e) => e.type === 'save' && e.dice)) throw new Error('a monster\'s save came with dice to the player');
+        if (!got.me.slice(km).some((e) => e.type === 'save')) throw new Error('the player was told nothing of the save');
+        let bad = await audit(me); if (bad.length) throw new Error(bad.join('; '));
+        await host.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await idle();
+        const n = got.me.length;
+        await me.evaluate((p) => window.hextable.act({ type: 'check', actor: p, skill: 'athletics' }), pc);
+        if (!(await sentAfter('me', n, 'check'))) throw new Error('the player was sent no check with its dice');
+        await idle();
+        if (!(await groups(me, 'check'))) throw new Error('the check was not shown as dice');
+        bad = await audit(me); if (bad.length) throw new Error(bad.join('; '));
+      });
+
+      await run.do('nothing is left on the screen: no dice canvas, and the action bar takes a touch', async () => {
+        await idle();
+        if (await shown(me, '#dice')) throw new Error('the dice canvas is still over the screen with nothing in the air');
+        await me.click(`#party button:has-text("${await me.evaluate((p) => window.hextable.state.entities[p].name, pc)}")`).catch(() => {});
+        const r = await me.evaluate(() => {
+          const bar = document.getElementById('actions'), b = bar && bar.querySelector('button');
+          if (!b) return { none: true };
+          const q = b.getBoundingClientRect(), top = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+          return { ok: !top || b.contains(top) || top === b, over: top && (top.id || top.className || top.tagName) };
+        });
+        if (!r.none && !r.ok) throw new Error(`the action bar is covered by ${r.over}`);
+      });
+
+      await run.do('under throw the tray is on screen and clear of the action bar', async () => {
+        await host.evaluate(() => window.hextable.act({ type: 'setting', key: 'diceThrow', value: 'throw' }));
+        await wait(me, () => window.hextable.state.settings.diceThrow === 'throw');
+        await me.evaluate((p) => window.hextable.act({ type: 'check', actor: p, skill: 'athletics' }), pc);
+        await waitShown(me, '#dice-tray');
+        const r = await me.evaluate(() => {
+          const t = document.getElementById('dice-tray').getBoundingClientRect(), b = document.getElementById('actions').getBoundingClientRect();
+          return { t: [t.left, t.top, t.right, t.bottom], b: [b.left, b.top, b.right, b.bottom], w: innerWidth, h: innerHeight, shown: b.height > 0 };
+        });
+        if (r.t[0] < 0 || r.t[2] > r.w || r.t[1] < 0 || r.t[3] > r.h) throw new Error(`the tray is off screen: ${JSON.stringify(r)}`);
+        if (r.shown && r.t[3] > r.b[1] && r.t[1] < r.b[3] && r.t[2] > r.b[0] && r.t[0] < r.b[2]) throw new Error(`the tray covers the action bar: ${JSON.stringify(r)}`);
+        await (touch ? me.locator('#dice-tray .dt-throw').tap() : me.click('#dice-tray .dt-throw'));
+        await wait(me, () => window.hextable.thrown.some((g) => g.type === 'check'), null, 15000);
+        await me.evaluate(() => window.hextable.dice.skip());
+        await idle();
+        await host.evaluate(() => window.hextable.act({ type: 'setting', key: 'diceThrow', value: 'auto' }));
+      });
+    } finally { await ctx.close(); await hostCtx.close(); }
   });
 }
 
@@ -545,6 +916,14 @@ try {
     await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
     await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     await multiplayer(browser, url);
+  }
+  if (!only || only === 'armed') {
+    await armed(browser, url, 'armed features at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await armed(browser, url, 'armed features at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  }
+  if (!only || only === 'dice') {
+    await dice(browser, url, 'dice: a desktop player', { viewport: { width: 1280, height: 800 } });
+    await dice(browser, url, 'dice: a phone player', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   }
   if (!only || only === 'scenes') await scenes(browser, url);
 } catch (err) {
