@@ -1301,7 +1301,8 @@ async function stockMaps(browser, url, label, opts) {
 // ---------- timeline and pace ----------
 // At pace `wait` (the default of a table with no setting): a goblin's attack, damage and fall play in order and the player's
 // controls wake after them; a tap skips; the shown state stays behind the table's until its beat. Setup runs at `instant`.
-const calm = (p, ms = 15000) => wait(p, () => !window.hextable.timeline.busy(), null, ms);
+// Still: no dice in the air and no beats left to play.
+const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, ms);
 const setPace = (p, v) => p.evaluate((x) => { localStorage.setItem('hextable.pace', JSON.stringify(x)); window.hextable.timeline.setPace(window.hextable.pace()); }, v);
 // Starts a fight with `pc` beside a foe and turns until it is the foe's turn. Leaves the page at instant pace.
 async function foeTurn(page, hp) {
@@ -1322,10 +1323,12 @@ async function foeTurn(page, hp) {
     h.act({ type: 'startEncounter', center: foe.pos });
     return { pc: pc.id, foe: foe.id };
   }, hp);
+  await calm(page);
   for (let i = 0; i < 20; i++) {
     const cur = await page.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
     if (cur === ids.foe) return ids;
     await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+    await calm(page);
   }
   throw new Error('it never became the foe\'s turn');
 }
@@ -1335,18 +1338,19 @@ const strike = ([pcId, foeId]) => {
   const def = f.actions?.find((a) => JSON.stringify(a.effects ?? []).includes('"melee"'));
   window.hextable.act(def ? { type: 'act', actor: foeId, action: def.id, target: pcId } : { type: 'attack', actor: foeId, target: pcId, attack: f.attacks[0].id });
 };
-// The foe attacks the hero; samples the screen every 30 ms until the beats are done.
-const sampleAttack = (page, { pc, foe }) => page.evaluate(async ([pcId, foeId, src]) => {
-  const h = window.hextable, rows = [], t0 = performance.now(), wake = document.getElementById('pace-wait');
-  const lines = () => [...document.querySelectorAll('#log-list li')].map((li) => li.textContent);
-  (0, eval)(`(${src})`)([pcId, foeId]);
-  for (;;) {
-    const t = performance.now() - t0, busy = h.timeline.busy();
-    rows.push({ t, busy, waiting: !wake.hidden, shown: h.timeline.shown().entities[pcId].hp, real: h.state.entities[pcId].hp, lines: lines() });
-    if ((!busy && t > 100) || t > 6000) return rows;
-    await new Promise((r) => setTimeout(r, 30));
-  }
-}, [pc, foe, strike.toString()]);
+// The foe attacks the hero. Reads, in the same breath, what the screen says (the table's state is final, the shown one is not);
+// then waits for stillness and returns the beats that played, with their times.
+async function strikeAndWatch(page, { pc, foe }) {
+  const at = await page.evaluate(() => window.hextable.played.length);
+  const now = await page.evaluate(([pcId, foeId, src]) => {
+    (0, eval)(`(${src})`)([pcId, foeId]);
+    const h = window.hextable;
+    return { busy: h.timeline.busy(), waiting: !document.getElementById('pace-wait').hidden, shown: h.timeline.shown().entities[pcId].hp, real: h.state.entities[pcId].hp };
+  }, [pc, foe, strike.toString()]);
+  await calm(page);
+  const beats = await page.evaluate((n) => window.hextable.played.slice(n), at);
+  return { now, beats, still: await page.evaluate(() => ({ busy: window.hextable.timeline.busy(), waiting: !document.getElementById('pace-wait').hidden })) };
+}
 
 async function pacing(browser, url, label, opts) {
   await scenario(label, async (run) => {
@@ -1357,6 +1361,7 @@ async function pacing(browser, url, label, opts) {
       run.watch(page);
       await run.do('play solo at the default pace', async () => {
         await open(page, url); await playSolo(page);
+        await page.evaluate(() => { window.hextable.dice.show = 'off'; });        // the dice are not what this pass is about
         if ((await page.evaluate(() => window.hextable.pace())) !== 'wait') throw new Error('the pace is not wait');
         await page.click('#btn-log');
       });
@@ -1365,20 +1370,18 @@ async function pacing(browser, url, label, opts) {
         for (let i = 0; i < 12; i++) {
           ids = await foeTurn(page, 1);
           await setPace(page, 'wait');
-          const rows = await sampleAttack(page, ids);
-          await calm(page);
-          const hit = rows.some((r) => r.real < 1) || (await page.evaluate((id) => window.hextable.state.entities[id].hp <= 0, ids.pc));
-          const at = (re) => rows.findIndex((r) => r.lines.some((l) => re.test(l)));
-          if (!hit) { if (rows.at(-1).busy) throw new Error('still busy'); continue; }
-          const first = at(/ attacks /), dmg = at(/takes \d+ .* damage/), end = rows.length - 1;
-          if (first < 0 || dmg < 0) throw new Error(`the log lines did not appear: ${JSON.stringify(rows.at(-1).lines.slice(-4))}`);
-          if (!(first < dmg)) throw new Error('the damage line came with the attack, not after it');
-          if (rows[first].shown !== 1) throw new Error('the hit points drained before the damage beat');
-          if (!rows[first].waiting) throw new Error('no "…" while beats play');
-          if (rows[dmg].shown >= 1) throw new Error('the hit points did not drain when the damage beat played');
-          if (!rows[dmg].waiting) throw new Error('the controls woke before the fall');
-          if (rows[end].waiting || rows[end].busy) throw new Error('the controls did not wake');
-          if ((rows.at(-1).t - rows[first].t) < 400) throw new Error(`the beats took ${Math.round(rows.at(-1).t - rows[first].t)} ms`);
+          const r = await strikeAndWatch(page, ids);
+          const types = r.beats.map((x) => x.type), hit = types.includes('damage');
+          if (!hit) { if (!types.includes('attack') || r.still.busy) throw new Error(`a miss did not play and settle: ${types}`); continue; }
+          const t = (k) => r.beats.find((x) => x.type === k);
+          if (!r.now.busy || !r.now.waiting) throw new Error('no "…" and no wait while the beats start');
+          if (r.now.real >= 1 || r.now.shown !== 1) throw new Error(`the screen is not behind the table: table ${r.now.real}, shown ${r.now.shown}`);
+          if (t('attack').hp !== 1) throw new Error('the hit points drained with the attack');
+          if (!(t('damage').hp < 1)) throw new Error('the hit points did not drain with the damage');
+          if (!(t('damage').t - t('attack').t >= 450)) throw new Error(`the damage came ${Math.round(t('damage').t - t('attack').t)} ms after the strike`);
+          const order = types.filter((k) => ['attack', 'damage', 'down', 'idle'].includes(k)).join();
+          if (!/^attack,damage(,down)?,idle$/.test(order)) throw new Error(`out of order: ${types}`);
+          if (r.still.busy || r.still.waiting) throw new Error('the controls did not wake');
           return;
         }
         throw new Error('the goblin missed twelve times');
@@ -1464,16 +1467,11 @@ async function pacingTable(browser, url) {
         await host.evaluate(() => { document.getElementById('dm-auto').checked = true; });
         // Put the turn on a monster: end the turns of the heroes with the DM's controls (at wait, one at a time).
         const turnOf = (p) => p.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id ?? null; });
-        const watching = host.evaluate(() => new Promise((resolve) => {
-          const h = window.hextable, log = []; let busyAt = performance.now(), n = h.state.timeline.length;
-          const iv = setInterval(() => {
-            const now = performance.now();
-            if (h.timeline.busy()) busyAt = now;
-            const k = h.state.timeline.length;
-            if (k !== n) { log.push({ gap: now - busyAt, busy: h.timeline.busy() }); n = k; }
-          }, 15);
-          setTimeout(() => { clearInterval(iv); resolve(log); }, 9000);
-        }));
+        // Every update with a monster's doing in it must arrive while nothing is playing: the AI waited for the picture.
+        await host.evaluate(() => {
+          const h = window.hextable, tl = h.timeline, push = tl.push; h.pushes = [];
+          tl.push = (state, events, meta) => { h.pushes.push({ npc: events.some((e) => (e.type === 'attack' || e.type === 'moved' || e.type === 'turn') && (e.actor ?? e.id) && state.entities[e.actor ?? e.id]?.kind === 'npc' && e.type !== 'turn'), busy: tl.busy() }); return push(state, events, meta); };
+        });
         for (let i = 0; i < 12; i++) {
           const cur = await turnOf(host);
           if (!cur) break;
@@ -1481,14 +1479,12 @@ async function pacingTable(browser, url) {
           if (mineNow) { await calm(host); await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); }
           await sleep(700);
         }
-        const log = await watching;
-        const mon = log.filter((l) => l.gap > 0);       // every change of the table while beats played would have a gap near 0
-        if (log.length === 0) throw new Error('nothing happened');
-        const early = log.filter((l) => l.busy);
-        if (early.length > log.length - 1) throw new Error(`actions were sent while the picture was playing: ${JSON.stringify(log)}`);
-        void mon;
+        await sleep(2500);
+        const pushes = await host.evaluate(() => window.hextable.pushes);
+        if (!pushes.some((x) => x.npc)) throw new Error('no monster acted');
+        if (pushes.some((x) => x.npc && x.busy)) throw new Error(`a monster acted while the picture was playing: ${JSON.stringify(pushes)}`);
         await calm(host); await calm(phone);
-        const same = await Promise.all([host, phone].map((p) => p.evaluate(() => JSON.stringify(Object.values(window.hextable.state.entities).map((e) => [e.id, e.hp, e.pos.q, e.pos.r])))));
+        const same = await Promise.all([host, phone].map((p) => p.evaluate(() => JSON.stringify([window.hextable.state.encounter?.round, window.hextable.state.encounter?.turn, ...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party').map((e) => [e.id, e.hp, e.pos.q, e.pos.r])]))));
         if (same[0] !== same[1]) throw new Error('the phone and the DM disagree once both are still');
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }

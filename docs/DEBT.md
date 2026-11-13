@@ -211,6 +211,8 @@ of the current turn but starts at the start of it, which the turn-boundary rule 
 | P17 | The stock maps (`docs/maps.md`) are only offered in the editor's Map file tool, so the DM opens the editor to start on one; the lobby cannot pick a map when a table is made. They have no tables, chairs, beds, trees on a hex or other furniture (the object pack has none): the tavern's bar is a rail, pillars and boulders are rock hexes. A full map document is 35 to 70 KB each, sent whole by `loadMap` | any |
 | P18 | `loadMap` sets the party down by spiralling out from `starts[0]` and ignores the other starts, so a map's list of five starts only helps the linter and the DM; a start on an upper level needs a `z` to be found | engine |
 | P19 | Floors (R2): a wall that ends or bends inside a hex does not cut it; the end of a corridor follows its tiles; walls are still drawn low, the cut-away is data (`cutaway()` in `floors.js`) but not drawn; floor colour is even per cell, not smooth | any (renderer) |
+| P20 | Timeline (R3): `pace` is a client preference (`hextable.pace`) until the engine lane adds it to `SETTINGS` in `engine.js` (one line, see the R3 build note); `app.js` already reads `state.settings.pace` when it is there. There is no 1x/2x speed control yet (the timeline has `setSpeed`) | engine (one line), then any |
+| P21 | Timeline (R3): the shown state is kept behind the table's only for hit points, death, place and conditions; doors, regions, effects and the map change when the update's first beat starts. The character sheet, tracker and action bar are redrawn when the picture is still, so they show the table's numbers a moment after the log. The renderer has no animation for falls, deaths or doors yet (R4) | any (renderer) |
 
 ## Table and server
 

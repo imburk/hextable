@@ -55,6 +55,7 @@ const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: 
 const pace = () => paceFor({ table: S?.settings?.pace, mine: prefs.get('hextable.pace'), reduced: reducedMotion() });
 const AI_PAUSE = 350;       // ms after the picture is still before a monster's next step, in `wait`
 let tookBack = false, floatRun = { id: 0, n: 0 };
+const played = [];          // the last beats played on this device with their times, for tests: window.hextable.played
 const TL = createTimeline({
   clock: () => performance.now() / 1000,
   pace: pace(),
@@ -291,6 +292,7 @@ function floatOf(ev) {
 // staggered by 0.28 s as they always were; on a beat they come when the beat does.
 function beat(ev, ctx) {
   if (!S) return;
+  played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
   const d = describe(ev); if (d) log.push(ev.dice?.length ? [d[0], d[1], ev.dice] : d);
   if (log.length > 300) log.splice(0, log.length - 300);
   if (!$('log').hidden) renderLog();
@@ -333,6 +335,7 @@ function onUpdate(state, events, fresh) {
 // The beats of everything received have played: the screen is in line with the table.
 function idled() {
   if (!S || !T) return;
+  played.push({ type: 'idle', t: performance.now() });
   syncPlaying();
   refresh();
   const cur = S.entities[current(S)];
@@ -901,7 +904,7 @@ const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, st
 const RP = initReactionPrompt({ act, state: () => S, isDM });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, ED, act, timeline: TL, pace, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
