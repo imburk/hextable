@@ -192,12 +192,13 @@ of the current turn but starts at the start of it, which the turn-boundary rule 
 | P3 | Squeezing; "attached to" (carried, dragged, mounted); crawling while Prone; swimming and burrowing rules | engine |
 | P4 | Two creatures that fall into one hex are left for the DM | engine |
 | P5 | ~~Hidden creatures are not found by Search~~ (#88: a creature that took the Hide action is; one the DM hid with the `hidden` switch is the DM's to reveal) | engine (sight S6) |
-| P6 | ~~Uploads and handouts (M9)~~ (PR #70), ~~tracing a map image (M10)~~ (PR #76), scenes (M11; ~~private notes~~ PR #70), generating a map (M14) | M10 any; M11 engine for the view |
+| P6 | ~~Uploads and handouts (M9)~~ (PR #70), ~~tracing a map image (M10)~~ (PR #76), scenes (M11; ~~private notes~~ PR #70; ~~rules and view~~ scenes-1 PR, the screen is still to build, see P12), generating a map (M14) | M10 any; M11 engine for the view |
 | P7 | The Universal VTT import (the editor's Map file > Import Universal VTT, PR #79) has only been tried on the hand-made test file, not a real export | any, with a real export |
 | P8 | The editor cannot rename a map, and ~~shows no numbers for tile heights~~ (it shows them while the Height tool is active, #120) | any |
 | P9 | Walking together: a follower brought up when a fight starts is set down, not walked, so a hidden trap on the way it would have come is not set off; a follower whose way back to the column is longer than 300 ft is dropped as not keeping up; ~~the undo list names follow actions only by their type~~ (#81) | engine |
 | P10 | ~~The renderer does not draw a level's background picture (`level.image`), and the editor cannot set one~~ (PR #73) | any |
 | P11 | Handouts: no shared pointer on an open handout; ~~undo of a handout or note action is labelled "handout (an action)"~~ (#81), and undoing a note takes it off the record but not off the screens it reached | any |
+| P12 | Scenes: the screen is not built (the log shows `say` lines only); one scene at a time; only `say` is rate-limited, other scene actions only by the connection limit; undoing a `say` takes it off the record but not off the screens it reached; a `checkAsked` reaches the DM but is not tied to the `check` that answers it | client; engine |
 | P12 | ~~Exporting a table does not carry its files~~ (#83: base64 with records, up to 24 MB, the rest listed). Still open: exporting a map from the editor carries no files, and there is no import of a table export | any |
 
 | P13 | A creature that cannot be seen cannot be targeted by players even where the SRD allows attacking a guessed location (with Disadvantage); a party member's path may go around a creature the players cannot see, which shows that something is there | engine |

@@ -55,6 +55,37 @@ Notes to one player and handouts are ordinary actions (`note`, `handout`, `showH
 `hideHandout`, `removeHandout`). Before a DM's `note` reaches the engine the server checks that its
 `to` is a player let in at this table.
 
+Scenes are ordinary actions too (`scene`, `endScene`, `sceneNpc`, `say`, `askCheck`,
+`sceneChronicle`; their shapes are below). For a `say`, the server overwrites `userName` with the
+name the player joined by (and drops it from the DM's), and refuses a member's line beyond
+`MAX_SAYS_PER_MINUTE` (30) in a rolling minute, counting refused lines; the DM is counted apart
+from each player. Everything else, including who may speak as whom, is the engine's.
+
+### Scene actions, events and view
+
+Design: `docs/specs/maps-and-objects.md`, Scenes, and its build notes ("Scenes: for the screen").
+Text is cut of control characters and trimmed; limits are `SCENE_LIMITS` in
+`packages/rules/src/scenes.js`.
+
+| Action | Who | Events (as the DM gets them) |
+|---|---|---|
+| `{type:"scene", scene:{title?, image?, open?}}` | DM | new: `sceneStart`; opened: `sceneStart`; `open:false` on an open one: `sceneEnd {why:"set aside"}`; otherwise `sceneEdit` |
+| `{type:"endScene"}` | DM | `sceneEnd {scene,title}` |
+| `{type:"sceneNpc", npc:{id?, name?, portrait?, notes?}}`, or `{npc:{id}, remove:true}` | DM | `sceneNpc {scene,npc,name,change:"added"\|"edited"\|"removed",changed?}` |
+| `{type:"say", as: ownCharacterId \| npcId \| null, text}` | a player as their own character or `null`; the DM as anyone in the party, any NPC of the open scene, or `null` | `say {from,as,name,text,scene?,line?}` (`scene`/`line` only while a scene is open) |
+| `{type:"askCheck", actor, skill}` | a player for their own character | `checkAsked {actor,skill,by}`; the DM answers with `check` |
+| `{type:"sceneChronicle", title, lines?:[from,to], scene?, text?, public?}` | DM | `chronicle {title,text,tags:["scene"],scene?,public?}` |
+
+A scene with `open:false` (being prepared, or set aside) is the DM's alone: its events carry
+`prep:true` and no player is sent them, live or from `history`; a player's `state.scene` is `null`;
+its files are not theirs to fetch. A fight that starts ends an open scene (`sceneEnd {why:"a fight
+began"}`) and leaves a prepared one alone. Players' `state.scene` is
+`null | {id, title, image?, present:[{id,name,portrait?}], open:true}`, never `notes`. Players get
+`sceneNpc` without `changed` and not at all when only notes changed; `checkAsked` only for their own
+request; a `check`'s roll but never its DC or success; a `chronicle` only if `public`. The transcript
+is the `say` events: ask `{t:"history",types:["say"],limit:200}` to rebuild it after joining (the
+answer repeats `types`).
+
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
 `{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`, `{t:"export"}` (DM only),
@@ -62,7 +93,7 @@ Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",seq,events,state}` or `{t:"update",seq,events,patch}`, `{t:"lobby",members,pending}`,
-`{t:"error",error,expired?}`, `{t:"history",entries,recent?}`, `{t:"export",table}`,
+`{t:"error",error,expired?}`, `{t:"history",entries,recent?,types?}`, `{t:"export",table}`,
 `{t:"undoable",undo,redo}` (DM only).
 
 An update's `state` is the receiver's view of the game and never includes the

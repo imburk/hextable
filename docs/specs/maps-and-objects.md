@@ -572,6 +572,41 @@ Where the build settled a detail the design left open, or changed it.
   floor lays stone on every empty hex whose centre is inside the picture, in one edit (at most 2000
   hexes). The amber bars show each step between neighbouring tiles that `barriers(map).blocked`
   stops, so the DM can see where a square-grid picture and the hexes disagree and nudge a wall.
+- **Scenes** (M11, rules and view; the screen is not built) are `state.scene: null | { id, title,
+  image?, present: [{ id, name, portrait?, notes? }], said, open, opened }`, changed by the actions in
+  `packages/rules/src/scenes.js`. Settled where the design was silent:
+  - **One scene at a time**, and the DM can **prepare it ahead** (`open: false`) or **step out of it**
+    back to the map and into it again. A scene not open is nothing to a player: no view, no events
+    (they carry `prep: true` and are never let through, live or from the record), no files, no undo
+    label. Its ids (`sc<n>`, `npc<n>`) are given when it is first opened, so a prepared scene thrown
+    away or an NPC taken out before anyone saw them leaves no gap in the numbers players see.
+  - **A fight ends an open scene** (however it starts) and leaves a prepared one; the table cannot
+    open a scene during a fight.
+  - **The transcript is not in the state**: it is the `say` events on the timeline, numbered by
+    `line` within the scene (`said` counts them; undo frees a number). The timeline cap applies to
+    it like anything else. A `say` with no open scene is table talk with no number.
+  - **Who speaks as whom**: a player as their own character or out of character, under the name
+    they joined by (set by the server); the DM as anyone in the party, any NPC of the open scene, or
+    as "DM". Lines are at most 500 characters, 5000 to a scene, and 30 a minute per member (server).
+  - **Checks on request** are a request (`askCheck`, seen by the asker and the DM), answered by the
+    DM with the existing `check` action and its private DC; the engine does not roll on request.
+  - **To the chronicle** (`sceneChronicle`): a range of up to 200 lines of a scene's transcript,
+    and/or typed text, DM-only unless `public: true`.
+  - State version 13 brings `scene: null` to older tables.
+- **Scenes: for the screen.** What a client builds on (protocol table in
+  `packages/server/README.md`, "Scene actions, events and view"):
+  - Show the scene when `state.scene` is not null; for the DM, `state.scene.open === false` means
+    "prepared" (offer Open), and the DM alone sees `notes`. Players never see a prepared scene.
+  - Rebuild the transcript from `say` events: from `{t:"history", types:["say"], limit:200}` on
+    joining, then live ones. Keep lines with `scene === state.scene.id`, ordered by `line`; on an
+    `undone` update, ask for the history again (an undone line is gone from it and its number is
+    reused). `as === null` is out of character; `from` is `"dm"` or a player's user id.
+  - Speak with `say`; a player's `as` is their own character's id or `null`. Errors come back as
+    `{t:"error"}` with text fit to show, including "You are speaking too fast".
+  - A player's "ask to check" is `askCheck { actor, skill }`; the DM's screen lists `checkAsked`
+    events and answers with `check { actor, skill, dc }`.
+  - "Write to chronicle" is `sceneChronicle { title, lines: [from, to] }`, the numbers from `line`.
+  - Pictures and portraits are asset ids, fetched as in the Assets note above.
 - **Import Universal VTT in the editor** (M12): Map file > Import Universal VTT reads the file, runs
   `importUvtt`, and shows its notes with Load, Load without the picture, and Cancel; nothing changes
   until Load. Load uploads the picture as an asset (one too big for the store is shrunk and saved as
