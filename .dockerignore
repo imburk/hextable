@@ -1,4 +1,12 @@
-node_modules
-dist
-data
-.git
+# Everything is excluded, then only what the image needs is let back in (see the Dockerfile).
+*
+!package.json
+!docker-entrypoint.mjs
+!scripts/build.mjs
+!packages/client
+!packages/rules/src
+!packages/server/src
+# Tests and notes that sit inside the folders let in above
+**/test
+**/*.test.js
+**/node_modules

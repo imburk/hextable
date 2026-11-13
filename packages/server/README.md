@@ -415,8 +415,37 @@ history is not used. The solo transport in the browser applies the same cap. See
 
 The server needs a host that runs a long-lived Node process, allows
 WebSockets, and gives it a disk that survives restarts for `DATA_DIR`. The
-`Dockerfile` in the repo root builds a ready-to-run image; mount a volume at
-`/data`.
+`Dockerfile` in the repo root builds a ready-to-run image.
+
+### Docker
+
+```
+docker build -t hextable .
+docker run -p 8080:8080 -v hextable-data:/data hextable
+```
+
+- The image holds the built game, the rules and the server only: no `docs/`, `reference/`, tests,
+  scripts or `.github` (`.dockerignore` lets in just what the `Dockerfile` copies).
+- The server runs as the `node` user (uid 1000), not as root. The container starts as root for a
+  moment: `docker-entrypoint.mjs` gives `DATA_DIR` (default `/data`) and everything in it to `node`,
+  then drops root with `setuid` before the server starts. That is what lets a volume that arrives
+  root-owned, or files an older image saved as root, work without any setting. Started as another
+  user already (`docker run --user 1000:1000`), it changes nothing; then the folder must already be
+  writable for that user.
+- If the entrypoint cannot change the ownership (a volume that refuses `chown`) it says so on stderr
+  and keeps running as root so tables are still saved; fix the volume and restart.
+- At start the server writes and removes a small file in `DATA_DIR`. If that fails it prints
+  `DATA_DIR ... is not writable` and exits with code 1 rather than run without saving tables.
+
+### Railway
+
+Add a volume to the service and mount it at `/data` (the image's `DATA_DIR`). Railway mounts volumes
+as root (its docs suggest `RAILWAY_RUN_UID=0` for images that run as a non-root user). This image does
+not need it: it starts as root, the entrypoint fixes the ownership and drops to `node`. Leave
+`RAILWAY_RUN_UID` unset; if it is set to `0` the service still works, since the process then also
+starts as root and drops the same way. Never mount the volume anywhere but `DATA_DIR`, or set
+`DATA_DIR` to the mount path. After a deploy, the log should show `Hextable table server at ...` and no
+`entrypoint:` warning.
 
 ## Known limits
 

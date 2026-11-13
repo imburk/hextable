@@ -7,7 +7,7 @@
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
@@ -104,7 +104,9 @@ function securityHeaders(req) {
 }
 
 // ---------- saving tables: one JSON file each, written shortly after a change ----------
-mkdirSync(DATA, { recursive: true });
+// Refuse to start on a data folder the server cannot write: saving would fail quietly and every table would be lost on restart.
+try { mkdirSync(DATA, { recursive: true }); writeFileSync(join(DATA, ".write-test"), ""); rmSync(join(DATA, ".write-test")); }
+catch (err) { console.error(`DATA_DIR ${DATA} is not writable (${err.code ?? err.message}): refusing to start, because tables could not be saved. Give the user running the server write access to it.`); process.exit(1); }
 const file = (code) => join(DATA, `${code}.json`);
 function load() {
   const out = [];
