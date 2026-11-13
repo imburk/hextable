@@ -6,6 +6,9 @@
 //   limits.allowHost(addr) / limits.allowJoin(addr) // false when over the window's budget
 //   const bucket = limits.messageBucket();          // one per connection; bucket.take() -> boolean
 //   limits.allowUpload(addr)                        // false when over the window's budget of uploads
+//   const slot = limits.uploadSlot(addr, code)      // { release } or { refused: "server" | "address" | "table" }
+//   limits.uploadPace(elapsedMs, bytes)             // null, "slow" or "deadline": cut an upload body off?
+//   limits.allowAssetRead(addr)                     // false when the address reads files too fast
 
 export const LIMIT_MESSAGE = "Too many requests. Wait a moment and try again.";
 
@@ -22,6 +25,18 @@ export const DEFAULT_LIMITS = {
   assetBytes: 5 * 1024 * 1024,         // one uploaded file
   tableAssetBytes: 50 * 1024 * 1024,   // all the files of one table
   tableAssets: 200,                    // how many files one table may have
+  totalAssetBytes: 2 * 1024 * 1024 * 1024,   // all the files of every table on the server (2 GiB)
+  // Upload bodies are held in memory until checked, so only a few are read at once, and a slow one
+  // cannot hold its place: it must finish by uploadBodyMs and, after uploadGraceMs, keep up
+  // uploadMinBytesPerSec on average. (5 MB at 32 KiB/s takes 160 s, inside the 180 s deadline.)
+  uploadsAtOnce: 8,                    // on the whole server
+  addressUploadsAtOnce: 2,             // from one address
+  tableUploadsAtOnce: 2,               // to one table
+  uploadBodyMs: 180 * 1000,
+  uploadGraceMs: 10 * 1000,
+  uploadMinBytesPerSec: 32 * 1024,
+  assetReadBurst: 120,                 // file reads per address at once
+  assetReadsPerSecond: 10,             // and sustained
 };
 
 // Each limit can be set from the environment (useful for tests and for unusual hosts).
@@ -35,7 +50,12 @@ export function limitsFromEnv(env = {}) {
     burst: n("LIMIT_BURST", d.burst), perSecond: n("LIMIT_RATE", d.perSecond),
     uploads: n("LIMIT_UPLOADS", d.uploads), uploadWindowMs: n("LIMIT_UPLOAD_WINDOW_MS", d.uploadWindowMs),
     assetBytes: n("LIMIT_ASSET_BYTES", d.assetBytes), tableAssetBytes: n("LIMIT_TABLE_ASSET_BYTES", d.tableAssetBytes),
-    tableAssets: n("LIMIT_TABLE_ASSETS", d.tableAssets),
+    tableAssets: n("LIMIT_TABLE_ASSETS", d.tableAssets), totalAssetBytes: n("LIMIT_ASSETS_TOTAL_BYTES", d.totalAssetBytes),
+    uploadsAtOnce: n("LIMIT_UPLOADS_AT_ONCE", d.uploadsAtOnce), addressUploadsAtOnce: n("LIMIT_ADDRESS_UPLOADS_AT_ONCE", d.addressUploadsAtOnce),
+    tableUploadsAtOnce: n("LIMIT_TABLE_UPLOADS_AT_ONCE", d.tableUploadsAtOnce),
+    uploadBodyMs: n("LIMIT_UPLOAD_BODY_MS", d.uploadBodyMs), uploadGraceMs: n("LIMIT_UPLOAD_GRACE_MS", d.uploadGraceMs),
+    uploadMinBytesPerSec: n("LIMIT_UPLOAD_MIN_RATE", d.uploadMinBytesPerSec),
+    assetReadBurst: n("LIMIT_ASSET_READ_BURST", d.assetReadBurst), assetReadsPerSecond: n("LIMIT_ASSET_READ_RATE", d.assetReadsPerSecond),
   };
 }
 
@@ -45,6 +65,9 @@ export function createLimits(config = {}, now = Date.now) {
   const hosts = new Map();         // address -> timestamps of recent host messages
   const joins = new Map();         // address -> timestamps of recent join messages
   const uploads = new Map();       // address -> timestamps of recent uploads and deletions
+  const uploading = { all: 0, byAddr: new Map(), byTable: new Map() };   // upload bodies being read now
+  const reads = new Map();         // address -> { tokens, last }: file reads
+  const bump = (map, key, by) => { const n = (map.get(key) ?? 0) + by; if (n > 0) map.set(key, n); else map.delete(key); };
 
   // Sliding window: count the events still inside the window, admit this one if there is room.
   function admit(map, addr, max, windowMs) {
@@ -72,6 +95,28 @@ export function createLimits(config = {}, now = Date.now) {
     allowJoin: (addr) => admit(joins, addr, c.joins, c.joinWindowMs),
     allowUpload: (addr) => admit(uploads, addr, c.uploads, c.uploadWindowMs),
     config: c,
+    uploadSlot(addr, code) {
+      if (uploading.all >= c.uploadsAtOnce) return { refused: "server" };
+      if ((uploading.byAddr.get(addr) ?? 0) >= c.addressUploadsAtOnce) return { refused: "address" };
+      if ((uploading.byTable.get(code) ?? 0) >= c.tableUploadsAtOnce) return { refused: "table" };
+      uploading.all++; bump(uploading.byAddr, addr, 1); bump(uploading.byTable, code, 1);
+      let done = false;
+      return { release() { if (done) return; done = true; uploading.all--; bump(uploading.byAddr, addr, -1); bump(uploading.byTable, code, -1); } };
+    },
+    uploadPace(elapsedMs, bytes) {
+      if (elapsedMs >= c.uploadBodyMs) return "deadline";
+      if (elapsedMs >= c.uploadGraceMs && bytes < (elapsedMs / 1000) * c.uploadMinBytesPerSec) return "slow";
+      return null;
+    },
+    allowAssetRead(addr) {
+      const t = now(), b = reads.get(addr) ?? { tokens: c.assetReadBurst, last: t };
+      b.tokens = Math.min(c.assetReadBurst, b.tokens + ((t - b.last) / 1000) * c.assetReadsPerSecond);
+      b.last = t;
+      reads.set(addr, b);
+      if (b.tokens < 1) return false;
+      b.tokens -= 1;
+      return true;
+    },
     // A token bucket: holds `burst` messages, refills `perSecond` a second.
     messageBucket() {
       let tokens = c.burst, last = now();
@@ -92,7 +137,9 @@ export function createLimits(config = {}, now = Date.now) {
       for (const [map, windowMs] of [[hosts, c.hostWindowMs], [joins, c.joinWindowMs], [uploads, c.uploadWindowMs]]) {
         for (const [addr, list] of map) if (!list.some((x) => t - x < windowMs)) map.delete(addr);
       }
+      for (const [addr, b] of reads) if (b.tokens + ((t - b.last) / 1000) * c.assetReadsPerSecond >= c.assetReadBurst) reads.delete(addr);
     },
     stats: () => ({ addresses: open.size, hosts: hosts.size, joins: joins.size }),
+    uploadStats: () => ({ uploading: uploading.all, reads: reads.size }),
   };
 }

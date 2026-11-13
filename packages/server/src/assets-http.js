@@ -10,16 +10,22 @@
 //
 // Every refusal to read a file is the same 404, whether the table, the token, the id or the
 // permission was wrong, so a request learns nothing about what exists.
+//
+// Uploads are bounded by the limits in limits.js: a few at a time per address, per table and on the
+// whole server; a body must arrive by a deadline and at a minimum rate; the file must fit the room
+// left in the table and on the server, checked from Content-Length before the body is read. Reads
+// are bounded per address too.
 import { createReadStream } from "node:fs";
 import { assetRefs } from "../../rules/src/handouts.js";
 import { view } from "../../rules/src/view.js";
-import { ASSET_TYPES, CODE, ID } from "./assets.js";
+import { ASSET_TYPES, CODE, ID, SERVER_FULL } from "./assets.js";
 import { LIMIT_MESSAGE } from "./limits.js";
 
 export const TOKEN_HEADER = "x-hextable-token";
 const NOT_FOUND = "Not found";
-const MAX_UPLOADS_AT_ONCE = 8;          // bodies are held in memory until checked: this bounds that memory
-let inFlight = 0;
+const TABLE_BUSY = "Another upload to this table is in progress. Wait for it to finish and try again.";
+const TOO_SLOW = "The upload was too slow. Try again on a better connection.";
+const TABLE_FULL = "This table has no room left for files. Delete some first.";
 
 // The raw path, never decoded: an encoded slash or dot is not part of any valid code or id, so it
 // simply fails to match. Returns null for anything that is not under /assets, else { code, id }
@@ -34,9 +40,16 @@ export function assetRoute(rawUrl) {
 
 // What a member may fetch: the DM, every file of the table; a player, the files that something in
 // their own view of the game names (a handout shown to them, the background of a level they are sent).
+// What each member may read is worked out once per change of the table (its `seq` and state), not
+// once per request: a view of the whole game is costly and a request is cheap to send.
+const readable = new WeakMap();          // table -> { seq, state, byMember: Map(member id -> Set of ids) }
 export function mayRead(table, member, id) {
   if (member.role === "dm") return true;
-  return assetRefs(view(table.state, { role: member.role, userId: member.id })).has(id);
+  let c = readable.get(table);
+  if (!c || c.seq !== (table.seq ?? 0) || c.state !== table.state) readable.set(table, (c = { seq: table.seq ?? 0, state: table.state, byMember: new Map() }));
+  let ids = c.byMember.get(member.id);
+  if (!ids) c.byMember.set(member.id, (ids = assetRefs(view(table.state, { role: member.role, userId: member.id }))));
+  return ids.has(id);
 }
 
 const send = (res, status, body, headers = {}) => {
@@ -44,12 +57,14 @@ const send = (res, status, body, headers = {}) => {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers }).end(json);
 };
 
-export function handleAssets(req, res, route, { assets, tables, limits, addr }) {
+// online(code, token): whether that seat has a live connection. Changing files needs one.
+export function handleAssets(req, res, route, { assets, tables, limits, addr, online = () => true }) {
   const token = req.headers[TOKEN_HEADER];
   const who = route.code ? tables.member(route.code, typeof token === "string" ? token : "") : null;
   const notFound = () => send(res, 404, NOT_FOUND);
 
   if (req.method === "GET" || req.method === "HEAD") {
+    if (!limits.allowAssetRead(addr)) return send(res, 429, LIMIT_MESSAGE);
     if (route.bad || !who) return notFound();
     if (route.id === undefined) {
       if (who.member.role !== "dm") return notFound();
@@ -76,6 +91,7 @@ export function handleAssets(req, res, route, { assets, tables, limits, addr }) 
     if (from === null || from !== req.headers.host) return send(res, 403, "Forbidden");
   }
   if (route.bad || !who || who.member.role !== "dm") return send(res, 403, "Only the DM of this table can change its files.", { connection: "close" });
+  if (!online(route.code, token)) return send(res, 403, "Open the table in the game to change its files.", { connection: "close" });
   if (!limits.allowUpload(addr)) return send(res, 429, LIMIT_MESSAGE, { connection: "close" });
 
   if (req.method === "DELETE") {
@@ -88,11 +104,20 @@ export function handleAssets(req, res, route, { assets, tables, limits, addr }) 
   const max = limits.config.assetBytes;
   const declared = Number(req.headers["content-length"]);
   if (Number.isFinite(declared) && declared > max) return send(res, 413, `A file can be at most ${Math.floor(max / 1048576 * 10) / 10} MB.`, { connection: "close" });
-  if (inFlight >= MAX_UPLOADS_AT_ONCE) return send(res, 429, LIMIT_MESSAGE, { connection: "close" });
-  inFlight++;
+  const room = assets.room(route.code);
+  if (Number.isFinite(declared) && declared > room.bytes) return room.reason === "server" ? send(res, 507, SERVER_FULL, { connection: "close" }) : send(res, 413, TABLE_FULL, { connection: "close" });
+  const slot = limits.uploadSlot(addr, route.code);
+  if (slot.refused) return send(res, 429, slot.refused === "table" ? TABLE_BUSY : LIMIT_MESSAGE, { connection: "close" });
   const parts = [];
   let size = 0, done = false;
-  const finish = (fn) => { if (done) return; done = true; inFlight--; fn(); };
+  const started = Date.now();
+  const c = limits.config;
+  const pace = setInterval(() => {
+    if (!limits.uploadPace(Date.now() - started, size)) return;
+    finish(() => { send(res, 408, TOO_SLOW, { connection: "close" }); req.pause(); setTimeout(() => req.destroy(), 1000).unref(); });
+  }, Math.max(25, Math.min(1000, c.uploadGraceMs / 4, c.uploadBodyMs / 4)));
+  pace.unref();
+  const finish = (fn) => { if (done) return; done = true; clearInterval(pace); slot.release(); fn(); };
   req.on("data", (chunk) => {
     if (done) return;
     size += chunk.length;
@@ -111,4 +136,5 @@ export function handleAssets(req, res, route, { assets, tables, limits, addr }) 
   }));
   req.on("error", () => finish(() => res.destroy()));
   req.on("aborted", () => finish(() => {}));
+  req.on("close", () => finish(() => {}));               // dropped before the end: give the place back
 }
