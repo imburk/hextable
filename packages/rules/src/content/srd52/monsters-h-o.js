@@ -2391,7 +2391,8 @@ export const monsters = [
         id: "parry",
         name: "Parry",
         modifiers: [],
-        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 2 to its AC against that attack. The DM applies this."
+        reaction: { on: "hit", ac: 2, attack: "melee" },
+        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 2 to its AC against that attack. Taken by standing instruction, by default only when it turns the hit into a miss; the engine assumes it is holding a weapon (set it to never if it is not)."
       }
     ],
     actions: [
@@ -3867,7 +3868,8 @@ export const monsters = [
         id: "parry",
         name: "Parry",
         modifiers: [],
-        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 5 to its AC against that attack. The DM applies this."
+        reaction: { on: "hit", ac: 5, attack: "melee" },
+        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 5 to its AC against that attack. Taken by standing instruction, by default only when it turns the hit into a miss; the engine assumes it is holding a weapon (set it to never if it is not)."
       }
     ],
     actions: [
@@ -4986,7 +4988,8 @@ export const monsters = [
         id: "whirlwind-of-sand",
         name: "Whirlwind of Sand",
         modifiers: [],
-        text: "Reaction when hit by an attack roll: adds 2 to its AC against that attack, teleports up to 60 feet, and creatures of its choice within 5 feet of the destination are Blinded until the end of its next turn. The DM applies this."
+        reaction: { on: "hit", ac: 2, manual: "Whirlwind of Sand: the mummy also teleports up to 60 feet to an unoccupied space it can see, and each creature of its choice that it can see within 5 feet of that space is Blinded until the end of the mummy's next turn. The DM applies this." },
+        text: "Reaction when hit by an attack roll: adds 2 to its AC against that attack, teleports up to 60 feet, and creatures of its choice within 5 feet of the destination are Blinded until the end of its next turn. The engine adds the AC by standing instruction (by default only when that turns the hit into a miss); the DM applies the teleport and the Blinded condition."
       },
       {
         id: "legendary-actions",
@@ -5486,7 +5489,8 @@ export const monsters = [
         id: "parry",
         name: "Parry",
         modifiers: [],
-        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 2 to its AC against that attack. The DM applies this."
+        reaction: { on: "hit", ac: 2, attack: "melee" },
+        text: "Reaction: when hit by a melee attack while holding a weapon, it adds 2 to its AC against that attack. Taken by standing instruction, by default only when it turns the hit into a miss; the engine assumes it is holding a weapon (set it to never if it is not)."
       }
     ],
     actions: [

@@ -23,7 +23,7 @@ import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
 import { derive, validate } from './derive.js';
-import { OPPORTUNITY, canReact, checkInstructions, instruction, opportunityAttack, reactionsOf } from './reactions.js';
+import { OPPORTUNITY, WHILE_WAITING, canReact, checkInstructions, instruction, mayAsk, opportunityAttack, reactionsOf } from './reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, judge, modifiers, speedOf } from './modifiers.js';
 
 export { FT };                       // feet per hex
@@ -656,7 +656,14 @@ function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null
     if (t.dead) ev.push({ type: 'died', id: t.id });
     return;
   }
-  if (t.hp > 0) return total > 0 ? concentrationCheck(s, ev, t, total, KIT) : undefined;
+  if (t.hp > 0) {
+    if (!(total > 0)) return undefined;
+    const kept = concentrationCheck(s, ev, t, total, KIT);
+    // Taking damage from a creature it can see may set off a reaction (Hellish Rebuke).
+    const by = parts.find((p) => typeof p.by === 'string')?.by;
+    if (by) reactAgainst(s, t, s.entities[by], 'damaged', ev, `${t.name} takes damage from ${s.entities[by]?.name ?? 'someone'}.`);
+    return kept;
+  }
   if (t.kind === 'pc' && lost - before < t.maxHp) {       // otherwise: instant death from massive damage
     t.cond.unconscious = {}; t.cond.prone = {}; t.death = { s: 0, f: 0 };
     ev.push({ type: 'down', id: t.id });
@@ -748,6 +755,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   if (hit) {
     const r = reactToHit(s, t, e, atk, { total: nat + bonus, ac, critRoll }, ev);
     if (r?.ac) { ac2 = acOf(s, t) + (COVER[cover] ?? 0); hit = critRoll || nat + bonus >= ac2; }
+    if (r?.acAdd) { ac2 = ac + r.acAdd; hit = critRoll || nat + bonus >= ac2; }
     if (r?.cut) cut = r.cut;
   }
   const crit = hit && (critRoll || sureCrit);
@@ -762,20 +770,55 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
 
 // ---------- reactions (reactions.js; docs/specs/rules-expansion.md, Decision 4) ----------
 
-// Can this creature cast this reaction spell now? It knows it, has a slot for it, is not barred
-// from spells (Rage), and has not spent a spell slot already this turn (SRD: one a turn).
-function slotFor(s, e, sp) {
-  if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return null;
-  if (sp.level === 0) return 0;
-  if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return null;
-  for (let l = sp.level; l <= 9; l++) if ((e.slots?.[l] ?? 0) > 0) return l;
-  return null;
+// Asking a player in the moment (stage B). An action that comes to a reaction whose instruction is
+// `ask`, of a creature a player controls, stops: apply() puts the state back as it was before the
+// action, keeps the action in `pending` with the answers given so far, and tells that player.
+// Their answer (the `react` action) runs the same action again from the same state, so the same
+// dice fall the same way; at each point where it asked before, the answer is read instead. Nothing
+// waits inside a JavaScript call, so a waiting table can be saved, sent, undone and replayed.
+class Pause { constructor(ask) { this.ask = ask; } }
+let RUN = null;     // while apply() runs: { action, ctx, answers, i, canPause }
+
+// The answer at this point of the action, { reactor, take, slot? } (`take` null: declined), or
+// null for a creature the DM controls (the caller tells the DM, and nothing waits). Otherwise
+// stops the action to ask. `q` is what the asked player is told; `options` what they may take.
+function ask(s, t, q, options) {
+  if (RUN && RUN.i < RUN.answers.length) {
+    const a = RUN.answers[RUN.i++];
+    // An answer that does not fit what is asked here (the same state asks the same, so it never
+    // should) declines rather than taking something nobody chose.
+    const o = a.reactor === t.id && options.find((x) => x.reaction === a.take);
+    return o && (a.slot === undefined || o.slots?.includes(a.slot)) ? a : { reactor: t.id, take: null };
+  }
+  if (!t.owner || !RUN?.canPause) return null;
+  throw new Pause({ reactor: t.id, ...q, options });
+}
+// A DM's creature whose instruction is to ask: the DM alone is told, and decides by hand.
+function tellDM(t, r, what, ev) {
+  ev.push({ type: 'manual', actor: t.id, name: r.name, partial: true,
+    text: `${what} ${t.name}'s instruction for ${r.name} is to ask the DM: if it takes it, the DM applies it and marks its Reaction used.` });
 }
 
-// Cast a spell as a Reaction: the Reaction and the lowest slot it can use are spent, and its
-// steps run on the caster at once, inside whatever action set it off (on the effect stack, above
-// the frames already there, which carry on afterwards).
-function castReaction(s, e, sp, slot, trigger, against, ev) {
+// The spell slot levels this creature could cast this reaction spell with now: it knows it, is
+// not barred from spells (Rage), and has not spent a spell slot already this turn (SRD: one a
+// turn). A cantrip needs none: [0]. Empty if it cannot.
+function slotsFor(s, e, sp) {
+  if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return [];
+  if (sp.level === 0) return [0];
+  if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return [];
+  const out = [];
+  for (let l = sp.level; l <= 9; l++) if ((e.slots?.[l] ?? 0) > 0) out.push(l);
+  return out;
+}
+// What a player is offered for a reaction spell: its id and name, and the slot levels it can use.
+const spellOffer = (r, slots, extra = {}) => ({ reaction: r.id, name: r.name, ...extra, ...(slots[0] > 0 ? { slots } : {}) });
+
+// Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
+// its player chose), and its steps run at once on `targets` (the caster, or the creature that set
+// it off), inside whatever action set it off (on the effect stack, above the frames already there,
+// which carry on afterwards). Returns the source its steps ran with: a Counterspell that worked
+// marks it `countered`.
+function castReaction(s, e, sp, slot, trigger, against, ev, targets = [e.id]) {
   e.reactionUsed = true;
   if (slot > 0) {
     e.slots[slot]--;
@@ -783,56 +826,85 @@ function castReaction(s, e, sp, slot, trigger, against, ev) {
   }
   ev.push({ type: 'reaction', id: e.id, reaction: sp.id, name: sp.name, trigger, ...(against ? { against } : {}) });
   if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');
-  ev.push({ type: 'cast', actor: e.id, spell: sp.id, name: sp.name, hexes: null, targets: [e.id], reaction: true, ...(slot > sp.level ? { slot } : {}) });
-  const { steps } = scaleSteps(sp.def, e.level, slot || sp.level);
+  ev.push({ type: 'cast', actor: e.id, spell: sp.id, name: sp.name, hexes: null, targets: [...targets], reaction: true, ...(slot > sp.level ? { slot } : {}) });
+  const { steps, unscaled } = scaleSteps(sp.def, e.level, slot || sp.level);
   let fx = null;
   if (sp.def.duration !== 'instant') {
     fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
-    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [e.id] });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...targets] });
   }
   const st = spellStats(e, s), depth = s.stack?.length ?? 0;
-  begin(s, { steps, actor: e.id, targets: [e.id], src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) } });
+  const src = { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(trigger === 'cast' ? { counters: true } : {}) };
+  begin(s, { steps, actor: e.id, targets: [...targets], src });
   run(s, ev, KIT, depth);
   if (sp.def.tier !== 'auto') ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true });
+  if (unscaled) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `Cast with a level ${slot} slot. The engine could not add ${unscaled}; the DM does.` });
+  return src;
 }
 
 // The damage types an attack deals, as far as its data says.
 function attackTypes(atk) { return atk.dtypes ?? (atk.dtype ? [atk.dtype] : []); }
 
-// `t` was hit by `e`'s attack roll. Its first reaction for a hit that its instruction lets fire
-// and it can take, if any, is taken. Returns { ac: true } if its Armor Class may have changed,
-// { cut } to cut the attack's damage, or null.
+// `t` was hit by `e`'s attack roll. Its reactions for a hit that its instructions let fire and it
+// can take now are gathered. If any says `ask`, a player is asked which (if any) to take, with
+// the roll and its Armor Class; otherwise the first is taken, as in part 1. Returns { ac: true }
+// if its Armor Class may have changed (Shield), { acAdd } to add to it against this attack only
+// (Parry), { cut } to cut the attack's damage, or null.
 function reactToHit(s, t, e, atk, roll_, ev) {
   if (!canReact(t) || t.object) return null;
+  const offers = [];
   for (const r of reactionsOf(t)) {
     if (r.on !== 'hit') continue;
     const w = instruction(t, r);
     if (w === 'never') continue;
+    let o, slots = null;
     if (r.kind === 'spell') {
-      const sp = SPELLS[r.id], slot = slotFor(s, t, sp);
-      if (slot === null) continue;
-      if (w === 'miss' && (roll_.critRoll || roll_.total >= roll_.ac + r.ac)) continue;     // it would hit anyway
-      castReaction(s, t, sp, slot, 'hit', e.object ? null : e.id, ev);
-      return { ac: true };
-    }
-    if (r.kind === 'feature') {
+      slots = slotsFor(s, t, SPELLS[r.id]);
+      if (!slots.length) continue;
+      o = spellOffer(r, slots, r.ac ? { ac: r.ac } : {});
+    } else if (r.kind === 'trait') {
+      if (r.attack && atk.type !== r.attack) continue;                                  // Parry: "a melee attack roll"
+      o = { reaction: r.id, name: r.name, ac: r.ac };
+    } else if (r.kind === 'feature') {
       const x = r.reaction;
-      if (x.seen && (e.object || canSee(s, t, e) === 'no')) continue;                      // "an attacker that you can see"
-      if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;          // Deflect Attacks: Bludgeoning, Piercing or Slashing
-      t.reactionUsed = true;
-      let cut;
-      if (x.cut === 'half') cut = { half: true, name: r.name };
-      else { const rr = roll(s, x.cut.dice); cut = { less: Math.max(0, rr.total), name: r.name, dice: rr.dice, bonus: rr.bonus }; }
-      ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'hit', ...(e.object ? {} : { against: e.id }), ...(cut.less !== undefined ? { amount: cut.less, dice: cut.dice, bonus: cut.bonus, by: t.id } : {}) });
-      if (r.tier !== 'auto') ev.push({ type: 'manual', actor: t.id, name: r.name, text: r.text, partial: true });
-      return { cut: cut.half ? { half: true, name: r.name } : { less: cut.less, name: r.name } };
-    }
+      if (x.seen && (e.object || canSee(s, t, e) === 'no')) continue;                  // "an attacker that you can see"
+      if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;      // Deflect Attacks: Bludgeoning, Piercing or Slashing
+      o = { reaction: r.id, name: r.name };
+    } else continue;
+    if (w === 'miss' && (roll_.critRoll || roll_.total >= roll_.ac + (r.ac ?? 0))) continue;     // it would hit anyway
+    offers.push({ r, w, o, slots });
   }
-  return null;
+  let chosen = offers.find((x) => x.w !== 'ask') ?? null, slot;
+  if (offers.some((x) => x.w === 'ask')) {
+    const seen = !e.object && canSee(s, t, e) !== 'no';
+    const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id } : {}), attack: atk.name, total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
+    if (a === null) for (const x of offers) { if (x.w === 'ask') tellDM(t, x.r, `${t.name} is hit by ${e.object ? 'a trap' : e.name}'s attack.`, ev); }
+    else { chosen = offers.find((x) => x.r.id === a.take) ?? null; slot = a.slot; }
+  }
+  if (!chosen) return null;
+  const { r } = chosen, against = e.object ? {} : { against: e.id };
+  if (r.kind === 'spell') {
+    castReaction(s, t, SPELLS[r.id], slot ?? chosen.slots[0], 'hit', e.object ? null : e.id, ev);
+    return { ac: true };
+  }
+  t.reactionUsed = true;
+  if (r.kind === 'trait') {
+    ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'hit', ...against });
+    if (r.manual) ev.push({ type: 'manual', actor: t.id, name: r.name, text: r.manual, partial: true });
+    return { acAdd: r.ac };
+  }
+  const x = r.reaction;
+  let cut;
+  if (x.cut === 'half') cut = { half: true, name: r.name };
+  else { const rr = roll(s, x.cut.dice); cut = { less: Math.max(0, rr.total), name: r.name, dice: rr.dice, bonus: rr.bonus }; }
+  ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'hit', ...against, ...(cut.less !== undefined ? { amount: cut.less, dice: cut.dice, bonus: cut.bonus, by: t.id } : {}) });
+  if (r.tier !== 'auto') ev.push({ type: 'manual', actor: t.id, name: r.name, text: r.text, partial: true });
+  return { cut: cut.half ? { half: true, name: r.name } : { less: cut.less, name: r.name } };
 }
 
 // Targets of a spell that a reaction keeps from taking its damage (Shield against Magic Missile):
-// one that has the blocking spell going already, or casts it now by its instruction. Returns their ids.
+// one that has the blocking spell going already, or casts it now by its instruction (or its
+// player's answer). Returns their ids.
 function blockSpell(s, caster, spellId, targets, ev) {
   const out = [];
   for (const t of new Set(targets)) {
@@ -841,12 +913,56 @@ function blockSpell(s, caster, spellId, targets, ev) {
     if (going) { out.push(t.id); continue; }
     if (!canReact(t) || t.id === caster.id) continue;
     const r = reactionsOf(t).find((x) => x.kind === 'spell' && has(x) && instruction(t, x) !== 'never');
-    const sp = r && SPELLS[r.id], slot = sp ? slotFor(s, t, sp) : null;
-    if (!r || slot === null) continue;
+    const sp = r && SPELLS[r.id], slots = sp ? slotsFor(s, t, sp) : [];
+    if (!slots.length) continue;
+    let slot = slots[0];
+    if (instruction(t, r) === 'ask') {
+      const seen = canSee(s, t, caster) !== 'no';
+      const a = ask(s, t, { trigger: 'targeted', spell: spellId, ...(seen ? { by: caster.id } : {}) }, [spellOffer(r, slots)]);
+      if (a === null) { tellDM(t, r, `${t.name} is targeted by ${SPELLS[spellId]?.name ?? 'a spell'}.`, ev); continue; }
+      if (a.take !== r.id) continue;
+      slot = a.slot ?? slot;
+    }
     castReaction(s, t, sp, slot, 'targeted', caster.id, ev);
     out.push(t.id);
   }
   return out;
+}
+
+// A reaction spell whose trigger is another creature (`cast`: Counterspell; `damaged`: Hellish
+// Rebuke) that `t` would take now against `e`: hostile, within the spell's range, seen, and with a
+// slot to cast it with. Its instruction decides, or its player when it says `ask`. Casts it and
+// returns its source (see castReaction), or returns null.
+function reactAgainst(s, t, e, on, ev, why) {
+  if (!canReact(t) || t.object || !e || e.object || e.id === t.id || !hostile(t, e) || !up(e)) return null;
+  for (const r of reactionsOf(t)) {
+    if (r.on !== on || r.kind !== 'spell') continue;
+    const w = instruction(t, r);
+    if (w === 'never') continue;
+    const sp = SPELLS[r.id], slots = slotsFor(s, t, sp);
+    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || canSee(s, t, e) === 'no') continue;
+    let slot = slots[0];
+    if (w === 'ask') {
+      const a = ask(s, t, { trigger: on, by: e.id }, [spellOffer(r, slots)]);
+      if (a === null) { tellDM(t, r, why, ev); continue; }
+      if (a.take !== r.id) return null;
+      slot = a.slot ?? slot;
+    }
+    return castReaction(s, t, sp, slot, on, e.id, ev, [e.id]);
+  }
+  return null;
+}
+
+// `e` is casting `sp`. Anyone who would counter it (Counterspell) gets the chance, in the order
+// the table lists them, until one does. Returns the id of the creature that countered it, or null.
+// Only a spell with Verbal, Somatic or Material components can be seen being cast (SRD).
+function counterWindow(s, e, sp, ev) {
+  if (!(sp.def.components ?? []).some((c) => ['v', 's', 'm'].includes(c))) return null;
+  for (const o of living(s)) {
+    const src = reactAgainst(s, o, e, 'cast', ev, `${e.name} is casting a spell.`);
+    if (src?.countered) return o.id;
+  }
+  return null;
 }
 // Rage goes on while its creature keeps fighting: an attack roll against an enemy, or making an
 // enemy save, carries it to the end of its next turn again (its parts are made new this turn).
@@ -1337,13 +1453,18 @@ function walk(s, e, reach, tk, ev, fighting) {
       for (const o of threatsAt(s, e, prev)) {
         if (apartAt(s, o, o.pos, e, step) <= 1) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
-        // happens and nothing is said. `ask`: the DM alone is told and decides by hand.
+        // happens and nothing is said. `ask`: its player is asked, and the walk waits; for one of
+        // the DM's creatures the DM alone is told and decides by hand.
         const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY));
         if (w === 'never') continue;
         if (w === 'ask') {
-          ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
-            text: `${e.name} leaves ${o.name}'s reach. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack, the DM makes it and marks its Reaction used.` });
-          continue;
+          const answer = ask(s, o, { trigger: 'leave', by: e.id }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' }]);
+          if (answer === null) {
+            ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
+              text: `${e.name} leaves ${o.name}'s reach. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack, the DM makes it and marks its Reaction used.` });
+            continue;
+          }
+          if (answer.take !== OPPORTUNITY) continue;
         }
         flush();
         o.reactionUsed = true;
@@ -1646,6 +1767,7 @@ const handlers = {
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
     if (!s.encounter && sp.harmful && aimed) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+    const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
     if (s.encounter) {
       need(s, e, sp.time);
       if (sp.level > 0 && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
@@ -1659,6 +1781,15 @@ const handlers = {
     if (sp.level > 0) e.slots[slot]--;
     if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
     showPlace(s, e, ev);
+    // Someone who sees it being cast may counter it (Counterspell). Then it dissipates with no
+    // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
+    // does not count as the one slot this turn.
+    const counteredBy = counterWindow(s, e, sp, ev);
+    if (counteredBy) {
+      if (sp.level > 0) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
+      ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
+      return checkEnd(s, ev);
+    }
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
 
     // What it does: run its effect steps.
@@ -1741,6 +1872,29 @@ const handlers = {
     for (const [k, w] of Object.entries(a.set)) { if (w === mine.find((r) => r.id === k).dflt) delete out[k]; else out[k] = w; }
     if (Object.keys(out).length) e.reactions = out; else delete e.reactions;
     ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
+  },
+  // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
+  // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
+  // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
+  // older question is refused. `take: null` declines. `slot` picks the spell slot, from those offered.
+  // The waiting action then runs again from where it began, with this answer and those before it,
+  // and its events are this action's (it may stop again to ask another).
+  react(s, a, ctx, ev) {
+    const p = s.pending || fail('No reaction is waiting for an answer.');
+    a.prompt === p.n || fail('That question has already been answered.');
+    const t = s.entities[p.ask.reactor] || fail('No such creature.');
+    control(t, ctx);
+    let answer = { reactor: t.id, take: null };
+    if (a.take !== null && a.take !== undefined) {
+      const o = p.ask.options.find((x) => x.reaction === a.take) || fail(`${t.name} can't answer with that.`);
+      if (a.slot !== undefined) (o.slots?.includes(a.slot)) || fail(o.slots ? `${o.name} can be cast with a level ${o.slots.join(', ')} slot.` : `${o.name} uses no spell slot.`);
+      answer = { reactor: t.id, take: o.reaction, ...(a.slot !== undefined ? { slot: a.slot } : {}) };
+    } else if (a.slot !== undefined) fail('A slot is chosen only with a reaction to take.');
+    const { action, ctx: was, answers } = p;
+    delete s.pending;
+    ev.push({ type: 'reactionAnswered', id: t.id, n: p.n, take: answer.take, by: ctx.role === 'dm' ? 'dm' : 'player' });
+    Object.assign(RUN, { action, ctx: was, answers: [...answers, answer], i: 0 });
+    dispatch(s, action, was, ev);
   },
   secondWind(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
@@ -2467,23 +2621,62 @@ function look(s, ev) {
 // Table rules the DM can switch, and what each may be set to.
 export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'] };
 
+// Run one action's handler. Also how a waiting action is run again when its reaction is answered.
+function dispatch(s, action, ctx, ev) {
+  // To anyone but the DM a hidden creature does not exist. Answering "it's 40 ft away" or
+  // "it isn't yours" to a guessed id would confirm that it does.
+  if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (unknown(s, s.entities[action[k]])) fail('No such creature.');
+  const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
+  // While an action waits for a reaction, nothing that could change how it comes out may happen.
+  if (s.pending && !WHILE_WAITING.has(action.type)) fail('The table is waiting for a reaction to be answered.');
+  h(s, action, ctx, ev);
+}
+
+// A copy of the game to put back if the action stops to ask (or a resumed one is refused). The
+// timeline is left out: nothing is added to it until the action is done.
+const freeze = (s) => structuredClone({ ...s, timeline: null });
+function thaw(s, snap) {
+  const tl = s.timeline;
+  for (const k of Object.keys(s)) delete s[k];
+  for (const k of Object.keys(snap)) s[k] = k === 'timeline' ? tl : snap[k];
+}
+
 export function apply(s, action, ctx = { role: 'dm' }) {
-  const ev = [];
+  let ev = [];
+  // A copy is taken only when the action could stop to ask a player (reactions.js, mayAsk), or
+  // when it answers one: the rest of the time nothing can pause and this costs nothing.
+  const snap = s.pending || action?.type === 'react' || mayAsk(s) ? freeze(s) : null;
+  RUN = { action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap };
   try {
-    // To anyone but the DM a hidden creature does not exist. Answering "it's 40 ft away" or
-    // "it isn't yours" to a guessed id would confirm that it does.
-    if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (unknown(s, s.entities[action[k]])) fail('No such creature.');
-    const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
-    h(s, action, ctx, ev);
+    dispatch(s, action, ctx, ev);
   } catch (err) {
     delete s.stack;                                  // never leave half an effect behind
+    if (err instanceof Pause) {
+      // Stop and ask: the game goes back to how it was before the action (the dice seed too), and
+      // keeps the action, the answers given so far and the question. Only the player asked and
+      // the DM are told (view.js).
+      thaw(s, snap);
+      const t = s.entities[err.ask.reactor];
+      s.asked = (s.asked ?? 0) + 1;
+      s.pending = { n: s.asked, action: structuredClone(RUN.action), ctx: { ...RUN.ctx }, answers: structuredClone(RUN.answers), ask: structuredClone(err.ask) };
+      ev = [{ type: 'reactionAsked', id: t.id, n: s.asked, to: t.owner, ask: structuredClone(err.ask) }];
+      RUN = null;
+      return record(s, ev);
+    }
+    if (snap) thaw(s, snap);                         // a refused answer leaves the question waiting, as it was
+    RUN = null;
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
   }
+  RUN = null;
   try { gravity(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
   fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
-  // The record keeps, with each entry, the creatures the party did not know of when it happened,
-  // so that reading the record later never tells players about what they could not see then.
+  return record(s, ev);
+}
+
+// The record keeps, with each entry, the creatures the party did not know of when it happened,
+// so that reading the record later never tells players about what they could not see then.
+function record(s, ev) {
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved') continue;

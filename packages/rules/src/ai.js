@@ -20,7 +20,9 @@ export function aware(s, e, o) {
 
 export function aiStep(s, id) {
   const e = s.entities[id], end = { type: 'endTurn', actor: id };
-  if (!e || current(s) !== id || !up(e)) return null;
+  // While an action waits for a player's reaction (reactions.js) nothing else can happen: no move,
+  // not even ending the turn. The answer, from the player or the DM, carries the table on.
+  if (!e || current(s) !== id || !up(e) || s.pending) return null;
   // It does not act on creatures it has not found.
   const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id) && aware(s, e, o));
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
