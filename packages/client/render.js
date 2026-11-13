@@ -10,6 +10,7 @@ import { allTiles, footprint, ground, shown, surfaces, under } from './shared/sp
 const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };      // how much bigger a pawn is drawn
 const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
+import { buildFloors, cellParts } from './floors.js';
 
 // Lasting zones (a spell's area that stays): tinted by the damage type of the spell's steps, neutral if it has none.
 // A theme may replace any of these with its own `zones: { fire: [r, g, b], neutral: [r, g, b] }`.
@@ -184,6 +185,7 @@ class Mesh {
     gl.drawArrays(gl.TRIANGLES, 0, this.n);
   }
 }
+const centroidOf = (p) => [p.reduce((a, v) => a + v[0], 0) / p.length, p.reduce((a, v) => a + v[1], 0) / p.length];
 const jitter = (q, r) => { const h = Math.sin(q * 127.1 + r * 311.7) * 43758.5453; return h - Math.floor(h); };
 const shade = (c, f) => [c[0] * f, c[1] * f, c[2] * f, 1];
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -412,8 +414,8 @@ export class Renderer {
     // Rooms, not hexes (theme flag `floors: 'rooms'`, docs/specs/renderer.md): on a level with walls or regions, the
     // tiles at one height are drawn as one flat floor with one edge round it, and the hexes as a faint grid. Rooms that
     // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
+    // The shapes come from floors.js: a wall that crosses a hex cuts it, and floor is filled out to a wall (R2).
     const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
-    const patch = (level, h) => { const t = level.tiles[H.col(h)]; return t ? surfY(level.z + (t.h ?? 0), t).toFixed(3) : null; };
     // Players under the los and light rules: a place remembered but not in view now is dimmed, one in view in
     // Dim Light or Darkness darkened (docs/specs/sight.md, decision 6). Colour only; the renderer plan owns more.
     const sight = this.state.sight, now = new Map(Object.entries(sight?.now ?? {}).map(([l, cols]) => [l, new Set(cols)]));
@@ -444,21 +446,7 @@ export class Renderer {
       const f = seenShade(h.level.id, H.col(h));
       if (f !== 1) c = c.map((v) => v * f);
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
-      if (room) {
-        // The floor reaches to the hex's edge; the grid is a thin, faint line inside it (stronger inside a fight's area).
-        const line = enc && !locked ? 0.9 : 0.955, grid = enc && !locked ? rim : shade(c, th.grid ?? 0.92);
-        b.flatHex(w.x, w.z, y, 0, line, [...c, 1]);
-        b.flatHex(w.x, w.z, y, line, 1, grid);
-        const me = patch(h.level, h), top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
-        const lip = b.ring(w.x, w.z, 1, y + 0.03, 6, R), inner = b.ring(w.x, w.z, 0.9, y + 0.03, 6, R), foot = b.ring(w.x, w.z, 0.9, y, 6, R);
-        for (let i = 0; i < 6; i++) {
-          const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
-          if (patch(h.level, out) === me) continue;                      // the same floor goes on: no edge here
-          b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side));
-          b.quad(lip[n], lip[i], inner[i], inner[n], shade(c, th.rim));      // the floor's one edge: a low kerb along its outline
-          b.quad(inner[n], inner[i], foot[i], foot[n], shade(c, th.rim * 0.9));
-        }
-      } else {
+      if (!room) {
         b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
         b.flatHex(w.x, w.z, y, 0.86, 1, rim);
         const top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
@@ -477,6 +465,47 @@ export class Renderer {
     // Walls and doors, drawn low enough to see over.
     const WALLS = { wall: [1.15, th.wall ?? [0.44, 0.42, 0.4]], window: [0.55, th.wallWindow ?? [0.55, 0.62, 0.68]], rail: [0.5, th.wall ?? [0.44, 0.42, 0.4]], curtain: [1.15, th.curtain ?? [0.38, 0.3, 0.45]] };
     const baseOf = (id) => (map.levels.find((l) => l.id === id)?.z ?? 0) * UNIT + 0.55;
+    // Rooms: the floors of levels with walls or regions, from floors.js. Colour follows the tile each piece is drawn as.
+    const floors = rooms.size ? buildFloors(map, { levels: [...rooms].filter((id) => !hid(id) && !pictured.has(id)) }) : { levels: [] };
+    const wpt = (p, y) => [p[0] * UNIT, y, p[1] * UNIT];
+    for (const fl of floors.levels) {
+      const lv = map.levels.find((l) => l.id === fl.id);
+      for (const pa of fl.patches) {
+        const y = pa.top * UNIT;
+        for (const cell of pa.cells) {
+          const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = H.parse(key), hz = lv.z + (t.h ?? 0);
+          let c = th.tiles[t.t].slice();
+          if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
+          if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
+          const f = seenShade(lv.id, key);
+          if (f !== 1) c = c.map((v) => v * f);
+          const inArena = enc && !locked, grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
+          const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955);       // the floor reaches the hex's edge; the grid is a thin, faint line inside it (stronger in a fight's area)
+          const fan = (poly, col) => { const m = wpt(centroidOf(poly), y); for (let i = 0; i < poly.length; i++) b.tri(wpt(poly[(i + 1) % poly.length], y), wpt(poly[i], y), m, col); };
+          if (inner) fan(inner, [...c, 1]);
+          for (const r of rim) fan(r, grid);
+        }
+        for (const e of pa.outline) {                                   // where the floor ends or steps down: a skirt, and a low kerb along its outline
+          if (e.kind !== 'open' && e.kind !== 'drop') continue;
+          const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
+          let c = th.tiles[t.t].slice();
+          if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
+          if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+          const f = seenShade(lv.id, key);
+          if (f !== 1) c = c.map((v) => v * f);
+          const low = e.lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, bot = e.kind === 'drop' ? Math.min(low, e.toTop * UNIT) : low;
+          const A = wpt(e.a, y), B = wpt(e.b, y), a2 = wpt(e.a, bot), b2 = wpt(e.b, bot);
+          b.quad(A, B, b2, a2, shade(c, th.side));
+          const la = wpt(e.a, y + 0.03), lb = wpt(e.b, y + 0.03), ia = wpt(e.ia, y + 0.03), ib = wpt(e.ib, y + 0.03), fa = wpt(e.ia, y), fb = wpt(e.ib, y);
+          b.quad(lb, la, ia, ib, shade(c, th.rim));
+          b.quad(ib, ia, fa, fb, shade(c, th.rim * 0.9));
+        }
+      }
+      for (const post of fl.posts) {                                    // a post at every join, so a corner closes
+        const [h, col] = WALLS[post.kind] ?? WALLS.wall, s = 0.26;
+        this.#slab(b, [post.at[0] - s, post.at[1]], [post.at[0] + s, post.at[1]], baseOf(fl.id), h + 0.04, 0.09, col);
+      }
+    }
     for (const w of map.walls) { if (hid(w.level)) continue; const [h, c] = WALLS[w.kind] ?? WALLS.wall; this.#slab(b, w.a, w.b, baseOf(w.level), h, 0.09, c); }
     for (const o of map.objects) {
       if (hid(o.level)) continue;

@@ -605,3 +605,27 @@ can run in parallel after R2. R10 decides the rest.
   follows hex edges (R2).
 - **R1 turned on** (13 November, owner's decision). `floors` is `'rooms'` unless the page address has `?hex`.
   Decision 8 (Three.js) is accepted by the owner on the same day.
+- **R2 floors module** (built). `packages/client/floors.js` is pure (no WebGL, no DOM) and imports only from
+  `./shared/`. `buildFloors(map, { levels })` returns, per level, patches (same level, region, terrain and drawn
+  height, touching, with no wall between), each with convex cells in map feet, an outline of edges
+  (`open`, `drop`, `rise`, `wall`, `seam`) with a mitred inset line for the kerb, plus wall faces and posts as plain
+  data. `cutaway(faces, toCam)` says which walls stand between the camera and a room. `render.js` draws the rooms
+  look from it; `?hex` and levels without walls or regions are drawn by the old code, unchanged.
+  Settled:
+  - A wall cuts a hex only if it crosses it from side to side. Collinear segments that meet end to end (a wall
+    traced in pieces, a door's frame line) are joined first. A door's line cuts whether it is shut or open.
+  - A piece with no tile of its own (the far side of a cut hex, or a hex with no tile) takes the floor it
+    reaches across a shared border without crossing a wall, the longest border first, and is dropped if there is
+    none. So the picture can be cut off by a wall and filled up to it, and the rules never see it: a fill cell
+    names the tile it borrows (`hex`) and is marked `fill`.
+  - Colour is chosen per cell from the tile named in `hex` (so the arena lock, the DM's dimming and the sight
+    shades work as before); the grid is the border strips of the hex, cut to the cell, not drawn on fill pieces
+    or along a wall. A step down gets a skirt to the lower floor.
+  - The renderer draws posts at wall joins in rooms mode at today's low wall height.
+  - Tests: `packages/client/test/floors.test.js` (picked up by the existing `npm test` glob). It copies the rules
+    next to `floors.js` as `./shared` in a temporary folder, as the build does.
+  Not done: a wall that ends or bends inside a hex does not cut it, so a room whose walls turn inside a hex still
+  follows hex edges there; the end of a corridor follows its tiles (fill only runs from a neighbouring piece);
+  cut-away is data and a tested function but is not drawn (walls are still low, full height with cut-away is the
+  follow-up); colour is even per cell, not smooth across a floor; no rim shading between patches; Decision 1's
+  outdoors, caves and picture floors are untouched.
