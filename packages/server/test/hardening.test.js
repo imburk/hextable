@@ -97,11 +97,50 @@ test("at most N open connections per address; the extra one is told and closed",
   for (const c of held) c.ws.close();
 });
 
-test("the address comes from the first entry of x-forwarded-for", async () => {
+// #205: x-forwarded-for is client-controlled at its left end, so the default ignores it altogether and
+// TRUST_PROXY=N takes the Nth entry from the right, the one the platform's proxy appended.
+test("by default x-forwarded-for is ignored: every client is the socket address", async () => {
   const port = await start({ LIMIT_CONNECTIONS: "1" });
-  const a = await upgrade(port, { "X-Forwarded-For": "10.0.0.1, 10.9.9.9" });
-  const other = await upgrade(port, { "X-Forwarded-For": "10.0.0.2" });
-  const same = await upgrade(port, { "X-Forwarded-For": "10.0.0.1" });
+  const a = await upgrade(port, { "X-Forwarded-For": "10.0.0.1" });
+  const b = await upgrade(port, { "X-Forwarded-For": "10.0.0.2" });          // a different claim does not make a different client
+  assert.equal(a.status, 101);
+  assert.deepEqual(await until(() => b.text[0]), TOO_MANY);
+  for (const c of [a, b]) c.done();
+});
+
+test("with TRUST_PROXY=1 the entry the proxy appended is the address; a spoofed leftmost value is ignored", async () => {
+  const port = await start({ LIMIT_CONNECTIONS: "1", TRUST_PROXY: "1" });
+  const a = await upgrade(port, { "X-Forwarded-For": "6.6.6.6, 10.0.0.1" });
+  const spoof = await upgrade(port, { "X-Forwarded-For": "7.7.7.7, 10.0.0.1" });   // new fake leftmost, same real client
+  const other = await upgrade(port, { "X-Forwarded-For": "6.6.6.6, 10.0.0.2" });   // same fake leftmost, another real client
+  assert.equal(a.status, 101); assert.equal(other.status, 101);
+  assert.deepEqual(await until(() => spoof.text[0]), TOO_MANY);
+  for (const c of [a, spoof, other]) c.done();
+});
+
+test("with TRUST_PROXY=2 the second entry from the right is the address", async () => {
+  const port = await start({ LIMIT_CONNECTIONS: "1", TRUST_PROXY: "2" });
+  const a = await upgrade(port, { "X-Forwarded-For": "6.6.6.6, 10.0.0.1, 100.64.0.9" });
+  const same = await upgrade(port, { "X-Forwarded-For": "5.5.5.5, 10.0.0.1, 100.64.0.8" });
+  assert.equal(a.status, 101);
+  assert.deepEqual(await until(() => same.text[0]), TOO_MANY);
+  for (const c of [a, same]) c.done();
+});
+
+test("a malformed x-forwarded-for falls back to the socket address", async () => {
+  const port = await start({ LIMIT_CONNECTIONS: "1", TRUST_PROXY: "1" });
+  const a = await upgrade(port, { "X-Forwarded-For": "not-an-ip" });
+  const b = await upgrade(port, { "X-Forwarded-For": "999.1.1.1" });
+  assert.equal(a.status, 101);
+  assert.deepEqual(await until(() => b.text[0]), TOO_MANY, "both are the socket's address");
+  for (const c of [a, b]) c.done();
+});
+
+test("CLIENT_IP_HEADER names a header the platform sets; x-forwarded-for is then not read", async () => {
+  const port = await start({ LIMIT_CONNECTIONS: "1", TRUST_PROXY: "1", CLIENT_IP_HEADER: "x-real-ip" });
+  const a = await upgrade(port, { "X-Real-IP": "10.0.0.1", "X-Forwarded-For": "1.1.1.1" });
+  const other = await upgrade(port, { "X-Real-IP": "10.0.0.2", "X-Forwarded-For": "1.1.1.1" });
+  const same = await upgrade(port, { "X-Real-IP": "10.0.0.1", "X-Forwarded-For": "2.2.2.2" });
   assert.equal(a.status, 101); assert.equal(other.status, 101);
   assert.deepEqual(await until(() => same.text[0]), TOO_MANY);
   for (const c of [a, other, same]) c.done();

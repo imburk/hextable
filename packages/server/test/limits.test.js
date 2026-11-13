@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLimits, DEFAULT_LIMITS, limitsFromEnv } from "../src/limits.js";
+import { clientAddress, createLimits, DEFAULT_LIMITS, limitsFromEnv, normaliseAddress, proxyFromEnv } from "../src/limits.js";
 
 const clock = () => { const c = { t: 1_000_000, now: () => c.t, advance: (ms) => { c.t += ms; } }; return c; };
 
@@ -124,4 +124,57 @@ test("the new limits can be set from the environment", () => {
     LIMIT_UPLOAD_GRACE_MS: "100", LIMIT_UPLOAD_MIN_RATE: "10", LIMIT_ASSETS_TOTAL_BYTES: "1000", LIMIT_ASSET_READ_BURST: "4", LIMIT_ASSET_READ_RATE: "2" });
   assert.deepEqual([l.uploadsAtOnce, l.addressUploadsAtOnce, l.tableUploadsAtOnce, l.uploadBodyMs, l.uploadGraceMs, l.uploadMinBytesPerSec, l.totalAssetBytes, l.assetReadBurst, l.assetReadsPerSecond],
     [3, 1, 1, 500, 100, 10, 1000, 4, 2]);
+});
+
+// ---------- the client address (#205) ----------
+const req = (xff, socket = "::ffff:192.0.2.1", extra = {}) => ({ headers: { ...(xff !== undefined && { "x-forwarded-for": xff }), ...extra }, socket: { remoteAddress: socket } });
+
+test("proxyFromEnv: safe by default, junk means the default", () => {
+  assert.deepEqual(proxyFromEnv({}), { trustProxy: 0, clientIpHeader: null });
+  assert.equal(proxyFromEnv({ TRUST_PROXY: "2" }).trustProxy, 2);
+  for (const v of ["", "-1", "abc", "1.5", "true", "100"]) assert.equal(proxyFromEnv({ TRUST_PROXY: v }).trustProxy, 0, v);
+  assert.equal(proxyFromEnv({ CLIENT_IP_HEADER: " X-Real-IP " }).clientIpHeader, "x-real-ip");
+  assert.equal(proxyFromEnv({ CLIENT_IP_HEADER: "bad header" }).clientIpHeader, null);
+});
+
+test("clientAddress: with no trusted proxy the header is ignored", () => {
+  assert.equal(clientAddress(req("6.6.6.6, 10.0.0.1")), "192.0.2.1");
+  assert.equal(clientAddress(req("6.6.6.6"), undefined), "192.0.2.1");
+  assert.equal(clientAddress(req("6.6.6.6", "::ffff:192.0.2.1", { "x-real-ip": "6.6.6.6" }), { trustProxy: 0, clientIpHeader: "x-real-ip" }), "192.0.2.1");
+});
+
+test("clientAddress: the Nth entry from the right, never the leftmost", () => {
+  assert.equal(clientAddress(req("6.6.6.6, 10.0.0.1"), { trustProxy: 1 }), "10.0.0.1");
+  assert.equal(clientAddress(req("6.6.6.6, 10.0.0.1, 100.64.0.2"), { trustProxy: 2 }), "10.0.0.1");
+  assert.equal(clientAddress(req("10.0.0.1"), { trustProxy: 1 }), "10.0.0.1");
+  assert.equal(clientAddress(req("10.0.0.1"), { trustProxy: 2 }), "192.0.2.1", "fewer entries than trusted proxies: the request did not come through them");
+  assert.equal(clientAddress(req(undefined), { trustProxy: 1 }), "192.0.2.1");
+  assert.equal(clientAddress({ headers: { "x-forwarded-for": ["6.6.6.6", "10.0.0.1"] }, socket: { remoteAddress: "192.0.2.1" } }, { trustProxy: 1 }), "10.0.0.1", "repeated header lines count as one chain");
+});
+
+test("clientAddress: values that are not IP addresses fall back to the socket", () => {
+  for (const bad of ["", "unknown", "999.1.1.1", "1.2.3", "10.0.0.1, not-an-ip", "10.0.0.1, ", "1.2.3.4/24", "<script>", "a".repeat(200)]) {
+    assert.equal(clientAddress(req(bad), { trustProxy: 1 }), "192.0.2.1", JSON.stringify(bad));
+  }
+  assert.equal(clientAddress({ headers: {}, socket: {} }, { trustProxy: 1 }), "unknown");
+});
+
+test("clientAddress: CLIENT_IP_HEADER is read instead of x-forwarded-for, and only as a single value", () => {
+  const p = { trustProxy: 1, clientIpHeader: "x-real-ip" };
+  assert.equal(clientAddress(req("6.6.6.6", "192.0.2.1", { "x-real-ip": "10.0.0.5" }), p), "10.0.0.5");
+  assert.equal(clientAddress(req("6.6.6.6"), p), "192.0.2.1", "header missing: the socket, not x-forwarded-for");
+  assert.equal(clientAddress(req(undefined, "192.0.2.1", { "x-real-ip": "6.6.6.6, 10.0.0.5" }), p), "192.0.2.1", "a list is not a single address");
+  assert.equal(clientAddress(req(undefined, "192.0.2.1", { "x-real-ip": "nope" }), p), "192.0.2.1");
+});
+
+test("normaliseAddress: IPv4-mapped IPv6 is plain IPv4; ports and zones are dropped; IPv6 is lower-cased", () => {
+  assert.equal(normaliseAddress("::ffff:1.2.3.4"), "1.2.3.4");
+  assert.equal(normaliseAddress("::FFFF:102:304"), "1.2.3.4");
+  assert.equal(normaliseAddress("1.2.3.4:5678"), "1.2.3.4");
+  assert.equal(normaliseAddress("[2001:DB8::1]:443"), "2001:db8::1");
+  assert.equal(normaliseAddress("fe80::1%eth0"), "fe80::1");
+  assert.equal(normaliseAddress("2001:DB8::1"), "2001:db8::1");
+  assert.equal(clientAddress(req("::ffff:10.0.0.1"), { trustProxy: 1 }), "10.0.0.1");
+  assert.equal(normaliseAddress("1.2.3.4.5"), null);
+  assert.equal(normaliseAddress(undefined), null);
 });

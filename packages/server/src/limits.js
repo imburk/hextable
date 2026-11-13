@@ -10,7 +10,10 @@
 //   limits.uploadPace(elapsedMs, bytes)             // null, "slow" or "deadline": cut an upload body off?
 //   limits.allowAssetRead(addr)                     // false when the address reads files too fast
 
+import { isIP } from "node:net";
+
 export const LIMIT_MESSAGE = "Too many requests. Wait a moment and try again.";
+
 
 export const DEFAULT_LIMITS = {
   connections: 20,           // open WebSocket connections per address
@@ -142,4 +145,53 @@ export function createLimits(config = {}, now = Date.now) {
     stats: () => ({ addresses: open.size, hosts: hosts.size, joins: joins.size }),
     uploadStats: () => ({ uploading: uploading.all, reads: reads.size }),
   };
+}
+
+// ---------- who is connecting ----------
+// The address that per-address limits are keyed on. Safe by default: with no setting the socket's own
+// address is used and every forwarding header is ignored, because a client can write whatever it likes
+// in x-forwarded-for. Behind a proxy, say how far to trust it:
+//   TRUST_PROXY       number of proxies in front of the server that append to x-forwarded-for (default 0).
+//                     The Nth entry from the RIGHT is the client; never the leftmost, which the client chose.
+//   CLIENT_IP_HEADER  a header the platform sets itself and overwrites (for example x-real-ip). Used in
+//                     preference to x-forwarded-for, but only when TRUST_PROXY is above 0.
+// Anything that does not parse as an IP address falls back to the socket's address.
+export function proxyFromEnv(env = {}) {
+  const hops = /^\d{1,2}$/.test(String(env.TRUST_PROXY ?? "").trim()) ? Number(env.TRUST_PROXY) : 0;
+  const name = String(env.CLIENT_IP_HEADER ?? "").trim().toLowerCase();
+  return { trustProxy: hops, clientIpHeader: /^[a-z0-9-]+$/.test(name) ? name : null };
+}
+
+// A valid IPv4 or IPv6 address in a canonical form, or null. IPv4-mapped IPv6 (::ffff:1.2.3.4) becomes
+// plain IPv4, so one client is one address whichever way the socket and the proxy wrote it. A port
+// ("1.2.3.4:5678", "[::1]:80") is accepted and dropped; a zone ("fe80::1%eth0") is dropped.
+export function normaliseAddress(value) {
+  let v = String(value ?? "").trim();
+  if (!v || v.length > 64) return null;
+  const bracket = /^\[([^\]]+)\](?::\d{1,5})?$/.exec(v);
+  if (bracket) v = bracket[1];
+  else if (/^[\d.]+:\d{1,5}$/.test(v)) v = v.slice(0, v.lastIndexOf(":"));
+  v = v.replace(/%[\w.-]+$/, "");
+  if (isIP(v) === 0) return null;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(v);
+  if (mapped && isIP(mapped[1]) === 4) return mapped[1];
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(v);
+  if (hex) { const a = parseInt(hex[1], 16), b = parseInt(hex[2], 16); return `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`; }
+  return isIP(v) === 6 ? v.toLowerCase() : v;
+}
+
+// req: anything with .headers and .socket. proxy: the result of proxyFromEnv.
+export function clientAddress(req, proxy = {}) {
+  const socket = normaliseAddress(req.socket?.remoteAddress) ?? "unknown";
+  const hops = proxy.trustProxy ?? 0;
+  if (!(hops > 0)) return socket;
+  const header = (name) => { const v = req.headers?.[name]; return Array.isArray(v) ? v.join(",") : typeof v === "string" ? v : ""; };
+  if (proxy.clientIpHeader) {
+    const one = header(proxy.clientIpHeader);
+    if (!one.includes(",")) { const a = normaliseAddress(one); if (a) return a; }
+    return socket;
+  }
+  const chain = header("x-forwarded-for").split(",");
+  if (chain.length < hops) return socket;                          // fewer entries than trusted proxies: not from our proxy
+  return normaliseAddress(chain[chain.length - hops]) ?? socket;
 }
