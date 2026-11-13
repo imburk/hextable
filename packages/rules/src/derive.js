@@ -58,6 +58,11 @@ function bake(list, c, level, abil) {
     const fix = (m) => { if (m && m.value && typeof m.value === 'object' && (m.value.column !== undefined || m.value.mod !== undefined || m.value.perLevel !== undefined)) m.value = amount(m.value, c, level, abil); };
     fix(x); fix(x.modifier);
     if (x.addLevel) { x.heal = dice(x.heal, level); delete x.addLevel; }
+    for (const k of ['heal', 'tempHp']) {
+      if (x[k] && typeof x[k] === 'object') x[k] = amount(x[k], c, level, abil);                  // a die from the class table
+      if (k in x && typeof x.addMod === 'string') { x[k] = dice(x[k], mod(abil[x.addMod])); delete x.addMod; }
+    }
+    if ('save' in x && typeof x.dc === 'string') x.dc = 8 + proficiencyFor(level) + mod(abil[x.dc]);   // the class's own DC
     return x;
   });
 }

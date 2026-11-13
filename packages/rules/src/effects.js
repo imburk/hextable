@@ -279,7 +279,8 @@ function exec(s, ev, kit, f, step, at) {
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal' || kind === 'tempHp') {
     const r = roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
-    return kind === 'heal' ? kit.heal(s, t, r.total + add, ev, rolled) : kit.tempHp(s, t, r.total + add, ev, f, rolled);
+    const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"
+    return kind === 'heal' ? kit.heal(s, t, n, ev, rolled) : kit.tempHp(s, t, n, ev, f, rolled);
   }
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'modifier') {

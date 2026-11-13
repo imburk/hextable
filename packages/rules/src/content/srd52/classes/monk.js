@@ -310,9 +310,42 @@ export const monk = {
       "id": "stunning-strike",
       "name": "Stunning Strike",
       "level": 5,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "Once a turn when you hit with a Monk weapon or Unarmed Strike, spend 1 Focus Point: the target makes a Constitution save or is Stunned until the start of your next turn (on a success its Speed is halved and the next attack against it has Advantage). The engine cannot take that choice after a hit; the DM applies it."
+      "text": "Once a turn when you hit with a Monk weapon or Unarmed Strike, spend 1 Focus Point: the target makes a Constitution save against your Focus save DC or is Stunned until the start of your next turn (on a success its Speed is halved and the next attack against it has Advantage). Use it after the hit; the DM confirms the hit and the once a turn, and applies a successful save.",
+      "grants": {
+        "action": {
+          "time": "free",
+          "cost": {
+            "resource": "monks-focus"
+          },
+          "target": {
+            "creature": {
+              "reach": 5
+            }
+          },
+          "effects": [
+            {
+              "save": "con",
+              "dc": "wis",
+              "onFail": [
+                {
+                  "condition": "stunned",
+                  "ends": {
+                    "on": "turnStart",
+                    "of": "source"
+                  }
+                }
+              ],
+              "onSuccess": [
+                {
+                  "manual": "Stunning Strike: the target saved. Its Speed is halved until the start of the monk's next turn, and the next attack roll against it before then has Advantage. The DM applies this."
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "id": "empowered-strikes",
@@ -432,15 +465,32 @@ export const monk = {
         "id": "wholeness-of-body",
         "name": "Wholeness of Body",
         "level": 6,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "As a Bonus Action, regain a Martial Arts die + Wisdom modifier Hit Points (at least 1), Wisdom modifier times per Long Rest. The DM rolls it.",
+        "text": "As a Bonus Action, regain a Martial Arts die + Wisdom modifier Hit Points (at least 1), Wisdom modifier times (at least once) per Long Rest.",
         "uses": {
           "max": {
             "mod": "wis",
             "min": 1
           },
           "recharge": "long"
+        },
+        "grants": {
+          "action": {
+            "time": "bonus",
+            "target": {
+              "self": true
+            },
+            "effects": [
+              {
+                "heal": {
+                  "column": "martial-arts"
+                },
+                "addMod": "wis",
+                "atLeast": 1
+              }
+            ]
+          }
         }
       },
       {
