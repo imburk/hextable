@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A made-up multiclass character (Fighter 3 / Wizard 2) in the Fantasy Grounds 5E export format. -->
+<root version="5.1" release="11|CoreRPG:8">
+	<character>
+		<name type="string">Orrin Testfield (Zed)</name>
+		<race type="string">Elf</race>
+		<level type="number">5</level>
+		<profbonus type="number">3</profbonus>
+		<abilities>
+			<strength><score type="number">16</score><save type="number">6</save></strength>
+			<dexterity><score type="number">14</score><save type="number">2</save></dexterity>
+			<constitution><score type="number">14</score><save type="number">5</save></constitution>
+			<intelligence><score type="number">14</score><save type="number">2</save></intelligence>
+			<wisdom><score type="number">10</score><save type="number">0</save></wisdom>
+			<charisma><score type="number">8</score><save type="number">-1</save></charisma>
+		</abilities>
+		<classes>
+			<id-00001><name type="string">Fighter</name><level type="number">3</level><specialization type="string">Champion</specialization></id-00001>
+			<id-00002><name type="string">Wizard</name><level type="number">2</level></id-00002>
+		</classes>
+		<defenses><ac><total type="number">17</total></ac></defenses>
+		<hp><total type="number">44</total><wounds type="number">0</wounds></hp>
+		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<skilllist>
+			<id-00001><name type="string">Athletics</name><prof type="number">1</prof></id-00001>
+			<id-00002><name type="string">Perception</name><prof type="number">1</prof></id-00002>
+			<id-00003><name type="string">Arcana</name><prof type="number">1</prof></id-00003>
+		</skilllist>
+		<weaponlist>
+			<id-00001><name type="string">Longsword</name><carried type="number">2</carried></id-00001>
+		</weaponlist>
+		<inventorylist>
+			<id-00001><name type="string">Chain Mail</name><type type="string">Armor</type><subtype type="string">Heavy Armor</subtype><carried type="number">2</carried></id-00001>
+		</inventorylist>
+		<powergroup>
+			<id-00001><name type="string">Spells (Wizard)</name><castertype type="string">memorization</castertype><stat type="string">intelligence</stat><prepared type="number">3</prepared></id-00001>
+		</powergroup>
+		<powermeta>
+			<spellslots1><max type="number">3</max><used type="number">0</used></spellslots1>
+		</powermeta>
+		<powers>
+			<id-00001><name type="string">Magic Missile</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00001>
+			<id-00002><name type="string">Shield</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00002>
+		</powers>
+	</character>
+</root>
