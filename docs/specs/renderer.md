@@ -714,3 +714,27 @@ can run in parallel after R2. R10 decides the rest.
   no cracks or boulders; the face is not lowered when it stands between the camera and the floor (the cut-away's idea; 4 ft
   was low enough on the stock cave); rock with an open hex's `forest` or water beside it is simply rock; a cave level
   with a picture is drawn by its picture; trees on forest tiles in a cave are not drawn.
+- **R4 beats in today's renderer** (`beats-r4`). `render.js` plays the rows of decision 2 that need no model; `app.js` hands
+  it three things (`onShow` passes `{ instant }`, `onIdle` calls `R.settle()`, a `snapping` flag marks a fresh, undone or
+  question-carrying update). Tweens run on the wall clock for the table's nominal time. Settled:
+  - Two kinds. What the timeline already holds back (hit points, death, place, conditions) is eased as soon as it changes:
+    lying down (Prone) 0.3 s, a fall to 0 hit points 0.6 s, getting up 0.4 s, and a death falls and the living pawn fades
+    into the grey fallen one (a crossfade drawn over the corpse, so the pawn is never see-through). What arrives with the
+    update (doors, regions, the arena, a creature that was not there) is held as it looked until its event is given to
+    `setState` (`object`, `region`, `encounterStart`/`encounterEnd`, `spawned`/`revealed`/`placed`/`removed`/`fell`), then
+    eased; `settle()` (every idle, so also a skip) ends all of it at once, and a hold with no event ends by itself after 4 s.
+  - Done: doors swing (0.5 s) about the first end of their line, shut line to the open one; a region just revealed is
+    covered dark over its floor and the dark fades (0.6 s); a creature appearing (`spawned`, `revealed`) fades in (0.4 s),
+    one `removed` fades out (0.3 s), `placed` fades out where it stood and in where it is (0.3 s); the arena curtain rises
+    out of the ground with the flash (1.2 s) and sinks (0.6 s); `fell` drops under gravity (0.6 s).
+  - Nothing is half played: `instant` pace, a state that is not a continuation (first, fresh, undo, redo, a prompt), a new
+    map id, `map`, `mapEdit`, `undone` and `redone` set everything at once, and finish what ran.
+  - Hidden: a creature the view marks `hidden` is never animated, and an event about one is not sent by the view. A
+    creature leaving the view fades out only if the `removed` event comes in the same update, otherwise it goes at once.
+  - Not done, and why: the portcullis slides (0.8 s) is drawn as a swing (same as its still picture); `fell` plays only when
+    its event comes with the state change (the timeline shows a creature's height with the update's first beat), and has no dust;
+    `size`, `effectStart`/`effectEnd`, `joined`, `noticed`, `triggered`, the `turn` ring and the `map` fade are not animated;
+    the walls of a room that has just been revealed show at once (only its floor fades). Attack, damage and move clips need a
+    model (R5). Animations keep the table's nominal times: a beat the timeline scaled down or ran at 2x is not matched, as
+    `onBeat` hands over no length (a timeline change). Checked at 1280x800 and 390x844 with touch on the valley (fight rise and
+    sink, a goblin killed) and the stock dungeon (a door, a region); `SMOKE_ONLY=beats`.
