@@ -30,6 +30,7 @@ const nice = (id) => id.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase
 const sides = (d) => +(/d(\d+)/.exec(d)?.[1] ?? 0);
 const bigger = (a, b) => (sides(b) > sides(a) ? b : a);
 
+const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 // The first class (the one a character started in).
 export const classOf = (sheet) => CONTENT.classes[Array.isArray(sheet?.classes) ? sheet.classes[0]?.class : sheet?.class] ?? null;
 export const multiclassed = (sheet) => Array.isArray(sheet?.classes);
@@ -394,7 +395,7 @@ export function validate(sheet) {
     const rq = k.c.multiclass?.requires;
     if (!rq) { say(`The ${k.c.name} class cannot be combined with another here.`); continue; }
     const ok = rq.all ? rq.all.every((a) => sheet.abilities[a] >= 13) : rq.any.some((a) => sheet.abilities[a] >= 13);
-    if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map(nice).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
+    if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map((a) => ABILITY_NAMES[a]).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
   }
   const { feats, G, abil, armourWords, weaponWords } = gather(sheet);
 

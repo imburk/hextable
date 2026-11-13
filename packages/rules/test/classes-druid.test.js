@@ -128,11 +128,11 @@ test("a form is plain to other players and the druid's own record is the player'
 });
 
 test("migration to version 17: a form is kept with its effect, put back without one, dropped if broken", () => {
-  assert.equal(VERSION, 17);
+  assert.ok(VERSION >= 17);                   // 18 since multiclassing (#175)
   const s = field(druid(6)), e = s.entities.hero, ac = e.ac;
   ok(shape(s, "wolf"));
   const keep = structuredClone(s); keep.version = 16; migrate(keep);
-  assert.equal(keep.version, 17); assert.equal(keep.entities.hero.form.block, "wolf");
+  assert.equal(keep.version, VERSION); assert.equal(keep.entities.hero.form.block, "wolf");
   const lost = structuredClone(s); lost.version = 16; lost.effects = [];
   migrate(lost);
   assert.equal(lost.entities.hero.form, undefined); assert.equal(lost.entities.hero.ac, ac);

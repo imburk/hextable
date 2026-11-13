@@ -24,7 +24,7 @@ import { difficultAt, terrainsOf } from './terrain.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
-import { derive, validate } from './derive.js';
+import { classesOf, derive, levelOf, validate } from './derive.js';
 import { OPPORTUNITY, WHILE_WAITING, canReact, checkInstructions, instruction, mayAsk, opportunityAttack, reactionsOf } from './reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, immuneTo, judge, modifiers, speedOf } from './modifiers.js';
 
@@ -44,9 +44,11 @@ export const living = (s) => Object.values(s.entities).filter((e) => !e.dead);
 export const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 export const current = (s) => (s.encounter ? s.encounter.order[s.encounter.turn]?.id ?? null : null);
 // A spellcaster's spell attack bonus and save DC, with what modifiers change about them when the
-// game state is given (`spell.attack`, `spell.dc`).
-export const spellStats = (e, s = null) => {
-  const m = e.prof + mod(e.abil[e.castAbil] ?? 10);
+// game state is given (`spell.attack`, `spell.dc`). With `spell`, the ability of the class that
+// prepares it (a character with several classes: `spellAbil`).
+export const castAbilOf = (e, spell) => e.spellAbil?.[spell] ?? e.castAbil;
+export const spellStats = (e, s = null, spell = null) => {
+  const m = e.prof + mod(e.abil[castAbilOf(e, spell)] ?? 10);
   if (!s) return { attack: m, dc: 8 + m };
   const a = modifiers(s, e, 'spell.attack', {}, ''), d = modifiers(s, e, 'spell.dc', {}, '');
   return { attack: bounded(a, m + a.add), dc: bounded(d, 8 + m + d.add) };
@@ -67,6 +69,7 @@ export function makeEntity(tpl, over = {}) {
     slots: {}, resist: [], vuln: [], immune: [], gear: [], ...t,
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0, ...featureUses(t) },
     ...(t.hitDie ? { hd: t.level } : {}),
+    ...(t.hitDice ? { hdBy: { ...t.hitDice } } : {}),                 // Hit Dice of several sizes, left of each (several classes)
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
   };
 }
@@ -948,8 +951,8 @@ function castReaction(s, e, sp, slot, trigger, against, ev, targets = [e.id]) {
     fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...targets] });
   }
-  const st = spellStats(e, s), depth = s.stack?.length ?? 0;
-  const src = { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(trigger === 'cast' ? { counters: true } : {}) };
+  const st = spellStats(e, s, sp.id), depth = s.stack?.length ?? 0;
+  const src = { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(trigger === 'cast' ? { counters: true } : {}) };
   begin(s, { steps, actor: e.id, targets: [...targets], src });
   run(s, ev, KIT, depth);
   if (sp.def.tier !== 'auto') ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true });
@@ -2036,7 +2039,7 @@ const handlers = {
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
 
     // What it does: run its effect steps.
-    const st = spellStats(e, s), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
+    const st = spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     if (pick) chooseIn(steps, pick.of, a.choice);
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}) });
@@ -2059,7 +2062,7 @@ const handlers = {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10) }, last: {} };
+        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10) }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
@@ -2078,7 +2081,7 @@ const handlers = {
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}),
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
@@ -2586,18 +2589,31 @@ const handlers = {
     }
     remake(s, ent(s, a.actor), record, sheet, ev);
   },
-  // Up one level: the same class, one level higher, outside a fight. { type: 'levelUp', actor, sheet }
+  // Up one level, outside a fight: one more level in a class it has, or level 1 in a new class
+  // (Multiclassing), whose prerequisites validate() checks. { type: 'levelUp', actor, sheet }
   levelUp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can level a character up.');
     const e = ent(s, a.actor);
     e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
     !inFight(s, e.id) || fail(`${e.name} can't level up in the middle of a fight.`);
-    (a.sheet?.class === e.sheet.class) || fail('Levelling up keeps the class (multiclassing is not built).');
-    (a.sheet?.level === e.sheet.level + 1) || fail(`${e.name} is level ${e.sheet.level}; the new sheet must be level ${e.sheet.level + 1}.`);
+    (a.sheet && typeof a.sheet === 'object' && !Array.isArray(a.sheet)) || fail('Send the new sheet.');
+    const was = classesOf(e.sheet), now = Array.isArray(a.sheet.classes) ? classesOf(a.sheet) : null;
+    if (!now) {
+      (a.sheet.class === was[0].c?.id && was.length === 1) || fail(was.length > 1 ? `${e.name} has several classes; the new sheet lists them all.` : 'Levelling up keeps the class, or adds one: list both classes to take a level in a new one.');
+      (a.sheet.level === e.sheet.level + 1) || fail(`${e.name} is level ${e.sheet.level}; the new sheet must be level ${e.sheet.level + 1}.`);
+    } else {
+      // The classes it had, in the same order, with one level more in one of them or a new class at level 1 at the end.
+      const ids = (l) => l.map((k) => k.c?.id);
+      const same = now.length >= was.length && now.length <= was.length + 1 && ids(was).every((id, i) => ids(now)[i] === id);
+      same || fail(`Levelling up keeps ${e.name}'s classes in the order taken: ${ids(was).join(', ')}, and may add one at the end.`);
+      const more = now.map((k, i) => k.level - (was[i]?.level ?? 0));
+      (more.every((n) => n >= 0) && more.reduce((x, y) => x + y, 0) === 1 && (now.length === was.length || now[now.length - 1].level === 1))
+        || fail(`${e.name} gains one level: one more in one class, or level 1 in a new one.`);
+    }
     const problems = validate(a.sheet);
     problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
     remake(s, e, derive(a.sheet).record, structuredClone(a.sheet), ev);
-    ev.push({ type: 'std', id: e.id, action: `reached level ${a.sheet.level}` });
+    ev.push({ type: 'std', id: e.id, action: `reached level ${levelOf(a.sheet)}` });
   },
   // Take a creature out of the game. { type: 'remove', actor }
   remove(s, a, ctx, ev) {
@@ -2776,6 +2792,7 @@ const handlers = {
       e.uses.secondWind = e.features.secondWind || 0;
       for (const f of e.feats ?? []) if (f.uses) e.uses[f.id] = f.uses.max;   // every feature with uses
       if (e.hitDie) e.hd = e.level;                                        // and all spent Hit Point Dice
+      if (e.hitDice) e.hdBy = { ...e.hitDice };
       if (e.tempHp) { e.tempHp = 0; delete e.tempFx; }
       delete e.charges; delete e.spent;                                    // a monster's daily uses and spent recharges
       const ex = e.cond.exhaustion;
@@ -2835,7 +2852,10 @@ const handlers = {
       if (e.hp <= 0) { ev.push({ type: 'manual', actor: e.id, name: 'Short Rest', text: `${e.name} is at 0 Hit Points and can't take a Short Rest.` }); continue; }
       for (let i = 0; i < (spend[e.id] ?? 0); i++) {
         e.hd--;
-        const r = roll(s, `1d${e.hitDie}`);
+        // Of Hit Dice of several sizes, the largest left first: the one a player would spend.
+        const size = e.hdBy ? Math.max(...Object.keys(e.hdBy).filter((d) => e.hdBy[d] > 0).map(Number)) : e.hitDie;
+        if (e.hdBy) e.hdBy[size]--;
+        const r = roll(s, `1d${size}`);
         heal(s, e, Math.max(1, r.total + mod(e.abil.con)), ev, { dice: r.dice, bonus: mod(e.abil.con), by: e.id });
       }
       for (const f of e.feats ?? []) {
@@ -2977,6 +2997,12 @@ function remake(s, e, record, sheet, ev) {
     if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
   }
   if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
+  // Hit Dice of several sizes: what was spent of each size stays spent.
+  if (fresh.hdBy && e.hd !== undefined) {
+    const had = e.hitDice ?? (e.hitDie ? { [e.hitDie]: e.level } : {}), left = e.hdBy ?? (e.hitDie ? { [e.hitDie]: e.hd } : {});
+    for (const d of Object.keys(fresh.hdBy)) fresh.hdBy[d] = Math.max(0, fresh.hitDice[d] - Math.max(0, (had[d] ?? 0) - (left[d] ?? 0)));
+    fresh.hd = Object.values(fresh.hdBy).reduce((a, b) => a + b, 0);
+  }
   fresh.sheet = sheet;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });
