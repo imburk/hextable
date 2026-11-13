@@ -1800,6 +1800,7 @@ const TRANSMUTE = ['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder'];
 const METAMAGIC = ['careful', 'distant', 'extended', 'heightened', 'quickened', 'subtle', 'transmuted', 'twinned'];
 function metamagicFor(s, e, sp, a, slot) {
   const none = { list: [], names: [], has: {}, cost: 0 };
+  (a.metamagic === undefined || (Array.isArray(a.metamagic) && a.metamagic.every((x) => typeof x === 'string'))) || fail('Name the Metamagic options used.');
   for (const k of ['careful', 'heightened', 'transmute']) if (a[k] !== undefined && !(a.metamagic ?? []).includes(k === 'transmute' ? 'transmuted' : k)) fail(`"${k}" goes with that Metamagic option.`);
   if (a.metamagic === undefined) return none;
   const ids = a.metamagic;
@@ -1820,6 +1821,7 @@ function metamagicFor(s, e, sp, a, slot) {
     (saves) || fail('Careful Spell is for a spell that calls for saving throws.');
     const n = Math.max(1, mod(e.abil.cha));
     (Array.isArray(a.careful) && a.careful.length >= 1 && a.careful.length <= n && new Set(a.careful).size === a.careful.length) || fail(`Careful Spell protects up to ${n} creature${n === 1 ? '' : 's'}: name them.`);
+    a.careful.includes(e.id) && fail('Careful Spell protects other creatures, not the caster.');
   }
   if (has.heightened) { saves || fail('Heightened Spell is for a spell that calls for saving throws.'); typeof a.heightened === 'string' || fail('Name the target Heightened Spell picks.'); }
   if (has.quickened) sp.time === 'action' || fail('Quickened Spell is for a spell cast as an action.');
@@ -2024,7 +2026,8 @@ const handlers = {
     // Someone who sees it being cast may counter it (Counterspell). Then it dissipates with no
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
-    const counteredBy = mm.has.subtle ? null : counterWindow(s, e, sp, ev);      // Subtle Spell: nothing to see being cast
+    // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
+    const counteredBy = mm.has.subtle && !sp.def.costly ? null : counterWindow(s, e, sp, ev);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
@@ -2174,6 +2177,8 @@ const handlers = {
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.
     if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
+    // A feature that casts a spell (Divine Intervention) is used by casting: `cast` with `via`.
+    (!f.freeCast || f.action) || fail(`${f.name} casts a spell: cast the spell through it (cast with via "${f.id}").`);
     const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
@@ -2230,6 +2235,13 @@ const handlers = {
     const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
     const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, a);
     if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    // A die handed to another creature to spend later (Bardic Inspiration: "A creature can have only one
+    // Bardic Inspiration die at a time"): not to one that still holds one from this feature, whoever gave it.
+    const gives = act.duration && (act.effects ?? []).some((st) => st.modifier?.uses !== undefined);
+    if (gives && aimed?.targets) for (const t of aimed.targets) {
+      const holds = effectsOf(s).some((fx) => fx.feature === f.id && fx.parts.some((p) => p.target === t.id && !p.ended && p.modifier?.uses !== undefined));
+      !holds || fail(`${t.name} already has a ${f.name} die.`);
+    }
 
     // Paid for: from here it happens.
     if (time && fighting) enc.budget[time]--;
@@ -2801,6 +2813,7 @@ const handlers = {
     // `restore: { of, max }`), regaining what was spent up to its most, for one of its uses.
     const restore = a.restore ?? [];
     Array.isArray(restore) || fail('Name who restores points.');
+    new Set(restore).size === restore.length || fail('Name each creature that restores points once.');
     const refills = restore.map((id) => {
       const e = ent(s, id), f = (e.feats ?? []).find((x) => x.restore && (e.uses[x.id] ?? 0) > 0);
       who.includes(e) || fail(`${e.name} isn't resting.`);

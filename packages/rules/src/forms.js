@@ -11,11 +11,13 @@ import { SKILLS } from './content/schema.js';
 export const FORM_FIELDS = ['size', 'ac', 'speed', 'speeds', 'hover', 'senses', 'abil', 'attacks', 'actions', 'resist', 'vuln', 'immune', 'conditionImmune',
   'skillBonus', 'saveBonus', 'initBonus'];
 const mod = (n) => Math.floor((n - 10) / 2);
+const both = (a, b) => [...new Set([...(a ?? []), ...(b ?? [])])];
 
 // Lay `tpl` (the engine's template of a pack monster, content/index.js MONSTERS) with its `actions`
 // over creature `e`. Game statistics come from the stat block, but the creature keeps its own
 // Intelligence, Wisdom and Charisma, and its own save and skill proficiencies with its Proficiency
-// Bonus, using the stat block's modifier where that is higher (SRD Wild Shape).
+// Bonus, using the stat block's modifier where that is higher (SRD Wild Shape). Resistances and
+// Immunities are its own (from class features) together with the stat block's.
 export function takeForm(e, block, name, tpl, actions, fx) {
   const kept = {}, absent = [];
   for (const k of FORM_FIELDS) { if (e[k] === undefined) absent.push(k); else kept[k] = structuredClone(e[k]); }
@@ -30,11 +32,15 @@ export function takeForm(e, block, name, tpl, actions, fx) {
   }
   Object.assign(e, {
     size: tpl.size, ac: tpl.ac, speed: tpl.speed, speeds: structuredClone(tpl.speeds ?? {}), senses: structuredClone(tpl.senses ?? {}), abil,
-    attacks: [], actions: structuredClone(actions), resist: [...(tpl.resist ?? [])], vuln: [...(tpl.vuln ?? [])], immune: [...(tpl.immune ?? [])],
+    attacks: [], actions: structuredClone(actions), resist: both(kept.resist, tpl.resist), vuln: [...(tpl.vuln ?? [])], immune: both(kept.immune, tpl.immune),
     skillBonus, saveBonus,
   });
   if (tpl.hover) e.hover = true; else delete e.hover;
-  if (tpl.conditionImmune) e.conditionImmune = [...tpl.conditionImmune]; else delete e.conditionImmune;
+  // The creature keeps its class features and feats (Nature's Ward), so its own Resistances and
+  // Immunities stay and the Beast's are added. A character's own come only from its features
+  // (derive.js); a quick-entry sheet's typed ones are kept too, as the engine cannot tell.
+  const ci = both(kept.conditionImmune, tpl.conditionImmune);
+  if (ci.length) e.conditionImmune = ci; else delete e.conditionImmune;
   if (tpl.initBonus !== undefined) e.initBonus = tpl.initBonus; else delete e.initBonus;
 }
 

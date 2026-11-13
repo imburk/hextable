@@ -35,15 +35,22 @@ export const healthOf = (e) =>
 const seenHp = (e) => (!e.dead && e.hp > 0 ? 1 : 0);      // keeps up(e) true or false without the number
 
 
+// A creature not of the party that has taken a form (Wild Shape) looks like the Beast and nothing
+// else: its name, stat block and size are the Beast's, and neither its own name, its look, nor
+// that it is in a form is sent. Players who saw it change were told so by the `form` event; the
+// view does not remember for them. The party's own forms are in their open records.
+const inForm = (e) => !!e.form && e.side !== 'party';
+export const seenName = (e) => (inForm(e) ? e.form.name ?? e.name : e.name);
+
 function seenRecord(e) {
   const cond = {};
   for (const c of visibleConditions(e)) cond[c] = true;         // which conditions show is decided by their data
+  const form = inForm(e);
   return {
-    id: e.id, name: e.name, kind: e.kind, side: e.side, tpl: e.tpl, size: e.size,
-    pos: { q: e.pos.q, r: e.pos.r, z: e.pos.z }, look: e.look ? structuredClone(e.look) : undefined,
+    id: e.id, name: seenName(e), kind: form ? 'npc' : e.kind, side: e.side, tpl: form ? e.form.block : e.tpl, size: e.size,
+    pos: { q: e.pos.q, r: e.pos.r, z: e.pos.z }, look: e.look && !form ? structuredClone(e.look) : undefined,
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
-    ...(e.form ? { form: e.form.block } : {}),                                       // the shape it has taken is plain to see (Wild Shape)
     ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
   };
 }

@@ -973,14 +973,33 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     left unchosen, and options picked in two such features may not repeat.
   - *Forms* (`forms.js`, Decision 7, first build): a form lays a pack monster's stat block over a
     creature: size, AC, speeds, senses, Strength, Dexterity and Constitution, attacks (none) and
-    actions (the block's), defences and initiative; save and skill bonuses are the better of its
+    actions (the block's), Vulnerabilities and initiative; Resistances, damage and condition Immunities are its own together with the block's (class features are kept: Nature's Ward, #169); save and skill bonuses are the better of its
     own (its proficiencies and Proficiency Bonus with the new scores) and the block's. Hit Points,
     mental scores, features and proficiencies stay. What was replaced is kept on `e.form` and put
     back when the lasting effect holding it ends (its hours, a new form, the Bonus Action with no
     form, Incapacitated or 0 Hit Points). No spells in a form; no sheet change while in one.
-    Event `form { id, form, name }` (players: where the creature is known); `seenRecord` carries
-    `form` (the block's id). **State version 17**: the migration keeps a whole form, puts back one
+    Event `form { id, form, name }` (players: where the creature is known); a creature not of the party in a
+    form is seen only as the Beast (amended, #169: `seenRecord` sends the Beast's name and `tpl`,
+    kind `npc`, no `look` and no `form`; history labels name it the same way, `seenName`). **State version 17**: the migration keeps a whole form, puts back one
     whose effect is gone, and drops a broken one.
+- **Amendment (review fixes, #169).** Found by the independent review (#166) and fixed each with a test
+  (`test/class-review.test.js`):
+  - A spell may say `costly: true`: its Material component has a cost given in the spell or is consumed
+    by it (57 SRD spells, each compared with the SRD's Components line). Subtle Spell leaves such a
+    component, so the spell can still be seen being cast and Counterspelled.
+  - Careful Spell protects other creatures, never the caster. Malformed `metamagic` is a refusal. A
+    feature that casts (`freeCast`, Divine Intervention) is refused through `feature` and keeps its use.
+    `shortRest` refuses a creature named twice in `restore`.
+  - An aura's `range` may be `{ byLevel }` (feet): the Paladin's three auras are 10 feet, 30 from level
+    18, so Aura Expansion is `auto` and grants nothing itself (the linter allows that for a feature at
+    a level where an aura's range grows). Range is measured from the edge of the holder's space, as an
+    Emanation extends from a creature (a Large paladin reaches further from its origin hex).
+  - A feature action with a `duration` whose steps hand over a `modifier` with `uses` (a die to spend:
+    Bardic Inspiration) is refused for a creature that still holds one from the same feature, from any
+    giver ("only one Bardic Inspiration die at a time").
+  - Checked against the SRD and pinned, no change: Aura of Protection adds to Death Saving Throws and
+    Concentration saves (both are saving throws); Twinned Spell's effective level only changes the
+    target count, as no spell in the pack that it can twin scales anything else by slot.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

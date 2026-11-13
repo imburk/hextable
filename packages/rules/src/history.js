@@ -13,7 +13,7 @@
 // the action added. Undoing gives back exactly the JSON the game had, so the same action taken
 // again rolls the same dice. The history is not part of the game state: it is never saved with the
 // game and never sent to players. Pure: no network, no clock, no randomness.
-import { viewEvents, classify } from './view.js';
+import { viewEvents, classify, seenName } from './view.js';
 
 export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
@@ -155,8 +155,21 @@ const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage acti
 
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;
-  const name = (id) => after.entities[id]?.name ?? prior?.entities?.[id]?.name ?? 'Someone';
+  const real = (id) => after.entities[id]?.name ?? prior?.entities?.[id]?.name ?? 'Someone';
+  // Players are told a creature's name as they see it: one not of the party in a form is the Beast (view.js, seenName).
+  const seen = (id) => { const e = after.entities[id] ?? prior?.entities?.[id]; return e ? seenName(e) : 'Someone'; };
   const ev = (type) => events.find((e) => e.type === type);
+  if (action.type === 'react') {
+    // An answer to a reaction carries on the action that waited for it, and is named after that.
+    const p = prior?.pending;
+    if (!p) return finish('A reaction was answered');
+    const inner = describeStep(p.action, events, { tree: { ...prior, pending: undefined } }, after);
+    return { label: `${inner.label} (after ${real(p.ask.reactor)}'s reaction)`, shown: inner.shown && `${inner.shown}, after a reaction` };
+  }
+  const text = phrase(real), shown = phrase(seen);
+  return finish({ label: typeof text === 'string' ? text : text.label, shown: typeof shown === 'string' ? shown : shown.shown });
+
+  function phrase(name) {
   const a = action, who = name(a.actor);
   let label;
   switch (a.type) {
@@ -168,13 +181,6 @@ export function describeStep(action, events, before, after) {
       const own = events.find((e) => e.type === 'cast' && e.actor === a.actor && !e.reaction), lost = ev('countered');
       if (lost) { label = { label: `${who}'s ${lost.name} was countered`, shown: `${who}'s spell was countered` }; break; }
       label = `${who} cast ${own?.name ?? 'a spell'}`; break;
-    }
-    // An answer to a reaction carries on the action that waited for it, and is named after that.
-    case 'react': {
-      const p = prior?.pending;
-      if (!p) { label = 'A reaction was answered'; break; }
-      const inner = describeStep(p.action, events, { tree: { ...prior, pending: undefined } }, after);
-      return { label: `${inner.label} (after ${name(p.ask.reactor)}'s reaction)`, shown: inner.shown && `${inner.shown}, after a reaction` };
     }
     case 'spawn': label = `${name(ev('spawned')?.id)} was added`; break;
     case 'addCharacter': label = `${name(ev('spawned')?.id ?? ev('placed')?.id)} joined the party`; break;
@@ -212,12 +218,18 @@ export function describeStep(action, events, before, after) {
     case 'note': label = 'A note was sent'; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
+  return label;
+  }
+
+  function finish(label) {
+  const a = action;
   const named = ['actor', 'target', 'entity'].map((k) => a[k]).filter((id) => typeof id === 'string');
   const known = named.every((id) => classify(after, id) !== 'hidden');
-  const seen = viewEvents(events, after, { role: 'player' }).length > 0;
+  const heard = viewEvents(events, after, { role: 'player' }).length > 0;
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
   // An action that stopped to ask about a reaction did nothing yet: players are told nothing of it.
   const asked = events.find((e) => e.type === 'reactionAsked');
-  if (asked) return { label: `${text} (waiting for ${name(asked.id)}'s reaction)`, shown: null };
-  return { label: text, shown: known && seen ? shown : null };
+  if (asked) return { label: `${text} (waiting for ${real(asked.id)}'s reaction)`, shown: null };
+  return { label: text, shown: known && heard ? shown : null };
+  }
 }

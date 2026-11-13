@@ -46,7 +46,7 @@ export const spells8 = [
   {
     id: "clone", name: "Clone", source: "SRD 5.2.1",
     level: 8, school: "necromancy", classes: ["wizard"],
-    time: "hour", range: "touch", components: ["v","s","m"],
+    time: "hour", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"Clone: the caster touches a creature or at least 1 cubic inch of its flesh and an inert duplicate forms in the vessel, finishing growth after 120 days (the same age as the creature or younger, as chosen) and enduring while the vessel is undisturbed. If the original dies after it is ready, its soul transfers to the clone if free and willing. The clone is physically identical, with the same personality, memories and abilities but none of the original's equipment, and the original's remains become inert and cannot be revived. The DM tracks it."}],
@@ -106,7 +106,7 @@ export const spells8 = [
   {
     id: "holy-aura", name: "Holy Aura", source: "SRD 5.2.1",
     level: 8, school: "abjuration", classes: ["cleric"],
-    time: "action", range: "self", components: ["v","s","m"],
+    time: "action", range: "self", components: ["v","s","m"], costly: true,
     duration: "1 minute", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Holy Aura: for up to 1 minute a 30-foot Emanation surrounds the caster. Creatures of the caster's choice in it have Advantage on all saving throws, and other creatures have Disadvantage on attack rolls against them. When a Fiend or Undead hits an affected creature with a melee attack roll, the attacker makes a Constitution save or is Blinded until the end of its next turn. The DM applies it."}],

@@ -418,10 +418,15 @@ export const paladin = {
       "level": 6,
       "tier": "auto",
       "checked": true,
-      "text": "You and allies within 10 feet add your Charisma modifier (at least +1) to saving throws, while you are not Incapacitated. One Aura of Protection at a time: the best one applies.",
+      "text": "You and allies within 10 feet (30 feet from level 18) add your Charisma modifier (at least +1) to saving throws, while you are not Incapacitated. One Aura of Protection at a time: the best one applies.",
       "grants": {
         "aura": {
-          "range": 10,
+          "range": {
+            "byLevel": {
+              "6": 10,
+              "18": 30
+            }
+          },
           "modifiers": [
             {
               "on": "save",
@@ -489,7 +494,12 @@ export const paladin = {
       "text": "You and allies in your Aura of Protection are immune to Frightened; a Frightened ally there is not affected by it while there.",
       "grants": {
         "aura": {
-          "range": 10,
+          "range": {
+            "byLevel": {
+              "10": 10,
+              "18": 30
+            }
+          },
           "immune": [
             "frightened"
           ]
@@ -546,9 +556,9 @@ export const paladin = {
       "id": "aura-expansion",
       "name": "Aura Expansion",
       "level": 18,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Your Aura of Protection becomes a 30-foot Emanation."
+      "text": "Your Aura of Protection becomes a 30-foot Emanation, and so do Aura of Courage and Aura of Devotion, which work in it."
     },
     {
       "id": "epic-boon",
@@ -621,7 +631,12 @@ export const paladin = {
         "text": "You and allies in your Aura of Protection are immune to Charmed; a Charmed ally there is not affected by it while there.",
         "grants": {
           "aura": {
-            "range": 10,
+            "range": {
+              "byLevel": {
+                "7": 10,
+                "18": 30
+              }
+            },
             "immune": [
               "charmed"
             ]

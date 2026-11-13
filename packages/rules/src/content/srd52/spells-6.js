@@ -27,7 +27,7 @@ export const spells6 = [
   {
     id: "circle-of-death", name: "Circle of Death", source: "SRD 5.2.1",
     level: 6, school: "necromancy", classes: ["sorcerer","warlock","wizard"],
-    time: "action", range: 150, components: ["v","s","m"],
+    time: "action", range: 150, components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"area":{"shape":"sphere","size":60}},
     effects: [{"save":"con","half":true,"onFail":[{"damage":"8d8","type":"necrotic"}]}],
@@ -48,7 +48,7 @@ export const spells6 = [
   {
     id: "contingency", name: "Contingency", source: "SRD 5.2.1",
     level: 6, school: "abjuration", classes: ["wizard"],
-    time: "10 minutes", range: "self", components: ["v","s","m"],
+    time: "10 minutes", range: "self", components: ["v","s","m"], costly: true,
     duration: "10 days", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Contingency: the caster picks a spell of level 5 or lower they can cast that takes an action and can target them, and casts it as part of Contingency, spending slots for both, without it taking effect. When a trigger the caster describes first occurs, the spell takes effect on the caster at once, whether the caster wants it or not, and Contingency ends. Only one Contingency can be active; casting another ends the first, and it ends if its Material component is not on the caster's person. The DM tracks the trigger."}],
@@ -58,7 +58,7 @@ export const spells6 = [
   {
     id: "create-undead", name: "Create Undead", source: "SRD 5.2.1",
     level: 6, school: "necromancy", classes: ["cleric","warlock","wizard"],
-    time: "minute", range: 10, components: ["v","s","m"],
+    time: "minute", range: 10, components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Create Undead: castable only at night: up to three corpses of Medium or Small Humanoids in range each become a Ghoul under the caster's control (SRD monster stat block). As a Bonus Action each turn the caster can command any of them within 120 feet; with no command a creature Dodges. It obeys for 24 hours, and recasting the spell on it before then renews control (over up to three creatures) instead of animating new ones. A level 7 slot gives four Ghouls, level 8 five Ghouls or two Ghasts or Wights, level 9 six Ghouls, three Ghasts or Wights, or two Mummies. The DM adds and runs them."}],
@@ -89,7 +89,7 @@ export const spells6 = [
   {
     id: "find-the-path", name: "Find the Path", source: "SRD 5.2.1",
     level: 6, school: "divination", classes: ["bard","cleric","druid"],
-    time: "minute", range: "self", components: ["v","s","m"],
+    time: "minute", range: "self", components: ["v","s","m"], costly: true,
     duration: "1 day", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Find the Path: the caster names a location they are familiar with (not on another plane, not moving, not vague) and for up to 1 day while on the same plane knows its distance and direction, and which path is most direct at any choice along the way. The DM tells the caster."}],
@@ -109,7 +109,7 @@ export const spells6 = [
   {
     id: "forbiddance", name: "Forbiddance", source: "SRD 5.2.1",
     level: 6, school: "abjuration", classes: ["cleric"],
-    time: "10 minutes", range: "touch", components: ["v","s","m"],
+    time: "10 minutes", range: "touch", components: ["v","s","m"], costly: true,
     duration: "1 day", concentration: false, ritual: true,
     target: {"self":true},
     effects: [{"manual":"Forbiddance: a ward covers up to 40,000 square feet of floor space up to 30 feet high for 1 day. Creatures cannot teleport into it or use portals to enter, and it is proofed against planar travel by way of the Astral Plane, Ethereal Plane, Feywild, Shadowfell or Plane Shift. The caster picks creature types among Aberrations, Celestials, Elementals, Fey, Fiends and Undead; one of those types entering the area for the first time on a turn or ending its turn there takes 5d10 Radiant or Necrotic damage (the caster's choice), unless it speaks the password as it enters. It cannot overlap another Forbiddance. Casting it daily for 30 days in the same place makes it last until dispelled, consuming the components on the last casting. It can be cast as a Ritual. The DM applies it."}],
@@ -140,7 +140,7 @@ export const spells6 = [
   {
     id: "guards-and-wards", name: "Guards and Wards", source: "SRD 5.2.1",
     level: 6, school: "abjuration", classes: ["bard","wizard"],
-    time: "hour", range: "touch", components: ["v","s","m"],
+    time: "hour", range: "touch", components: ["v","s","m"], costly: true,
     duration: "24 hours", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Guards and Wards: a ward covers up to 2,500 square feet of floor space up to 20 feet tall for 24 hours (a 50-foot square, a hundred contiguous 5-foot squares, or twenty-five contiguous 10-foot squares). The caster can exempt individuals and set a password that makes the speaker within 5 feet immune. Corridors: fog (Heavily Obscured) and a 50 percent chance at each branching that a creature other than the caster believes it goes the opposite way. Doors: all magically locked as by Arcane Lock, and up to ten can be disguised as plain wall. Stairs: filled with webs as by Web, regrowing in 10 minutes if destroyed. Other Spell Effect: one of Dancing Lights in four corridors, Magic Mouth in two places, Stinking Cloud in two places, Gust of Wind in one corridor or room, or Suggestion in one 5-foot square. Dispel Magic works on each effect but not on the spell itself, which ends if all four are dispelled; casting daily for 365 days makes it last until all effects are dispelled. The DM applies it."}],
@@ -171,7 +171,7 @@ export const spells6 = [
   {
     id: "heroes-feast", name: "Heroes’ Feast", source: "SRD 5.2.1",
     level: 6, school: "conjuration", classes: ["bard","cleric","druid"],
-    time: "10 minutes", range: "self", components: ["v","s","m"],
+    time: "10 minutes", range: "self", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Heroes’ Feast: a feast appears on a surface in an unoccupied 10-foot Cube next to the caster. It takes 1 hour to eat, and benefits begin only then. Up to twelve creatures can partake, each gaining for 24 hours Resistance to Poison damage, Immunity to the Frightened and Poisoned conditions, and a Hit Point maximum increase of 2d10 along with the same number of Hit Points. The DM applies it."}],
@@ -181,7 +181,7 @@ export const spells6 = [
   {
     id: "instant-summons", name: "Instant Summons", source: "SRD 5.2.1",
     level: 6, school: "conjuration", classes: ["wizard"],
-    time: "minute", range: "touch", components: ["v","s","m"],
+    time: "minute", range: "touch", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: true,
     target: {"self":true},
     effects: [{"manual":"Instant Summons: the caster touches the sapphire and an object of 10 pounds or less whose longest side is 6 feet or less, leaving an Invisible mark on it and inscribing its name on the gem (a different sapphire each cast). Later, a Magic action to speak the name and crush the sapphire brings the object to the caster's hand across any distance or plane, and the spell ends; if another creature holds it, the caster instead learns who that is and where. It can be cast as a Ritual. The DM applies it."}],
@@ -201,7 +201,7 @@ export const spells6 = [
   {
     id: "magic-jar", name: "Magic Jar", source: "SRD 5.2.1",
     level: 6, school: "necromancy", classes: ["wizard"],
-    time: "minute", range: "self", components: ["v","s","m"],
+    time: "minute", range: "self", components: ["v","s","m"], costly: true,
     duration: "until dispelled", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"manual":"Magic Jar: the caster's body falls catatonic as the soul enters the container (a gem, crystal or reliquary). In the container the caster is aware of the surroundings but cannot move or take Reactions, and can only project the soul up to 100 feet to return to the body (ending the spell) or try to possess a visible Humanoid within 100 feet (not one warded by Protection from Evil and Good or Magic Circle). The target makes a Charisma save; on a failure its soul is trapped in the container, on a success it cannot be targeted again for 24 hours. A possessor controls the body but keeps its own game statistics except Hit Points, Hit Point Dice, Strength, Dexterity, Constitution, Speed and senses, which come from the host; the trapped soul is Incapacitated. A Magic action returns the soul to the container if within 100 feet. If the host dies, the caster makes a Charisma save against their own spell save DC to return, or dies. If the container is destroyed or the spell ends the soul returns to its body, and the container is destroyed; the caster dies if the body is more than 100 feet away or dead, and a trapped creature dies similarly. The DM runs it."}],
@@ -271,7 +271,7 @@ export const spells6 = [
   {
     id: "true-seeing", name: "True Seeing", source: "SRD 5.2.1",
     level: 6, school: "divination", classes: ["bard","cleric","sorcerer","warlock","wizard"],
-    time: "action", range: "touch", components: ["v","s","m"],
+    time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "1 hour", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
     effects: [{"manual":"True Seeing: a willing creature the caster touches has Truesight with a range of 120 feet for 1 hour. The DM applies it."}],

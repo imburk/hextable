@@ -254,7 +254,7 @@ export const bard = {
       "level": 1,
       "tier": "assist",
       "checked": true,
-      "text": "As a Bonus Action, give another creature within 60 feet who can see or hear you a Bardic Inspiration die for 1 hour; once, when it fails a D20 Test, it rolls the die and adds it. Charisma modifier uses (at least 1); back on a Long Rest (a Short Rest too from level 5). The engine rolls the die on the first failed attack roll or saving throw it could turn; on an ability check, and keeping it for a later roll, and the one-die-at-a-time limit, are the DM's.",
+      "text": "As a Bonus Action, give another creature within 60 feet who can see or hear you a Bardic Inspiration die for 1 hour; once, when it fails a D20 Test, it rolls the die and adds it. Charisma modifier uses (at least 1); back on a Long Rest (a Short Rest too from level 5). The engine rolls the die on the first failed attack roll or saving throw it could turn, and gives no second die to a creature that holds one; on an ability check, and keeping it for a later roll, are the DM's.",
       "uses": {
         "max": {
           "mod": "cha",

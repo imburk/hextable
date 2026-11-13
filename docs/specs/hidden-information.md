@@ -91,6 +91,11 @@ view unchanged. `bloodied` means at or below half its hit point maximum.
 Everything else (`maxHp`, `ac`, `abil`, `prof`, `attacks`, `spells`, `slots`,
 `features`, resistances, `death`, `uses`, `gear`) is not sent.
 
+A Seen creature in a form (Wild Shape) is sent as the Beast it looks like: the
+Beast's name, `tpl` and size, `kind: 'npc'`, and no `look` and no `form`
+(#169). Players who saw the change were told by the `form` event; the view
+keeps no memory of it for them. History labels name it the same way.
+
 Monster stat blocks in `content/` are public SRD text and ship with the
 client; that is fine. What is hidden is this particular creature's state.
 

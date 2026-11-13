@@ -91,8 +91,12 @@ casts without a slot: Divine Intervention), `metamagic` (a list of option ids) w
 `heightened` (an id) and `transmute` (a damage type). `shortRest` takes `restore` (ids: Sorcerous
 Restoration). New event `form {id, form, name}` (sent where the creature is known; `form` null when
 it ends); `save` and `attack` events may carry `rescued {name, dice, add}` (a Bardic Inspiration
-die or Peerless Skill) and a `save` may carry `careful` or `reroll`. A creature seen by players
-carries `form` (the Beast's id) while in one. State version 17.
+die or Peerless Skill) and a `save` may carry `careful` or `reroll`. State version 17.
+Since #169: a creature not of the party in a form is seen by players only as the Beast (its
+`name`, `tpl` and `size` are the Beast's, `kind` is `npc`, and no `look` or `form` is sent);
+`careful` may not name the caster; `restore` names each creature once; a feature that casts
+(Divine Intervention) is refused through `feature` (use `cast` with `via`); a second Bardic
+Inspiration die is refused for a creature that holds one.
 
 **Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
 Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
