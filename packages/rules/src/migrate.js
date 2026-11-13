@@ -44,6 +44,9 @@ export function migrate(state) {
   if (state.settings) state.settings.unseenTurns ??= 'say';
   // Version 12: the table rule for who throws the dice (docs/specs/dice.md).
   if (state.settings) state.settings.diceThrow ??= 'auto';
+  // The table rule for how the picture is paced (docs/specs/renderer.md, Decision 3). Presentation
+  // only, read by clients; no version of its own: a table saved before it waits for the picture.
+  if (state.settings) state.settings.pace ??= 'wait';
   // Handouts (no version of their own: a state without them simply has none yet).
   if (!Array.isArray(state.handouts)) state.handouts = [];
   // Version 13: scenes (scenes.js). A table saved before them has none, open or prepared.

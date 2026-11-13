@@ -465,6 +465,35 @@ test("a question reaches only the player asked: other players' views, patches, e
   assert.ok(!viewEvents(done.events, s, KIM).some((e) => e.type === "reactionAnswered"));
 });
 
+test("a question set off by a creature the party cannot perceive: the asked player is asked, nobody else is told the table waits", () => {
+  const s = shieldUp("ask");
+  s.entities.m1.hiding = { dc: 40 };
+  const kimBefore = snapshot(view(s, KIM)), patBefore = snapshot(view(s, PAT));
+  const r = ok(swing(s));
+  assert.equal(r.events[0].type, "reactionAsked");
+  assert.ok(s.pending);
+  // Pat still gets the question, without who set it off.
+  const q = view(s, PAT).prompt;
+  assert.equal(q.reactor, "wizard"); assert.equal(q.by, undefined);
+  const patAfter = view(s, PAT);
+  assert.deepEqual(Object.keys(diff(patBefore, snapshot(patAfter), patAfter)), ["prompt"]);
+  // Kim, and a player with no creature, get nothing: no waiting notice in the view or the patch.
+  assert.equal(view(s, KIM).prompt, null);
+  assert.equal(view(s, { role: "player", userId: "lee" }).prompt, null);
+  const kimAfter = view(s, KIM);
+  assert.deepEqual(diff(kimBefore, snapshot(kimAfter), kimAfter), {}, "Kim's patch is empty");
+  assert.deepEqual(viewEvents(r.events, s, KIM), []);
+  assert.ok(!JSON.stringify(kimAfter).includes("waiting"));
+  // The DM sees it all.
+  assert.equal(viewPrompt(s, DM).by, "m1");
+  // Once the goblin is seen, the same question is a waiting notice for Kim.
+  delete s.entities.m1.hiding;
+  assert.deepEqual(view(s, KIM).prompt, { waiting: true });
+  s.entities.m1.hiding = { dc: 40 };
+  ok(react(s, { take: null }));
+  assert.equal(view(s, KIM).prompt, null);
+});
+
 test("an attacker the party cannot see is not named in the question", () => {
   const s = shieldUp("ask");
   s.entities.m1.hiding = { dc: 40 };

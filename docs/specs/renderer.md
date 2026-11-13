@@ -245,6 +245,12 @@ A table setting, `pace`, says what happens while beats are playing:
 This is the one engine change in the timeline: `pace` is added to `SETTINGS`
 in `engine.js`. It changes no rule, and settings are already sent to players.
 
+*Built (#154):* `SETTINGS.pace` is `['wait', 'flow', 'instant']`, a new game has
+`settings.pace: 'wait'`, and a table saved before it migrates to `wait` (no
+state version of its own, like `unseenTurns`). The DM sets it with
+`{ type: 'setting', key: 'pace', value }`. The engine never reads it; a test
+plays one fight under each value and finds the same state and rolls.
+
 How the wait works without the server waiting:
 
 - The server applies every action at once and sends the result, as now. It

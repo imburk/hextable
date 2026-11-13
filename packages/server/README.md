@@ -93,7 +93,9 @@ view has it whole). Each player's view carries `prompt`:
   what an option adds to Armor Class; `total` and `ac` (top level) are the attack roll and the Armor
   Class it beat, for `hit`. `by` only where the party knows of that creature. A `cast` question
   never names the spell.
-- for every other player: `{ waiting: true }`, nothing more.
+- for every other player: `{ waiting: true }`, nothing more, when the party can perceive what set the
+  question off (the creature that did and the creature whose action waits are known to the party);
+  otherwise `null`, as if nothing waited.
 
 The player asked also gets `reactionAsked {id,n,ask}` (live and in `history`); nobody else does.
 Until it is answered every action but `react`, `say`, `note`, `claim`, `release`, `askCheck` and

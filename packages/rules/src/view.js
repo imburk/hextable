@@ -114,18 +114,28 @@ export function view(state, viewer) {
 // { n, reactor, trigger, options: [{ reaction, name, slots?, ac? }], by?, attack?, total?, ac?,
 // crit?, spell? } (answer with { type: 'react', prompt: n, take, slot? }). `by` is left out where
 // the party cannot see who set it off. Every other player gets only { waiting: true }: the table
-// waits, but not on whom or for what, nor what action is waiting. Nothing waits: null. The DM has
-// the whole record in the state (`pending`) and gets it here too.
+// waits, but not on whom or for what, nor what action is waiting; and only when the party can
+// perceive what set it off (its creature and the waiting action's actor are known to the party),
+// so that a hidden creature's attack does not show itself by making the table wait. When the party
+// cannot, the asked player still gets the question and every other player null. Nothing waits:
+// null. The DM has the whole record in the state (`pending`) and gets it here too.
 export function viewPrompt(state, viewer) {
   const p = state.pending;
   if (!p) return null;
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
-  if (!t || typeof viewer?.userId !== 'string' || t.owner !== viewer.userId) return { waiting: true };
+  if (!t || typeof viewer?.userId !== 'string' || t.owner !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
   const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => pick(o, ['reaction', 'name', 'slots', 'ac'])) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
   for (const k of ['attack', 'total', 'ac', 'crit', 'spell']) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
+}
+
+// Whether the party can perceive what a waiting question was set off by: the creature that set it
+// off and the creature whose action waits, where each is named, are not hidden from the party.
+function perceived(state, p) {
+  const who = [p.ask?.by, p.action?.actor].filter((x) => typeof x === 'string');
+  return who.every((id) => classify(state, id) !== 'hidden');
 }
 
 // The standing instructions for reactions (reactions.js) of the creatures this viewer controls,

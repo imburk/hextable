@@ -4,14 +4,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, moveOptions } from "../src/engine.js";
 import * as H from "../src/hex.js";
-import { lintMap } from "../src/map.js";
+import { lintMap, newMap } from "../src/map.js";
 import { STOCK_MAPS } from "../src/content/maps/index.js";
 import { TILES } from "../src/content/terrain.js";
 import { newGame } from "../src/scenario.js";
-import { STEP_MAX, surfaces } from "../src/space.js";
+import { landing, STEP_MAX, surfaces } from "../src/space.js";
 import { barriers, center, objectDef } from "../src/walls.js";
 
 const DM = { role: "dm", userId: "dm" };
+const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const KINDS = ["tavern", "dungeon", "cave", "forest-road", "keep"];
 
 // Where a creature can stand: a tile of walkable terrain with nothing solid on it.
@@ -92,7 +93,41 @@ for (const { id, map } of STOCK_MAPS) {
     assert.deepEqual(Object.values(s.entities).filter((e) => e.side !== "party"), [], "no monsters");
     for (const e of Object.values(s.entities)) assert.ok(moveOptions(s, e).size > 1, `${e.id} can move`);
   });
+
+  test(`${id}: the party is set down on the map's starts in order, and a sixth beside the first`, () => {
+    const s = newGame(5);
+    for (const [i, k] of ["fighter", "rogue"].entries()) s.entities[`x${i}`] = { ...structuredClone(s.entities[k]), id: `x${i}` };
+    ok(apply(s, { type: "loadMap", map: structuredClone(map) }, DM));
+    const party = Object.values(s.entities).filter((e) => e.side === "party");
+    assert.equal(party.length, 6);
+    const at = (h) => landing(map, h, h.z ?? 0);
+    party.slice(0, 5).forEach((e, i) => assert.deepEqual(e.pos, at(map.starts[i]), `${e.id} on start ${i}`));
+    const sixth = party[5].pos;
+    assert.ok(!map.starts.slice(0, 5).some((h) => H.key(at(h)) === H.key(sixth)), "the sixth is not on a taken start");
+    assert.ok(H.dist(sixth, map.starts[0]) <= 3, "the sixth spirals out from the first start");
+    assert.equal(new Set(party.map((e) => H.key(e.pos))).size, 6, "nobody shares a hex");
+  });
 }
+
+test("loadMap passes over a start nobody can stand on, and keeps one start working as before", () => {
+  const tiles = {};
+  for (const h of H.range({ q: 0, r: 0 }, 8)) tiles[H.key(h)] = { t: "grass" };
+  tiles[H.key({ q: 3, r: 0 })] = { t: "rock" };
+  const two = newMap({ id: "m", name: "M", levels: [{ id: "ground", name: "Ground", z: 0, tiles }], starts: [{ q: -4, r: 0 }, { q: 3, r: 0 }, { q: 4, r: -2 }] });
+  const s = newGame(5);
+  ok(apply(s, { type: "loadMap", map: two }, DM));
+  const pos = Object.values(s.entities).map((e) => H.key(e.pos));
+  assert.equal(pos[0], H.key({ q: -4, r: 0, z: 0 }));
+  assert.equal(pos[1], H.key({ q: 4, r: -2, z: 0 }), "the rock start is passed over for the next");
+  assert.ok(!pos.includes(H.key({ q: 3, r: 0, z: 0 })));
+  for (const k of pos.slice(2)) assert.equal(H.dist(H.parse(k), { q: -4, r: 0 }), 1, "the rest beside the first start");
+  // One start: the old spiral, unchanged.
+  const one = newGame(5);
+  ok(apply(one, { type: "loadMap", map: newMap({ id: "o", name: "O", levels: [{ id: "ground", name: "Ground", z: 0, tiles }], starts: [{ q: -4, r: 0 }] }) }, DM));
+  const ps = Object.values(one.entities).map((e) => e.pos);
+  assert.deepEqual(ps[0], { q: -4, r: 0, z: 0 });
+  for (const p of ps.slice(1)) assert.equal(H.dist(p, { q: -4, r: 0 }), 1);
+});
 
 test("the maps use their features: locked and secret doors, a diagonal wall, two floors joined by stairs, a height change", () => {
   const by = Object.fromEntries(STOCK_MAPS.map((m) => [m.id, m.map]));
