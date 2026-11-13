@@ -226,6 +226,7 @@ function build(root, ch, options) {
   if (classes.length > 1) R.ruleDifferences.push({ name: 'Total level', why: `The sheet is level ${totalLevel}; the engine's sheet is a level ${level} ${c.name}, so its Proficiency Bonus, Hit Points and slots follow that level.` });
 
   const sheet = { name, class: c.id, level, abilities: {}, skills: [] };
+  let standIn = false;                    // the sheet's subclass is a stand-in, so what it always prepares is not the character's
 
   // Subclass
   const specKey = norm(main.spec);
@@ -240,6 +241,7 @@ function build(root, ch, options) {
     } else if (options.substituteSubclass === false) {
       delete sheet.subclass;
     } else {
+      standIn = true;
       note('subclass', main.spec || '(none named)', `Not an SRD 5.2 subclass, so none of its features exist in the pack. ${main.name} subclass features are not built.`);
       adjust('subclass', main.spec || '(none named)', sub.name, `A level ${level} sheet cannot load without the SRD subclass. ${sub.name} is a stand-in: its features are NOT this character's.`);
     }
@@ -515,7 +517,7 @@ function build(root, ch, options) {
       chosen.push(sp.id);
     }
     if (chosen.length) sheet.spells = chosen;
-    const have = derive(sheet).record.spells ?? [];
+    const have = standIn ? chosen : derive(sheet).record.spells ?? [];
     for (const id of have) { const sp = CONTENT.spells[id]; R.spellTiers[sp.tier ?? 'manual'].push(sp.name); }
   } else {
     const any = uniq(generic.filter((e) => e.prepared && e.level > 0));
