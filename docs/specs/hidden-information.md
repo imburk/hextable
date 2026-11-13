@@ -211,6 +211,58 @@ a full view is about 28 KB for a player and 31 KB for the DM. The median
 update is now 337 bytes for a player and 953 bytes for the DM. The largest,
 about 6 KB, is the start of a fight with an unusually large arena.
 
+### 7. Dice players cannot predict (decision, issue #136)
+
+**Threat.** Taking the seed out of the view (section 2) is not enough if the
+seed can be worked out. The generator was Mulberry32: 32 bits of state, moved
+on by a constant at each roll. Players are sent the faces of their own rolls,
+the party's initiative and much damage. Seven or eight faces in a row narrow
+2^32 states to a handful, and a plain JS loop searches them all in under a
+minute (security review #132, M1). A player who knows the state knows every
+future roll: whether their next d20 is worth taking, and secret results such
+as a `check` the DM made with `secret`, or a hidden creature's Stealth.
+
+**Options.**
+- *A wider generator with the same shape* (a 128-bit xorshift, say). Still
+  linear and not designed to resist recovery from its output; it raises the
+  cost without closing the door.
+- *Re-keying from time to time* (mixing fresh server randomness into the seed
+  every so often). Breaks replay: a game no longer follows from its state and
+  its actions alone, which undo, the reaction prompts (`pending`, which re-runs
+  an action from the same dice) and every test rely on.
+- *A keyed stream cipher used as the generator* (chosen). `rng` becomes
+  `{ key, n }`: a 256-bit key and a counter. Roll `n` is word `n mod 16` of the
+  ChaCha20 block `floor(n / 16)` (RFC 8439, nonce zero), divided by 2^32 as
+  before. Seeing any number of outputs tells nothing useful about the key or
+  about other outputs unless ChaCha20 is broken. It is still a pure function of
+  the state: the key and the counter are in the state, so a game replays exactly,
+  undo gives back the same dice, and a `pending` action re-runs with the same
+  rolls. Pure JS, about thirty lines, no dependency; one block per roll is a
+  microsecond or so.
+
+**Where the key comes from.** The rules stay pure, so the engine never makes a
+key: the host does. The table server makes one from `crypto.randomBytes(32)`
+when a table is hosted. Nobody but the DM ever has it: views are allow lists
+(section 2) and `rng` is not on them, events and patches are built from views,
+and the history sent to players is made of events. The DM's view, the export
+and the undo file do hold it; the DM decides the dice anyway.
+
+**Old games, replays, undo and saved tables.** An integer `rng` keeps rolling
+with Mulberry32, exactly as before, so every saved game and every test that
+pins a dice sequence (`newGame(seed)` and `s.rng = n` in tests) replays
+unchanged. The state version goes to 16; the migration from 15 changes
+nothing in the state (both shapes are valid in 16, and a malformed keyed `rng`
+is left for `rand()` to refuse loudly, since the rules cannot make a key). The
+server *re-keys* a table it loads whose `rng` is still an integer, once, at
+load: from then on its dice come from the new key. Up to that point the game is
+as it was; after it, it replays from the new key. A table loaded from an older
+version needed a migration, so its saved undo history is already dropped (the
+patches would not fit), and no undo can step back across the re-keying into the
+old generator. Solo play keeps an integer seed: the solo player is the DM.
+
+**What this does not do.** The DM, or anyone who reads the server's disk,
+still knows the key. Timing is untouched (section 6 and the M3 fix).
+
 ## Security properties to test
 
 These are the acceptance tests for the whole spec. Each is a test in
@@ -218,9 +270,9 @@ These are the acceptance tests for the whole spec. Each is a test in
 
 1. **No seed.** For any player viewer, `JSON.stringify(view(...))` does not
    contain the key `rng`, at any depth.
-2. **No fake dice.** `rand()` throws when the state has no integer seed, so
-   applying an action to a view fails loudly. (Today a missing seed silently
-   behaves as seed 0.)
+2. **No fake dice.** `rand()` throws when the state has no integer seed and no
+   key (section 7), so applying an action to a view fails loudly. (Today a missing
+   seed silently behaves as seed 0.)
 3. **Allow list.** Add an unknown field to the state and to a monster; neither
    appears in a player view.
 4. **Canary.** Give a monster distinctive values (hp 7919, ac 97, an attack
@@ -238,7 +290,9 @@ These are the acceptance tests for the whole spec. Each is a test in
 8. **Patches converge.** Applying every patch in order to the first full
    state yields exactly the full view at the end, for every viewer, across a
    whole fight; and a dropped update triggers a sync that restores it.
-9. **Chronicle stays private.** A DM chronicle entry never reaches a player
+9. **No key.** For a hosted table, no player view, patch, event or history
+   entry contains the dice key or the counter (section 7).
+10. **Chronicle stays private.** A DM chronicle entry never reaches a player
    unless marked public.
 
 ## Client changes
