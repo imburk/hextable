@@ -6,6 +6,8 @@ import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
+import { describeStep, mark } from "../src/history.js";
+import { diff, snapshot } from "../src/patch.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, KIM = { role: "player", userId: "kim" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -71,4 +73,39 @@ test("junk Metamagic input is refused cleanly and changes nothing", () => {
     assert.equal(r.ok, false, JSON.stringify(x));
     assert.equal(JSON.stringify(s), snap);
   }
+});
+
+// M2. A foe who changed shape where the party could not see it is, to them, a wolf: nothing sent to
+// a player (views, patches, events, the record's labels) names the druid while it is in the form.
+test("a foe in a Wild Shape form is only the Beast to players: views, patches, events and labels", () => {
+  const s = field(druid(10));
+  s.entities.foe = makeEntity({ ...derive({ ...druid(10), name: "Archdruid Maelis" }).record, look: { color: "#123456" } }, { id: "foe", kind: "npc", side: "foe", pos: { q: 1, r: 1, z: 0 } });
+  const said = [];
+  const step = (action) => {
+    const before = mark(s), v0 = snapshot(view(s, PAT));
+    const r = ok(apply(s, action, DM));
+    said.push(viewEvents(r.events, s, PAT), describeStep(action, r.events, before, s).shown, view(s, PAT), diff(v0, snapshot(view(s, PAT)), view(s, PAT)));
+    return r;
+  };
+  ok(apply(s, { type: "reveal", actor: "foe", hidden: true }, DM));
+  step({ type: "feature", actor: "foe", feature: "wild-shape", form: "wolf" });
+  ok(apply(s, { type: "reveal", actor: "foe", hidden: false }, DM));
+  const v = view(s, PAT).entities.foe;
+  assert.equal(v.name, "Wolf"); assert.equal(v.tpl, "wolf"); assert.equal(v.kind, "npc"); assert.equal(v.size, "medium");
+  assert.equal(v.form, undefined); assert.equal(v.look, undefined);
+  step({ type: "move", actor: "foe", to: { q: -2, r: 0 } });
+  step({ type: "harm", actor: "foe", amount: 3, dtype: "slashing" });
+  step({ type: "condition", actor: "foe", condition: "prone" });
+  fight(s); turnOf(s, "foe");
+  s.encounter.budget.action = 1;
+  step({ type: "act", actor: "foe", action: "bite", target: "rogue" });
+  step({ type: "endTurn", actor: "foe" });
+  for (const x of [...said, s.timeline.map((t) => viewEvents([t], s, PAT))]) assert.doesNotMatch(JSON.stringify(x) ?? "", /Maelis|#123456/);
+  assert.ok(said.some((x) => typeof x === "string" && /Wolf/.test(x)), "the labels name the Wolf");
+  // The DM sees who it is, and the party's own druid in a form is open to its players.
+  assert.equal(view(s, DM).entities.foe.name, "Archdruid Maelis");
+  ok(apply(s, { type: "endEncounter" }, DM));
+  ok(apply(s, { type: "feature", actor: "hero", feature: "wild-shape", form: "wolf" }, DM));
+  assert.equal(view(s, KIM).entities.hero.name, "Ven");
+  assert.equal(view(s, KIM).entities.hero.form.block, "wolf");
 });

@@ -978,8 +978,9 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     mental scores, features and proficiencies stay. What was replaced is kept on `e.form` and put
     back when the lasting effect holding it ends (its hours, a new form, the Bonus Action with no
     form, Incapacitated or 0 Hit Points). No spells in a form; no sheet change while in one.
-    Event `form { id, form, name }` (players: where the creature is known); `seenRecord` carries
-    `form` (the block's id). **State version 17**: the migration keeps a whole form, puts back one
+    Event `form { id, form, name }` (players: where the creature is known); a creature not of the party in a
+    form is seen only as the Beast (amended, #169: `seenRecord` sends the Beast's name and `tpl`,
+    kind `npc`, no `look` and no `form`; history labels name it the same way, `seenName`). **State version 17**: the migration keeps a whole form, puts back one
     whose effect is gone, and drops a broken one.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in

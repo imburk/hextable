@@ -121,9 +121,10 @@ test("a form is plain to other players and the druid's own record is the player'
   const s = field(druid(6));
   ok(shape(s, "wolf", PAT));
   assert.equal(view(s, { role: "player", userId: "kim" }).entities.hero.form.block, "wolf", "a party member's record is the party's");
-  // An enemy in a form would show only which form (seenRecord); the AI's druid enemies are not built, so a copy stands in.
+  // An enemy in a form shows only as the Beast (seenRecord; #169); the AI's druid enemies are not built, so a copy stands in.
   s.entities.foe = { ...structuredClone(s.entities.hero), id: "foe", side: "foe", kind: "npc", owner: null, pos: { q: -1, r: 1, z: 0 } };
-  assert.equal(view(s, PAT).entities.foe?.form, "wolf");
+  assert.equal(view(s, PAT).entities.foe?.tpl, "wolf");
+  assert.equal(view(s, PAT).entities.foe?.name, "Wolf");
 });
 
 test("migration to version 17: a form is kept with its effect, put back without one, dropped if broken", () => {
