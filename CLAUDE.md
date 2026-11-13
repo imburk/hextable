@@ -6,7 +6,7 @@ what is in scope right now. Agreed designs are in `docs/specs`; build to them.
 
 ## What this is
 
-A browser-based 3D virtual tabletop for D&D: free roaming until combat starts,
+A browser-based 3D virtual tabletop for 5E-compatible play: free roaming until combat starts,
 then a locked hex arena and turn-based play. SRD 5.2 rules are fully enforced
 by the engine. Must work on PC, phone and tablet.
 

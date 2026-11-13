@@ -24,7 +24,7 @@ designs are in [docs/specs](docs/specs).
 - **Do not edit `packages/rules/src/engine.js` or `packages/server/src/tables.js`
   unless the issue names them.** Most parallel work collides there, and
   mistakes there are rule or security bugs.
-- **Only SRD 5.2.1 content.** Nothing from other D&D books, and no invented
+- **Only SRD 5.2.1 content.** Nothing from other sourcebooks, and no invented
   stats presented as SRD.
 - **Content is data, and it is checked.** Entries go in
   `packages/rules/src/content/srd52/` in the format `schema.js` enforces. No
