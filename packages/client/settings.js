@@ -10,6 +10,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const SIGHT = { rooms: 'players are sent everything in a room they have revealed', los: 'players are sent only what the party can see', light: 'players are sent what the party can see, given light and senses' };
 const VERTICAL = { max: 'the longer of across and up counts (a diagonal counts once)', sum: 'across plus up', true: 'a straight line' };
 const PASSIVE = { off: 'only a Search finds hidden things', traps: 'passive Perception finds traps', all: 'passive Perception finds everything hidden' };
+const REWARDS = { dm: 'the DM settles them before the players see them', auto: 'shown to the players at once', off: 'none are given' };
+const SHARE = { split: 'divided equally among those who took part and are alive', full: 'each gets the whole amount' };
 const on = (v) => v !== 'off' && v !== false;
 
 // The table's rules as plain lines, from `settings` (what the engine sends everyone). Absent means the default. The pace is
@@ -23,6 +25,7 @@ export function rulesLines(settings = {}) {
     `Noticing hidden things in passing: ${PASSIVE[settings.passiveFind ?? 'off'] ?? settings.passiveFind}.`,
     `Distance when one creature is higher than another: ${VERTICAL[settings.vertical ?? 'max'] ?? settings.vertical}.`,
     `Cover from walls and objects: ${on(settings.cover ?? 'on') ? 'on' : 'off'}. Creatures give cover: ${on(settings.creatureCover ?? 'on') ? 'yes' : 'no'}.`,
+    `Rewards after a won fight: ${REWARDS[settings.conclusion ?? 'dm'] ?? settings.conclusion}. XP: ${SHARE[settings.xpShare ?? 'split'] ?? settings.xpShare}.`,
     `Climbing faces too high to step up: ${on(settings.climbing ?? 'on') ? 'allowed' : 'not allowed'}.`,
   ];
 }

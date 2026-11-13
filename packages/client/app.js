@@ -32,6 +32,7 @@ import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
 import { initTableControls, importLine } from './tablecontrols.js';
 import { initDefeat } from './defeat.js';
+import { initConclusion, logLine, xpFact } from './conclusion.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -276,6 +277,11 @@ function describe(ev) {
     case 'follow': return [ev.leader ? `${n(ev.id)} follows ${n(ev.leader)}.` : ev.why ? `${n(ev.id)} couldn't keep up with ${n(ev.was)} and stops following.` : `${n(ev.id)} stops following ${n(ev.was)}.`];
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
     case 'rewound': return [`The DM took the table back to ${ev.to === 'rest' ? 'the last rest' : 'the start of the fight'}.`, 'head'];
+    case 'conclusion': return [logLine(ev, name), 'head'];
+    case 'levelReady': return [`${n(ev.id)} has enough experience to reach level ${ev.level}.`, 'good'];
+    case 'conclusionSkipped': return ['The fight gives no rewards.'];
+    case 'conclusionReady': return ['The fight is over. Its rewards are waiting for you.', 'head'];
+    case 'xp': case 'conclusionEdited': return null;
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     // The transcript of a scene, one line each, until the scene screen is built.
@@ -322,7 +328,7 @@ function onUpdate(state, events, fresh) {
   S = state;
   TL.setPace(pace());
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); DF.fresh(); D.reset();
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); D.reset();
     if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
@@ -640,7 +646,7 @@ function renderSheet() {
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
     <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
     ${CLS.sheetBanner(e)}
-    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
+    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
     <p class="note">Saving throws: ${saves}</p>
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
@@ -678,7 +684,8 @@ function renderDM() {
   QE.sync(S, selId);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
-  $('dm-badge').hidden = !lb.pending.length; $('dm-badge').textContent = lb.pending.length;
+  const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0);       // players waiting to be let in, and rewards waiting to be settled
+  $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed;
   table.textContent = '';
   if (!T.solo) {
     table.innerHTML = `<p class="note">Table code</p><code>${esc(T.you.code)}</code><p class="note">At the table: ${lb.members.map((m) => `${esc(m.name)}${m.online ? '' : ' (away)'}`).join(', ')}</p>`;
@@ -897,7 +904,7 @@ function leaveTable(btn) {
     return;
   }
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
-  TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); DF.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
+  TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
   $('btn-leave').hidden = $('btn-undo').hidden = true;
@@ -929,7 +936,12 @@ const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => S, isDM });
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
-function syncCards() { const calm = !TL.busy(); DF.sync(S, { calm }); }
+const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs });
+function syncCards() {
+  const calm = !TL.busy();
+  DF.sync(S, { calm }); CC.sync(S, { calm });
+  $('log-rewards').hidden = !CC.reopenable(S);
+}
 // Class features that need a choice first (classes.js): Divine Spark's mode, a Wild Shape form, Metamagic...
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
@@ -963,7 +975,7 @@ function start(transport, map = null) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    CLS.refused(msg); DF.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
+    CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };
