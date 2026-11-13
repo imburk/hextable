@@ -88,6 +88,7 @@ it would unlock:
 | S8 | Ritual casting times are not stored | any |
 | S9 | Nine spells are not marked checked, each for a field the format cannot hold (see their pull requests) | any |
 | S10 | ~~The `tempHp` event is not in the view's lists, so players see their own Temporary Hit Points in their records but not the log line; view.js was out of bounds for #82~~ (#101: sent for the party's own creatures, never for others). ~~The tracker's damage button sets Hit Points (`setHp`), which leaves Temporary Hit Points alone~~ (#96: the DM actions `harm { actor, amount, dtype? }` and `mend { actor, amount }` apply damage and healing by the rules, and the tracker uses them; `setHp` stays for the DM to set a number or raise the dead). The Frost Giant's War Cry gives Temporary Hit Points to a creature that can see or hear it, a range the format cannot hold | engine |
+| S11 | `contact-other-plane` is listed in `SELF_SAVE_EXCEPTIONS` (schema.js) as "flagged, awaiting review": it is aimed at its caster and its save is the caster's own. Decide whether a caster's save is allowed for a self-aimed spell, then keep or drop the exception. | any |
 
 ### Re-tiering pass (spells entered before the vocabulary grew)
 

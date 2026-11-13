@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { apply, current, inFight } from "../src/engine.js";
 import * as H from "../src/hex.js";
 import { newMap } from "../src/map.js";
-import { migrate } from "../src/migrate.js";
+import { migrate, VERSION } from "../src/migrate.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
 import { center } from "../src/walls.js";
@@ -170,5 +170,5 @@ test("the starting valley has the engage distance at 10 ft, and saved tables get
   assert.equal(newGame().settings.engageRange, 10);
   const old = newGame(); delete old.settings.engageRange; old.version = 8;
   assert.equal(migrate(old).settings.engageRange, 10);
-  assert.equal(old.version, 14);
+  assert.equal(old.version, VERSION);
 });

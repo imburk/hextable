@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAssets } from "../src/assets.js";
+import { VERSION } from "../../rules/src/migrate.js";
 import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
@@ -519,7 +520,7 @@ test("the server upgrades tables saved by the previous version when it loads the
   saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
   const tables = createTables({ load: () => [saved] });
   const state = tables.get("FIXTR1").state;
-  assert.equal(state.version, 14);
+  assert.equal(state.version, VERSION);
   assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
   const dm = client(tables);
   dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });

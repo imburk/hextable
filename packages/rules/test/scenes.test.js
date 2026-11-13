@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { ACTION_TYPES, apply, recall } from "../src/engine.js";
 import { assetRefs } from "../src/handouts.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
-import { migrate } from "../src/migrate.js";
+import { migrate, VERSION } from "../src/migrate.js";
 import { applyPatch, diff, snapshot } from "../src/patch.js";
 import { newGame } from "../src/scenario.js";
 import { SCENE_LIMITS } from "../src/scenes.js";
@@ -216,7 +216,7 @@ test("a saved table from before scenes has none going on", () => {
   const old = JSON.parse(JSON.stringify(s));
   migrate(old);
   assert.equal(old.scene, null);
-  assert.equal(old.version, 14, "scenes came with version 13; reactions made it 14");
+  assert.equal(old.version, VERSION, "scenes came with version 13; reactions made it 14");
   ok(apply(old, { type: "scene", scene: { title: "After" } }, DM));
   migrate(old);
   assert.equal(old.scene.title, "After", "migrating again keeps it");
