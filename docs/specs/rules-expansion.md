@@ -1024,6 +1024,36 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     with `hd`; nothing else changes for saved tables.
   - *Not built*: Pact Magic beside Spellcasting (refused by `validate`); Potent Spellcasting still adds to any cantrip;
     a feature's own save DC and spell attack (not a spell's) still use `castAbil`.
+- **Amendment (feats, #189).** Built to the SRD 5.2.1 "Feats" chapter (`test/feats.test.js`). No state change.
+  - *Data*: a new kind, `feats` (`srd52/feats.js`, `lintFeatDef`): `{ id, name, category: origin | general |
+    fighting-style | epic-boon, prerequisite?: { level?, abilities?: { any, min }, feature?: fighting-style |
+    spellcasting }, repeatable?: true | "list", tier, checked, source, text, increase?: { from, points, max },
+    proficiencies?: { n }, spellPick?: { lists, abilities, cantrips, level1 }, grants? }`. `grants` is the class
+    features' vocabulary. All 17 SRD feats are entered: 6 auto, 8 assist, 3 manual.
+  - *Where a feat is taken*: a class feature may say `feat: "any"` (every Ability Score Improvement and Epic Boon
+    feature, now `auto`: the engine applies the feat taken there at that feat's tier); the sheet has two Origin
+    places, `background` and `species` (the Human's Versatile; species are not entered, so the DM checks the
+    species). A Fighting Style feature's options name their feat (`feat: id`, with the feat's name and tier, no
+    grants of their own: they grant the feat's), so `choices["fighting-style"]` is unchanged.
+  - *Sheet*: `feats: [{ id, at, abilities?, skills?, tools?, list?, ability?, spells? }]`. The sheet's `abilities`
+    are its scores before the feats it lists (1 to 20, as before); each feat's points are added in the order of the
+    places, none above the feat's maximum (20, or 30 for an Epic Boon); then class features (Primal Champion).
+    A choice left out adds nothing, so a sheet that lists no feats, or an imported one, plays exactly as before.
+  - *Validate*: the place exists and is used once; an Origin place takes an Origin feat; prerequisites (level: the
+    feature's class level for one class, the character's level with several, since the order of levels is not
+    kept; abilities: the scores before this feat; feature: a feature of that id or `<class>-<id>`); a feat only once
+    unless `repeatable` (`"list"`: again only with another spell list); a Fighting Style feat not already the
+    character's Fighting Style; each choice of the right kind and number. `featChoices(sheet)` lists each place, the
+    feat taken, the feats it could take now and what is left to choose.
+  - *Derive*: each feat becomes a record feature `feat-<id>` (`-2` for a second); Skilled's skills and tools join the
+    record's; Magic Initiate's spells join `spells` with their ability in `spellAbil` (a non-caster's `castAbil` is
+    the feat's), and its level 1 spell is a `freeCast { spells }` with one use a Long Rest.
+  - *Vocabulary*: the amount `{ prof: n }` (n times the Proficiency Bonus: Alert). `freeCast { spells }` casts at the
+    spell's own level and casting time, with no slot (it was the Magic action; `freeCast { list, maxLevel }`, Divine
+    Intervention, still is).
+  - *Not built*: Savage Attacker, Great Weapon Fighting and Two-Weapon Fighting (dice the engine rolls once), Alert's
+    Initiative swap, Grappler's grapple parts (grappling is not built), and each Epic Boon's benefit but the score
+    and Truesight: the DM applies them. Magic Initiate's spell swap on gaining a level is a sheet edit.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

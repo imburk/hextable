@@ -594,9 +594,11 @@ const LEVELS = 20;
 // modifier with a least value, or so many times the class level.
 // `{ mod, min, die }` is so many of that die as the modifier (Sear Undead), for dice only;
 // `{ byLevel: { level: value } }` is the value for the highest class level reached (Divine Strike).
+// `{ prof: n }` is n times the character's Proficiency Bonus (Alert's Initiative).
 function lintAmount(x, cls, say, what, diceOk = false) {
   if (isInt(x)) return;
-  if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel', 'die', 'byLevel'].includes(k))) {
+  if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel', 'die', 'byLevel', 'prof'].includes(k))) {
+    if (x.prof !== undefined && !(isInt(x.prof) && x.prof >= 1 && x.prof <= 2)) say(`${what}: prof is how many times the Proficiency Bonus, 1 or 2`);
     if (x.column !== undefined && !Object.hasOwn(cls.table ?? {}, x.column)) say(`${what}: no column "${x.column}" in the class table`);
     if (x.mod !== undefined && !ABILITIES.includes(x.mod)) say(`${what}: mod is an ability`);
     if (x.perLevel !== undefined && !isInt(x.perLevel)) say(`${what}: perLevel is a whole number`);
@@ -604,12 +606,12 @@ function lintAmount(x, cls, say, what, diceOk = false) {
     if (x.die !== undefined && !(diceOk && x.mod !== undefined && [4, 6, 8, 10, 12].includes(x.die))) say(`${what}: die (4 to 12) goes with mod, for dice`);
     if (x.byLevel !== undefined && !(x.byLevel && typeof x.byLevel === 'object' && Object.keys(x.byLevel).length
       && Object.entries(x.byLevel).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= LEVELS && (isInt(v) || (diceOk && isDice(v)))))) say(`${what}: byLevel gives a ${diceOk ? 'number or dice' : 'number'} for class levels`);
-    if ([x.column, x.mod, x.perLevel, x.byLevel].filter((v) => v !== undefined).length !== 1) say(`${what}: give one of column, mod, perLevel, byLevel`);
+    if ([x.column, x.mod, x.perLevel, x.byLevel, x.prof].filter((v) => v !== undefined).length !== 1) say(`${what}: give one of column, mod, perLevel, byLevel, prof`);
     return;
   }
-  say(`${what} is a number, { column }, { mod, min } , { perLevel } or { byLevel }`);
+  say(`${what} is a number, { column }, { mod, min } , { perLevel }, { byLevel } or { prof }`);
 }
-const amountish = (v) => !!v && typeof v === 'object' && ['column', 'mod', 'perLevel', 'byLevel'].some((k) => v[k] !== undefined);
+const amountish = (v) => !!v && typeof v === 'object' && ['column', 'mod', 'perLevel', 'byLevel', 'prof'].some((k) => v[k] !== undefined);
 // A modifier's value in a class feature may grow with the class ({ column }) or be an ability
 // modifier ({ mod, min }); derive() puts in the number. For the linter it stands for a number.
 // A heal or tempHp step may add the class level (`addLevel`), which derive() also bakes in.
@@ -779,6 +781,10 @@ function lintFeature(f, cls, say, ids) {
   }
   if (f.grants !== undefined) lintGrants(f.grants, cls, sub);
   if (f.grants?.action?.cost && !f.grants.action.cost.resource) sub('a cost names a resource');
+  // `feat: "any"`: the feature is a place for a feat of the player's choice, of any category, whose
+  // prerequisites the character meets (Ability Score Improvement, Epic Boon). The feat is the sheet's
+  // (derive.js, sheet `feats`); the feature grants nothing itself.
+  if (f.feat !== undefined && !(f.feat === 'any' && f.grants === undefined && f.options === undefined && f.uses === undefined)) sub('feat is "any", on a feature that grants nothing else');
   // `pick`: so many different options are chosen (Metamagic: 2), as a list; otherwise one.
   if (f.pick !== undefined && !(isInt(f.pick) && f.pick >= 2 && Array.isArray(f.options) && f.pick < f.options.length)) sub('pick is how many options are chosen, 2 or more and fewer than there are');
   if (f.options !== undefined) {
@@ -787,12 +793,14 @@ function lintFeature(f, cls, say, ids) {
       const os = (m) => sub(`option ${o?.id}: ${m}`);
       if (!ID.test(o?.id ?? '') || !isText(o.name) || !isText(o.text) || !TIERS.includes(o.tier)) os('needs an id, a name, text and a tier');
       if (o?.grants !== undefined) lintGrants(o.grants, cls, os);
+      // `feat`: the option is that feat (a Fighting Style feat); it grants what the feat grants (lintPack checks it is one).
+      if (o?.feat !== undefined && !(o.feat === o.id && o.grants === undefined)) os('an option that is a feat has the feat\'s id and no grants of its own');
     }
   }
   // A feature that only adds steps to another's (`with`: Sear Undead in Turn Undead) grants nothing of its own.
   if (f.grants?.freeCast && !f.uses) sub('a freeCast needs uses');
   // A feature whose whole effect is an aura's range growing at its level (Aura Expansion) grants nothing itself.
-  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id) && !byLevelAt(cls).has(f.level)) sub('marked auto but grants nothing');
+  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !f.feat && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id) && !byLevelAt(cls).has(f.level)) sub('marked auto but grants nothing');
   // A manual feature may still have its cost enforced: an action whose only steps are manual.
   const costOnly = (g) => Object.keys(g).length === 1 && g.action?.effects?.every((st) => 'manual' in st);
   if (f.tier === 'manual' && f.grants && !costOnly(f.grants)) sub('marked manual but grants something');
@@ -870,10 +878,50 @@ function lintClass(e, say) {
   if (findFunction(e)) say('content is data only');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], multiclass, advancement }) {
+// ---------- feats (content/srd52/feats.js) ----------
+// A feat (SRD "Feats"): its category, prerequisite, whether it can be taken again, and what it gives:
+// ability score points to place (`increase`), skill or tool proficiencies to pick (`proficiencies`),
+// spells to pick (`spellPick`), and what a class feature can grant (`grants`). The choices are the
+// sheet's (derive.js, sheet `feats`). Design: docs/specs/rules-expansion.md, "Feats" amendment.
+export const FEAT_CATEGORIES = ['origin', 'general', 'fighting-style', 'epic-boon'];
+// A feature named in a prerequisite: a Fighting Style feature, or the Spellcasting feature.
+export const FEAT_FEATURES = ['fighting-style', 'spellcasting'];
+// What a feat's grants are linted against: a class with no table, so an amount is a number, an ability modifier or `{ prof }`.
+const FEAT_CLASS = { id: 'feat', table: {}, features: [], subclass: { features: [] } };
+function lintFeatDef(e, say) {
+  if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source) || !isText(e.text)) say('needs a kebab-case id, a name, a source and text');
+  for (const k of Object.keys(e)) if (!['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'].includes(k)) say(`"${k}" is not something a feat has`);
+  if (typeof e.checked !== 'boolean') say('needs `checked`');
+  if (!TIERS.includes(e.tier)) say(`tier is one of ${TIERS.join(', ')}`);
+  if (!FEAT_CATEGORIES.includes(e.category)) say(`category is one of ${FEAT_CATEGORIES.join(', ')}`);
+  const pr = e.prerequisite;
+  if (pr !== undefined) {
+    if (!pr || typeof pr !== 'object' || !Object.keys(pr).length || !Object.keys(pr).every((k) => ['level', 'abilities', 'feature'].includes(k))) say('prerequisite is { level?, abilities?, feature? }');
+    else {
+      if (pr.level !== undefined && !(isInt(pr.level) && pr.level >= 1 && pr.level <= LEVELS)) say('prerequisite.level is a character level');
+      if (pr.abilities !== undefined && !(pr.abilities && Object.keys(pr.abilities).length === 2 && allOf(ABILITIES)(pr.abilities.any) && pr.abilities.any.length && isInt(pr.abilities.min) && pr.abilities.min > 1 && pr.abilities.min <= 20)) say('prerequisite.abilities is { any: [abilities], min }');
+      if (pr.feature !== undefined && !FEAT_FEATURES.includes(pr.feature)) say(`prerequisite.feature is one of ${FEAT_FEATURES.join(', ')}`);
+    }
+  }
+  if (e.repeatable !== undefined && !(e.repeatable === true || (e.repeatable === 'list' && e.spellPick))) say('repeatable is true, or "list" for a feat that picks a spell list');
+  const inc = e.increase;
+  if (inc !== undefined && !(inc && Object.keys(inc).length === 3 && allOf(ABILITIES)(inc.from) && inc.from.length && new Set(inc.from).size === inc.from.length
+    && isInt(inc.points) && inc.points >= 1 && inc.points <= 2 && [20, 30].includes(inc.max))) say('increase is { from: [abilities], points: 1 or 2, max: 20 or 30 }');
+  if (e.proficiencies !== undefined && !(e.proficiencies && Object.keys(e.proficiencies).length === 1 && isInt(e.proficiencies.n) && e.proficiencies.n >= 1 && e.proficiencies.n <= 5)) say('proficiencies is { n }');
+  const sp = e.spellPick;
+  if (sp !== undefined && !(sp && Object.keys(sp).length === 4 && Array.isArray(sp.lists) && sp.lists.length && sp.lists.every((x) => ID.test(x)) && allOf(ABILITIES)(sp.abilities) && sp.abilities.length
+    && isInt(sp.cantrips) && sp.cantrips >= 0 && sp.cantrips <= 4 && isInt(sp.level1) && sp.level1 >= 0 && sp.level1 <= 2)) say('spellPick is { lists, abilities, cantrips, level1 }');
+  if (e.grants !== undefined) lintGrants(e.grants, FEAT_CLASS, say);
+  const gives = e.increase || e.proficiencies || e.spellPick || e.grants;
+  if (e.tier === 'auto' && !gives) say('marked auto but gives nothing');
+  if (e.tier === 'manual' && gives) say('marked manual but gives something');
+  if (findFunction(e)) say('content is data only');
+}
+
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, multiclass, advancement }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
-  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour]]) {
+  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);
@@ -891,9 +939,20 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
     for (const f of all) { if (f.grants) grants.push(f.grants); for (const o of f.options ?? []) if (o.grants) grants.push(o.grants); }
     for (const g of grants) for (const id of g.spells ?? []) if (!spellIds.has(id)) say(`grants a spell that is not in the pack: "${id}"`);
     for (const list of Object.values(c.subclass?.spells ?? {})) for (const id of list) if (!spellIds.has(id)) say(`subclass spell not in the pack: "${id}"`);
+    // An option that is a feat (a Fighting Style) names a feat of the pack, with its name and tier.
+    // (Checked when the pack's feats are given: a class linted alone is not.)
+    const featIds = new Map((feats ?? []).map((x) => [x.id, x]));
+    if (feats) for (const f of all) for (const o of f.options ?? []) if (o.feat !== undefined) {
+      const ft = featIds.get(o.feat);
+      if (!ft) say(`option ${o.id} of ${f.id} names a feat that is not in the pack: "${o.feat}"`);
+      else if (ft.name !== o.name || ft.tier !== o.tier) say(`option ${o.id} of ${f.id} has another name or tier than the feat ${ft.name}`);
+    }
     const pools = new Set(all.filter((f) => f.uses).map((f) => f.id));
     for (const g of grants) if (g.action?.cost && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
   }
+  // A feat's spell lists are classes of the pack.
+  const classIds = new Set(classes.map((c) => c.id));
+  for (const ft of feats ?? []) for (const l of ft.spellPick?.lists ?? []) if (!classIds.has(l)) problems.push(`feats/${ft.id}: spell list "${l}" is not a class of the pack`);
   // The Multiclass Spellcaster table: 20 rows of slots by spell level.
   if (multiclass !== undefined && !(multiclass && tableRow(multiclass.slots) && multiclass.slots.every((r) => Array.isArray(r) && r.length >= 1 && r.length <= 9 && r.every((n) => isInt(n) && n > 0)) && typeof multiclass.checked === 'boolean'))
     problems.push('multiclass: the Multiclass Spellcaster table is 20 rows of slots by spell level, with `checked`');

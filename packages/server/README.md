@@ -109,6 +109,19 @@ creature carries `hdBy` (Hit Dice left by size) beside `hd`. `shortRest` `spend`
 dice first. A feature both classes have is played under the later class's id in front
 (`bard-spellcasting`, `paladin-channel-divinity`), with its own uses and `choices` key.
 
+**Feats (#189).** No new action and no state change. A sheet for `setSheet` and `levelUp` may list
+`feats: [{ id, at, abilities?, skills?, tools?, list?, ability?, spells? }]`: `id` a feat of the pack
+(`CONTENT.feats`), `at` the place it is taken (`background`, `species`, or a class feature with
+`feat`: `ability-score-improvement-4`, `epic-boon`, `bard-ability-score-improvement-8`), and the feat's
+own choices. A sheet's `abilities` are its scores before the feats it lists; a choice left out adds
+nothing. `validate` checks the place, the category, the prerequisite, repeats and each choice. The
+record gains a feature for each feat (`feat-<id>`, `feat-<id>-2` for a repeat) with its modifiers,
+senses and uses; Magic Initiate's spells join `spells` (with `spellAbil`) and its level 1 spell is
+cast once per Long Rest with `cast` and `via: "feat-magic-initiate"`. A feature with `freeCast.spells`
+now casts at the spell's own casting time (it was always the Magic action, which only Divine
+Intervention's `freeCast.list` keeps). `featChoices(sheet)` and `featSlots(sheet)` in `derive.js` say
+what a screen should offer.
+
 **Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
 Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
 player may name only a place the party has been shown; with no `hex` the DM moves the caster.
