@@ -146,7 +146,7 @@ export function initConclusion(ctx) {
     wrap.innerHTML = pendingDM ? form(c) : result(c);
     const card = wrap.querySelector('.cc-card');
     if (shownFight === c.fight && !focusNext) card.scrollTop = scroll;
-    if (shownFight !== c.fight || focusNext) { shownFight = c.fight; focusNext = false; $('cc-title').focus({ preventScroll: true }); }
+    if (shownFight !== c.fight || focusNext) { shownFight = c.fight; focusNext = false; if (!document.body.classList.contains('drawer-open')) $('cc-title').focus({ preventScroll: true }); }
     else if (keep) wrap.querySelector(keep)?.focus({ preventScroll: true });
   }
 

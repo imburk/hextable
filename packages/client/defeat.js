@@ -108,7 +108,7 @@ export function initDefeat(ctx) {
     key = k;
     wrap.innerHTML = card(S, rows);
     const t = $('df-title');
-    if (fresh || focusNext) { focusNext = false; t.focus({ preventScroll: true }); }
+    if (fresh || focusNext) { focusNext = false; if (!document.body.classList.contains('drawer-open')) t.focus({ preventScroll: true }); }
     else if (focused) wrap.querySelector(`[data-df="${CSS.escape(focused)}"]:not([disabled])`)?.focus({ preventScroll: true });
   }
 

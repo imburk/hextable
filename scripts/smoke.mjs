@@ -82,7 +82,7 @@ async function scenario(label, fn) {
   const run = new Run(label);
   try { await fn(run); }
   catch (err) {
-    const msg = `FAIL [${label}] step "${run.step}": ${String(err.message).split('\n')[0]}`;
+    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}`;
     console.log('  ' + msg);
     failures.push(msg);
   }
@@ -2547,21 +2547,24 @@ async function defeat(browser, url, label, opts) {
         if (!btns[1][1]) throw new Error('"go back to the last rest" is offered with no rest to go back to');
         if (!/No rest to go back to/.test(await page.textContent('#df .df-choice.off p'))) throw new Error('the greyed choice does not say why');
       });
-      await run.do('with another theme and the menu open or pinned the card is still the thing in front', async () => {
+      await run.do('with another theme and the menu open, closed or pinned the card and the menu do not fight', async () => {
         await openTab(page, 'settings');
         await page.selectOption('#set-theme', 'sunlit');
         const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById('drawer').getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
         let f = await front();
-        if (!f.inside) throw new Error('the card is under the open menu');
+        if (touch && f.inside) throw new Error('the card is in front of the open menu, which the person asked for');
+        await closeMenu(page);
+        if (!(await front()).inside) throw new Error('the card is hidden once the menu is closed');
         if (!touch) {
+          await openTab(page, 'turns');
           await page.evaluate(() => window.hextable.drawer.setPin(true));
           await sleep(500);
           f = await front();
           if (f.r > f.dr + 1) throw new Error(`the card runs under the pinned menu: ${JSON.stringify(f)}`);
           await shot('defeat-pinned');
           await page.evaluate(() => window.hextable.drawer.setPin(false));
-        } else await shot('defeat-menu-open');
-        await closeMenu(page);
+          await closeMenu(page);
+        }
       });
       await run.do('the card can be put aside and brought back', async () => {
         await tap(page, '#df .df-x');
@@ -2699,9 +2702,9 @@ async function rewards(browser, url) {
         await openTab(phone, 'log');
         if (!/Experience: .* XP/.test(await phone.textContent('#log-list'))) throw new Error('the phone log has no line for the rewards');
         await phone.click('#log-rewards');
+        await closeMenu(phone);
         await waitShown(phone, '#cc');
         await phone.locator('#cc [data-cc="continue"]').tap();
-        await closeMenu(phone);
         await phone.click(`#party button:has-text("${name}")`);
         await openTab(phone, 'sheet');
         if (!/XP \d/.test(await phone.textContent('#sheet-body'))) throw new Error('no XP on the sheet');
