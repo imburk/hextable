@@ -8,8 +8,8 @@ loaded by the game and is not copied into `dist/`.
 - `srd52.txt`: page layout kept, two columns side by side (`pdftotext -layout`).
   Use it only to untangle a table.
 
-Both are unedited extractions of the official SRD 5.2 PDF. The PDF itself is
-attached to the repository's `srd-5.2` release, and is published at
+Both are unedited extractions of the official SRD 5.2 PDF, which is beside them as
+`SRD_CC_v5.2.pdf` and is published at
 https://www.dndbeyond.com/srd.
 
 ## Attribution
