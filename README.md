@@ -66,7 +66,7 @@ Settings, limits, the protocol and hosting notes are in [packages/server/README.
 
 ## For contributors
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), then [AGENTS.md](AGENTS.md) (the working agreement for people and coding agents alike) and [docs/DESIGN.md](docs/DESIGN.md) (the architecture). `npm test` runs the rules and server tests; `npm run content` lists what rules content is entered and how well the engine plays it.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), which includes the short contributor agreement every outside pull request needs, then [AGENTS.md](AGENTS.md) (the working agreement for people and coding agents alike) and [docs/DESIGN.md](docs/DESIGN.md) (the architecture). `npm test` runs the rules and server tests; `npm run content` lists what rules content is entered and how well the engine plays it.
 
 ## Licence
 
