@@ -630,8 +630,42 @@ can run in parallel after R2. R10 decides the rest.
   - The renderer draws posts at wall joins in rooms mode at today's low wall height.
   - Tests: `packages/client/test/floors.test.js` (picked up by the existing `npm test` glob). It copies the rules
     next to `floors.js` as `./shared` in a temporary folder, as the build does.
-  Not done: a wall that ends or bends inside a hex does not cut it, so a room whose walls turn inside a hex still
-  follows hex edges there; the end of a corridor follows its tiles (fill only runs from a neighbouring piece);
-  cut-away is data and a tested function but is not drawn (walls are still low, full height with cut-away is the
-  follow-up); colour is even per cell, not smooth across a floor; no rim shading between patches; Decision 1's
-  outdoors, caves and picture floors are untouched.
+  Not done at that point (finished in the next two notes): a wall that ends or bends inside a hex; the end of a corridor;
+  the cut-away. Still not done: colour is even per cell, not smooth across a floor; no rim shading between patches;
+  Decision 1's outdoors and picture floors are untouched.
+- **R2 finished** (`floors-r2b`). *Cuts.* A hex is cut by every wall that crosses a piece of it from side to side, where
+  a piece is what the cuts so far left (so a wall across a corridor, ending on the two side walls, cuts the strip the side
+  walls leave of each hex, and the corridor ends at that wall, not at its last tile). A wall may stop 0.25 ft short of
+  the one it meets (`JOIN`) and still cut. Where two or more walls end at one point inside a hex (a bend, a corner), the
+  line of each arm is carried on through the hex too, so the hex falls apart into convex wedges; the wedges the wall does
+  not separate are joined again into one patch, because no wall is on the edge between them (the carried-on points are
+  put into the wedges' edges, so a cut line that is wall for half its length is split where the wall stops). A wall
+  that ends in the open inside a hex (a dead end) still does not cut. A piece is picture-only (`fill`) only if it lies in
+  another hex than the tile it is drawn as, so the wedges of one hex keep their grid lines. *Cut-away drawn.*
+  `render.js` keeps walls, doors and the things standing in hexes in their own mesh (`wallMesh`), built again when the set
+  of cut faces changes (the camera has turned about a degree, not every frame; the set is a few hundred keys at most).
+  `cutaway()` now also lowers a wall seen nearly edge on if there is floor beside it, because a wall traced along hex edges
+  shows a facet edge on every other step and the tall ones stood up in a low run; a wall with no floor beside it stands.
+  Faces now include doors (`o:<id>`, `object: true`), and posts name the faces that meet at them (`keys`). Cut walls
+  are 3 ft (the old look: 1.15 drawing units) with a dark cap; the rest are 10 ft, windows a 3 ft sill with glass up to
+  7 ft, rails stay low, a shut door's leaf is 7 ft with wall over it, a post is as tall as the tallest wall that stands
+  at it. Theme flag `cutaway` (`?nocut` in the address turns it off): without it every wall is low, as before. `?hex` and
+  levels the rooms look does not draw are as before. Walls are not in the pick, so picking is unchanged.
+  Not done: walls snap between low and tall when the camera turns, they do not fade; floors above are not cut; a
+  door's swing is not animated (R4).
+- **R7 caves** (`floors-r2b`). `isCave(map, level)`: 30% rock or more, some open tiles, no walls (a level with walls is
+  drawn as rooms: the walls are then the walls). Theme flag `caves` (`?nocave` turns it off). **On by default**: at 1280x800
+  and 390x844 on the stock cave the open floor reads as a pale patch with a ragged edge cut into a dark mass with a
+  craggy face of rock standing up from it, which the flat hex grid (rock and floor in two near greys) did not. Built in
+  `floors.js`: `buildFloors(map, { caves })` drops rock tiles, so open floor is patches as for any room; `caveOf(map, fl)`
+  chains the open edges against rock or nothing, cuts each hex side in 3, and pushes every point out into the rock along
+  its mitred normal by `cavePush` (at most 1.6 ft, 1.35 times that at a corner), from value noise of the point's position
+  seeded by `caveSeed(map.id, level.id)`: two hexes that share a point agree, every client draws the same cave, and no
+  `Math.random` is used. It never pushes into an open hex (tested), so no rock is drawn where a creature may stand and the
+  hex grid, picking and the rules are untouched. Rock is drawn as a mass at `CAVE_WALL` (4 ft) above the nearest open
+  floor (so rock over the ledge is higher, with a step face between rock tiles of different height), flat in one colour,
+  with a two-band face down to the floor and a face down to the ground where rock meets no tile. Colours follow the same
+  rules as rooms (the DM's dimming of unseen regions, sight, the arena's locked hexes). Not done: rock is a flat top with
+  no cracks or boulders; the face is not lowered when it stands between the camera and the floor (the cut-away's idea; 4 ft
+  was low enough on the stock cave); rock with an open hex's `forest` or water beside it is simply rock; a cave level
+  with a picture is drawn by its picture; trees on forest tiles in a cave are not drawn.

@@ -10,7 +10,7 @@ accounts. Read this, `CLAUDE.md`, `AGENTS.md`, `docs/agents/AGENT-BRIEF.md` and
   owns design decisions and reports them briefly.
 - **Two Claude accounts work on this repo.** They cannot see each other's
   chats or memory. Everything shared goes through GitHub (see "Two accounts").
-  - **Max account: lead and builder.** Runs engine jobs and screens, and is
+  - **Ultra account (was "Max"): lead and builder.** Runs engine jobs and screens, and is
     the only account that merges to main.
   - **Pro account: reviewer and small jobs.** Independent reviews of
     leak-sensitive code, Haiku data entry, doc upkeep. Budget is tight there.
@@ -38,51 +38,55 @@ Points are percent of the Pro weekly limit, the lead's turns included. Agent
 work did not draw on the Fable meter; only the lead's own turns did. A Max
 account has five times the Pro allowance.
 
-## State of main
+## State of main (13 November, 4:50 AM Eastern)
 
-- 574 tests pass; content check clean; build clean; `npm run smoke` passes
-  (run on #126; not re-run after #127, which changed no client file).
-- Last merged: #127. **State version 14.**
-- Content: 339 spells, 329 monsters, 15 conditions, 24 objects, twelve
-  classes (levels 1 to 20 as data; features built through level 6).
-  `npm run content` prints the tiers.
+- 669 tests pass; content check clean; build clean. Last merged: #152. **State version 16.**
+- The lead conversation ("Beej") is on the owner's **Ultra** account, which replaces "Max" below:
+  it leads, builds and merges. Parallel work is allowed: one engine job at a time, with client,
+  render, content, server and read-only jobs beside it. The lead checks agents hourly.
 - Deploys on merge to main: GitHub Pages (solo), Railway (multiplayer).
 
-Merged on 12 and 13 November:
+Merged on the night of 13 November (costs in `docs/USAGE.md`):
 
-| PR | What | Built by |
-|---|---|---|
-| #122 | Spell re-tier, levels 6 to 9. Prismatic Spray target fixed to a 60-foot Cone | Haiku, fix by lead |
-| #113 | Spell re-tier, levels 1 to 4, reviewed against the SRD | review on Sonnet |
-| #123 | Scenes: rules, view, leak tests (state 13) | Opus |
-| #124 | Class features, levels 5 and 6; action bar can arm a feature aimed at one creature | Opus |
-| #125 | Scenes: the screen | Sonnet |
-| #126 | Tests and smoke passes for Sleet Storm, Ray of Enfeeblement, armed features, dice on screen, scenes | Sonnet |
-| #127 | Reactions, part 1: one Reaction a round, standing instructions, Shield, Uncanny Dodge, Deflect Attacks (state 14) | Opus |
+| PR | What |
+|---|---|
+| #133 | Tests read the state version from `VERSION`; linter flags a save step on a self-aimed spell |
+| #137 | Reactions control on the sheet (Shield usable) |
+| #139 | Rooms look is the default; `?hex` gives the old look |
+| #144 | Reactions part 2: prompts mid-action, Counterspell, Hellish Rebuke, monster Parry (state 15) |
+| #145 | `importFgxml`: Fantasy Grounds character XML to a sheet, with a report of what did not map |
+| #147 | Five stock maps, started from the editor's Map file tool |
+| #148 | Upload limits, disk cap, partial-file cleanup; #7 closed |
+| #149 | Renderer R2: floors module, clip and fill to walls |
+| #151 | Security fixes from the #132 review: hidden ids, empty updates, keyed dice (state 16) |
+| #152 | Reaction prompt screen; Fantasy Grounds import button |
 
-No branches are parked. `scenes-1`, `spells-retier-67`, `classes-5`,
-`scenes-screen`, `loose-ends-1` and `reactions-1` are merged and can be deleted.
+Running when this was written: #150 (cut-away walls, caves), #153 (R3 timeline and pace),
+#154 (three small engine items, then class features 7 to 15 for Paladin, Cleric, Druid, Sorcerer, Bard).
+
+## Owner's goals, set 13 November
+
+- **Play a session with his own party**: a Paladin 13, a Paladin 6 / Bard 8, a Druid 14, a Sorcerer 15
+  and a Cleric 14, kept as Fantasy Grounds XML (2014 rules, much non-SRD content). The files are
+  private: never commit them or the players' names. The report on #142 ranks what they need.
+- **He will bring an adventure** to turn into a session. Published adventure text and non-SRD
+  creatures stay out of the repo: the session is a private file loaded into a table.
+- **Three.js is decided** (renderer spec, Decision 8). Order: R3, R4, R5, then vendor a pinned
+  release (GitHub is reachable from the workspace: `git ls-remote https://github.com/mrdoob/three.js`
+  works, so the lead can vendor it), R11 parity, R12 models (owner verifies each pack's licence), R14.
 
 ## Next work, in order
 
-1. **Reactions control on the sheet (Sonnet).** No screen sets standing
-   instructions yet, and Shield defaults to "never" because it spends a slot,
-   so **Shield cannot be used from the app until this lands.** The actions are
-   in `packages/server/README.md` and under Decision 4 in
-   `docs/specs/rules-expansion.md`.
-2. **Independent security read (Opus, Pro account, report only).** Uploads
-   (handouts and assets), sight views, undo, scenes, reactions. All were
-   landed by agents and tested by the same agents; nobody else has read them.
-   Do this before any public table.
-3. **Housekeeping (Haiku).** Make the tests that pin the state version read it
-   from one place (seven files change on every bump). Add a linter check: a
-   spell whose effects roll a save must not have `target: {"self": true}`
-   unless the SRD says so (this caught nothing mechanically but was the bug in
-   Prismatic Spray and Sleet Storm).
-4. **Reactions, part 2 (Opus).** Counterspell, Hellish Rebuke, prompting a
-   player mid-action, monster reaction fields (DEBT M3).
-5. **Class features from level 7 (Opus).** DEBT C8 lists what waits on
-   missing engine parts.
+Engine lane (Opus), one at a time: #154, then multiclassing, then feats and magic item bonuses
+with attunement, then levels 7+ for the other seven classes, then what is left of the review
+(DEBT T11: ids that reveal how many creatures are hidden, kick, upload by anyone who hosts).
+Render lane (Sonnet): #150, #153, then R4 (animations on beats), R5 (the interface), R10 (vendor
+Three.js and measure), R11.
+Content and client (Sonnet or Haiku): spells the party prepares that are below `auto`
+(Dispel Magic, Counterspell, Misty Step, Revivify, Moonbeam, Fire Storm); a lobby choice for stock
+maps; a notes field so an import report stays with its character; players importing their own sheet.
+Second opinion: a Gemini read of what the #132 review did not cover (sight internals, zone and
+effect events, monster AI, the UVTT importer, a live server).
 
 ## Known gaps
 
