@@ -174,10 +174,12 @@ export function actionProfile(a) {
 
 // ---------- running steps ----------
 
+// { total, dice, bonus }: the faces go on the damage event (docs/specs/dice.md).
 const rollDamage = (s, step, crit) => {
-  let total = 0;
-  for (let i = 0; i < (step.times || 1); i++) total += roll(s, step.damage, { crit }).total;
-  return total;
+  let total = 0, bonus = 0;
+  const dice = [];
+  for (let i = 0; i < (step.times || 1); i++) { const r = roll(s, step.damage, { crit }); total += r.total; bonus += r.bonus; dice.push(...r.dice); }
+  return { total, dice, bonus };
 };
 
 // In an area, damage is rolled once and shared by everyone caught in it. Returns
@@ -261,20 +263,24 @@ function exec(s, ev, kit, f, step, at) {
     // Damage steps that follow one another land together: a hit's slashing and its fire are one
     // instance of damage (one death-save failure, one Concentration save). A later step whose
     // `when` cannot be judged is left to run on its own, which hands it to the DM.
-    const amount = (st, path) => { const n = f.shared?.[path] ?? rollDamage(s, st, !!f.crit); return f.half ? Math.floor(n / 2) : n; };
+    // A shared roll from before faces were kept is a bare number.
+    const amount = (st, path) => { const r0 = f.shared?.[path] ?? rollDamage(s, st, !!f.crit), r = typeof r0 === 'number' ? { total: r0 } : r0;
+      return { amount: f.half ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
     const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
-    const parts = [{ amount: amount(step, at), type: step.type }];
+    const parts = [{ ...amount(step, at), type: step.type }];
     while (f.i < f.steps.length && stepKind(f.steps[f.i]) === 'damage') {
       const next = f.steps[f.i], ok = holds(next);
       if (ok === null) break;
-      if (ok) parts.push({ amount: amount(next, `${f.path}${f.i}`), type: next.type });
+      if (ok) parts.push({ ...amount(next, `${f.path}${f.i}`), type: next.type });
       f.i++;
     }
     return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit });
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
-  if (kind === 'heal') return kit.heal(s, t, roll(s, step.heal).total + (step.addMod ? f.src.healMod : 0), ev);
-  if (kind === 'tempHp') return kit.tempHp(s, t, roll(s, step.tempHp).total + (step.addMod ? f.src.healMod : 0), ev, f);
+  if (kind === 'heal' || kind === 'tempHp') {
+    const r = roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
+    return kind === 'heal' ? kit.heal(s, t, r.total + add, ev, rolled) : kit.tempHp(s, t, r.total + add, ev, f, rolled);
+  }
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f, step)) return;

@@ -68,7 +68,8 @@ test("honest tiers: simple animals are auto, anything the engine cannot run is n
   assert.equal(CONTENT.monsters["shrieker-fungus"].tier, "manual");
   assert.equal(CONTENT.monsters["vampire"].tier, "assist");
   for (const m of batch) if (m.tier === "auto") {
-    assert.equal(m.traits.every((t) => t.modifiers.length > 0), true, `${m.id} is auto but has a text-only trait`);
+    // A text-only "Condition Immunities" trait only repeats the `conditionImmune` field, which the engine applies.
+    assert.equal(m.traits.every((t) => t.modifiers.length > 0 || (t.name === "Condition Immunities" && m.conditionImmune?.length > 0)), true, `${m.id} is auto but has a text-only trait`);
     assert.equal(JSON.stringify(m.actions).includes('"manual"'), false, `${m.id} is auto but has a manual step`);
   }
   for (const m of batch) if (m.tier === "manual") assert.equal(m.actions.every((a) => a.effects.every((s) => "manual" in s)), true, m.id);
