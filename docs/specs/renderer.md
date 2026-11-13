@@ -809,3 +809,28 @@ can run in parallel after R2. R10 decides the rest.
   hosted, a character moves by action, the tracker, sheet, undo, a fight and a map change work, no page or console errors; and
   the default renderer reports `stats()`. The smoke script still reads the default renderer's insides through
   `window.hextable.R` (`cam`, `floorData`, `actors`, `doors`...): that is its documented test surface and the app does not use it.
+- **R11 the Three.js renderer** (`three-r11`). `?renderer=three` (or the preference `hextable.renderer`) selects kind `'three'`; the default
+  stays `'gl'`. Files: `render-three.js` (the class, about 600 lines), `three-build.js` (pure: Builder, terrain, walls, cave, arena edge,
+  overlay, pawns, from floors.js and the rules; tested in Node, `test/render-three.test.js`), and in `renderer.js` a stand-in, `LazyThree`,
+  because `createRenderer` answers at once and the library does not: it keeps the latest of each setter and the camera moves, loads
+  `render-three.js` with a dynamic `import()` (so `vendor/` is fetched only then), replays them with the last state shown at once, and falls
+  back to the default renderer if WebGL 2 or the import is missing. Settled:
+  - *Same pictures.* One ShaderMaterial does render.js's shader (vertex colour with alpha, one directional light, fog, the hour's grade, a tint
+    per draw) with Three's matrices; output colour space is linear so nothing is converted. One BufferGeometry (interleaved) per kind:
+    terrain, walls, doors, grid, shadows, overlay, arena edge, and one mesh per pawn and veil. Draw order is the default renderer's.
+  - *Same camera and picking.* A PerspectiveCamera with 0.75 rad, near 0.3, far 200, the inset as the projection's y offset. `screenOf`,
+    `screenPoint`, `screenAxes` read Three's matrices; the ray for `planeHex`, `planePoint` and the tap is Three's unproject, and the
+    hex-column march is render.js's, unchanged (Decision 8).
+  - *Beats* are render.js's tweens on the same names (`doors`, `actors`, `tiltTw`, `dying`), so the beats smoke pass runs on both
+    through `R.inner ?? R`.
+  - At parity: everything in the interface; floors, rooms, cut-away, caves, outdoors, levels above the ceiling, the DM's dimming, sight
+    shades, arena, pawns by size, fliers and their mark, blob shadows, labels, bars, floaters, pins, bars across steps, lasting zones, doors,
+    falls and Prone, death fade, region fade, spawn, removal and placing fades, the arena rising and sinking, pictures (code only).
+  - Not at parity or not done: no real shadows (optional in the task, left out); no glTF (R12); nothing is drawn until the library has loaded
+    (a blank canvas for the first second or two, the first time); a picture floor was written but not exercised by a smoke pass.
+  - *Checked* by `SMOKE_ONLY=three-parity` at 1280x800 and 390x844 with touch on the valley (the same map loaded in both pages), the stock
+    dungeon and the cave: `screenOf` for 81 hexes, `screenPoint`, `planePoint`, `screenAxes` and the hex picked by a tap at 23 to 26 points
+    agree to under 0.01 px with the default renderer, and screenshots differ in under 0.1 % of pixels by more than 40/255. The game plays on
+    it (a tap moves a character, a fight starts and the curtain is drawn, a goblin falls, doors swing and close). Frame times (software GL,
+    so only comparable): the medians are equal to the 60 Hz tick (desktop dungeon 266.7 ms both, phone dungeon 116.7 ms both), and draw calls are
+    equal (11 on the dungeon): the two renderers cost the same here, and neither number says anything about a device.
