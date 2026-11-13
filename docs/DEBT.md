@@ -161,7 +161,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | Random behaviour | confusion | |
 | Assist spells held at assist by: Difficult Terrain, a Plant creature that auto-fails, an escape check, forced obedience, a banishment that leaves play, a sphere that moves | black tentacles, blight, compulsion, dominate beast, banishment | cloudkill, insect plague, dominate person, geas |
 
-**A second look at levels 1 to 3** (PR_NUM). The first pass held back spells where the vocabulary could not
+**A second look at levels 1 to 3** (#113). The first pass held back spells where the vocabulary could not
 say all of the SRD. The brief's own rule is that what it cannot say becomes a manual step and the tier is
 set honestly, so five spells in which the engine can do the numbers and the DM only a rider moved from
 manual to assist (the tables above were corrected; Aura of Life, level 4, joined them, so level 4 is now 2 / 12 / 20):
