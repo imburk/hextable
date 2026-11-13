@@ -1,0 +1,36 @@
+name: Rules error
+description: The game applied a rule, a spell, a monster or a feature wrongly
+labels: [rules]
+body:
+  - type: markdown
+    attributes:
+      value: Hextable follows the SRD 5.2.1 only. Content from other books is not in the game and cannot be added.
+  - type: input
+    id: thing
+    attributes:
+      label: Which rule, spell, monster, feature or item
+    validations:
+      required: true
+  - type: textarea
+    id: srd
+    attributes:
+      label: What the SRD 5.2.1 says
+      description: The section or page, and the sentence in your own words or a short quote.
+    validations:
+      required: true
+  - type: textarea
+    id: game
+    attributes:
+      label: What the game did
+      description: The line from the log or chronicle if you have it, and the situation (who, where, which conditions).
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - A wrong number or wrong text in an entry
+        - The engine applied it wrongly
+        - The engine left it to the DM and should not have to
+        - Not sure
