@@ -1,75 +1,78 @@
 # Hextable
 
-An open source 3D virtual tabletop for D&D. Players roam the world freely; when a
-fight starts, the ground locks to a hex grid and play becomes turn-based, with the
-SRD 5.2 rules enforced by the engine.
+A free virtual tabletop that runs in your browser, built for 5E compatible play. Your party roams a 3D world freely; when a fight starts, the ground locks to a hex arena and play turns into rounds, with the rules of the fifth edition SRD enforced for you.
 
-Runs in a browser on PC, phone and tablet.
+![A desktop screenshot: the party's fighter on her turn in a hex arena, facing three goblins and a wolf, with the initiative order along the top and her actions along the bottom.](docs/media/desktop.png)
 
-## Play
+![A short clip: the party walks across a meadow toward goblins, initiative is rolled, the ground turns into a hex arena, and the fighter moves and swings her longsword.](docs/media/hextable.gif)
 
-- **With a group:** https://hextable-production.up.railway.app/ — one person
-  hosts a table and shares the code; the others join and the DM lets them in.
-- **Solo:** https://imburk.github.io/hextable/ — you are the DM and all four
-  heroes, and the game is saved in your browser.
+## Try it now
 
-To run your own table server, see [packages/server](packages/server/README.md).
+- **On your own:** https://imburk.github.io/hextable/ . You play the DM and all four heroes. Nothing to sign up for; the game is saved in your browser.
+- **With your group:** https://hextable-production.up.railway.app/ . One person hosts a table and shares a six-letter code, the others join, and the DM lets them in.
 
-## What it does
+It runs on a computer, a tablet and a phone.
 
-- **Free roaming, then a fight.** The party walks the map freely; when it comes near enemies
-  (or the DM calls for it) the ground locks to a hex arena with initiative and turns. Heights,
-  sizes, flying and falling count.
-- **SRD 5.2.1 rules, enforced by the engine.** Attacks, saving throws, damage types, the fifteen
-  conditions, concentration and lasting effects, Temporary Hit Points, death saves, Multiattack and
-  Extra Attack, opportunity attacks, cover, rests. What the engine cannot apply it hands to the DM
-  as a note, and says so; it does not guess.
-- **Content as data.** 339 spells, 329 monsters (with their actions, recharges and Multiattack)
-  and 24 map objects are entered. Not all play by the rules yet: 28 spells and 57 monsters do, most
-  of the rest are partly applied and partly left to the DM. `npm run content` lists them by tier.
-- **Monsters play themselves** (the DM can switch that off): they use every action, area attacks and
-  Multiattack.
-- **Maps with rooms.** Levels, walls, doors, regions the DM reveals one at a time, traps, hidden
-  things and checks to find them, light and darkness, line of sight and `canSee`. A map editor
-  (paint, trace a picture with walls and doors, import a Universal VTT file) works on a phone.
-- **Handouts and notes.** The DM shows a picture or text to everyone or to chosen players, and can
-  send a private note; a level can have a picture behind it. Pictures are PNG, JPEG or WebP kept on
-  the table server (in the browser for solo play).
-- **Parties.** Four pregenerated heroes, quick entry for characters you already have, a marching
-  order, and followers who walk behind a leader.
-- **Tables.** Host a table, join by code, the DM lets people in, each player takes one character,
-  and a refresh or restart rejoins. Players are sent only what their characters may know: no dice
-  seed, monster numbers or hidden creatures.
-- **For the DM.** Undo and redo with plain-words labels, a combat tracker, a chronicle, table rules
-  (cover, climbing, passive Perception and more), and **Export table** to keep a copy of the game
-  with its files (up to 24 MB of pictures; there is no import yet).
-- **Phones.** Touch controls throughout, checked at 390 by 844, and several colour themes.
+![A phone screenshot: the same fight on a narrow screen, with the initiative order along the top and the party's tabs and character card along the bottom.](docs/media/phone.png)
 
-Not there yet, among other things: levelling and character building, most class features (Action
-Surge, Rage, Wild Shape...), reactions beyond opportunity attacks, legendary actions, monster
-spellcasting, spells that leave a zone behind, summoned creatures, hiding, and sending players only
-what they can see. The full list is in [docs/DEBT.md](docs/DEBT.md).
+## What it does today
 
-## Development
+- **Roam, then fight.** Walk anywhere until a fight starts (when you come near enemies, or when the DM calls it). Then initiative is rolled and the arena locks. Heights, creature sizes, flying and falling count.
+- **The rules are enforced.** Attacks, saving throws, damage types, the conditions, Concentration, Temporary Hit Points, death saves, Extra Attack, Multiattack, opportunity attacks, cover, short and long rests. What the engine cannot apply, it hands to the DM as a note. It does not guess.
+- **Reactions with a prompt.** Shield, Uncanny Dodge, Deflect Attacks, Counterspell and opportunity attacks can be set as standing instructions or answered when they come up.
+- **Characters.** Twelve classes entered up to level 20, and the 17 SRD feats. Build a character from a class and level, level it up, or multiclass. Class features are built for levels 1 to 6 of every class and up to level 15 for Paladin, Cleric, Druid, Sorcerer and Bard (a few at each level are still left to the DM). Four ready-made level 1 heroes are included.
+- **Spells and monsters.** 339 spells: 45 play fully by the rules, 86 in part, and 208 are applied by the DM with the engine's help. 329 monsters with their actions, recharges and Multiattack: 57 play fully and 270 in part. Monsters play themselves, and the DM can switch that off.
+- **Magic items.** 75 items, carried, worn and attuned by the rules. Plus the SRD weapons and armour.
+- **Maps.** Five ready-made maps (a tavern, a dungeon, a cave, a forest road and a keep) with rooms, doors, secret doors, traps, light and darkness. A map editor works on a phone: paint tiles, or trace a picture with walls and doors.
+- **Hidden information.** Players see only what their characters can see. They are never sent the dice seed, monster numbers or creatures that are hidden. Hiding, searching, line of sight and light are in the rules.
+- **DM tools.** Undo and redo, **rewind to the start of the fight or the last rest**, a combat tracker, a chronicle, table rules (cover, climbing, passive Perception and more), handouts and private notes, and a saved copy of the whole table with its pictures.
+- **When the fight ends.** A defeat card if the party falls, and experience and loot to review and hand out when it is won.
+- **Two renderers.** The default 3D view, and a Three.js one (add `?renderer=three` to the address). Several colour themes.
 
-Needs Node.js 22 or newer. There are no dependencies to install.
+## Not there yet
+
+Hextable has not yet been played through with a real group, and most of it has only been tried on a computer, not on many phones. Be ready to help it along:
+
+- **Many spells are applied by hand.** Most of the 339 spells need the DM to finish the job: summoning, illusions, information spells, spells that change terrain or a creature's form. The same goes for legendary actions, monster spellcasting and summoned creatures.
+- **Not every feature has a screen.** Several things the engine can do are reachable only in part, or not at all, from the buttons: picking feats when you build or level a character, equipping and attuning items, multiclass level-up.
+- **Potions, scrolls and charges cannot be used yet.** Items can be carried and worn, not spent.
+- **Class features beyond the levels above** are mostly left to the DM, and some features at every level need a choice in the moment that the game cannot ask for yet (Cutting Words, Empowered Spell).
+- **Grapple and shove**, species and backgrounds are not built, and a sheet is not checked against them.
+- **There are no character models yet:** heroes and monsters are simple pawns, and the Three.js view has no real shadows.
+- **Maps:** the Universal VTT import has been tried on a hand-made file, not on a real export, and a table export cannot be imported back yet.
+
+The full, plain list is in [docs/DEBT.md](docs/DEBT.md); where it is heading is in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Bring your characters and maps
+
+- **Characters:** the DM can import a character saved from Fantasy Grounds. Classes, levels, scores, skills, spells, SRD feats and SRD magic items come across; anything outside the SRD loads as a stand-in or a note. See [docs/import-characters.md](docs/import-characters.md).
+- **Maps:** import a Universal VTT file in the map editor, or trace over any picture. See [docs/maps.md](docs/maps.md).
+
+## Run your own table
+
+You need Node.js 22 or newer. There is nothing to install.
 
 ```
-npm test     # run the rules and server tests
-npm run content   # list rules content entered so far, by tier
-npm start    # build, then run the table server at http://localhost:8080
-npm run smoke   # browser smoke test (needs global playwright; skips itself without it; not part of npm test)
+npm start
 ```
 
-See [docs/DESIGN.md](docs/DESIGN.md) for the architecture.
+This builds the game and serves it at http://localhost:8080 , with multiplayer tables included. With Docker:
+
+```
+docker build -t hextable . && docker run -p 8080:8080 -v hextable-data:/data hextable
+```
+
+Settings, limits, the protocol and hosting notes are in [packages/server/README.md](packages/server/README.md).
+
+## For contributors
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), then [AGENTS.md](AGENTS.md) (the working agreement for people and coding agents alike) and [docs/DESIGN.md](docs/DESIGN.md) (the architecture). `npm test` runs the rules and server tests; `npm run content` lists what rules content is entered and how well the engine plays it.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+AGPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Third-party code: [Three.js](https://threejs.org) r187 (MIT, Copyright 2010-2026 Three.js Authors), copied into
-[packages/client/vendor/three](packages/client/vendor/three) with its licence; see
-[packages/client/vendor/README.md](packages/client/vendor/README.md).
+[Three.js](https://threejs.org) r187 is copied into [packages/client/vendor/three](packages/client/vendor/three) under its MIT licence (Copyright 2010-2026 Three.js Authors); see [packages/client/vendor/README.md](packages/client/vendor/README.md).
 
 ## Rules content
 

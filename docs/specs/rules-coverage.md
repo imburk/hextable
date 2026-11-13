@@ -243,10 +243,11 @@ the current task list delivers.
 
 ## Sources for the house-rule survey
 
-- [Scrutinizing the 9 Most Popular House Rules for D&D (DM David)](https://dmdavid.com/tag/scrutinizing-the-9-most-popular-house-rules-for-dd)
-- [D&D's most popular homebrew rules (TheGamer)](https://www.thegamer.com/dungeons-dragons-most-popular-homebrew-rules/)
-- [8 Common D&D 5E Rules You Didn't Know Were Homebrew (Tabletop Gaming)](https://tabletopgaming.co.uk/features/8-common-dd-5e-rules-you-didnt-know-were-homebrew)
-- [What are your 2024 houserules? (EN World)](https://www.enworld.org/goto/post?id=9629609)
-- [What houserules do we assume is common in the community? (EN World)](https://www.enworld.org/goto/post?id=9045428)
-- [Important Rules Changes in D&D 2024 (Dungeon Mister)](https://dungeonmister.com/guides/important-rules-changes-in-dnd-2024/)
-- [Updates in the Player's Handbook 2024 (D&D Beyond)](https://www.dndbeyond.com/posts/1810-updates-in-the-players-handbook-2024)
+Articles and forum threads surveying common fifth edition house rules:
+
+- [DM David, on the nine most popular house rules](https://dmdavid.com/tag/scrutinizing-the-9-most-popular-house-rules-for-dd)
+- [TheGamer, on popular homebrew rules](https://www.thegamer.com/dungeons-dragons-most-popular-homebrew-rules/)
+- [Tabletop Gaming, on common rules that are homebrew](https://tabletopgaming.co.uk/features/8-common-dd-5e-rules-you-didnt-know-were-homebrew)
+- [EN World thread on 2024 house rules](https://www.enworld.org/goto/post?id=9629609)
+- [EN World thread on house rules assumed common](https://www.enworld.org/goto/post?id=9045428)
+- [Dungeon Mister, on the 2024 rules changes](https://dungeonmister.com/guides/important-rules-changes-in-dnd-2024/)

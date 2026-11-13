@@ -267,7 +267,7 @@ the text, so a legal change is one edit and no page fetches anything:
    https://www.dndbeyond.com/srd. The SRD 5.2 is licensed under the Creative
    Commons Attribution 4.0 International License, available at
    https://creativecommons.org/licenses/by/4.0/legalcode.").
-2. Hextable's own licence (MIT, `LICENSE`).
+2. Hextable's own licence (AGPL-3.0-or-later, `LICENSE`).
 3. Three.js r187, MIT, with the copyright line from
    `packages/client/vendor/README.md`.
 4. The five fonts the page loads from Google Fonts (`index.html`: Baloo 2,
