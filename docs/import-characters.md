@@ -49,7 +49,8 @@ replaced by `[a long entry, N characters]`.
 | `multiclass` | the classes not built (not SRD 5.2) |
 | `subclass` | a subclass that is not SRD 5.2 |
 | `species`, `background` | names; the pack has no species or backgrounds. Species traits and innate spells are listed |
-| `feats` | every feat (the pack has none), saying whether SRD 5.2 has it |
+| `magicItems` | every magic item: mapped to the pack (`item`, `tier`, worn and attuned as imported), or why not |
+| `feats` | every feat on the sheet. One the pack holds (by name) is put on the sheet's `feats` at the first place it can be taken (an Origin feat at the background's place first) with its choices left open, and carries `feat`, `at` and `tier`; any other is a name-only note. An SRD feat whose 2014 namesake had other rules (Alert, Grappler, Magic Initiate, Savage Attacker, Great Weapon Fighting) is also listed in `ruleDifferences` as "5.2 version". Places for a feat left open are one `ruleDifferences` entry |
 | `features` | class features on the sheet that are not auto in the pack: `tier` `manual` or `assist` where the pack has them, none where it does not (a subclass or 2014 feature) |
 | `spells` | spells not in the pack, not on the class list, over the 5.2 limit, or of a class not built; on a multiclass sheet also a class that casts with no spells listed under its group |
 | `magicItems` | every magic item, by name. A weapon or armour with a base in the pack is imported as the plain base (`importedAs`) and listed here |
@@ -66,7 +67,9 @@ replaced by `[a long entry, N characters]`.
 A sheet at level 3 or more must name the SRD subclass, a feature with options needs a chosen option, and a score is
 1 to 20. Where the file cannot supply that, the importer sets the nearest value and lists it in `report.adjustments`
 (`what`, `from`, `to`, `why`): a non-SRD subclass becomes the SRD one ("its features are NOT this character's"), a
-2014 sheet has no Divine Order or Primal Order (the option the gear fits is taken, else the first), a score of 22 is 20.
+2014 sheet has no Divine Order or Primal Order (the option the gear fits is taken, else the first), a score of 22 is 20
+(above what the engine derives: only an Epic Boon or a magic item takes a score past 20, and the file does not say
+which raised it, so the DM is told rather than the score kept).
 `importFgxml(text, { substituteSubclass: false })` leaves the subclass out; the sheet then cannot load.
 
 ## Known limits of the format
@@ -76,7 +79,15 @@ A sheet at level 3 or more must name the SRD subclass, a feature with options ne
 - A multiclass sheet may keep another class's spells in the group of its first class. They are read as that class's, so
   they may be refused as not on its list or over its limit, and the other class may get none (one entry says so); the DM
   moves them. The prerequisites (13 in each class's primary ability) are checked: a sheet that misses one does not load.
-- Magic items, feats, species, backgrounds and non-SRD subclasses are never given stats. A table that wants them needs a
+- A feat's choices (which scores an Ability Score Improvement raised, Skilled's skills, Magic Initiate's spells) are not
+  in the file: the feat is put on the sheet with them left open, so the scores and skills imported stand as they are.
+- Magic items the pack holds are put on the sheet's `items` (by name, including the 2014 names of SRD items such as
+  "Potion of Greater Healing", "Potion of Hill Giant Strength", "Quaal's Feather Token", "Iron Bands of Bilarro", and
+  "Scroll of <spell>"); a "+1" weapon, armour or Shield becomes the pack's +1 item made from that base. Worn and attuned
+  follow the file (`carried` 2, `attune` 1); if the sheet refuses that (a fourth attuned item, two cloaks), the item is
+  kept attuned-off, then carried, and the report says why. An item whose damage type the file does not give (Ring of
+  Resistance) is a note. Potions and scrolls keep their count, up to 10.
+- Non-SRD magic items, non-SRD feats, species, backgrounds and non-SRD subclasses are never given stats. A table that wants them needs a
   private, table-local form (a name-only note or a custom entry the DM types); they cannot enter the repo.
 
 ## For a client

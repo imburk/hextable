@@ -249,7 +249,7 @@ test("migration 18 to 19: XP from each character's level, no conclusion, the two
   delete s.conclusion; delete s.settings.conclusion; delete s.settings.xpShare;
   migrate(s);
   assert.equal(s.version, VERSION);
-  assert.equal(VERSION, 19);
+  assert.ok(VERSION >= 19);                   // 20 since magic items (#189)
   assert.equal(s.entities.fighter.xp, 6500);
   assert.equal(s.entities.rogue.xp, xpFor(s.entities.rogue.level));
   assert.equal(s.entities.m1.xp, undefined);

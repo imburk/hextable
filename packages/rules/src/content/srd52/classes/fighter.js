@@ -158,30 +158,28 @@ export const fighter = {
       "options": [
         {
           "id": "archery",
+          "feat": "archery",
           "name": "Archery",
           "tier": "auto",
-          "text": "+2 to attack rolls with Ranged weapons.",
-          "grants": {
-            "rangedAttack": 2
-          }
+          "text": "+2 to attack rolls with Ranged weapons."
         },
         {
           "id": "defense",
+          "feat": "defense",
           "name": "Defense",
           "tier": "auto",
-          "text": "+1 to Armor Class while wearing Light, Medium or Heavy armor.",
-          "grants": {
-            "armouredAc": 1
-          }
+          "text": "+1 to Armor Class while wearing Light, Medium or Heavy armor."
         },
         {
           "id": "great-weapon-fighting",
+          "feat": "great-weapon-fighting",
           "name": "Great Weapon Fighting",
           "tier": "manual",
           "text": "Treat a 1 or 2 on a damage die as a 3 with a Melee weapon held in two hands (Two-Handed or Versatile). The engine does not change damage dice; the DM applies it."
         },
         {
           "id": "two-weapon-fighting",
+          "feat": "two-weapon-fighting",
           "name": "Two-Weapon Fighting",
           "tier": "manual",
           "text": "Add your ability modifier to the damage of the extra attack from a Light weapon. The engine has no extra Light-weapon attack yet; the DM applies it."
@@ -259,49 +257,55 @@ export const fighter = {
       "id": "ability-score-improvement-4",
       "name": "Ability Score Improvement",
       "level": 4,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-6",
       "name": "Ability Score Improvement",
       "level": 6,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-8",
       "name": "Ability Score Improvement",
       "level": 8,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-12",
       "name": "Ability Score Improvement",
       "level": 12,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-14",
       "name": "Ability Score Improvement",
       "level": 14,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "ability-score-improvement-16",
       "name": "Ability Score Improvement",
       "level": 16,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Take the Ability Score Improvement feat or another feat you qualify for. Enter the raised scores on the sheet; other feats are applied by the DM."
+      "text": "Take the Ability Score Improvement feat or another feat you qualify for (the sheet's feats). Without one, the scores entered on the sheet are taken as they stand."
     },
     {
       "id": "extra-attack",
@@ -367,9 +371,10 @@ export const fighter = {
       "id": "epic-boon",
       "name": "Epic Boon",
       "level": 19,
-      "tier": "manual",
+      "tier": "auto",
+      "feat": "any",
       "checked": true,
-      "text": "Gain an Epic Boon feat or another feat you qualify for (Boon of Combat Prowess is suggested). Feats are applied by the DM."
+      "text": "Gain an Epic Boon feat or another feat you qualify for (Boon of Combat Prowess is suggested). Without one, nothing is added."
     },
     {
       "id": "three-extra-attacks",
@@ -434,30 +439,28 @@ export const fighter = {
         "options": [
           {
             "id": "archery",
+            "feat": "archery",
             "name": "Archery",
             "tier": "auto",
-            "text": "+2 to attack rolls with Ranged weapons.",
-            "grants": {
-              "rangedAttack": 2
-            }
+            "text": "+2 to attack rolls with Ranged weapons."
           },
           {
             "id": "defense",
+            "feat": "defense",
             "name": "Defense",
             "tier": "auto",
-            "text": "+1 to Armor Class while wearing Light, Medium or Heavy armor.",
-            "grants": {
-              "armouredAc": 1
-            }
+            "text": "+1 to Armor Class while wearing Light, Medium or Heavy armor."
           },
           {
             "id": "great-weapon-fighting",
+            "feat": "great-weapon-fighting",
             "name": "Great Weapon Fighting",
             "tier": "manual",
             "text": "Treat a 1 or 2 on a damage die as a 3 with a Melee weapon held in two hands (Two-Handed or Versatile). The engine does not change damage dice; the DM applies it."
           },
           {
             "id": "two-weapon-fighting",
+            "feat": "two-weapon-fighting",
             "name": "Two-Weapon Fighting",
             "tier": "manual",
             "text": "Add your ability modifier to the damage of the extra attack from a Light weapon. The engine has no extra Light-weapon attack yet; the DM applies it."
