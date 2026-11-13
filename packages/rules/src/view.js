@@ -232,9 +232,16 @@ function shownMap(state) {
       .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : []))
       .sort((p, q) => p.a[0] - q.a[0] || p.a[1] - q.a[1] || p.b[0] - q.b[0] || p.b[1] - q.b[1] || (p.kind < q.kind ? -1 : p.kind > q.kind ? 1 : 0))
       .map((w, i) => ({ ...w, id: `w${i}` })),
-    // Objects in a hidden state are not sent at all. Never a DC, and never what an object is wired to.
+    // Objects in a hidden state are not sent at all. Of the rest, only the fields named here (an
+    // allow list, so a field added later is not sent until someone decides it may be): never a DC,
+    // never what an object is wired to, and where a ladder or stairs lead only once that place is.
     objects: map.objects.filter((o) => { const st = stateOf(o); return st !== undefined && !stateDef(o, st)?.hidden && objectHexes(o).some((h) => has(o.level, h)); })
-      .map(({ dc, links, ...o }) => ({ ...structuredClone(o), state: stateOf(o) })),
+      .map((o) => {
+        const out = { id: o.id, def: o.def, level: o.level, at: structuredClone(o.at), state: stateOf(o) };
+        for (const k of ['edge', 'seg', 'name', 'key']) if (o[k] !== undefined) out[k] = structuredClone(o[k]);
+        if (o.to && levels.some((l) => l.tiles[H.col(o.to)] && (o.to.z === undefined || l.z === o.to.z))) out.to = structuredClone(o.to);
+        return out;
+      }),
     regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: rule === 'light' ? r.hexes.filter((k) => has(r.level, H.parse(k))) : [...r.hexes], revealed: true })),
     starts: [],
   };

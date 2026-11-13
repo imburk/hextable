@@ -13,6 +13,7 @@ import { diff, snapshot } from "../../rules/src/patch.js";
 import { createHistory, describeStep, mark, undoable } from "../../rules/src/history.js";
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate } from "../../rules/src/migrate.js";
+import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { playerView, view, viewEvents, viewHandouts, viewPrompt, viewReactions } from "../../rules/src/view.js";
 
@@ -37,9 +38,22 @@ export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 export const MAX_SAYS_PER_MINUTE = 30;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
+  // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
+  // rolls (an integer rng, as before version 16) unless they also give a key.
+  key ??= seed ? () => null : () => randomBytes(32).toString("hex");
+  seed ??= () => randomInt(1e9);
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
+  // Dice from a key the server made (docs/specs/hidden-information.md, section 7). `key` returning
+  // null keeps the game's integer seed.
+  const rekey = (state) => {
+    if (!state || !Number.isInteger(state.rng)) return false;
+    const k = key();
+    if (k === null) return false;
+    state.rng = keyedRng(k);
+    return true;
+  };
   // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
   const touch = (t) => { t.active = now(); };
   const isActive = (t) => now() - (t.active ?? 0) < idleMs;
@@ -55,12 +69,16 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   for (const t of load()) {
     const was = t.state?.version;
     migrate(t.state); t.active ??= now(); tables.set(t.code, t);     // saved tables may predate the current content ids
+    // A table whose dice still come from a 32-bit seed is given a key, once, now: from here on
+    // nobody can work its rolls out from the ones they see (rules rng.js). Its undo history is
+    // dropped, so that no undo steps back to the old seed.
+    const rekeyed = rekey(t.state);
     // A table saved before the cap, or under a larger one, is cut down now. That moves entries the
     // saved history points at, so the history is not used.
     const cut = capTimeline(t.state?.timeline, timelineCap).length > 0;
     try {
       const data = cut ? null : loadHistory(t.code);
-      if (data && data.seq === (t.seq ?? 0) && t.state?.version === was && undoOf(t).restore(data)) kept.set(t.code, data.seq);
+      if (data && !rekeyed && data.seq === (t.seq ?? 0) && t.state?.version === was && undoOf(t).restore(data)) kept.set(t.code, data.seq);
       else undoOf(t).clear();
     } catch { undoOf(t).clear(); }         // a damaged history file costs the undo history and nothing else
   }
@@ -104,17 +122,31 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const undoInfo = (t) => ({ t: "undoable", undo: undoOf(t).list(), redo: undoOf(t).listRedo() });
   const tellUndo = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, undoInfo(t)); };
 
+  // Put a state back as mark() found it: every key in its place, the timeline cut back to its length then.
+  const putBack = (state, m) => {
+    const tl = state.timeline;
+    for (const k of Object.keys(state)) delete state[k];
+    for (const [k, v] of Object.entries(m.tree)) state[k] = k === "timeline" ? tl : v;
+    if (Array.isArray(tl)) tl.length = m.tl;
+  };
   // When each member last spoke in a scene, for MAX_SAYS_PER_MINUTE.
   const saidAt = new WeakMap();
   // What each connection was last sent, so the next update can be only what changed.
   const sent = new WeakMap();
   // The whole view, to one connection: on sitting down, on being let in, and on request.
+  // Updates are numbered per connection, not by the table's `seq`: a connection that is sent
+  // nothing for a change (nothing it may know of moved) must not see a gap in the numbers either,
+  // or the gap would tell it something happened (security review #132, M3).
+  const wire = new WeakMap();
+  const nextSeq = (c) => { const n = (wire.get(c) ?? 0) + 1; wire.set(c, n); return n; };
+  const quiet = (seen, patch) => !seen.length && !Object.keys(patch).length;
   function sendFull(t, m, c) {
     const state = stateFor(t, m);
     sent.set(c, snapFor(t, m, state));
-    c.send({ t: "update", seq: t.seq ?? 0, state, events: [] });
+    c.send({ t: "update", seq: nextSeq(c), state, events: [] });
   }
-  // Something happened: number it and send every approved connection its own difference.
+  // Something happened: count it, and send every approved connection its own difference. A
+  // connection for which nothing it may know of changed, no event and no difference, is sent nothing.
   function broadcast(t, events) {
     t.seq = (t.seq ?? 0) + 1;
     for (const m of t.members) {
@@ -123,8 +155,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       for (const c of conns(m)) {
         const prev = sent.get(c);
         sent.set(c, next);
-        if (prev) c.send({ t: "update", seq: t.seq, events: seen, patch: diff(prev, next, state) });
-        else c.send({ t: "update", seq: t.seq, state, events: seen });
+        if (!prev) { c.send({ t: "update", seq: nextSeq(c), state, events: seen }); continue; }
+        const patch = diff(prev, next, state);
+        if (!quiet(seen, patch)) c.send({ t: "update", seq: nextSeq(c), events: seen, patch });
       }
     }
   }
@@ -135,10 +168,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     t.seq = (t.seq ?? 0) + 1;
     for (const m of t.members) {
       if (!m.approved || !conns(m).size) continue;
-      const state = stateFor(t, m), ev = m.role === "dm" ? told.dm : told.players;
+      const state = stateFor(t, m), ev = m.role === "dm" ? told.dm : told.players, next = snapFor(t, m, state);
       for (const c of conns(m)) {
-        sent.set(c, snapFor(t, m, state));
-        c.send({ t: "update", seq: t.seq, state, events: ev ? [ev] : [] });
+        const prev = sent.get(c);
+        sent.set(c, next);
+        // Undoing what a player never saw changes nothing of theirs: they are sent nothing.
+        if (prev && !ev && quiet([], diff(prev, next, state))) continue;
+        c.send({ t: "update", seq: nextSeq(c), state, events: ev ? [ev] : [] });
       }
     }
   }
@@ -186,6 +222,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         let code = makeCode();
         while (tables.has(code)) code = makeCode();
         const t = { code, state: newGame(seed()), members: [], active: now() };
+        rekey(t.state);
         const m = { id: makeId(), token: makeToken(), name: cleanName(msg.name), role: "dm", approved: true };
         t.members.push(m);
         tables.set(code, t);
@@ -262,10 +299,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
         if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;
-        const before = undoable(action) ? mark(table.state) : null;        // claiming a seat is not undone
+        // Taken before every action: for the undo history (claiming a seat is not undone), and to
+        // put the game back if the engine throws part way through (review #132, L6).
+        const was = mark(table.state), before = undoable(action) ? was : null;
         try {
           res = apply(table.state, action, { role: me.role, userId: me.id });
         } catch {
+          putBack(table.state, was);
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) return error(res.error);
