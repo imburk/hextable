@@ -45,7 +45,8 @@ export function featuresHtml(e, mineHere = false) {
   const rows = e.feats.map((f) => {
     const u = f.uses ? `<span class="fx-uses" data-feat-uses="${esc(f.id)}">${e.uses?.[f.id] ?? 0} of ${f.uses.max} left</span> · <span>${esc(usesText(f.uses))}</span>` : '';
     const how = f.action ? `<span>${TIME[f.action.time] ?? ''}</span>` : '';
-    const use = mineHere && needsChoice(f) ? `<p><button type="button" class="qb-use" data-feat-use="${esc(f.id)}">Use ${esc(f.name)}…</button></p>` : '';
+    const use = !mineHere ? '' : needsChoice(f) ? `<p><button type="button" class="qb-use" data-feat-use="${esc(f.id)}">Use ${esc(f.name)}…</button></p>`
+      : f.id === 'metamagic' && e.spells?.length ? `<p><button type="button" class="qb-use" data-meta-open="1">Cast a spell with Metamagic…</button></p>` : '';
     return `<details class="qb-feat" data-feat="${esc(f.id)}"><summary>${esc(f.name)}${f.uses ? ` · ${e.uses?.[f.id] ?? 0}/${f.uses.max}` : ''}</summary>
       <p class="note">${[how, u].filter(Boolean).join(' · ')}</p><p class="note">${esc(f.text)}${f.tier === 'manual' ? ' (The DM applies this one.)' : ''}</p>${use}</details>`;
   }).join('');
@@ -62,19 +63,27 @@ export function initShortRest({ host, act, getState }) {
     if (S.encounter) { box.hidden = false; box.textContent = "You can't rest in the middle of a fight."; return; }
     const who = Object.values(S.entities).filter((x) => x.side === 'party' && !x.dead);
     const h = document.createElement('h4'); h.textContent = 'Short Rest: Hit Point Dice to spend'; box.append(h);
-    const inputs = [];
+    const inputs = [], restores = [];
     for (const e of who) {
       const row = document.createElement('label'); row.className = 'qe-f';
       const n = e.hd ?? 0, can = n > 0 && e.hp > 0 && e.hp < e.maxHp;
       row.innerHTML = `<span>${esc(e.name)}: HP ${e.hp}/${e.maxHp}, ${n} Hit Point Di${n === 1 ? 'e' : 'ce'}${e.hitDie ? ` (d${e.hitDie})` : ''} left</span>`;
       if (e.hitDie) { const i = document.createElement('input'); i.type = 'number'; i.min = 0; i.max = n; i.value = 0; i.disabled = n === 0 || e.hp <= 0; i.id = `sr-${e.id}`; i.inputMode = 'numeric'; row.append(i); inputs.push([e, i]); }
       box.append(row);
+      // A feature that gives points back on a Short Rest (Sorcerous Restoration): the DM says who uses it.
+      const rf = (e.feats ?? []).find((f) => f.restore && (e.uses?.[f.id] ?? 0) > 0);
+      if (rf) {
+        const l = document.createElement('label'); l.className = 'check';
+        const c = document.createElement('input'); c.type = 'checkbox'; c.id = `sr-restore-${e.id}`; c.disabled = e.hp <= 0; restores.push([e, c]);
+        l.append(c, document.createTextNode(`${e.name} uses ${rf.name} (${e.uses[rf.restore.of] ?? 0} of ${(e.feats.find((f) => f.id === rf.restore.of)?.uses.max) ?? '?'} points now)`)); box.append(l);
+      }
     }
     const go = document.createElement('button'); go.type = 'button'; go.id = 'dm-short-go'; go.className = 'qe-save'; go.textContent = 'Take the Short Rest';
     go.onclick = () => {
       const spend = {};
       for (const [e, i] of inputs) { const n = Math.max(0, Math.min(e.hd ?? 0, parseInt(i.value, 10) || 0)); if (n) spend[e.id] = n; }
-      act({ type: 'shortRest', ids: who.map((x) => x.id), spend }); box.hidden = true;
+      const restore = restores.filter(([, c]) => c.checked).map(([e]) => e.id);
+      act({ type: 'shortRest', ids: who.map((x) => x.id), spend, ...(restore.length ? { restore } : {}) }); box.hidden = true;
     };
     box.append(go); box.hidden = false;
   };

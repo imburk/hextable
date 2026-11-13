@@ -1774,6 +1774,128 @@ async function classes(browser, url, label, opts) {
         await pick('Dru'); await tap(page, '#actions button:has-text("Wild Shape")'); await tap(page, '#cp-leave');
         await wait(page, (i) => !window.hextable.state.entities[i].form, ids.Dru);
       });
+
+      await run.do('the sorcerer casts Fire Bolt with Quickened Spell: the Metamagic panel shows the cost, the points go down', async () => {
+        const foe = await state(page, (S) => Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden).id);
+        await page.evaluate(([f, c]) => { const h = window.hextable, e = h.state.entities[c]; h.act({ type: 'place', actor: f, to: { q: e.pos.q + 1, r: e.pos.r - 1 } }); }, [foe, ids.Sorsha]);
+        // A goblin beside her: the fight starts now, and her first action waits for her turn.
+        await page.evaluate((c) => window.hextable.act({ type: 'startEncounter', center: window.hextable.state.entities[c].pos }), ids.Sorsha);
+        for (let k = 0; k < 40; k++) {
+          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+          if (!cur || cur === ids.Sorsha) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+          await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        }
+        const before = await uses('Sorsha', 'font-of-magic');
+        await pick('Sorsha');
+        await tap(page, '#actions button:has-text("Metamagic")');
+        await waitShown(page, '#cp .cp-card');
+        const opts = await page.$$eval('#cp [data-meta]', (b) => b.map((x) => x.dataset.meta));
+        if (opts.join() !== 'careful,quickened,heightened,transmuted') throw new Error(`the options known: ${opts}`);
+        await page.selectOption('#cp-spell', 'fire-bolt');
+        const off = await page.$$eval('#cp [data-meta]', (b) => b.filter((x) => x.disabled).map((x) => x.dataset.meta).join());
+        if (off !== 'careful,heightened') throw new Error(`a cantrip with an attack roll: Careful and Heightened should be greyed out, not: ${off}`);
+        await tap(page, '#cp [data-meta="quickened"]');
+        const extra = await page.$$eval('#cp [data-meta]', (b) => b.filter((x) => x.disabled).map((x) => x.dataset.meta).join());
+        if (!/transmuted/.test(extra)) throw new Error(`one option a spell: the others should be greyed out: ${extra}`);
+        const note = await page.$eval('#cp .cp-note', (x) => x.textContent);
+        if (!new RegExp(`${before} Sorcery Points left; this costs 2, leaving ${before - 2}`).test(note)) throw new Error(`the note: ${note}`);
+        await tap(page, '#cp-use');
+        await wait(page, () => window.hextable.mode.kind === 'spell');
+        if (!/Quickened: 2 SP/.test(await page.$eval('#hint-text', (x) => x.textContent))) throw new Error('the hint does not carry the Metamagic');
+        const tl = await state(page, (S) => S.timeline.length);
+        await tapCreature(foe);
+        try { await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['font-of-magic'] === b - 2, [ids.Sorsha, before], 25000); }
+        catch { throw new Error(`the cast did not go through; ${await page.evaluate(([f, c]) => { const h = window.hextable, S = h.state; return JSON.stringify([S.entities[f].pos, S.entities[f].hp, S.entities[c].pos, S.encounter?.order[S.encounter.turn]?.id === c, h.R.screenOf(S.entities[f].pos)]); }, [foe, ids.Sorsha])} toast: "${await page.$eval('#toast', (x) => x.hidden ? '' : x.textContent)}", points ${await uses('Sorsha', 'font-of-magic')} of ${before}, mode ${await page.evaluate(() => window.hextable.mode.kind)}`); }
+        const types = await newest(tl);
+        if (!types.includes('cast')) throw new Error(`no cast: ${types}`);
+      });
+
+      await run.do('Font of Magic: spending a slot for points, and a refusal in the engine\'s words when it is over the maximum', async () => {
+        await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await wait(page, () => !window.hextable.state.encounter, null, 20000);
+        await pick('Sorsha');
+        await tap(page, '#actions button:has-text("Font of Magic")');
+        await waitShown(page, '#cp .cp-card');
+        await tap(page, '#cp [data-how="spend"]'); await tap(page, '#cp [data-level="3"]');
+        await tap(page, '#cp-use');
+        await waitShown(page, '#cp-err');
+        if (!/more than 15 points/.test(await page.$eval('#cp-err', (x) => x.textContent))) throw new Error('refusal not shown');
+        const slots = await state(page, (S, i) => S.entities[i].slots[3], ids.Sorsha), pts = await uses('Sorsha', 'font-of-magic');
+        await tap(page, '#cp [data-how="make"]'); await tap(page, '#cp [data-level="3"]');
+        await tap(page, '#cp-use');
+        await wait(page, ([i, n]) => window.hextable.state.entities[i].slots[3] === n + 1, [ids.Sorsha, slots]);
+        if (await uses('Sorsha', 'font-of-magic') !== pts - 5) throw new Error('a level 3 slot should cost 5 points');
+        await pick('Sorsha'); await tap(page, '#actions button:has-text("Font of Magic")');
+        await tap(page, '#cp [data-how="spend"]'); await tap(page, '#cp [data-level="1"]'); await tap(page, '#cp-use');
+        await wait(page, ([i, n]) => window.hextable.state.entities[i].uses['font-of-magic'] === n + 1, [ids.Sorsha, pts - 5]);
+      });
+
+      await run.do('a paladin and a bard join once the fight is over', async () => {
+        await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await wait(page, () => !window.hextable.state.encounter, null, 20000);
+        sheets.Pala = { name: 'Pala', class: 'paladin', level: 13, subclass: 'devotion', abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ['athletics', 'persuasion'], choices: {}, spells: [] };
+        sheets.Bardo = { name: 'Bardo', class: 'bard', level: 13, subclass: 'lore', abilities: { ...A, cha: 18 }, skills: ['arcana', 'history', 'performance'], choices: {}, spells: [] };
+        await page.evaluate(async (sh) => {
+          const D = await import('./shared/derive.js'), h = window.hextable; let q = 0;
+          for (const s of [sh.Pala, sh.Bardo]) { const r = D.derive(s); if (!r.record) throw new Error(JSON.stringify(D.validate(s))); h.act({ type: 'addCharacter', record: r.record, at: { q: -3 + q++, r: 5, z: 0 } }); }
+        }, sheets);
+        for (const n of ['Pala', 'Bardo']) { await wait(page, (nm) => Object.values(window.hextable.state.entities).some((e) => e.name === nm), n); ids[n] = await state(page, (S, nm) => Object.values(S.entities).find((e) => e.name === nm).id, n); }
+      });
+
+      await run.do('Lay On Hands: a refused condition shows in the panel, then the pool pays for the Hit Points', async () => {
+        await pick('Pala');
+        await tap(page, '#actions button:has-text("Lay On Hands")');
+        await waitShown(page, '#cp .cp-card');
+        await page.fill('#cp-amount', '5');
+        await tap(page, '#cp [data-cure="poisoned"]');
+        await tap(page, '#cp-use');
+        await waitShown(page, '#cp-err');
+        const err = await page.$eval('#cp-err', (x) => x.textContent);
+        if (!/not poisoned|does not|isn't/i.test(err)) throw new Error(`the refusal: ${err}`);
+        if (!(await page.$eval('#cp [data-cure="poisoned"]', (x) => x.checked)) || (await page.$eval('#cp-amount', (x) => x.value)) !== '5') throw new Error('the choice was not kept');
+        const before = await uses('Pala', 'lay-on-hands');
+        await tap(page, '#cp [data-cure="poisoned"]'); await tap(page, '#cp-use');
+        await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['lay-on-hands'] === b - 5, [ids.Pala, before], 25000);
+      });
+
+      await run.do('Divine Intervention: the cleric picks a spell from the list and casts it with no slot', async () => {
+        await pick('Cleo');
+        await tap(page, '#actions button:has-text("Divine Intervention")');
+        await waitShown(page, '#cp .cp-card');
+        const spells = await page.$$eval('#cp-spell option', (o) => o.map((x) => x.value));
+        if (spells.length < 5 || !spells.includes('cure-wounds')) throw new Error(`the list: ${spells}`);
+        await page.selectOption('#cp-spell', 'cure-wounds');
+        await tap(page, '#cp-use');
+        await wait(page, () => window.hextable.mode.kind === 'spell' && /no spell slot/.test(document.getElementById('hint-text').textContent));
+        const before = await uses('Cleo', 'divine-intervention'), slots = await state(page, (S, i) => JSON.stringify(S.entities[i].slots), ids.Cleo);
+        await tapCreature(ids.Pala);
+        await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['divine-intervention'] === b - 1, [ids.Cleo, before], 25000);
+        if ((await state(page, (S, i) => JSON.stringify(S.entities[i].slots), ids.Cleo)) !== slots) throw new Error('a spell slot was spent');
+      });
+
+      await run.do('Bardic Inspiration: arm it and tap an ally', async () => {
+        await pick('Bardo');
+        const before = await uses('Bardo', 'bardic-inspiration');
+        await tap(page, '#actions button:has-text("Bardic Inspiration")');
+        await wait(page, () => window.hextable.mode.kind === 'feature');
+        await tapCreature(ids.Pala);
+        await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['bardic-inspiration'] === b - 1, [ids.Bardo, before], 25000);
+        await pick('Bardo'); await tap(page, '#btn-sheet'); await waitShown(page, '#sheet-reactions');
+        const rx = await page.$$eval('#sheet-reactions [data-rx-set]', (e) => e.map((x) => x.dataset.rxSet));
+        if (!rx.includes('countercharm')) throw new Error(`reactions on the bard's sheet: ${rx}`);
+      });
+
+      await run.do('the DM\'s Short Rest offers Sorcerous Restoration, and the points come back', async () => {
+        const pts = await uses('Sorsha', 'font-of-magic');
+        if (pts >= 15) throw new Error('the sorcerer has spent no points to get back');
+        await closePanels(page); await tap(page, '#btn-dm'); await waitShown(page, '#dm');
+        await tap(page, '#dm-short-rest');
+        await waitShown(page, `#sr-restore-${ids.Sorsha}`);
+        await page.check(`#sr-restore-${ids.Sorsha}`);
+        await tap(page, '#dm-short-go');
+        await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['font-of-magic'] > b, [ids.Sorsha, pts], 25000);
+      });
     } finally { await ctx.close(); }
   });
 }

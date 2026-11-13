@@ -331,7 +331,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
       const f = (e.feats ?? []).find((x) => x.id === b.dataset.featUse);
       if (f) b.onclick = () => show(({ modes: modesPanel, form: formPanel, pool: poolPanel, exchange: exchangePanel, free: freePanel })[kindOf(f)](e, f));
     }
-    for (const b of rootEl.querySelectorAll('[data-meta-open]')) b.onclick = () => show(metaPanel(e));
+    for (const b of rootEl.querySelectorAll('[data-meta-open]')) b.onclick = () => (metamagicKnown(e).length ? show(metaPanel(e)) : toast(`${e.name} knows no Metamagic options yet: choose them on the sheet.`));
     for (const b of rootEl.querySelectorAll('[data-leave-form]')) b.onclick = () => act({ type: 'feature', actor: e.id, feature: b.dataset.leaveForm });
   }
 
