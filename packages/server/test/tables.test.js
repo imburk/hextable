@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAssets } from "../src/assets.js";
-import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_TABLES } from "../src/tables.js";
+import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -519,7 +519,7 @@ test("the server upgrades tables saved by the previous version when it loads the
   saved.members = [{ id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true }];
   const tables = createTables({ load: () => [saved] });
   const state = tables.get("FIXTR1").state;
-  assert.equal(state.version, 12);
+  assert.equal(state.version, 13);
   assert.deepEqual(state.entities.rogue.cond, { unconscious: {}, prone: {} });
   const dm = client(tables);
   dm.say({ t: "resume", code: "FIXTR1", token: "dm-token" });
@@ -942,4 +942,80 @@ test("export carries the table's files as base64 with their records, within a si
     assert.deepEqual(player.got.at(-1), { t: "error", error: "Only the DM can export the table." });
     assert.ok(!JSON.stringify(player.raw).includes(PNG.toString("base64")), "no file bytes reached the player");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Scenes over the wire. Whatever path a player's knowledge takes (the update patches, a whole view
+// on joining mid-scene or after an undo, the record on joining or on asking, error messages, undo
+// labels), it never holds a scene the DM has not opened, an NPC's notes, or anything said of either.
+test("scenes: nothing the DM keeps back reaches a player by any message, joining mid-scene included", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  const SECRETS = ["SECRET-TITLE-zq", "SECRET-NPC-zq", "NOTES-ONE-zq", "NOTES-TWO-zq", "GONE-NPC-zq"];
+  const act = (c, action) => { const n = c.raw.length; c.say({ t: "act", action }); return c.raw.slice(n); };
+  const errorOf = (c, action) => act(c, action).find((m) => m.t === "error")?.error;
+  // Prepared, not open: a player is sent updates (the seq moves on) but nothing of the scene.
+  act(dm, { type: "scene", scene: { title: "SECRET-TITLE-zq", open: false } });
+  act(dm, { type: "sceneNpc", npc: { name: "GONE-NPC-zq" } });
+  act(dm, { type: "sceneNpc", npc: { name: "SECRET-NPC-zq", notes: "NOTES-ONE-zq" } });
+  act(dm, { type: "sceneNpc", npc: { id: "npc1" }, remove: true });
+  assert.equal(player.last("update").state.scene, null);
+  // Guessing: the same answers for the prepared NPC as for nothing at all.
+  assert.equal(errorOf(player, { type: "say", as: "npc2", text: "x" }), errorOf(player, { type: "say", as: "npc9", text: "x" }));
+  assert.equal(errorOf(player, { type: "sceneNpc", npc: { id: "npc2" }, remove: true }), errorOf(player, { type: "sceneNpc", npc: { id: "npc9" }, remove: true }));
+  assert.equal(errorOf(player, { type: "endScene" }), "Only the DM can do that with a scene.");
+  // The DM undoes and redoes a step of the preparation: players are told nothing of it.
+  const before = player.raw.length;
+  dm.say({ t: "undo" }); dm.say({ t: "redo" });
+  for (const m of player.raw.slice(before)) assert.deepEqual(m.events, [], "an undo of a prepared step has no label for players");
+  // Into the scene. The NPC's notes change while it is open, then are undone and redone.
+  act(dm, { type: "scene", scene: { open: true } });
+  assert.deepEqual(player.last("update").state.scene, { id: "sc1", title: "SECRET-TITLE-zq", present: [{ id: "npc1", name: "SECRET-NPC-zq" }], open: true });
+  SECRETS.splice(0, 2);                      // the title and the NPC's name are now the players' to know
+  act(dm, { type: "sceneNpc", npc: { id: "npc1", notes: "NOTES-TWO-zq" } });
+  act(player, { type: "say", as: "rogue", text: "Who are you?" });
+  act(dm, { type: "say", as: "npc1", text: "A friend." });
+  dm.say({ t: "undo" });
+  dm.say({ t: "redo" });
+  assert.deepEqual(player.last("update").events.map((e) => e.type), ["redone"]);
+  // A second player sits down in the middle of the scene: the whole view, then the record.
+  const kim = client(tables);
+  kim.say({ t: "join", code, name: "Kim" });
+  dm.say({ t: "approve", userId: kim.last("welcome").userId, ok: true });
+  assert.equal(kim.last("update").state.scene.title, "SECRET-TITLE-zq");
+  const rec = kim.last("history").entries;
+  assert.deepEqual(rec.filter((e) => e.type === "say").map((e) => [e.line, e.name, e.text]), [[1, "Rogue", "Who are you?"].map((x, i) => i === 1 ? player.last("update").state.entities.rogue.name : x), [2, "SECRET-NPC-zq", "A friend."]]);
+  kim.say({ t: "history", types: ["sceneStart", "sceneNpc", "sceneEdit", "sceneEnd", "say"], limit: 200 });
+  // Every player's every message, and what their client rebuilt from the patches, is clean; and
+  // the rebuilt state is exactly the view the engine gives them.
+  const dmState = dm.last("update").state;
+  for (const p of [player, kim]) {
+    const text = JSON.stringify([p.raw, p.got]);
+    for (const x of SECRETS) assert.ok(!text.includes(x), `${x} reached a player`);
+    assert.ok(!text.includes('"notes"') && !text.includes('"prep"') && !text.includes('"opened"'));
+    assert.ok(!p.raw.some((m) => m.t === "undoable"), "the undo list is the DM's");
+    const userId = p.last("welcome").userId;
+    assert.deepEqual(p.last("update").state, JSON.parse(JSON.stringify(view(dmState, { role: "player", userId }))));
+  }
+  assert.ok(JSON.stringify(dm.raw).includes("NOTES-TWO-zq"), "the DM has the notes");
+});
+
+test("scenes: a player speaks only as their own character, and only so fast", () => {
+  let t = 1_000_000;
+  const tables = createTables({ seed: () => 5, now: () => t });
+  const { dm, player } = seated(tables);
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  dm.say({ t: "act", action: { type: "scene", scene: { title: "Inn" } } });
+  const say = (c, action) => { const n = c.raw.length; c.say({ t: "act", action: { type: "say", ...action } }); return c.raw.slice(n); };
+  assert.match(say(player, { as: "fighter", text: "I am the fighter" }).find((m) => m.t === "error").error, /your own character/);
+  // Out of character, signed with the name joined by, not one sent; control characters taken out.
+  const ev = say(player, { as: null, text: "brb\u0007\u001b[31m", userName: "DM" }).find((m) => m.t === "update").events[0];
+  assert.deepEqual([ev.name, ev.text, ev.from], ["Pat", "brb[31m", player.last("welcome").userId]);
+  assert.match(say(player, { as: "rogue", text: "x".repeat(501) }).find((m) => m.t === "error").error, /at most 500/);
+  // Every line sent counts, refused or not: three so far.
+  for (let i = 3; i < MAX_SAYS_PER_MINUTE; i++) assert.ok(!say(player, { as: "rogue", text: `l${i}` }).some((m) => m.t === "error"));
+  assert.match(say(player, { as: "rogue", text: "one too many" }).find((m) => m.t === "error").error, /too fast/);
+  assert.ok(!say(dm, { as: null, text: "the DM is counted apart" }).some((m) => m.t === "error"));
+  t += 61_000;
+  assert.ok(!say(player, { as: "rogue", text: "a minute later" }).some((m) => m.t === "error"));
 });

@@ -187,6 +187,13 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    // Scenes. A label never holds what was said, nor anything of an NPC but whether they came or went.
+    case 'scene': label = ev('sceneEdit') ? 'The scene was changed' : `A scene began: ${String(ev('sceneStart')?.title ?? '').slice(0, 40)}`; break;
+    case 'endScene': label = 'The scene ended'; break;
+    case 'sceneNpc': { const c = ev('sceneNpc')?.change; label = c === 'added' ? `${ev('sceneNpc').name} joined the scene` : c === 'removed' ? `${ev('sceneNpc').name} left the scene` : 'Someone in the scene was changed'; break; }
+    case 'say': { const e = ev('say'); label = e?.as === null ? 'Something was said out of character' : `${e?.name ?? 'Someone'} spoke`; break; }
+    case 'askCheck': label = 'A check was asked for'; break;
+    case 'sceneChronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;

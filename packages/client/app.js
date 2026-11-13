@@ -238,6 +238,8 @@ function describe(ev) {
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
+    // The transcript of a scene, one line each, until the scene screen is built.
+    case 'say': return [ev.as === null ? `(${ev.name}, out of character) ${ev.text}` : `${ev.name}: “${ev.text}”`];
     default: return HO.describe(ev);       // handouts and private notes
   }
 }

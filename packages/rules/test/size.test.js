@@ -146,7 +146,7 @@ test("players are told a creature's size, and saved tables get sizes when they l
   assert.equal(view(s, PAT).entities[ogre.id].size, "large");
   const saved = JSON.parse(readFileSync(new URL("./fixtures/table-v1.json", import.meta.url), "utf8")).state;
   const old = migrate(structuredClone(saved));
-  assert.equal(old.version, 12);
+  assert.equal(old.version, 13);
   for (const e of Object.values(old.entities)) assert.ok(["small", "medium"].includes(e.size), `${e.id} ${e.size}`);
   assert.equal(Object.values(old.entities).find((e) => e.tpl === "goblin-warrior").size, "small");
 });

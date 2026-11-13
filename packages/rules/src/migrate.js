@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 
-export const VERSION = 12;
+export const VERSION = 13;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -45,6 +45,8 @@ export function migrate(state) {
   if (state.settings) state.settings.diceThrow ??= 'auto';
   // Handouts (no version of their own: a state without them simply has none yet).
   if (!Array.isArray(state.handouts)) state.handouts = [];
+  // Version 13: scenes (scenes.js). A table saved before them has none, open or prepared.
+  if (state.scene === undefined) state.scene = null;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

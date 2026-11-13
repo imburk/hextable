@@ -107,10 +107,12 @@ export function handoutActions(fail) {
   };
 }
 
-// The asset ids a state refers to: in handouts and as level backgrounds. Run on a player's view,
-// this is exactly the files that player may fetch.
+// The asset ids a state refers to: in handouts, as level backgrounds, and as a scene's picture and
+// the portraits of those in it. Run on a player's view, this is exactly the files that player may fetch.
 export function assetRefs(state) {
   const out = new Set();
+  if (typeof state?.scene?.image === 'string') out.add(state.scene.image);
+  for (const p of state?.scene?.present ?? []) if (typeof p.portrait === 'string') out.add(p.portrait);
   for (const h of state?.handouts ?? []) if (typeof h.asset === 'string') out.add(h.asset);
   for (const l of state?.map?.levels ?? []) if (typeof l.image?.asset === 'string') out.add(l.image.asset);
   return out;

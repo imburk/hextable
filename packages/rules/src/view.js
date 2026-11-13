@@ -108,6 +108,16 @@ export function view(state, viewer) {
   if (isDM(viewer)) return state;
   return { ...playerView(state), handouts: viewHandouts(state, viewer) };
 }
+
+// The scene going on, as players are told of it: its title and picture and who is in it, with
+// names and portraits. Never the DM's notes on anyone, nor anything of a scene that is not open
+// (one being prepared, or set aside): to a player that is no scene at all. The transcript is the `say` events.
+export function viewScene(state) {
+  const sc = state.scene;
+  if (!sc?.open) return null;
+  return { id: sc.id, title: sc.title, ...(sc.image !== undefined && { image: sc.image }),
+    present: sc.present.map((p) => ({ id: p.id, name: p.name, ...(p.portrait !== undefined && { portrait: p.portrait }) })), open: true };
+}
 // What every player is sent, but for the handouts shown to each: the party sees as one, so a table
 // server builds this once per change and gives it to all its players (packages/server/src/tables.js).
 export function playerView(state) {
@@ -128,6 +138,7 @@ export function playerView(state) {
     entities,
     encounter: viewEncounter(state),
     effects: viewEffects(state),
+    scene: viewScene(state),
     ...(sightRule(state) !== 'rooms' ? { sight: structuredClone(shownMap(state).sight) } : {}),
   };
 }
@@ -380,6 +391,20 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
+        break;
+      case 'sceneStart':
+      case 'sceneEdit':
+      case 'sceneEnd':                                 // a scene began, was renamed or ended: its title, as everyone sees it
+        if (ev.prep !== true) out.push(pick(ev, ['type', 'scene', 'title', 'why']));    // never one not open (scenes.js)
+        break;
+      case 'sceneNpc':                                 // someone came or left, or a name or face changed; not a change to the DM's notes
+        if (ev.prep !== true && (ev.change !== 'edited' || ev.changed?.some((k) => k !== 'notes'))) out.push(pick(ev, ['type', 'scene', 'npc', 'name', 'change']));
+        break;
+      case 'say':                                      // what is said at the table, everyone hears
+        out.push(pick(ev, ['type', 'from', 'as', 'name', 'text', 'scene', 'line']));
+        break;
+      case 'checkAsked':                               // a request for a check is between the player who asked and the DM
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(pick(ev, ['type', 'actor', 'skill', 'by']));
         break;
       case 'handoutShown':                             // that a handout was shown, to those it was shown to; never who else
         if (ev.to === 'all' || (Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId))) out.push(pick(ev, ['type', 'handout', 'title']));
