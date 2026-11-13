@@ -871,7 +871,7 @@ function start(transport) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    SC.refused(); RP.refused(msg);
+    SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => S && showUndo();
