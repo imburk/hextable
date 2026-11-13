@@ -167,13 +167,13 @@ answer repeats `types`).
 
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
-`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"sync"}`, `{t:"export"}` (DM only),
-`{t:"undo"}` and `{t:"redo"}` (DM only).
+`{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"history",fight}`, `{t:"sync"}`, `{t:"export"}` (DM only),
+`{t:"undo"}`, `{t:"redo"}` and `{t:"rewind",to:"fight"|"rest"}` (DM only).
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",seq,events,state}` or `{t:"update",seq,events,patch}`, `{t:"lobby",members,pending}`,
-`{t:"error",error,expired?}`, `{t:"history",entries,recent?,types?}`, `{t:"export",table}`,
-`{t:"undoable",undo,redo}` (DM only).
+`{t:"error",error,expired?}`, `{t:"history",entries,recent?,types?}`, `{t:"history",fight,entries,cut}`, `{t:"export",table}`,
+`{t:"undoable",undo,redo,pins:{fight,rest}}` (DM only).
 
 An update's `state` is the receiver's view of the game and never includes the
 timeline. The first update a connection gets carries the whole view; later
@@ -186,6 +186,13 @@ the whole view again. The patch
 format is in `packages/rules/src/patch.js`. Past entries come through `history`, redacted for players in the
 same way as live events. On joining or rejoining, each client is sent its last
 50 visible entries with `recent: true`.
+
+A fight is named in the record: `encounterStart` has `fight` (its number) and `where` (the name of the
+revealed region at its centre, else the map's name; never a region the party has not found), and
+`encounterEnd` has `fight`. `{t:"history",fight}` asks for one fight's record: the entries from its
+`encounterStart` to its `encounterEnd` (or to now, while it goes on), redacted for the asker like any
+`history`, at most 500 from the start (`cut: true` if more were left out). An unknown fight answers
+with no entries.
 
 ## Limits and hardening
 
@@ -318,7 +325,7 @@ whole game exactly, the dice seed, the clock and the timeline entries included.
   events reached them. Otherwise their update has no events, and a player whose
   view the step did not change is sent nothing.
 - After every recorded action, undo and redo, the DM's connections get
-  `{t:"undoable", undo:[labels], redo:[labels]}`, newest first. Players never do.
+  `{t:"undoable", undo:[labels], redo:[labels], pins:{fight,rest}}`, newest first. Players never do.
 - Redo does not re-roll: the seed comes back with everything else, so the same
   action gives the same result. A new action after an undo clears what could be redone.
 - The history is saved beside the table: `DATA_DIR/<CODE>.undo.json` next to `<CODE>.json`,
@@ -331,6 +338,40 @@ whole game exactly, the dice seed, the clock and the timeline entries included.
   (the server stopped between the two writes, say) it is dropped, because its patches would not
   fit that state. A history file that is missing, cut off, not JSON or not in the exact shape
   `history.js` writes is ignored with a line in the log, and the table loads with an empty history.
+
+### Rewind: the start of the fight, the last rest
+
+Thirty steps do not reach back to the start of a fight. So the history also keeps two **pins**,
+whole copies of the game (`docs/specs/table-ui.md`, Decision 1):
+
+- the **fight pin**, the game as it was just before an action that started a fight (an
+  `encounterStart` event: `startEncounter`, or a move, attack or spell that began one);
+- the **rest pin**, the game just after a `rest` or `shortRest`. A rest drops the fight pin;
+  `loadMap` drops both. Undo and redo leave the pins alone.
+
+`{t:"rewind",to:"fight"|"rest"}` from the DM puts the game back as it was at that pin, as one
+step that Undo takes back (and Redo does again, exactly). Anyone else gets `Only the DM can
+rewind.`; with no such pin, `No fight to go back to.` or `No rest to go back to.` Kept from now,
+not from the pin: the **dice stream** (so the fight fought again rolls new dice; the dice are a
+stream in the game state, so replaying actions from any saved state still gives exactly the same
+results), the id counter `seq` (so the new fight has a new id), the timeline (the lost fight stays
+in the record) and who holds which character. Everyone is sent a whole view; the DM's event is
+`{type:"rewound",to,label}`, players' is `{type:"rewound",to}`. `undoable` carries
+`pins:{fight,rest}`, booleans, for the DM's buttons. Pins are saved in the history file (`v: 2`; a
+file from before pins, `v: 1`, loads with none), count in its 8 MB, and are never trimmed to make
+room: undo steps go first.
+
+## Rewards at the end of a fight
+
+Nothing here is a server message: it is all the `conclusion` action and the state (rules
+`rewards.js`, `docs/specs/table-ui.md`, Decision 4). A fight won or ended by the DM leaves
+`state.conclusion` (table setting `conclusion`: `dm` reviews first, `auto` publishes at once, `off`
+makes none; `xpShare`: `split` or `full`). The DM's view holds it all; a player's holds
+`{id, fight, pending: true}` until the DM publishes, then the published card: the foes the party
+knew of (no XP each, no total), each character's share, the bonus lines with reasons and the loot.
+The DM's events `conclusionReady` and `conclusionEdited` are never sent to players; `conclusion`
+(shaped like the card), `xp`, `levelReady`, `gear` (for their own creatures, with `why`) and
+`conclusionSkipped` are.
 
 ## The timeline cap
 

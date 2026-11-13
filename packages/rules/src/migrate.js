@@ -10,8 +10,9 @@ import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
+import { xpFor } from './rewards.js';
 
-export const VERSION = 18;
+export const VERSION = 19;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -89,6 +90,12 @@ export function migrate(state) {
     for (const d of sizes) { const n = Math.min(spent, e.hitDice[d]); e.hdBy[d] = e.hitDice[d] - n; spent -= n; }
     e.hd = Object.values(e.hdBy).reduce((a, b) => a + b, 0);
   }
+  // Version 19: Experience Points and the rewards of a fight (rewards.js). Each party character
+  // without XP gets the total its level starts at; a table saved before then has no conclusion, and
+  // one that is not whole is dropped. Two table rules: who reviews rewards, and how XP is shared.
+  for (const e of Object.values(state.entities)) if (e.kind === 'pc' && !(Number.isInteger(e.xp) && e.xp >= 0)) e.xp = xpFor(e.level ?? 1);
+  if (state.conclusion === undefined || !validConclusion(state.conclusion)) state.conclusion = null;
+  if (state.settings) { state.settings.conclusion ??= 'dm'; state.settings.xpShare ??= 'split'; }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
@@ -105,4 +112,13 @@ export function migrate(state) {
   // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
   for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
+}
+
+// A conclusion as rewards.js makes it, in every part a later action or view reads.
+function validConclusion(c) {
+  if (c === null) return true;
+  const obj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  return obj(c) && Number.isInteger(c.fight) && typeof c.published === 'boolean' && Array.isArray(c.foes) && c.foes.every((f) => obj(f) && typeof f.id === 'string' && Number.isInteger(f.xp) && typeof f.counts === 'boolean')
+    && Array.isArray(c.party) && c.party.every((id) => typeof id === 'string') && obj(c.xp) && Array.isArray(c.xp.bonus) && obj(c.xp.per) && Array.isArray(c.xp.fixed)
+    && Array.isArray(c.loot) && c.loot.every((l) => obj(l) && typeof l.id === 'string' && typeof l.name === 'string' && Number.isInteger(l.qty)) && Number.isInteger(c.next);
 }

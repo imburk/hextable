@@ -47,10 +47,19 @@ yet known or not reported.
 | 13 Nov | Ultra | Event timeline and pace (R3) | #153 / #160 | Sonnet | 242k | about 100 min, with a restart | merged |
 | 13 Nov | Ultra | Three small engine items; class features 7 to 15, five classes | #154 / #157, #164 | Opus | 480k | about 125 min, with a restart | merged (state 17) |
 | 13 Nov | Ultra | Party spells re-tier | #159 / #161 | Sonnet | 154k | 32 min | merged |
-| 13 Nov | Ultra | Animations on beats (R4) | #162 | Sonnet | ? | ? | running |
-| 13 Nov | Ultra | Table controls: pace, stock maps in the lobby, import report | #163 | Sonnet | ? | ? | running |
-| 13 Nov | Ultra | Spell vocabulary and the spells it unlocks | #165 | Opus | ? | ? | running |
-| 13 Nov | Ultra | Independent review of #164 (report only) | #166 | Sonnet | ? | ? | running |
+| 13 Nov | Ultra | Animations on beats (R4) | #162 / #171 | Sonnet | 263k | 66 min | merged |
+| 13 Nov | Ultra | Table controls: pace, stock maps in the lobby, import report | #163 / #168 | Sonnet | 147k | 51 min | merged |
+| 13 Nov | Ultra | Spell vocabulary and the spells it unlocks | #165 / #174 | Opus | 366k | 90 min | merged |
+| 13 Nov | Ultra | Independent review of #164 (report only) | #166 | Sonnet | 280k | 12 min | posted: 1 High, 4 Medium, 9 Low |
+| 13 Nov | Ultra | Class feature controls | #170 / #178 | Sonnet | 273k | about 110 min, two restarts | merged |
+| 13 Nov | Ultra | Renderer interface (R5) | #172 / #176 | Sonnet | 182k | about 80 min, two restarts | merged |
+| 13 Nov | Ultra | Vendor Three.js r187, gzip (R10) | #177 / #180 | Sonnet | 111k | 13 min | merged |
+| 13 Nov | Ultra | Review fixes; multiclassing | #169, #175 / #179, #182 | Opus | 419k | 60 min | merged (state 18) |
+| 13 Nov | Ultra | Table UI spec | #181 / #183 | Sonnet | 293k | 13 min | merged |
+| 13 Nov | Ultra | Drawer, Settings, About, tracker (T1, T2) | #181, #173 | Sonnet | ? | ? | running |
+| 13 Nov | Ultra | Engine side of the table UI (defeat, rewind, rewards) | #181 | Opus | ? | ? | running |
 
 Times on the night of 13 November are long because up to six agents shared one machine; the same
-jobs run alone took a quarter of the time on 12 November.
+jobs run alone took a quarter of the time on 12 November. The machine has two CPU cores: three
+workspace restarts on 13 November came from too many agents running headless browsers at once.
+Rule since: at most two agents doing browser checks, targeted smoke passes only.

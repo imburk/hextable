@@ -15,6 +15,7 @@ import { concealed } from './space.js';
 import { memoryOf, partyView, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
+import { playerConclusion } from './rewards.js';
 import { barriers, center, objectDef, objectHexes, objectSegment } from './walls.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
@@ -186,6 +187,8 @@ export function playerView(state) {
     map: structuredClone(shownMap(state).doc),
     entities,
     encounter: viewEncounter(state),
+    // The rewards of the last fight: that they are waiting, or what the DM published (rewards.js).
+    conclusion: playerConclusion(state.conclusion, (f) => (state.entities[f.id] ? seenName(state.entities[f.id]) : f.name)),
     effects: viewEffects(state),
     scene: viewScene(state),
     ...(sightRule(state) !== 'rooms' ? { sight: structuredClone(shownMap(state).sight) } : {}),
@@ -313,7 +316,8 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid', 'remains']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid', 'remains',
+  'xp', 'levelReady', 'conclusionSkipped']);   // XP and levels are only ever a party character's; a skip says nothing but that
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
@@ -393,7 +397,7 @@ export function viewEvents(events, state, viewer) {
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
         break;
       case 'encounterStart':
-        out.push({ type: ev.type, center: ev.center, radius: ev.radius,
+        out.push({ type: ev.type, ...(ev.fight !== undefined && { fight: ev.fight, where: ev.where }), center: ev.center, radius: ev.radius,
           order: ev.order.filter((o) => cls(o.id) !== 'hidden').map((o) => (cls(o.id) === 'open' ? { ...o } : { id: o.id })) });
         break;
       case 'joined':
@@ -462,6 +466,15 @@ export function viewEvents(events, state, viewer) {
       }
       case 'chronicle':
         if (ev.public === true) out.push(structuredClone(ev));
+        break;
+      case 'conclusion': {                             // the published rewards, shaped as the player's card (rewards.js)
+        const { id, ...shaped } = playerConclusion({ ...ev, id: ev.fight, published: true }, (f) => (state.entities[f.id] ? seenName(state.entities[f.id]) : f.name));
+        void id;
+        out.push({ type: 'conclusion', ...shaped });
+        break;
+      }
+      case 'gear':                                     // an item came or went, for a creature of theirs; who with, if they know of them
+        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}) });
         break;
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));

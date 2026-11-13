@@ -202,12 +202,12 @@ test("a Short Rest spends the largest Hit Dice first; a Long Rest gives them all
 });
 
 test("migration to version 18: single-class characters load unchanged; Hit Dice by size are made to agree with hd", () => {
-  assert.equal(VERSION, 18);
+  assert.ok(VERSION >= 18);           // 19 since the rewards of a fight (#181)
   const s = field(paladin6);
   const old = structuredClone(s); old.version = 17;
   const before = structuredClone(old.entities);
   migrate(old);
-  assert.equal(old.version, 18);
+  assert.equal(old.version, VERSION);
   assert.deepEqual(old.entities, before, "nothing about a saved character changes");
   const m = field(palBard());
   delete m.entities.hero.hdBy; m.entities.hero.hd = 9; m.version = 17;

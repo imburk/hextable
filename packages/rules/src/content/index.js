@@ -37,6 +37,7 @@ import { sorcerer } from './srd52/classes/sorcerer.js';
 import { warlock } from './srd52/classes/warlock.js';
 import { wizard } from './srd52/classes/wizard.js';
 import { multiclassSpellcaster } from './srd52/multiclass.js';
+import { advancement } from './srd52/advancement.js';
 
 // A new content file is added in two places: an import above, and its list here.
 const spells = [...spellsStarter, ...spells0, ...spells1, ...spells4, ...spells5, ...spells6, ...spells7, ...spells8, ...spells9, ...spells2, ...spells3];
@@ -45,11 +46,11 @@ const monsters = [...monstersStarter, ...monstersAC, ...monstersPZ, ...monstersD
 const classes = [barbarian, bard, cleric, druid, fighter, monk, paladin, ranger, rogue, sorcerer, warlock, wizard];
 
 export { TILES };
-export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects, classes, weapons, armour, multiclass: multiclassSpellcaster }];
+export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects, classes, weapons, armour, multiclass: multiclassSpellcaster, advancement }];
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
 export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
-  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), multiclass: multiclassSpellcaster };
+  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), multiclass: multiclassSpellcaster, advancement };
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));

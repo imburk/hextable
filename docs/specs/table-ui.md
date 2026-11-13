@@ -1064,6 +1064,66 @@ proceeds on the default.
 
 ## Build notes
 
+What was settled while building, and where the build differs from the text above.
+
+### Engine, part 1 (T5e, T7e, T4e)
+
+- **E1.** As written. `checkEnd` counts a party's characters (`kind: 'pc'`); a fight with none of
+  them on the party's side counts that side whole, as before. A death save that leaves the last
+  dying character Stable or dead ends the fight there, before the next turn starts. `fallen(s)` and
+  `dying(e)` are exported from `engine.js` so the client reads the rule instead of repeating it.
+  No existing fight test had to change.
+- **E2, E3.** As written, with these settled: a fight pin is taken whenever an action's events hold
+  `encounterStart` (a move or attack that starts a fight pins too), from the state before that
+  action. Kept from now on a rewind, not from the pin: the dice stream (owner question 2's default,
+  new dice; the dice are a stream in the state, so replaying actions from any saved state is still
+  exact, and undo and redo of the rewind are exact), the id counter `seq` (the fight fought again
+  has a new id), the timeline (the record keeps the lost fight) and who holds which character.
+  Undo and redo leave the pins alone. Players are always sent `rewound { to }`; the undo step's
+  label is shown to players too, since going back is something the whole table sees.
+  `track()` returns whether the pins changed, so the solo transport writes `hextable.solo.pins`
+  only then; if the browser refuses the space, `undoInfo.pinsError` says so and there are no pins.
+  The server transport's `rewind` call is left to T5c.
+- **E10.** The fight's id on `encounterStart` is named **`fight`, not `id`**: in an event `id`
+  names a creature, and `viewEvents` drops an event whose `id` a player may not know. So both
+  events carry `fight`. `where` is `null` only for a map with no name.
+- **E11.** As written; the answer is `{ t:"history", fight, entries, cut }`, the first 500 entries
+  of the fight as the asker may see them, `cut` true if there were more.
+- **E12.** `spellKinds(def)` and `sp.kinds`. A spell whose steps are only `manual` (perhaps behind
+  an attack roll or a save) gets **no kind**, `[]`, because the engine cannot tell what it is for
+  and does not guess; today that is 211 of 339 spells. The client shows those under every kind,
+  marked as not known. Steps under a teleport's `blocked` branch (what befalls the caster) do not
+  count. `tempHp` and `cure` count as healing.
+- **E13** was done by #182 (`e.spellClass`, `e.classes`); nothing added here.
+- **E14.** `stand { actor }`: in a fight only on its own turn and for half its Speed (refused with
+  the feet needed if too little is left); outside a fight it costs nothing.
+
+### Engine, part 2 (T6e)
+
+- **E4.** `content/srd52/advancement.js`, read from `reference/srd52/srd52-flow.txt` (the Character
+  Advancement table under Level Advancement) and checked against the page layout copy; linted
+  (levels 1 to 20, XP rising from 0, Proficiency Bonus +2 to +6). `lintMonster` requires `xp`.
+  `xpFor(level)` and `levelForXp(xp)` in `rewards.js`.
+- **E5.** State version **19** (the spec said 18; #182 took 18). `xp` on every party character,
+  set by `makeEntity` from its level and kept across `setSheet` and `levelUp` (never below the new
+  level's threshold). `state.conclusion` is `null` in a new game; the migration drops one that is not
+  whole. The settings are filled in by the migration and in a new game.
+- **E6, E7.** In `rewards.js` (`concludeFight`, `rewardActions`), called from `endEncounter`. The
+  conclusion's `id` is the fight's id. Events about it carry **`fight`, not `id`**, for the reason
+  given for E10. Settled beyond the text: `edit.bonus` replaces the whole list; `edit.per` sets a
+  share by hand, and that share is then kept when foes or bonus change (`xp.fixed` lists them),
+  until `per: { id: null }` gives it back to the engine; loot lines have ids `l1, l2...`, bonus
+  lines `b1...`; `edit.loot.add` takes `from` and `to`. A bonus is 0 or more (a penalty is a lower
+  share). An unpublished conclusion is replaced by the next fight's. Publishing records `seen` on
+  each foe (whether the party knew of it at that moment), which the players' card and the public
+  chronicle use. `skip` sends `conclusionSkipped { fight }`, to players too. `levelReady { id, level }`
+  is sent when this publish takes a character's total past a threshold above its level; `level` is
+  the level its XP now reaches.
+- **E8.** `gear` now has `why` (`dm` from `give`, `loot` from a conclusion) and goes to players for
+  their own creatures; `with` is sent only if they know of that creature (E17 will use it).
+- **E9.** As written.
+- Levelling up from XP is not automatic, as the spec says.
+
 ### T1 and T2: the drawer, Settings, About, the splash, the tracker (PR for #173 and #181)
 
 What was settled while building, where it differs from the text above, and what was left.
@@ -1102,4 +1162,3 @@ What was settled while building, where it differs from the text above, and what 
   own. Nothing is computed on the client.
 - **Smoke.** `SMOKE_ONLY=drawer` is new. The other passes use `openTab(page, tab)` and `closeMenu(page)` where they used the old buttons.
 - **Not checked:** a real phone's swipe (the test drives pointer events), a screen reader, and the three themes beyond Classic and Sunlit.
-

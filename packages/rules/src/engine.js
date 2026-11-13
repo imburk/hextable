@@ -18,6 +18,7 @@ import { SIZES } from './content/sizes.js';
 import { LIGHTS } from './content/lights.js';
 import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
+import { concludeFight, rewardActions, xpFor } from './rewards.js';
 import { fightEndsScene, sceneActions } from './scenes.js';
 import { entered, flushZones, snapshot, turnInZones } from './zones.js';
 import { difficultAt, terrainsOf } from './terrain.js';
@@ -71,6 +72,8 @@ export function makeEntity(tpl, over = {}) {
     ...(t.hitDie ? { hd: t.level } : {}),
     ...(t.hitDice ? { hdBy: { ...t.hitDice } } : {}),                 // Hit Dice of several sizes, left of each (several classes)
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
+    // A party character's Experience Points: the total its level starts at, unless it has its own.
+    ...((over.kind ?? t.kind) === 'pc' ? { xp: Number.isInteger(over.xp ?? t.xp) ? (over.xp ?? t.xp) : xpFor(over.level ?? t.level ?? 1) } : {}),
   };
 }
 // A built character's features with uses (Rage, Second Wind, Channel Divinity) start full. Kept in
@@ -591,11 +594,11 @@ function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
   for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
-    order: null,
+    order: null, where: fightPlace(s, center),
   };
   const faces = {};
   s.encounter.order = initiativeSort(who.map((e) => rollInit(s, e, faces)));
-  ev.push({ type: 'encounterStart', center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
+  ev.push({ type: 'encounterStart', fight: s.encounter.id, where: s.encounter.where, center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
   advanceTurn(s, ev);
 }
 
@@ -621,15 +624,36 @@ function endEncounter(s, ev, result) {
     delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false;
     if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
   }
-  ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round });
+  ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round, fight: s.encounter.id });
   fightOver(s, ev);
+  concludeFight(s, ev, result, s.encounter, fighters(s));      // XP and loot for a fight won or ended (rewards.js)
   s.encounter = null;
+}
+
+// Where a fight is, in words everyone may read: the revealed region holding its centre, else the map's name.
+function fightPlace(s, center) {
+  const sf = under(s.map, center), r = sf && regionAt(s.map, sf.level.id, center);
+  return (r?.revealed && r.name) || s.map.name || null;
+}
+
+// Dying: at 0 Hit Points, not dead and not Stable, so still rolling Death Saving Throws.
+export const dying = (e) => !e.dead && e.hp <= 0 && !e.cond?.stable;
+// The party's characters (not companions or summons on its side); a fight with none of them counts its whole side.
+const partyOf = (list) => { const pcs = list.filter((e) => e.side === 'party' && e.kind === 'pc'); return pcs.length ? pcs : list.filter((e) => e.side === 'party'); };
+// The party has fallen (docs/specs/table-ui.md, Decision 1). In a fight: no party character is up and none is
+// dying. Outside one, where nobody rolls Death Saving Throws: no party character is up. A table with no
+// party characters has not fallen.
+export function fallen(s) {
+  const pcs = Object.values(s.entities).filter((e) => e.side === 'party' && e.kind === 'pc');
+  if (!pcs.length) return false;
+  return s.encounter ? !partyOf(fighters(s)).some((e) => up(e) || dying(e)) : !pcs.some(up);
 }
 
 function checkEnd(s, ev) {
   if (!s.encounter) return;
   const f = fighters(s);
-  const foes = f.some((e) => e.side === 'foe' && up(e)), party = f.some((e) => e.side === 'party' && up(e));
+  // A party lying at 0 Hit Points is down, not beaten: the fight goes on while anyone is still rolling.
+  const foes = f.some((e) => e.side === 'foe' && up(e)), party = partyOf(f).some((e) => up(e) || dying(e));
   if (!foes || !party) endEncounter(s, ev, !foes ? 'victory' : 'defeat');
 }
 
@@ -660,7 +684,7 @@ function advanceTurn(s, ev) {
     const e = s.entities[enc.order[enc.turn].id];
     if (!e || e.dead) continue;
     if (e.hp <= 0) {
-      if (!e.cond.stable) deathSave(s, e, ev);
+      if (!e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
       if (e.hp <= 0) continue;
     }
     enc.flags = {};
@@ -2107,6 +2131,22 @@ const handlers = {
     s.encounter.budget[time]--; s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
     ev.push({ type: 'std', id: e.id, action: 'Dash' });
   },
+  // Stand up from Prone (E14). In a fight, on its own turn, for half its Speed (the SRD lets it be done
+  // during a move); outside one, at no cost. A creature with a Speed of 0 cannot.
+  stand(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    e.cond.prone || fail(`${e.name} is not Prone.`);
+    if (s.encounter && inFight(s, e.id)) {
+      current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
+      const speed = speedOf(s, e), cost = Math.floor(speed / 2 / FT) * FT;
+      speed > 0 || fail(`${e.name} has a Speed of 0 and cannot stand up.`);
+      s.encounter.budget.move >= cost || fail(`Standing up takes ${cost} ft of movement; ${e.name} has ${s.encounter.budget.move} ft left.`);
+      s.encounter.budget.move -= cost;
+    }
+    delete e.cond.prone;
+    ev.push({ type: 'stood', id: e.id });
+  },
   disengage(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
@@ -2646,7 +2686,7 @@ const handlers = {
       i >= 0 || fail(`${e.name} has no ${item}.`);
       e.gear.splice(i, 1);
     } else e.gear.push(item);
-    ev.push({ type: 'gear', id: e.id, item, ...(a.take ? { taken: true } : {}) });
+    ev.push({ type: 'gear', id: e.id, item, why: 'dm', ...(a.take ? { taken: true } : {}) });
   },
   // Hand a creature a light to carry, or take it away. { type: 'setLight', actor, item } with an item
   // from content/lights.js (a torch, a lamp), or { light: { bright, dim } } in feet; `item: null` puts it out.
@@ -2898,6 +2938,8 @@ const handlers = {
   ...handoutActions(fail),
   // Scenes: scene, endScene, sceneNpc, say, askCheck, sceneChronicle (scenes.js).
   ...sceneActions(fail),
+  // Rewards at the end of a fight: conclusion { edit | publish | skip } (rewards.js).
+  ...rewardActions(fail),
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
@@ -3003,6 +3045,7 @@ function remake(s, e, record, sheet, ev) {
     for (const d of Object.keys(fresh.hdBy)) fresh.hdBy[d] = Math.max(0, fresh.hitDice[d] - Math.max(0, (had[d] ?? 0) - (left[d] ?? 0)));
     fresh.hd = Object.values(fresh.hdBy).reduce((a, b) => a + b, 0);
   }
+  fresh.xp = Math.max(e.xp ?? 0, fresh.xp ?? 0);                     // XP earned is kept; a level given by hand starts at least at its threshold
   fresh.sheet = sheet;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });
@@ -3038,7 +3081,9 @@ function look(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'] };
+export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
+  // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
+  conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'] };
 
 // The fields of an action that name creatures, one id or a list of them. (`follow`'s `leader` is
 // not one: its handler gives one answer for a creature that is not there and one not in the party.)

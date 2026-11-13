@@ -101,7 +101,7 @@ test("lookups by id, and the bridge to the engine's current shape", () => {
   const { def, ...burning } = SPELLS["burning-hands"];
   assert.equal(def, CONTENT.spells["burning-hands"]);
   assert.deepEqual(burning, { id: "burning-hands", name: "Burning Hands", level: 1, time: "action", range: 0, aim: "area", area: { shape: "cone", size: 15 },
-    harmful: true, heals: false, heal: null, turn: true, short: "3d6 fire", long: "3d6 fire, DEX save for half" });
+    harmful: true, heals: false, heal: null, turn: true, kinds: ["damage"], short: "3d6 fire", long: "3d6 fire, DEX save for half" });
   assert.deepEqual([SPELLS["magic-missile"].short, SPELLS["magic-missile"].long, SPELLS["magic-missile"].aim], ["1d4+1 ×3 force", "1d4+1 ×3 force, always hits", "creature"]);
   assert.deepEqual([SPELLS["fire-bolt"].long, SPELLS["fire-bolt"].range], ["1d10 fire, spell attack", 120]);
   assert.deepEqual(SPELLS["cure-wounds"].heal, { dice: "2d8", addMod: true });
