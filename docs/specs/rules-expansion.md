@@ -994,6 +994,12 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     18, so Aura Expansion is `auto` and grants nothing itself (the linter allows that for a feature at
     a level where an aura's range grows). Range is measured from the edge of the holder's space, as an
     Emanation extends from a creature (a Large paladin reaches further from its origin hex).
+  - A feature action with a `duration` whose steps hand over a `modifier` with `uses` (a die to spend:
+    Bardic Inspiration) is refused for a creature that still holds one from the same feature, from any
+    giver ("only one Bardic Inspiration die at a time").
+  - Checked against the SRD and pinned, no change: Aura of Protection adds to Death Saving Throws and
+    Concentration saves (both are saving throws); Twinned Spell's effective level only changes the
+    target count, as no spell in the pack that it can twin scales anything else by slot.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

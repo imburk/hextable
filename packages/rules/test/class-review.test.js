@@ -8,6 +8,7 @@ import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
 import { describeStep, mark } from "../src/history.js";
 import { aurasOn } from "../src/modifiers.js";
+import { CONTENT } from "../src/content/index.js";
 import { diff, snapshot } from "../src/patch.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, KIM = { role: "player", userId: "kim" };
@@ -224,4 +225,39 @@ test("Aura of Protection adds to an ally's Death Saving Throws and Concentration
   assert.ok(c, "a Concentration save");
   // Constitution +2, no proficiency at 6 (Paladin saves: Wisdom, Charisma), Aura +3.
   assert.equal(c.bonus, 5, "Constitution +2 and the aura +3 (Bless rolls its d4 apart)");
+});
+
+// Not covered by the review: Twinned Spell "increase[s] the spell's effective level by 1", for a spell
+// that "can be cast with a higher-level spell slot to target an additional creature". The engine
+// counts targets at the effective level; no such spell in the pack scales anything else by slot, so
+// that is all the effective level changes here. (Dispel Magic, which reads a spell's level, is the DM's.)
+test("Twinned Spell: targets at the effective level, one above the slot; nothing else scales on those spells", () => {
+  for (const sp of Object.values(CONTENT.spells)) if (sp.higher?.slot?.targets !== undefined) assert.deepEqual(Object.keys(sp.higher.slot), ["targets"], sp.id);
+  const s = caster({ ...sorc(15, ["twinned", "quickened"]), choices: { metamagic: ["twinned", "quickened"], "elemental-affinity": "fire", "metamagic-10": ["heightened", "careful"] } });
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: 3, r: 0 } }, DM));
+  s.entities.rogue.side = "foe"; s.entities.hero.side = "party";
+  no(apply(s, { type: "cast", actor: "hero", spell: "hold-person", targets: ["m1", "rogue"], slot: 2 }, DM), /one target/);
+  const before = s.entities.hero.slots[2];
+  const r = ok(apply(s, { type: "cast", actor: "hero", spell: "hold-person", targets: ["m1", "rogue"], slot: 2, metamagic: ["twinned"] }, DM));
+  assert.deepEqual(r.events.find((x) => x.type === "cast").targets.sort(), ["m1", "rogue"]);
+  assert.equal(s.entities.hero.slots[2], before - 1, "the slot spent is a level 2 slot");
+});
+
+// Not covered by the review: "A creature can have only one Bardic Inspiration die at a time."
+test("one Bardic Inspiration die at a time, from any bard; a refusal changes nothing", () => {
+  const bard = (name) => ({ name, class: "bard", level: 8, subclass: "lore", abilities: { str: 10, dex: 14, con: 12, int: 10, wis: 10, cha: 18 },
+    skills: ["performance", "persuasion", "insight", "history", "arcana", "deception"], expertise: ["performance", "persuasion"], weapons: ["dagger"], spells: ["vicious-mockery"] });
+  const s = field(bard("Zaa"));
+  s.entities.bard2 = makeEntity(derive(bard("Lio")).record, { id: "bard2", kind: "pc", side: "party", pos: { q: 0, r: 1, z: 0 } });
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: -1, r: 0 } }, DM));
+  ok(apply(s, { type: "feature", actor: "hero", feature: "bardic-inspiration", target: "rogue" }, DM));
+  const snap = JSON.stringify(s);
+  no(apply(s, { type: "feature", actor: "hero", feature: "bardic-inspiration", target: "rogue" }, DM), /already has a Bardic Inspiration die/);
+  no(apply(s, { type: "feature", actor: "bard2", feature: "bardic-inspiration", target: "rogue" }, DM), /already has a Bardic Inspiration die/);
+  assert.equal(JSON.stringify(s), snap);
+  ok(apply(s, { type: "feature", actor: "bard2", feature: "bardic-inspiration", target: "hero" }, DM));
+  // Spent, it may be given again.
+  const fx = s.effects.find((x) => x.feature === "bardic-inspiration" && x.parts.some((p) => p.target === "rogue"));
+  ok(apply(s, { type: "endEffect", effect: fx.id }, DM));
+  ok(apply(s, { type: "feature", actor: "hero", feature: "bardic-inspiration", target: "rogue" }, DM));
 });

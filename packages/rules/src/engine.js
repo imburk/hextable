@@ -2235,6 +2235,13 @@ const handlers = {
     const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
     const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, a);
     if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    // A die handed to another creature to spend later (Bardic Inspiration: "A creature can have only one
+    // Bardic Inspiration die at a time"): not to one that still holds one from this feature, whoever gave it.
+    const gives = act.duration && (act.effects ?? []).some((st) => st.modifier?.uses !== undefined);
+    if (gives && aimed?.targets) for (const t of aimed.targets) {
+      const holds = effectsOf(s).some((fx) => fx.feature === f.id && fx.parts.some((p) => p.target === t.id && !p.ended && p.modifier?.uses !== undefined));
+      !holds || fail(`${t.name} already has a ${f.name} die.`);
+    }
 
     // Paid for: from here it happens.
     if (time && fighting) enc.budget[time]--;
