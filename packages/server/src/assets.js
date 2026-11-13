@@ -3,14 +3,17 @@
 // send it, so it trusts nothing about them: the type comes from the bytes, the id from
 // crypto.randomBytes, and no part of a path ever comes from the client unchecked.
 //
-//   const assets = createAssets({ dir, limits });   // dir: DATA_DIR/assets
+//   const assets = createAssets({ dir, limits });   // dir: DATA_DIR/assets; clears leftovers of a crash
 //   assets.put(code, bytes, { name })  -> { ok: true, record } | { ok: false, status, error }
 //   assets.get(code, id)               -> { record, path } | null
 //   assets.list(code) / assets.remove(code, id) / assets.removeTable(code)
+//   assets.room(code)                  -> { bytes, reason: "table" | "server" }: the most one more file may weigh
+//   assets.usage(code) / assets.totalUsage()
 //   assets.pack(code, { limit, first }) -> { assets: [{ record, data }], skipped: [record], limit }   (for a table export)
 //
 // On disk: <dir>/<code>/<id> holds the bytes and <dir>/<code>/<id>.json the record
-// { id, kind, mime, bytes, name, when }.
+// { id, kind, mime, bytes, name, when }. Disk is bounded per file, per table (bytes and count) and
+// for the whole server (totalAssetBytes), so tables left idle cannot fill it over time.
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -34,7 +37,12 @@ export function sniff(buf) {
   return null;
 }
 
-export function createAssets({ dir, limits = {} }) {
+// Names of what may sit in a table's folder: a file and its record.
+const FILE = /^([A-Za-z0-9_-]{22})(\.json)?$/;
+const NO_SPACE = new Set(["ENOSPC", "EDQUOT"]);
+export const SERVER_FULL = "The server has no room left for files. Delete some, or ask whoever runs it.";
+
+export function createAssets({ dir, limits = {}, writeFile = writeFileSync }) {
   const lim = { ...DEFAULT_LIMITS, ...limits };
   const root = resolve(dir);
   mkdirSync(root, { recursive: true });
@@ -70,6 +78,27 @@ export function createAssets({ dir, limits = {} }) {
     return out;
   }
   const used = (code) => { let bytes = 0; for (const r of records(code).values()) bytes += r.bytes; return bytes; };
+  const codes = () => readdirSync(root).filter((n) => CODE.test(n));
+
+  // At start: clear what a crash or a failed write left in a table's folder (a .tmp, bytes with no
+  // record, a record with no bytes, anything else), then count every table's files towards the total.
+  for (const code of codes()) {
+    const d = tableDir(code);
+    let names;
+    try { names = readdirSync(d); } catch { continue; }
+    const have = new Set(names);
+    for (const name of names) {
+      const m = FILE.exec(name);
+      const keep = m && (m[2] ? have.has(m[1]) : have.has(`${m[1]}.json`));
+      if (!keep) rmSync(join(d, name), { recursive: true, force: true });
+    }
+  }
+  let total = 0;
+  for (const code of codes()) total += used(code);
+  const room = (code) => {
+    const table = lim.tableAssetBytes - used(code), server = lim.totalAssetBytes - total;
+    return { bytes: Math.max(0, Math.min(table, server)), reason: server < table ? "server" : "table" };
+  };
 
   return {
     put(code, bytes, { name } = {}) {
@@ -82,14 +111,22 @@ export function createAssets({ dir, limits = {} }) {
       const recs = records(code);
       if (recs.size >= lim.tableAssets) return { ok: false, status: 413, error: `A table can keep at most ${lim.tableAssets} files. Delete some first.` };
       if (used(code) + bytes.length > lim.tableAssetBytes) return { ok: false, status: 413, error: "This table has no room left for files. Delete some first." };
+      if (total + bytes.length > lim.totalAssetBytes) return { ok: false, status: 507, error: SERVER_FULL };
       let id = makeId();
       while (recs.has(id)) id = makeId();
       const record = { id, kind: "image", mime, bytes: bytes.length, name: cleanName(name), when: new Date().toISOString() };
-      mkdirSync(d, { recursive: true });
       const file = fileOf(code, id);
-      writeFileSync(file + ".tmp", bytes); renameSync(file + ".tmp", file);
-      writeFileSync(file + ".json.tmp", JSON.stringify(record)); renameSync(file + ".json.tmp", file + ".json");
+      try {
+        mkdirSync(d, { recursive: true });
+        writeFile(file + ".tmp", bytes); renameSync(file + ".tmp", file);
+        writeFile(file + ".json.tmp", JSON.stringify(record)); renameSync(file + ".json.tmp", file + ".json");
+      } catch (err) {
+        // Nothing half-written stays: not the bytes, not a record, not a .tmp.
+        for (const p of [file + ".tmp", file, file + ".json.tmp", file + ".json"]) { try { rmSync(p, { force: true }); } catch { /* best effort */ } }
+        return NO_SPACE.has(err?.code) ? { ok: false, status: 507, error: SERVER_FULL } : { ok: false, status: 500, error: "Could not save the file." };
+      }
       recs.set(id, record);
+      total += record.bytes;
       return { ok: true, record };
     },
     get(code, id) {
@@ -102,12 +139,14 @@ export function createAssets({ dir, limits = {} }) {
       const path = fileOf(code, id);
       if (!path || !records(code).has(id)) return false;
       rmSync(path, { force: true }); rmSync(path + ".json", { force: true });
+      total -= records(code).get(id).bytes;
       records(code).delete(id);
       return true;
     },
     removeTable(code) {
       const d = tableDir(code);
       if (!d) return;
+      total -= used(code);
       rmSync(d, { recursive: true, force: true });
       index.delete(code);
     },
@@ -131,7 +170,9 @@ export function createAssets({ dir, limits = {} }) {
       return { assets, skipped, limit };
     },
     // Table codes that have a folder of files, for clearing away those of tables that are gone.
-    codes: () => readdirSync(root).filter((n) => CODE.test(n)),
+    codes,
     usage: (code) => ({ files: records(code).size, bytes: used(code) }),
+    totalUsage: () => ({ bytes: total }),
+    room,
   };
 }

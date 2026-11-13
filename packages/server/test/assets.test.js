@@ -341,3 +341,164 @@ test("pack: files for an export as base64 with their records, those the game use
   // Not a table of ours: nothing, and no path from the code.
   assert.deepEqual(a.pack("../etc"), { assets: [], skipped: [], limit: a.pack("../etc").limit });
 });
+
+// ---------- disk over time and partial files (#143) ----------
+
+test("the whole server has a cap on stored files, across tables, with a clear refusal", () => {
+  const dir = tempDir();
+  const lim = { assetBytes: 4096, tableAssetBytes: 4096, tableAssets: 10, totalAssetBytes: PNG.length * 3 };
+  const a = createAssets({ dir, limits: lim });
+  assert.ok(a.put("AAAAAA", PNG).ok); assert.ok(a.put("AAAAAA", PNG).ok); assert.ok(a.put("BBBBBB", PNG).ok);
+  const full = a.put("CCCCCC", PNG);
+  assert.equal(full.ok, false); assert.equal(full.status, 507);
+  assert.match(full.error, /server has no room left for files/);
+  assert.deepEqual(a.totalUsage(), { bytes: PNG.length * 3 });
+  // Deleting a file or a table makes room; a fresh store counts what is already on disk.
+  a.remove("AAAAAA", a.list("AAAAAA")[0].id);
+  assert.ok(a.put("CCCCCC", PNG).ok);
+  const again = createAssets({ dir, limits: lim });
+  assert.equal(again.put("DDDDDD", PNG).status, 507, "files saved before a restart count");
+  again.removeTable("AAAAAA");
+  assert.ok(again.put("DDDDDD", PNG).ok);
+  assert.equal(again.room("EEEEEE").bytes, 0);
+  assert.equal(again.room("EEEEEE").reason, "server");
+});
+
+test("a write that fails leaves no partial file; a restart clears leftovers", () => {
+  const dir = tempDir();
+  let calls = 0;
+  const failing = (path, data) => { calls++; if (calls === 2) throw Object.assign(new Error("no space"), { code: "ENOSPC" }); writeFileSync(path, data); };
+  const a = createAssets({ dir, limits: {}, writeFile: failing });
+  const r = a.put("ABCDEF", PNG);
+  assert.equal(r.ok, false); assert.equal(r.status, 507);
+  assert.deepEqual(readdirSync(join(dir, "ABCDEF")), [], "neither the bytes nor a .tmp stay behind");
+  assert.equal(a.usage("ABCDEF").files, 0);
+  // Left by a crash: a .tmp, bytes with no record, and a record with no bytes. A start clears them all.
+  const ok = createAssets({ dir, limits: {} }).put("ABCDEF", PNG).record;
+  const id = () => randomBytes(16).toString("base64url");
+  const lone = id(), orphan = id();
+  writeFileSync(join(dir, "ABCDEF", `${id()}.tmp`), "x"); writeFileSync(join(dir, "ABCDEF", `${id()}.json.tmp`), "x");
+  writeFileSync(join(dir, "ABCDEF", lone), PNG);
+  writeFileSync(join(dir, "ABCDEF", `${orphan}.json`), JSON.stringify({ id: orphan, kind: "image", mime: "image/png", bytes: 5, name: "x", when: "" }));
+  writeFileSync(join(dir, "ABCDEF", "not-an-id"), "x");
+  createAssets({ dir, limits: {} });
+  assert.deepEqual(readdirSync(join(dir, "ABCDEF")).sort(), [ok.id, `${ok.id}.json`].sort());
+});
+
+// ---------- uploads against the real server (#143) ----------
+
+// An upload that declares `length` bytes, sends `first` of them and then waits. Returns the request
+// (to send more or to drop it) and a promise of the answer: { status, body } or { status: "reset" }.
+function slowUpload(port, code, token, { length = 100_000, first = 20, from } = {}) {
+  let status = "reset", body = "";
+  const req = request({ port, method: "POST", path: `/assets/${code}`, headers: { "content-type": "image/png", "content-length": length, "x-hextable-token": token, ...(from && { "x-forwarded-for": from }) } });
+  const answer = new Promise((resolve) => {
+    req.on("response", (res) => { status = res.statusCode; res.on("data", (d) => (body += d)); res.on("end", () => resolve({ status, body })); res.on("error", () => resolve({ status, body })); });
+    req.on("error", () => resolve({ status, body }));
+    req.on("close", () => setTimeout(() => resolve({ status, body }), 50));
+  });
+  req.write(PNG.subarray(0, first));
+  return { req, answer };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test("slow uploads hold at most two places per address and two per table; others still upload", async () => {
+  const { port } = await start();
+  const one = await table(port), two = await table(port);
+  const held = [slowUpload(port, one.code, one.dm.token, { from: "10.0.0.1" }), slowUpload(port, one.code, one.dm.token, { from: "10.0.0.1" })];
+  await sleep(200);                                                // both are being read now
+  const byAddress = await upload(port, two.code, two.dm.token, PNG, "image/png", { "x-forwarded-for": "10.0.0.1" });
+  assert.equal(byAddress.status, 429, "a third upload from the same address waits");
+  const byTable = await upload(port, one.code, one.dm.token, PNG, "image/png", { "x-forwarded-for": "10.0.0.2" });
+  assert.equal(byTable.status, 429, "a third upload to the same table waits");
+  assert.match((await byTable.json()).error, /Another upload to this table/);
+  assert.equal((await upload(port, two.code, two.dm.token, PNG, "image/png", { "x-forwarded-for": "10.0.0.2" })).status, 201, "another address, another table: fine");
+  // Dropping a slow upload gives its place back.
+  for (const h of held) h.req.destroy();
+  let ok;
+  for (const end = Date.now() + 5000; !ok && Date.now() < end; await sleep(50)) {
+    const r = await upload(port, one.code, one.dm.token, PNG, "image/png", { "x-forwarded-for": "10.0.0.3" });
+    if (r.status === 201) ok = r;
+  }
+  assert.ok(ok, "the places came back");
+  for (const t of [one, two]) for (const c of [t.dm, t.pat, t.sam]) c.ws.close();
+});
+
+test("an upload body that stalls or trickles is cut off with 408, and its place freed", async () => {
+  const { port } = await start({ LIMIT_UPLOAD_BODY_MS: "1500", LIMIT_UPLOAD_GRACE_MS: "300", LIMIT_UPLOAD_MIN_RATE: "1000", LIMIT_ADDRESS_UPLOADS_AT_ONCE: "1" });
+  const { dm, pat, sam, code } = await table(port);
+  const t0 = Date.now();
+  const stalled = await slowUpload(port, code, dm.token).answer;
+  assert.equal(stalled.status, 408);
+  assert.match(JSON.parse(stalled.body).error, /too slow/);
+  assert.ok(Date.now() - t0 < 1400, "cut off for its rate, before the deadline");
+  // Fast enough on average, but past the deadline.
+  const steady = slowUpload(port, code, dm.token, { length: 1_000_000, first: 500 });
+  const tick = setInterval(() => steady.req.write(Buffer.alloc(500)), 100);
+  const late = await steady.answer;
+  clearInterval(tick);
+  assert.equal(late.status, 408);
+  assert.ok(Date.now() - t0 >= 1500);
+  assert.equal((await upload(port, code, dm.token, PNG)).status, 201, "the place is free again, and a normal upload works");
+  for (const c of [dm, pat, sam]) c.ws.close();
+});
+
+test("an upload needs the DM's seat with a live connection; one too big for the room left is refused before its body", async () => {
+  const { port } = await start({ LIMIT_TABLE_ASSET_BYTES: "1000", LIMIT_ASSETS_TOTAL_BYTES: "1500" });
+  const one = await table(port), two = await table(port);
+  // Declared larger than the table's room: 413 at once, nothing read.
+  const big = await slowUpload(port, one.code, one.dm.token, { length: 1001 }).answer;
+  assert.equal(big.status, 413);
+  assert.match(JSON.parse(big.body).error, /This table has no room left/);
+  assert.equal((await upload(port, one.code, one.dm.token, Buffer.concat([PNG, Buffer.alloc(900 - PNG.length)]))).status, 201);
+  // The server has 600 left, the second table 1000: the server's room decides.
+  const server = await slowUpload(port, two.code, two.dm.token, { length: 700 }).answer;
+  assert.equal(server.status, 507);
+  assert.match(JSON.parse(server.body).error, /server has no room left for files/);
+  assert.equal((await upload(port, two.code, two.dm.token, PNG)).status, 201);
+  // A token is not enough on its own: the DM must be at the table.
+  one.dm.ws.close();
+  let refused;
+  for (const end = Date.now() + 5000; !refused && Date.now() < end; await sleep(50)) {
+    const r = await upload(port, one.code, one.dm.token, PNG);
+    if (r.status === 403) refused = r;
+  }
+  assert.ok(refused, "an upload from a DM with no live connection is refused");
+  // Resuming the seat makes it work again.
+  const back = await open(port);
+  back.send({ t: "resume", code: one.code, token: one.dm.token });
+  await until(() => back.got.some((m) => m.t === "welcome"));
+  assert.equal((await upload(port, one.code, one.dm.token, PNG)).status, 201);
+  for (const c of [back, one.pat, one.sam, two.dm, two.pat, two.sam]) c.ws.close();
+});
+
+test("file reads are rate-limited per address; a served file is a picture with headers that run nothing", async () => {
+  const { port } = await start({ LIMIT_ASSET_READ_BURST: "3", LIMIT_ASSET_READ_RATE: "0.001" });
+  const { dm, pat, sam, code } = await table(port);
+  const { asset } = await (await upload(port, code, dm.token, PNG)).json();
+  const res = await get(port, `/assets/${code}/${asset.id}`, dm.token);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "image/png");
+  assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(res.headers.get("content-disposition"), "inline");
+  assert.equal(res.headers.get("cross-origin-resource-policy"), "same-origin");
+  assert.equal(res.headers.get("content-security-policy"), "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox", "one policy, the file's own, not the page's");
+  assert.equal(res.headers.get("x-frame-options"), "DENY");
+  assert.ok(Buffer.from(await res.arrayBuffer()).equals(PNG));
+  assert.equal((await get(port, `/assets/${code}`, dm.token)).status, 200);
+  assert.equal((await get(port, `/assets/${code}/${asset.id}`, dm.token)).status, 200);
+  const over = await get(port, `/assets/${code}/${asset.id}`, dm.token);
+  assert.equal(over.status, 429);
+  assert.equal((await get(port, `/assets/${code}/${asset.id}`, dm.token)).status, 429);
+  const other = await fetch(url(port, `/assets/${code}/${asset.id}`), { headers: { "x-hextable-token": dm.token, "x-forwarded-for": "10.1.1.1" } });
+  assert.equal(other.status, 200, "another address has its own budget");
+  for (const c of [dm, pat, sam]) c.ws.close();
+});
+
+test("a record on disk that claims a type off the list is never served", () => {
+  const dir = tempDir();
+  const a = createAssets({ dir, limits: {} });
+  const { record } = a.put("ABCDEF", PNG);
+  writeFileSync(join(dir, "ABCDEF", `${record.id}.json`), JSON.stringify({ ...record, mime: "text/html" }));
+  assert.equal(createAssets({ dir, limits: {} }).get("ABCDEF", record.id), null);
+});
