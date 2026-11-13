@@ -9,11 +9,10 @@
 // ask a player about a reaction (engine.js, apply) is put back whole and run again from its start
 // with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
-import { STEPS } from './content/schema.js';
+import { BRANCHES, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
 import { useUp } from './durations.js';
 
-const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess'];
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine.js, layout()).
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
@@ -108,6 +107,7 @@ function summarise(def) {
   if (kind === 'heal') return { short: `heal ${step.heal}`, long: `Heal ${step.heal}` };
   if (kind === 'tempHp') return { short: `${step.tempHp} temp HP`, long: `${step.tempHp} Temporary Hit Points` };
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
+  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
     const text = m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
@@ -129,7 +129,7 @@ export function spellProfile(def) {
     if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
-  const t = def.target;
+  const t = def.target, tp = def.effects.find((st) => 'teleport' in st);
   // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
   const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
   const aim = t.self ? 'self' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
@@ -141,6 +141,8 @@ export function spellProfile(def) {
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
+    // A teleport: the `cast` action names the destination in `hex` (docs/specs/rules-expansion.md).
+    ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
     ...summarise(def),
     def,
   };
@@ -263,7 +265,16 @@ function exec(s, ev, kit, f, step, at) {
       ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
       return step.half ? undefined : branch('onSuccess', { half: false });
     }
-    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, null, ev);      // cover is judged from where the effect starts
+    // The conditions a failure would bring, for a modifier on saves to avoid one (Protection from Poison).
+    const about = (step.onFail ?? []).filter((x) => 'condition' in x).map((x) => x.condition);
+    // Advantage the step itself gives in a situation (Charm Monster: "if you or your allies are fighting it").
+    let adv = null;
+    if (step.advantageIf) {
+      const holds = step.advantageIf.map((tag) => kit.judge(tag, { attacker: e, target: t }, s));
+      if (holds.includes(null)) handOver(`${t.name} may have Advantage on this save against ${f.src.name} ("${step.advantageIf.join('", "')}"), which the engine cannot judge. The DM decides.`);
+      else if (holds.every(Boolean)) adv = 'fighting the caster\'s side';
+    }
+    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, adv, ev, about);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
     // A failed save against Charmed or Frightened may be rolled again (Countercharm).
@@ -284,18 +295,26 @@ function exec(s, ev, kit, f, step, at) {
     const amount = (st, path) => { const r0 = f.shared?.[path] ?? rollDamage(s, st, !!f.crit), r = typeof r0 === 'number' ? { total: r0 } : r0;
       return { amount: f.half ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
     const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
-    const parts = [{ ...amount(step, at), type: step.type }];
+    const parts = [{ ...amount(step, at), type: step.type }], landed = [[step, at]];
     while (f.i < f.steps.length && stepKind(f.steps[f.i]) === 'damage') {
       const next = f.steps[f.i], ok = holds(next);
       if (ok === null) break;
-      if (ok) parts.push({ ...amount(next, `${f.path}${f.i}`), type: next.type });
+      if (ok) { parts.push({ ...amount(next, `${f.path}${f.i}`), type: next.type }); landed.push([next, `${f.path}${f.i}`]); }
       f.i++;
     }
     // A spell a reaction blocks does it no damage (Shield against Magic Missile).
     if (f.src.blocked?.includes(t.id)) return;
     const cut = f.cut;
     if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
-    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    const wasUp = !t.dead && t.hp > 0, wasAlive = !t.dead;
+    kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    // What this damage does to a creature it brought to 0 Hit Points (`onZero`) or killed
+    // (`onKill`), whatever the save did to the amount. The stack runs the last pushed first.
+    for (const [name, now] of [['onKill', wasAlive && t.dead], ['onZero', wasUp && t.hp <= 0]]) {
+      if (!now) continue;
+      for (const [st, path] of landed) if (st[name]) s.stack.push({ kind: 'seq', steps: st[name], path: `${path}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared, told: f.told, half: false });
+    }
+    return;
   }
   // The spell that set this reaction off fails (Counterspell). Only a reaction to a spell being
   // cast has one to stop (engine.js, castReaction marks its source `counters`).
@@ -305,12 +324,26 @@ function exec(s, ev, kit, f, step, at) {
     return;
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
+  // Teleport the target (the caster) to the place the cast named, checked when it was cast.
+  if (kind === 'teleport') {
+    if (!f.src.to) return handOver(`${f.src.name} names no destination, so the engine cannot teleport ${t.name}. The DM moves it, up to ${step.teleport} ft${step.see ? ' to a space it can see' : ''}.`);
+    if (!kit.teleport(s, t, step, f.src.to, ev)) branch('blocked');
+    return;
+  }
   if (kind === 'heal' || kind === 'tempHp') {
     const r = roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
     const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"
     return kind === 'heal' ? kit.heal(s, t, n, ev, rolled) : kit.tempHp(s, t, n, ev, f, rolled);
   }
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
+  if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
+  if (kind === 'kill') return kit.kill(s, t, ev);
+  if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);
+  if (kind === 'remains') {
+    if (!t.dead) return handOver(`${t.name} is not dead, so ${f.src.name} leaves no remains of it. The DM applies the rest.`);
+    t.remains = step.remains;
+    return ev.push({ type: 'remains', id: t.id, remains: step.remains });
+  }
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
     return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);

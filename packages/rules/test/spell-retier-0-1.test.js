@@ -41,7 +41,7 @@ test("Chromatic Orb: a spell attack for 3d8 of the chosen type, more with a high
 
 test("Grease: a zone; creatures in it make a Dexterity save or fall Prone, as it appears and when entering or ending a turn there", () => {
   const sp = SPELLS.grease;
-  assert.deepEqual([sp.def.tier, sp.def.zone.on, sp.def.zone.atCast], ["assist", ["enter", "turnEnd"], true]);
+  assert.deepEqual([sp.def.tier, sp.def.zone.on, sp.def.zone.atCast], ["auto", ["enter", "turnEnd"], true]);
   const s = field();
   const a = spawn(s, 4, 0), b = spawn(s, 4, 4);
   for (const g of [a, b]) g.abil.dex = 1;
