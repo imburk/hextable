@@ -8,6 +8,7 @@ import { WALL_KINDS, barriers, center, edgeSegment, objectHexes, objectSegment }
 import { FT } from './shared/space.js';
 import { newMap, lintMap, migrateMap } from './shared/map.js';
 import { UvttError, importUvtt } from './shared/import-uvtt.js';
+import { STOCK_MAPS } from './shared/content/maps/index.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,7 +29,7 @@ const HINTS = {
   props: 'Tap a door or thing to set its state, name, key, DCs and links.',
   start: 'Tap the hex where the party starts.',
   level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
-  file: 'Start a blank map, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
+  file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
 };
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
 const fresh = (base, taken) => { let id = base, n = 2; while (taken.has(id)) id = `${base}-${n++}`; return id; };
@@ -739,6 +740,14 @@ export class Editor {
     this.act({ type: 'loadMap', map: newMap({ id: 'new-map', name: 'New map', levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: 0, r: 0, z: 0 }] }) });
     this.refresh();
   }
+  // Play on one of the stock maps (content/maps): the same `loadMap` action as any other map.
+  stock(id) {
+    const m = STOCK_MAPS.find((x) => x.id === id);
+    if (!m) return;
+    this.levelId = null; this.region = ''; this.pending = null; this.sel = null;
+    this.act({ type: 'loadMap', map: structuredClone(m.map) });
+    this.refresh();
+  }
   export() {
     const map = this.S.map, url = URL.createObjectURL(new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a');
@@ -859,6 +868,8 @@ export class Editor {
         <div class="ed-row" data-for="level"><button type="button" id="ed-unlevel">Delete this level</button><label class="check"><input type="checkbox" id="ed-all"> Show levels above</label></div>
         <div class="ed-row" data-for="file"><button type="button" id="ed-new">New blank map</button><button type="button" id="ed-export">Export map</button><button type="button" id="ed-import">Import map</button><input type="file" id="ed-file" accept=".json,application/json" hidden>
           <button type="button" id="ed-uvtt">Import Universal VTT</button><input type="file" id="ed-uvttfile" accept=".dd2vtt,.df2vtt,.uvtt,.json" hidden></div>
+        <div class="ed-row" data-for="file"><select id="ed-stock" aria-label="Stock map">${STOCK_MAPS.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select><button type="button" id="ed-stockgo">Start on this map</button></div>
+        <p class="ed-sub" data-for="file" id="ed-stocktext"></p>
         <div class="ed-notes" data-for="file" id="ed-notes" hidden></div>
       </div>
       <p id="ed-hint"></p>`;
@@ -901,6 +912,9 @@ export class Editor {
     $('ed-unlevel').onclick = (ev) => this.#sure(ev.currentTarget, () => { const id = this.level().id; this.levelId = null; this.edit([{ op: 'unlevel', id }]); });
     $('ed-all').onchange = (ev) => { this.showAll = ev.target.checked; again(); };
     $('ed-new').onclick = (ev) => this.#sure(ev.currentTarget, () => this.blank());
+    const stockText = () => { $('ed-stocktext').textContent = STOCK_MAPS.find((m) => m.id === $('ed-stock').value)?.text ?? ''; };
+    $('ed-stock').onchange = stockText; stockText();
+    $('ed-stockgo').onclick = (ev) => this.#sure(ev.currentTarget, () => this.stock($('ed-stock').value));
     $('ed-export').onclick = () => this.export();
     $('ed-import').onclick = () => $('ed-file').click();
     $('ed-uvtt').onclick = () => $('ed-uvttfile').click();
