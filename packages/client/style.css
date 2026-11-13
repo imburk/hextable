@@ -231,3 +231,8 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 #ed-hnums i { position: absolute; left: 0; top: 0; font: 700 11px/1 var(--body); font-style: normal; color: #fff; background: #0008; border-radius: 6px; padding: 1px 4px; will-change: transform; }
 #ed-hnums i.up { background: #2f7d4fcc; } #ed-hnums i.down { background: #8a3b2fcc; }
 #ed-hnums i:not(.up):not(.down) { opacity: .5; }
+
+/* the Reactions section of the sheet */
+#sheet-reactions .rx { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+#sheet-reactions .rx label { display: grid; gap: 2px; min-width: 0; } #sheet-reactions .rx small { color: var(--muted); font-size: 12px; }
+#sheet-reactions .rx select { min-height: 44px; flex: 0 1 13em; min-width: 8em; max-width: 55%; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2, #222); color: inherit; font: inherit; }

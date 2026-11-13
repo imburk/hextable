@@ -33,6 +33,7 @@ yet known or not reported.
 
 | Date | Account | Job | Issue / PR | Model | Agent tokens | Time | Outcome |
 |---|---|---|---|---|---|---|---|
-| 13 Nov | Ultra | Reactions control on the sheet | #130 | Sonnet | ? | ? | running |
-| 13 Nov | Ultra | Housekeeping: state version in tests, linter check | #131 | Haiku | ? | ? | running |
-| 13 Nov | Ultra | Independent security read | #132 | Opus | ? | ? | running |
+| 13 Nov | Ultra | Housekeeping: state version in tests, linter check | #131 / #133 | Haiku | 131k | 4.5 min | merged |
+| 13 Nov | Ultra | Independent security read (report only) | #132 | Opus | 207k | 10 min | posted: 0 Critical, 1 High, 3 Medium, 6 Low; fixes queued as #136 |
+| 13 Nov | Ultra | Reactions control on the sheet | #130 / #137 | Sonnet | 113k | 13 min | merged |
+| 13 Nov | Ultra | Reactions, part 2 | #135 | Opus | ? | ? | running |
