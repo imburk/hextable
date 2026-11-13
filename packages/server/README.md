@@ -303,6 +303,11 @@ WebSockets, and gives it a disk that survives restarts for `DATA_DIR`. The
   creatures only as name, position and a health word. Creatures the DM marks
   hidden are not sent at all until the party finds them. Players still see
   the whole map and every creature that is not hidden. See `docs/specs/hidden-information.md`.
+- The dice of a hosted table come from a 256-bit key the server makes with
+  `randomBytes` (ChaCha20, `rules/src/rng.js`), so they cannot be worked out from
+  the rolls players see. A table saved with the older 32-bit seed is given a key
+  once, when the server loads it, and its undo history is dropped. The DM's view,
+  the export and the undo file hold the key; nothing sent to a player does.
 - Anyone with a table code can ask to join, and the DM decides. There are no
   accounts or passwords.
 - The DM's browser runs the monster AI, so monsters wait while the DM is away.

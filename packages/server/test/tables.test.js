@@ -1157,3 +1157,46 @@ test("a player is sent nothing when nothing they may know of changed, and stays 
   assert.ok(ups2[0].state && ups2.slice(1).every((x, i) => x.patch && x.seq === ups2[0].seq + i + 1));
   assert.ok(m < again.raw.length && again.last("update").state.entities.m2);
 });
+
+// Security review #132, M1 (issue #136; docs/specs/hidden-information.md, section 7).
+test("a hosted table rolls from a key the server made, which no message to a player ever holds", () => {
+  const key = "5a".repeat(32);
+  const tables = createTables({ seed: () => 5, key: () => key });
+  const { dm, player, code } = seated(tables);
+  const t = tables.get(code);
+  assert.deepEqual(t.state.rng, { key, n: 0 });
+  player.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  dm.say({ t: "act", action: { type: "startEncounter", center: { q: 0, r: 0 } } });
+  for (let i = 0; i < 60 && t.state.encounter; i++) {
+    const id = current(t.state), before = dm.count("error");
+    dm.say({ t: "act", action: aiStep(t.state, id) ?? { type: "endTurn", actor: id } });
+    if (dm.count("error") > before) dm.say({ t: "act", action: { type: "endTurn", actor: id } });
+  }
+  player.say({ t: "history", limit: 200 });
+  player.say({ t: "sync" });
+  assert.ok(t.state.rng.n > 10, "the dice were rolled from the key");
+  const all = JSON.stringify(player.raw);
+  assert.ok(!all.includes(key) && !all.includes('"rng"'), "no player message holds the key or the counter");
+  assert.ok(JSON.stringify(dm.raw).includes(key), "the DM's view has it");
+});
+
+test("a saved table with a 32-bit seed is given a key when loaded, and its undo history is dropped", () => {
+  const d = disk();
+  const first = d.open({ key: () => null });                  // as a table saved before version 16
+  const { dm, code } = seated(first);
+  dm.say({ t: "act", action: { type: "chronicle", title: "Something" } });
+  const old = first.get(code).state;
+  assert.equal(Number.isInteger(old.rng), true);
+  d.flush(first, code);
+  const saved = JSON.parse(d.tablesOnDisk.get(code));
+  saved.state.version = 15;
+  d.tablesOnDisk.set(code, JSON.stringify(saved));
+  const second = d.open({ key: () => "c3".repeat(32) });
+  const t = second.get(code);
+  assert.equal(t.state.version, VERSION);
+  assert.deepEqual(t.state.rng, { key: "c3".repeat(32), n: 0 });
+  const dm2 = sitDM(second, code, dm.last("welcome").token);
+  assert.deepEqual(dm2.last("undoable").undo, []);
+  dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin" } });
+  assert.ok(t.state.rng.n > 0 || t.state.encounter, "it plays on, from the key");
+});

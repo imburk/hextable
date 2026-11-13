@@ -13,6 +13,7 @@ import { diff, snapshot } from "../../rules/src/patch.js";
 import { createHistory, describeStep, mark, undoable } from "../../rules/src/history.js";
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate } from "../../rules/src/migrate.js";
+import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { playerView, view, viewEvents, viewHandouts, viewPrompt, viewReactions } from "../../rules/src/view.js";
 
@@ -37,9 +38,18 @@ export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 export const MAX_SAYS_PER_MINUTE = 30;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), key = () => randomBytes(32).toString("hex"), now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
+  // Dice from a key the server made (docs/specs/hidden-information.md, section 7). `key` returning
+  // null keeps the game's integer seed, for tests that want the dice a seed gives.
+  const rekey = (state) => {
+    if (!state || !Number.isInteger(state.rng)) return false;
+    const k = key();
+    if (k === null) return false;
+    state.rng = keyedRng(k);
+    return true;
+  };
   // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
   const touch = (t) => { t.active = now(); };
   const isActive = (t) => now() - (t.active ?? 0) < idleMs;
@@ -55,12 +65,16 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   for (const t of load()) {
     const was = t.state?.version;
     migrate(t.state); t.active ??= now(); tables.set(t.code, t);     // saved tables may predate the current content ids
+    // A table whose dice still come from a 32-bit seed is given a key, once, now: from here on
+    // nobody can work its rolls out from the ones they see (rules rng.js). Its undo history is
+    // dropped, so that no undo steps back to the old seed.
+    const rekeyed = rekey(t.state);
     // A table saved before the cap, or under a larger one, is cut down now. That moves entries the
     // saved history points at, so the history is not used.
     const cut = capTimeline(t.state?.timeline, timelineCap).length > 0;
     try {
       const data = cut ? null : loadHistory(t.code);
-      if (data && data.seq === (t.seq ?? 0) && t.state?.version === was && undoOf(t).restore(data)) kept.set(t.code, data.seq);
+      if (data && !rekeyed && data.seq === (t.seq ?? 0) && t.state?.version === was && undoOf(t).restore(data)) kept.set(t.code, data.seq);
       else undoOf(t).clear();
     } catch { undoOf(t).clear(); }         // a damaged history file costs the undo history and nothing else
   }
@@ -197,6 +211,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         let code = makeCode();
         while (tables.has(code)) code = makeCode();
         const t = { code, state: newGame(seed()), members: [], active: now() };
+        rekey(t.state);
         const m = { id: makeId(), token: makeToken(), name: cleanName(msg.name), role: "dm", approved: true };
         t.members.push(m);
         tables.set(code, t);
