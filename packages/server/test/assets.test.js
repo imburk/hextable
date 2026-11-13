@@ -341,3 +341,46 @@ test("pack: files for an export as base64 with their records, those the game use
   // Not a table of ours: nothing, and no path from the code.
   assert.deepEqual(a.pack("../etc"), { assets: [], skipped: [], limit: a.pack("../etc").limit });
 });
+
+// ---------- disk over time and partial files (#143) ----------
+
+test("the whole server has a cap on stored files, across tables, with a clear refusal", () => {
+  const dir = tempDir();
+  const lim = { assetBytes: 4096, tableAssetBytes: 4096, tableAssets: 10, totalAssetBytes: PNG.length * 3 };
+  const a = createAssets({ dir, limits: lim });
+  assert.ok(a.put("AAAAAA", PNG).ok); assert.ok(a.put("AAAAAA", PNG).ok); assert.ok(a.put("BBBBBB", PNG).ok);
+  const full = a.put("CCCCCC", PNG);
+  assert.equal(full.ok, false); assert.equal(full.status, 507);
+  assert.match(full.error, /server has no room left for files/);
+  assert.deepEqual(a.totalUsage(), { bytes: PNG.length * 3 });
+  // Deleting a file or a table makes room; a fresh store counts what is already on disk.
+  a.remove("AAAAAA", a.list("AAAAAA")[0].id);
+  assert.ok(a.put("CCCCCC", PNG).ok);
+  const again = createAssets({ dir, limits: lim });
+  assert.equal(again.put("DDDDDD", PNG).status, 507, "files saved before a restart count");
+  again.removeTable("AAAAAA");
+  assert.ok(again.put("DDDDDD", PNG).ok);
+  assert.equal(again.room("EEEEEE").bytes, 0);
+  assert.equal(again.room("EEEEEE").reason, "server");
+});
+
+test("a write that fails leaves no partial file; a restart clears leftovers", () => {
+  const dir = tempDir();
+  let calls = 0;
+  const failing = (path, data) => { calls++; if (calls === 2) throw Object.assign(new Error("no space"), { code: "ENOSPC" }); writeFileSync(path, data); };
+  const a = createAssets({ dir, limits: {}, writeFile: failing });
+  const r = a.put("ABCDEF", PNG);
+  assert.equal(r.ok, false); assert.equal(r.status, 507);
+  assert.deepEqual(readdirSync(join(dir, "ABCDEF")), [], "neither the bytes nor a .tmp stay behind");
+  assert.equal(a.usage("ABCDEF").files, 0);
+  // Left by a crash: a .tmp, bytes with no record, and a record with no bytes. A start clears them all.
+  const ok = createAssets({ dir, limits: {} }).put("ABCDEF", PNG).record;
+  const id = () => randomBytes(16).toString("base64url");
+  const lone = id(), orphan = id();
+  writeFileSync(join(dir, "ABCDEF", `${id()}.tmp`), "x"); writeFileSync(join(dir, "ABCDEF", `${id()}.json.tmp`), "x");
+  writeFileSync(join(dir, "ABCDEF", lone), PNG);
+  writeFileSync(join(dir, "ABCDEF", `${orphan}.json`), JSON.stringify({ id: orphan, kind: "image", mime: "image/png", bytes: 5, name: "x", when: "" }));
+  writeFileSync(join(dir, "ABCDEF", "not-an-id"), "x");
+  createAssets({ dir, limits: {} });
+  assert.deepEqual(readdirSync(join(dir, "ABCDEF")).sort(), [ok.id, `${ok.id}.json`].sort());
+});
