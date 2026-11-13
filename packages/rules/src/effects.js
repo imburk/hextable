@@ -267,7 +267,14 @@ function exec(s, ev, kit, f, step, at) {
     }
     // The conditions a failure would bring, for a modifier on saves to avoid one (Protection from Poison).
     const about = (step.onFail ?? []).filter((x) => 'condition' in x).map((x) => x.condition);
-    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, null, ev, about);      // cover is judged from where the effect starts
+    // Advantage the step itself gives in a situation (Charm Monster: "if you or your allies are fighting it").
+    let adv = null;
+    if (step.advantageIf) {
+      const holds = step.advantageIf.map((tag) => kit.judge(tag, { attacker: e, target: t }, s));
+      if (holds.includes(null)) handOver(`${t.name} may have Advantage on this save against ${f.src.name} ("${step.advantageIf.join('", "')}"), which the engine cannot judge. The DM decides.`);
+      else if (holds.every(Boolean)) adv = 'fighting the caster\'s side';
+    }
+    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, adv, ev, about);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
     // A failed save against Charmed or Frightened may be rolled again (Countercharm).

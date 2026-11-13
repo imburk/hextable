@@ -38,7 +38,9 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
-  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip'];
+  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
+  // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
+  'target.fought'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
@@ -190,6 +192,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
       if (!ABILITIES.includes(step.save)) say(`save uses unknown ability "${step.save}"`);
       if (!step.onFail && !step.onSuccess) say('a save step needs onFail or onSuccess');
       if (step.dc !== undefined && !(isInt(step.dc) && step.dc > 0)) say('a save step\'s dc is a whole number');
+      // `advantageIf: [tags]`: the target has Advantage on this save when every tag holds ("if you or your allies are fighting it").
+      if (step.advantageIf !== undefined) { if (!(Array.isArray(step.advantageIf) && step.advantageIf.length)) say('`advantageIf` lists situation tags'); else lintWhen(step.advantageIf, say); }
     }
     if (kind === 'damage') {
       if (!isDice(step.damage)) say(`damage "${step.damage}" is not dice like 2d6+3`);
@@ -207,7 +211,10 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
       const ends = step.ends;
       if (ends !== undefined) {
         if (!['turnStart', 'turnEnd', 'save', 'damaged'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd, save or damaged');
-        if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart or turnEnd)');
+        // `at: 'damaged'`: the save is repeated whenever the creature takes damage (Dominate Monster).
+        if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd', 'damaged'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart, turnEnd or damaged)');
+        // `by: 'source'` on `damaged`: only damage from the source or its allies ends it (Charm Monster).
+        if (ends?.by !== undefined && !(ends.by === 'source' && ends.on === 'damaged')) say('`ends.by` is "source", on an ending `on: "damaged"`');
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
       }
     }

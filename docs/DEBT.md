@@ -210,7 +210,7 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Heal (6) | 1 | assist | ~~assist~~ **auto** (#165) | ~~**`cure`** step (ends Blinded, Deafened, Poisoned)~~ (#165). Nothing left; "a creature you can see" is checked as every spell's target is (range and walls, not sight) |
 | Conjure Elemental (5) | 1 | manual | manual | Summoned creature with a stat block and a turn (S6), and a caster's choice among four damage types |
 | Blight (4) | 1 | assist | assist | **`target.type`** tag with an auto-fail (Plant creatures fail the save), and an object as a target |
-| Charm Monster (4) | 1 | assist | assist | `ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag "caster or an ally is fighting it" |
+| Charm Monster (4) | 1 | assist | assist | ~~`ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag~~ (#165: `ends.by: "source"`, `advantageIf: ["target.fought"]`). Still: the Friendly attitude and the target knowing afterward (the engine has no attitudes) |
 | Sleet Storm (3) | 1 | assist | assist | ~~`zone.terrain` (Difficult), `zone.obscures` (Heavily Obscured), a `breakConcentration` step on a failed save~~ (#165: `terrain` and an `endConcentration` step). Still: dousing exposed flames (lights are not tied to fire) |
 | Moonbeam (2) | 1 | assist | assist | `zone.moves`: a Magic action that moves the cylinder up to 60 feet and makes those it reaches save; reverting a shape-shifter. Left alone: the zone, its save and its damage are correct |
 | Pass without Trace (2) | 1 | assist | assist | A modifier that holds only while inside an emanation that moves with the caster (`modifier.while: "inAura"`) and leaving no tracks |
@@ -220,7 +220,7 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Message (0) | 1 | manual | manual | Private communication; nothing for the engine to apply |
 | Minor Illusion (0) | 1 | manual | manual | An illusion object with a Study check against the spell save DC |
 | Prestidigitation (0) | 1 | manual | manual | A choice among minor effects on objects; nothing to roll |
-| Dominate Monster (8) | 1 | assist | assist | `ends: { on: "save", at: "damaged" }` (a repeat save whenever it takes damage), the "fighting it" save-Advantage tag, `higher.slot.duration` (8 hours at level 9), and commands (the DM) |
+| Dominate Monster (8) | 1 | assist | assist | ~~`ends: { on: "save", at: "damaged" }`, the "fighting it" save-Advantage tag~~ (#165). Still: `higher.slot.duration` (8 hours at level 9) and the commands (the DM) |
 | Teleport (7) | 1 | manual | manual | ~~A `teleport` step~~ (#165 built one, for the caster within the map) to a known destination off the map, passengers, and a familiarity table roll with a damage mishap |
 | Disintegrate (6) | 1 | assist | assist | ~~A rider on a creature taken to 0 Hit Points (dust)~~ (#165: `onZero` with `kill` and `remains: "dust"`). Still: no revival but True Resurrection or Wish (no revival step), and an object or a creation of force as a target |
 | Globe of Invulnerability (6) | 1 | manual | manual | A `spell.blocked` hook on an emanation: spells of level 5 or lower cast from outside have no effect inside |

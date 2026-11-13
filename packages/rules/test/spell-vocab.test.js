@@ -394,3 +394,78 @@ test("Fog Cloud: assist; nobody sees into it, a creature in it may Hide, and pla
   const h = apply(s, { type: "hide", actor: "rogue" }, DM);
   assert.ok(h.ok, h.error);
 });
+
+// ---------- 5. ends on damage by the caster's side; a repeat save on damage; "fighting it" ----------
+
+test("ends.by, at: damaged and advantageIf: the linter", () => {
+  const b = { ...base, level: 4, time: "action", range: 30, duration: "1 hour", target: { creature: { count: 1 } } };
+  const charm = (ends, extra = {}) => lint({ ...b, effects: [{ save: "wis", ...extra, onFail: [{ condition: "charmed", ends }] }] });
+  assert.deepEqual(charm({ on: "damaged", by: "source" }, { advantageIf: ["target.fought"] }), []);
+  assert.deepEqual(charm({ on: "save", save: "wis", at: "damaged" }), []);
+  assert.match(charm({ on: "turnEnd", by: "source" }).join(), /`ends.by` is "source"/);
+  assert.match(charm({ on: "damaged" }, { advantageIf: ["target.liked"] }).join(), /unknown situation tag/);
+  assert.match(charm({ on: "damaged" }, { advantageIf: [] }).join(), /lists situation tags/);
+});
+
+test("Charm Monster: Advantage on the save when the caster's side is fighting it, and the charm ends when that side damages it", () => {
+  const d = SPELLS["charm-monster"].def;
+  assert.deepEqual([d.tier, d.checked, d.range, d.duration, d.concentration], ["assist", true, 30, "1 hour", false]);
+  const s = field(); learn(s, "wizard", "charm-monster", "fire-bolt");
+  const g = spawn(s, 3, 0), h = spawn(s, 4, 1);
+  g.abil.wis = 1; g.saveBonus = { wis: -10 };
+  fight(s); turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "charm-monster", target: g.id }, DM));
+  const sv = r.events.find((e) => e.type === "save" && e.id === g.id);
+  assert.equal(sv.mode, "adv", "the wizard's side is fighting it");
+  assert.ok(g.cond.charmed);
+  // Damage from its own side does not end it; damage from the wizard's side does.
+  ok(apply(s, { type: "harm", actor: g.id, amount: 1 }, DM));
+  assert.ok(g.cond.charmed, "damage from no creature (the DM's harm) does not end it");
+  turnOf(s, h.id);
+  const hit = apply(s, { type: "act", actor: h.id, action: s.entities[h.id].actions[0].id, target: g.id }, DM);
+  if (hit.ok && hit.events.some((e) => e.type === "damage" && e.target === g.id && e.amount > 0)) assert.ok(g.cond.charmed, "a goblin's blow is not the wizard's side");
+  turnOf(s, "fighter");
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: 2, r: 0 } }, DM));
+  let ended = false;
+  for (let i = 0; i < 6 && !ended; i++) {
+    const a = apply(s, { type: "attack", actor: "fighter", target: g.id, attack: s.entities.fighter.attacks[0].id }, DM);
+    if (!a.ok) { s.encounter.budget.action = 1; delete s.encounter.budget.attacks; continue; }
+    ended = a.events.some((e) => e.type === "condEnd" && e.id === g.id && e.cond === "charmed");
+    s.encounter.budget.action = 1; delete s.encounter.budget.attacks;
+  }
+  assert.ok(ended, "the fighter's hit ends the charm");
+});
+
+test("Charm Monster on a creature nobody is fighting: no Advantage", () => {
+  const s = field(); learn(s, "wizard", "charm-monster");
+  spawn(s, 9, 0); fight(s); turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "charm-monster", target: "fighter" }, DM));
+  const sv = r.events.find((e) => e.type === "save" && e.id === "fighter");
+  assert.notEqual(sv.mode, "adv");
+});
+
+test("Dominate Monster: the target repeats the save whenever it takes damage, and a success ends the spell on it", () => {
+  const d = SPELLS["dominate-monster"].def;
+  assert.deepEqual([d.tier, d.checked, d.level, d.range, d.concentration, d.duration], ["assist", true, 8, 60, true, "1 hour"]);
+  const s = field(); learn(s, "wizard", "dominate-monster");
+  const g = spawn(s, 3, 0);
+  g.saveBonus = { wis: -20 };
+  fight(s); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "dominate-monster", target: g.id }, DM));
+  assert.ok(g.cond.charmed);
+  const fx = s.effects.find((x) => x.name === "Dominate Monster");
+  const r = ok(apply(s, { type: "harm", actor: g.id, amount: 2 }, DM));
+  const again = r.events.find((e) => e.type === "save" && e.id === g.id && e.against === "Dominate Monster");
+  assert.ok(again, "a repeat save on damage");
+  assert.equal(again.success, false);
+  assert.ok(g.cond.charmed);
+  g.saveBonus = { wis: 40 };
+  const r2 = ok(apply(s, { type: "harm", actor: g.id, amount: 2 }, DM));
+  assert.ok(r2.events.some((e) => e.type === "save" && e.id === g.id && e.success));
+  assert.equal(g.cond.charmed, undefined);
+  assert.equal(s.effects.includes(fx), false, "the spell ended on its only target");
+  // Players are told of the save as of any save by a creature they see, without its DC.
+  s.entities.wizard.owner = "pat";
+  const seen = viewEvents(r2.events, s, PAT).find((e) => e.type === "save" && e.id === g.id);
+  assert.ok(seen && seen.dc === undefined);
+});

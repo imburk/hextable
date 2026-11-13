@@ -866,6 +866,16 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   Entangle.
 - **`endConcentration` step.** `{ endConcentration: true }`: the creature it works on loses
   Concentration on whatever it holds (Sleet Storm's failed save).
+- **Ending on damage, and "fighting it".** An `ends: { on: 'damaged' }` may say `by: 'source'`:
+  only damage from the effect's source or a creature on its side ends it ("until you or your allies
+  damage it": Charm Person, Charm Monster). Damage from no creature (a trap, the DM's `harm`) does
+  not. `ends: { on: 'save', save, at: 'damaged' }` repeats the save whenever the creature takes
+  damage, the part ending on a success ("ending the spell on itself": the Dominate spells); the save
+  event says `against`. A save step may say `advantageIf: [tags]`, Advantage when every tag holds,
+  with a new tag `target.fought`: a fight is on, the target is in it, and it is hostile to the
+  source. That is how the engine reads the SRD's undefined "if you or your allies are fighting it";
+  a DM who reads it otherwise overrides by hand. Not built: a creature's attitude (Friendly), the
+  Dominate spells' commands, and their longer Concentration from a higher slot.
 
 ### A class
 

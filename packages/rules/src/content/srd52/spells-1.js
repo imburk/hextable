@@ -55,10 +55,10 @@ export const spells1 = [
     time: "action", range: 30, components: ["v", "s"],
     duration: "1 hour", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"save": "wis", "onFail": [{"condition": "charmed"}]}],
+    effects: [{"save":"wis","advantageIf":["target.fought"],"onFail":[{"condition":"charmed","ends":{"on":"damaged","by":"source"}}]}],
     higher: {"slot": {"targets": 1}},
     tier: "assist", checked: true,
-    text: "One visible Humanoid makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed for an hour and Friendly to the caster; one more Humanoid per slot level above 1. The engine applies the save and the charm; the DM handles the Advantage, the Humanoid restriction, ending the charm when the caster or an ally damages it, and the target's knowledge afterward.",
+    text: "One visible Humanoid makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed for an hour and Friendly to the caster, until the caster or an ally damages it; one more Humanoid per slot level above 1. The engine applies the save, the Advantage, the charm and its ending on damage; the DM handles the Humanoid restriction, the Friendly attitude and the target's knowledge afterward.",
   },
   {
     id: "chromatic-orb", name: "Chromatic Orb", source: "SRD 5.2.1",
