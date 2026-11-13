@@ -166,8 +166,27 @@ class Builder {
     }
   }
 }
+// ---------- beats (docs/specs/renderer.md, decision 2; R4) ----------
+// The renderer draws the state it is given. A beat is shown by easing from how a thing looked to how the state says it is, over the
+// time the spec gives that beat. Presentation only: every animation reads the state and the events the view sent, nothing else.
+// What the timeline holds back by itself (a creature's hit points, death, place, conditions) arrives when its beat plays, so those
+// ease as soon as they change; the rest (doors, a region, the arena, a creature that appears) arrives with the update, so the
+// renderer holds the old look until the event for it comes (`object`, `region`, `encounterStart`, `spawned`...) and settle() ends it.
+const SECS = { door: 0.5, portcullis: 0.8, region: 0.6, rise: 1.2, sink: 0.6, fall: 0.6, prone: 0.3, stand: 0.4, appear: 0.4, vanish: 0.3, placed: 0.3, drop: 0.6 };
+const HOLD_MAX = 4;                                   // seconds a held look waits for its event before it is brought in line anyway
+const smooth = (p) => p * p * (3 - 2 * p);
+const accel = (p) => p * p;
+const tweenAt = (tw, now) => {
+  const p = Math.max(0, Math.min(1, (now - tw.t0) / tw.dur));
+  return { v: tw.from + (tw.to - tw.from) * (tw.ease ?? smooth)(p), done: p >= 1 };
+};
+const clock = () => performance.now() / 1000;         // tweens run on the wall clock, so a slow frame does not stretch a beat
+const mix3 = (a, b, f) => a.map((v, i) => v + (b[i] - v) * f);
+const VEIL = [0.04, 0.05, 0.09];
+
 class Mesh {
   constructor(gl) { this.gl = gl; this.buf = gl.createBuffer(); this.n = 0; }
+  free() { this.gl.deleteBuffer(this.buf); this.n = 0; }
   set(builder) {
     const gl = this.gl;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
@@ -230,7 +249,10 @@ export class Renderer {
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    this.terrain = new Mesh(gl); this.wallMesh = new Mesh(gl); this.floorData = []; this.cutSig = ''; this.cutYaw = null; this.grid = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
+    this.terrain = new Mesh(gl); this.wallMesh = new Mesh(gl); this.floorData = []; this.cutSig = ''; this.cutYaw = null; this.grid = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.anim = 0;
+    this.doorMesh = new Mesh(gl); this.doors = new Map(); this.doorInfo = new Map(); this.wallsDirty = false;     // doors: id -> { v: 0 shut .. 1 open as drawn, goal, tw, since }
+    this.seenRegions = null; this.veils = new Map();                  // a region just revealed: drawn dark over its floor, fading away
+    this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.edgeBase = 0; this.ghosts = []; this.fell = new Set(); this.now = clock(); this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -251,26 +273,51 @@ export class Renderer {
   // ---------- public ----------
   setTheme(theme) { this.theme = theme; this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
 
-  setState(state, events = []) {
+  // `opt.instant`: show the state at once, animate nothing (pace `instant`, a fresh state, an undo). A map change, the first state and an
+  // `undone` or `redone` event do the same, so nothing is left half played when the state changes under an animation.
+  setState(state, events = [], opt = {}) {
+    const prev = this.state, now = (this.now = clock());
+    const snap = !!opt.instant || !prev || prev.map.id !== state.map.id || events.some((e) => e.type === 'map' || e.type === 'mapEdit' || e.type === 'undone' || e.type === 'redone');
+    const idsOf = (type) => new Set(events.filter((e) => e.type === type && e.id !== undefined).map((e) => e.id));
+    if (snap) this.#finish(false);
     this.state = state;
     const want = lightAt(state.clock ?? 480);
     this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
+    this.#syncEdge(events, snap, now);
+    this.#syncDoors(events, snap, now);
+    this.#syncVeils(events, snap, now);
     const tk = `${state.encounter?.id ?? 0}:${state.map.id}:${state.map.levels.map((l) => Object.keys(l.tiles).length).join()}:${tileSig(state.map)}:${barriers(state.map).sig}:${state.map.regions.map((r) => (r.revealed ? 1 : 0)).join('')}:${this.ceiling}:${this.#pictureSig()}:${sightSig(state.sight)}`;
     this.#fetchPictures();
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
-    for (const [id, a] of this.actors) if (!state.entities[id]) { a.el.remove(); this.actors.delete(id); }
+    else if (this.wallsDirty) { this.wallsDirty = false; this.#buildWalls(true); }
+    const removed = idsOf('removed'), appeared = new Set([...idsOf('spawned'), ...idsOf('revealed'), ...idsOf('placed')]);
+    this.fell = idsOf('fell');
+    for (const [id, a] of this.actors) if (!state.entities[id]) {
+      if (!snap && removed.has(id) && !a.unseen) this.ghosts.push({ mesh: a.mesh, x: a.x, y: a.y, z: a.z, yaw: a.yaw, tiltNow: a.tiltNow ?? 0, k: a.k ?? 1, el: a.el, t0: now, dur: SECS.vanish, label: true });       // a removed creature fades out
+      else { a.el.remove(); a.mesh.free(); }
+      a.dying?.mesh.free();
+      this.actors.delete(id);
+    }
     for (const e of Object.values(state.entities)) {
       let a = this.actors.get(e.id);
-      const w = this.#spot(e, e.pos);
+      const w = this.#spot(e, e.pos), calm = snap || !!e.hidden;      // a creature the view marks hidden is never animated: nothing about it is shown
       if (!a) {
         const el = document.createElement('div');
         el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div><em class="marks"></em>';
         this.labels.append(el);
-        a = { mesh: new Mesh(this.gl), ...w, yaw: 0, way: [], el, key: '' };
+        a = { mesh: new Mesh(this.gl), ...w, yaw: 0, way: [], el, key: '', fade: 1 };
+        if (!calm) { a.fade = 0; a.hold = true; a.holdAt = now; }      // a creature that was not there: unseen until its own beat (spawned, revealed, placed)
         this.actors.set(e.id, a);
       }
+      a.unseen = !!e.hidden;
+      if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
       const key = `${e.dead}|${e.side}|${e.size}`; a.k = girth(e);
-      if (key !== a.key) { a.key = key; a.mesh.set(this.#makePawn(e)); }
+      if (key !== a.key) {
+        const dies = !calm && a.key !== '' && e.dead && a.wasDead === false;      // a death falls and fades: the living pawn fades into the fallen one
+        if (dies) { const gm = new Mesh(this.gl); gm.set(this.#makePawn({ ...e, dead: false })); a.dying?.mesh.free(); a.dying = { mesh: gm, t0: now, dur: SECS.fall }; }
+        a.key = key; a.mesh.set(this.#makePawn(e));
+      }
+      a.wasDead = !!e.dead;
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
       a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
@@ -278,13 +325,22 @@ export class Renderer {
       const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);      // small badges over the pawn's head
       const mk = marks.join();
       if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }
-      a.tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
+      const tilt = e.dead ? 1.45 : e.hp <= 0 ? 1.2 : e.cond.prone ? 0.9 : 0;
+      if (a.tilt === undefined || calm) { a.tilt = tilt; a.tiltNow = tilt; a.tiltTw = null; }
+      else if (tilt !== a.tilt) {                                    // lying down takes 0.3 s, a fall 0.6 s, getting up 0.4 s
+        a.tiltTw = { from: a.tiltNow, to: tilt, t0: now, dur: tilt < a.tilt ? SECS.stand : e.dead || e.hp <= 0 ? SECS.fall : SECS.prone };
+        a.tilt = tilt;
+      }
       const floor = e.dead || ground(state.map, e.pos) ? null : under(state.map, e.pos);
       a.air = floor ? Math.max(0, w.y - this.#stand({ q: e.pos.q, r: e.pos.r, z: floor.z }).y) : 0;      // how far above the floor it hangs: its shadow stays down there
     }
     for (const ev of events) {
       const a = this.actors.get(ev.id);
       if (ev.type === 'moved' && a) for (const h of ev.path) a.way.push(this.#spot(state.entities[ev.id], h));
+      if (ev.type === 'placed' && a && !snap && !a.unseen && !a.hold && a.fade >= 1) {      // it fades out where it stood and in where it now stands
+        this.ghosts.push({ mesh: a.mesh, x: a.x, y: a.y, z: a.z, yaw: a.yaw, tiltNow: a.tiltNow ?? 0, k: a.k ?? 1, el: null, t0: now, dur: SECS.placed });
+        a.fade = 0; a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.placed };
+      }
       const hurt = this.actors.get(ev.target);                   // a hit flashes the pawn; a critical one also shakes it
       if (ev.type === 'damage' && hurt && ev.amount > 0) hurt.flash = FLASH;
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
@@ -292,9 +348,90 @@ export class Renderer {
     for (const e of Object.values(state.entities)) {            // anything teleported or out of sync
       const a = this.actors.get(e.id), w = this.#stand(e.pos);
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
+      const yy = this.#spot(e, e.pos).y;
+      if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
+        if (!snap && !a.unseen && this.fell.has(e.id) && yy < a.y) a.fall = { from: a.y, to: yy, t0: now, dur: SECS.drop, ease: accel };      // a fall drops under gravity
+        else if (!a.fall) { a.y = yy; }
+      }
     }
     this.#buildOverlay();
   }
+
+  // The arena of a fight (decision 2): it rises when `encounterStart` plays and sinks when `encounterEnd` plays. The state has the
+  // fight already (or no longer), so the edge waits, drawn as it was, for its event; settle() ends the wait.
+  #syncEdge(events, snap, now) {
+    const enc = this.state.encounter, eid = enc ? enc.id ?? 0 : null;
+    if (eid !== this.edgeId) {
+      const old = this.edgeId !== null;
+      if (old) {
+        if (this.sinkFx) this.sinkFx.mesh.free();
+        this.sinkFx = !snap ? { mesh: this.edge, base: this.edgeBase, phase: 'hold', t0: now, since: now } : (this.edge.free(), null);
+        this.edge = new Mesh(this.gl);
+      }
+      this.edgeId = eid;
+      this.edgeFx = { phase: eid === null || snap ? 'on' : 'hold', t0: now, since: now };
+    }
+    for (const ev of events) {
+      if (ev.type === 'encounterStart' && this.edgeFx.phase === 'hold') this.edgeFx = { phase: 'rise', t0: now, since: now };
+      if (ev.type === 'encounterEnd' && this.sinkFx?.phase === 'hold') this.sinkFx.phase = 'sink', this.sinkFx.t0 = now;
+    }
+  }
+  // Doors, portcullises and the like: a door swings between shut and open when its `object` event plays (0.5 s, 0.8 s a portcullis).
+  #syncDoors(events, snap, now) {
+    const map = this.state.map, live = new Set();
+    for (const o of map.objects) {
+      if (!objectSegment(o)) continue;
+      live.add(o.id);
+      const goal = objectBlocks(o, 'move') ? 0 : 1;
+      let d = this.doors.get(o.id);
+      if (!d || snap) { if (d?.tw) this.wallsDirty = true; this.doors.set(o.id, (d = { v: goal, goal, tw: null, since: now })); this.wallsDirty = true; continue; }
+      if (d.goal !== goal) { d.goal = goal; d.since = now; }
+      if (d.v === goal && !d.tw) continue;
+      if (!d.tw && events.some((ev) => ev.type === 'object' && ev.object === o.id)) {
+        d.tw = { from: d.v, to: goal, t0: now, dur: /portcullis/i.test(`${o.def} ${o.name ?? ''}`) ? SECS.portcullis : SECS.door };
+        this.wallsDirty = true;
+      }
+    }
+    for (const id of [...this.doors.keys()]) if (!live.has(id)) { this.doors.delete(id); this.doorInfo.delete(id); this.wallsDirty = true; }
+  }
+  // A region the party has just seen: its floor is covered dark until its `region` event plays, then the dark fades away (0.6 s).
+  #syncVeils(events, snap, now) {
+    const map = this.state.map, shown = new Set(map.regions.filter((r) => r.revealed).map((r) => r.id));
+    if (!this.seenRegions || snap) { for (const v of this.veils.values()) v.mesh.free(); this.veils.clear(); this.seenRegions = shown; return; }
+    for (const [id, v] of this.veils) if (!shown.has(id)) { v.mesh.free(); this.veils.delete(id); }
+    for (const r of map.regions) if (r.revealed && !this.seenRegions.has(r.id)) this.veils.set(r.id, this.#makeVeil(r, now));
+    this.seenRegions = shown;
+    for (const ev of events) { const v = ev.type === 'region' && this.veils.get(ev.region); if (v && !v.tw) v.tw = { from: 1, to: 0, t0: now, dur: SECS.region }; }
+  }
+  #makeVeil(r, now) {
+    const lv = this.state.map.levels.find((l) => l.id === r.level), b = new Builder(), mesh = new Mesh(this.gl);
+    for (const k of r.hexes ?? []) {
+      const t = lv?.tiles[k]; if (!t) continue;
+      const h = H.parse(k), w = H.toWorld(h);
+      b.flatHex(w.x, w.z, surfY(lv.z + (t.h ?? 0), t) + 0.05, 0, 1.02, [...VEIL, 1]);
+    }
+    mesh.set(b);
+    return { mesh, alpha: 1, tw: null, since: now };
+  }
+
+  // Everything that is playing or held is brought to its end state at once (a skip, an idle queue, a state that is not a continuation).
+  settle() { this.now = clock(); this.#finish(true); }
+  #finish(build) {
+    for (const a of this.actors.values()) {
+      a.tiltTw = null; a.tiltNow = a.tilt; a.fadeTw = null; a.hold = false; a.fade = 1;
+      if (a.fall) { a.y = a.fall.to; a.fall = null; }
+      if (a.dying) { a.dying.mesh.free(); a.dying = null; }
+    }
+    for (const g of this.ghosts) this.#dropGhost(g);
+    this.ghosts = [];
+    for (const d of this.doors.values()) if (d.tw || d.v !== d.goal) { d.v = d.goal; d.tw = null; this.wallsDirty = true; }
+    for (const v of this.veils.values()) v.mesh.free();
+    this.veils.clear();
+    this.edgeFx = { phase: 'on', t0: this.now };
+    if (this.sinkFx) { this.sinkFx.mesh.free(); this.sinkFx = null; }
+    if (build && this.wallsDirty && this.state) { this.wallsDirty = false; this.#buildWalls(true); }
+  }
+  #dropGhost(g) { if (g.label) { g.el.remove(); g.mesh.free(); } }
 
   // Do not draw floors higher than this (in feet), so that a room is not hidden by the one above it.
   setCeiling(z) { if (z !== this.ceiling) { this.ceiling = z; this.terrainKey = ''; if (this.state) this.setState(this.state, []); } }
@@ -526,7 +663,7 @@ export class Renderer {
     const cutting = cut !== null, high = (id) => cutting && this.floorData.some((f) => f.id === id), sig = cut ? [...cut].sort().join() : '';
     this.cutYaw = this.cam.yaw;
     if (!force && sig === this.cutSig) return;
-    this.cutSig = sig;
+    this.cutSig = sig; this.wallsDirty = false;
     const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;
     cut ??= new Set();
     const col = { wall: th.wall ?? [0.44, 0.42, 0.4], window: th.wallWindow ?? [0.55, 0.62, 0.68], curtain: th.curtain ?? [0.38, 0.3, 0.45] };
@@ -561,13 +698,33 @@ export class Renderer {
       }
       const shut = objectBlocks(o, 'move'), c = th.door ?? [0.5, 0.33, 0.17], tall = high(o.level) && !cut.has(`o:${o.id}`), leaf = tall ? DOOR_TALL : unseen ? 1.25 : 1.0;
       if (tall) this.#slab(b, seg[0], seg[1], baseOf(o.level) + DOOR_TALL, FULL - DOOR_TALL, 0.09, th.wall ?? [0.44, 0.42, 0.4]);       // the wall over the door
-      if (shut) this.#slab(b, seg[0], seg[1], baseOf(o.level), leaf, 0.07, unseen ? [0.62, 0.3, 0.55] : objectBlocks(o, 'sight') ? c : [0.3, 0.3, 0.32]);
+      const d = this.doors.get(o.id), closing = Object.values(objectDef(o)?.states ?? {}).find((st) => st.blocks?.includes('move'));
+      const shutCol = unseen ? [0.62, 0.3, 0.55] : (shut ? objectBlocks(o, 'sight') : closing?.blocks.includes('sight')) ? c : [0.3, 0.3, 0.32];      // what a shut leaf looks like (a door hides sight, a grille does not)
+      if (d?.tw) {                                                      // swinging now: drawn each frame by drawDoors(), from these
+        this.doorInfo.set(o.id, { seg, y0: baseOf(o.level), h: leaf, open: c, shut: shutCol });
+        continue;
+      }
+      this.doorInfo.delete(o.id);
+      const isShut = d ? d.v === 0 : shut;                              // a door still waiting for its beat is drawn as it was
+      if (isShut) this.#slab(b, seg[0], seg[1], baseOf(o.level), leaf, 0.07, shutCol);
       else {                                                            // open: the leaf stands swung back against its hinge
         const [p, q] = seg, dx = q[0] - p[0], dy = q[1] - p[1];
         this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), leaf, 0.05, c);
       }
     }
     this.wallMesh.set(b);
+  }
+  // The doors that are swinging, drawn from where their tween has got to: the leaf turns about its hinge (the first end of its line)
+  // from the shut line to the open one, 90 degrees and a fifth shorter, as the still door is drawn.
+  #drawDoors(now) {
+    const b = new Builder();
+    for (const [id, info] of this.doorInfo) {
+      const d = this.doors.get(id); if (!d?.tw) continue;
+      const f = tweenAt(d.tw, now).v, [p, q] = info.seg, dx = q[0] - p[0], dy = q[1] - p[1], th = (f * Math.PI) / 2, len = 1 - 0.2 * f;
+      const ex = p[0] + (dx * Math.cos(th) - dy * Math.sin(th)) * len, ey = p[1] + (dx * Math.sin(th) + dy * Math.cos(th)) * len;
+      this.#slab(b, p, [ex, ey], info.y0, info.h, 0.07 - 0.02 * f, mix3(info.shut, info.open, f));
+    }
+    this.doorMesh.set(b);
   }
   // The keys of the wall faces cut down for the camera as it is now, or null if there is no cut-away.
   #cutSet() {
@@ -606,9 +763,11 @@ export class Renderer {
     if (enc) {
       const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
       const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
+      let ys = 0, ny = 0;
       for (const h of allTiles(map)) {
         if (h.z > this.ceiling || !enc.arena[H.col(h)]) continue;
         const w = H.toWorld(h), y = surfY(h.z, h.tile) + 0.03, R = Math.PI / 6;
+        ys += y; ny++; this.edgeBase = ys / ny;
         const top = eb.ring(w.x, w.z, 1.02, y, 6, R), inner = eb.ring(w.x, w.z, 0.86, y, 6, R);
         for (let i = 0; i < 6; i++) {
           const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
@@ -714,6 +873,7 @@ export class Renderer {
   }
   #frame(dt) {
     const gl = this.gl, th = this.theme, c = this.cam;
+    this.#animate((this.now = clock()));
     if (c.goal) { c.x += (c.goal.x - c.x) * Math.min(1, dt * 5); c.z += (c.goal.z - c.z) * Math.min(1, dt * 5); if (Math.hypot(c.goal.x - c.x, c.goal.z - c.z) < 0.02) c.goal = null; }
     for (const a of this.actors.values()) {
       // A pawn glides hex by hex; a long walk speeds up so it never drags, and each step is a small hop.
@@ -745,34 +905,45 @@ export class Renderer {
     this.terrain.draw(this.loc, ident());
     this.wallMesh.draw(this.loc, ident());
     if (this.pics.length) this.#drawPictures(C, sky, lt.light);
+    this.#drawDoorsNow();
+    for (const a of this.actors.values()) if (a.fade >= 1) this.#drawPawn(a, a.mesh, 1);
+    gl.enable(gl.BLEND);
+    // Pawns that are fading (appearing, dying, being placed or removed) are drawn blended, lit by the hour like the rest.
+    gl.uniform3fv(this.loc.uGrade, lt.light);
+    gl.depthFunc(gl.LEQUAL);                                              // the living pawn fades off the fallen one that stands in the same place
     for (const a of this.actors.values()) {
-      const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0;      // drawn only: the pawn is not really moved; it shakes across the screen whichever way the camera faces
-      a.mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + (a.tilt ? 0.15 : 0) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, a.tilt),
-        f ? [1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, 1] : [1, 1, 1, 1]);
+      if (a.dying) this.#drawPawn(a, a.dying.mesh, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur));
+      else if (a.fade < 1) this.#drawPawn(a, a.mesh, a.fade);
     }
-    gl.enable(gl.BLEND); gl.depthMask(false);
+    gl.depthFunc(gl.LESS);
+    for (const g of this.ghosts) this.#drawPawn(g, g.mesh, 1 - Math.min(1, (this.now - g.t0) / g.dur));
+    gl.depthMask(false);
     gl.uniform3f(this.loc.uGrade, 1, 1, 1);                                // highlights, the arena edge and shadows are not tinted by the hour
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);          // shadows lie on the floor without flickering
     this.grid.draw(this.loc, ident(), [1, 1, 1, 1], 0);
     this.shadows.draw(this.loc, ident(), [1, 1, 1, 1], 0);
     for (const a of this.actors.values()) {
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);                    // a flier's shadow is fainter and smaller
-      this.blobMesh.draw(this.loc, model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade)), [1, 1, 1, fade], 0);
+      this.blobMesh.draw(this.loc, model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade)), [1, 1, 1, fade * (a.fade ?? 1)], 0);
     }
     gl.disable(gl.POLYGON_OFFSET_FILL);
     this.overlay.draw(this.loc, ident(), [1, 1, 1, 1], 0);
-    const enc = this.state.encounter;                                     // the edge fades in when a fight starts, flashes once, then breathes
-    const eid = enc ? enc.id ?? 0 : null;
-    if (eid !== this.edgeId) { this.edgeId = eid; this.edgeAge = 0; }
-    this.edgeAge += dt; this.anim += dt;
-    if (enc) {
-      const k = Math.min(1, this.edgeAge / 1.2), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), burst = Math.max(0, 1 - this.edgeAge / 1.6) * 0.8;
-      this.edge.draw(this.loc, ident(), [1 + burst, 1 + burst, 1 + burst, k * k * pulse], 0);
+    this.anim += dt;
+    // The edge of a fight: it rises and flashes when `encounterStart` plays (1.2 s), then breathes; it sinks when `encounterEnd` plays (0.6 s).
+    const fx = this.edgeFx, sk = this.sinkFx;
+    if (this.state.encounter && fx.phase !== 'hold') {
+      const age = fx.phase === 'on' ? 9 : this.now - fx.t0, k = Math.min(1, age / SECS.rise), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), burst = Math.max(0, 1 - age / 1.6) * 0.8, rise = smooth(k);
+      this.edge.draw(this.loc, [1, 0, 0, 0, 0, Math.max(0.001, rise), 0, 0, 0, 0, 1, 0, 0, (1 - rise) * this.edgeBase, 0, 1], [1 + burst, 1 + burst, 1 + burst, k * k * pulse], 0);
     }
+    if (sk) {
+      const p = sk.phase === 'hold' ? 0 : Math.min(1, (this.now - sk.t0) / SECS.sink), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), sink = 1 - smooth(p);
+      sk.mesh.draw(this.loc, [1, 0, 0, 0, 0, Math.max(0.001, sink), 0, 0, 0, 0, 1, 0, 0, (1 - sink) * sk.base, 0, 1], [1, 1, 1, (1 - p * p) * pulse], 0);
+    }
+    for (const v of this.veils.values()) v.mesh.draw(this.loc, ident(), [1, 1, 1, v.alpha], 0);      // a region just seen rises out of the dark
     gl.depthMask(true);
 
     for (const a of this.actors.values()) {
-      const p = this.#project(C, a.x, a.y + (a.tilt ? 0.9 : 1.95) * (a.k ?? 1), a.z);
+      const p = this.#project(C, a.x, a.y + (1.95 - 1.05 * Math.min(1, (a.tiltNow ?? 0) / 0.9)) * (a.k ?? 1), a.z);
       a.el.style.display = p ? '' : 'none';
       if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
     }
@@ -786,6 +957,54 @@ export class Renderer {
       f.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
       return true;
     });
+  }
+
+  // One pawn at its place, tilted as far as it has fallen, with `alpha` (1 is solid). A hit flash and a critical shake are drawn only.
+  #drawPawn(a, mesh, alpha) {
+    const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0, tl = a.tiltNow ?? 0;      // the pawn is not really moved; it shakes across the screen whichever way the camera faces
+    mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + 0.15 * Math.min(1, tl / 0.5) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, tl),
+      f ? [1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, alpha] : [1, 1, 1, alpha]);
+  }
+  #drawDoorsNow() {
+    let any = false;
+    for (const d of this.doors.values()) if (d.tw) any = true;
+    if (!any) return;
+    this.#drawDoors(this.now);
+    this.doorMesh.draw(this.loc, ident());
+  }
+  // Moves every running beat on to this moment, and brings a held look in line when its event never came.
+  #animate(now) {
+    for (const a of this.actors.values()) {
+      if (a.tiltTw) { const r = tweenAt(a.tiltTw, now); a.tiltNow = r.v; if (r.done) a.tiltTw = null; }
+      if (a.fadeTw) { const r = tweenAt(a.fadeTw, now); a.fade = r.v; if (r.done) a.fadeTw = null; }
+      else if (a.hold && now - a.holdAt > HOLD_MAX) { a.hold = false; a.fade = 1; }
+      if (a.fall) { const r = tweenAt(a.fall, now); a.y = r.v; if (r.done) a.fall = null; }
+      if (a.dying && now - a.dying.t0 >= a.dying.dur) { a.dying.mesh.free(); a.dying = null; }
+      const op = a.fade < 1 ? a.fade.toFixed(2) : '';
+      if (op !== a.opa) { a.opa = op; a.el.style.opacity = op; }
+    }
+    if (this.ghosts.length) {
+      this.ghosts = this.ghosts.filter((g) => {
+        const p = (now - g.t0) / g.dur;
+        if (p >= 1) { this.#dropGhost(g); return false; }
+        if (g.el) g.el.style.opacity = String(1 - p);
+        return true;
+      });
+    }
+    for (const d of this.doors.values()) {
+      if (d.tw && tweenAt(d.tw, now).done) { d.v = d.tw.to; d.tw = null; this.wallsDirty = true; }
+      else if (!d.tw && d.v !== d.goal && now - d.since > HOLD_MAX) { d.v = d.goal; this.wallsDirty = true; }
+    }
+    for (const [id, v] of this.veils) {
+      if (v.tw) { const r = tweenAt(v.tw, now); v.alpha = r.v; if (!r.done) continue; }
+      else if (now - v.since <= HOLD_MAX) continue;
+      v.mesh.free(); this.veils.delete(id);
+    }
+    const fx = this.edgeFx;
+    if (fx.phase === 'hold' && now - fx.since > HOLD_MAX) this.edgeFx = { phase: 'on', t0: now };
+    const sk = this.sinkFx;
+    if (sk && (sk.phase === 'hold' ? now - sk.since > HOLD_MAX : now - sk.t0 >= SECS.sink)) { sk.mesh.free(); this.sinkFx = null; }
+    if (this.wallsDirty && this.state) this.#buildWalls(true);
   }
 
   #drawPictures(C, sky, grade) {
