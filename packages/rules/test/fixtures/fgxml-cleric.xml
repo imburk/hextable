@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- A made-up character in the Fantasy Grounds 5E export format. Every name here is SRD or invented for the test. -->
+<root version="5.1" dataversion="20260101" release="11|CoreRPG:8">
+	<character>
+		<name type="string">Mira Testwell [Zed]</name>
+		<race type="string">Human</race>
+		<background type="string">Sage</background>
+		<size type="string">Medium</size>
+		<level type="number">5</level>
+		<profbonus type="number">3</profbonus>
+		<senses type="string">Darkvision 60</senses>
+		<abilities>
+			<strength><score type="number">14</score><bonus type="number">2</bonus><save type="number">2</save><saveprof type="number">0</saveprof></strength>
+			<dexterity><score type="number">10</score><bonus type="number">0</bonus><save type="number">0</save><saveprof type="number">0</saveprof></dexterity>
+			<constitution><score type="number">14</score><bonus type="number">2</bonus><save type="number">2</save><saveprof type="number">0</saveprof></constitution>
+			<intelligence><score type="number">10</score><bonus type="number">0</bonus><save type="number">0</save><saveprof type="number">0</saveprof></intelligence>
+			<wisdom><score type="number">16</score><bonus type="number">3</bonus><save type="number">6</save><saveprof type="number">1</saveprof></wisdom>
+			<charisma><score type="number">12</score><bonus type="number">1</bonus><save type="number">4</save><saveprof type="number">1</saveprof></charisma>
+		</abilities>
+		<classes>
+			<id-00001>
+				<name type="string">Cleric</name>
+				<level type="number">5</level>
+				<specialization type="string">Life Domain</specialization>
+			</id-00001>
+		</classes>
+		<defenses><ac><total type="number">18</total></ac></defenses>
+		<hp><total type="number">40</total><wounds type="number">7</wounds><temporary type="number">0</temporary></hp>
+		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<skilllist>
+			<id-00001><name type="string">Medicine</name><prof type="number">1</prof><total type="number">6</total></id-00001>
+			<id-00002><name type="string">Religion</name><prof type="number">1</prof><total type="number">3</total></id-00002>
+			<id-00003><name type="string">Insight</name><prof type="number">1</prof><total type="number">6</total></id-00003>
+			<id-00004><name type="string">History</name><prof type="number">1</prof><total type="number">3</total></id-00004>
+			<id-00005><name type="string">Stealth</name><prof type="number">0</prof><total type="number">0</total></id-00005>
+		</skilllist>
+		<languagelist>
+			<id-00001><name type="string">Common</name></id-00001>
+			<id-00002><name type="string">Dwarvish</name></id-00002>
+		</languagelist>
+		<proficiencylist>
+			<id-00001><name type="string">All Armor</name></id-00001>
+			<id-00002><name type="string">Calligrapher's Supplies</name></id-00002>
+		</proficiencylist>
+		<weaponlist>
+			<id-00001>
+				<name type="string">Mace</name>
+				<carried type="number">2</carried>
+				<shortcut type="windowreference"><class>item</class><recordname>....inventorylist.id-00003</recordname></shortcut>
+				<damagelist><id-00001><dice type="dice">d6</dice><type type="string">bludgeoning</type></id-00001></damagelist>
+			</id-00001>
+		</weaponlist>
+		<inventorylist>
+			<id-00001><name type="string">Chain Mail</name><type type="string">Armor</type><subtype type="string">Heavy Armor</subtype><ac type="number">16</ac><carried type="number">2</carried></id-00001>
+			<id-00002><name type="string">Shield</name><type type="string">Armor</type><subtype type="string">Shield</subtype><ac type="number">2</ac><carried type="number">2</carried></id-00002>
+			<id-00003><name type="string">Mace</name><type type="string">Weapon</type><subtype type="string">Simple Melee Weapons</subtype><carried type="number">2</carried></id-00003>
+			<id-00004><name type="string">Backpack</name><type type="string">Adventuring Gear</type><carried type="number">1</carried></id-00004>
+			<id-00005>
+				<name type="string">Ring of Invented Warding</name><type type="string">Ring</type><rarity type="string">rare</rarity><carried type="number">2</carried>
+				<description type="formattedtext"><p>SENTINEL-DESCRIPTION-TEXT that must never be copied.</p></description>
+			</id-00005>
+			<id-00006><name type="string">A flask of something that is described in the name box at great length SENTINEL-LONG-NAME</name><carried type="number">1</carried></id-00006>
+		</inventorylist>
+		<featlist>
+			<id-00001><name type="string">Sparkly Footwork</name><text type="formattedtext"><p>SENTINEL-FEAT-TEXT</p></text></id-00001>
+			<id-00002><name type="string">Alert</name></id-00002>
+		</featlist>
+		<featurelist>
+			<id-00001><name type="string">Spellcasting (Cleric)</name><level type="number">1</level></id-00001>
+			<id-00002><name type="string">Divine Domain</name><level type="number">1</level></id-00002>
+			<id-00003><name type="string">Channel Divinity</name><level type="number">2</level></id-00003>
+			<id-00004><name type="string">Destroy Undead</name><level type="number">5</level></id-00004>
+			<id-00005><name type="string">Invented Flourish</name><level type="number">3</level></id-00005>
+			<id-00006><name type="string">Ability Score Improvement</name><level type="number">4</level></id-00006>
+		</featurelist>
+		<traitlist>
+			<id-00001><name type="string">Speed</name></id-00001>
+			<id-00002><name type="string">Resourceful</name></id-00002>
+		</traitlist>
+		<powergroup>
+			<id-00001><name type="string">Spells (Cleric)</name><castertype type="string">memorization</castertype><stat type="string">wisdom</stat><prepared type="number">8</prepared></id-00001>
+		</powergroup>
+		<powermeta>
+			<spellslots1><max type="number">4</max><used type="number">1</used></spellslots1>
+			<spellslots2><max type="number">3</max><used type="number">0</used></spellslots2>
+			<spellslots3><max type="number">2</max><used type="number">0</used></spellslots3>
+		</powermeta>
+		<powers>
+			<id-00001><name type="string">Sacred Flame</name><group type="string">Spells (Cleric)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00001>
+			<id-00002><name type="string">Guidance</name><group type="string">Spells (Cleric)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Divination</school></id-00002>
+			<id-00003><name type="string">Bless</name><group type="string">Spells (Cleric)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00003>
+			<id-00004><name type="string">Cure Wounds (30)</name><group type="string">Spells (Cleric)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00004>
+			<id-00005><name type="string">Guiding Bolt</name><group type="string">Spells (Cleric)</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00005>
+			<id-00006><name type="string">Spiritual Weapon</name><group type="string">Spells (Cleric)</group><level type="number">2</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00006>
+			<id-00007><name type="string">Mirror Shard</name><group type="string">Spells (Cleric)</group><level type="number">2</level><prepared type="number">1</prepared><school type="string">Illusion</school><description type="formattedtext"><p>SENTINEL-SPELL-TEXT</p></description></id-00007>
+			<id-00008><name type="string">Fireball</name><group type="string">Spells (Cleric)</group><level type="number">3</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00008>
+			<id-00009><name type="string">Dodge</name><group type="string">Basic Action</group><level type="number">0</level><prepared type="number">0</prepared></id-00009>
+		</powers>
+	</character>
+</root>
