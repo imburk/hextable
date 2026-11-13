@@ -10,7 +10,7 @@ import { allTiles, footprint, ground, shown, surfaces, under } from './shared/sp
 const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };      // how much bigger a pawn is drawn
 const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
-import { buildFloors, cellParts, cutaway } from './floors.js';
+import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
 
 // Lasting zones (a spell's area that stays): tinted by the damage type of the spell's steps, neutral if it has none.
 // A theme may replace any of these with its own `zones: { fire: [r, g, b], neutral: [r, g, b] }`.
@@ -417,11 +417,20 @@ export class Renderer {
     // tiles at one height are drawn as one flat floor with one edge round it, and the hexes as a faint grid. Rooms that
     // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
     // The shapes come from floors.js: a wall that crosses a hex cuts it, and floor is filled out to a wall (R2).
-    const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
+    const caves = th.floors === 'rooms' && th.caves ? new Set(caveLevels(map)) : new Set();      // mostly rock with open hexes: drawn as a cave (floors.js, caveOf)
+    const rooms = th.floors === 'rooms' ? new Set([...map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id), ...caves]) : new Set();
     // Players under the los and light rules: a place remembered but not in view now is dimmed, one in view in
     // Dim Light or Darkness darkened (docs/specs/sight.md, decision 6). Colour only; the renderer plan owns more.
     const sight = this.state.sight, now = new Map(Object.entries(sight?.now ?? {}).map(([l, cols]) => [l, new Set(cols)]));
     const seenShade = (levelId, k) => (!sight ? 1 : !now.get(levelId)?.has(k) ? 0.5 : sight.light?.[levelId]?.[k] === 'dark' ? 0.38 : sight.light?.[levelId]?.[k] === 'dim' ? 0.7 : 1);
+    // The colour of a hex's floor as the table sees it: dimmed when a fight has locked it, when only the DM has it, or by what the party remembers.
+    const tintOf = (lv, key, base) => {
+      let c = base.slice();
+      if (enc && !enc.arena[key]) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
+      if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (lv.tiles[key]?.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+      const f = seenShade(lv.id, key);
+      return f === 1 ? c : c.map((v) => v * f);
+    };
     // A level with a picture that has arrived is floored by the picture: its hexes are only a faint outline.
     const gb = new Builder(), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
     this.pics = []; const pv = [];
@@ -439,6 +448,7 @@ export class Renderer {
         gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
         continue;
       }
+      if (caves.has(h.level.id)) continue;                                // a cave is all drawn below
       const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
       const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
       const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;              // a room's floor is one even colour, not a patchwork
@@ -465,7 +475,7 @@ export class Renderer {
       }
     }
     // Rooms: the floors of levels with walls or regions, from floors.js. Colour follows the tile each piece is drawn as.
-    const floors = rooms.size ? buildFloors(map, { levels: [...rooms].filter((id) => !hid(id) && !pictured.has(id)) }) : { levels: [] };
+    const floors = rooms.size ? buildFloors(map, { levels: [...rooms].filter((id) => !hid(id) && !pictured.has(id)), caves: [...caves] }) : { levels: [] };
     const wpt = (p, y) => [p[0] * UNIT, y, p[1] * UNIT];
     for (const fl of floors.levels) {
       const lv = map.levels.find((l) => l.id === fl.id);
@@ -486,6 +496,7 @@ export class Renderer {
         }
         for (const e of pa.outline) {                                   // where the floor ends or steps down: a skirt, and a low kerb along its outline
           if (e.kind !== 'open' && e.kind !== 'drop') continue;
+          if (e.kind === 'open' && caves.has(fl.id)) continue;               // a cave's edge is drawn as rock
           const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
           let c = th.tiles[t.t].slice();
           if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
@@ -500,6 +511,7 @@ export class Renderer {
           b.quad(ib, ia, fa, fb, shade(c, th.rim * 0.9));
         }
       }
+      if (caves.has(fl.id)) this.#drawCave(b, caveOf(map, fl), lv, tintOf);
     }
     this.floorData = floors.levels;
     this.terrain.set(b); this.grid.set(gb); this.shadows.set(sb); this.#buildEdge(); this.#buildWalls(true);
@@ -563,6 +575,30 @@ export class Renderer {
     const yaw = this.cam.yaw, toCam = [Math.sin(yaw), Math.cos(yaw)], out = new Set();
     for (const fl of this.floorData) for (const i of cutaway(fl.walls, toCam)) out.add(fl.walls[i].key);
     return out;
+  }
+  // A cave (docs/specs/renderer.md, decision 1; floors.js caveOf): the open floor is drawn as patches already. Here: the strip
+  // of floor out to the pushed edge, a face of rock standing up from that edge, and the rock as a dark mass at one height.
+  #drawCave(b, cv, lv, tintOf) {
+    const th = this.theme, rock = th.tiles.rock ?? [0.45, 0.43, 0.4], wpt = (p, y) => [p[0] * UNIT, y, p[1] * UNIT], noise = (p, k) => 0.5 + 0.5 * Math.sin(p[0] * 7.31 + p[1] * 3.17 + k);
+    const lit = (c, f) => [c[0] * f, c[1] * f, c[2] * f, 1];
+    for (const { closed, points } of cv.chains) {
+      const m = closed ? points.length : points.length - 1;
+      for (let i = 0; i < m; i++) {
+        const a = points[i], c = points[(i + 1) % points.length], y = a.z * UNIT, top = a.top * UNIT, floor = tintOf(lv, a.hex, th.tiles[lv.tiles[a.hex].t]);
+        b.quad(wpt(a.p, y), wpt(c.p, y), wpt(c.q, y), wpt(a.q, y), [...floor, 1]);                    // the floor goes out to the pushed edge
+        const rc = tintOf(lv, a.hex, rock), v = 0.8 + 0.2 * noise(a.q, 0), mid = y + (top - y) * 0.4;
+        b.quad(wpt(a.q, y), wpt(c.q, y), wpt(c.q, mid), wpt(a.q, mid), lit(rc, 0.55 * v));            // the foot of the face is darker
+        b.quad(wpt(a.q, mid), wpt(c.q, mid), wpt(c.q, top), wpt(a.q, top), lit(rc, 0.85 * v));
+      }
+    }
+    for (const r of cv.rock) {
+      const c0 = tintOf(lv, r.hex, rock), col = lit(c0, 0.5), n = r.ring.length, top = r.top * UNIT;
+      const mid = [r.ring.reduce((s, p) => s + p[0], 0) / n, r.ring.reduce((s, p) => s + p[1], 0) / n], M = wpt(mid, top);
+      for (let i = 0; i < n; i++) b.tri(wpt(r.ring[(i + 1) % n], top), wpt(r.ring[i], top), M, col);       // the top of the mass, fanned from its middle, one colour
+      const face = (s, to, f) => { for (let j = 0; j < 3; j++) { const p = r.ring[(s + j) % n], q = r.ring[(s + j + 1) % n]; b.quad(wpt(p, top), wpt(q, top), wpt(q, to), wpt(p, to), lit(c0, f)); } };
+      for (const s of r.bare) face(s, Math.min(-1.5, top - 1.5), 0.42);                                     // a side that meets nothing: down to the ground
+      for (const s of r.steps) face(s.at, s.to * UNIT, 0.4);                                                // beside lower rock: a step down
+    }
   }
   // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
   #buildEdge() {

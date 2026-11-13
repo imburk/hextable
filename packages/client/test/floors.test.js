@@ -234,3 +234,69 @@ test('the output is plain data and the same every time', () => {
   assert.equal(a, b);
   assert.ok(a.length > 100);
 });
+
+// ---------- caves ----------
+const { default: stockCave } = await import(pathToFileURL(join(tmp, 'shared/content/maps/cave.js')).href);
+const caveOf = (map) => { const fl = F.buildFloors(map, { caves: F.caveLevels(map) }); return { fl: fl.levels[0], cave: F.caveOf(map, fl.levels[0]) }; };
+const inPoly = (poly, [x, y]) => poly.every((a, i) => { const b = poly[(i + 1) % poly.length]; return (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) > 1e-6; });
+
+test('a level that is mostly rock with open tiles and no walls is a cave; others are not', () => {
+  assert.deepEqual(F.caveLevels(stockCave), ['ground']);
+  assert.deepEqual(F.caveLevels(mk(block(0, 3, 0, 3), [{ a: [100, 100], b: [110, 100] }])), [], 'no rock');
+  assert.deepEqual(F.caveLevels(mk({ ...block(0, 3, 0, 3, 'rock'), '1,1': 'stone' })), ['ground']);
+  assert.deepEqual(F.caveLevels(mk({ ...block(0, 3, 0, 3, 'rock'), '1,1': 'stone' }, [{ a: [0, 0], b: [10, 0] }])), [], 'a level with walls is drawn as rooms');
+  assert.deepEqual(F.caveLevels(mk(block(0, 3, 0, 3, 'rock'))), [], 'all rock is not a cave');
+  assert.deepEqual(F.caveLevels(mk({ ...block(0, 9, 0, 9), '0,0': 'rock' })), [], 'a little rock is not a cave');
+});
+
+test('a cave floor is the open tiles only: rock is not floor', () => {
+  const { fl } = caveOf(stockCave), open = Object.values(stockCave.levels[0].tiles).filter((t) => t.t !== 'rock').length;
+  assert.equal(fl.patches.reduce((n, p) => n + p.cells.length, 0), open);
+  assert.ok(fl.patches.every((p) => p.terrain !== 'rock'));
+});
+
+test('the edge of a cave is pushed into the rock and never into the floor, and by a bounded amount', () => {
+  const { fl, cave } = caveOf(stockCave), cells = fl.patches.flatMap((p) => p.cells);
+  let n = 0, moved = 0;
+  for (const ch of cave.chains) for (const pt of ch.points) {
+    n++;
+    const d = Math.hypot(pt.q[0] - pt.p[0], pt.q[1] - pt.p[1]);
+    assert.ok(d <= F.CAVE_PUSH * 1.35 + 1e-9, `pushed ${d} ft`);
+    if (d > 0.1) moved++;
+    assert.ok(!cells.some((c) => inPoly(c.poly, pt.q)), 'a pushed point is never inside an open hex');
+  }
+  assert.ok(n > 500 && moved > n * 0.9, 'the edge is ragged all the way round');
+  const ds = new Set(cave.chains.flatMap((c) => c.points.map((p) => Math.hypot(p.q[0] - p.p[0], p.q[1] - p.p[1]).toFixed(2))));
+  assert.ok(ds.size > 100, 'and not by one amount');
+});
+
+test('the same map is the same cave every time, and a different map is a different cave', () => {
+  const a = JSON.stringify(caveOf(stockCave).cave), b = JSON.stringify(caveOf(structuredClone(stockCave)).cave);
+  assert.equal(a, b);
+  const other = structuredClone(stockCave); other.id = 'another-cave';
+  assert.notEqual(JSON.stringify(caveOf(other).cave.chains), JSON.stringify(caveOf(stockCave).cave.chains));
+  assert.equal(F.caveSeed(stockCave, 'ground'), F.caveSeed(structuredClone(stockCave), 'ground'));
+  for (let i = 0; i < 200; i++) { const v = F.valueNoise(i * 0.37, i * 0.91, 5); assert.ok(v >= 0 && v < 1); }
+  assert.equal(F.valueNoise(3.3, 4.4, 9), F.valueNoise(3.3, 4.4, 9));
+});
+
+test('rock tiles are outlined with the same pushed points as the floor edge, and stand above the floor beside them', () => {
+  const { fl, cave } = caveOf(stockCave), push = new Map();
+  for (const ch of cave.chains) for (const pt of ch.points) push.set(pt.p.map((v) => v.toFixed(1)).join(), pt.q);
+  assert.equal(cave.rock.length, Object.values(stockCave.levels[0].tiles).filter((t) => t.t === 'rock').length);
+  let shared = 0;
+  for (const r of cave.rock) {
+    assert.equal(r.ring.length, 18);
+    assert.ok(F.polyArea(r.ring) > 0 && r.ring.every((p, i) => i === 0 || Math.hypot(p[0] - r.ring[i - 1][0], p[1] - r.ring[i - 1][1]) < 4), 'a sane outline');
+    for (const p of r.ring) if ([...push.values()].some((q) => q === p)) shared++;
+    const mid = center(H_parse(r.hex));
+    assert.ok(winding(r.ring, mid) !== 0, 'a rock tile still holds its own middle');
+  }
+  assert.ok(shared > 500);
+  const floorTop = Math.max(...fl.patches.map((p) => p.top));
+  assert.ok(cave.rock.every((r) => r.top > 0) && Math.max(...cave.rock.map((r) => r.top)) >= floorTop + F.CAVE_WALL - 1e-9);
+  assert.ok(cave.chains.every((c) => c.points.every((p) => p.top > p.z)), 'rock is higher than the floor at its foot');
+});
+// Is the point inside the polygon (any shape): the winding number.
+const winding = (poly, [x, y]) => { let w = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], c = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]); if (a[1] <= y) { if (b[1] > y && c > 0) w++; } else if (b[1] <= y && c < 0) w--; } return w; };
+const H_parse = (k) => { const [q, r] = k.split(',').map(Number); return { q, r }; };
