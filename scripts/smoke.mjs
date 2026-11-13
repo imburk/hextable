@@ -1902,8 +1902,9 @@ async function classes(browser, url, label, opts) {
 
       await run.do('Font of Magic: spending a slot for points, and a refusal in the engine\'s words when it is over the maximum', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
-        await wait(page, () => !window.hextable.state.encounter, null, 20000);
+        await wait(page, () => !window.hextable.state.encounter && window.hextable.waiting === 0, null, 25000);
         await pick('Sorsha');
+        await page.waitForSelector('#actions button:has-text("Font of Magic")', { timeout: 20000 });
         await tap(page, '#actions button:has-text("Font of Magic")');
         await waitShown(page, '#cp .cp-card');
         await tap(page, '#cp [data-how="spend"]'); await tap(page, '#cp [data-level="3"]');
