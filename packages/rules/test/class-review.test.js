@@ -45,3 +45,17 @@ test("Wild Shape keeps Nature's Ward: the form adds the Beast's defences to the 
   assert.deepEqual(e.conditionImmune, ["poisoned"]);
   assert.deepEqual(e.resist, ["cold"]);
 });
+
+const sorc = (level, mm = ["careful", "quickened"]) => ({ name: "Jed", class: "sorcerer", level, subclass: "draconic", abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 },
+  skills: ["arcana", "insight"], choices: { metamagic: mm, "elemental-affinity": "fire", "metamagic-10": ["heightened", "twinned"] },
+  spells: ["fire-bolt", "shocking-grasp", "fireball", "hold-person", "haste", "scorching-ray", "burning-hands"] });
+const caster = (sheet) => { const s = field(sheet); for (const e of Object.values(s.entities)) e.hp = e.maxHp = 300; fight(s); turnOf(s, "hero"); return s; };
+
+// M1. Careful Spell: "When you cast a spell that forces other creatures to make a saving throw, you
+// can protect some of those creatures" (Metamagic Options). The caster is not one of them.
+test("Careful Spell protects other creatures, not the caster, and a refusal changes nothing", () => {
+  const s = caster(sorc(15)), snap = JSON.stringify(s);
+  no(apply(s, { type: "cast", actor: "hero", spell: "fireball", hex: { q: 0, r: 0 }, slot: 3, metamagic: ["careful"], careful: ["hero"] }, DM), /other creatures/);
+  assert.equal(JSON.stringify(s), snap);
+  ok(apply(s, { type: "cast", actor: "hero", spell: "fireball", hex: { q: 1, r: 0 }, slot: 3, metamagic: ["careful"], careful: ["m1"] }, DM));
+});

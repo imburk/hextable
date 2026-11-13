@@ -1820,6 +1820,7 @@ function metamagicFor(s, e, sp, a, slot) {
     (saves) || fail('Careful Spell is for a spell that calls for saving throws.');
     const n = Math.max(1, mod(e.abil.cha));
     (Array.isArray(a.careful) && a.careful.length >= 1 && a.careful.length <= n && new Set(a.careful).size === a.careful.length) || fail(`Careful Spell protects up to ${n} creature${n === 1 ? '' : 's'}: name them.`);
+    a.careful.includes(e.id) && fail('Careful Spell protects other creatures, not the caster.');
   }
   if (has.heightened) { saves || fail('Heightened Spell is for a spell that calls for saving throws.'); typeof a.heightened === 'string' || fail('Name the target Heightened Spell picks.'); }
   if (has.quickened) sp.time === 'action' || fail('Quickened Spell is for a spell cast as an action.');
