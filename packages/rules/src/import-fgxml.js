@@ -12,7 +12,7 @@
 // subclass at level 3, an option of a feature), the stand-in is listed under `adjustments`.
 import { CONTENT, SPELLS } from './content/index.js';
 import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
-import { derive, featuresOf, mod, proficiencyFor, validate } from './derive.js';
+import { derive, featSlots, featuresOf, mod, proficiencyFor, validate } from './derive.js';
 
 // ---------- a small XML reader ----------
 // Elements, attributes, text, comments, CDATA, processing instructions. A DOCTYPE is skipped unless it has an
@@ -152,10 +152,14 @@ function itemKeys(name) {
 const find = (map, keys) => { for (const k of keys) { const v = map.get(k) ?? map.get(singular(k)); if (v) return v; } return null; };
 
 // ---------- 2014 and 5.2 differences that can be told from a name ----------
-// The SRD 5.2 text (reference/srd52) lists these species, backgrounds and feats; the pack holds none of them yet.
+// The SRD 5.2 text (reference/srd52) lists these species and backgrounds; the pack holds none of them yet.
 const SRD_SPECIES = ['dragonborn', 'dwarf', 'elf', 'gnome', 'goliath', 'halfling', 'human', 'orc', 'tiefling'];
 const SRD_BACKGROUNDS = ['acolyte', 'criminal', 'sage', 'soldier'];
-const SRD_FEATS = ['alert', 'magic initiate', 'savage attacker', 'skilled', 'ability score improvement', 'grappler', 'archery', 'great weapon fighting', 'two weapon fighting', 'defense'];
+// Feats are found in the pack by name. These SRD 5.2 feats share a name with a 2014 feat whose rules were different: a
+// sheet's feat of that name is built as the 5.2 version, and the report says so.
+const FEAT_CHANGED = new Set(['alert', 'grappler', 'magic-initiate', 'savage-attacker', 'great-weapon-fighting']);
+const featByKey = new Map();
+for (const f of Object.values(CONTENT.feats)) { featByKey.set(norm(f.name), f); featByKey.set(norm(f.id), f); }
 // Class features whose 2014 name is not a 5.2 feature, and what 5.2 has instead (each checked against the SRD text).
 const CHANGED = new Map(Object.entries({
   'divine sense': 'In 5.2 this is a Channel Divinity option (Paladin level 3).',
@@ -268,7 +272,7 @@ function build(root, ch, options) {
     const word = { str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' }[a];
     let v = int(kid(kid(ch, 'abilities'), word), 'score');
     if (v === null) { adjust(`${a.toUpperCase()} score`, undefined, 10, 'The sheet has no score for it.'); v = 10; }
-    if (v > 20) { adjust(`${a.toUpperCase()} score`, v, 20, 'A sheet holds scores of 1 to 20 (no feature of the engine raises one higher).'); v = 20; }
+    if (v > 20) { adjust(`${a.toUpperCase()} score`, v, 20, 'Above what the engine derives: a sheet\'s scores are 1 to 20 before its feats, and only an Epic Boon (level 19+) or a magic item takes one past 20. Set to 20; the DM should check what raised it.'); v = 20; }
     if (v < 1) { adjust(`${a.toUpperCase()} score`, v, 1, 'A sheet holds scores of 1 to 20.'); v = 1; }
     sheet.abilities[a] = v;
   }
@@ -322,6 +326,7 @@ function build(root, ch, options) {
         adjust(f.name, undefined, pick.name, `A 5.2 choice with no counterpart on a 2014 sheet. ${pick.name} was set so the sheet loads (chosen as the option the sheet's gear fits, else the first): the DM should choose.`);
       } else void why;
       (sheet.choices ??= {})[f.id] = pick.id;
+      if (named && pick.feat && FEAT_CHANGED.has(pick.feat)) R.ruleDifferences.push({ name: pick.name, why: `5.2 version: the engine builds the SRD 5.2 ${pick.name} feat, whose rules differ from the 2014 fighting style of that name.` });
     }
   };
 
@@ -470,13 +475,26 @@ function build(root, ch, options) {
     note('background', bg, srd ? 'An SRD 5.2 background, but the pack holds none; it gives an Origin feat and ability scores in 5.2.' : 'Not an SRD 5.2 background (those are Acolyte, Criminal, Sage and Soldier); the pack holds none.');
   }
 
-  // Feats
+  // Feats: one the pack holds by name is put on the sheet at the first place for a feat it can be taken at (an Origin
+  // feat at the background's place first), with its choices left open: the sheet does not say which scores, skills
+  // or spells it gave, and its scores are taken as they stand. Any other is a name-only note.
+  const featNames = [];
   for (const f of kids(kid(ch, 'featlist'))) {
-    const n = txt(f, 'name');
+    const n = txt(f, 'name'), def = n ? featByKey.get(norm(n.replace(/\([^)]*\)/g, ' '))) : null;
     if (!n) continue;
-    const srd = SRD_FEATS.includes(norm(n));
-    note('feats', n, srd ? 'An SRD 5.2 feat; the pack holds no feats yet.' : 'A 2014 feat that is not in SRD 5.2; it can only be a DM-entered note.');
+    if (!def) { note('feats', n, 'A 2014 feat that is not in SRD 5.2; it can only be a DM-entered note.'); continue; }
+    if (featNames.includes(def.id) && !def.repeatable) continue;
+    featNames.push(def.id);
+    const was = new Set(validate(sheet)), places = featSlots(sheet).filter((sl) => sl.at !== 'species' && !(sheet.feats ?? []).some((x) => x.at === sl.at));
+    const at = places.find((sl) => validate({ ...sheet, feats: [...(sheet.feats ?? []), { id: def.id, at: sl.at }] }).every((p) => was.has(p)));
+    if (!at) { note('feats', n, `An SRD 5.2 feat, but this character has no free place for a feat it can take (${def.name}: ${def.category} feat); not on the sheet.`); continue; }
+    (sheet.feats ??= []).push({ id: def.id, at: at.at });
+    const open = def.increase || def.proficiencies || def.spellPick;
+    note('feats', n, `An SRD 5.2 feat, taken at ${at.name} (${def.tier}).${open ? ' Its choices (ability points, skills or spells) are not on the sheet: left open, so the sheet\'s scores and skills stand as they are.' : ''}`, { feat: def.id, at: at.at, tier: def.tier });
+    if (FEAT_CHANGED.has(def.id)) R.ruleDifferences.push({ name: n, why: `5.2 version: the engine builds the SRD 5.2 ${def.name}, whose rules differ from the 2014 feat of that name.` });
   }
+  const openPlaces = featSlots(sheet).filter((sl) => sl.at !== 'species' && !(sheet.feats ?? []).some((x) => x.at === sl.at));
+  if (openPlaces.length) R.ruleDifferences.push({ name: 'Places for a feat', why: `${plural(openPlaces.length, 'place')} for a feat left open (${openPlaces.map((sl) => sl.name).join(', ')}): the sheet does not say what was taken there (an Ability Score Improvement's raised scores are already in the scores imported).` });
 
   // Class features
   const mine = new Map(featuresOf({ ...sheet, spells: undefined }).map((x) => [norm(x.f.name), x.f]));
