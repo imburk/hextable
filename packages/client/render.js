@@ -11,6 +11,7 @@ const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargan
 const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
+import { createGovernor, pixelLevels } from './governor.js';
 
 // Lasting zones (a spell's area that stays): tinted by the damage type of the spell's steps, neutral if it has none.
 // A theme may replace any of these with its own `zones: { fire: [r, g, b], neutral: [r, g, b] }`.
@@ -184,6 +185,7 @@ const clock = () => performance.now() / 1000;         // tweens run on the wall 
 const mix3 = (a, b, f) => a.map((v, i) => v + (b[i] - v) * f);
 const VEIL = [0.04, 0.05, 0.09];
 
+let draws = 0;      // draw calls this frame, for stats()
 class Mesh {
   constructor(gl) { this.gl = gl; this.buf = gl.createBuffer(); this.n = 0; }
   free() { this.gl.deleteBuffer(this.buf); this.n = 0; }
@@ -203,7 +205,7 @@ class Mesh {
     gl.uniformMatrix4fv(loc.uM, false, m);
     gl.uniform4fv(loc.uTint, tint);
     gl.uniform1f(loc.uLit, lit);
-    gl.drawArrays(gl.TRIANGLES, 0, this.n);
+    gl.drawArrays(gl.TRIANGLES, 0, this.n); draws++;
   }
 }
 const centroidOf = (p) => [p.reduce((a, v) => a + v[0], 0) / p.length, p.reduce((a, v) => a + v[1], 0) / p.length];
@@ -262,12 +264,21 @@ export class Renderer {
     this.onPoint = null;                      // when set, a tap reports its screen point here instead of picking (the map editor)
     this.onDrag = null;                       // when set: { down(x, y, event) -> true to take the stroke, move(x, y), end(), cancel() }; a stroke it takes does not move the camera (the map editor)
     this.#input();
-    new ResizeObserver(() => this.#resize()).observe(canvas);
+    this.gov = createGovernor(pixelLevels(window.devicePixelRatio));      // the quality governor steps the pixel ratio (governor.js)
+    this.frameTimes = []; this.drawCalls = 0; this.dead = false;
+    let cw = 0, ch = 0;
+    this.ro = new ResizeObserver(() => { if (canvas.clientWidth !== cw || canvas.clientHeight !== ch) { cw = canvas.clientWidth; ch = canvas.clientHeight; this.gov.reset(); } this.#resize(); }); this.ro.observe(canvas);
     this.#resize();
     if (canvas.clientWidth / canvas.clientHeight < 0.8) this.cam.dist = 30;
     let last = performance.now();
-    const loop = (t) => { this.#frame(Math.min(0.05, (t - last) / 1000)); last = t; requestAnimationFrame(loop); };
-    requestAnimationFrame(loop);
+    const loop = (t) => {
+      if (this.dead) return;
+      const ms = t - last;
+      this.#frame(Math.min(0.05, ms / 1000)); last = t;
+      this.#measure(ms, t / 1000);
+      this.raf = requestAnimationFrame(loop);
+    };
+    this.raf = requestAnimationFrame(loop);
   }
 
   // ---------- public ----------
@@ -486,6 +497,27 @@ export class Renderer {
   screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
   rotate(d) { this.cam.yaw += d; }
   zoom(f) { this.cam.dist = Math.max(7, Math.min(48, this.cam.dist * f)); }
+
+  // How the drawing is doing: the median frame time (ms) over the last 120 frames, the governor's step (0 is full quality), the pixel
+  // ratio in use, and the draw calls of the last frame. The governor steps the pixel ratio from these (governor.js).
+  stats() {
+    const f = this.frameTimes, s = [...f].sort((a, b) => a - b);
+    return { frameMs: s.length ? s[s.length >> 1] : 0, quality: this.gov.step, pixelRatio: this.gov.ratio, drawCalls: this.drawCalls };
+  }
+  // Stop drawing and let go of the page: the frame loop, the size watch, the pointer listeners, the labels and the buffers.
+  dispose() {
+    if (this.dead) return;
+    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.();
+    for (const a of this.actors.values()) { a.el.remove(); a.mesh.free(); a.dying?.mesh.free(); }
+    for (const f of this.floaters) f.el.remove();
+    for (const m of [this.terrain, this.wallMesh, this.grid, this.overlay, this.shadows, this.edge, this.doorMesh, this.blobMesh]) m.free();
+    this.actors.clear(); this.floaters = []; this.state = null;
+  }
+  #measure(ms, now) {
+    this.frameTimes.push(ms); if (this.frameTimes.length > 120) this.frameTimes.shift();
+    this.drawCalls = draws; draws = 0;
+    if (this.gov.sample(ms, now) !== null) this.#resize();
+  }
 
   floater(id, text, cls = '', delay = 0) {
     const el = document.createElement('div');
@@ -852,7 +884,7 @@ export class Renderer {
 
   // ---------- frame ----------
   #resize() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1), c = this.canvas;
+    const dpr = this.gov.ratio, c = this.canvas;
     c.width = Math.max(2, Math.round(c.clientWidth * dpr)); c.height = Math.max(2, Math.round(c.clientHeight * dpr));
     this.gl.viewport(0, 0, c.width, c.height);
   }
@@ -1017,7 +1049,7 @@ export class Renderer {
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
     for (const p of this.pics) {
       const tex = this.images.get(p.asset)?.tex; if (!tex) continue;
-      gl.bindTexture(gl.TEXTURE_2D, tex); gl.drawArrays(gl.TRIANGLES, p.first, 6);
+      gl.bindTexture(gl.TEXTURE_2D, tex); gl.drawArrays(gl.TRIANGLES, p.first, 6); draws++;
     }
     gl.enable(gl.CULL_FACE); gl.useProgram(this.prog); gl.enableVertexAttribArray(2);
   }
@@ -1044,16 +1076,17 @@ export class Renderer {
     return null;
   }
   #input() {
-    const el = this.canvas, pts = new Map(), c = this.cam;
+    const el = this.canvas, pts = new Map(), c = this.cam, ac = new AbortController(), on = { signal: ac.signal };
+    this.off = () => ac.abort();
     let moved = 0, downAt = 0, pinch = null, stroke = false;
     const xy = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('contextmenu', (e) => e.preventDefault(), on);
     el.addEventListener('pointerdown', (e) => {
       el.setPointerCapture(e.pointerId); pts.set(e.pointerId, xy(e));
       if (pts.size === 1) { moved = 0; downAt = performance.now(); stroke = !!this.onDrag?.down(...xy(e), e); }
       else if (stroke) { stroke = false; moved = 99; this.onDrag.cancel(); }      // a second finger: the camera again
       pinch = null;
-    });
+    }, on);
     el.addEventListener('pointermove', (e) => {
       const p = xy(e), old = pts.get(e.pointerId);
       if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null); } return; }
@@ -1074,7 +1107,7 @@ export class Renderer {
         if (pinch) { this.zoom(pinch.dist / dist); c.yaw -= ang - pinch.ang; }
         pinch = { dist, ang };
       }
-    });
+    }, on);
     const up = (e) => {
       const p = pts.get(e.pointerId); pts.delete(e.pointerId); pinch = null;
       if (stroke) { stroke = false; if (e.type === 'pointerup') this.onDrag.end(); else this.onDrag.cancel(); return; }
@@ -1083,7 +1116,7 @@ export class Renderer {
         const hit = this.#pick(...p); if (hit) this.onTap(hit);
       }
     };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
-    el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom(e.deltaY > 0 ? 1.1 : 0.9); }, { passive: false });
+    el.addEventListener('pointerup', up, on); el.addEventListener('pointercancel', up, on);
+    el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom(e.deltaY > 0 ? 1.1 : 0.9); }, { passive: false, signal: ac.signal });
   }
 }

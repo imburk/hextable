@@ -12,7 +12,8 @@ import { coverOf } from './shared/sight.js';
 import { aiStep } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
-import { Renderer, hpFraction } from './render.js';
+import { hpFraction } from './render.js';
+import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker } from './tracker.js';
 import { THEMES } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
@@ -46,7 +47,7 @@ function applyTheme() {
   for (const [k, v] of Object.entries(THEMES[themeId].ui)) document.documentElement.style.setProperty(k, v);
 }
 applyTheme();
-const R = new Renderer($('gl'), $('labels'), THEMES[themeId]);
+const R = createRenderer(rendererKind(location.search, prefs.get('hextable.renderer')), $('gl'), $('labels'), THEMES[themeId]);      // 'gl' (default) or 'none' (?renderer=none): renderer.js
 
 // The timeline (docs/specs/renderer.md, decisions 2 and 3): the events of an update play as beats, one after another. The log
 // line and the floating text of an event come on its beat, the picture is brought to what the beats have shown, and in `wait`
@@ -921,7 +922,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.

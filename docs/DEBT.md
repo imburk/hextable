@@ -200,19 +200,19 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Spell | Sheets | Before | After | What is missing (the step, op, hook or field that would be needed) |
 |---|---|---|---|---|
 | Banishment (4) | 2 | assist | assist | A step that takes a creature off the map until the spell ends (a `removed` state with a return), and a `target.type` tag for the Aberration, Celestial, Elemental, Fey or Fiend that does not return |
-| Lesser Restoration (2) | 2 | manual | manual | **`cure`** step: ends one chosen condition (Blinded, Deafened, Paralyzed, Poisoned) |
-| Ice Storm (4) | 2 | assist | assist | **`terrain`** on an area: Difficult Terrain until the end of the caster's next turn (`ends` for an area with no zone) |
+| Lesser Restoration (2) | 2 | manual | ~~manual~~ **auto** (#165) | ~~**`cure`** step: ends one chosen condition~~ (#165: `cure: ["chosen"]` with a `condition` choice). Nothing left |
+| Ice Storm (4) | 2 | assist | ~~assist~~ **auto** (#165) | ~~**`terrain`** on an area: Difficult Terrain until the end of the caster's next turn~~ (#165: `terrain: { difficult, lasts: "nextTurnEnd" }`). Nothing left |
 | Dispel Magic (3) | 2 | manual | manual | **`dispel`** step: ends a spell on a target by level, an ability check against 10 + level above the slot |
 | Detect Magic (1) | 2 | manual | manual | A sense or `reveal` of magic within 30 feet; nothing to roll. The DM remains |
 | Revivify (3) | 1 | manual | manual | **`revive`** step, a way to aim a spell at a dead creature (`cast` refuses one: "is dead"), and a note of when it died (within a minute) |
-| Protection from Poison (2) | 1 | assist | assist | **`cure`** step (ends Poisoned) and a `save` modifier scoped to a condition (Advantage to avoid or end Poisoned) |
+| Protection from Poison (2) | 1 | assist | ~~assist~~ **auto** (#165) | ~~**`cure`** step (ends Poisoned) and a `save` modifier scoped to a condition~~ (#165: `cure` and `scope: { condition }`). Nothing left |
 | Shining Smite (2) | 1 | manual | assist | A cast trigger "right after a melee hit" that adds to that hit (`reaction.on: "hit"` for the caster's own hits), Bright Light on a creature, a tag or op for "cannot benefit from Invisible" |
 | Fire Storm (7) | 1 | assist | assist | **`area.count`** laid out by the caster: `cast` taking a list of cube hexes that must touch (the engine lays out one) |
-| Heal (6) | 1 | assist | assist | **`cure`** step (ends Blinded, Deafened, Poisoned) |
+| Heal (6) | 1 | assist | ~~assist~~ **auto** (#165) | ~~**`cure`** step (ends Blinded, Deafened, Poisoned)~~ (#165). Nothing left; "a creature you can see" is checked as every spell's target is (range and walls, not sight) |
 | Conjure Elemental (5) | 1 | manual | manual | Summoned creature with a stat block and a turn (S6), and a caster's choice among four damage types |
 | Blight (4) | 1 | assist | assist | **`target.type`** tag with an auto-fail (Plant creatures fail the save), and an object as a target |
-| Charm Monster (4) | 1 | assist | assist | `ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag "caster or an ally is fighting it" |
-| Sleet Storm (3) | 1 | assist | assist | `zone.terrain` (Difficult), `zone.obscures` (Heavily Obscured), a `breakConcentration` step on a failed save, and dousing flames |
+| Charm Monster (4) | 1 | assist | assist | ~~`ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag~~ (#165: `ends.by: "source"`, `advantageIf: ["target.fought"]`). Still: the Friendly attitude and the target knowing afterward (the engine has no attitudes) |
+| Sleet Storm (3) | 1 | assist | assist | ~~`zone.terrain` (Difficult), `zone.obscures` (Heavily Obscured), a `breakConcentration` step on a failed save~~ (#165: `terrain` and an `endConcentration` step). Still: dousing exposed flames (lights are not tied to fire) |
 | Moonbeam (2) | 1 | assist | assist | `zone.moves`: a Magic action that moves the cylinder up to 60 feet and makes those it reaches save; reverting a shape-shifter. Left alone: the zone, its save and its damage are correct |
 | Pass without Trace (2) | 1 | assist | assist | A modifier that holds only while inside an emanation that moves with the caster (`modifier.while: "inAura"`) and leaving no tracks |
 | Faerie Fire (1) | 1 | manual | manual | A tag for "the attacker can see the target" (the engine has only the negative, `target.unseen`), light on a creature, and "cannot benefit from Invisible". Advantage without the sight test would be wrong, so it is not entered as assist |
@@ -221,24 +221,32 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Message (0) | 1 | manual | manual | Private communication; nothing for the engine to apply |
 | Minor Illusion (0) | 1 | manual | manual | An illusion object with a Study check against the spell save DC |
 | Prestidigitation (0) | 1 | manual | manual | A choice among minor effects on objects; nothing to roll |
-| Dominate Monster (8) | 1 | assist | assist | `ends: { on: "save", at: "damaged" }` (a repeat save whenever it takes damage), the "fighting it" save-Advantage tag, `higher.slot.duration` (8 hours at level 9), and commands (the DM) |
-| Teleport (7) | 1 | manual | manual | A `teleport` step to a known destination off the map, passengers, and a familiarity table roll with a damage mishap |
-| Disintegrate (6) | 1 | assist | assist | A rider on a creature taken to 0 Hit Points (dust, `set` of a state, no revival but True Resurrection or Wish), and an object or a creation of force as a target |
+| Dominate Monster (8) | 1 | assist | assist | ~~`ends: { on: "save", at: "damaged" }`, the "fighting it" save-Advantage tag~~ (#165). Still: `higher.slot.duration` (8 hours at level 9) and the commands (the DM) |
+| Teleport (7) | 1 | manual | manual | ~~A `teleport` step~~ (#165 built one, for the caster within the map) to a known destination off the map, passengers, and a familiarity table roll with a damage mishap |
+| Disintegrate (6) | 1 | assist | assist | ~~A rider on a creature taken to 0 Hit Points (dust)~~ (#165: `onZero` with `kill` and `remains: "dust"`). Still: no revival but True Resurrection or Wish (no revival step), and an object or a creation of force as a target |
 | Globe of Invulnerability (6) | 1 | manual | manual | A `spell.blocked` hook on an emanation: spells of level 5 or lower cast from outside have no effect inside |
-| Cone of Cold (5) | 1 | assist | assist | A rider on a creature the damage kills (a frozen statue until it thaws) |
+| Cone of Cold (5) | 1 | assist | ~~assist~~ **auto** (#165) | ~~A rider on a creature the damage kills~~ (#165: `onKill` with `remains: "frozen-statue"`). Nothing left; the thaw is not timed (the SRD gives no time) |
 | Teleportation Circle (5) | 1 | manual | manual | A portal object linking two places on the map or to a known circle, and a `teleport` step for those who enter |
 | Tongues (3) | 1 | manual | manual | Languages as state (a `languages` field on a creature, which a sheet does not have yet, C9) |
-| Misty Step (2) | 1 | manual | manual | **`teleport`** step: up to 30 feet to an unoccupied space the caster can see (the `move` step only pushes or pulls) |
+| Misty Step (2) | 1 | manual | ~~manual~~ **auto** (#165) | ~~**`teleport`** step: up to 30 feet to an unoccupied space the caster can see~~ (#165: the `teleport` step; the destination is the cast's `hex`. Nothing left for the engine; a client that sends no `hex` hands the move to the DM) |
+
+**#165** added the vocabulary the first five rows below ask for (docs/specs/rules-expansion.md, "Build notes: what the
+party's spells asked for") and raised, of the party's spells: Misty Step, Lesser Restoration (manual to auto), Heal,
+Protection from Poison, Cone of Cold, Ice Storm (assist to auto); Sleet Storm, Charm Monster, Dominate Monster and
+Disintegrate stay assist with less left to the DM. Outside the party's set: Grease (assist to auto), Dimension Door and
+Fog Cloud (manual to assist); Web, Entangle, Charm Person, Dominate Person and Dominate Beast stay assist with more run by
+the engine. Every one was compared with the SRD text. After it spells are 45 auto / 86 assist / 208 manual. Not done:
+the client cannot yet aim a teleport (a cast with no `hex` hands the move to the DM) nor draw a spell's terrain or fog.
 
 Which single addition unlocks the most of these (the engine lane's list):
 
 | Addition | Unlocks to `auto` | Held at assist only by it, or partly |
 |---|---|---|
-| `cure` step with a `choice` of condition (Lesser Restoration, Heal) | lesser restoration, heal | protection from poison (also needs the condition-scoped `save` modifier) |
-| A rider on a kill (`onKill` branch on a damage step, with a `set` state) | cone of cold | disintegrate (also needs an object as a target) |
-| `terrain` and `obscures` on an area or zone | ice storm | sleet storm (also `breakConcentration`) |
-| `ends: { on: "damaged" }` and a "fighting it" tag | | charm monster, dominate monster (also `higher.slot.duration`) |
-| `teleport` step | misty step | teleport, teleportation circle (also a destination off the map) |
+| ~~`cure` step with a `choice` of condition (Lesser Restoration, Heal)~~ (#165) | ~~lesser restoration, heal~~ | ~~protection from poison~~ (#165 built the scoped save too: auto) |
+| ~~A rider on a kill~~ (#165: `onKill`, `onZero`, `kill`, `remains`) | ~~cone of cold~~ | disintegrate (still needs an object as a target) |
+| ~~`terrain` and `obscures` on an area or zone~~ (#165) | ~~ice storm~~ | sleet storm (#165 added `endConcentration`; dousing flames is left) |
+| ~~`ends: { on: "damaged" }` and a "fighting it" tag~~ (#165) | | charm monster (attitude), dominate monster (`higher.slot.duration`, commands) |
+| ~~`teleport` step~~ (#165) | ~~misty step~~ | teleport, teleportation circle (also a destination off the map) |
 | `dispel` step | dispel magic | |
 | `revive` step and aiming at the dead | revivify | |
 | An "attacker can see the target" tag | | faerie fire (also light and the Invisible rule) |
@@ -274,6 +282,7 @@ utility with nothing the engine can roll or track; they stay with the DM and no 
 | P20 | Timeline (R3): there is no 1x/2x speed control yet (the timeline has `setSpeed`), and ~~the DM has no control for the `pace` table setting~~ (issue #163: the DM panel has one); a player's own choice in the log panel can only make it quicker | any |
 | P21 | Timeline (R3): the shown state is kept behind the table's only for hit points, death, place and conditions; doors, regions, effects and the map change when the update's first beat starts. The character sheet, tracker and action bar are redrawn when the picture is still, so they show the table's numbers a moment after the log. The renderer has no animation for falls, deaths or doors yet (R4) | any (renderer) |
 | P22 | R4 left out: a portcullis slides (it swings like a door), `fell` has no dust and plays only if its event comes with the update that moves the creature, `size`, `effectStart`/`effectEnd`, `joined`, `noticed`, `triggered`, `turn` ring and `map` fade are not animated, nor are attack, damage and move clips (these need a model, or R5); animations run the table's nominal times, not the scaled length of a beat nor the 2x speed | any (renderer) |
+| P23 | R5 left out: the renderer is chosen only by `?renderer=none` or the device preference `hextable.renderer` (no settings control); `kind` `'three'` is not accepted yet (R11); the governor steps only the pixel ratio (shadows, lights, decor and the rest of the spec's cut list do not exist yet); `dispose()` and `stats()` are not called by the app (stats shows only through the smoke script); `window.hextable.R` still hands the smoke script the default renderer's insides (`cam`, `floorData`, `actors`...), which a Three.js renderer would have to fake or the script would have to drop | any (renderer) |
 
 ## Table and server
 

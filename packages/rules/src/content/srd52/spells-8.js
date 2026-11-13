@@ -79,9 +79,9 @@ export const spells8 = [
     time: "action", range: 60, components: ["v","s"],
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"save":"wis","onFail":[{"condition":"charmed"}]}],
+    effects: [{"save":"wis","advantageIf":["target.fought"],"onFail":[{"condition":"charmed","ends":{"on":"save","save":"wis","at":"damaged"}}]}],
     tier: "assist", checked: true,
-    text: "One visible creature makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed while the caster concentrates. The engine applies the save and the charm; the DM handles the repeat save whenever it takes damage, the telepathic commands, and the longer duration of a level 9 slot (up to 8 hours).",
+    text: "One visible creature makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed while the caster concentrates, repeating the save whenever it takes damage and ending the spell on itself on a success. The engine applies the save, the Advantage, the charm and the repeat saves; the DM handles the telepathic commands, and the longer duration of a level 9 slot (up to 8 hours).",
   },
   {
     id: "earthquake", name: "Earthquake", source: "SRD 5.2.1",

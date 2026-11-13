@@ -9,7 +9,7 @@
 import * as H from './hex.js';
 import { d20Faces, die, faceSum, negate, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
-import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
+import { ABILITIES, BRANCHES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
 import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from './effects.js';
 import { leaveForm, takeForm } from './forms.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, durationMinutes, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, tick, turnEnded, turnKey, turnStarted, useUp } from './durations.js';
@@ -20,6 +20,7 @@ import { EDITS, lintMap } from './map.js';
 import { handoutActions } from './handouts.js';
 import { fightEndsScene, sceneActions } from './scenes.js';
 import { entered, flushZones, snapshot, turnInZones } from './zones.js';
+import { difficultAt, terrainsOf } from './terrain.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
@@ -126,6 +127,8 @@ export function moveOptions(s, e) {
   const rank = (x) => SIZE_ORDER.indexOf(x.size ?? 'medium');
   const passable = (o) => !hostile(o, e) || !up(o) || incapacitated(o) || o.size === 'tiny' || Math.abs(rank(o) - rank(e)) >= 2;
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
+  // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
+  const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
   const big = shapeOf(e).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
@@ -159,7 +162,7 @@ export function moveOptions(s, e) {
           if (blocks(h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE || crowded(h) ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
+            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
           } else if (climbs) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.
@@ -391,6 +394,94 @@ function push(s, t, feet, dir, from, ev) {
   ev.push({ type: 'moved', id: t.id, path, forced: true });
   lookAround(s, ev, [t]);
 }
+// ---------- teleportation ----------
+// SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
+// moving through the space between, spends no movement and provokes no Opportunity Attack. If the
+// destination is occupied it appears instead in the nearest unoccupied space of its choice; a spell
+// may say otherwise (`blocked`, Dimension Door). The spell says whether the destination must be seen.
+// Does `e` know `o` is there? A creature it cannot know of does not stop it choosing a space.
+const knownTo = (s, e, o) => !hiddenFrom(o, e) && !(e.side === 'party' && (o.hidden || unknown(s, o)));
+// A creature-shaped stand-in at a position, for asking whether that space can be seen.
+const spotOf = (e, pos) => ({ pos, size: e.size, cond: {}, side: e.side });
+// Can `e` stand at `to`? Ground or air it fits in, a body that fits, not the hex it is on, and in
+// the arena if it is fighting. '' if so, else why not.
+function roomAt(s, e, to) {
+  if (!airspace(s.map, to, undefined, sizeOf(e).height)) return 'Nothing can stand there.';
+  if (!fitsOn(s.map, e, to, barriers(s.map))) return `${e.name} does not fit there.`;
+  if (inFight(s, e.id) && footprint(e, to).some((f) => !s.encounter.arena[H.col(f)])) return 'The arena is locked until the fight ends.';
+  return '';
+}
+// Where a teleport step takes `e` when its caster names `hex`: checked before anything is spent.
+// `hex.z` asks for a height (in the air, say); otherwise the surface in that column nearest `e`.
+// A player may name only a place the party has been shown, and is told nothing about any other.
+export function teleportSpot(s, e, step, hex, name, player = false) {
+  (hex && Number.isInteger(hex.q) && Number.isInteger(hex.r)) || fail(`Pick where ${name} takes ${e.name}.`);
+  const to = (Number.isFinite(hex.z) ? { q: hex.q, r: hex.r, z: hex.z } : landing(s.map, hex, e.pos.z)) || fail("There's nothing there to stand on.");
+  if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${name}.`);
+  H.key(to) !== H.key(e.pos) || fail(`${e.name} is already there.`);
+  const d = gap(s, e.pos, to);
+  d * FT <= step.teleport || fail(`That is ${ft(d)} away. ${name} reaches ${step.teleport} ft.`);
+  const why = roomAt(s, e, to);
+  if (why) fail(why);
+  if (step.see && canSee(s, e, spotOf(e, to)) === 'no') fail(`${e.name} can't see that space.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to) && knownTo(s, e, o)) || fail('That space is occupied.');
+  return to;
+}
+// The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
+// runs the step's `blocked` steps instead when it has them.
+function teleport(s, t, step, to, ev) {
+  const taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos));
+  let at = to;
+  if (taken(at)) {
+    if (step.blocked) return false;
+    // Something it did not know of stands there: the nearest unoccupied space instead (the SRD
+    // lets it choose; the engine takes the nearest, the first found on each ring).
+    at = null;
+    for (let n = 1; n <= 6 && !at; n++) for (const h of H.range(to, n).filter((x) => H.dist(x, to) === n)) {
+      const p = landing(s.map, h, to.z);
+      if (p && Math.abs(p.z - to.z) <= STEP_MAX && !roomAt(s, t, p) && !taken(p)) { at = p; break; }
+    }
+    if (!at) { ev.push({ type: 'manual', actor: t.id, name: 'Teleport', text: `${t.name} cannot arrive where it meant to, and the engine found no unoccupied space near it. The DM places it.` }); return true; }
+  }
+  const zonesBefore = snapshot(s);
+  t.pos = { ...at };
+  if (t.follow && !inFight(s, t.id)) unfollow(s, t, ev);
+  ev.push({ type: 'moved', id: t.id, path: [{ ...at }], teleport: true });
+  entered(s, ev, KIT, zonesBefore);                                     // a zone it lands in works on it once this effect is done
+  // A thing on the floor that goes off when stepped on (a pressure plate): the engine does not run
+  // it from inside a spell, so the DM is told.
+  for (const o of s.map.objects) {
+    const def = objectDef(o);
+    if (def.triggers?.some((x) => x.on === 'enter' && x.from.includes(o.state)) && Math.abs(objectZ(s, o) - at.z) <= STEP_MAX && footprint(t).some((f) => H.dist(f, o.at) === 0))
+      ev.push({ type: 'manual', actor: t.id, name: objectName(o), partial: true, text: `${t.name} teleported onto ${objectName(o)}. Whether it goes off is the DM's call.` });
+  }
+  lookAround(s, ev, [t]);
+  if (s.encounter?.arena[H.col(at)] && !inFight(s, t.id) && !t.dead) joinEncounter(s, t, ev);
+  return true;
+}
+
+// A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
+function kill(s, t, ev) {
+  if (t.dead) return;
+  t.dead = true; t.hp = 0;
+  ev.push({ type: 'died', id: t.id });
+  concentrationLost(s, ev, t, `${t.name} died`);
+}
+// A `cure` step: the conditions listed end on `t`, whatever put them there (a lasting effect's part
+// that held one is ended with it). One it does not have is passed over.
+function cure(s, t, list, ev) {
+  for (const c of list) {
+    if (!t.cond[c]) continue;
+    const fxId = t.cond[c].effect;
+    delete t.cond[c];
+    ev.push({ type: 'condEnd', id: t.id, cond: c });
+    const fx = fxId && effectsOf(s).find((x) => x.id === fxId);
+    if (!fx) continue;
+    for (const p of fx.parts) if (p.target === t.id && p.cond === c) p.ended = true;
+    if (fx.parts.every((p) => p.ended)) endEffect(s, ev, fx, `${t.name} was cured`);
+  }
+}
+
 // What this creature could do right now with the objects in reach: [{ object, name, verb, label, time, why }].
 export function usesFor(s, e) {
   const out = [];
@@ -447,7 +538,7 @@ export function hideProblem(s, e) {
     if (cover === 'threeQuarters' || cover === 'total') continue;
     const w = sees(s, o, e, { ignoreHiding: true });
     if (w.see !== 'no') return `${o.name} can see ${e.name}.`;
-    if (w.why !== 'dark' && w.why !== 'out of sight') return `${e.name} is neither Heavily Obscured nor behind cover from ${o.name}.`;
+    if (w.why !== 'dark' && w.why !== 'out of sight' && w.why !== 'obscured') return `${e.name} is neither Heavily Obscured nor behind cover from ${o.name}.`;
   }
   return '';
 }
@@ -652,7 +743,7 @@ function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null
     ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
-  if (total > 0) damaged(s, ev, t);                       // "until it takes any damage" (Turn Undead)
+  if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
   if (dying) {                                            // already dying
     if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     if (t.dead) ev.push({ type: 'died', id: t.id });
@@ -702,7 +793,7 @@ function checkRange(s, e, t, atk) {
   } else if (d * FT > atk.range[1]) fail(`${t.name} is ${ft(d)} away. ${atk.name} reaches ${atk.range[1]} ft.`);
 }
 
-const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'hidden' };
+const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'hidden', obscured: 'heavily obscured' };
 // Temporary Hit Points: they do not add up. A creature keeps the larger of what it has and what
 // it is given (the SRD lets it choose; nobody would choose fewer). From a lasting effect, they
 // vanish when it ends. They never wake a creature at 0 Hit Points.
@@ -787,7 +878,7 @@ function rerollSave(s, t, abil, dc, onFail, from, ev) {
     if (!r || (o.id !== t.id && apart(s, o, t) * FT > r.reaction.range)) continue;
     o.reactionUsed = true;
     ev.push({ type: 'reaction', id: o.id, reaction: r.id, name: r.name, trigger: 'saveFailed', against: t.id });
-    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev);
+    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev, conds);
   }
   return null;
 }
@@ -1126,8 +1217,9 @@ function bestType(s, t, types) {
 // `extra` names a second hook to gather modifiers from, such as 'concentration'. The result carries
 // `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
-function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null) {
-  const sit = { target: t, ability: abil };
+// `about`: the conditions the save is to avoid or end, for a modifier scoped to one (Protection from Poison).
+function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null, about = null) {
+  const sit = { target: t, ability: abil, ...(about?.length ? { conditions: about } : {}) };
   const m = modifiers(s, t, `save.${abil}`, sit, '');
   if (dis) m.disadvantage.push(dis);                       // Disadvantage from the caster's side (Heightened Spell)
   if (adv) m.advantage.push(adv);                          // Advantage on a reroll (Countercharm)
@@ -1321,7 +1413,8 @@ function chooseIn(steps, of, value) {
     if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && k === of) m.scope[k] = value;
     if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
-    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) visit(st[b]);
+    if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));
+    for (const b of BRANCHES) if (st[b]) visit(st[b]);
   } };
   visit(steps);
 }
@@ -1694,7 +1787,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
+const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration };
 
 // ---------- Metamagic ----------
 // The options a creature knows are its features that grant `metamagic: { id, cost, pool }`
@@ -1895,6 +1988,10 @@ const handlers = {
     } else if (sp.aim === 'self') targets = [e];
     if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
     if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
+    // A teleport goes where `a.hex` names (Misty Step), checked now, before anything is spent.
+    // With no `hex` the engine has nowhere to take the caster and the DM moves it.
+    const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
+    const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
 
     // What it costs.
     if (sp.level > 0 && !via) {
@@ -1964,11 +2061,22 @@ const handlers = {
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
     }
+    // Ground or air the spell changes for as long as it lasts (terrain.js). An instant one that says
+    // `lasts: 'nextTurnEnd'` (Ice Storm) gets an effect that ends at the end of the caster's next turn.
+    const ter = sp.def.terrain;
+    if (ter && hexes) {
+      if (!fx) {
+        fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round' });
+        fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
+        ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
+      }
+      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
+    }
     const before = ev.length;
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}),
-        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}) },
+        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared: sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
@@ -2615,7 +2723,7 @@ const handlers = {
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');
     const e = ent(s, a.actor), hp = Math.max(0, Math.min(e.maxHp, a.hp | 0));
-    if (hp > e.hp) { e.dead = false; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
+    if (hp > e.hp) { e.dead = false; delete e.remains; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },
   // The DM's damage and healing, by the rules: Resistance and the like, Temporary Hit Points first, Concentration, death saves.
