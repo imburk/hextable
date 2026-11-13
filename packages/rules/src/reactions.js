@@ -22,6 +22,8 @@
 //   hit      it is hit by an attack roll (Shield, Uncanny Dodge, Deflect Attacks, Parry)
 //   cast     it sees a hostile creature within the spell's range casting a spell (Counterspell)
 //   damaged  it takes damage from a hostile creature it can see within the spell's range (Hellish Rebuke)
+//   saveFailed  it or an ally within range fails a save against an effect that would apply one of
+//            some conditions (Countercharm: rolled again with Advantage; by instruction only)
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
@@ -73,7 +75,8 @@ export function reactionsOf(e) {
   }
   for (const f of e.feats ?? []) {
     if (!f.reaction) continue;
-    out.push({ id: f.id, name: f.name, kind: 'feature', on: f.reaction.on, options: ['never', 'always', 'ask'], dflt: 'always', reaction: f.reaction, tier: f.tier, text: f.text });
+    // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.
+    out.push({ id: f.id, name: f.name, kind: 'feature', on: f.reaction.on, options: f.reaction.on === 'saveFailed' ? ['never', 'always'] : ['never', 'always', 'ask'], dflt: 'always', reaction: f.reaction, tier: f.tier, text: f.text });
   }
   return out;
 }
