@@ -147,6 +147,7 @@ function lintSteps(steps, say, seen = { manual: false }) {
     if (kind === 'save') {
       if (!ABILITIES.includes(step.save)) say(`save uses unknown ability "${step.save}"`);
       if (!step.onFail && !step.onSuccess) say('a save step needs onFail or onSuccess');
+      if (step.dc !== undefined && !(isInt(step.dc) && step.dc > 0)) say('a save step\'s dc is a whole number');
     }
     if (kind === 'damage') {
       if (!isDice(step.damage)) say(`damage "${step.damage}" is not dice like 2d6+3`);
@@ -156,6 +157,7 @@ function lintSteps(steps, say, seen = { manual: false }) {
     if (kind === 'heal' && !isDice(step.heal)) say(`heal "${step.heal}" is not dice like 2d8`);
     if (kind === 'tempHp' && !isDice(step.tempHp)) say(`tempHp "${step.tempHp}" is not dice like 2d4+4`);
     if ((kind === 'heal' || kind === 'tempHp') && step.addMod !== undefined && step.addMod !== true) say('`addMod` is true or left out');
+    if (kind === 'heal' && step.atLeast !== undefined && !(isInt(step.atLeast) && step.atLeast > 0)) say('`atLeast` is the fewest Hit Points a heal restores');
     if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
     // What ends a condition or a modifier on its own: a turn boundary of the target or the source
     // ("until the end of your next turn"), or a repeat save.
@@ -481,7 +483,16 @@ function lintAmount(x, cls, say, what) {
 function bakeValues(list, cls, say) {
   const out = structuredClone(list);
   const fix = (m) => { if (m && typeof m.value === 'object' && m.value !== null && (m.value.column !== undefined || m.value.mod !== undefined)) { lintAmount(m.value, cls, say, 'modifier value'); m.value = 1; } };
-  for (const x of out) { fix(x); fix(x.modifier); if (x.addLevel !== undefined && x.addLevel !== true) say('addLevel is true or left out'); }
+  for (const x of out) {
+    fix(x); fix(x.modifier);
+    if (x.addLevel !== undefined && x.addLevel !== true) say('addLevel is true or left out');
+    // A heal or tempHp step may roll a die from the class table ({ column }) and add an ability's
+    // modifier (`addMod: "wis"`); a save step's DC may be the class's own, 8 + Proficiency Bonus +
+    // an ability modifier (`dc: "wis"`). derive() bakes all three into plain dice and numbers.
+    for (const k of ['heal', 'tempHp']) if (x[k] && typeof x[k] === 'object') { lintAmount(x[k], cls, say, k); x[k] = '1d6'; }
+    if (typeof x.addMod === 'string') { if (!ABILITIES.includes(x.addMod)) say('addMod is true or an ability'); x.addMod = true; }
+    if ('save' in x && typeof x.dc === 'string') { if (!ABILITIES.includes(x.dc)) say('a save step\'s dc in a class feature is a number or an ability'); x.dc = 10; }
+  }
   return out;
 }
 function lintGrants(g, cls, say) {

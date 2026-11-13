@@ -15,6 +15,8 @@ export function usesText(u) {
 }
 // A feature the bar can send by itself: it needs no target (self, or an extra action / attacks).
 export const barFeature = (f) => !!f.action && f.action.time !== 'reaction' && !f.action.pool && (f.action.target?.self || f.action.gain);
+// A feature aimed at one creature (Stunning Strike): the bar arms it and a tap on the creature sends it.
+export const aimedFeature = (f) => !!f.action && f.action.time !== 'reaction' && !f.action.pool && !f.action.gain && !!f.action.target?.creature;
 // Second Wind and friends are a feature here; the older hand-typed Second Wind has its own button.
 export const hasFeat = (e, id) => (e.feats ?? []).some((f) => f.id === id);
 
@@ -22,7 +24,8 @@ export const hasFeat = (e, id) => (e.feats ?? []).some((f) => f.id === id);
 export function featureButtons(S, e) {
   const out = [];
   for (const f of e.feats ?? []) {
-    if (!barFeature(f)) continue;
+    const aim = aimedFeature(f);
+    if (!barFeature(f) && !aim) continue;
     const time = f.action.time === 'free' ? null : f.action.time;
     const left = f.uses ? (e.uses?.[f.id] ?? 0) : null;
     const cost = f.action.cost?.n ?? 1;
@@ -30,7 +33,7 @@ export function featureButtons(S, e) {
     const why = (time && blocked(S, e, time)) || (f.uses && !(f.action.renew && live) && left < cost && `${e.name} has no uses of ${f.name} left.`) ||
       (f.action.unless === 'heavy' && e.armour === 'heavy' && `${e.name} can't use ${f.name} in Heavy armor.`) || '';
     out.push({ label: live && f.action.renew ? `${f.name} (extend)` : f.name, cls: time === 'bonus' || f.action.time === 'free' ? 'bonus' : '', why,
-      sub: [TIME[f.action.time], f.uses ? `${left} left` : ''].filter(Boolean).join(' · '), send: { type: 'feature', actor: e.id, feature: f.id } });
+      sub: [TIME[f.action.time], f.uses ? `${left} left` : ''].filter(Boolean).join(' · '), send: { type: 'feature', actor: e.id, feature: f.id }, ...(aim ? { aim: f.id } : {}) });
   }
   return out;
 }

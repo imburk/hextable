@@ -458,9 +458,66 @@ export const sorcerer = {
         "id": "elemental-affinity",
         "name": "Elemental Affinity",
         "level": 6,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
-        "text": "Choose Acid, Cold, Fire, Lightning or Poison: Resistance to it, and add Charisma modifier to one damage roll of a spell of that type. The DM applies it."
+        "text": "Choose Acid, Cold, Fire, Lightning or Poison: Resistance to it (the engine applies it), and add Charisma modifier to one damage roll of a spell of that type (the DM adds it).",
+        "options": [
+          {
+            "id": "acid",
+            "name": "Acid",
+            "tier": "assist",
+            "text": "Resistance to Acid damage. When you cast a spell that deals Acid damage, add your Charisma modifier to one damage roll of it; the DM adds that.",
+            "grants": {
+              "resist": [
+                "acid"
+              ]
+            }
+          },
+          {
+            "id": "cold",
+            "name": "Cold",
+            "tier": "assist",
+            "text": "Resistance to Cold damage. When you cast a spell that deals Cold damage, add your Charisma modifier to one damage roll of it; the DM adds that.",
+            "grants": {
+              "resist": [
+                "cold"
+              ]
+            }
+          },
+          {
+            "id": "fire",
+            "name": "Fire",
+            "tier": "assist",
+            "text": "Resistance to Fire damage. When you cast a spell that deals Fire damage, add your Charisma modifier to one damage roll of it; the DM adds that.",
+            "grants": {
+              "resist": [
+                "fire"
+              ]
+            }
+          },
+          {
+            "id": "lightning",
+            "name": "Lightning",
+            "tier": "assist",
+            "text": "Resistance to Lightning damage. When you cast a spell that deals Lightning damage, add your Charisma modifier to one damage roll of it; the DM adds that.",
+            "grants": {
+              "resist": [
+                "lightning"
+              ]
+            }
+          },
+          {
+            "id": "poison",
+            "name": "Poison",
+            "tier": "assist",
+            "text": "Resistance to Poison damage. When you cast a spell that deals Poison damage, add your Charisma modifier to one damage roll of it; the DM adds that.",
+            "grants": {
+              "resist": [
+                "poison"
+              ]
+            }
+          }
+        ]
       },
       {
         "id": "dragon-wings",
