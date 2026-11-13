@@ -4,7 +4,8 @@
 // Chromium: solo play at desktop size and at phone size with touch (move, undo, tracker, a fight to
 // the end of round 1, the DM panel, the map editor, quick entry, the character sheet), then a
 // multiplayer pass with two browser contexts (host, a phone joining, being let in, claiming a
-// character, moving it, the DM's copy following).
+// character, moving it, the DM's copy following), and a scene pass (the DM prepares, opens, speaks as an
+// NPC, a phone speaks, an undone line goes, the DM steps out; the DM's notes never reach the phone).
 //
 // Every step has an expected effect on `window.hextable.state`. The run fails (exit 1) on any page
 // error, console error or step that does not do what it should, and says which step. Playwright is
@@ -430,14 +431,122 @@ async function multiplayer(browser, url) {
   });
 }
 
+
+// ---------- scenes ----------
+// The scene screen (packages/client/scenes.js): a DM and a phone. Prepare, open, speak, undo, step out.
+async function scenes(browser, url) {
+  await scenario('scenes: the DM prepares and opens one, a phone speaks in it', async (run) => {
+    const hostCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const host = await hostCtx.newPage(), phone = await phoneCtx.newPage();
+      run.watch(host, ' (host)'); run.watch(phone, ' (phone)');
+      const SECRET = 'secret-notes-xyzzy';
+      const lines = (page) => page.evaluate(() => [...document.querySelectorAll('#sc-lines li[data-line]')].map((li) => li.textContent));
+      const sees = (page, text, on = true) => wait(page, ([t, want]) => [...document.querySelectorAll('#sc-lines li[data-line]')].some((li) => li.textContent.includes(t)) === want, [text, on], 8000);
+
+      await run.do('host, join, let in, claim a character', async () => {
+        await open(host, url);
+        await host.fill('#lobby-name', 'Scene DM'); await host.click('#lobby-host');
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
+        const code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
+        await open(phone, url);
+        await phone.fill('#lobby-name', 'Scene Player'); await phone.fill('#lobby-code', code); await phone.click('#lobby-join');
+        await wait(phone, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await host.click('#btn-dm'); await waitShown(host, '#dm');
+        await host.click('#dm-table button:has-text("Let in")');
+        await wait(phone, () => window.hextable.state?.entities?.fighter);
+        await host.click('#dm .close');
+        const b = phone.locator('#party button:has-text("Play as")').first();
+        const name = (await b.textContent()).replace('Play as ', '').trim();
+        await b.click();
+        await wait(phone, (n) => Object.values(window.hextable.state.entities).some((e) => e.name === n && e.owner), name);
+      });
+
+      await run.do('the DM prepares a scene: the DM sees it, the phone is sent nothing', async () => {
+        await host.click('#btn-dm'); await waitShown(host, '#dm');
+        await host.fill('#sc-new-title', 'The mayor\'s study');
+        await host.click('#sc-new-prep');
+        await wait(host, () => window.hextable.state.scene && window.hextable.state.scene.open === false);
+        await waitShown(host, '#scene'); await waitShown(host, '#sc-prep');
+        await sleep(400);
+        if (await phone.evaluate(() => window.hextable.state.scene !== null)) throw new Error('the phone was sent a prepared scene');
+        if (await shown(phone, '#scene')) throw new Error('the phone shows a prepared scene');
+      });
+
+      await run.do('the DM adds someone with notes, and opens the scene', async () => {
+        await host.click('#sc-people [data-npc=""]');
+        await host.fill('#sc-npc-name', 'Mayor Orsolya');
+        await host.fill('#sc-npc-notes', SECRET);
+        await host.click('#sc-npc-save');
+        await wait(host, () => window.hextable.state.scene.present.length === 1);
+        await host.click('#sc-go');
+        await wait(host, () => window.hextable.state.scene.open === true);
+        await wait(phone, () => window.hextable.state.scene?.open === true);
+        await waitShown(phone, '#scene');
+        const leaked = await phone.evaluate((k) => JSON.stringify(window.hextable.state).includes(k) || document.body.innerText.includes(k) || document.documentElement.innerHTML.includes(k), SECRET);
+        if (leaked) throw new Error('the DM\'s notes reached the phone');
+        const names = await phone.evaluate(() => [...document.querySelectorAll('#sc-people li')].map((li) => li.textContent));
+        if (!names.some((n) => n.includes('Mayor Orsolya'))) throw new Error(`the phone does not list the NPC: ${names}`);
+        if (await shown(phone, '#sc-tools')) throw new Error('the phone has the DM\'s tools');
+      });
+
+      await run.do('the DM speaks as the NPC and the phone sees it', async () => {
+        await host.selectOption('#sc-as', { label: 'Mayor Orsolya' });
+        await host.fill('#sc-text', 'Welcome, travellers.');
+        await host.click('#sc-say button[type=submit]');
+        await sees(phone, 'Mayor Orsolya'); await sees(phone, 'Welcome, travellers.');
+      });
+
+      await run.do('the phone speaks as its character; its box is not under the keyboard line', async () => {
+        await phone.fill('#sc-text', 'We come in peace.');
+        await phone.locator('#sc-say button[type=submit]').tap();
+        await sees(host, 'We come in peace.'); await sees(phone, 'We come in peace.');
+        const r = await phone.evaluate(() => { const b = document.getElementById('sc-say').getBoundingClientRect(); return { top: b.top, bottom: b.bottom, h: innerHeight }; });
+        if (r.bottom > r.h || r.top < 0) throw new Error(`the box to speak in is off screen: ${JSON.stringify(r)}`);
+      });
+
+      await run.do('taking back a line removes it from the phone too', async () => {
+        await host.fill('#sc-text', 'Oops, wrong line.');
+        await host.click('#sc-say button[type=submit]');
+        await sees(phone, 'Oops, wrong line.');
+        await host.click('#btn-undo');
+        await sees(phone, 'Oops, wrong line.', false); await sees(host, 'Oops, wrong line.', false);
+        const l = await lines(phone);
+        if (l.length !== 2) throw new Error(`expected two lines on the phone, found ${l.length}`);
+      });
+
+      await run.do('a player who speaks too fast is refused and told so', async () => {
+        // The connection allows 5 messages a second, the table 30 lines a minute: send under the first, over the second.
+        await phone.evaluate(() => { let i = 0; const t = setInterval(() => { window.hextable.act({ type: 'say', as: null, text: `spam ${i}` }); if (++i >= 30) clearInterval(t); }, 230); });
+        try { await wait(phone, () => /too fast/i.test(document.getElementById('toast')?.textContent ?? ''), null, 15000); }
+        catch { throw new Error(`no refusal shown; the toast says "${await phone.evaluate(() => document.getElementById('toast')?.textContent ?? '')}", ${await phone.evaluate(() => document.querySelectorAll('#sc-lines li[data-line]').length)} lines shown`); }
+      });
+
+      await run.do('the DM steps out to the map: the phone leaves the scene', async () => {
+        await host.click('#sc-tools');
+        await host.click('#sc-out');
+        await wait(phone, () => window.hextable.state.scene === null);
+        await waitShown(phone, '#scene', false);
+        await wait(host, () => window.hextable.state.scene?.open === false);
+        await waitShown(host, '#btn-scene');
+      });
+    } finally { await phoneCtx.close(); await hostCtx.close(); }
+  });
+}
+
 // ---------- main ----------
 try {
   console.log('smoke: building and starting the table server');
   const url = await startServer();
   browser = await chromium.launch({ args: ARGS });
-  await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
-  await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  await multiplayer(browser, url);
+  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes runs the scene pass alone
+  if (!only) {
+    await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    await multiplayer(browser, url);
+  }
+  if (!only || only === 'scenes') await scenes(browser, url);
 } catch (err) {
   failures.push(`smoke could not run: ${err.message}`);
 } finally {
