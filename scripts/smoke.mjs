@@ -1832,7 +1832,7 @@ try {
     return c;
   };
   const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline, beats, interface) runs one pass alone
-  if (!only) {
+  if (!only || only === 'base') {       // SMOKE_ONLY=base: the solo and multiplayer passes alone
     await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
     await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     await multiplayer(browser, url);
