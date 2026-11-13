@@ -4,10 +4,17 @@ Five ready-made places the DM can start on. Each is a plain map document
 ([spec](specs/maps-and-objects.md)) with rooms to reveal, doors, light and a start for a
 party of five. No monsters are placed: they are blank stages. The layouts are our own.
 
-To use one: open the map editor (DM > Edit map), pick **Map file**, choose a map under
-"Stock map" and tap **Start on this map** twice (the second tap confirms). It is the same
-`loadMap` action as importing a file: the party is set down on the starts in order (anyone beyond them beside the first), creatures of the old
-place stay behind, and it works in solo and at a table. It cannot be done in the middle of a fight.
+To use one, three places offer the same list:
+
+- **The lobby**: "Starting map" above Host a table. The table (or the solo game) starts on the valley as before, then
+  loads the chosen map as its first act.
+- **The DM panel**: Map > "Start on a stock map". The first tap on **Start on this map** only asks (it names the map and says
+  the party moves and creatures here stay behind); the second tap, within five seconds, loads it. Changing the choice cancels
+  the question. It is off during a fight.
+- **The map editor**: Map file > Stock map, two taps as well.
+
+All three send the `loadMap` action: the party is set down on the starts in order (anyone beyond them beside the first),
+creatures of the old place stay behind, and it works in solo and at a table. It cannot be done in the middle of a fight.
 
 | Id | Map | Size | What is in it |
 |---|---|---|---|

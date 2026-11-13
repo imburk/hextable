@@ -37,8 +37,9 @@ export function featuresOf(sheet) {
   for (const f of [...c.features, ...sub].filter((x) => x.level <= level).sort((a, b) => a.level - b.level)) {
     out.push({ f });
     if (f.options) {
-      const o = f.options.find((x) => x.id === sheet.choices?.[f.id]);
-      if (o) out.push({ f: { ...o, id: `${f.id}-${o.id}`, level: f.level, checked: f.checked }, option: true, of: f.id });
+      // A feature with `pick: n` takes a list of n options (Metamagic); otherwise one.
+      const chose = sheet.choices?.[f.id], ids = Array.isArray(chose) ? (f.pick ? chose : []) : [chose];   // a picked list, or one option
+      for (const o of f.options.filter((x) => ids.includes(x.id))) out.push({ f: { ...o, id: `${f.id}-${o.id}`, level: f.level, checked: f.checked }, option: true, of: f.id });
     }
   }
   return out;
@@ -48,22 +49,38 @@ export function featuresOf(sheet) {
 export function amount(x, c, level, abil) {
   if (typeof x === 'number') return x;
   if (x?.column !== undefined) return c.table[x.column][level - 1];
+  // { mod, min, die }: so many of that die as the modifier (Sear Undead: Wisdom modifier d8s, at least one).
+  if (x?.mod !== undefined && x.die !== undefined) return `${Math.max(x.min ?? 0, mod(abil[x.mod]))}d${x.die}`;
   if (x?.mod !== undefined) return Math.max(x.min ?? -Infinity, mod(abil[x.mod]));
   if (x?.perLevel !== undefined) return x.perLevel * level;
+  // { byLevel: { 7: "1d8", 14: "2d8" } }: the value for the highest class level reached (Divine Strike).
+  if (x?.byLevel !== undefined) { const at = Object.keys(x.byLevel).map(Number).filter((l) => l <= level).sort((a, b) => b - a)[0]; return at === undefined ? null : x.byLevel[at]; }
   return x;
 }
+const isAmount = (v) => !!v && typeof v === 'object' && ['column', 'mod', 'perLevel', 'byLevel'].some((k) => v[k] !== undefined);
 // A class feature's modifiers and steps with their numbers put in.
 function bake(list, c, level, abil) {
   return structuredClone(list).map((x) => {
-    const fix = (m) => { if (m && m.value && typeof m.value === 'object' && (m.value.column !== undefined || m.value.mod !== undefined || m.value.perLevel !== undefined)) m.value = amount(m.value, c, level, abil); };
+    const fix = (m) => { if (m && isAmount(m.value)) m.value = amount(m.value, c, level, abil); };
     fix(x); fix(x.modifier);
     if (x.addLevel) { x.heal = dice(x.heal, level); delete x.addLevel; }
-    for (const k of ['heal', 'tempHp']) {
+    for (const k of ['heal', 'tempHp', 'damage']) {
       if (x[k] && typeof x[k] === 'object') x[k] = amount(x[k], c, level, abil);                  // a die from the class table
       if (k in x && typeof x.addMod === 'string') { x[k] = dice(x[k], mod(abil[x.addMod])); delete x.addMod; }
     }
     if ('save' in x && typeof x.dc === 'string') x.dc = 8 + proficiencyFor(level) + mod(abil[x.dc]);   // the class's own DC
+    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (Array.isArray(x[b])) x[b] = bake(x[b], c, level, abil);   // and inside branches
     return x;
+  });
+}
+
+// Steps that come with a later feature (`with: feature id`: Sear Undead's damage in Turn Undead)
+// are kept only if the character has that feature, and lose the mark.
+function prune(steps, held) {
+  return steps.filter((x) => x.with === undefined || held.has(x.with)).map((x) => {
+    const { with: _w, ...y } = x;
+    for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (Array.isArray(y[b])) y[b] = prune(y[b], held);
+    return y;
   });
 }
 
@@ -194,7 +211,7 @@ export function derive(sheet) {
   const feat = [];
   const legacy = {};
   let critOn = 20;
-  const bonusActs = new Set(), resist = new Set();
+  const bonusActs = new Set(), resist = new Set(), condImmune = new Set();
   for (const x of feats) {
     const f = x.f, g = f.grants ?? {};
     const out = { id: f.id, name: f.name, tier: f.tier, text: f.text };
@@ -205,11 +222,21 @@ export function derive(sheet) {
     if (g.modifiers) out.modifiers = bake(g.modifiers, c, level, abil);
     if (g.action) {
       const a = structuredClone(g.action);
-      if (a.effects) a.effects = bake(a.effects, c, level, abil);
+      const held = new Set(feats.map((y) => y.f.id));
+      if (a.orCost?.with !== undefined) { if (held.has(a.orCost.with)) delete a.orCost.with; else delete a.orCost; }   // Sorcery Incarnate
+      if (a.effects) a.effects = prune(bake(a.effects, c, level, abil), held);
+      for (const m of a.modes ?? []) m.effects = prune(bake(m.effects, c, level, abil), held);
+      if (a.form) for (const k of ['maxCr', 'fly', 'hours', 'tempHp']) if (isAmount(a.form[k])) a.form[k] = amount(a.form[k], c, level, abil);
+      if (isAmount(a.target?.creature?.count)) a.target.creature.count = amount(a.target.creature.count, c, level, abil);
       if (a.gain?.attacks) a.gain.attacks.n = amount(a.gain.attacks.n, c, level, abil);
       out.action = a;
     }
     if (g.recover) out.recover = { ...g.recover };
+    if (g.freeCast) out.freeCast = structuredClone(g.freeCast);
+    for (const k of ['metamagic', 'metamagicMax', 'exchange']) if (g[k]) out[k] = structuredClone(g[k]);
+    if (g.restore) out.restore = { of: g.restore.of, max: amount(g.restore.max, c, level, abil) };
+    // An aura (Aura of Protection): what it gives its holder and allies within range (modifiers.js, aurasOn).
+    if (g.aura) out.aura = { range: amount(g.aura.range, c, level, abil), ...(g.aura.modifiers ? { modifiers: bake(g.aura.modifiers, c, level, abil) } : {}), ...(g.aura.immune ? { immune: [...g.aura.immune] } : {}) };
     // A reaction's cut with its class numbers put in (Deflect Attacks: 1d10 + Dexterity + Monk level).
     if (g.reaction) {
       const r = structuredClone(g.reaction);
@@ -221,7 +248,14 @@ export function derive(sheet) {
     if (g.critOn) critOn = Math.min(critOn, g.critOn);
     for (const b of g.bonusActs ?? []) bonusActs.add(b);
     for (const t of g.resist ?? []) resist.add(t);
+    for (const t of g.conditionImmune ?? []) condImmune.add(t);
     feat.push(out);
+  }
+
+  // Conditions a later feature lets a pool remove (Restoring Touch), added to that pool's own.
+  for (const x of feats) {
+    const cu = x.f.grants?.cure, to = cu && feat.find((o) => o.id === cu.of)?.action;
+    if (to?.cure) to.cure.conditions = [...new Set([...to.cure.conditions, ...cu.conditions])];
   }
 
   const cls = sheet.subclass === c.subclass.id && level >= 3 ? `${c.name} (${c.subclass.name})` : c.name;
@@ -236,7 +270,7 @@ export function derive(sheet) {
     ...(Object.keys(legacy).length ? { features: legacy } : {}),
     feats: feat, hitDie: c.hitDie,
     armour: armour?.category ?? 'none', ...(shield ? { shield: true } : {}),
-    ...(critOn < 20 ? { critOn } : {}), ...(bonusActs.size ? { bonusActs: [...bonusActs] } : {}), ...(resist.size ? { resist: [...resist] } : {}),
+    ...(critOn < 20 ? { critOn } : {}), ...(bonusActs.size ? { bonusActs: [...bonusActs] } : {}), ...(resist.size ? { resist: [...resist] } : {}), ...(condImmune.size ? { conditionImmune: [...condImmune] } : {}),
     ...(sheet.gear?.length ? { gear: [...sheet.gear] } : {}),
     ...(sheet.look ? { look: { ...sheet.look } } : {}),
   };
@@ -295,7 +329,14 @@ export function validate(sheet) {
     const f = x.f;
     if (!f.options) continue;
     const pick = sheet.choices?.[f.id];
-    if (pick === undefined) say(`Choose an option for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
+    // Options picked as a list (Metamagic) may be left unchosen: the character then knows none of
+    // them yet, and plays as before they were built (the build screen has no list picker yet).
+    if (f.pick) {
+      if (pick === undefined) continue;
+      const list = typeof pick === 'string' ? [pick] : pick;          // one option may be named alone
+      if (!(Array.isArray(list) && list.length <= f.pick && new Set(list).size === list.length)) say(`Choose up to ${f.pick} different options for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
+      else for (const p of list) if (!f.options.some((o) => o.id === p)) say(`${f.name} has no option "${p}".`);
+    } else if (pick === undefined) say(`Choose an option for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
     else if (!f.options.some((o) => o.id === pick)) say(`${f.name} has no option "${pick}".`);
   }
   if (sheet.choices?.['additional-fighting-style'] && sheet.choices['additional-fighting-style'] === sheet.choices['fighting-style']) say('Additional Fighting Style must be a different Fighting Style.');
@@ -334,7 +375,10 @@ export function validate(sheet) {
     if (prepared > maxP) say(`A level ${level} ${c.name} prepares ${maxP} spells; ${prepared} chosen (spells the class always has prepared are added and do not count).`);
   }
   for (const k of ['tools', 'gear', 'weapons']) if (sheet[k] !== undefined && !(Array.isArray(sheet[k]) && sheet[k].length <= 60 && sheet[k].every((x) => typeof x === 'string' && x.length <= 60))) say(`Its ${k} are a list of short names.`);
-  if (sheet.choices !== undefined && !(sheet.choices && typeof sheet.choices === 'object' && Object.values(sheet.choices).every((v) => typeof v === 'string'))) say('Its choices name options.');
+  if (sheet.choices !== undefined && !(sheet.choices && typeof sheet.choices === 'object' && Object.values(sheet.choices).every((v) => typeof v === 'string' || (Array.isArray(v) && v.length <= 10 && v.every((x) => typeof x === 'string'))))) say('Its choices name options.');
+  // The same option twice across features that pick from one list (Metamagic at 2 and at 10).
+  const picked = feats.filter((x) => x.f.pick).flatMap((x) => [sheet.choices?.[x.f.id] ?? []].flat().map((o) => `${x.f.name}:${o}`));
+  if (new Set(picked).size !== picked.length) say('An option is chosen twice.');
   if (sheet.shield !== undefined && typeof sheet.shield !== 'boolean') say('Shield is true or false.');
   void abil;
   return bad;

@@ -119,7 +119,8 @@ test("every class derives a playable record at every level", () => {
   for (const c of Object.values(CONTENT.classes)) {
     for (let level = 1; level <= 20; level++) {
       const choices = {};
-      for (const f of [...c.features, ...c.subclass.features]) if (f.options) choices[f.id] = f.options[f.id === "additional-fighting-style" ? 1 : 0].id;
+      let picks = 0;      // features that pick from one list (Metamagic at 2, 10, 17) take different options (#154)
+      for (const f of [...c.features, ...c.subclass.features]) if (f.options) choices[f.id] = f.options[f.pick ? picks++ : f.id === "additional-fighting-style" ? 1 : 0].id;
       const sheet = { name: "Test", class: c.id, level, ...(level >= 3 ? { subclass: c.subclass.id } : {}), abilities: { str: 14, dex: 14, con: 14, int: 14, wis: 14, cha: 14 },
         skills: [], choices, weapons: ["dagger"] };
       const want = c.skills.choose + [...c.features, ...c.subclass.features].filter((f) => f.level <= level && f.grants?.skills).reduce((n, f) => n + f.grants.skills.n, 0);

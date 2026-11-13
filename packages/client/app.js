@@ -24,6 +24,7 @@ import { initReactionPrompt } from './reactionprompt.js';
 import { createDice, MAX_DICE } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
+import { initTableControls, importLine } from './tablecontrols.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -315,6 +316,7 @@ function onUpdate(state, events, fresh) {
     log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
+  if (first && pendingMap && isDM()) { act(pendingMap); pendingMap = null; }      // the lobby's chosen map, once the new table has its first state
   QE.events(events);
   SC.events(events);
   for (const ev of events) if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
@@ -596,6 +598,7 @@ function refresh() {
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
   tracker.render();
+  TC.sync(S);
   if (isDM()) renderDM();
   HO.refresh();
   SC.refresh();
@@ -616,6 +619,7 @@ function renderSheet() {
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(e.saveBonus?.[k] ?? mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
   $('sheet-body').innerHTML = `
     <h2>${esc(e.name)}</h2>
+    ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
     <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}</p>
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
     <div class="stats">${abil}</div>
@@ -903,6 +907,7 @@ addEventListener('keydown', (ev) => {
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
+const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => S, isDM });
 
 // For the browser console, tests and future automation.
@@ -911,7 +916,9 @@ window.hextable = { R, ED, act, timeline: TL, pace, played, dice: DICE, thrown, 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
 const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled = on; };
-function start(transport) {
+let pendingMap = null;
+function start(transport, map = null) {
+  pendingMap = map;
   TL.skip();                    // what is still playing belongs to the old table
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
@@ -945,9 +952,9 @@ function start(transport) {
   T.start();
 }
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
-$('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName() }));
+$('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName() }), TC.lobbyChoice());
 $('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) start(serverTransport({ t: 'join', code, name: lobbyName() })); else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
-$('lobby-solo').onclick = () => { $('lobby').hidden = true; start(localTransport()); };
+$('lobby-solo').onclick = () => { $('lobby').hidden = true; start(localTransport(), TC.lobbyChoice()); };
 $('lobby-card').onsubmit = (ev) => ev.preventDefault();
 
 (async () => {

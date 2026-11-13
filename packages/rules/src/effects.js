@@ -258,9 +258,19 @@ function exec(s, ev, kit, f, step, at) {
     const dc = step.dc ?? f.src.dc;
     if (dc === undefined) return handOver(`${f.src.name} calls for a ${step.save.toUpperCase()} save with no DC entered. The DM applies it.`);
     kit.renew?.(s, e, t);                                               // making an enemy save keeps a Rage going
-    const { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e);      // cover is judged from where the effect starts
+    // Careful Spell: a creature its caster protects succeeds, and takes nothing where it would take half.
+    if (f.src.careful?.includes(t.id)) {
+      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
+      return step.half ? undefined : branch('onSuccess', { half: false });
+    }
+    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, null, ev);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
+    // A failed save against Charmed or Frightened may be rolled again (Countercharm).
+    if (!sv.success && kit.rerollSave) {
+      const again = kit.rerollSave(s, t, step.save, dc, step.onFail, f.src.origin ?? e, ev);
+      if (again) { const { used: u2, ...sv2 } = again; sv = sv2; ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true }); useUp(s, ev, u2 ?? []); }
+    }
 
     if (!sv.success) return branch('onFail', { half: false });
     if (step.half && step.onFail) return branch('onFail', { half: true });      // same effect, half the damage
@@ -285,7 +295,7 @@ function exec(s, ev, kit, f, step, at) {
     if (f.src.blocked?.includes(t.id)) return;
     const cut = f.cut;
     if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
-    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
   }
   // The spell that set this reaction off fails (Counterspell). Only a reaction to a spell being
   // cast has one to stop (engine.js, castReaction marks its source `counters`).

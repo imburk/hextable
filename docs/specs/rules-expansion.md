@@ -845,6 +845,54 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   - a heal step may say `atLeast: n`, the fewest Hit Points it restores ("minimum of 1 Hit Point
     regained"). This one is read by the effect runner (`effects.js`).
   No new step, hook, op, tag or grant was added.
+- **Amendment (levels 7 to 15, #154: Paladin, Cleric, Druid, Sorcerer, Bard).** The vocabulary
+  grew by these general parts, each with a linter rule and a test (`test/classes-*.test.js`):
+  - *Amounts*: `{ byLevel: { level: value } }` (the value for the highest class level reached; dice
+    allowed where dice are: Divine Strike 1d8/2d8) and `{ mod, min, die }` (so many of that die as
+    the modifier: Sear Undead). A heal, tempHp **or damage** step may roll a class amount and
+    `addMod`; `bake` now works inside `onHit`/`onFail`/... branches. A creature target's `count`
+    may be an amount (Abjure Foes: Charisma modifier).
+  - *Grants*: `aura { range, modifiers?, immune? }` (an Emanation from the holder giving it and
+    its allies there modifiers and condition Immunity, off while the holder is Incapacitated or
+    down, blocked by total cover; of auras from one feature id, the best: `modifiers.js`, `aurasOn`;
+    a condition an aura makes a creature immune to has no effect on it while there);
+    `cure { of, conditions }` (more conditions another feature's pool removes: Restoring Touch);
+    `freeCast { list, maxLevel } | { spells }` (with uses: cast through the feature, `cast` with
+    `via`, no slot, as its action: Divine Intervention); `conditionImmune` (Nature's Ward);
+    `metamagic { id, cost, pool }` and `metamagicMax { n, while }` (Metamagic; `cast` takes
+    `metamagic`, `careful`, `heightened`, `transmute`); `exchange { costs, minLevel }` (Font of
+    Magic: the `feature` action with `make` or `spend`); `restore { of, max }` (Sorcerous
+    Restoration: `shortRest` with `restore: [ids]`).
+  - *Feature actions*: `modes` (one of several step lists, chosen with `mode`: Divine Spark);
+    `form { types, maxCr, fly, hours, tempHp }` (Wild Shape; Decision 7 built as `forms.js`, below);
+    `orCost { resource, n, with? }` (paid from another pool when the feature's uses are gone:
+    Dragon Wings, Innate Sorcery with Sorcery Incarnate); `cure { conditions, cost }` on a pool
+    (Lay On Hands' Poisoned; `feature` takes `cure: [conditions]`, `amount` may then be 0).
+    Damage an area feature deals is rolled once for everyone in it.
+  - *Steps*: `with: feature id` keeps a step only for a character with that feature (Sear Undead's
+    damage in Turn Undead); `ends.on: 'damaged'` (a condition or modifier ends when its creature
+    takes damage: Turn Undead, Abjure Foes). An area target may say `types` (creature types it
+    affects: Turn Undead's Undead; a monster's type, a character is Humanoid).
+  - *Modifiers*: hooks `speed.fly` (a Fly Speed for a while: Dragon Wings) and `d20` (every D20
+    Test, for `onFail` only); tag `spell.cantrip`; `once: 'turn'` on `damage.dealt` (once on each of
+    the creature's own turns); a `damage.dealt` add with several `types` deals the one the target
+    takes most from (the player's choice, made as a player would); `onFail: true` with an optional
+    `cost` (a die added to a failed attack roll or effect save where it could turn it: Bardic
+    Inspiration, Peerless Skill, whose use is spent only on a success).
+  - *Reactions*: a feature reaction `{ on: 'saveFailed', conditions, range }` (Countercharm), taken
+    by instruction only (`always` or `never`).
+  - *Options*: a feature with `pick: n` takes a list of up to n option ids (Metamagic); it may be
+    left unchosen, and options picked in two such features may not repeat.
+  - *Forms* (`forms.js`, Decision 7, first build): a form lays a pack monster's stat block over a
+    creature: size, AC, speeds, senses, Strength, Dexterity and Constitution, attacks (none) and
+    actions (the block's), defences and initiative; save and skill bonuses are the better of its
+    own (its proficiencies and Proficiency Bonus with the new scores) and the block's. Hit Points,
+    mental scores, features and proficiencies stay. What was replaced is kept on `e.form` and put
+    back when the lasting effect holding it ends (its hours, a new form, the Bonus Action with no
+    form, Incapacitated or 0 Hit Points). No spells in a form; no sheet change while in one.
+    Event `form { id, form, name }` (players: where the creature is known); `seenRecord` carries
+    `form` (the block's id). **State version 17**: the migration keeps a whole form, puts back one
+    whose effect is gone, and drops a broken one.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

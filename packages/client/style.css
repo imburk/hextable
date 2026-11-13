@@ -110,6 +110,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text
 #lobby-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; width: min(380px, 100%); display: grid; gap: 8px; }
 #lobby-card h1 { margin: 0; font-size: 30px; color: var(--accent); } #lobby-card p { margin: 0 0 6px; color: var(--muted); }
 #lobby-card label { font-size: 13px; color: var(--muted); } #lobby-card .row { margin: 0; } #lobby-card .row > button { flex: 1; }
+#lobby-map { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; min-height: 44px; width: 100%; font: inherit; }
 #lobby-host, #lobby-join { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #lobby-code { text-transform: uppercase; letter-spacing: .15em; } #lobby-msg:empty { display: none; } #lobby-msg { color: var(--ink); }
 button.quiet { background: transparent; }

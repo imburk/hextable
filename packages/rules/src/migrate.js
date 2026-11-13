@@ -9,8 +9,9 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 import { validPending } from './reactions.js';
+import { leaveForm, validForm } from './forms.js';
 
-export const VERSION = 16;
+export const VERSION = 17;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -66,6 +67,14 @@ export function migrate(state) {
   // Version 16: `rng` may be a keyed generator, { key, n } (rng.js). An integer seed is kept as it
   // is and rolls as it always did, so the game replays exactly; the rules cannot make a key, so the
   // table server gives a table a new one when it loads it (packages/server/src/tables.js).
+  // Version 17: a creature may be in a form (Wild Shape; forms.js), `form` on it, held by a lasting
+  // effect. A table saved before then has none. One that is not whole, or whose effect is gone,
+  // is put back as far as it can be and dropped.
+  for (const e of Object.values(state.entities)) {
+    if (e.form === undefined) continue;
+    if (!validForm(e.form)) { delete e.form; continue; }
+    if (!(state.effects ?? []).some((fx) => fx.id === e.form.fx)) leaveForm(e);
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
