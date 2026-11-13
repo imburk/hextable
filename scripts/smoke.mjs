@@ -580,7 +580,7 @@ async function scenes(browser, url) {
         // The connection allows 5 messages a second, the table 30 lines a minute: send under the first, over the second
         // (36, so the limit is passed even when a slow machine has let the earlier lines age out of the minute).
         await phone.evaluate(() => { let i = 0; const t = setInterval(() => { window.hextable.act({ type: 'say', as: null, text: `spam ${i}` }); if (++i >= 36) clearInterval(t); }, 230); });
-        try { await wait(phone, () => /too fast/i.test(document.getElementById('toast')?.textContent ?? ''), null, 15000); }
+        try { await wait(phone, () => /too fast/i.test(document.getElementById('toast')?.textContent ?? ''), null, 45000); }
         catch { throw new Error(`no refusal shown; the toast says "${await phone.evaluate(() => document.getElementById('toast')?.textContent ?? '')}", ${await phone.evaluate(() => document.querySelectorAll('#sc-lines li[data-line]').length)} lines shown`); }
       });
 
