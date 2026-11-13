@@ -43,18 +43,45 @@ test("a stand-in is listed when a sheet needs a value to load that a 2014 sheet 
   assert.equal(report.adjustments[0].to, "Protector", "the order the sheet's heavy armour needs");
 });
 
-test("a multiclass sheet builds its biggest class and reports the rest", () => {
+test("a multiclass sheet builds every SRD class, the first class taken first (#175)", () => {
   const { character, report } = importFgxml(fixture("multiclass"));
   assert.equal(report.loadable, true, report.problems.join("; "));
-  assert.deepEqual([character.class, character.level], ["fighter", 3]);
-  assert.deepEqual(names(report.multiclass), ["Wizard 2"]);
-  assert.ok(report.ruleDifferences.some((d) => d.name === "Total level"));
-  assert.deepEqual(report.spells.find((s) => /Wizard spells/.test(s.name)).items, ["Magic Missile", "Shield"]);
-  assert.equal(report.spells.length, 1, "the other class's spells are reported once, not as the fighter's");
+  assert.deepEqual(character.classes, [{ class: "fighter", level: 3, subclass: "champion" }, { class: "wizard", level: 2, spells: ["magic-missile", "shield"] }]);
+  assert.equal(character.class, undefined);
+  assert.deepEqual(report.multiclass, [], "nothing left unbuilt");
+  assert.ok(!report.ruleDifferences.some((d) => d.name === "Total level"));
+  assert.deepEqual(report.spells, [], "the wizard's spells are the wizard's");
   const gaps = Object.fromEntries(report.numbers.map((n) => [n.what, [n.sheet, n.engine]]));
-  assert.deepEqual(gaps["Proficiency Bonus"], [3, 2]);
-  assert.deepEqual(gaps["Hit Points"], [44, 28]);
+  assert.equal(gaps["Proficiency Bonus"], undefined, "+3 at level 5, as the sheet");
+  assert.equal(gaps["Level 1 spell slots"], undefined, "a wizard's own slots: the only class that casts");
+  // Fighter 10 + 2 at level 1, 6 + 2 at levels 2 and 3, then the Wizard's 4 + 2 twice.
+  assert.deepEqual(gaps["Hit Points"], [44, 40]);
+  const r = derive(character).record;
+  assert.deepEqual([r.level, r.prof, r.hp, r.saveProf, r.slots, r.castAbil, r.cls], [5, 3, 40, ["str", "con"], { 1: 3 }, "int", "Fighter (Champion) 3 / Wizard 2"]);
+  assert.deepEqual(report.imported.classes, [{ class: "fighter", level: 3, subclass: "champion" }, { class: "wizard", level: 2, subclass: null }]);
   assert.ok(apply(newGame(7), { type: "setSheet", sheet: character }, DM).ok);
+  // Listed the other way round, the saving throws still say the Fighter came first.
+  const swapped = fixture("multiclass").replace(/<id-00001><name type="string">Fighter<\/name>(.*?)<\/id-00001>\s*<id-00002><name type="string">Wizard<\/name>(.*?)<\/id-00002>/s,
+    '<id-00001><name type="string">Wizard</name>$2</id-00001><id-00002><name type="string">Fighter</name>$1</id-00002>');
+  assert.notEqual(swapped, fixture("multiclass"));
+  assert.deepEqual(importFgxml(swapped).character.classes.map((x) => x.class), ["fighter", "wizard"]);
+});
+
+test("a multiclass sheet with a class not in the SRD builds the SRD one and reports the other", () => {
+  const xml = fixture("multiclass").replace('<name type="string">Wizard</name>', '<name type="string">Artificer</name>');
+  const { character, report } = importFgxml(xml);
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.deepEqual([character.class, character.level], ["fighter", 3]);
+  assert.deepEqual(names(report.multiclass), ["Artificer 2"]);
+  assert.ok(report.ruleDifferences.some((d) => d.name === "Total level"));
+});
+
+test("a multiclass sheet whose scores miss a class's prerequisite does not load, and says why", () => {
+  const xml = fixture("multiclass").replace("<intelligence><score type=\"number\">14</score>", "<intelligence><score type=\"number\">12</score>");
+  const { character, report } = importFgxml(xml);
+  assert.equal(report.loadable, false);
+  assert.ok(report.problems.some((p) => /Wizard and another class needs Intelligence of 13/.test(p)), report.problems.join("; "));
+  assert.equal(character.classes.length, 2);
 });
 
 test("what is not in the pack is carried by name only, never with the sheet's text", () => {

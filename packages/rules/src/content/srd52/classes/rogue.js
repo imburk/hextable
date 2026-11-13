@@ -62,6 +62,23 @@ export const rogue = {
     ]
   },
   "casting": null,
+  "multiclass": {
+    "requires": {
+      "all": [
+        "dex"
+      ]
+    },
+    "armour": [
+      "light"
+    ],
+    "weapons": [],
+    "skills": {
+      "choose": 1,
+      "from": "class"
+    },
+    "tools": "Thieves' Tools",
+    "caster": null
+  },
   "features": [
     {
       "id": "expertise",

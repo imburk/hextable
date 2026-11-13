@@ -11,7 +11,7 @@ import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 
-export const VERSION = 17;
+export const VERSION = 18;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -74,6 +74,20 @@ export function migrate(state) {
     if (e.form === undefined) continue;
     if (!validForm(e.form)) { delete e.form; continue; }
     if (!(state.effects ?? []).some((fx) => fx.id === e.form.fx)) leaveForm(e);
+  }
+  // Version 18: a character may have several classes (derive.js, `classes` on its sheet and record),
+  // with Hit Dice of several sizes (`hitDice` on the record, `hdBy` left of each). A table saved
+  // before then has none; a creature with `hitDice` and no `hdBy` (or a broken one) gets one that
+  // agrees with its `hd`, the largest dice counted as spent first.
+  for (const e of Object.values(state.entities)) {
+    if (!e.hitDice || typeof e.hitDice !== 'object') { delete e.hdBy; continue; }
+    const sizes = Object.keys(e.hitDice).map(Number).sort((a, b) => b - a);
+    const whole = e.hdBy && typeof e.hdBy === 'object' && sizes.every((d) => Number.isInteger(e.hdBy[d]) && e.hdBy[d] >= 0 && e.hdBy[d] <= e.hitDice[d]);
+    if (whole && Object.values(e.hdBy).reduce((a, b) => a + b, 0) === e.hd) continue;
+    let spent = Math.max(0, (e.level ?? 0) - (e.hd ?? e.level ?? 0));
+    e.hdBy = {};
+    for (const d of sizes) { const n = Math.min(spent, e.hitDice[d]); e.hdBy[d] = e.hitDice[d] - n; spent -= n; }
+    e.hd = Object.values(e.hdBy).reduce((a, b) => a + b, 0);
   }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {

@@ -7,7 +7,7 @@
 // text is read or kept: only names, numbers and flags. What does not match an entry in the content pack is
 // carried as a name-only note, never as stats.
 //
-// This reads the sheet, it does not play it: the engine can build one class, SRD subclasses, SRD spells, SRD
+// This reads the sheet, it does not play it: the engine can build SRD classes (several, by the multiclassing rules), SRD subclasses, SRD spells, SRD
 // weapons and armour. Whatever it cannot is reported, and where a sheet needs a value to load at all (an SRD
 // subclass at level 3, an option of a feature), the stand-in is listed under `adjustments`.
 import { CONTENT, SPELLS } from './content/index.js';
@@ -206,7 +206,9 @@ function build(root, ch, options) {
   if (name.length > 40) { name = name.slice(0, 40).trim(); adjust('name', undefined, name, 'A name is at most 40 letters.'); }
   R.name = name;
 
-  // Classes: the engine builds one. The class with the most levels is built; the rest are reported.
+  // Classes. Every SRD class on the sheet is built (Multiclassing): the first class taken is the one whose saving
+  // throw proficiencies the sheet shows (only the first class gives them), else the sheet's first. A class not in
+  // the SRD is reported and left out.
   const classes = kids(kid(ch, 'classes')).map((c) => ({ name: txt(c, 'name'), level: int(c, 'level') ?? 0, spec: txt(c, 'specialization') })).filter((c) => c.name && c.level > 0);
   if (!classes.length) return { character: null, report: count(Object.assign(R, { ok: false, error: 'The sheet has no class.', problems: ['The sheet has no class.'] })) };
   const known = classes.map((c) => ({ ...c, def: classByKey.get(norm(c.name)) ?? null }));
@@ -215,37 +217,51 @@ function build(root, ch, options) {
     note('multiclass', known.map((c) => `${c.name} ${c.level}`).join(', '), 'None of these classes is in the SRD 5.2 pack, so nothing can be built.');
     return { character: null, report: count(Object.assign(R, { ok: false, error: 'No class on the sheet is one the engine knows.', problems: ['No class on the sheet is one the engine knows.'] })) };
   }
-  const main = supported.reduce((a, c) => (c.level > a.level ? c : a), supported[0]);
-  const c = main.def, level = Math.min(20, main.level);
-  const totalLevel = classes.reduce((n, x) => n + x.level, 0);
-  for (const o of known) if (o !== main) {
+  const multi = supported.length > 1;
+  const savesShown = (() => {
+    const pb = int(ch, 'profbonus');
+    if (pb === null) return null;
+    const words = { str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' };
+    return ABILITIES.filter((a) => { const node = kid(kid(ch, 'abilities'), words[a]), sv = int(node, 'save'), sc = int(node, 'score'); return sv !== null && sc !== null && sv - mod(sc) >= pb; });
+  })();
+  let order = supported;
+  if (multi) {
+    const fits = supported.filter((o) => savesShown && o.def.saves.every((a) => savesShown.includes(a)));
+    if (fits.length >= 1 && fits[0] !== supported[0]) order = [fits[0], ...supported.filter((o) => o !== fits[0])];
+    if (fits.length !== 1) adjust('first class', undefined, supported[0].name, `The sheet does not show which class came first (its saving throw proficiencies fit ${fits.length ? fits.map((o) => o.name).join(' and ') : 'none of its classes'}); ${order[0].name} was taken as the first. The DM should check: the first class gives the saving throws, level 1 Hit Points and full armour training.`);
+  }
+  const main = multi ? order[0] : supported.reduce((a, c) => (c.level > a.level ? c : a), supported[0]);
+  const c = main.def, totalLevel = classes.reduce((n, x) => n + x.level, 0);
+  const level = multi ? order.reduce((n, o) => n + o.level, 0) : Math.min(20, main.level);
+  for (const o of known) if (o !== main && !(multi && o.def)) {
     note('multiclass', `${o.name} ${o.level}`, o.def
       ? `The engine builds one class. ${main.name} ${level} was built; the ${o.name} levels, features and spell slots are not on the sheet.`
       : `${o.name} is not an SRD 5.2 class, so it cannot be built.`);
   }
-  if (classes.length > 1) R.ruleDifferences.push({ name: 'Total level', why: `The sheet is level ${totalLevel}; the engine's sheet is a level ${level} ${c.name}, so its Proficiency Bonus, Hit Points and slots follow that level.` });
+  if (classes.length > 1 && level !== totalLevel) R.ruleDifferences.push({ name: 'Total level', why: `The sheet is level ${totalLevel}; the engine's sheet is level ${level} (${multi ? order.map((o) => `${o.def.name} ${o.level}`).join(' / ') : c.name}), so its Proficiency Bonus, Hit Points and slots follow that level.` });
 
-  const sheet = { name, class: c.id, level, abilities: {}, skills: [] };
-  let standIn = false;                    // the sheet's subclass is a stand-in, so what it always prepares is not the character's
+  const sheet = multi ? { name, classes: order.map((o) => ({ class: o.def.id, level: o.level })), abilities: {}, skills: [] } : { name, class: c.id, level, abilities: {}, skills: [] };
+  const standIns = new Set();             // classes whose subclass is a stand-in, so what it always prepares is not the character's
 
-  // Subclass
-  const specKey = norm(main.spec);
-  const sub = c.subclass;
+  // Subclass, for each class
   const SUB_ALIAS = { evoker: ['evocation'], fiend: ['fiend'], 'open-hand': ['open hand'] };
   const words = (hay, needle) => ` ${hay} `.includes(` ${needle} `);
-  const isSrdSub = !!specKey && (specKey === norm(sub.name) || words(specKey, norm(sub.id)) || (SUB_ALIAS[sub.id] ?? []).some((a) => words(specKey, a)));
-  if (level >= 3) {
-    sheet.subclass = sub.id;
-    if (isSrdSub) {
-      if (specKey !== norm(sub.name)) R.ruleDifferences.push({ name: main.spec, why: `The 2014 name of the SRD subclass ${sub.name}; its features are built as the 5.2 ones.` });
-    } else if (options.substituteSubclass === false) {
-      delete sheet.subclass;
-    } else {
-      standIn = true;
-      note('subclass', main.spec || '(none named)', `Not an SRD 5.2 subclass, so none of its features exist in the pack. ${main.name} subclass features are not built.`);
-      adjust('subclass', main.spec || '(none named)', sub.name, `A level ${level} sheet cannot load without the SRD subclass. ${sub.name} is a stand-in: its features are NOT this character's.`);
-    }
-  } else if (main.spec && !isSrdSub) note('subclass', main.spec, 'Not an SRD 5.2 subclass.');
+  order.filter((o) => multi || o === main).forEach((o, i) => {
+    const at = multi ? sheet.classes[i] : sheet, lv = multi ? o.level : level, cd = o.def, sub = cd.subclass, specKey = norm(o.spec);
+    const isSrdSub = !!specKey && (specKey === norm(sub.name) || words(specKey, norm(sub.id)) || (SUB_ALIAS[sub.id] ?? []).some((a) => words(specKey, a)));
+    if (lv >= 3) {
+      at.subclass = sub.id;
+      if (isSrdSub) {
+        if (specKey !== norm(sub.name)) R.ruleDifferences.push({ name: o.spec, why: `The 2014 name of the SRD subclass ${sub.name}; its features are built as the 5.2 ones.` });
+      } else if (options.substituteSubclass === false) {
+        delete at.subclass;
+      } else {
+        standIns.add(cd.id);
+        note('subclass', o.spec || '(none named)', `Not an SRD 5.2 subclass, so none of its features exist in the pack. ${o.name} subclass features are not built.`);
+        adjust('subclass', o.spec || '(none named)', sub.name, `A level ${lv} ${multi ? `${cd.name} ` : ''}sheet cannot load without the SRD subclass. ${sub.name} is a stand-in: its features are NOT this character's.`);
+      }
+    } else if (o.spec && !isSrdSub) note('subclass', o.spec, 'Not an SRD 5.2 subclass.');
+  });
 
   // Abilities
   for (const a of ABILITIES) {
@@ -267,7 +283,9 @@ function build(root, ch, options) {
   }
   const pre = () => featuresOf(sheet).map((x) => x.f.grants).filter(Boolean);
   const wantClass = () => c.skills.choose + pre().reduce((n, g) => n + (g.skills?.from === 'class' ? g.skills.n : 0), 0);
-  const wantAny = () => pre().reduce((n, g) => n + (g.skills?.from === 'any' ? g.skills.n : 0), 0);
+  // A class taken later may add a skill (Bard any, Ranger and Rogue from their lists): counted with the free picks.
+  const later = multi ? order.slice(1).reduce((n, o) => n + (o.def.multiclass?.skills?.choose ?? 0), 0) : 0;
+  const wantAny = () => later + pre().reduce((n, g) => n + (g.skills?.from === 'any' ? g.skills.n : 0), 0);
   const onList = (k) => c.skills.from === 'any' || c.skills.from.includes(k);
   // Choices of features that ask for one, resolved below; they can change what a feature grants, so they come first.
   const names = [...kids(kid(ch, 'featurelist')), ...kids(kid(ch, 'featlist'))].map((f) => norm(txt(f, 'name')));
@@ -336,12 +354,12 @@ function build(root, ch, options) {
   const extra = profs.filter((k) => !sheet.skills.includes(k));
   if (extra.length) sheet.extraSkills = extra;
   if (sheet.skills.length < wantClass() + wantAny()) {
-    adjust('skills', undefined, `${sheet.skills.length} of ${wantClass() + wantAny()}`, `The sheet has fewer skill proficiencies the ${c.name} list allows than a level ${level} ${c.name} chooses, so the sheet cannot load until the DM picks the rest.`);
+    adjust('skills', undefined, `${sheet.skills.length} of ${wantClass() + wantAny()}`, `The sheet has fewer skill proficiencies the ${c.name} list allows than a level ${level} ${multi ? 'character with these classes' : c.name} chooses, so the sheet cannot load until the DM picks the rest.`);
   }
   const expMax = pre().reduce((n, g) => n + (g.expertise ?? 0), 0);
   const keepExp = expert.slice(0, expMax);
   if (keepExp.length) sheet.expertise = keepExp;
-  if (expert.length > keepExp.length) for (const k of expert.slice(keepExp.length)) note('features', `Expertise in ${k}`, `${c.name} has Expertise in ${expMax} skills at level ${level} in the engine; this one is kept as an ordinary proficiency.`);
+  if (expert.length > keepExp.length) for (const k of expert.slice(keepExp.length)) note('features', `Expertise in ${k}`, `${multi ? 'This character' : c.name} has Expertise in ${expMax} skills at level ${level} in the engine; this one is kept as an ordinary proficiency.`);
 
   // Armour, shield, weapons: each is added only if the engine accepts it for this class.
   const before = new Set(validate(sheet));
@@ -445,7 +463,7 @@ function build(root, ch, options) {
   const mine = new Map(featuresOf({ ...sheet, spells: undefined }).map((x) => [norm(x.f.name), x.f]));
   for (const x of featuresOf(sheet)) if (x.f.tier && !x.option) R.builtFeatures[x.f.tier] = (R.builtFeatures[x.f.tier] ?? 0) + 1;
   const otherNames = new Map();
-  for (const o of known) if (o !== main && o.def) for (const f of [...o.def.features, ...o.def.subclass.features]) otherNames.set(norm(f.name), o.name);
+  for (const o of known) if (o !== main && o.def && !multi) for (const f of [...o.def.features, ...o.def.subclass.features]) otherNames.set(norm(f.name), o.name);
   for (const f of kids(kid(ch, 'featurelist'))) {
     const raw = txt(f, 'name'), lv = int(f, 'level') ?? 0;
     if (!raw) continue;
@@ -463,9 +481,9 @@ function build(root, ch, options) {
     note('features', raw, anyClass ? `A ${anyClass.name} feature, not one of ${main.name}.` : (lv > 6 ? 'Not in the SRD 5.2 pack (a subclass or 2014 feature), level 7 or above.' : 'Not in the SRD 5.2 pack (a subclass or 2014 feature).'), { level: lv });
   }
 
-  // Spells
-  const cast = c.casting;
-  const castGroups = new Map();         // class id -> { all: [], prepared: [] } entries { name, key, level, prepared }
+  // Spells, for each class that casts, from the sheet's group for that class ("Spells (Bard)"); spells in a group
+  // that names no class go to the first class that casts.
+  const castGroups = new Map();         // class id -> entries { name, key, level, prepared }
   const generic = [];
   for (const p of kids(kid(ch, 'powers'))) {
     if (!txt(p, 'school') && !txt(p, 'castingtime')) continue;
@@ -477,29 +495,34 @@ function build(root, ch, options) {
     if (/^spells$/i.test(grp)) generic.push(e);
   }
   const uniq = (list) => { const seen = new Set(); return list.filter((e) => !seen.has(e.key) && seen.add(e.key)); };
+  const built = multi ? order.map((o) => o.def) : [c];
   for (const [cid, list] of castGroups) {
-    if (cid === c.id) continue;
+    if (built.some((d) => d.id === cid)) continue;
     const other = CONTENT.classes[cid], prep = uniq(list.filter((e) => e.level > 0 && e.prepared));
     if (prep.length) note('spells', `${other.name} spells (${prep.length} prepared)`, `Prepared on the sheet as ${other.name} spells; ${other.name} is not built.`, { items: prep.map((e) => e.name) });
   }
-  if (cast) {
-    const mineList = castGroups.get(c.id) ?? [];
-    const grants = featuresOf(sheet).map((x) => x.f.grants).filter(Boolean);
-    const maxC = cast.cantrips[level - 1] + grants.reduce((n, g) => n + (g.cantrips ?? 0), 0);
+  // The spells of class `i` (its entry in a sheet with several classes), as a patch for tryAdd.
+  const spellsPatch = (i, list) => (multi ? { classes: sheet.classes.map((x, j) => (j === i ? { ...x, spells: list } : x)) } : { spells: list });
+  const casting = built.map((d, i) => ({ d, i })).filter(({ d }) => d.casting);
+  const have = [];
+  casting.forEach(({ d: cc, i }, n) => {
+    const cast = cc.casting, lv = multi ? order[i].level : level, mineGrants = featuresOf(sheet).filter((x) => !multi || x.cls.i === i).map((x) => x.f.grants).filter(Boolean);
+    const mineList = castGroups.get(cc.id) ?? [], gen = n === 0 ? generic : [];
+    const maxC = cast.cantrips[lv - 1] + mineGrants.reduce((t, g) => t + (g.cantrips ?? 0), 0);
     const classCantrips = uniq(mineList.filter((e) => e.level === 0));
     // Cantrips: a sheet that lists no more than the class knows is a list of known cantrips; a longer one lists the class's
     // spells and flags the chosen, so only the flagged count.
     const wanted = classCantrips.length <= maxC
-      ? uniq([...classCantrips, ...generic.filter((e) => e.level === 0 && e.prepared)])
-      : uniq([...mineList, ...generic].filter((e) => e.level === 0 && e.prepared));
-    if (classCantrips.length > maxC) adjust('cantrips', `${classCantrips.length} listed, ${maxC} known`, `${wanted.length} used`, 'The sheet lists more cantrips than the class knows; only those flagged as prepared were taken.');
-    const always = new Set(derive({ ...sheet, spells: [] }).record.spells ?? []);
-    let preparedList = uniq([...mineList, ...generic].filter((e) => e.level > 0 && e.prepared)).sort((a, z) => z.level - a.level || a.name.localeCompare(z.name));
+      ? uniq([...classCantrips, ...gen.filter((e) => e.level === 0 && e.prepared)])
+      : uniq([...mineList, ...gen].filter((e) => e.level === 0 && e.prepared));
+    if (classCantrips.length > maxC) adjust('cantrips', `${classCantrips.length} listed, ${maxC} known`, `${wanted.length} used`, `The sheet lists more cantrips than the ${multi ? `${cc.name} class` : 'class'} knows; only those flagged as prepared were taken.`);
+    const always = new Set(derive({ ...sheet, ...spellsPatch(i, []) }).record.spells ?? []);
+    let preparedList = uniq([...mineList, ...gen].filter((e) => e.level > 0 && e.prepared)).sort((a, z) => z.level - a.level || a.name.localeCompare(z.name));
     // A sheet's "prepared" flags are a list only when they are about as many as the sheet says it prepares (plus the oath or
     // domain spells the subclass always has). A class that flags its whole list (clerics, druids) says nothing about the choice.
-    const groupCount = kids(kid(ch, 'powergroup')).filter((g) => norm(txt(g, 'name')) === `spells ${norm(c.name)}`).map((g) => int(g, 'prepared')).find((v) => v !== null) ?? cast.prepared[level - 1];
+    const groupCount = kids(kid(ch, 'powergroup')).filter((g) => norm(txt(g, 'name')) === `spells ${norm(cc.name)}`).map((g) => int(g, 'prepared')).find((v) => v !== null) ?? cast.prepared[lv - 1];
     if (preparedList.length > groupCount + 10) {
-      note('spells', 'Prepared spells', `The sheet flags ${preparedList.length} spells as prepared but says it prepares ${groupCount}, so its flags are not a list of the choice. No leveled spells were imported; the DM chooses ${cast.prepared[level - 1]} from the ${c.name} list.`, { items: preparedList.map((e) => e.name) });
+      note('spells', multi ? `Prepared ${cc.name} spells` : 'Prepared spells', `The sheet flags ${preparedList.length} spells as prepared but says it prepares ${groupCount}, so its flags are not a list of the choice. No leveled spells were imported; the DM chooses ${cast.prepared[lv - 1]} from the ${cc.name} list.`, { items: preparedList.map((e) => e.name) });
       preparedList = [];
     }
     const chosen = [];
@@ -508,17 +531,21 @@ function build(root, ch, options) {
       const sp = spellByKey.get(e.key);
       if (!sp) { note('spells', e.name, `Level ${e.level}: not in the SRD 5.2 pack.`, { level: e.level }); continue; }
       if (always.has(sp.id)) continue;                                  // an oath or domain spell the subclass always has prepared
-      const t = tryAdd({ spells: [...chosen, sp.id] });
+      const t = tryAdd(spellsPatch(i, [...chosen, sp.id]));
       if (!t.ok) {
-        const why = /prepares \d+ spells/.test(t.why) ? `Over the 5.2 limit of prepared spells at level ${level}.` : /cantrip/.test(t.why) ? `Over the 5.2 limit of cantrips at level ${level}.` : /is not on the/.test(t.why) ? `Not on the 5.2 ${c.name} spell list (an oath or domain spell of a non-SRD subclass, or from another class).` : t.why;
+        const why = /prepares \d+ spells/.test(t.why) ? `Over the 5.2 limit of prepared spells at ${multi ? `${cc.name} ` : ''}level ${lv}.` : /cantrip/.test(t.why) ? `Over the 5.2 limit of cantrips at ${multi ? `${cc.name} ` : ''}level ${lv}.` : /is not on the/.test(t.why) ? `Not on the 5.2 ${cc.name} spell list (an oath or domain spell of a non-SRD subclass, or from another class).` : t.why;
         note('spells', sp.name, why, { level: sp.level, inPack: true });
         continue;
       }
       chosen.push(sp.id);
     }
-    if (chosen.length) sheet.spells = chosen;
-    const have = standIn ? chosen : derive(sheet).record.spells ?? [];
-    for (const id of have) { const sp = CONTENT.spells[id]; R.spellTiers[sp.tier ?? 'manual'].push(sp.name); }
+    if (chosen.length) { if (multi) sheet.classes[i].spells = chosen; else sheet.spells = chosen; }
+    if (multi && !chosen.length && !mineList.length && !gen.length) note('spells', `${cc.name} spells`, `The sheet lists no spells under "Spells (${cc.name})", so none were imported for the ${cc.name}; the DM chooses ${cast.cantrips[lv - 1]} cantrips and ${cast.prepared[lv - 1]} spells from the ${cc.name} list.`);
+    if (standIns.has(cc.id)) have.push(...chosen);
+  });
+  if (casting.length) {
+    const all = standIns.size ? [...new Set([...have, ...(derive(sheet).record.spells ?? []).filter((id) => !casting.some(({ d }) => standIns.has(d.id)) || have.includes(id))])] : derive(sheet).record.spells ?? [];
+    for (const id of all) { const sp = CONTENT.spells[id]; R.spellTiers[sp.tier ?? 'manual'].push(sp.name); }
   } else {
     const any = uniq(generic.filter((e) => e.prepared && e.level > 0));
     if (any.length) note('spells', `Spells (${any.length})`, `${c.name} has no Spellcasting feature in the pack.`, { items: any.map((e) => e.name) });
@@ -541,7 +568,7 @@ function build(root, ch, options) {
     cmp('Hit Points', int(kid(ch, 'hp'), 'total'), record.hp, 'The engine takes the fixed value per level plus Constitution; a sheet can hold rolled Hit Points, a feat or an item.');
     cmp('Armor Class', int(kid(kid(ch, 'defenses'), 'ac'), 'total'), record.ac, 'The engine counts armour, Shield and Dexterity (and Defense, Unarmored Defense); rings, cloaks, magic armour and spells are not counted.');
     cmp('Speed', int(kid(ch, 'speed'), 'total'), record.speed);
-    cmp('Proficiency Bonus', int(ch, 'profbonus'), record.prof, classes.length > 1 ? 'The sheet uses its total level.' : undefined);
+    cmp('Proficiency Bonus', int(ch, 'profbonus'), record.prof, classes.length > 1 && level !== totalLevel ? 'The sheet uses its total level.' : undefined);
     for (const a of ABILITIES) {
       const word = { str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' }[a];
       cmp(`${a.toUpperCase()} saving throw`, int(kid(kid(ch, 'abilities'), word), 'save'), mod(record.abil[a]) + (record.saveProf.includes(a) ? record.prof : 0));
@@ -557,7 +584,7 @@ function build(root, ch, options) {
     if (skillDiff.length) R.numbers.push({ what: 'Skill bonuses', sheet: `${skillDiff.length} differ`, engine: skillDiff.slice(0, 6).join('; '), why: 'Half proficiency (Jack of All Trades), item bonuses and a different Proficiency Bonus or ability score show here.' });
     if (record.castAbil) {
       const groups = kids(kid(ch, 'powergroup')).filter((g) => txt(g, 'stat'));
-      const g = groups.find((x) => norm(txt(x, 'name')).startsWith(`spells ${norm(c.name)}`)) ?? groups[0];
+      const g = groups.find((x) => norm(txt(x, 'name')).startsWith(`spells ${norm((casting[0]?.d ?? c).name)}`)) ?? groups[0];
       const word = g ? txt(g, 'stat').toLowerCase() : '';
       const abil = ABILITIES.find((a) => ({ str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' })[a] === word);
       if (g && abil) {
@@ -568,16 +595,17 @@ function build(root, ch, options) {
         const theirs = int(kid(kid(ch, 'powermeta'), `spellslots${l}`), 'max') ?? 0;
         const pact = int(kid(kid(ch, 'powermeta'), `pactmagicslots${l}`), 'max') ?? 0;
         const mineS = record.slots?.[l] ?? 0;
-        if (theirs + pact !== mineS) R.numbers.push({ what: `Level ${l} spell slots`, sheet: theirs + pact, engine: mineS, ...(classes.length > 1 ? { why: 'The sheet combines its classes\' slots.' } : {}) });
+        if (theirs + pact !== mineS) R.numbers.push({ what: `Level ${l} spell slots`, sheet: theirs + pact, engine: mineS, ...(classes.length > 1 && !multi ? { why: 'The sheet combines its classes\' slots.' } : {}) });
       }
     }
   }
 
   R.problems = problems;
   R.loadable = problems.length === 0;
-  const spellsOnSheet = (sheet.spells ?? []).map((id) => CONTENT.spells[id]);
+  const spellsOnSheet = (multi ? sheet.classes.flatMap((x) => x.spells ?? []) : sheet.spells ?? []).map((id) => CONTENT.spells[id]);
   R.imported = {
-    class: c.id, level, subclass: sheet.subclass ?? null, armour: sheet.armour ?? null, shield: !!sheet.shield, weapons: sheet.weapons ?? [],
+    class: c.id, level, subclass: (multi ? sheet.classes[0].subclass : sheet.subclass) ?? null,
+    ...(multi ? { classes: sheet.classes.map((x) => ({ class: x.class, level: x.level, subclass: x.subclass ?? null })) } : {}), armour: sheet.armour ?? null, shield: !!sheet.shield, weapons: sheet.weapons ?? [],
     skills: [...(sheet.skills ?? []), ...(sheet.extraSkills ?? [])].length, expertise: (sheet.expertise ?? []).length, tools: (sheet.tools ?? []).length, gear: (sheet.gear ?? []).length,
     cantrips: spellsOnSheet.filter((s) => s.level === 0).length, prepared: spellsOnSheet.filter((s) => s.level > 0).length,
     proficiencyBonus: proficiencyFor(level),

@@ -123,6 +123,17 @@ export const monk = {
     ]
   },
   "casting": null,
+  "multiclass": {
+    "requires": {
+      "all": [
+        "dex",
+        "wis"
+      ]
+    },
+    "armour": [],
+    "weapons": [],
+    "caster": null
+  },
   "features": [
     {
       "id": "martial-arts",

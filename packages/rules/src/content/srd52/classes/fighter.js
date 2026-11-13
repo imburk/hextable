@@ -130,6 +130,23 @@ export const fighter = {
     ]
   },
   "casting": null,
+  "multiclass": {
+    "requires": {
+      "any": [
+        "str",
+        "dex"
+      ]
+    },
+    "armour": [
+      "light",
+      "medium",
+      "shield"
+    ],
+    "weapons": [
+      "martial"
+    ],
+    "caster": null
+  },
   "features": [
     {
       "id": "fighting-style",

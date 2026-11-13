@@ -276,6 +276,20 @@ export const cleric = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "wis"
+      ]
+    },
+    "armour": [
+      "light",
+      "medium",
+      "shield"
+    ],
+    "weapons": [],
+    "caster": "full"
+  },
   "features": [
     {
       "id": "spellcasting",

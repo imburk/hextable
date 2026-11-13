@@ -210,6 +210,23 @@ export const paladin = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "str",
+        "cha"
+      ]
+    },
+    "armour": [
+      "light",
+      "medium",
+      "shield"
+    ],
+    "weapons": [
+      "martial"
+    ],
+    "caster": "half"
+  },
   "features": [
     {
       "id": "lay-on-hands",

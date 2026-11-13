@@ -229,6 +229,16 @@ export const wizard = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "int"
+      ]
+    },
+    "armour": [],
+    "weapons": [],
+    "caster": "full"
+  },
   "features": [
     {
       "id": "spellcasting",

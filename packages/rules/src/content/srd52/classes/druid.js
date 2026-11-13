@@ -257,6 +257,19 @@ export const druid = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "wis"
+      ]
+    },
+    "armour": [
+      "light",
+      "shield"
+    ],
+    "weapons": [],
+    "caster": "full"
+  },
   "features": [
     {
       "id": "spellcasting",

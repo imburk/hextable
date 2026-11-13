@@ -251,6 +251,16 @@ export const sorcerer = {
       ]
     ]
   },
+  "multiclass": {
+    "requires": {
+      "all": [
+        "cha"
+      ]
+    },
+    "armour": [],
+    "weapons": [],
+    "caster": "full"
+  },
   "features": [
     {
       "id": "spellcasting",

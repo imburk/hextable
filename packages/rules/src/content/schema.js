@@ -838,6 +838,23 @@ function lintClass(e, say) {
       if (c.from !== undefined && !isInt(c.from)) say('casting.from is the level spellcasting starts');
     }
   }
+  // Multiclassing, optional (SRD "Multiclassing" and each class's "As a Multiclass Character"): the scores a
+  // character needs to take or keep the class (`all` of them, or `any` one, at 13 or more), the armour
+  // and weapon training and skill picks it gives when it is not the first class, and how its levels
+  // count for the Multiclass Spellcaster table (`full`, `half` rounded up, `pact` apart, or null).
+  // Left out, the class cannot be part of a character with several classes.
+  const mc = e.multiclass;
+  if (mc === undefined) { /* not multiclassable */ } else if (!mc || typeof mc !== 'object' || !Object.keys(mc).every((k) => ['requires', 'armour', 'weapons', 'skills', 'tools', 'caster'].includes(k))) say('multiclass is { requires, armour, weapons, skills?, tools?, caster }');
+  else {
+    const rq = mc.requires, keys = rq && typeof rq === 'object' ? Object.keys(rq) : [];
+    if (!(keys.length === 1 && ['all', 'any'].includes(keys[0]) && allOf(ABILITIES)(rq[keys[0]]) && rq[keys[0]].length)) say('multiclass.requires is { all: [abilities] } or { any: [abilities] }');
+    if (!allOf(ARMOUR_CATEGORIES)(mc.armour)) say('multiclass.armour lists armour categories');
+    if (!allOf(['simple', 'martial'])(mc.weapons)) say('multiclass.weapons lists simple or martial');
+    if (mc.skills !== undefined && !(isInt(mc.skills?.choose) && mc.skills.choose > 0 && ['any', 'class'].includes(mc.skills.from))) say('multiclass.skills is { choose, from: "any" | "class" }');
+    if (mc.tools !== undefined && !isText(mc.tools)) say('multiclass.tools is text');
+    if (![null, 'full', 'half', 'pact'].includes(mc.caster)) say('multiclass.caster is full, half, pact or null');
+    if ((mc.caster === null) !== (e.casting === null) || (mc.caster === 'pact') !== (e.casting?.kind === 'pact')) say('multiclass.caster must agree with casting');
+  }
   const ids = new Set();
   if (!Array.isArray(e.features) || !e.features.length) say('needs features');
   for (const f of e.features ?? []) lintFeature(f, e, say, ids);
@@ -852,7 +869,7 @@ function lintClass(e, say) {
   if (findFunction(e)) say('content is data only');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [] }) {
+export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], multiclass }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
   for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour]]) {
@@ -876,6 +893,9 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
     const pools = new Set(all.filter((f) => f.uses).map((f) => f.id));
     for (const g of grants) if (g.action?.cost && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
   }
+  // The Multiclass Spellcaster table: 20 rows of slots by spell level.
+  if (multiclass !== undefined && !(multiclass && tableRow(multiclass.slots) && multiclass.slots.every((r) => Array.isArray(r) && r.length >= 1 && r.length <= 9 && r.every((n) => isInt(n) && n > 0)) && typeof multiclass.checked === 'boolean'))
+    problems.push('multiclass: the Multiclass Spellcaster table is 20 rows of slots by spell level, with `checked`');
   for (const p of pregens) {
     const say = (m) => problems.push(`pregens/${p?.id ?? '?'}: ${m}`);
     if (!ID.test(p.id ?? '')) say('id must be kebab-case');
@@ -896,7 +916,10 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
 const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
   'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look',
   // Made by derive() from a sheet (derive.js): features as the engine plays them, the Hit Die, what is worn.
-  'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact', 'conditionImmune'];
+  'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact', 'conditionImmune',
+  // A character with more than one class (derive.js): its classes and levels, its Hit Dice by size,
+  // and the spellcasting ability of each spell whose class's differs from `castAbil`.
+  'classes', 'hitDice', 'spellAbil'];
 // `abil` (the ability it uses), `weapon` (its equipment id) and `time: 'bonus'` (a Bonus Action
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
@@ -1014,6 +1037,11 @@ export function lintRecord(r, { spells = {} } = {}) {
     for (const f of Array.isArray(r.feats) ? r.feats : []) if (f?.action?.cost && !pools.has(f.action.cost.resource)) say(`Feature ${f.name} costs "${f.action.cost.resource}", which it does not have.`);
   }
   if (r.hitDie !== undefined && ![6, 8, 10, 12].includes(r.hitDie)) say('Its Hit Die is d6, d8, d10 or d12.');
+  if (r.classes !== undefined && !(Array.isArray(r.classes) && r.classes.length >= 2 && r.classes.length <= 12 && r.classes.every((c) => c && ID.test(c.id ?? '') && within(c.level, 1, 19) && (c.subclass === undefined || ID.test(c.subclass)))
+    && r.classes.reduce((n, c) => n + c.level, 0) === r.level)) say('Its classes are a list of { id, level, subclass? } whose levels add up to its level.');
+  if (r.hitDice !== undefined && !(r.hitDice && typeof r.hitDice === 'object' && Object.entries(r.hitDice).every(([d, n]) => ['6', '8', '10', '12'].includes(d) && within(n, 1, 20))
+    && Object.values(r.hitDice).reduce((a, b) => a + b, 0) === r.level)) say('Its Hit Dice are a count for each size, d6 to d12, adding up to its level.');
+  if (r.spellAbil !== undefined && !(r.spellAbil && typeof r.spellAbil === 'object' && Object.entries(r.spellAbil).every(([id, a]) => (r.spells ?? []).includes(id) && ABILITIES.includes(a)))) say('Its spells\' abilities name spells it has and abilities.');
   if (r.armour !== undefined && !['none', 'light', 'medium', 'heavy'].includes(r.armour)) say('What it wears is none, light, medium or heavy armour.');
   for (const k of ['shield', 'pact']) if (r[k] !== undefined && r[k] !== true) say(`${k} is true or left out.`);
   if (r.critOn !== undefined && !within(r.critOn, 15, 19)) say('Its Critical Hit range starts at 15 to 19.');

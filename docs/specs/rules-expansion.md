@@ -1000,6 +1000,30 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   - Checked against the SRD and pinned, no change: Aura of Protection adds to Death Saving Throws and
     Concentration saves (both are saving throws); Twinned Spell's effective level only changes the
     target count, as no spell in the pack that it can twin scales anything else by slot.
+- **Amendment (multiclassing, #175). State version 18.** Built to the SRD 5.2.1 "Multiclassing" rules and each
+  class's "As a Multiclass Character" (`test/multiclass.test.js`):
+  - *Data*: each class has `multiclass { requires: { all | any: [abilities] }, armour, weapons, skills?, tools?,
+    caster: full | half | pact | null }` (linted; left out, a class cannot be combined). The Multiclass Spellcaster
+    table is pack data (`srd52/multiclass.js`, `CONTENT.multiclass`).
+  - *Sheet*: `classes: [{ class, level, subclass?, spells? }]`, the first class taken first, in place of `class`,
+    `level`, `subclass` and `spells`. A sheet with one class is unchanged, and so is what `derive` makes of it
+    (checked for every class at every level).
+  - *Derive*: total level for the Proficiency Bonus, cantrip scaling and Hit Dice; each feature's numbers, uses and
+    recharge by its own class's level; saving throws and full training from the first class, a later class's
+    `multiclass` training and skill pick; Hit Points as the first class's level 1 and each class's fixed value after;
+    Extra Attack and Armor Class formulas do not stack (the best is taken). A later class's feature whose id an
+    earlier class has is renamed `<class>-<id>` with the references inside its own class (cost, `with`, pools), so
+    Channel Divinity from Cleric and Paladin are two pools (the SRD says nothing to join them). Spellcasting: each
+    class prepares its own spells by its own level and spell-level limit; slots from the class's own table when one
+    class casts, else the Multiclass Spellcaster table by full levels plus half levels rounded up. Each spell is cast
+    with its class's ability (`spellAbil`); one prepared by two classes uses the better. The record gains `classes`,
+    `hitDice` and `spellAbil`.
+  - *Engine*: `spellStats(e, s, spell)`; `hdBy` with `shortRest` spending the largest dice first; `levelUp` takes one
+    more level in a class or level 1 in a new class at the end; `validate` checks prerequisites (13 in each class's
+    primary ability, `any` for the Fighter). Migration to 18 gives a creature with `hitDice` an `hdBy` that agrees
+    with `hd`; nothing else changes for saved tables.
+  - *Not built*: Pact Magic beside Spellcasting (refused by `validate`); Potent Spellcasting still adds to any cantrip;
+    a feature's own save DC and spell attack (not a spell's) still use `castAbil`.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and
