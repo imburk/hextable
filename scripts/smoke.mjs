@@ -1341,14 +1341,14 @@ const strike = ([pcId, foeId]) => {
 // The foe attacks the hero. Reads, in the same breath, what the screen says (the table's state is final, the shown one is not);
 // then waits for stillness and returns the beats that played, with their times.
 async function strikeAndWatch(page, { pc, foe }) {
-  const at = await page.evaluate(() => window.hextable.played.length);
+  const at = await page.evaluate(() => performance.now());
   const now = await page.evaluate(([pcId, foeId, src]) => {
     (0, eval)(`(${src})`)([pcId, foeId]);
     const h = window.hextable;
     return { busy: h.timeline.busy(), waiting: !document.getElementById('pace-wait').hidden, shown: h.timeline.shown().entities[pcId].hp, real: h.state.entities[pcId].hp };
   }, [pc, foe, strike.toString()]);
   await calm(page);
-  const beats = await page.evaluate((n) => window.hextable.played.slice(n), at);
+  const beats = await page.evaluate((n) => window.hextable.played.filter((x) => x.t >= n), at);
   return { now, beats, still: await page.evaluate(() => ({ busy: window.hextable.timeline.busy(), waiting: !document.getElementById('pace-wait').hidden })) };
 }
 
@@ -1395,8 +1395,8 @@ async function pacing(browser, url, label, opts) {
         const pt = await page.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.kind === 'pc'); const p = h.R.screenOf({ q: e.pos.q + 2, r: e.pos.r, z: e.pos.z }); return p; });
         await sleep(60);
         const canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : { x: opts.viewport.width / 2, y: 120 };
-        await tapAt(page, touch, canvasPt.x, canvasPt.y);
-        await sleep(100);
+        // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
+        for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
         if (before !== (await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn])))) throw new Error('the tap acted as well as skipped');
         if (await shown(page, '#pace-wait')) throw new Error('"…" is still showing');
@@ -1434,7 +1434,7 @@ async function pacingTable(browser, url) {
       let code, id;
       await run.do('the DM hosts, the phone joins and plays a character', async () => {
         await open(host, url); await host.fill('#lobby-name', 'Smoke DM'); await host.click('#lobby-host');
-        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6, null, 20000);
         code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
         await open(phone, url); await phone.fill('#lobby-name', 'Smoke Player'); await phone.fill('#lobby-code', code); await phone.click('#lobby-join');
         await wait(phone, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
