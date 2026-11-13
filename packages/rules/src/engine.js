@@ -1800,6 +1800,7 @@ const TRANSMUTE = ['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder'];
 const METAMAGIC = ['careful', 'distant', 'extended', 'heightened', 'quickened', 'subtle', 'transmuted', 'twinned'];
 function metamagicFor(s, e, sp, a, slot) {
   const none = { list: [], names: [], has: {}, cost: 0 };
+  (a.metamagic === undefined || (Array.isArray(a.metamagic) && a.metamagic.every((x) => typeof x === 'string'))) || fail('Name the Metamagic options used.');
   for (const k of ['careful', 'heightened', 'transmute']) if (a[k] !== undefined && !(a.metamagic ?? []).includes(k === 'transmute' ? 'transmuted' : k)) fail(`"${k}" goes with that Metamagic option.`);
   if (a.metamagic === undefined) return none;
   const ids = a.metamagic;

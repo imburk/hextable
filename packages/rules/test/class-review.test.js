@@ -59,3 +59,16 @@ test("Careful Spell protects other creatures, not the caster, and a refusal chan
   assert.equal(JSON.stringify(s), snap);
   ok(apply(s, { type: "cast", actor: "hero", spell: "fireball", hex: { q: 1, r: 0 }, slot: 3, metamagic: ["careful"], careful: ["m1"] }, DM));
 });
+
+// L2. Malformed input is a clean refusal, never a throw.
+test("junk Metamagic input is refused cleanly and changes nothing", () => {
+  const s = caster(sorc(15)), snap = JSON.stringify(s);
+  const junk = [{ metamagic: 5, careful: ["m1"] }, { metamagic: {}, heightened: "m1" }, { metamagic: "careful", careful: ["m1"] }, { metamagic: { length: 1 }, transmute: "cold" },
+    { metamagic: [5] }, { metamagic: [null] }, { metamagic: ["careful"], careful: "m1" }, { metamagic: ["careful"], careful: [{}] }, { metamagic: ["heightened"], heightened: ["m1"] }];
+  for (const x of junk) {
+    let r;
+    assert.doesNotThrow(() => { r = apply(s, { type: "cast", actor: "hero", spell: "fireball", hex: { q: 1, r: 0 }, slot: 3, ...x }, DM); }, JSON.stringify(x));
+    assert.equal(r.ok, false, JSON.stringify(x));
+    assert.equal(JSON.stringify(s), snap);
+  }
+});
