@@ -202,3 +202,26 @@ test("paladin auras: 30 feet from level 18 (Aura Expansion), measured from a Lar
   assert.equal(reach("medium"), 0, "15 feet from a Medium paladin is out");
   assert.ok(reach("large") > 0, "but 10 feet from the edge of a Large one's space is in");
 });
+
+// Not covered by the review: Aura of Protection is "a bonus to saving throws". A Death Saving Throw
+// and the Constitution save to keep Concentration are saving throws, so both get it.
+test("Aura of Protection adds to an ally's Death Saving Throws and Concentration saves", () => {
+  const s = field({ ...paladin(6), spells: ["bless"] });
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: 1, r: 0 } }, DM));
+  const rogue = s.entities.rogue;
+  rogue.hp = 0; rogue.cond.unconscious = {}; rogue.death = { s: 0, f: 0 };
+  fight(s);
+  const r = ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  let ds = r.events.find((x) => x.type === "deathSave" && x.id === "rogue");
+  for (let i = 0; !ds && i < 6; i++) ds = ok(apply(s, { type: "endTurn", actor: current(s) }, DM)).events.find((x) => x.type === "deathSave" && x.id === "rogue");
+  assert.ok(ds, "the rogue made a death save");
+  assert.equal(ds.bonus, 3, "Charisma +3 from the aura");
+  // Concentration: the paladin's own Bless, and a hit on it.
+  const t = field({ ...paladin(6), spells: ["bless"] });
+  fight(t); turnOf(t, "hero");
+  ok(apply(t, { type: "cast", actor: "hero", spell: "bless", targets: ["hero"] }, DM));
+  const c = ok(apply(t, { type: "harm", actor: "hero", amount: 4, dtype: "slashing" }, DM)).events.find((x) => x.type === "concentration");
+  assert.ok(c, "a Concentration save");
+  // Constitution +2, no proficiency at 6 (Paladin saves: Wisdom, Charisma), Aura +3.
+  assert.equal(c.bonus, 5, "Constitution +2 and the aura +3 (Bless rolls its d4 apart)");
+});
