@@ -752,22 +752,44 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   // Improved Critical: a weapon attack scores a Critical Hit, and so hits, on a lower roll (`critOn`).
   const critRoll = nat === 20 || (!atk.spell && e.critOn && nat >= e.critOn);
   let hit = nat !== 1 && (critRoll || nat + bonus >= ac), ac2 = ac, cut = null;
+  // A die that may turn a miss into a hit (Bardic Inspiration, Peerless Skill); never a natural 1.
+  const lift = !hit && nat !== 1 ? rescue(s, e, 'attack.roll', ac - (nat + bonus), ev) : null;
+  if (lift?.success) hit = true;
+  const lifted = lift?.add ?? 0;
   // The target may react to being hit (reactions.js): Shield raises its Armor Class against this
   // very attack, so the roll is compared again; Uncanny Dodge and Deflect Attacks cut the damage.
   if (hit) {
-    const r = reactToHit(s, t, e, atk, { total: nat + bonus, ac, critRoll }, ev);
-    if (r?.ac) { ac2 = acOf(s, t) + (COVER[cover] ?? 0); hit = critRoll || nat + bonus >= ac2; }
-    if (r?.acAdd) { ac2 = ac + r.acAdd; hit = critRoll || nat + bonus >= ac2; }
+    const r = reactToHit(s, t, e, atk, { total: nat + bonus + lifted, ac, critRoll }, ev);
+    if (r?.ac) { ac2 = acOf(s, t) + (COVER[cover] ?? 0); hit = critRoll || nat + bonus + lifted >= ac2; }
+    if (r?.acAdd) { ac2 = ac + r.acAdd; hit = critRoll || nat + bonus + lifted >= ac2; }
     if (r?.cut) cut = r.cut;
   }
   const crit = hit && (critRoll || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
+    total: nat + bonus + lifted, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };
+}
+
+// A failed save against an effect that would put one of some conditions on a creature: an ally
+// within range with a feature reaction on `saveFailed` for those conditions (Countercharm) and a
+// standing instruction of `always` takes its Reaction to have the save rolled again with Advantage.
+// `onFail` is the steps the failure would run. Returns the new save, or null.
+function rerollSave(s, t, abil, dc, onFail, from, ev) {
+  const conds = (onFail ?? []).filter((x) => 'condition' in x).map((x) => x.condition);
+  if (!conds.length) return null;
+  for (const o of living(s)) {
+    if (o.side !== t.side || !canReact(o)) continue;
+    const r = reactionsOf(o).find((x) => x.on === 'saveFailed' && x.reaction.conditions.some((c) => conds.includes(c)) && instruction(o, x) === 'always');
+    if (!r || (o.id !== t.id && apart(s, o, t) * FT > r.reaction.range)) continue;
+    o.reactionUsed = true;
+    ev.push({ type: 'reaction', id: o.id, reaction: r.id, name: r.name, trigger: 'saveFailed', against: t.id });
+    return savingThrow(s, t, abil, dc, null, from, null, r.name, ev);
+  }
+  return null;
 }
 
 // ---------- reactions (reactions.js; docs/specs/rules-expansion.md, Decision 4) ----------
@@ -1071,6 +1093,26 @@ function dealt(s, e, t, parts, sit, crit) {
   return out;
 }
 
+// A die added to a D20 Test that failed (`onFail` modifiers: a Bardic Inspiration die on the
+// creature, `d20`; Peerless Skill, `attack.roll`, paid from a feature's uses only if it succeeds).
+// Used only where it could turn the failure (`short`, how much the roll fell short, is no more
+// than the dice can make), as a player would; the first that fits is rolled. Returns
+// { add, name, dice, success } or null.
+const diceMax = (d) => { const m = /^(\d+)d(\d+)([+-]\d+)?$/.exec(d); return m ? +m[1] * +m[2] + (+m[3] || 0) : 0; };
+function rescue(s, t, hook, short, ev) {
+  if (!t || t.object || !(short > 0)) return null;
+  const list = [...modifiers(s, t, 'd20', { target: t }, '').rescue, ...modifiers(s, t, hook, { target: t }, '').rescue];
+  for (const x of list) {
+    if (typeof x.value !== 'string' || diceMax(x.value) < short) continue;
+    if (x.cost && !((t.uses?.[x.cost] ?? 0) > 0)) continue;
+    const r = roll(s, x.value), success = r.total >= short;
+    if (x.part) useUp(s, ev, [x.part]);                      // a die given is spent when it is rolled
+    if (x.cost && success) t.uses[x.cost]--;                 // Peerless Skill: not spent on a failure
+    return { add: r.total, name: x.name, dice: r.dice, success };
+  }
+  return null;
+}
+
 // Of the damage types a creature may choose among (Divine Strike: Necrotic or Radiant), the one
 // that hurts the target most: one it is Vulnerable to, then one it does not resist, then the first.
 function bestType(s, t, types) {
@@ -1084,10 +1126,11 @@ function bestType(s, t, types) {
 // `extra` names a second hook to gather modifiers from, such as 'concentration'. The result carries
 // `used`, the single-use parts the save took: the caller leaves it out of its event and passes it to useUp.
 // `from` is the creature or the point the effect comes from: cover against it helps a Dexterity save.
-function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null) {
+function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null, adv = null, ev = null) {
   const sit = { target: t, ability: abil };
   const m = modifiers(s, t, `save.${abil}`, sit, '');
   if (dis) m.disadvantage.push(dis);                       // Disadvantage from the caster's side (Heightened Spell)
+  if (adv) m.advantage.push(adv);                          // Advantage on a reroll (Countercharm)
   const cover = abil === 'dex' && from && !from.object ? coverOf(s, from, t, living(s)) : 'none';
   m.add += COVER[cover] ?? 0;
   // `save` applies to every saving throw (Bless, Bane); `extra` names one more hook, such as 'concentration'.
@@ -1107,8 +1150,11 @@ function savingThrow(s, t, abil, dc, extra = null, from = null, dis = null) {
   const more = rollDice(s, m.dice);
   // A monster's stat block gives its save outright (`saveBonus`); anyone else adds Proficiency to the modifier for a saving throw they are proficient in.
   const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
-  const total = r + base + m.add + more.total;
-  return { roll: r, total, success: total >= dc, dice: [...d20Faces(r1, r2, r), ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
+  let total = r + base + m.add + more.total;
+  // A die that may turn a failure (Bardic Inspiration), with `ev` to say what was spent.
+  const lift = ev && total < dc ? rescue(s, t, 'save', dc - total, ev) : null;
+  if (lift) total += lift.add;
+  return { roll: r, total, success: total >= dc, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), dice: [...d20Faces(r1, r2, r), ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
 // ---------- ability checks ----------
@@ -1648,7 +1694,7 @@ const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) r
 function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
-const KIT = { rollToHit, savingThrow, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
+const KIT = { rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew };
 
 // ---------- Metamagic ----------
 // The options a creature knows are its features that grant `metamagic: { id, cost, pool }`

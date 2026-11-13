@@ -263,9 +263,14 @@ function exec(s, ev, kit, f, step, at) {
       ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
       return step.half ? undefined : branch('onSuccess', { half: false });
     }
-    const { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null);      // cover is judged from where the effect starts
+    let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, null, ev);      // cover is judged from where the effect starts
     ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
+    // A failed save against Charmed or Frightened may be rolled again (Countercharm).
+    if (!sv.success && kit.rerollSave) {
+      const again = kit.rerollSave(s, t, step.save, dc, step.onFail, f.src.origin ?? e, ev);
+      if (again) { const { used: u2, ...sv2 } = again; sv = sv2; ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true }); useUp(s, ev, u2 ?? []); }
+    }
 
     if (!sv.success) return branch('onFail', { half: false });
     if (step.half && step.onFail) return branch('onFail', { half: true });      // same effect, half the damage

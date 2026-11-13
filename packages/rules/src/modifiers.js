@@ -149,7 +149,7 @@ function inScope(m, sit) {
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [] };
   for (const src of sources(s, e)) {
     if (src.against && sit.target?.id !== src.against) continue;
     for (const m of src.modifiers) {
@@ -158,6 +158,9 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (!inScope(m, sit)) continue;
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
+      // `onFail`: dice added only after the roll failed (Bardic Inspiration, Peerless Skill); the
+      // roll's maker decides (engine.js, rescue), so nothing is added or used up here.
+      if (m.onFail) { out.rescue.push({ value, name: src.name, ...(src.part ? { part: src.part } : {}), ...(m.cost ? { cost: m.cost } : {}) }); continue; }
       if (m.uses && src.part) out.used.push(src.part);         // one use: the roll that takes it ends it (durations.useUp)
       if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
       else if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });

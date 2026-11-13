@@ -27,7 +27,7 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
-  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly'];
+  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
@@ -101,6 +101,12 @@ function lintModifier(m, say) {
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
   // On damage.dealt (Divine Strike) it is once on each of the creature's own turns.
   if (m.once !== undefined && !(m.once === 'turn' && ['damage.taken', 'damage.dealt'].includes(m.on) && m.op === 'add')) say('`once: "turn"` is for an add on damage.taken or damage.dealt');
+  // `onFail`: dice added only to a D20 Test that failed, where they could turn it (Bardic
+  // Inspiration on `d20`, every D20 Test; Peerless Skill on `attack.roll`); `cost` names a feature
+  // whose use it spends, only if it succeeds.
+  if (m.onFail !== undefined && !(m.onFail === true && m.op === 'add' && ['d20', 'attack.roll', 'save'].includes(m.on))) say('`onFail` is true, on an add to d20, attack.roll or save');
+  if (m.cost !== undefined && !(m.onFail === true && ID.test(m.cost))) say('`cost` names a feature, with onFail');
+  if (m.on === 'd20' && !m.onFail) say('the d20 hook is for onFail dice');
   lintWhen(m.when, say);
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
@@ -643,7 +649,11 @@ function lintGrants(g, cls, say) {
     // with the class ({ mod }, { perLevel }); derive() bakes them into the dice. `seen`: only
     // against an attacker its creature can see. `types`: only if the attack deals one of them.
     const r = g.reaction;
-    if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
+    // Or `{ on: 'saveFailed', conditions, range }`: it or an ally within range fails a save against
+    // an effect that would apply one of these conditions, and the save is rolled again with Advantage (Countercharm).
+    if (r?.on === 'saveFailed') {
+      if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range % 5 === 0 && Object.keys(r).length === 3)) say('a saveFailed reaction is { on, conditions, range }');
+    } else if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
     else {
       if (r.on !== 'hit') say('reaction.on is "hit" (a feature that cuts the damage of a hit)');
       if (r.cut !== 'half' && !(r.cut && typeof r.cut === 'object' && isDice(r.cut.dice) && Object.keys(r.cut).every((k) => ['dice', 'add'].includes(k)))) say('reaction.cut is "half" or { dice, add? }');
@@ -865,7 +875,10 @@ function lintFeat(f, say) {
       && (au.immune === undefined || (allOf(CONDITIONS)(au.immune) && au.immune.length)) && (au.modifiers === undefined || (Array.isArray(au.modifiers) && au.modifiers.length <= 10)))) sub('its aura is { range, modifiers?, immune? }.');
     else for (const m of au.modifiers ?? []) lintModifier(m, sub);
   }
-  if (f.reaction !== undefined) {
+  if (f.reaction?.on === 'saveFailed') {
+    const r = f.reaction;
+    if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range <= 300)) sub('its saveFailed reaction is { on, conditions, range }.');
+  } else if (f.reaction !== undefined) {
     const r = f.reaction;
     if (!(r && r.on === 'hit' && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))
       && Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k)) && (r.seen === undefined || r.seen === true)
