@@ -6,8 +6,8 @@ import { reactionsOf, instruction, WHEN, canReact } from './shared/reactions.js'
 import { inFight } from './shared/engine.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const TRIGGER = { leave: 'when a creature leaves its reach', hit: 'when it is hit by an attack' };
-const COST = { attack: 'Costs only the Reaction.', spell: 'Spends a spell slot.', feature: '' };
+const TRIGGER = { leave: 'when a creature leaves its reach', hit: 'when it is hit by an attack', targeted: 'when a spell targets it', cast: 'when a creature it can see casts a spell', damaged: 'when a creature damages it' };
+const COST = { attack: 'Costs only the Reaction.', spell: 'Spends a spell slot.', feature: '', trait: '' };
 
 // What was set for this creature: the DM is sent it on the creature, a player in `S.reactions`.
 const setFor = (S, e) => e.reactions ?? S.reactions?.[e.id] ?? {};
