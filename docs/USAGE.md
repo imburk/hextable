@@ -28,6 +28,9 @@ Agent work did not draw on the Fable meter; only the lead's own turns did.
 
 ## Jobs
 
+The lead conversation of 13 November ran about twelve hours and 40 merges in one context; its own
+turns were the largest single cost by the end. A fresh lead conversation per session avoids that.
+
 Tokens and time are what the agent reported when it finished; "?" means not
 yet known or not reported.
 
@@ -56,8 +59,11 @@ yet known or not reported.
 | 13 Nov | Ultra | Vendor Three.js r187, gzip (R10) | #177 / #180 | Sonnet | 111k | 13 min | merged |
 | 13 Nov | Ultra | Review fixes; multiclassing | #169, #175 / #179, #182 | Opus | 419k | 60 min | merged (state 18) |
 | 13 Nov | Ultra | Table UI spec | #181 / #183 | Sonnet | 293k | 13 min | merged |
-| 13 Nov | Ultra | Drawer, Settings, About, tracker (T1, T2) | #181, #173 | Sonnet | ? | ? | running |
-| 13 Nov | Ultra | Engine side of the table UI (defeat, rewind, rewards) | #181 | Opus | ? | ? | running |
+| 13 Nov | Ultra | Drawer, Settings, About, tracker (T1, T2) | #181, #173 / #190 | Sonnet | 310k | 85 min | merged |
+| 13 Nov | Ultra | Engine side of the table UI (defeat, rewind, rewards) | #181 / #186, #188 | Opus | 289k | 61 min | merged (state 19) |
+| 13 Nov | Ultra | Three.js renderer at parity (R11) | #185 / #187 | Sonnet | 232k | 37 min | merged |
+| 13 Nov | Ultra | Feats; magic items with attunement | #189 / #191, #192 | Opus | 487k | 62 min | merged (state 20) |
+| 13 Nov | Ultra | Defeat and rewards screens (T5c, T6c) | #181 / #194 | Sonnet | 287k | about 150 min, a restart and one fix round | merged |
 
 Times on the night of 13 November are long because up to six agents shared one machine; the same
 jobs run alone took a quarter of the time on 12 November. The machine has two CPU cores: three
