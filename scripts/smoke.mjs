@@ -124,14 +124,10 @@ async function selectAndMove(page, touch, id, name) {
   for (let attempt = 0; attempt < 6; attempt++) {
     await settle(page, id);
     const dir = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]][attempt];
-    // A hex where someone stands would select that creature, not move this one (the party may be
-    // set down close together, on a map's starts): try another side. A tap a neighbouring pawn
-    // caught selects that pawn, so this one is selected again before each tap.
-    const pt = await page.evaluate(([i, d]) => {
-      const S = window.hextable.state, e = S.entities[i], h = { q: e.pos.q + d[0], r: e.pos.r + d[1] };
-      if (Object.values(S.entities).some((o) => o.id !== i && o.pos?.q === h.q && o.pos?.r === h.r)) return null;
-      return window.hextable.R.screenOf({ q: h.q, r: h.r, z: e.pos.z });
-    }, [id, dir]);
+    // A hex with somebody in it is skipped: a tap there selects them instead (the party stands side by side on a stock map).
+    const pt = await page.evaluate(([i, d]) => { const S = window.hextable.state, e = S.entities[i], q = e.pos.q + d[0], r = e.pos.r + d[1];
+      if (Object.values(S.entities).some((o) => o.pos && o.pos.q === q && o.pos.r === r)) return null;
+      return window.hextable.R.screenOf({ q, r, z: e.pos.z }); }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
     await page.click(`#party button:has-text("${name}")`);                              // still the one selected
     await tapAt(page, touch, pt.x, pt.y);
@@ -306,6 +302,22 @@ async function solo(browser, url, label, opts) {
         if ((await state(page, (S) => S.encounter.budget.action)) !== before.action - 1) throw new Error('the throw did not spend the action');
         await page.evaluate(() => { window.hextable.dice.skip(); window.hextable.act({ type: 'setting', key: 'diceThrow', value: 'auto' }); window.hextable.act({ type: 'endEncounter' }); });
         await wait(page, () => window.hextable.waiting === 0 && !window.hextable.state.encounter, null, 15000);
+      });
+
+      // Last, because it replaces the map: the stock maps are drawn as rooms with a cut-away and as a cave (docs/specs/renderer.md).
+      await run.do('the stock dungeon is drawn with a cut-away that follows the camera, and the stock cave as a cave', async () => {
+        const load = async (id) => { await page.evaluate((m) => window.hextable.ED.stock(m), id); await wait(page, (m) => window.hextable.state.map.id === m, id); await sleep(400); };
+        await load('dungeon');
+        const walls = await page.evaluate(async () => {
+          const R = window.hextable.R, seen = new Set(); R.cam.pitch = 0.95;
+          for (const yaw of [0.5, 2.1, 3.6, 5.2]) { R.cam.yaw = yaw; await new Promise((r) => setTimeout(r, 250)); seen.add(R.cutSig); }
+          return { levels: R.floorData.length, faces: R.floorData.reduce((n, l) => n + l.walls.length, 0), built: R.wallMesh.n, cuts: seen.size };
+        });
+        if (!walls.levels || !walls.faces || !walls.built) throw new Error(`the dungeon's walls were not built: ${JSON.stringify(walls)}`);
+        if (walls.cuts < 2) throw new Error(`the cut-away did not change as the camera went round: ${JSON.stringify(walls)}`);
+        await load('cave');
+        const cave = await page.evaluate(() => { const R = window.hextable.R; return { levels: R.floorData.length, built: R.terrain.n, cells: R.floorData.reduce((n, l) => n + l.patches.reduce((m, p) => m + p.cells.length, 0), 0) }; });
+        if (cave.levels !== 1 || cave.cells < 100 || cave.built < 5000) throw new Error(`the cave was not built: ${JSON.stringify(cave)}`);
       });
 
     } finally { await ctx.close(); }
@@ -1306,12 +1318,213 @@ async function stockMaps(browser, url, label, opts) {
   });
 }
 
+// ---------- timeline and pace ----------
+// At pace `wait` (the default of a table with no setting): a goblin's attack, damage and fall play in order and the player's
+// controls wake after them; a tap skips; the shown state stays behind the table's until its beat. Setup runs at `instant`.
+// Still: no dice in the air and no beats left to play.
+const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, ms);
+const setPace = (p, v) => p.evaluate((x) => { localStorage.setItem('hextable.pace', JSON.stringify(x)); window.hextable.timeline.setPace(window.hextable.pace()); }, v);
+// Starts a fight with `pc` beside a foe and turns until it is the foe's turn. Leaves the page at instant pace.
+async function foeTurn(page, hp) {
+  await setPace(page, 'instant');
+  const ids = await page.evaluate((hp0) => {
+    const h = window.hextable;
+    document.getElementById('dm-auto').checked = false;
+    if (h.state.encounter) h.act({ type: 'endEncounter' });
+    const alive = (e) => e.hp > 0 && !e.dead;
+    const foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden && (e.attacks?.length || e.actions?.length));
+    const pc = Object.values(h.state.entities).find((e) => e.kind === 'pc' && alive(e));
+    h.act({ type: 'setHp', actor: pc.id, hp: hp0 ?? pc.maxHp });
+    for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
+      h.act({ type: 'place', actor: pc.id, to: { q: foe.pos.q + dq, r: foe.pos.r + dr } });
+      const p = h.state.entities[pc.id].pos;
+      if (Math.max(Math.abs(p.q - foe.pos.q), Math.abs(p.r - foe.pos.r), Math.abs(p.q + p.r - foe.pos.q - foe.pos.r)) === 1) break;
+    }
+    h.act({ type: 'startEncounter', center: foe.pos });
+    return { pc: pc.id, foe: foe.id };
+  }, hp);
+  await calm(page);
+  for (let i = 0; i < 20; i++) {
+    const cur = await page.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
+    if (cur === ids.foe) return ids;
+    await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+    await calm(page);
+  }
+  throw new Error('it never became the foe\'s turn');
+}
+// What a foe does to hit a hero: one of its actions, or its first attack (runs in the page).
+const strike = ([pcId, foeId]) => {
+  const S = window.hextable.state, f = S.entities[foeId];
+  const def = f.actions?.find((a) => JSON.stringify(a.effects ?? []).includes('"melee"'));
+  window.hextable.act(def ? { type: 'act', actor: foeId, action: def.id, target: pcId } : { type: 'attack', actor: foeId, target: pcId, attack: f.attacks[0].id });
+};
+// The foe attacks the hero. Reads, in the same breath, what the screen says (the table's state is final, the shown one is not);
+// then waits for stillness and returns the beats that played, with their times.
+async function strikeAndWatch(page, { pc, foe }) {
+  const at = await page.evaluate(() => performance.now());
+  const now = await page.evaluate(([pcId, foeId, src]) => {
+    (0, eval)(`(${src})`)([pcId, foeId]);
+    const h = window.hextable;
+    return { busy: h.timeline.busy(), waiting: !document.getElementById('pace-wait').hidden, shown: h.timeline.shown().entities[pcId].hp, real: h.state.entities[pcId].hp };
+  }, [pc, foe, strike.toString()]);
+  await calm(page);
+  const beats = await page.evaluate((n) => window.hextable.played.filter((x) => x.t >= n), at);
+  return { now, beats, still: await page.evaluate(() => ({ busy: window.hextable.timeline.busy(), waiting: !document.getElementById('pace-wait').hidden })) };
+}
+
+async function pacing(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch;
+    const ctx = await browser.newContext(opts, { pace: 'wait' });
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      await run.do('play solo at the default pace', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => { window.hextable.dice.show = 'off'; });        // the dice are not what this pass is about
+        if ((await page.evaluate(() => window.hextable.pace())) !== 'wait') throw new Error('the pace is not wait');
+        await page.click('#btn-log');
+      });
+      let ids;
+      await run.do('a goblin hits: attack, damage and the fall play in order before the controls wake', async () => {
+        for (let i = 0; i < 12; i++) {
+          ids = await foeTurn(page, 1);
+          await setPace(page, 'wait');
+          const r = await strikeAndWatch(page, ids);
+          const types = r.beats.map((x) => x.type), hit = types.includes('damage');
+          if (!hit) { if (!types.includes('attack') || r.still.busy) throw new Error(`a miss did not play and settle: ${types}`); continue; }
+          const t = (k) => r.beats.find((x) => x.type === k);
+          if (!r.now.busy || !r.now.waiting) throw new Error('no "…" and no wait while the beats start');
+          if (r.now.real >= 1 || r.now.shown !== 1) throw new Error(`the screen is not behind the table: table ${r.now.real}, shown ${r.now.shown}`);
+          if (t('attack').hp !== 1) throw new Error('the hit points drained with the attack');
+          if (!(t('damage').hp < 1)) throw new Error('the hit points did not drain with the damage');
+          if (!(t('damage').t - t('attack').t >= 450)) throw new Error(`the damage came ${Math.round(t('damage').t - t('attack').t)} ms after the strike`);
+          const order = types.filter((k) => ['attack', 'damage', 'down', 'idle'].includes(k)).join();
+          if (!/^attack,damage(,down)?,idle$/.test(order)) throw new Error(`out of order: ${types}`);
+          if (r.still.busy || r.still.waiting) throw new Error('the controls did not wake');
+          return;
+        }
+        throw new Error('the goblin missed twelve times');
+      });
+      await run.do('a tap on the map skips the beats and does not act', async () => {
+        ids = await foeTurn(page, null);
+        await setPace(page, 'wait');
+        await page.evaluate(strike, [ids.pc, ids.foe]);
+        if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
+        const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn]));
+        const pt = await page.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.kind === 'pc'); const p = h.R.screenOf({ q: e.pos.q + 2, r: e.pos.r, z: e.pos.z }); return p; });
+        await sleep(60);
+        const canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : { x: opts.viewport.width / 2, y: 120 };
+        // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
+        for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
+        if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
+        if (before !== (await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn])))) throw new Error('the tap acted as well as skipped');
+        if (await shown(page, '#pace-wait')) throw new Error('"…" is still showing');
+      });
+      await run.do('Escape skips too, and a button tap skips without acting', async () => {
+        await calm(page);
+        await page.evaluate(([pc, foe]) => window.hextable.act({ type: 'endTurn', actor: window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id }), [ids.pc, ids.foe]);
+        if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
+        await page.keyboard.press('Escape');
+        if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('Escape did not skip');
+      });
+      await run.do('pace instant plays at once, as before', async () => {
+        await setPace(page, 'instant');
+        await page.evaluate(() => { const S = window.hextable.state; const c = S.encounter.order[S.encounter.turn].id; window.hextable.act({ type: 'endTurn', actor: c }); });
+        if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('beats are playing at instant');
+      });
+      await run.do('the pace control in the log panel sets this device\'s pace', async () => {
+        await page.selectOption('#pace-pick', 'flow');
+        if ((await page.evaluate(() => window.hextable.pace())) !== 'flow') throw new Error('flow was not chosen');
+        await page.selectOption('#pace-pick', '');
+        if ((await page.evaluate(() => window.hextable.pace())) !== 'wait') throw new Error('the default is not wait');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
+// The monster AI runs in the DM's browser and waits for the picture; a phone player is not held up by it.
+async function pacingTable(browser, url) {
+  await scenario('timeline: a DM and a phone player', async (run) => {
+    const hostCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } }, { pace: 'wait' });
+    const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { pace: 'wait' });
+    try {
+      const host = await hostCtx.newPage(), phone = await phoneCtx.newPage();
+      run.watch(host, ' (DM)'); run.watch(phone, ' (phone)');
+      let code, id;
+      await run.do('the DM hosts, the phone joins and plays a character', async () => {
+        await open(host, url); await host.fill('#lobby-name', 'Smoke DM'); await host.click('#lobby-host');
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6, null, 20000);
+        code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
+        await open(phone, url); await phone.fill('#lobby-name', 'Smoke Player'); await phone.fill('#lobby-code', code); await phone.click('#lobby-join');
+        await wait(phone, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await host.click('#btn-dm'); await waitShown(host, '#dm');
+        await host.click('#dm-table button:has-text("Let in")');
+        await wait(phone, () => window.hextable.state?.entities?.fighter);
+        await host.click('#dm .close');
+        const b = phone.locator('#party button:has-text("Play as")').first();
+        const name = (await b.textContent()).replace('Play as ', '').trim();
+        id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
+        await b.click();
+        await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
+      });
+      await run.do('a fight is started at instant pace on the DM and the phone', async () => {
+        await setPace(host, 'instant'); await setPace(phone, 'instant');
+        await host.evaluate((pc) => {
+          const h = window.hextable, alive = (e) => e.hp > 0 && !e.dead;
+          const foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden);
+          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
+            h.act({ type: 'place', actor: pc, to: { q: foe.pos.q + dq, r: foe.pos.r + dr } });
+            const p = h.state.entities[pc].pos;
+            if (Math.max(Math.abs(p.q - foe.pos.q), Math.abs(p.r - foe.pos.r), Math.abs(p.q + p.r - foe.pos.q - foe.pos.r)) === 1) break;
+          }
+          h.act({ type: 'startEncounter', center: foe.pos });
+        }, id);
+        await wait(phone, () => !!window.hextable.state.encounter);
+      });
+      await run.do('at wait, the DM\'s monsters act only once the picture is still; the phone follows without being held up', async () => {
+        await setPace(host, 'wait'); await setPace(phone, 'wait');
+        await host.evaluate(() => { document.getElementById('dm-auto').checked = true; });
+        // Put the turn on a monster: end the turns of the heroes with the DM's controls (at wait, one at a time).
+        const turnOf = (p) => p.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id ?? null; });
+        // Every update with a monster's doing in it must arrive while nothing is playing: the AI waited for the picture.
+        await host.evaluate(() => {
+          const h = window.hextable, tl = h.timeline, push = tl.push; h.pushes = [];
+          tl.push = (state, events, meta) => { h.pushes.push({ npc: events.some((e) => (e.type === 'attack' || e.type === 'moved' || e.type === 'turn') && (e.actor ?? e.id) && state.entities[e.actor ?? e.id]?.kind === 'npc' && e.type !== 'turn'), busy: tl.busy() }); return push(state, events, meta); };
+        });
+        for (let i = 0; i < 12; i++) {
+          const cur = await turnOf(host);
+          if (!cur) break;
+          const mineNow = await host.evaluate((c) => window.hextable.state.entities[c].kind === 'pc', cur);
+          if (mineNow) { await calm(host); await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); }
+          await sleep(700);
+        }
+        await sleep(2500);
+        const pushes = await host.evaluate(() => window.hextable.pushes);
+        if (!pushes.some((x) => x.npc)) throw new Error('no monster acted');
+        if (pushes.some((x) => x.npc && x.busy)) throw new Error(`a monster acted while the picture was playing: ${JSON.stringify(pushes)}`);
+        await calm(host); await calm(phone);
+        const same = await Promise.all([host, phone].map((p) => p.evaluate(() => JSON.stringify([window.hextable.state.encounter?.round, window.hextable.state.encounter?.turn, ...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party').map((e) => [e.id, e.hp, e.pos.q, e.pos.r])]))));
+        if (same[0] !== same[1]) throw new Error('the phone and the DM disagree once both are still');
+      });
+    } finally { await hostCtx.close(); await phoneCtx.close(); }
+  });
+}
+
 // ---------- main ----------
 try {
   console.log('smoke: building and starting the table server');
   const url = await startServer();
   browser = await chromium.launch({ args: ARGS });
-  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions) runs one pass alone
+  // Every page plays at pace `instant` (docs/specs/renderer.md, decision 3), so the passes that are not about pacing need not wait for
+  // beats. A pass about pacing asks for another pace: browser.newContext(opts, { pace: 'wait' }).
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (opts, { pace = 'instant' } = {}) => {
+    const c = await newContext(opts);
+    await c.addInitScript((p) => { try { localStorage.setItem('hextable.pace', JSON.stringify(p)); } catch { /* storage unavailable */ } }, pace);
+    return c;
+  };
+  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline) runs one pass alone
   if (!only) {
     await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
     await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -1334,6 +1547,11 @@ try {
   if (!only || only === 'import') {
     await importFg(browser, url, 'import from Fantasy Grounds at 1280x800', { viewport: { width: 1280, height: 800 } });
     await importFg(browser, url, 'import from Fantasy Grounds at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  }
+  if (!only || only === 'timeline') {
+    await pacing(browser, url, 'timeline at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await pacing(browser, url, 'timeline at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    await pacingTable(browser, url);
   }
   if (!only || only === 'maps') {
     await stockMaps(browser, url, 'stock maps at 1280x800', { viewport: { width: 1280, height: 800 } });

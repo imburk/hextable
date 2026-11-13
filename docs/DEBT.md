@@ -133,7 +133,7 @@ no longer in the table.) Stinking Cloud stays: a Poisoned that also bars actions
 | An effect that holds only while inside an area, or a trigger per 5 feet moved | silence, spike growth | |
 | An object or a weapon as the target | heat metal, magic weapon | |
 | Removing a condition, ending an effect, raising the dead | lesser restoration | dispel magic, remove curse, revivify |
-| A trigger on a hit (smites, duplicates that take hits), or a reaction | shining smite, mirror image | counterspell |
+| A trigger on a hit (smites, duplicates that take hits), or a reaction | shining smite (assist since #159), mirror image | ~~counterspell~~ (auto, #144) |
 | A choice among effects, or creatures of the caster's choice with no count | calm emotions, enthrall | bestow curse (four effects, duration by slot) |
 | Barriers by creature type, glyphs | | glyph of warding, magic circle, tiny hut |
 | Obscurement with a rider no hook can say (a Poisoned that also bars actions) | | stinking cloud |
@@ -186,6 +186,65 @@ are granted at the start of each turn, which a cast-time grant would get wrong),
 if the attacker can see the creature, and no negative tag), Stinking Cloud (a Poisoned that lasts to the end
 of the current turn but starts at the start of it, which the turn-boundary rule would carry one turn too far).
 
+**The spells the owner's party prepares** (#159). Five Fantasy Grounds sheets (Paladin 13, Paladin 6 / Bard 8, Druid 14,
+Sorcerer 15, Cleric 14) were run through the importer; every spell that maps to the pack was collected, prepared or
+not. 41 spells map. 11 are already `auto` (bless, cure wounds, fire bolt, greater invisibility, healing word, mass cure
+wounds, poison spray, protection from energy, sacred flame, shield, and counterspell, which #144 made auto). The other
+30 were each read against the SRD and held to the existing vocabulary. 1 moved: **Shining Smite** manual to assist (the
+2d6 radiant and the Advantage on attacks against the target for the concentration are the engine's; that a hit came
+first, the Bright Light and the loss of Invisible are the DM's; the range is entered as touch, as Vampiric Touch's is).
+Every entry already on main in the set matched the SRD numbers, so no data was corrected. After this pass spells are
+38 auto / 89 assist / 212 manual. "Sheets" is how many of the five sheets carry the spell.
+
+| Spell | Sheets | Before | After | What is missing (the step, op, hook or field that would be needed) |
+|---|---|---|---|---|
+| Banishment (4) | 2 | assist | assist | A step that takes a creature off the map until the spell ends (a `removed` state with a return), and a `target.type` tag for the Aberration, Celestial, Elemental, Fey or Fiend that does not return |
+| Lesser Restoration (2) | 2 | manual | manual | **`cure`** step: ends one chosen condition (Blinded, Deafened, Paralyzed, Poisoned) |
+| Ice Storm (4) | 2 | assist | assist | **`terrain`** on an area: Difficult Terrain until the end of the caster's next turn (`ends` for an area with no zone) |
+| Dispel Magic (3) | 2 | manual | manual | **`dispel`** step: ends a spell on a target by level, an ability check against 10 + level above the slot |
+| Detect Magic (1) | 2 | manual | manual | A sense or `reveal` of magic within 30 feet; nothing to roll. The DM remains |
+| Revivify (3) | 1 | manual | manual | **`revive`** step, a way to aim a spell at a dead creature (`cast` refuses one: "is dead"), and a note of when it died (within a minute) |
+| Protection from Poison (2) | 1 | assist | assist | **`cure`** step (ends Poisoned) and a `save` modifier scoped to a condition (Advantage to avoid or end Poisoned) |
+| Shining Smite (2) | 1 | manual | assist | A cast trigger "right after a melee hit" that adds to that hit (`reaction.on: "hit"` for the caster's own hits), Bright Light on a creature, a tag or op for "cannot benefit from Invisible" |
+| Fire Storm (7) | 1 | assist | assist | **`area.count`** laid out by the caster: `cast` taking a list of cube hexes that must touch (the engine lays out one) |
+| Heal (6) | 1 | assist | assist | **`cure`** step (ends Blinded, Deafened, Poisoned) |
+| Conjure Elemental (5) | 1 | manual | manual | Summoned creature with a stat block and a turn (S6), and a caster's choice among four damage types |
+| Blight (4) | 1 | assist | assist | **`target.type`** tag with an auto-fail (Plant creatures fail the save), and an object as a target |
+| Charm Monster (4) | 1 | assist | assist | `ends: { on: "damaged" }` on a condition (until the caster's side damages it) and a save-Advantage tag "caster or an ally is fighting it" |
+| Sleet Storm (3) | 1 | assist | assist | `zone.terrain` (Difficult), `zone.obscures` (Heavily Obscured), a `breakConcentration` step on a failed save, and dousing flames |
+| Moonbeam (2) | 1 | assist | assist | `zone.moves`: a Magic action that moves the cylinder up to 60 feet and makes those it reaches save; reverting a shape-shifter. Left alone: the zone, its save and its damage are correct |
+| Pass without Trace (2) | 1 | assist | assist | A modifier that holds only while inside an emanation that moves with the caster (`modifier.while: "inAura"`) and leaving no tracks |
+| Faerie Fire (1) | 1 | manual | manual | A tag for "the attacker can see the target" (the engine has only the negative, `target.unseen`), light on a creature, and "cannot benefit from Invisible". Advantage without the sight test would be wrong, so it is not entered as assist |
+| Mage Hand (0) | 1 | manual | manual | An object that acts and moves on later turns (`spawn` of an object entity) |
+| Mending (0) | 1 | manual | manual | An object as a target with a repair state; nothing to roll |
+| Message (0) | 1 | manual | manual | Private communication; nothing for the engine to apply |
+| Minor Illusion (0) | 1 | manual | manual | An illusion object with a Study check against the spell save DC |
+| Prestidigitation (0) | 1 | manual | manual | A choice among minor effects on objects; nothing to roll |
+| Dominate Monster (8) | 1 | assist | assist | `ends: { on: "save", at: "damaged" }` (a repeat save whenever it takes damage), the "fighting it" save-Advantage tag, `higher.slot.duration` (8 hours at level 9), and commands (the DM) |
+| Teleport (7) | 1 | manual | manual | A `teleport` step to a known destination off the map, passengers, and a familiarity table roll with a damage mishap |
+| Disintegrate (6) | 1 | assist | assist | A rider on a creature taken to 0 Hit Points (dust, `set` of a state, no revival but True Resurrection or Wish), and an object or a creation of force as a target |
+| Globe of Invulnerability (6) | 1 | manual | manual | A `spell.blocked` hook on an emanation: spells of level 5 or lower cast from outside have no effect inside |
+| Cone of Cold (5) | 1 | assist | assist | A rider on a creature the damage kills (a frozen statue until it thaws) |
+| Teleportation Circle (5) | 1 | manual | manual | A portal object linking two places on the map or to a known circle, and a `teleport` step for those who enter |
+| Tongues (3) | 1 | manual | manual | Languages as state (a `languages` field on a creature, which a sheet does not have yet, C9) |
+| Misty Step (2) | 1 | manual | manual | **`teleport`** step: up to 30 feet to an unoccupied space the caster can see (the `move` step only pushes or pulls) |
+
+Which single addition unlocks the most of these (the engine lane's list):
+
+| Addition | Unlocks to `auto` | Held at assist only by it, or partly |
+|---|---|---|
+| `cure` step with a `choice` of condition (Lesser Restoration, Heal) | lesser restoration, heal | protection from poison (also needs the condition-scoped `save` modifier) |
+| A rider on a kill (`onKill` branch on a damage step, with a `set` state) | cone of cold | disintegrate (also needs an object as a target) |
+| `terrain` and `obscures` on an area or zone | ice storm | sleet storm (also `breakConcentration`) |
+| `ends: { on: "damaged" }` and a "fighting it" tag | | charm monster, dominate monster (also `higher.slot.duration`) |
+| `teleport` step | misty step | teleport, teleportation circle (also a destination off the map) |
+| `dispel` step | dispel magic | |
+| `revive` step and aiming at the dead | revivify | |
+| An "attacker can see the target" tag | | faerie fire (also light and the Invisible rule) |
+
+Detect Magic, Mage Hand, Mending, Message, Minor Illusion, Prestidigitation and Tongues are information and
+utility with nothing the engine can roll or track; they stay with the DM and no single vocabulary addition frees them.
+
 ## Maps, sight and movement
 
 | # | What | Who |
@@ -210,7 +269,9 @@ of the current turn but starts at the start of it, which the turn-boundary rule 
 | P16 | A single-use modifier spent by an ability check (`abilityCheck` in engine.js) still ends without an `effectEnd` event; saving throws were fixed (#101). No SRD entry has a single-use check modifier yet | engine |
 | P17 | The stock maps (`docs/maps.md`) are only offered in the editor's Map file tool, so the DM opens the editor to start on one; the lobby cannot pick a map when a table is made. They have no tables, chairs, beds, trees on a hex or other furniture (the object pack has none): the tavern's bar is a rail, pillars and boulders are rock hexes. A full map document is 35 to 70 KB each, sent whole by `loadMap` | any |
 | P18 | ~~`loadMap` sets the party down by spiralling out from `starts[0]` and ignores the other starts, so a map's list of five starts only helps the linter and the DM~~ (#154: the party is set down on the starts in order, a start nobody can stand on is passed over, and anyone left spirals out from the first). Still: a start on an upper level needs a `z` to be found | engine |
-| P19 | Floors (R2): a wall that ends or bends inside a hex does not cut it; the end of a corridor follows its tiles; walls are still drawn low, the cut-away is data (`cutaway()` in `floors.js`) but not drawn; floor colour is even per cell, not smooth | any (renderer) |
+| ~~P19~~ | ~~Floors (R2): a wall that ends or bends inside a hex does not cut it; the end of a corridor follows its tiles; walls are still drawn low, the cut-away is data but not drawn~~ (#150: done). Left: floor colour is even per cell, not smooth; no rim shading between patches; the cut-away snaps rather than fades; cave rock is a flat top with no cracks, and its face is not lowered toward the camera | any (renderer) |
+| P20 | Timeline (R3): there is no 1x/2x speed control yet (the timeline has `setSpeed`), and the DM has no control for the `pace` table setting in the DM panel (it can be sent as `{ type: 'setting', key: 'pace', value }`); a player's own choice in the log panel can only make it quicker | any |
+| P21 | Timeline (R3): the shown state is kept behind the table's only for hit points, death, place and conditions; doors, regions, effects and the map change when the update's first beat starts. The character sheet, tracker and action bar are redrawn when the picture is still, so they show the table's numbers a moment after the log. The renderer has no animation for falls, deaths or doors yet (R4) | any (renderer) |
 
 ## Table and server
 

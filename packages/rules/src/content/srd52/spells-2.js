@@ -499,12 +499,17 @@ export const spells2 = [
   {
     id: "shining-smite", name: "Shining Smite", source: "SRD 5.2.1",
     level: 2, school: "transmutation", classes: ["paladin"],
-    time: "bonus", range: "self", components: ["v"],
+    time: "bonus", range: "touch", components: ["v"],
     duration: "1 minute", concentration: true, ritual: false,
-    target: {"self": true},
-    effects: [{"manual": "Shining Smite: cast as a Bonus Action immediately after hitting a creature with a Melee weapon or an Unarmed Strike. The target takes an extra 2d6 Radiant damage from the attack (1d6 more per slot level above 2). Until the spell ends (Concentration, up to a minute) the target sheds Bright Light in a 5-foot radius, attack rolls against it have Advantage, and it cannot benefit from the Invisible condition. The DM adds the damage and the rest."}],
-    tier: "manual", checked: true,
-    text: "Cast as a Bonus Action right after a Melee weapon or Unarmed Strike hit: the target takes 2d6 extra radiant damage, sheds light, can't benefit from Invisible, and attacks against it have Advantage, for up to a minute.",
+    target: {"creature": {"count": 1}},
+    effects: [
+      {"damage": "2d6", "type": "radiant"},
+      {"modifier": {"on": "attack.received", "op": "advantage"}},
+      {"manual": "Shining Smite: it is cast right after the caster hits the target with a Melee weapon or an Unarmed Strike, and the engine does not check that hit. Until the spell ends the target also sheds Bright Light in a 5-foot radius and cannot benefit from the Invisible condition. The DM holds the caster to the trigger and applies the light and the Invisible rule."},
+    ],
+    higher: {"slot": {"damage": "1d6"}},
+    tier: "assist", checked: true,
+    text: "Cast as a Bonus Action right after a Melee weapon or Unarmed Strike hit: the target takes 2d6 extra radiant damage (more with higher slots) and, while the caster concentrates, attack rolls against it have Advantage. The SRD gives the range as Self; it is entered as touch so the engine can reach the creature just hit. The DM checks that a hit came first and applies the Bright Light and the loss of Invisible.",
   },
   {
     id: "silence", name: "Silence", source: "SRD 5.2.1",

@@ -15,8 +15,10 @@
 //   4. Every cell edge is looked at across: nothing there (open), a lower floor (drop), a higher one (rise),
 //      a wall on the line (wall), or just a different patch at the same height (seam).
 //   5. Where the floor ends, the edges are chained into an outline with an inset line for the kerb.
-// Not done: a wall that ends inside a hex, or bends inside it, does not cut it (only a wall that crosses a
-// hex from side to side does), so the floor there still follows the hex edge and the wall stands on it.
+// A wall cuts a piece if it crosses it from side to side (a cap wall across a corridor crosses the strip the two
+// side walls leave of a hex). Where walls meet at a point inside a hex (a bend, a corner) each arm's line is
+// carried on through the hex too, so the hex falls apart into convex wedges; the wedges the wall does not
+// separate are joined again into one patch. A wall that ends in the open inside a hex (a dead end) does not cut.
 import * as H from './shared/hex.js';
 import { FT, surfaces, regionAt } from './shared/space.js';
 import { WALL_KINDS, center, objectSegment } from './shared/walls.js';
@@ -29,6 +31,7 @@ export const WALL_THICK = 0.5;                     // feet
 export const WALL_FULL = 10;                       // WALL_HEIGHT in the rules, feet
 export const CUT_HEIGHT = 3;                       // what a cut-away wall is lowered to, feet
 const TOL = 0.03;                                  // feet: points closer than this are the same point
+const JOIN = 0.25;                                 // feet: a traced wall that stops this short of another still meets it
 const MIN_AREA = 0.005;                            // square feet: a smaller piece is a rounding error
 
 const cross2 = (a, b) => a[0] * b[1] - a[1] * b[0];
@@ -117,8 +120,29 @@ function distToSeg(p, [a, b]) {
   const d = sub2(b, a), l = dot2(d, d), t = l ? Math.max(0, Math.min(1, dot2(sub2(p, a), d) / l)) : 0;
   return len2(sub2(p, [a[0] + d[0] * t, a[1] + d[1] * t]));
 }
+// Where two or more of the lines end at one point (a bend or a corner): for each line there, the line carried
+// on through the point. [{ at, d }]. A line that ends on the side of another (a T) is not one: the other cuts first.
+function bends(lines) {
+  const out = [];
+  lines.forEach((s, i) => {
+    for (const e of [0, 1]) {
+      const at = s[e];
+      if (lines.some((t, j) => j !== i && (len2(sub2(t[0], at)) <= JOIN || len2(sub2(t[1], at)) <= JOIN))) out.push({ at, d: sub2(s[1], s[0]) });
+    }
+  });
+  return out;
+}
+// Put a point into a polygon's edge if it lies on one (and is not already a corner).
+function withPoint(poly, p) {
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if (len2(sub2(p, a)) <= TOL || len2(sub2(p, b)) <= TOL) return poly;
+    if (distToSeg(p, [a, b]) <= TOL) return [...poly.slice(0, i + 1), p, ...poly.slice(i + 1)];
+  }
+  return poly;
+}
 // Does the line a-b cross the convex polygon from side to side: through its inside, with both ends outside or on its edge?
-function crossesFully(poly, a, b) {
+function crossesFully(poly, a, b, slack = TOL) {
   const d = sub2(b, a), l = len2(d); if (!l) return false;
   const parts = splitPoly(poly, a, d); if (!parts[0] || !parts[1]) return false;
   const t = (p) => dot2(sub2(p, a), d) / (l * l), s = poly.map((v) => cross2([d[0] / l, d[1] / l], sub2(v, a)));
@@ -129,7 +153,7 @@ function crossesFully(poly, a, b) {
     if (Math.abs(sp) <= 1e-9) see(p);
     if ((sp > 1e-9 && sq < -1e-9) || (sp < -1e-9 && sq > 1e-9)) { const k = sp / (sp - sq); see([p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]); }
   }
-  const e = TOL / l;
+  const e = slack / l;
   return lo >= -e && hi <= 1 + e;
 }
 
@@ -145,12 +169,14 @@ export const roomLevels = (map) => map.levels.filter((l) => map.walls.some((w) =
 //     a hex anyone can stand in), poly }
 //   outline edge: { a, b, kind: 'open' | 'drop' | 'rise' | 'wall' | 'seam', hex, lowest, toTop (for drop), ia, ib }
 //     ia and ib are a and b moved in by LIP, mitred along the chain; only open and drop edges have them.
-export function buildFloors(map, { levels } = {}) {
+//   `caves`: ids of levels drawn as caves (see caveOf): their rock tiles are not floor, so the floor is the open tiles only.
+export function buildFloors(map, { levels, caves = [] } = {}) {
   const ids = levels ?? roomLevels(map);
-  return { levels: ids.map((id) => map.levels.find((l) => l.id === id)).filter(Boolean).map((l) => floorOfLevel(map, l)) };
+  return { levels: ids.map((id) => map.levels.find((l) => l.id === id)).filter(Boolean).map((l) => floorOfLevel(map, l, caves.includes(l.id))) };
 }
 
-function floorOfLevel(map, level) {
+function floorOfLevel(map, level, cave = false) {
+  const tiles = cave ? Object.fromEntries(Object.entries(level.tiles).filter(([, t]) => t.t !== 'rock')) : level.tiles;
   const lines = cutLines(map, level.id), index = new LineIndex(lines);
   // Hexes a cutting line passes close to, with the lines near each.
   const near = new Map();
@@ -161,23 +187,41 @@ function floorOfLevel(map, level) {
       for (const h of [c, ...H.neighbors(c)]) { const key = H.col(h); if (!near.has(key)) near.set(key, new Set()); near.get(key).add(i); }
     }
   });
+  // Bends and corners: the lines there, carried on through the point, also cut the hexes it lies in.
+  const carry = bends(lines), carryNear = new Map();
+  carry.forEach((c, i) => { const h = hexAt(c.at[0], c.at[1]); for (const n of [h, ...H.neighbors(h)]) { const key = H.col(n); if (!carryNear.has(key)) carryNear.set(key, []); carryNear.get(key).push(i); } });
   // 1. Pieces.
   const pieces = [];                                       // { at, poly, owner (tile key or null), own (the piece that holds the tile's centre) }
   const byAt = new Map();
   const add = (p) => { pieces.push(p); if (!byAt.has(p.at)) byAt.set(p.at, []); byAt.get(p.at).push(p); };
-  for (const k of new Set([...Object.keys(level.tiles), ...near.keys()])) {
-    const h = H.parse(k), tile = level.tiles[k], poly = hexPoly(h);
-    let parts = [poly];
-    for (const i of near.get(k) ?? []) {
-      const [a, b] = lines[i];
-      if (!crossesFully(poly, a, b)) continue;
-      parts = parts.flatMap((p) => { const [l, r] = splitPoly(p, a, sub2(b, a)); return l && r ? [l, r] : [p]; });
+  for (const k of new Set([...Object.keys(tiles), ...near.keys(), ...carryNear.keys()])) {
+    const h = H.parse(k), tile = tiles[k], mine = near.get(k) ?? [], ext = (carryNear.get(k) ?? []).map((i) => carry[i]);
+    // Cut the hex by every wall that crosses a piece from side to side (a piece is what is left after the cuts so far),
+    // and by the carried-on lines of bends inside a piece, until nothing more cuts.
+    const todo = [hexPoly(h)], parts = [];
+    while (todo.length) {
+      const poly = todo.pop();
+      let cut = null;
+      for (const i of mine) {
+        const [a, b] = lines[i];
+        if (!crossesFully(poly, a, b, JOIN)) continue;
+        const [l, r] = splitPoly(poly, a, sub2(b, a)); if (l && r) { cut = [l, r]; break; }
+      }
+      if (!cut) for (const e of ext) {
+        if (!(poly.some((v) => len2(sub2(v, e.at)) <= TOL) || inside(poly, e.at) || poly.some((v, j) => distToSeg(e.at, [v, poly[(j + 1) % poly.length]]) <= TOL))) continue;
+        const [l, r] = splitPoly(poly, e.at, e.d); if (l && r) { cut = [l, r]; break; }
+      }
+      if (cut) todo.push(cut[1], cut[0]); else parts.push(poly);
     }
     if (!tile && parts.length < 2) continue;               // no floor, and no wall to fill it up to
     const c = center(h);
     let own = null;
     if (tile) { own = parts.find((p) => inside(p, c)) ?? parts.reduce((m, p) => (polyArea(p) > polyArea(m) ? p : m)); }
-    for (const p of parts) add({ at: k, poly: p, owner: tile && p === own ? k : null, fill: !(tile && p === own) });
+    for (const part of parts) {
+      let poly = part;
+      for (const e of ext) poly = withPoint(poly, e.at);   // so a wall that stops half way along a cut line splits its edge there
+      add({ at: k, poly, owner: tile && part === own ? k : null });
+    }
   }
   // Contacts: where two pieces' edges lie along one another (they are opposite ways round), and whether a wall is on the line.
   const contacts = new Map(pieces.map((p) => [p, []]));
@@ -208,8 +252,8 @@ function floorOfLevel(map, level) {
   }
   const live = pieces.filter((p) => p.owner);
   const cells = live.map((p, n) => {
-    const tile = level.tiles[p.owner], z = level.z + (tile.h ?? 0), region = regionAt(map, level.id, H.parse(p.owner))?.id ?? null;
-    return { n, hex: p.owner, at: p.at, fill: p.fill, poly: p.poly, z, lift: tile.lift, top: z + (tile.lift ?? 0.6) / UNIT, terrain: tile.t, region, piece: p };
+    const tile = tiles[p.owner], z = level.z + (tile.h ?? 0), region = regionAt(map, level.id, H.parse(p.owner))?.id ?? null;
+    return { n, hex: p.owner, at: p.at, fill: p.at !== p.owner, poly: p.poly, z, lift: tile.lift, top: z + (tile.lift ?? 0.6) / UNIT, terrain: tile.t, region, piece: p };
   });
   const cellOf = new Map(cells.map((c) => [c.piece, c]));
   const lowestAt = new Map();
@@ -286,7 +330,7 @@ export function cellParts(cell, k) {
 
 // ---------- walls: posts, faces, cut-aways ----------
 // A post stands where wall segments meet, so that corners close: where two ends meet, or an end meets the
-// side of another wall. { at: [x, y], kind: the tallest kind meeting there, kinds }
+// side of another wall. { at: [x, y], kind: the tallest kind meeting there, kinds, keys: the `key` of each wall face that meets there }
 const TALL = { wall: 3, curtain: 3, window: 2, rail: 1 };
 function posts(map, level) {
   const ws = map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]);
@@ -298,32 +342,163 @@ function posts(map, level) {
     ws.forEach((w, i) => { if (!ids.has(i) && distToSeg(e.at, [w.a, w.b]) <= TOL) { ids.add(i); kinds.add(w.kind); } });       // an end on the side of another
     if (ids.size < 2) continue;
     const list = [...kinds].sort((x, y) => TALL[y] - TALL[x]);
-    out.push({ at: e.at, kind: list[0], kinds: list });
+    out.push({ at: e.at, kind: list[0], kinds: list, keys: [...ids].sort((x, y) => x - y).map((i) => `w:${ws[i].id}`) });
   }
   return out.sort((a, b) => a.at[0] - b.at[0] || a.at[1] - b.at[1]);
 }
-// Every drawn wall segment as data for the cut-away: where it is, which way it faces, and whether there is floor
+// Every drawn wall segment, and every door's line, as data for the cut-away: where it is, which way it faces, and whether there is floor
 // on each side of it. n is the left-hand unit normal of a to b; floor.left and floor.right say if a point just off each side is floor.
 function faces(map, level, patches) {
   const cellsAt = new Map();
   for (const p of patches) for (const c of p.cells) { if (!cellsAt.has(c.at)) cellsAt.set(c.at, []); cellsAt.get(c.at).push(c); }
   const floorAt = (pt) => { const h = hexAt(pt[0], pt[1]); return [h, ...H.neighbors(h)].some((n) => (cellsAt.get(H.col(n)) ?? []).some((c) => inside(c.poly, pt))); };
-  return map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]).map((w) => {
-    const d = sub2(w.b, w.a), l = len2(d) || 1, n = [-d[1] / l, d[0] / l], mid = [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2], off = 0.75;
-    return { id: w.id, kind: w.kind, a: w.a, b: w.b, mid, n, floor: { left: floorAt([mid[0] + n[0] * off, mid[1] + n[1] * off]), right: floorAt([mid[0] - n[0] * off, mid[1] - n[1] * off]) } };
-  });
+  const one = (key, id, kind, a, b) => {
+    const d = sub2(b, a), l = len2(d) || 1, n = [-d[1] / l, d[0] / l], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], off = 0.75;
+    return { key, id, kind, a, b, mid, n, floor: { left: floorAt([mid[0] + n[0] * off, mid[1] + n[1] * off]), right: floorAt([mid[0] - n[0] * off, mid[1] - n[1] * off]) } };
+  };
+  const out = map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]).map((w) => one(`w:${w.id}`, w.id, w.kind, w.a, w.b));
+  for (const o of map.objects) if (o.level === level.id) { const s = objectSegment(o); if (s) out.push({ ...one(`o:${o.id}`, o.id, 'door', s[0], s[1]), object: true }); }     // a door or a portcullis lies in a wall and is lowered with it
+  return out;
 }
 // Which wall faces to lower, seen from a camera that is `toCam` away from what it follows (a unit vector on the
-// ground, map feet). A wall is cut away when it stands between the camera and a room: the camera is on one side,
-// there is floor on the other, and the camera does not see it edge on. Returns a Set of indexes into `faces`.
+// ground, map feet). A wall is cut away when it stands between the camera and a room: the camera is on one side
+// and there is floor on the other. A wall seen nearly edge on (the side walls of a room, or one facet of a wall
+// traced along hex edges) is cut if there is floor beside it at all, so it does not stand up in the middle of a
+// low run. Returns a Set of indexes into `faces`.
 // A wall with floor on both sides (a partition) counts as such a wall whichever side the camera is on.
 export function cutaway(faces, toCam, edgeOn = 0.2) {
   const out = new Set();
   faces.forEach((f, i) => {
     const s = dot2(f.n, toCam);
-    if (Math.abs(s) < edgeOn) return;
+    if (Math.abs(s) < edgeOn) { if (f.floor.left || f.floor.right) out.add(i); return; }
     const far = s > 0 ? f.floor.right : f.floor.left;
     if (far) out.add(i);
   });
   return out;
+}
+
+// ---------- caves ----------
+// A level that is mostly rock with open hexes carved out, and has no walls of its own (the rock is the wall), is drawn
+// as a cave when the theme asks for it. The open tiles are floor, patches like any other. Where open floor meets rock
+// (or nothing) its edge is a chain of points, and each point is pushed out into the rock by a seeded noise that depends
+// only on where the point is, so every client draws the same cave and two hexes that share a point agree on it. The
+// push is always away from the floor, never into it, and is at most CAVE_PUSH feet: so the picture never shows rock
+// where a creature may stand, and the hex grid is untouched. The rock is drawn as a mass at one height, with a face
+// where it meets the floor.
+export const CAVE_PUSH = 1.6;                      // feet: the most an edge point is pushed into the rock
+export const CAVE_WALL = 4;                        // feet: how high the rock stands above the highest open floor
+const CAVE_SPLIT = 3;                              // pieces each hex side is cut into, so the edge can wobble along it
+const CAVE_MITRE = 1.35;                           // the most a corner may be pushed, as a multiple of the push
+
+// Is this level a cave: 30% rock or more, some open tiles, and no walls.
+export function isCave(map, levelId) {
+  const l = map.levels.find((x) => x.id === levelId);
+  if (!l || map.walls.some((w) => w.level === levelId)) return false;
+  const all = Object.values(l.tiles), rock = all.filter((t) => t.t === 'rock').length;
+  return all.length > 0 && rock < all.length && rock >= all.length * 0.3;
+}
+export const caveLevels = (map) => map.levels.filter((l) => isCave(map, l.id)).map((l) => l.id);
+
+// The seed of a level: from the map's id and the level's, so a map is the same cave on every screen.
+export function caveSeed(map, levelId) {
+  let h = 2166136261;
+  for (const ch of `${map.id}|${levelId}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+const lattice = (ix, iy, seed) => { let h = Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263) ^ Math.imul(seed | 0, 2147483629); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+// Smooth value noise in [0, 1) at a point.
+export function valueNoise(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const a = lattice(ix, iy, seed), b = lattice(ix + 1, iy, seed), c = lattice(ix, iy + 1, seed), d = lattice(ix + 1, iy + 1, seed);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+// How far the edge is pushed out at a point, in feet: between a little and CAVE_PUSH, in bumps about 2.5 feet across with finer ones on them.
+export const cavePush = (p, seed) => CAVE_PUSH * (0.15 + 0.85 * (0.65 * valueNoise(p[0] / 2.6, p[1] / 2.6, seed) + 0.35 * valueNoise(p[0] / 1.1 + 17, p[1] / 1.1 + 31, seed ^ 0x5bd1e995)));
+
+// The cave of a level, from its floors (buildFloors(map, { caves: [id] }), the same level's entry):
+//   { id, seed, chains, rock }
+//   chain: a closed or open run of the floor's edge against rock: [{ p: where the hex edge is, q: where the picture's edge is (p pushed
+//     out), hex: the open tile it belongs to, z: the drawn height of the floor there, feet }], `closed` if it runs round.
+//   rock: [{ hex, ring: [[x, y]...] }] the outline of each rock tile with the pushed points in it, in increasing angle, and
+//     `top` (feet), `bare`: the sides that face nothing at all (no tile), where the mass needs a face down to the ground; `steps`: the
+//     sides beside lower rock, { at, to }, where it needs a face down to that height. `at` is the index in `ring` where the side starts, CAVE_SPLIT points a side.
+//   chain points carry `top`, the height of the rock beside them, feet.
+export function caveOf(map, fl) {
+  const level = map.levels.find((l) => l.id === fl.id), seed = caveSeed(map, level.id);
+  let high = 0;
+  const open = [];                                         // the open edges of every patch, as pieces of one hex side each
+  const floorTop = new Map();                              // open tile -> the height of its floor, feet
+  for (const pa of fl.patches) { high = Math.max(high, pa.top); for (const c of pa.cells) floorTop.set(c.hex, pa.top); for (const e of pa.outline) if (e.kind === 'open') open.push({ a: e.a, b: e.b, hex: e.hex, z: pa.top, across: H.col(H.neighbors(H.parse(e.hex))[sideOf(H.parse(e.hex), e.a, e.b)]) }); }
+  // How high each rock tile stands: CAVE_WALL above the nearest open floor (the higher one if two are as near), so rock
+  // over a ledge is higher than rock over the cave floor. Walked out from the open tiles one step at a time.
+  const rockTop = new Map();
+  for (let ring = [...floorTop.entries()]; ring.length;) {
+    const next = new Map();
+    for (const [k, top] of ring) for (const nb of H.neighbors(H.parse(k))) {
+      const nk = H.col(nb);
+      if (level.tiles[nk]?.t !== 'rock' || rockTop.has(nk)) continue;
+      next.set(nk, Math.max(next.get(nk) ?? -Infinity, top));
+    }
+    for (const [k, top] of next) rockTop.set(k, top);
+    ring = [...next.entries()];
+  }
+  for (const k of Object.keys(level.tiles)) if (level.tiles[k].t === 'rock' && !rockTop.has(k)) rockTop.set(k, high);      // rock with no open floor in reach
+  // Cut every edge into CAVE_SPLIT pieces and chain them end to start (the floor is on the left of each).
+  const pieces = [];
+  for (const e of open) {
+    for (let i = 0; i < CAVE_SPLIT; i++) {
+      const t0 = i / CAVE_SPLIT, t1 = (i + 1) / CAVE_SPLIT, lerp = (t) => [e.a[0] + (e.b[0] - e.a[0]) * t, e.a[1] + (e.b[1] - e.a[1]) * t];
+      pieces.push({ a: lerp(t0), b: lerp(t1), hex: e.hex, z: e.z, top: (rockTop.get(e.across) ?? e.z) + CAVE_WALL });
+    }
+  }
+  const startsAt = new Map(); pieces.forEach((e, i) => { const k = pkey(e.a); if (!startsAt.has(k)) startsAt.set(k, []); startsAt.get(k).push(i); });
+  const used = new Set(), chains = [], endsHere = new Set(pieces.map((e) => pkey(e.b)));
+  const run = (first) => {
+    const list = [];
+    let i = first;
+    while (i !== undefined && !used.has(i)) { used.add(i); list.push(pieces[i]); i = (startsAt.get(pkey(pieces[i].b)) ?? []).find((j) => !used.has(j)); }
+    return list;
+  };
+  const starts = pieces.map((e, i) => i).filter((i) => !endsHere.has(pkey(pieces[i].a)));       // a run that has no piece before it
+  for (const i of starts) if (!used.has(i)) chains.push({ list: run(i), closed: false });
+  pieces.forEach((_, i) => { if (!used.has(i)) chains.push({ list: run(i), closed: true }); });
+  const out = [];
+  const pushed = new Map();                                // pkey(p) -> q, for every point of every chain
+  for (const { list, closed } of chains) {
+    const pts = list.map((e) => e.a).concat(closed ? [] : [list[list.length - 1].b]), n = pts.length;
+    const outward = (a, b) => { const d = sub2(b, a), l = len2(d) || 1; return [d[1] / l, -d[0] / l]; };       // the floor is on the left, so out is on the right
+    const chain = [];
+    for (let i = 0; i < n; i++) {
+      const prev = i > 0 || closed ? pts[(i + n - 1) % n] : null, next = i < n - 1 || closed ? pts[(i + 1) % n] : null, p = pts[i];
+      const n1 = prev ? outward(prev, p) : outward(p, next), n2 = next ? outward(p, next) : n1;
+      let v = [n1[0] + n2[0], n1[1] + n2[1]];
+      const k = 1 + dot2(n1, n2); v = k > 1e-6 ? [v[0] / k, v[1] / k] : n1;                       // the mitre: far enough out along both sides
+      const l = len2(v); if (l > CAVE_MITRE) v = [(v[0] / l) * CAVE_MITRE, (v[1] / l) * CAVE_MITRE];
+      const d = cavePush(p, seed), q = [p[0] + v[0] * d, p[1] + v[1] * d], src = list[Math.min(i, list.length - 1)];
+      pushed.set(pkey(p), q);
+      chain.push({ p, q, hex: src.hex, z: src.z, top: src.top });
+    }
+    out.push({ closed, points: chain });
+  }
+  // The rock: every rock tile's outline, with its pushed points. A side that meets nothing is marked.
+  const rock = [];
+  for (const k of Object.keys(level.tiles)) {
+    if (level.tiles[k].t !== 'rock') continue;
+    const h = H.parse(k), hex = hexPoly(h), ring = [], bare = [], steps = [], top = rockTop.get(k) + CAVE_WALL;
+    for (let i = 0; i < 6; i++) {
+      const a = hex[i], b = hex[(i + 1) % 6], across = H.neighbors(h)[sideOf(h, a, b)], ak = H.col(across);
+      if (!level.tiles[ak]) bare.push(ring.length);
+      else if (level.tiles[ak].t === 'rock' && rockTop.get(ak) < rockTop.get(k) - 1e-6) steps.push({ at: ring.length, to: rockTop.get(ak) + CAVE_WALL });
+      for (let j = 0; j < CAVE_SPLIT; j++) { const p = [a[0] + ((b[0] - a[0]) * j) / CAVE_SPLIT, a[1] + ((b[1] - a[1]) * j) / CAVE_SPLIT]; ring.push(pushed.get(pkey(p)) ?? p); }
+    }
+    rock.push({ hex: k, ring, bare, steps, top });
+  }
+  return { id: level.id, seed, chains: out, rock };
+}
+// Which neighbour (an index into H.neighbors) lies across the side a-b of a hex.
+function sideOf(h, a, b) {
+  const c = center(h), m = [(a[0] + b[0]) / 2 - c[0], (a[1] + b[1]) / 2 - c[1]];
+  let best = 0, bd = -Infinity;
+  H.neighbors(h).forEach((n, i) => { const cn = center(n), d = dot2([cn[0] - c[0], cn[1] - c[1]], m); if (d > bd) { bd = d; best = i; } });
+  return best;
 }
