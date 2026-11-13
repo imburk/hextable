@@ -35,6 +35,9 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-stock').onchange = () => { disarm(); text(); };
   text();
   $('dm-pace').onchange = (ev) => act({ type: 'setting', key: 'pace', value: ev.target.value });
+  // What follows a won fight (rewards.js): who reviews the rewards, and how the XP is shared.
+  $('dm-conclusion').onchange = (ev) => act({ type: 'setting', key: 'conclusion', value: ev.target.value });
+  $('dm-xpshare').onchange = (ev) => act({ type: 'setting', key: 'xpShare', value: ev.target.value });
 
   // Loading a map over the game in progress asks first: a second tap, which lapses after a few seconds.
   const btn = $('dm-stock-go');
@@ -59,6 +62,8 @@ export function initTableControls({ act, getState, isDM, toast }) {
     sync(S) {
       const pace = S?.settings?.pace ?? 'wait', dm = isDM();
       $('dm-pace').value = pace;
+      $('dm-conclusion').value = S?.settings?.conclusion ?? 'dm'; $('dm-xpshare').value = S?.settings?.xpShare ?? 'split';
+      $('dm-conclusion-note').hidden = $('dm-conclusion').value !== 'auto';
       $('pace-table').textContent = `The DM has set the table to: ${PACE_NAME[pace] ?? pace}. ${dm ? '' : 'Only the DM can change this.'}`;
       btn.disabled = !!S?.encounter;
       $('dm-stock-fight').hidden = !S?.encounter;

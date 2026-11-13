@@ -13,6 +13,8 @@
 <link rel="stylesheet" href="./reactionprompt.css">
 <link rel="stylesheet" href="./classes.css">
 <link rel="stylesheet" href="./drawer.css">
+<link rel="stylesheet" href="./defeat.css">
+<link rel="stylesheet" href="./conclusion.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -74,6 +76,7 @@
     <section id="tracker" class="tabpanel" role="tabpanel" aria-labelledby="tab-turns" hidden></section>
     <section id="sheet" class="tabpanel" role="tabpanel" aria-labelledby="tab-sheet" hidden><div id="sheet-body"></div></section>
     <section id="log" class="tabpanel" role="tabpanel" aria-labelledby="tab-log" hidden>
+      <button type="button" id="log-rewards" hidden>Show the last rewards</button>
       <ol id="log-list"></ol>
       <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
     </section>
@@ -83,6 +86,14 @@
   <section><h3>Take back</h3>
     <div class="row"><button type="button" id="dm-undo" class="undo" disabled><span>Undo</span><small></small></button><button type="button" id="dm-redo" class="undo" disabled><span>Redo</span><small></small></button></div>
     <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
+  </section>
+  <section id="dm-fallen" hidden><h3>The party has fallen</h3>
+    <p class="note">Everyone in the party is dead or down and stable. The card with your choices can be brought back.</p>
+    <div class="row"><button type="button" id="dm-fallen-open" hidden>Show the card</button></div>
+  </section>
+  <section id="dm-rewards" hidden><h3>Rewards</h3>
+    <p class="note">A fight is over and its rewards are not settled. The players see only that they are being worked out.</p>
+    <div class="row"><button type="button" id="dm-rewards-open">Settle the rewards</button></div>
   </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
   <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div>
@@ -97,6 +108,9 @@
     <label class="assign">How fast the table plays out what happens <select id="dm-pace"></select></label>
     <p class="note">Players can make it quicker on their own device, never slower.</p>
     <label class="assign">Dice <select id="dm-dice-throw"><option value="auto">Rolled as soon as someone acts</option><option value="throw">Thrown by whoever acts: a tap or flick sends the action</option></select></label>
+    <label class="assign">Rewards after a won fight <select id="dm-conclusion"><option value="dm">You settle them first, then show the players</option><option value="auto">Published at once, no review</option><option value="off">None (levelling by milestone)</option></select></label>
+    <p class="note" id="dm-conclusion-note" hidden>Published at once means players are shown the XP of every foe, hidden ones too.</p>
+    <label class="assign">How XP is shared <select id="dm-xpshare"><option value="split">Divided equally among those who took part and are alive</option><option value="full">Each gets the whole amount</option></select></label>
     <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when the party comes near enemies</label>
     <label class="assign">How near the party comes before the fight starts <select id="dm-engage-range"><option value="10">10 ft</option><option value="30">30 ft</option><option value="60">60 ft</option></select></label>
     <label class="assign">Noticing hidden things in passing (passive Perception) <select id="dm-passive"><option value="off">Off: only a Search finds them</option><option value="traps">Traps only</option><option value="all">Everything</option></select></label>

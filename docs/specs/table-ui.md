@@ -1162,3 +1162,33 @@ What was settled while building, where it differs from the text above, and what 
   own. Nothing is computed on the client.
 - **Smoke.** `SMOKE_ONLY=drawer` is new. The other passes use `openTab(page, tab)` and `closeMenu(page)` where they used the old buttons.
 - **Not checked:** a real phone's swipe (the test drives pointer events), a screen reader, and the three themes beyond Classic and Sunlit.
+
+### T5c and T6c: the defeat card and the rewards (PR for #181)
+
+What was settled while building, where it differs from the text above, and what was left.
+
+- **Files.** `defeat.js`, `conclusion.js`, `defeat.css`, `conclusion.css`; small changes to `app.js` (`syncCards`, `describe`), `index.html`,
+  `tablecontrols.js` (the two table settings), `settings.js` (two plain-words lines), `transport.js` (`rewind` and `pins` on the server transport).
+- **Defeat.** `fallen(S)` from the engine decides; the card is drawn from the state (so a reload shows it) once the beats that led to it have played.
+  Players: the card of the spec, the fallen named as "died", "down, stable" or "down, dying", "The DM will decide what happens next."; a close button
+  and Escape put it aside, and a line at the top ("The party has fallen. Show") brings it back. The map around the card stays tappable (the dim layer
+  lets taps through). The DM: three choices, each with its sentence; a choice the engine says is not available (`undoable.pins`, `pinsError` in solo)
+  is greyed and shows the engine's words ("No fight to go back to.") in place of its sentence; a rewind asks first ("Undo brings it back"), and a
+  refusal is shown on the card. Solo uses "Try the fight again" / "Go back to the last rest" / "Carry on". "Carry on" closes the card on the DM's
+  screen only; the DM tab has "Show the card" to bring it back. Hidden while a reaction question is up.
+- **Rewind returns to just before initiative**, not into the fight: the party is standing and no fight is on (the pin is the state before the action
+  that started it). The card says "as it was when initiative was called".
+- **Rewards.** The DM's form edits with the `conclusion` action exactly as PR #188 documents it: foe ticks, the whole bonus list, shares (a hand-set share
+  shows "Set by you. Reset"), loot add, assign and remove. Numbers are sent as typed (a whole number as a number) and the engine's refusal is shown on the
+  form. The form starts aside, so that a DM who wants to place, heal or look first is not covered: a new fight's rewards wait as a line at the top ("Rewards waiting. Show"), and "Decide later" (or the close button) puts it back; the line at the top and the DM tab bring it back; the burger's badge counts it. Players
+  see "The fight is over. The DM is working out the rewards." and nothing else until it is published, then the card; "Continue" dismisses it (remembered per
+  table and fight in `hextable.conclusionSeen`) and the Log tab has "Show the last rewards". In solo the form's one button is "Done" and no card follows;
+  with `auto` solo sees the published card. The DM sees the published card too.
+- **XP on the sheet** is `XP n / next`; "Ready to level up" uses the engine's `levelForXp`, so it also shows after a reload, not only on the `levelReady` event.
+- **Settings.** `conclusion` and `xpShare` are in the DM tab's Fight section (the note says `auto` shows players the XP of hidden foes too) and in the
+  Settings tab's list of the table's rules.
+- **Log.** The `conclusion` event is one line ("Experience: 87 XP each, including 50 for Freed the prisoner. Found: Shortbow (Brenna)."), plus lines for
+  `levelReady`, `conclusionSkipped` and `rewound`; `xp` and `conclusionEdited` say nothing. Grouping under the fight is T7c.
+- **Left out.** Who would pass a threshold before publishing (the engine does not say), a defeat entry in the Log, the foe names without their numbers when the
+  pack names are numbered by the engine ("Wolf 1" is counted as "Wolf" for display only). See DEBT T13.
+- **Smoke.** `SMOKE_ONLY=defeat` (solo, both sizes) and `SMOKE_ONLY=rewards` (a DM and a phone player) are new.
