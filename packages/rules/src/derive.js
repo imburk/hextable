@@ -19,7 +19,7 @@
 // Its level is the sum; each class's features and resources go by that class's level; the
 // Proficiency Bonus, cantrips and Hit Dice by the total. A sheet with one class is unchanged.
 import { CONTENT } from './content/index.js';
-import { ABILITIES, SKILLS } from './content/schema.js';
+import { ABILITIES, DAMAGE_TYPES, SKILLS, WEAR_ONE } from './content/schema.js';
 
 export const mod = (score) => Math.floor((score - 10) / 2);
 export const proficiencyFor = (level) => 2 + Math.floor((level - 1) / 4);
@@ -146,6 +146,55 @@ export function featuresOf(sheet) {
   return [...cf, ...chosenFeats(sheet, cf).map((y) => featFeature(y, total))];
 }
 
+// ---------- magic items ----------
+// A sheet's magic items (SRD "Magic Items"; docs/specs/rules-expansion.md, "Magic items" amendment):
+//   items: [{ id, item, base?, type?, spell?, equipped?, attuned?, charges? }]
+// `id` is the item's own short key on the sheet ("i1"), `item` a magic item of the pack, `base` the weapon or
+// armour it is made from where the item lets you choose, `type` and `spell` its variant (a Ring of Resistance's
+// damage type, a Spell Scroll's spell). An item works while worn or held (`equipped`; one that works from your
+// person needs nothing) and, if it needs Attunement, while `attuned`. Its magic flows into the record: the armour
+// worn, a Shield, attacks, Armor Class, scores, and features whose modifiers modifiers.js reads. Without the
+// Attunement it needs, it gives only what its mundane item gives. `attuning: { item, end? }` is the item the
+// character will spend its next Short Rest attuning to, or ending its Attunement to (engine.js, shortRest).
+export const ATTUNE_MAX = 3;
+export const ORBIT_MAX = 3;
+export function heldItems(sheet) {
+  if (!Array.isArray(sheet?.items)) return [];
+  return sheet.items.filter((x) => x && typeof x === 'object' && Object.hasOwn(CONTENT.items, x.item)).map((x) => ({ x, def: CONTENT.items[x.item] }));
+}
+// The mundane weapon or armour a magic item is: the sheet's `base` if the item allows it, else the one item it names.
+export function itemBase(def, x) {
+  const b = def?.base;
+  if (!b) return null;
+  const weapon = b.weapon !== undefined, pool = weapon ? CONTENT.weapons : CONTENT.armour, want = weapon ? b.weapon : b.armour;
+  const fits = (id) => Object.hasOwn(pool, id) && (want === 'any' ? weapon || pool[id].category !== 'shield' : want === 'melee' ? pool[id].kind === 'melee' : want.includes(id));
+  if (x?.base !== undefined) return fits(x.base) ? pool[x.base] : null;
+  return Array.isArray(want) && want.length === 1 ? pool[want[0]] : null;
+}
+// "Spear +1" for a Weapon, +1 made from a Spear; a named item keeps its name.
+export function itemName(def, x) {
+  if (!def) return '';
+  if (/^(Weapon|Armor|Shield), \+\d$/.test(def.name)) return `${def.wear === 'shield' ? 'Shield' : itemBase(def, x)?.name ?? def.name.split(',')[0]} +${def.bonus}`;
+  if (def.variant === 'spell' && CONTENT.spells[x?.spell]) return `${def.name} (${CONTENT.spells[x.spell].name})`;
+  if (def.variant === 'damageType' && typeof x?.type === 'string') return `${def.name} (${nice(x.type)})`;
+  return def.name;
+}
+const isWorn = (y) => y.def.wear === 'carried' || y.x.equipped === true;
+export const itemActive = (y) => isWorn(y) && (!y.def.attune || y.x.attuned === true);
+// An active item that grants something, as a feature the engine plays. Its Armor Class bonuses that hold
+// always are put in the record's AC (`acBonus`), not left as modifiers, so the sheet shows the AC played.
+function itemFeature(y, level) {
+  const g = structuredClone(y.def.grants ?? {});
+  for (const m of g.modifiers ?? []) if (Array.isArray(m.types)) m.types = m.types.map((t) => (t === 'chosen' ? y.x.type : t));
+  let acBonus = 0;
+  if (g.modifiers) {
+    g.modifiers = g.modifiers.filter((m) => { const flat = m.on === 'ac' && m.op === 'add' && typeof m.value === 'number' && !m.when; if (flat) acBonus += m.value; return !flat; });
+    if (!g.modifiers.length) delete g.modifiers;
+  }
+  return { f: { id: `item-${y.x.id}`, name: itemName(y.def, y.x).slice(0, 60), level: 1, tier: y.def.tier, text: y.def.text, checked: y.def.checked, ...(Object.keys(g).length ? { grants: g } : {}), ...(acBonus ? { acBonus } : {}) },
+    cls: { c: FEAT_CLASS, level, i: -1, first: false }, item: y.x.id };
+}
+
 // A number that grows with the class (schema.js, lintAmount).
 export function amount(x, c, level, abil, pb = proficiencyFor(level)) {
   if (typeof x === 'number') return x;
@@ -198,27 +247,35 @@ const grantsOf = (feats) => feats.map((x) => x.f.grants).filter(Boolean);
 // Character"); saving throw proficiencies come from the first class alone.
 function gather(sheet) {
   const ks = classesOf(sheet), c = ks[0].c, level = ks.reduce((n, k) => n + k.level, 0), cf = classFeatures(sheet), chosen = chosenFeats(sheet, cf);
-  const feats = [...cf, ...chosen.map((y) => featFeature(y, level))], G = grantsOf(feats);
+  const held = heldItems(sheet), on = held.filter(itemActive);
+  const feats = [...cf, ...chosen.map((y) => featFeature(y, level)), ...on.filter((y) => y.def.grants).map((y) => itemFeature(y, level))], G = grantsOf(feats);
   // Scores as typed, then each feat's points in the order the feats were taken, then class features that raise them (Primal Champion).
   const typed = Object.fromEntries(ABILITIES.map((a) => [a, sheet.abilities?.[a] ?? 10]));
   const { abil, before } = raised(typed, chosen);
-  for (const g of G) if (g.abilityBonus) for (const a of ABILITIES) if (g.abilityBonus[a]) abil[a] = Math.min(g.abilityBonus.max ?? 30, abil[a] + g.abilityBonus[a]);
+  // A bonus never lowers a score already above its maximum.
+  for (const g of G) if (g.abilityBonus) for (const a of ABILITIES) if (g.abilityBonus[a]) abil[a] = Math.max(abil[a], Math.min(g.abilityBonus.max ?? 30, abil[a] + g.abilityBonus[a]));
+  // A score an item sets (Amulet of Health: Constitution 19) holds unless the score is already as high; of two, the higher.
+  for (const g of G) for (const [a, v] of Object.entries(g.setAbility ?? {})) abil[a] = Math.max(abil[a], v);
   const armourWords = new Set(c.armour), weaponWords = new Set(c.weapons);
   for (const k of ks.slice(1)) { for (const a of k.c.multiclass.armour) armourWords.add(a); for (const w of k.c.multiclass.weapons) weaponWords.add(w); }
   for (const g of G) { for (const a of g.proficiency?.armour ?? []) armourWords.add(a); for (const w of g.proficiency?.weapons ?? []) weaponWords.add(w); }
+  // Magic armour worn as if trained (Elven Chain): its own category.
+  const suit = held.find((y) => isWorn(y) && y.def.wear === 'armour'), shieldItem = held.find((y) => isWorn(y) && y.def.wear === 'shield');
+  const trainedSuit = suit?.def.trained ? itemBase(suit.def, suit.x)?.category : null;
   // Skills and tools a feat gives (Skilled).
   const featSkills = chosen.flatMap((y) => (y.def.proficiencies ? listOf(y.x.skills).filter((k) => Object.hasOwn(SKILLS, k)) : []));
   const featTools = chosen.flatMap((y) => (y.def.proficiencies ? listOf(y.x.tools) : []));
-  return { ks, c, level, cf, chosen, before, typed, feats, G, abil, armourWords, weaponWords, featSkills, featTools, pb: proficiencyFor(level) };
+  return { ks, c, level, cf, chosen, before, typed, feats, G, abil, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, pb: proficiencyFor(level) };
 }
 
 // ---------- the record ----------
 
 export function derive(sheet) {
-  const { ks, c, level, chosen, feats, G, abil, armourWords, weaponWords, featSkills, featTools, pb } = gather(sheet);
+  const { ks, c, level, chosen, feats, G, abil, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, pb } = gather(sheet);
   const multi = ks.length > 1;
   const why = {};
-  const armour = sheet.armour ? CONTENT.armour[sheet.armour] : null, shield = !!sheet.shield;
+  // Magic armour or a magic Shield worn is the armour or Shield (validate refuses a second); its bonus only with the Attunement it needs.
+  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, shield = !!sheet.shield || !!shieldItem;
   const shieldOk = shield && armourWords.has('shield');
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
@@ -256,6 +313,10 @@ export function derive(sheet) {
   }
   if (shieldOk) { ac += 2; acWhy.push('Shield +2'); }
   if (armour && sum('armouredAc')) { ac += sum('armouredAc'); acWhy.push(`Defense ${signed(sum('armouredAc'))}`); }
+  // Magic armour and Shields, items that add to AC (Ring of Protection), and those that add only with no armour and no Shield (Bracers of Defense).
+  for (const y of [suit, shieldItem]) if (y && y.def.bonus && itemActive(y)) { ac += y.def.bonus; acWhy.push(`Magic +${y.def.bonus} (${itemName(y.def, y.x)})`); }
+  for (const x of feats) if (x.f.acBonus) { ac += x.f.acBonus; acWhy.push(`${x.f.name} ${signed(x.f.acBonus)}`); }
+  if (!armour && !shield) for (const x of feats) if (x.f.grants?.bareAc) { ac += x.f.grants.bareAc; acWhy.push(`${x.f.name} +${x.f.grants.bareAc}`); }
   why.ac = acWhy;
 
   // Speed: the sheet's (from species, 30 if not given), heavy armour too heavy for the wearer
@@ -272,9 +333,13 @@ export function derive(sheet) {
     speed += n; why.speed.push(`${x.f.name} +${n} ft`);
   }
   const speeds = {};
-  for (const g of G) for (const m of g.speeds ?? []) speeds[m] = speed;
+  for (const g of G) {
+    if (Array.isArray(g.speeds)) for (const m of g.speeds) speeds[m] = Math.max(speeds[m] ?? 0, speed);
+    else for (const [m, v] of Object.entries(g.speeds ?? {})) speeds[m] = Math.max(speeds[m] ?? 0, v);     // feet (Ring of Swimming)
+  }
   const senses = { ...(sheet.senses ?? {}) };
   for (const g of G) for (const [k, v] of Object.entries(g.senses ?? {})) senses[k] = Math.max(senses[k] ?? 0, v);
+  for (const g of G) for (const [k, v] of Object.entries(g.senseRange ?? {})) senses[k] = (senses[k] ?? 0) + v;     // gained, or longer (Goggles of Night)
 
   // Saves, skills, expertise.
   const saveProf = new Set(c.saves);
@@ -287,24 +352,39 @@ export function derive(sheet) {
   const ranged = sum('rangedAttack');
   const attacks = [];
   const add = (a) => attacks.push(a);
-  for (const id of sheet.weapons ?? []) {
-    if (id === 'unarmed-strike') continue;
-    const w = CONTENT.weapons[id];
-    if (!w) continue;
+  // A weapon's attacks. A magic weapon (`it`) adds its bonus to attack and damage, and may deal another type or
+  // have more properties (Sun Blade); `id` and `name` are the item's.
+  const magicPlus = {};
+  const weaponAttacks = (w0, it = null) => {
+    const w = it?.props ? { ...w0, properties: [...new Set([...w0.properties, ...it.props])] } : w0;
+    const key = it?.id ?? w.id, label = it?.name ?? w.name, plus = it?.plus ?? 0;
+    if (plus) for (const sfx of ['', '-two-handed', '-thrown']) magicPlus[`${key}${sfx}`] = `${label} +${plus}`;
     const monkWeapon = maDie && w.kind === 'melee' && (w.category === 'simple' || w.properties.includes('light'));
     const finesse = w.properties.includes('finesse') || monkWeapon;
     const ab = finesse ? (abil.dex > abil.str ? 'dex' : 'str') : w.kind === 'ranged' ? 'dex' : 'str';
     const m = mod(abil[ab]), trained = weaponTrained(w, [...weaponWords]);
-    const base = m + (trained ? pb : 0), die = monkWeapon ? bigger(w.damage, maDie) : w.damage;
-    const dmg = (d) => (/^\d+$/.test(d) ? signed(+d + m) : dice(d, m));
-    const common = { dtype: w.type, abil: ab, weapon: w.id, ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
+    const base = m + (trained ? pb : 0) + plus, die = monkWeapon ? bigger(w.damage, maDie) : w.damage;
+    const dmg = (d) => (/^\d+$/.test(d) ? signed(+d + m + plus) : dice(d, m + plus));
+    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
     const reach = w.properties.includes('reach') ? 10 : 5;
     if (w.kind === 'melee') {
-      add({ id: w.id, name: w.name, type: 'melee', bonus: base, damage: dmg(die), reach, ...common });
+      add({ id: key, name: label, type: 'melee', bonus: base, damage: dmg(die), reach, ...common });
       // Versatile: the two-handed damage, while no Shield takes the other hand.
-      if (w.versatile && !shield) add({ id: `${w.id}-two-handed`, name: `${w.name} (two hands)`, type: 'melee', bonus: base, damage: dmg(monkWeapon ? bigger(w.versatile, maDie) : w.versatile), reach, ...common });
-      if (w.properties.includes('thrown')) add({ id: `${w.id}-thrown`, name: `${w.name} (thrown)`, type: 'ranged', bonus: base, damage: dmg(w.damage), range: [...w.range], ...common });
-    } else add({ id: w.id, name: w.name, type: 'ranged', bonus: base + ranged, damage: dmg(die), range: [...w.range], ...common });
+      if (w.versatile && !shield) add({ id: `${key}-two-handed`, name: `${label} (two hands)`, type: 'melee', bonus: base, damage: dmg(monkWeapon ? bigger(w.versatile, maDie) : w.versatile), reach, ...common });
+      if (w.properties.includes('thrown')) add({ id: `${key}-thrown`, name: `${label} (thrown)`, type: 'ranged', bonus: base, damage: dmg(w.damage), range: [...w.range], ...common });
+    } else add({ id: key, name: label, type: 'ranged', bonus: base + ranged, damage: dmg(die), range: [...w.range], ...common });
+  };
+  for (const id of sheet.weapons ?? []) {
+    if (id === 'unarmed-strike') continue;
+    const w = CONTENT.weapons[id];
+    if (w) weaponAttacks(w);
+  }
+  // Magic weapons held (a Staff of Striking is a magic Quarterstaff). Without the Attunement one needs, it is its plain weapon.
+  for (const y of held) {
+    const w = y.def.base?.weapon !== undefined && isWorn(y) ? itemBase(y.def, y.x) : null;
+    if (!w) continue;
+    const on = itemActive(y);
+    weaponAttacks(w, { id: `item-${y.x.id}`, name: itemName(y.def, y.x).slice(0, 28), plus: on ? y.def.bonus ?? 0 : 0, ...(on && y.def.damageType ? { dtype: y.def.damageType } : {}), ...(on && y.def.properties ? { props: y.def.properties } : {}) });
   }
   // Unarmed Strike: 1 + Strength modifier Bludgeoning; Martial Arts makes it its die with the
   // better of Strength and Dexterity, and adds one as a Bonus Action.
@@ -435,7 +515,7 @@ export function derive(sheet) {
     ...(sheet.look ? { look: { ...sheet.look } } : {}),
   };
   why.prof = [`Level ${level}: ${signed(pb)}`];
-  why.attacks = Object.fromEntries(attacks.map((a) => [a.id, [`${nice(a.abil)} ${signed(mod(abil[a.abil]))}`, ...(a.weapon && !weaponTrained(CONTENT.weapons[a.weapon], [...weaponWords]) ? ['not proficient'] : [`Proficiency ${signed(pb)}`]), ...(a.type === 'ranged' && ranged && !a.id.endsWith('-thrown') ? [`Archery ${signed(ranged)}`] : [])]]));
+  why.attacks = Object.fromEntries(attacks.map((a) => [a.id, [`${nice(a.abil)} ${signed(mod(abil[a.abil]))}`, ...(a.weapon && !weaponTrained(CONTENT.weapons[a.weapon], [...weaponWords]) ? ['not proficient'] : [`Proficiency ${signed(pb)}`]), ...(a.type === 'ranged' && ranged && !a.id.endsWith('-thrown') ? [`Archery ${signed(ranged)}`] : []), ...(magicPlus[a.id] ? [magicPlus[a.id]] : [])]]));
   if (casters.length) why.spells = [`${nice(castAbil)} ${signed(mod(abil[castAbil]))}`, `Proficiency ${signed(pb)}`, `save DC ${8 + pb + mod(abil[castAbil])}`, `attack ${signed(pb + mod(abil[castAbil]))}`,
     ...casters.filter((k) => k.c.casting.ability !== castAbil).map((k) => `${k.c.name} spells: ${nice(k.c.casting.ability)}, save DC ${8 + pb + mod(abil[k.c.casting.ability])}, attack ${signed(pb + mod(abil[k.c.casting.ability]))}`)];
   if (featCast.length) why.spells = [...(why.spells ?? []), ...featCast];
@@ -447,7 +527,7 @@ export function derive(sheet) {
 // ---------- what is wrong with a sheet ----------
 
 const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'weapons', 'spells',
-  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats'];
+  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
   if (!sheet || typeof sheet !== 'object') return ['A sheet is a record of choices.'];
@@ -486,7 +566,7 @@ export function validate(sheet) {
     const ok = rq.all ? rq.all.every((a) => sheet.abilities[a] >= 13) : rq.any.some((a) => sheet.abilities[a] >= 13);
     if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map((a) => ABILITY_NAMES[a]).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
   }
-  const { feats, G, abil, armourWords, weaponWords, cf, chosen, before, featSkills } = gather(sheet);
+  const { feats, G, abil, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit } = gather(sheet);
 
   // Skills: the class's choices plus any a feature gives.
   const fromClass = c.skills.from === 'any' ? Object.keys(SKILLS) : c.skills.from;
@@ -529,12 +609,13 @@ export function validate(sheet) {
   }
   if (sheet.choices?.['additional-fighting-style'] && sheet.choices['additional-fighting-style'] === sheet.choices['fighting-style']) say('Additional Fighting Style must be a different Fighting Style.');
   checkFeats(sheet, { cf, chosen, before, skills: [...(Array.isArray(skills) ? skills : []), ...(Array.isArray(extra) ? extra : [])] }, say);
+  checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }, say);
 
   // Armour and weapons.
   if (sheet.armour !== undefined && sheet.armour !== null) {
     const a = CONTENT.armour[sheet.armour];
     if (!a || a.category === 'shield') say(`"${sheet.armour}" is not armour in the equipment tables.`);
-    else if (!armourWords.has(a.category)) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
+    else if (!armourWords.has(a.category) && trainedSuit !== a.category) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
   }
   if (sheet.shield && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, so a Shield adds nothing. Take it off the sheet.`);
   for (const id of sheet.weapons ?? []) {
@@ -669,4 +750,73 @@ export function featChoices(sheet) {
     if (def?.spellPick) { for (const k of ['list', 'ability']) if (taken[k] === undefined) open.push(k); if ((taken.spells ?? []).length < def.spellPick.cantrips + def.spellPick.level1) open.push('spells'); }
     return { ...sl, taken, offer, open };
   });
+}
+
+// ---------- magic items on a sheet ----------
+const ITEM_ENTRY = ['id', 'item', 'base', 'type', 'spell', 'equipped', 'attuned', 'charges'];
+// Can the character cast a spell by its own traits or features (an item's Attunement "by a Spellcaster")?
+const castsSpells = (sheet) => classesOf(sheet).some((k) => k.c?.casting && k.level >= (k.c.casting.from ?? 1) && (k.c.casting.cantrips[k.level - 1] > 0 || (k.c.casting.kind === 'pact' ? k.c.casting.slots[k.level - 1] > 0 : k.c.casting.slots[k.level - 1]?.length > 0)))
+  || (Array.isArray(sheet.feats) && sheet.feats.some((x) => CONTENT.feats[x?.id]?.spellPick && Array.isArray(x.spells) && x.spells.length));
+// What a character may attune to: the item needs it, and the character meets its prerequisite (SRD "Attunement Prerequisites").
+export function attuneProblem(sheet, def) {
+  if (!def.attune) return `${def.name} does not need Attunement.`;
+  if (def.attune.by && !classesOf(sheet).some((k) => def.attune.by.includes(k.c?.id))) return `Only a ${def.attune.by.map(nice).join(', ').replace(/, ([^,]*)$/, ' or $1')} can attune to ${def.name}.`;
+  if (def.attune.spellcaster && !castsSpells(sheet)) return `Only a spellcaster can attune to ${def.name}.`;
+  return null;
+}
+// The SRD's rules for items: what each is and is made from, where it is worn, how many of a kind (one pair of
+// footwear, of gloves, of bracers, one suit of armour, one headwear, one cloak, one Shield, three Ioun Stones),
+// and Attunement (its prerequisite, three items at most, one copy of an item).
+function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }, say) {
+  if (sheet.items === undefined) { if (sheet.attuning !== undefined) say('There is no item to attune to.'); return; }
+  if (!Array.isArray(sheet.items) || sheet.items.length > 60) return say('Its items are a list of up to 60.');
+  const keys = new Set(), worn = {}, attuned = [];
+  for (const x of sheet.items) {
+    if (!x || typeof x !== 'object' || Array.isArray(x) || Object.keys(x).some((k) => !ITEM_ENTRY.includes(k))) { say('An item is { id, item } with base, type, spell, equipped, attuned or charges.'); continue; }
+    if (!(typeof x.id === 'string' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x.id) && x.id.length <= 12) || keys.has(x.id)) say('Each item has its own short id, like "i1".');
+    keys.add(x.id);
+    const def = CONTENT.items[x.item];
+    if (!def) { say(`There is no magic item "${String(x.item)}" in the game.`); continue; }
+    const name = itemName(def, x);
+    for (const k of ['equipped', 'attuned']) if (x[k] !== undefined && typeof x[k] !== 'boolean') say(`${name}: ${k} is true or false.`);
+    // What it is made from.
+    if (def.base) {
+      const b = itemBase(def, x), want = def.base.weapon ?? def.base.armour;
+      if (!b) say(x.base !== undefined ? `${def.name} can't be made from "${String(x.base)}".` : `Choose what ${def.name} is: ${want === 'any' ? (def.base.weapon ? 'any weapon' : 'any armour') : want === 'melee' ? 'any Melee weapon' : want.map((id) => (CONTENT.weapons[id] ?? CONTENT.armour[id]).name).join(' or ')}.`);
+    } else if (x.base !== undefined) say(`${def.name} is not made from another item.`);
+    if (def.variant === 'damageType' ? !DAMAGE_TYPES.includes(x.type) : x.type !== undefined) say(def.variant === 'damageType' ? `Choose the damage type of ${def.name}.` : `${def.name} has no damage type to choose.`);
+    if (def.variant === 'spell' ? !CONTENT.spells[x.spell] : x.spell !== undefined) say(def.variant === 'spell' ? `Name the spell on the ${def.name}.` : `${def.name} holds no spell.`);
+    if (x.charges !== undefined && !(def.charges && Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= def.charges.max)) say(def.charges ? `${name} has 0 to ${def.charges.max} charges.` : `${name} has no charges.`);
+    // Worn or held.
+    if (x.equipped === true && def.wear !== 'carried') (worn[def.wear] ??= []).push(name);
+    if (x.equipped === true && def.wear === 'armour') {
+      const b = itemBase(def, x);
+      if (b && !armourWords.has(b.category) && trainedSuit !== b.category) say(`${multi ? 'This character' : who} has no training with ${b.category} armour, so can't wear ${name}. Take it off.`);
+    }
+    if (x.equipped === true && def.wear === 'shield' && !armourWords.has('shield')) say(`${name}: no training with Shields. Take it off.`);
+    if (x.equipped === true && def.base?.weapon !== undefined) { const b = itemBase(def, x); if (b && !weaponTrained(b, [...weaponWords])) say(`${multi ? 'This character' : who} is not proficient with the ${b.name}, so ${name} would attack without the Proficiency Bonus. Leave it unequipped.`); }
+    // Attunement.
+    if (x.attuned === true) {
+      const why = attuneProblem(sheet, def);
+      if (why) say(why); else attuned.push(x.item);
+    }
+  }
+  if (sheet.armour && worn.armour) say(`It wears ${CONTENT.armour[sheet.armour]?.name ?? 'armour'} and ${worn.armour[0]}: one suit of armour at a time.`);
+  if (sheet.shield && worn.shield) say(`It holds a Shield and ${worn.shield[0]}: one Shield at a time.`);
+  const WORDS = { feet: 'pair of footwear', hands: 'pair of gloves or gauntlets', wrists: 'pair of bracers', armour: 'suit of armour', head: 'item of headwear', cloak: 'cloak', shield: 'Shield' };
+  for (const [k, list] of Object.entries(worn)) if (WEAR_ONE.includes(k) && list.length > 1) say(`One ${WORDS[k]} at a time: ${list.join(' and ')}.`);
+  if ((worn.orbit ?? []).length > ORBIT_MAX) say(`Up to ${ORBIT_MAX} Ioun Stones orbit a head at once.`);
+  if (attuned.length > ATTUNE_MAX) say(`A creature is attuned to ${ATTUNE_MAX} magic items at most; ${attuned.length} are marked attuned.`);
+  const twice = attuned.find((id, i) => attuned.indexOf(id) !== i);
+  if (twice) say(`Attuned to two copies of ${CONTENT.items[twice].name}: one at most.`);
+  // The item it will spend its next Short Rest attuning to, or ending its Attunement to.
+  const at = sheet.attuning;
+  if (at !== undefined) {
+    const x = at && typeof at === 'object' && Object.keys(at).every((k) => ['item', 'end'].includes(k)) && (at.end === undefined || typeof at.end === 'boolean') ? sheet.items.find((y) => y?.id === at.item) : null;
+    const def = x && CONTENT.items[x.item];
+    if (!def) say('Attuning names an item the character has.');
+    else if (at.end) { if (x.attuned !== true) say(`It is not attuned to ${itemName(def, x)}.`); }
+    else if (x.attuned === true) say(`It is already attuned to ${itemName(def, x)}.`);
+    else { const why = attuneProblem(sheet, def); if (why) say(why); }
+  }
 }

@@ -25,7 +25,7 @@ import { difficultAt, terrainsOf } from './terrain.js';
 import { COVER, canSee, coverOf, hiddenFrom, inSight, sees } from './sight.js';
 import { SIGHT_RULES, objectKnown, regionsInSight, remember, sightRule, unknown } from './vision.js';
 import { barriers, center, distToSegment, objectDef, objectHexes, objectSegment } from './walls.js';
-import { classesOf, derive, levelOf, validate } from './derive.js';
+import { ATTUNE_MAX, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from './derive.js';
 import { OPPORTUNITY, WHILE_WAITING, canReact, checkInstructions, instruction, mayAsk, opportunityAttack, reactionsOf } from './reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, incapacitated, incapacitatedBy, immuneTo, judge, modifiers, speedOf } from './modifiers.js';
 
@@ -626,7 +626,7 @@ function endEncounter(s, ev, result) {
   }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round, fight: s.encounter.id });
   fightOver(s, ev);
-  concludeFight(s, ev, result, s.encounter, fighters(s));      // XP and loot for a fight won or ended (rewards.js)
+  concludeFight(s, ev, result, s.encounter, fighters(s), tryLand);      // XP and loot for a fight won or ended (rewards.js)
   s.encounter = null;
 }
 
@@ -2678,17 +2678,86 @@ const handlers = {
     e.size = a.size;
     ev.push({ type: 'size', id: e.id, size: a.size });
   },
-  // Hand a creature an item, or take one away. { type: 'give', actor, item, take? }
+  // Hand a creature an item, or take one away. { type: 'give', actor, item, take?, base?, damageType?, spell? }
+  // `item` is a name (kept in `gear`, as before) or the id of a magic item of the pack. A pack item given to a
+  // built character joins its sheet's `items` (carried, not worn), with `base`, `damageType` (the sheet's `type`) or `spell` where the item
+  // asks for one; a character typed in by hand has no sheet, so it gets the item's name in `gear` only. To take a
+  // magic item back, name its key on the sheet ("i1").
   give(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can hand out items.');
     const e = ent(s, a.actor), item = String(a.item ?? '').trim();
     (item && item.length <= 80) || fail('Name the item.');
+    const held = e.sheet && Array.isArray(e.sheet.items) ? e.sheet.items.find((x) => x?.id === item) : null;
+    if (a.take && held) {
+      const sheet = structuredClone(e.sheet);
+      sheet.items = sheet.items.filter((x) => x.id !== item);
+      if (sheet.attuning?.item === item) delete sheet.attuning;
+      if (!sheet.items.length) delete sheet.items;
+      resheet(s, e, sheet, ev);
+      return ev.push({ type: 'gear', id: e.id, item: itemName(CONTENT.items[held.item], held), key: held.id, pack: held.item, why: 'dm', taken: true });
+    }
+    if (!a.take && Object.hasOwn(CONTENT.items, item)) {
+      const def = CONTENT.items[item], spec = { item, ...(a.base !== undefined ? { base: a.base } : {}), ...(a.damageType !== undefined ? { type: a.damageType } : {}), ...(a.spell !== undefined ? { spell: a.spell } : {}) };
+      if (e.sheet) {
+        const x = landItem(s, e, [spec], ev)[0];
+        return ev.push({ type: 'gear', id: e.id, item: itemName(def, x), key: x.id, pack: item, why: 'dm' });
+      }
+      const name = itemName(def, spec);
+      e.gear.push(name);
+      return ev.push({ type: 'gear', id: e.id, item: name, pack: item, why: 'dm', nameOnly: true });
+    }
+    (a.base === undefined && a.damageType === undefined && a.spell === undefined) || fail(`"${item}" is not a magic item of the pack.`);
     if (a.take) {
       const i = e.gear.findIndex((g) => String(g).toLowerCase() === item.toLowerCase());
       i >= 0 || fail(`${e.name} has no ${item}.`);
       e.gear.splice(i, 1);
     } else e.gear.push(item);
     ev.push({ type: 'gear', id: e.id, item, why: 'dm', ...(a.take ? { taken: true } : {}) });
+  },
+  // Put on or take off a magic item: armour donned, a Shield or weapon held, a ring worn, an Ioun Stone sent to
+  // orbit. { type: 'equip', actor, item: key on the sheet, on?: true | false } By its controller or the DM, outside a
+  // fight (donning and doffing take longer than a turn here; drawing a weapon in a fight is not built).
+  equip(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
+    !inFight(s, e.id) || fail(`${e.name} can't change what they wear in the middle of a fight.`);
+    const on = a.on ?? true;
+    typeof on === 'boolean' || fail('On is true or false.');
+    const sheet = structuredClone(e.sheet), x = (sheet.items ?? []).find((y) => y.id === a.item) || fail(`${e.name} has no such item.`);
+    const def = CONTENT.items[x.item];
+    def.wear !== 'carried' || fail(`${def.name} works from ${e.name}'s person; there is nothing to put on.`);
+    (x.equipped === true) !== on || fail(`${itemName(def, x)} is already ${on ? 'worn' : 'off'}.`);
+    if (on) x.equipped = true; else delete x.equipped;
+    resheet(s, e, sheet, ev);
+    ev.push({ type: 'equip', id: e.id, key: x.id, item: itemName(def, x), on });
+  },
+  // Attune to a magic item, or end an Attunement, during the next Short Rest (SRD "Attunement": a Short Rest
+  // focused on only that item). { type: 'attune', actor, item: key | null, end?: true } By its controller or the DM,
+  // outside a fight; `item: null` changes its mind. It happens at the end of the next shortRest it takes.
+  attune(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
+    !inFight(s, e.id) || fail(`${e.name} can't attune to an item in the middle of a fight.`);
+    const sheet = structuredClone(e.sheet);
+    if (a.item === null) {
+      sheet.attuning || fail(`${e.name} is not attuning to anything.`);
+      delete sheet.attuning;
+    } else {
+      const x = (sheet.items ?? []).find((y) => y.id === a.item) || fail(`${e.name} has no such item.`), def = CONTENT.items[x.item];
+      (a.end === undefined || typeof a.end === 'boolean') || fail('End is true or false.');
+      if (a.end) x.attuned === true || fail(`${e.name} is not attuned to ${itemName(def, x)}.`);
+      else {
+        x.attuned !== true || fail(`${e.name} is already attuned to ${itemName(def, x)}.`);
+        const why = attuneProblem(sheet, def); !why || fail(why);
+        heldItems(sheet).filter((y) => y.x.attuned === true).length < ATTUNE_MAX || fail(`${e.name} is attuned to ${ATTUNE_MAX} items already: end one first.`);
+        !heldItems(sheet).some((y) => y.x.attuned === true && y.x.item === x.item) || fail(`${e.name} is attuned to another ${def.name} already.`);
+      }
+      sheet.attuning = { item: x.id, ...(a.end ? { end: true } : {}) };
+    }
+    const problems = validate(sheet);
+    problems.length === 0 || fail(problems[0]);
+    e.sheet = sheet;
+    ev.push({ type: 'attuning', id: e.id, ...(sheet.attuning ? { key: sheet.attuning.item, item: itemName(CONTENT.items[sheet.items.find((y) => y.id === sheet.attuning.item).item], sheet.items.find((y) => y.id === sheet.attuning.item)), ...(sheet.attuning.end ? { end: true } : {}) } : { cleared: true }) });
   },
   // Hand a creature a light to carry, or take it away. { type: 'setLight', actor, item } with an item
   // from content/lights.js (a torch, a lamp), or { light: { bright, dim } } in feet; `item: null` puts it out.
@@ -2919,6 +2988,23 @@ const handlers = {
       if (pool) e.uses[pool.id] = (e.uses[pool.id] ?? 0) + gain;
       ev.push({ type: 'std', id: e.id, action: `${f.name} (${gain} point${gain === 1 ? '' : 's'})` });
     }
+    // Attunement (SRD): each resting character with an item it chose to attune to (or end its Attunement to) at
+    // this rest. Worked out on a copy first; one that cannot be made (a fourth item, a second copy, a prerequisite
+    // not met, at 0 Hit Points, in a form) fails with the reason and changes nothing.
+    for (const e of who) {
+      const at = e.sheet?.attuning;
+      if (!at) continue;
+      const sheet = structuredClone(e.sheet), x = (sheet.items ?? []).find((y) => y.id === at.item);
+      delete sheet.attuning;
+      if (!x) { e.sheet = sheet; continue; }
+      const def = CONTENT.items[x.item], name = itemName(def, x);
+      if (at.end) delete x.attuned; else x.attuned = true;
+      const why = e.hp <= 0 ? `${e.name} is at 0 Hit Points.` : e.form ? `${e.name} is in a form.` : (at.end ? null : attuneProblem(sheet, def))
+        ?? validate(sheet)[0] ?? lintRecord(derive(sheet).record, { spells: SPELLS })[0] ?? null;
+      if (why) { delete e.sheet.attuning; ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}), failed: why }); continue; }
+      remake(s, e, derive(sheet).record, sheet, ev);
+      ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}) });
+    }
     s.clock += 60;
     ev.push({ type: 'rest', short: true });
     tick(s, ev);
@@ -2941,7 +3027,7 @@ const handlers = {
   // Scenes: scene, endScene, sceneNpc, say, askCheck, sceneChronicle (scenes.js).
   ...sceneActions(fail),
   // Rewards at the end of a fight: conclusion { edit | publish | skip } (rewards.js).
-  ...rewardActions(fail),
+  ...rewardActions(fail, tryLand),
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
@@ -3023,6 +3109,32 @@ function shapeShift(s, e, f, act, a, ev) {
 
 // Make a character again from a new record, carrying over what play has done to it. Validates
 // everything before it changes anything.
+// A built character's sheet changed by an item (given, worn, attuned): checked whole, then the character is made
+// again from it. Refused, nothing changes.
+function resheet(s, e, sheet, ev) {
+  const problems = validate(sheet);
+  problems.length === 0 || fail(`That can't be done. ${problems[0]}`);
+  remake(s, e, derive(sheet).record, sheet, ev);
+}
+// Magic items of the pack onto a built character's sheet, carried and not worn, each with the next free key ("i3").
+// Returns the sheet entries. Refused (a variant missing, too many items), nothing changes.
+function landItem(s, e, specs, ev) {
+  const sheet = structuredClone(e.sheet), list = sheet.items ?? [], used = new Set(list.map((x) => x.id)), out = [];
+  let n = 1;
+  for (const spec of specs) {
+    while (used.has(`i${n}`)) n++;
+    const x = { id: `i${n}`, ...spec };
+    used.add(x.id); list.push(x); out.push(x);
+  }
+  sheet.items = list;
+  resheet(s, e, sheet, ev);
+  return out;
+}
+// For loot (rewards.js): the items land on the sheet, or, if the sheet cannot take them, nothing changes and null is returned.
+function tryLand(s, e, specs, ev) {
+  if (!e.sheet) return null;
+  try { return landItem(s, e, specs, ev); } catch (err) { if (err instanceof RuleError) return null; throw err; }
+}
 function remake(s, e, record, sheet, ev) {
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
@@ -3048,6 +3160,8 @@ function remake(s, e, record, sheet, ev) {
     fresh.hd = Object.values(fresh.hdBy).reduce((a, b) => a + b, 0);
   }
   fresh.xp = Math.max(e.xp ?? 0, fresh.xp ?? 0);                     // XP earned is kept; a level given by hand starts at least at its threshold
+  // Gear handed over in play (give, loot) is kept, unless the new sheet changes the gear list itself.
+  if (Array.isArray(e.gear) && JSON.stringify(sheet.gear ?? []) === JSON.stringify(e.sheet?.gear ?? [])) fresh.gear = [...e.gear];
   fresh.sheet = sheet;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });

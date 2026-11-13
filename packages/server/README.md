@@ -122,6 +122,19 @@ now casts at the spell's own casting time (it was always the Magic action, which
 Intervention's `freeCast.list` keeps). `featChoices(sheet)` and `featSlots(sheet)` in `derive.js` say
 what a screen should offer.
 
+**Magic items (#189). State version 20.** A sheet may hold `items: [{ id, item, base?, type?, spell?,
+equipped?, attuned?, charges? }]` (`item` a magic item of the pack, `CONTENT.items`) and `attuning: { item, end? }`.
+New actions, by the controller or the DM, outside a fight:
+- `equip { actor, item: key, on?: true | false }`: put on or take off (a ring, a cloak, armour, a Shield, a weapon in hand).
+  Event `equip { id, key, item, on }`.
+- `attune { actor, item: key | null, end?: true }`: choose the item to attune to (or stop attuning to) at the next Short
+  Rest; `null` clears the choice. Event `attuning { id, key?, item?, end?, cleared? }`. The DM's `shortRest` makes it:
+  event `attuned { id, key, item, end?, failed? }`.
+`give` also takes a pack item id with `base`, `damageType` or `spell` (built character: onto the sheet, event `gear`
+with `key` and `pack`; typed in by hand: its name into `gear`, `nameOnly`), and `{ item: key, take: true }` takes one
+back. A `conclusion` loot line may say `item` (and `base`, `type`, `spell`); its `name` defaults to the item's. Players
+are sent these events only for the party's creatures. The migration to 20 converts nothing.
+
 **Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
 Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
 player may name only a place the party has been shown; with no `hex` the DM moves the caster.
