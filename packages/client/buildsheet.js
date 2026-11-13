@@ -136,7 +136,18 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
 
     // Features that ask for a choice
     const asks = L.feats.filter((x) => x.f.options && !x.option);
-    if (asks.length) parts.push(el('section', {}, el('h3', { text: 'Choices' }), ...asks.map((x) => el('div', {},
+    // A feature that picks several options from a list (Metamagic: up to 2 at level 2, 2 more at 10): ticks, none twice across features.
+    const pickList = (x) => {
+      const mine = Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id] : [], taken = asks.filter((y) => y !== x && y.f.pick).flatMap((y) => b.choices[y.f.id] ?? []);
+      return el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, el('h4', { text: `${x.f.name}: choose up to ${x.f.pick}` }),
+        ...x.f.options.map((o) => {
+          const on = mine.includes(o.id), off = !on && (mine.length >= x.f.pick || taken.includes(o.id));
+          return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
+            onchange: (ev) => { const next = ev.target.checked ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } }),
+            el('span', { text: o.name + (taken.includes(o.id) ? ' (chosen above)' : '') }));
+        }));
+    };
+    if (asks.length) parts.push(el('section', {}, el('h3', { text: 'Choices' }), ...asks.map((x) => x.f.pick ? pickList(x) : el('div', {},
       sel(x.f.name, `choice-${x.f.id}`, [['', 'Choose…'], ...x.f.options.map((o) => [o.id, o.name])], b.choices[x.f.id] ?? '', (v) => { if (v) b.choices[x.f.id] = v; else delete b.choices[x.f.id]; build(); }),
       b.choices[x.f.id] ? el('p', { class: 'note', text: x.f.options.find((o) => o.id === b.choices[x.f.id])?.text ?? '' }) : null))));
 

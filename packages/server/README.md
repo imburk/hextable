@@ -50,7 +50,7 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
 - `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
 - `src/assets-http.js` — the `/assets` routes: who may upload, fetch and delete.
-- `src/index.js` — HTTP, static files, `/api/ping`, `/assets`, `/ws`, and saving to disk.
+- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed), `/api/ping`, `/assets`, `/ws`, and saving to disk.
 
 ## Protocol
 
