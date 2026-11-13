@@ -135,9 +135,9 @@ export const spells4 = [
     time: "action", range: 500, components: ["v"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
-    effects: [{"manual":"Dimension Door: the caster teleports to a spot within 500 feet that can be seen, visualised, or described by distance and direction, and can bring one willing creature that is within 5 feet, which arrives within 5 feet of the destination. If either would arrive in a space occupied by a creature or filled by objects, each traveller takes 4d6 Force damage and the teleportation fails. The engine cannot teleport; the DM moves the tokens and applies any damage."}],
-    tier: "manual", checked: true,
-    text: "The caster teleports up to 500 feet, optionally with one willing creature, taking 4d6 force damage each if the destination is blocked.",
+    effects: [{"teleport":500,"blocked":[{"damage":"4d6","type":"force"}]},{"manual":"Dimension Door: the caster may bring one willing creature that was within 5 feet; it arrives in a space within 5 feet of the destination. If it would arrive in a space occupied by a creature or completely filled by objects, the caster and it each take 4d6 Force damage and the teleportation fails. The engine moves only the caster; the DM moves the companion and applies that."}],
+    tier: "assist", checked: true,
+    text: "The caster teleports up to 500 feet to the place named when it is cast, taking 4d6 force damage and staying put if a creature it did not know of stands there. The DM moves a willing companion within 5 feet, if one comes, and applies the same rule to it.",
   },
   {
     id: "divination", name: "Divination", source: "SRD 5.2.1",

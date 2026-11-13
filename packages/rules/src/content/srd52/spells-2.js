@@ -387,9 +387,9 @@ export const spells2 = [
     time: "bonus", range: "self", components: ["v"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"manual": "Misty Step: the caster teleports up to 30 feet to an unoccupied space it can see. The move step can push or pull a creature but cannot teleport it, so the DM moves the caster."}],
-    tier: "manual", checked: true,
-    text: "The caster teleports up to 30 feet to an unoccupied space it can see.",
+    effects: [{"teleport": 30, "see": true}],
+    tier: "auto", checked: true,
+    text: "The caster teleports up to 30 feet to an unoccupied space it can see, named when it is cast.",
   },
   {
     id: "moonbeam", name: "Moonbeam", source: "SRD 5.2.1",

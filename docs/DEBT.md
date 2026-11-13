@@ -221,13 +221,13 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Minor Illusion (0) | 1 | manual | manual | An illusion object with a Study check against the spell save DC |
 | Prestidigitation (0) | 1 | manual | manual | A choice among minor effects on objects; nothing to roll |
 | Dominate Monster (8) | 1 | assist | assist | `ends: { on: "save", at: "damaged" }` (a repeat save whenever it takes damage), the "fighting it" save-Advantage tag, `higher.slot.duration` (8 hours at level 9), and commands (the DM) |
-| Teleport (7) | 1 | manual | manual | A `teleport` step to a known destination off the map, passengers, and a familiarity table roll with a damage mishap |
+| Teleport (7) | 1 | manual | manual | ~~A `teleport` step~~ (#165 built one, for the caster within the map) to a known destination off the map, passengers, and a familiarity table roll with a damage mishap |
 | Disintegrate (6) | 1 | assist | assist | A rider on a creature taken to 0 Hit Points (dust, `set` of a state, no revival but True Resurrection or Wish), and an object or a creation of force as a target |
 | Globe of Invulnerability (6) | 1 | manual | manual | A `spell.blocked` hook on an emanation: spells of level 5 or lower cast from outside have no effect inside |
 | Cone of Cold (5) | 1 | assist | assist | A rider on a creature the damage kills (a frozen statue until it thaws) |
 | Teleportation Circle (5) | 1 | manual | manual | A portal object linking two places on the map or to a known circle, and a `teleport` step for those who enter |
 | Tongues (3) | 1 | manual | manual | Languages as state (a `languages` field on a creature, which a sheet does not have yet, C9) |
-| Misty Step (2) | 1 | manual | manual | **`teleport`** step: up to 30 feet to an unoccupied space the caster can see (the `move` step only pushes or pulls) |
+| Misty Step (2) | 1 | manual | ~~manual~~ **auto** (#165) | ~~**`teleport`** step: up to 30 feet to an unoccupied space the caster can see~~ (#165: the `teleport` step; the destination is the cast's `hex`. Nothing left for the engine; a client that sends no `hex` hands the move to the DM) |
 
 Which single addition unlocks the most of these (the engine lane's list):
 

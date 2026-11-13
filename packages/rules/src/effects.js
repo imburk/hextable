@@ -9,11 +9,10 @@
 // ask a player about a reaction (engine.js, apply) is put back whole and run again from its start
 // with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
-import { STEPS } from './content/schema.js';
+import { BRANCHES, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
 import { useUp } from './durations.js';
 
-const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess'];
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine.js, layout()).
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
@@ -129,7 +128,7 @@ export function spellProfile(def) {
     if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
-  const t = def.target;
+  const t = def.target, tp = def.effects.find((st) => 'teleport' in st);
   // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
   const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
   const aim = t.self ? 'self' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
@@ -141,6 +140,8 @@ export function spellProfile(def) {
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
+    // A teleport: the `cast` action names the destination in `hex` (docs/specs/rules-expansion.md).
+    ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
     ...summarise(def),
     def,
   };
@@ -305,6 +306,12 @@ function exec(s, ev, kit, f, step, at) {
     return;
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
+  // Teleport the target (the caster) to the place the cast named, checked when it was cast.
+  if (kind === 'teleport') {
+    if (!f.src.to) return handOver(`${f.src.name} names no destination, so the engine cannot teleport ${t.name}. The DM moves it, up to ${step.teleport} ft${step.see ? ' to a space it can see' : ''}.`);
+    if (!kit.teleport(s, t, step, f.src.to, ev)) branch('blocked');
+    return;
+  }
   if (kind === 'heal' || kind === 'tempHp') {
     const r = roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
     const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"

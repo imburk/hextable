@@ -789,6 +789,35 @@ entry names what was added to `schema.js` and what the engine does with it.
   something while a creature is inside it (Spirit Guardians' halved Speed, Difficult Terrain),
   walls of free shape (Wall of Fire). The renderer draws each zone in the state it is given (a tinted patch by damage type, name on hover or tap); players are not sent zones yet.
 
+#### Build notes: what the party's spells asked for (amendment, #165)
+
+Settled while adding the general vocabulary the party-spells table in `docs/DEBT.md` asks for
+(issue #165). Each part has a linter rule and tests through `apply()` in
+`packages/rules/test/spell-vocab.test.js`.
+
+- **`teleport` step.** `{ teleport: feet, see?: true, blocked?: [steps] }`, only in the own list of
+  steps of a spell aimed at its caster (the linter says so). The `cast` action names the
+  destination in `hex`, the field an area spell is aimed with (`hex.z` asks for a height, as `move`'s
+  `to` does; otherwise the surface in that column nearest the caster). It is checked before anything
+  is spent (`teleportSpot`): within `feet` of where the caster stands (height counted by the table
+  rule), not the hex it is on, ground or air its whole body fits in, inside the arena while it is in
+  a fight, a space it can see when `see` is set (sight.js, `canSee` on a stand-in of its size at that
+  place), and not a space taken by a creature it knows of. A player may name only a place the party
+  has been shown (not in an unrevealed region), and is told no more than that about any other. The
+  SRD Teleportation rules: no movement is spent, nothing provokes an Opportunity Attack, the creature
+  arrives as one `moved` event with a one-hex `path` and `teleport: true` (the view filters it as any
+  `moved`: under the line-of-sight rules a player is sent it only where the place is in view). If a
+  creature it could not know of stands there, it appears in the nearest unoccupied space instead
+  (the SRD lets it choose; the engine takes the first it finds on the nearest ring), unless the step
+  has `blocked`, whose steps then run on it and it stays (Dimension Door's 4d6 Force). Landing in a
+  zone sets the zone off as walking in does; a thing on the floor that goes off when stepped on is
+  told to the DM instead (it is not run from inside a spell). Landing in the air: it falls, by the
+  engine's gravity after the action. Landing in the arena from outside a fight joins it. A cast with
+  no `hex` spends what the spell costs and hands the move to the DM (a `manual` event), so a client
+  that does not yet aim teleports still casts the spell. `spellProfile()` gives
+  `teleport: { feet, see }` so a client can arm a hex pick. A destination off the map, passengers and
+  "a place you can describe" stay with the DM. Not run: a teleport aimed at another creature.
+
 ### A class
 
 ```js

@@ -23,7 +23,10 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'manual'];
+// Lists of steps inside a step, run when something about it comes out a certain way.
+// `blocked`: a teleport that cannot arrive (Dimension Door).
+export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
@@ -146,7 +149,7 @@ function lintChoice(e, say) {
 }
 const seenCounter = (actions) => { let n = false; for (const a of actions ?? []) walkSteps(a.effects, (st) => { if (st && 'counter' in st) n = true; }); return n; };
 function walkSteps(steps, visit) {
-  for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) walkSteps(st[b], visit); }
+  for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of BRANCHES) if (st[b]) walkSteps(st[b], visit); }
 }
 function lintSteps(steps, say, seen = { manual: false }) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
@@ -205,7 +208,16 @@ function lintSteps(steps, say, seen = { manual: false }) {
     // whose reaction is `cast`).
     if (kind === 'counter') { seen.counter = true; if (step.counter !== 'spell') say('`counter` must be "spell"'); }
     if (kind === 'manual') { seen.manual = true; if (!isText(step.manual)) say('a manual step needs text saying what the DM applies'); }
-    for (const branch of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (step[branch]) lintSteps(step[branch], say, seen);
+    // `teleport: feet`: the creature it works on (the caster: only a spell aimed at its caster may
+    // have one) goes to the place the caster names within that many feet; `see: true`, a place it
+    // can see; `blocked`: steps run on it instead if that place turns out occupied.
+    if (kind === 'teleport') {
+      seen.teleport = true;
+      if (!(isInt(step.teleport) && step.teleport > 0 && step.teleport % 5 === 0)) say('`teleport` must be a distance in feet, a multiple of 5');
+      if (step.see !== undefined && step.see !== true) say('`see` is true or left out');
+    }
+    if (step.blocked !== undefined && kind !== 'teleport') say('`blocked` is for a teleport step');
+    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen);
   }
   return seen;
 }
@@ -298,6 +310,7 @@ function lintSpell(e, say) {
   lintSelfSave(e, say);
   const seen = lintSteps(e.effects, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
+  if (seen.teleport && !(e.target?.self && e.effects.some((st) => 'teleport' in st))) say('a `teleport` step is for a spell aimed at its caster, in its own list of steps');
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
 }
