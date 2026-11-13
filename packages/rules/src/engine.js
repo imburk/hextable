@@ -2063,13 +2063,15 @@ const handlers = {
   feature(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
-    if (f.exchange) return exchange(s, e, f, a, ev);
+    // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
+    // spend) still spends what it costs and hands the rest to the DM, as before these were built.
+    if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
     const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
-    if (act.form) return shapeShift(s, e, f, act, a, ev);
+    if (act.form && (a.form !== undefined || e.form)) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
@@ -2116,8 +2118,9 @@ const handlers = {
       cost <= (e.uses[res] ?? 0) || fail(`${f.name} has ${e.uses[res] ?? 0} Hit Points left.`);
     }
     // A feature with `modes` does one of several things, named by `a.mode` (Divine Spark: heal, or radiant or necrotic harm).
-    const mode = act.modes ? act.modes.find((m) => m.id === a.mode) || fail(`Choose what ${f.name} does: ${act.modes.map((m) => m.name).join(', ')}.`) : null;
-    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: mode ? mode.effects : act.effects }, a);
+    const mode = act.modes && a.mode !== undefined ? act.modes.find((m) => m.id === a.mode) || fail(`Choose what ${f.name} does: ${act.modes.map((m) => m.name).join(', ')}.`) : null;
+    const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
+    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, a);
     if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
 
     // Paid for: from here it happens.
@@ -2138,7 +2141,7 @@ const handlers = {
       return ev.push({ type: 'std', id: e.id, action: f.name });
     }
     if (act.noSpells) breakConcentration(s, ev, e.id, `${e.name} entered ${f.name}`);
-    const steps = structuredClone(mode ? mode.effects : act.effects), targets = aimed.targets;
+    const steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects)), targets = aimed.targets;
     let fx = null;
     if (act.duration && act.duration !== 'instant') {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });

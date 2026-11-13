@@ -82,8 +82,12 @@ test("Wild Shape is refused for a form beyond the druid's level, and changes not
   no(shape(s, "eagle"), /Fly Speed/);
   no(shape(s, "goblin-warrior"), /form of a beast; the Goblin Warrior is not one/);
   no(shape(s, "nope"), /No such creature/);
-  no(shape(s, null), /Choose a form/);
   assert.equal(JSON.stringify(s), snap);
+  // A screen that sends no form: the use and the Bonus Action are spent and the DM runs the form, as before it was built.
+  const hand = ok(shape(s, null));
+  assert.ok(hand.events.some((x) => x.type === "manual" && /No choice was sent/.test(x.text)));
+  assert.equal(s.entities.hero.form, undefined);
+  s.entities.hero.uses["wild-shape"] = 2;
   ok(shape(s, "ape"));
   const eight = field(druid(8));
   ok(apply(eight, { type: "feature", actor: "hero", feature: "wild-shape", form: "giant-bat" }, DM));

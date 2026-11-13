@@ -53,7 +53,11 @@ test("Divine Spark heals, or harms with a Constitution save for half, by the dic
   assert.deepEqual(spark(13)[1].effects[0].onFail, [{ damage: "3d8+3", type: "radiant" }]);
   const s = field(cleric(14)), e = s.entities.hero, rogue = s.entities.rogue;
   rogue.hp = 50;
-  no(use(s, "divine-spark", { target: "rogue" }), /Choose what Divine Spark does: Heal, Radiant, Necrotic/);
+  no(use(s, "divine-spark", { target: "rogue", mode: "sparkle" }), /Choose what Divine Spark does: Heal, Radiant, Necrotic/);
+  // A screen that sends no mode: the use is spent and the DM applies it, as before it was built.
+  const hand = ok(use(s, "divine-spark", { target: "rogue" }));
+  assert.ok(hand.events.some((x) => x.type === "manual" && /No choice was sent/.test(x.text)));
+  e.uses["channel-divinity"] = 3;
   ok(use(s, "divine-spark", { target: "rogue", mode: "heal" }));
   assert.ok(rogue.hp >= 50 + 3 + 3 && rogue.hp <= 50 + 24 + 3, `healed by 3d8+3: ${rogue.hp}`);
   assert.equal(e.uses["channel-divinity"], 2);
