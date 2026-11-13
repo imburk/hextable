@@ -69,3 +69,59 @@ test("sweep forgets addresses whose windows have passed", () => {
   l.sweep();
   assert.deepEqual(l.stats(), { addresses: 0, hosts: 0, joins: 0 });
 });
+
+// ---------- uploads and file reads (#143) ----------
+
+test("uploads at once: 2 per address, 2 per table, 8 on the whole server; releasing frees the place", () => {
+  const l = createLimits();
+  assert.deepEqual([DEFAULT_LIMITS.uploadsAtOnce, DEFAULT_LIMITS.addressUploadsAtOnce, DEFAULT_LIMITS.tableUploadsAtOnce], [8, 2, 2]);
+  const a1 = l.uploadSlot("a", "AAAAAA"), a2 = l.uploadSlot("a", "BBBBBB");
+  assert.equal(typeof a1.release, "function"); assert.equal(typeof a2.release, "function");
+  assert.equal(l.uploadSlot("a", "CCCCCC").refused, "address", "a third from one address waits, whatever the table");
+  const b1 = l.uploadSlot("b", "AAAAAA");
+  assert.ok(b1.release);
+  assert.equal(l.uploadSlot("c", "AAAAAA").refused, "table", "a third to one table waits, whatever the address");
+  a1.release(); a1.release();                          // releasing twice frees only one place
+  assert.ok(l.uploadSlot("c", "AAAAAA").release);
+  assert.equal(l.uploadSlot("d", "AAAAAA").refused, "table");
+  // The whole server: 8 at once, from 8 addresses and 8 tables.
+  const m = createLimits(), held = [];
+  for (let i = 0; i < 8; i++) held.push(m.uploadSlot(`x${i}`, `T${i}AAAA`));
+  assert.ok(held.every((s) => s.release));
+  assert.equal(m.uploadSlot("y", "ZZZZZZ").refused, "server");
+  held[3].release();
+  assert.ok(m.uploadSlot("y", "ZZZZZZ").release);
+});
+
+test("an upload body has a deadline and, after a grace period, a minimum rate", () => {
+  const l = createLimits({ uploadBodyMs: 60_000, uploadGraceMs: 10_000, uploadMinBytesPerSec: 1000 });
+  assert.equal(l.uploadPace(5_000, 0), null, "nothing yet, but still in the grace period");
+  assert.equal(l.uploadPace(10_000, 9_999), "slow");
+  assert.equal(l.uploadPace(10_000, 10_000), null);
+  assert.equal(l.uploadPace(30_000, 29_000), "slow", "a trickle is cut off");
+  assert.equal(l.uploadPace(59_999, 5_000_000), null);
+  assert.equal(l.uploadPace(60_000, 5_000_000), "deadline", "even a fast body ends at the deadline");
+  const d = DEFAULT_LIMITS;
+  // Production: a file at the largest size and the slowest rate allowed still fits inside the deadline.
+  assert.ok(d.assetBytes / d.uploadMinBytesPerSec * 1000 <= d.uploadBodyMs, "the slowest allowed rate can finish the largest file");
+});
+
+test("file reads: a bucket per address", () => {
+  const c = clock(), l = createLimits({ assetReadBurst: 3, assetReadsPerSecond: 1 }, c.now);
+  for (let i = 0; i < 3; i++) assert.equal(l.allowAssetRead("a"), true);
+  assert.equal(l.allowAssetRead("a"), false);
+  assert.equal(l.allowAssetRead("b"), true, "another address has its own");
+  c.advance(1000);
+  assert.equal(l.allowAssetRead("a"), true);
+  assert.equal(l.allowAssetRead("a"), false);
+  c.advance(60_000);
+  l.sweep();
+  assert.equal(l.uploadStats().reads, 0, "full buckets are forgotten");
+});
+
+test("the new limits can be set from the environment", () => {
+  const l = limitsFromEnv({ LIMIT_UPLOADS_AT_ONCE: "3", LIMIT_ADDRESS_UPLOADS_AT_ONCE: "1", LIMIT_TABLE_UPLOADS_AT_ONCE: "1", LIMIT_UPLOAD_BODY_MS: "500",
+    LIMIT_UPLOAD_GRACE_MS: "100", LIMIT_UPLOAD_MIN_RATE: "10", LIMIT_ASSETS_TOTAL_BYTES: "1000", LIMIT_ASSET_READ_BURST: "4", LIMIT_ASSET_READ_RATE: "2" });
+  assert.deepEqual([l.uploadsAtOnce, l.addressUploadsAtOnce, l.tableUploadsAtOnce, l.uploadBodyMs, l.uploadGraceMs, l.uploadMinBytesPerSec, l.totalAssetBytes, l.assetReadBurst, l.assetReadsPerSecond],
+    [3, 1, 1, 500, 100, 10, 1000, 4, 2]);
+});
