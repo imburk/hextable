@@ -6,7 +6,7 @@ party of five. No monsters are placed: they are blank stages. The layouts are ou
 
 To use one: open the map editor (DM > Edit map), pick **Map file**, choose a map under
 "Stock map" and tap **Start on this map** twice (the second tap confirms). It is the same
-`loadMap` action as importing a file: the party is set down at the start, creatures of the old
+`loadMap` action as importing a file: the party is set down on the starts in order (anyone beyond them beside the first), creatures of the old
 place stay behind, and it works in solo and at a table. It cannot be done in the middle of a fight.
 
 | Id | Map | Size | What is in it |
