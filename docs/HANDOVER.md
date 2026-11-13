@@ -1,6 +1,6 @@
 # Hand-over note (13 November 2026)
 
-For a fresh Claude conversation taking over Hextable, on either of the owner's
+For a fresh Claude conversation taking over Hextable, on either of the two
 accounts. Read this, `CLAUDE.md`, `AGENTS.md`, `docs/agents/AGENT-BRIEF.md` and
 `docs/DEBT.md`; you do not need any earlier conversation.
 
@@ -10,20 +10,21 @@ accounts. Read this, `CLAUDE.md`, `AGENTS.md`, `docs/agents/AGENT-BRIEF.md` and
   owns design decisions and reports them briefly.
 - **Two Claude accounts work on this repo.** They cannot see each other's
   chats or memory. Everything shared goes through GitHub (see "Two accounts").
-  - **Max account: lead and builder.** Runs engine jobs and screens, and is
-    the only account that merges to main.
-  - **Pro account: reviewer and small jobs.** Independent reviews of
-    leak-sensitive code, Haiku data entry, doc upkeep. Budget is tight there.
+  - **Blue account (Ultra plan): lead.** Runs engine jobs and screens. The
+    only account that merges to main.
+  - **Purple account (Pro plan): support.** Reviews, Haiku data entry, doc
+    upkeep. One agent at a time. Budget is tight there.
 - Keep the lead model's own turns short. Hand building to agents: Haiku for
   data entry, Sonnet for client screens, reviews and routine work, Opus for
   engine or leak-sensitive work. Say so before starting an Opus job.
 - Claude cannot see usage limits; he pastes the usage page when it matters.
-  On the Pro account ask for it before an Opus job.
+  On Purple ask for it before an Opus job.
 - Start the next job only when he says so, unless he has asked for a chain.
   No hourly wake-ups unless asked.
 - Merging to main is authorised when tests, content check, build and
   `node --check` pass. **The lead merges, after re-running `npm test` on the
-  branch and reading the diff's file list. Agents do not merge.**
+  branch and reading the diff's file list. Agents do not merge.** Only Blue
+  merges; Purple opens pull requests and posts reviews.
 
 ## What a job costs (measured 12 November, Pro account)
 
@@ -36,7 +37,7 @@ accounts. Read this, `CLAUDE.md`, `AGENTS.md`, `docs/agents/AGENT-BRIEF.md` and
 
 Points are percent of the Pro weekly limit, the lead's turns included. Agent
 work did not draw on the Fable meter; only the lead's own turns did. A Max
-account has five times the Pro allowance.
+account has five times the Pro allowance. (Blue is on Ultra, Purple on Pro.)
 
 ## State of main
 
@@ -70,7 +71,7 @@ No branches are parked. `scenes-1`, `spells-retier-67`, `classes-5`,
    so **Shield cannot be used from the app until this lands.** The actions are
    in `packages/server/README.md` and under Decision 4 in
    `docs/specs/rules-expansion.md`.
-2. **Independent security read (Opus, Pro account, report only).** Uploads
+2. **Independent security read (Opus, Purple account, report only).** Uploads
    (handouts and assets), sight views, undo, scenes, reactions. All were
    landed by agents and tested by the same agents; nobody else has read them.
    Do this before any public table.
@@ -129,12 +130,12 @@ Rules that keep parallel work safe:
    `effects.js` and `packages/server/src/tables.js` are one lane. Client
    screens, content data, tests and docs can run beside it.
 2. **One state-version bump at a time.** Say in the issue that the job bumps it.
-3. **Only the Max account merges.** The Pro account opens pull requests and
+3. **Only Blue merges.** Purple opens pull requests and
    posts reviews.
 4. Every job merges main into its branch and re-runs all checks before
    opening its pull request. Small pull requests.
-5. On the Max account two agents at once is fine if they are in different
-   lanes. On the Pro account, one at a time.
+5. On Blue two agents at once is fine if they are in different lanes. On
+   Purple, one at a time.
 
 ## Running agents
 
