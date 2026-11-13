@@ -2,9 +2,9 @@
 // and touches no rules. Add a theme by adding an entry; later a theme can also point at
 // model packs and animation sets for its presenters.
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-// How floors are drawn on levels with walls or regions: 'hex' (each hex raised on its own) or 'rooms' (one floor
-// per room with a faint grid; a prototype, docs/specs/renderer.md). Try it with ?rooms in the address.
-const FLOORS = (() => { try { return new URLSearchParams(globalThis.location?.search ?? '').has('rooms') ? 'rooms' : 'hex'; } catch { return 'hex'; } })();
+// How floors are drawn on levels with walls or regions: 'rooms' (the default: one floor per room with a faint
+// grid, docs/specs/renderer.md) or 'hex' (each hex raised on its own, the old look). ?hex in the address gives 'hex'.
+const FLOORS = (() => { try { return new URLSearchParams(globalThis.location?.search ?? '').has('hex') ? 'hex' : 'rooms'; } catch { return 'rooms'; } })();
 
 export const THEMES = {
   classic: {

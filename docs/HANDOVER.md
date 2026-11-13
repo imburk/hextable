@@ -105,7 +105,8 @@ No branches are parked. `scenes-1`, `spells-retier-67`, `classes-5`,
 
 ## Owner decisions outstanding
 
-- Turn the `?rooms` look on by default?
+- Decided 13 Nov: the rooms look is the default (`?hex` gives the old look), and the
+  renderer moves to Three.js (`docs/specs/renderer.md`, Decision 8); the lead sets the timeline.
 - `docs/specs/renderer.md` is an agent draft recommending Three.js once models
   arrive. Claude owes its own view before the owner decides.
 
