@@ -2403,6 +2403,8 @@ const handlers = {
   endEffect(s, a, ctx, ev) {
     const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
     const src = s.entities[fx.source], own = !!src?.owner && src.owner === ctx.userId;
+    // To a player, an effect of a creature they do not know of, on nobody they know of, is nothing.
+    if (ctx.role !== 'dm' && !own && (!src || unknown(s, src)) && !fx.parts.some((p) => s.entities[p.target] && !unknown(s, s.entities[p.target]))) fail('No such effect.');
     ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
     endEffect(s, ev, fx, own || !src ? `${src?.name ?? 'its caster'} ended it` : 'the DM ended it');
   },
@@ -2621,11 +2623,27 @@ function look(s, ev) {
 // Table rules the DM can switch, and what each may be set to.
 export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'] };
 
+// The fields of an action that name creatures, one id or a list of them. (`follow`'s `leader` is
+// not one: its handler gives one answer for a creature that is not there and one not in the party.)
+const CREATURE_FIELDS = ['actor', 'target', 'entity', 'targets', 'spare', 'ids', 'order'];
+
 // Run one action's handler. Also how a waiting action is run again when its reaction is answered.
 function dispatch(s, action, ctx, ev) {
   // To anyone but the DM a hidden creature does not exist. Answering "it's 40 ft away" or
   // "it isn't yours" to a guessed id would confirm that it does.
-  if (ctx.role !== 'dm') for (const k of ['actor', 'target', 'entity']) if (unknown(s, s.entities[action[k]])) fail('No such creature.');
+  // So every creature id a player sends, in any field that names creatures, must be one the party
+  // knows of, and one that is not gets the very answer an id that is nothing gets, before anything
+  // else is looked at (issue #136). tests/hidden-ids.test.js walks every field every handler reads.
+  if (ctx.role !== 'dm') {
+    for (const k of CREATURE_FIELDS) {
+      const v = action?.[k];
+      for (const id of Array.isArray(v) ? v : [v]) {
+        if (typeof id !== 'string') continue;
+        const e = Object.hasOwn(s.entities, id) ? s.entities[id] : null;
+        if (!e || unknown(s, e)) fail('No such creature.');
+      }
+    }
+  }
   const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
   // While an action waits for a reaction, nothing that could change how it comes out may happen.
   if (s.pending && !WHILE_WAITING.has(action.type)) fail('The table is waiting for a reaction to be answered.');

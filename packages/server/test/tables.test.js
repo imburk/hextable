@@ -1095,3 +1095,23 @@ test("a reaction question goes to the player asked and to the DM; other players 
   const told = kim.last("update").events[0];
   assert.ok(told && told.type === "undone" && !/Rogue|rogue/.test(told.label) && !told.label.includes(st().entities.rogue.name), told?.label);
 });
+
+// Security review #132, H1 (issue #136): the review's repro, driven as the server drives it.
+test("a player who names a hidden creature in `targets` is told what an id that is nothing gets", () => {
+  const tables = createTables({ seed: () => 12345 });
+  const { dm, player, code } = seated(tables);
+  player.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  dm.say({ t: "act", action: { type: "spawn", monster: "ogre", name: "Grak the Ambusher", at: { q: 10, r: -10 }, hidden: true } });
+  const ogre = dm.last("update").events.find((e) => e.type === "spawned").id;
+  const t = tables.get(code), before = JSON.stringify(t.state), n = player.raw.length;
+  const answers = [ogre, "m99"].map((id) => {
+    player.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "magic-missile", targets: [id] } });
+    return JSON.stringify(player.raw.at(-1));
+  });
+  assert.equal(answers[0], answers[1]);
+  assert.equal(JSON.parse(answers[0]).error, "No such creature.");
+  assert.ok(!answers[0].includes("Grak"));
+  assert.equal(player.raw.length, n + 2);                             // one refusal each, and no update
+  assert.equal(JSON.stringify(t.state), before);
+  assert.equal(t.state.encounter, null);
+});
