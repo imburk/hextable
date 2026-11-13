@@ -359,14 +359,16 @@ function faces(map, level, patches) {
   return out;
 }
 // Which wall faces to lower, seen from a camera that is `toCam` away from what it follows (a unit vector on the
-// ground, map feet). A wall is cut away when it stands between the camera and a room: the camera is on one side,
-// there is floor on the other, and the camera does not see it edge on. Returns a Set of indexes into `faces`.
+// ground, map feet). A wall is cut away when it stands between the camera and a room: the camera is on one side
+// and there is floor on the other. A wall seen nearly edge on (the side walls of a room, or one facet of a wall
+// traced along hex edges) is cut if there is floor beside it at all, so it does not stand up in the middle of a
+// low run. Returns a Set of indexes into `faces`.
 // A wall with floor on both sides (a partition) counts as such a wall whichever side the camera is on.
 export function cutaway(faces, toCam, edgeOn = 0.2) {
   const out = new Set();
   faces.forEach((f, i) => {
     const s = dot2(f.n, toCam);
-    if (Math.abs(s) < edgeOn) return;
+    if (Math.abs(s) < edgeOn) { if (f.floor.left || f.floor.right) out.add(i); return; }
     const far = s > 0 ? f.floor.right : f.floor.left;
     if (far) out.add(i);
   });

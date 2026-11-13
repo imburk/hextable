@@ -209,7 +209,12 @@ test('cut-away: the wall between the camera and the room is lowered, the far wal
   assert.equal(cut(south, [0, 1]), true, 'the camera is to the south: the south wall is in the way');
   assert.equal(cut(north, [0, 1]), false, 'and the north wall stands');
   assert.equal(cut(north, [0, -1]), true); assert.equal(cut(south, [0, -1]), false);
-  assert.equal(cut(south, [1, 0]), false, 'seen edge on it is left alone');
+  assert.equal(cut(south, [1, 0]), true, 'seen edge on, a wall with floor beside it goes down with its neighbours');
+  const lone = { ...south, floor: { left: false, right: false } };
+  assert.equal(cut(lone, [1, 0]), false, 'and one with no floor beside it stands');
+  assert.equal(cut(lone, [0, 1]), false);
+  const part = { ...south, floor: { left: true, right: true } };
+  assert.equal(cut(part, [0, 1]) && cut(part, [0, -1]), true, 'a partition is cut from either side');
 });
 
 test('levels: only levels with walls or regions are built, and a level above is its own floor', () => {
