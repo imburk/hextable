@@ -124,7 +124,10 @@ async function selectAndMove(page, touch, id, name) {
   for (let attempt = 0; attempt < 6; attempt++) {
     await settle(page, id);
     const dir = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]][attempt];
-    const pt = await page.evaluate(([i, d]) => { const e = window.hextable.state.entities[i]; return window.hextable.R.screenOf({ q: e.pos.q + d[0], r: e.pos.r + d[1], z: e.pos.z }); }, [id, dir]);
+    // A hex with somebody in it is skipped: a tap there selects them instead (the party stands side by side on a stock map).
+    const pt = await page.evaluate(([i, d]) => { const S = window.hextable.state, e = S.entities[i], q = e.pos.q + d[0], r = e.pos.r + d[1];
+      if (Object.values(S.entities).some((o) => o.pos && o.pos.q === q && o.pos.r === r)) return null;
+      return window.hextable.R.screenOf({ q, r, z: e.pos.z }); }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
     await tapAt(page, touch, pt.x, pt.y);
     try {
