@@ -730,7 +730,7 @@ export function aboutHTML(info = {}) {
     ? `<ul class="ab-list">${MODEL_PACKS.map((p) => `<li><b>${esc(p.name)}</b>${p.author ? ` by ${esc(p.author)}` : ''}: ${esc(p.licence)}${p.url ? ` (${linked(p.url)})` : ''}</li>`).join('')}</ul>`
     : '<p class="note">None yet. Each model pack that is added is listed here with its author and licence.</p>';
   return `<section class="ab-sec"><h3>Hextable</h3>
-      <p>A virtual tabletop for fifth edition play, in the browser. Version ${esc(GAME_VERSION)}. Tables are kept in state version ${esc(info.stateVersion ?? '')}${info.tableVersion !== undefined ? `; this table is in version ${esc(info.tableVersion)}` : ''}.</p>
+      <p>A virtual tabletop compatible with fifth edition, in the browser. Version ${esc(GAME_VERSION)}. Tables are kept in state version ${esc(info.stateVersion ?? '')}${info.tableVersion !== undefined ? `; this table is in version ${esc(info.tableVersion)}` : ''}.</p>
       <p class="note">Say these numbers when you report a problem.</p></section>
     <section class="ab-sec" id="ab-srd"><h3>The rules</h3>
       <p id="ab-srd-text">${linked(SRD_ATTRIBUTION)}</p></section>
