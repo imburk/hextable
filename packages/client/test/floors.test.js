@@ -120,6 +120,50 @@ test('a wall that ends inside a hex leaves the hex whole', () => {
   assert.ok(cells.every((c) => c.poly.length === 6));
 });
 
+test('walls that bend inside a hex cut it there, and the floor on the near side of the bend is its own patch', () => {
+  const E = [12.3, 7.1];                                      // inside a hex, away from its middle
+  const m = mk(block(0, 6, 0, 3), [{ a: E, b: [60, E[1]] }, { a: E, b: [E[0], 40] }]);
+  const fl = F.buildFloors(m), cells = cellsOf(fl), eps = 1e-6;
+  const cen = (c) => [c.poly.reduce((s, v) => s + v[0], 0) / c.poly.length, c.poly.reduce((s, v) => s + v[1], 0) / c.poly.length];
+  let bent = 0;
+  for (const c of cells) {
+    const [x, y] = cen(c), inCorner = x > E[0] && y > E[1];
+    if (inCorner) assert.ok(c.poly.every((v) => v[0] >= E[0] - eps && v[1] >= E[1] - eps), 'a cell in the corner stays inside it');
+    else assert.ok(c.poly.every((v) => !(v[0] > E[0] + eps && v[1] > E[1] + eps)), 'and no cell outside reaches into it');
+    if (c.poly.some((v) => near(v[0], E[0], eps) && near(v[1], E[1], eps))) bent++;
+  }
+  assert.ok(bent >= 2, 'the hex is cut at the bend');
+  assert.equal(fl.levels[0].patches.length, 2, 'the corner and the rest are two floors');
+  assert.ok(cells.every((c) => !c.fill || c.at !== c.hex), 'pieces of a hex that are not across a wall from its middle are not picture-only');
+  const edges = fl.levels[0].patches.flatMap((p) => p.outline).filter((e) => e.kind === 'wall');
+  assert.ok(edges.some((e) => near(e.a[0], E[0], 1e-3) || near(e.b[0], E[0], 1e-3)), 'the floors meet along the wall');
+});
+
+test('a wall across a corridor, ending on its side walls, cuts the end of the corridor: it follows the wall, not the tiles', () => {
+  const tiles = {}; for (let q = 0; q <= 4; q++) tiles[`${q},0`] = 'stone';
+  const cap = 21.3, m = mk(tiles, [{ a: [-3, -6], b: [cap, -6] }, { a: [-3, 6], b: [cap, 6] }, { a: [cap, -6], b: [cap, 6] }]), cells = cellsOf(F.buildFloors(m));
+  for (const y of [-5.5, -2, 0, 2, 5.5]) { assert.ok(pointIn(cells, cap - 0.4, y), `floor by the wall at ${y}`); assert.ok(!pointIn(cells, cap + 0.4, y), `none beyond it at ${y}`); }
+  assert.ok(cells.every((c) => c.poly.every((v) => v[0] <= cap + 1e-6)));
+  const cut = F.buildFloors(m).levels[0].patches[0].outline.filter((e) => near(e.a[0], cap, 1e-6) && near(e.b[0], cap, 1e-6));
+  assert.ok(cut.length >= 1 && cut.every((e) => e.kind === 'open'), 'the end is a floor edge standing on the wall');
+});
+
+test('a wall that stops short of another by a hair still cuts', () => {
+  const tiles = {}; for (let q = 0; q <= 4; q++) tiles[`${q},0`] = 'stone';
+  const m = mk(tiles, [{ a: [-3, -6], b: [30, -6] }, { a: [-3, 6], b: [30, 6] }, { a: [21.3, -5.9], b: [21.3, 5.9] }]);
+  assert.ok(!pointIn(cellsOf(F.buildFloors(m)), 21.8, 0));
+});
+
+test('doors are wall faces too, and a post lists the walls that meet at it', () => {
+  const m = mk(block(0, 3, 0, 1), [{ id: 'w1', a: [0, 0], b: [10, 0] }, { id: 'w2', a: [10, 0], b: [10, 10] }]);
+  m.walls = m.walls.map((w, i) => ({ ...w, id: ['w1', 'w2'][i] }));
+  m.objects.push({ id: 'o1', def: 'door-wooden', level: 'ground', at: { q: 1, r: 0 }, edge: 0, state: 'closed' });
+  const lv = F.buildFloors(m).levels[0];
+  assert.deepEqual(lv.walls.map((w) => w.key).slice(0, 2), ['w:w1', 'w:w2']);
+  assert.ok(lv.walls.some((w) => w.key === 'o:o1' && w.object));
+  assert.deepEqual(lv.posts.find((p) => near(p.at[0], 10) && near(p.at[1], 0)).keys, ['w:w1', 'w:w2']);
+});
+
 test('pieces of one traced wall that meet end to end on a line cut like one wall', () => {
   const tiles = {}; for (let q = 0; q <= 8; q++) tiles[`${q},0`] = 'stone';
   const m = mk(tiles, [{ a: [-3, -6], b: [20, -6] }, { a: [20, -6], b: [47, -6] }, { a: [-3, 6], b: [47, 6] }]);

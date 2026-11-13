@@ -15,8 +15,10 @@
 //   4. Every cell edge is looked at across: nothing there (open), a lower floor (drop), a higher one (rise),
 //      a wall on the line (wall), or just a different patch at the same height (seam).
 //   5. Where the floor ends, the edges are chained into an outline with an inset line for the kerb.
-// Not done: a wall that ends inside a hex, or bends inside it, does not cut it (only a wall that crosses a
-// hex from side to side does), so the floor there still follows the hex edge and the wall stands on it.
+// A wall cuts a piece if it crosses it from side to side (a cap wall across a corridor crosses the strip the two
+// side walls leave of a hex). Where walls meet at a point inside a hex (a bend, a corner) each arm's line is
+// carried on through the hex too, so the hex falls apart into convex wedges; the wedges the wall does not
+// separate are joined again into one patch. A wall that ends in the open inside a hex (a dead end) does not cut.
 import * as H from './shared/hex.js';
 import { FT, surfaces, regionAt } from './shared/space.js';
 import { WALL_KINDS, center, objectSegment } from './shared/walls.js';
@@ -29,6 +31,7 @@ export const WALL_THICK = 0.5;                     // feet
 export const WALL_FULL = 10;                       // WALL_HEIGHT in the rules, feet
 export const CUT_HEIGHT = 3;                       // what a cut-away wall is lowered to, feet
 const TOL = 0.03;                                  // feet: points closer than this are the same point
+const JOIN = 0.25;                                 // feet: a traced wall that stops this short of another still meets it
 const MIN_AREA = 0.005;                            // square feet: a smaller piece is a rounding error
 
 const cross2 = (a, b) => a[0] * b[1] - a[1] * b[0];
@@ -117,8 +120,29 @@ function distToSeg(p, [a, b]) {
   const d = sub2(b, a), l = dot2(d, d), t = l ? Math.max(0, Math.min(1, dot2(sub2(p, a), d) / l)) : 0;
   return len2(sub2(p, [a[0] + d[0] * t, a[1] + d[1] * t]));
 }
+// Where two or more of the lines end at one point (a bend or a corner): for each line there, the line carried
+// on through the point. [{ at, d }]. A line that ends on the side of another (a T) is not one: the other cuts first.
+function bends(lines) {
+  const out = [];
+  lines.forEach((s, i) => {
+    for (const e of [0, 1]) {
+      const at = s[e];
+      if (lines.some((t, j) => j !== i && (len2(sub2(t[0], at)) <= JOIN || len2(sub2(t[1], at)) <= JOIN))) out.push({ at, d: sub2(s[1], s[0]) });
+    }
+  });
+  return out;
+}
+// Put a point into a polygon's edge if it lies on one (and is not already a corner).
+function withPoint(poly, p) {
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if (len2(sub2(p, a)) <= TOL || len2(sub2(p, b)) <= TOL) return poly;
+    if (distToSeg(p, [a, b]) <= TOL) return [...poly.slice(0, i + 1), p, ...poly.slice(i + 1)];
+  }
+  return poly;
+}
 // Does the line a-b cross the convex polygon from side to side: through its inside, with both ends outside or on its edge?
-function crossesFully(poly, a, b) {
+function crossesFully(poly, a, b, slack = TOL) {
   const d = sub2(b, a), l = len2(d); if (!l) return false;
   const parts = splitPoly(poly, a, d); if (!parts[0] || !parts[1]) return false;
   const t = (p) => dot2(sub2(p, a), d) / (l * l), s = poly.map((v) => cross2([d[0] / l, d[1] / l], sub2(v, a)));
@@ -129,7 +153,7 @@ function crossesFully(poly, a, b) {
     if (Math.abs(sp) <= 1e-9) see(p);
     if ((sp > 1e-9 && sq < -1e-9) || (sp < -1e-9 && sq > 1e-9)) { const k = sp / (sp - sq); see([p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]); }
   }
-  const e = TOL / l;
+  const e = slack / l;
   return lo >= -e && hi <= 1 + e;
 }
 
@@ -161,23 +185,41 @@ function floorOfLevel(map, level) {
       for (const h of [c, ...H.neighbors(c)]) { const key = H.col(h); if (!near.has(key)) near.set(key, new Set()); near.get(key).add(i); }
     }
   });
+  // Bends and corners: the lines there, carried on through the point, also cut the hexes it lies in.
+  const carry = bends(lines), carryNear = new Map();
+  carry.forEach((c, i) => { const h = hexAt(c.at[0], c.at[1]); for (const n of [h, ...H.neighbors(h)]) { const key = H.col(n); if (!carryNear.has(key)) carryNear.set(key, []); carryNear.get(key).push(i); } });
   // 1. Pieces.
   const pieces = [];                                       // { at, poly, owner (tile key or null), own (the piece that holds the tile's centre) }
   const byAt = new Map();
   const add = (p) => { pieces.push(p); if (!byAt.has(p.at)) byAt.set(p.at, []); byAt.get(p.at).push(p); };
-  for (const k of new Set([...Object.keys(level.tiles), ...near.keys()])) {
-    const h = H.parse(k), tile = level.tiles[k], poly = hexPoly(h);
-    let parts = [poly];
-    for (const i of near.get(k) ?? []) {
-      const [a, b] = lines[i];
-      if (!crossesFully(poly, a, b)) continue;
-      parts = parts.flatMap((p) => { const [l, r] = splitPoly(p, a, sub2(b, a)); return l && r ? [l, r] : [p]; });
+  for (const k of new Set([...Object.keys(level.tiles), ...near.keys(), ...carryNear.keys()])) {
+    const h = H.parse(k), tile = level.tiles[k], mine = near.get(k) ?? [], ext = (carryNear.get(k) ?? []).map((i) => carry[i]);
+    // Cut the hex by every wall that crosses a piece from side to side (a piece is what is left after the cuts so far),
+    // and by the carried-on lines of bends inside a piece, until nothing more cuts.
+    const todo = [hexPoly(h)], parts = [];
+    while (todo.length) {
+      const poly = todo.pop();
+      let cut = null;
+      for (const i of mine) {
+        const [a, b] = lines[i];
+        if (!crossesFully(poly, a, b, JOIN)) continue;
+        const [l, r] = splitPoly(poly, a, sub2(b, a)); if (l && r) { cut = [l, r]; break; }
+      }
+      if (!cut) for (const e of ext) {
+        if (!(poly.some((v) => len2(sub2(v, e.at)) <= TOL) || inside(poly, e.at) || poly.some((v, j) => distToSeg(e.at, [v, poly[(j + 1) % poly.length]]) <= TOL))) continue;
+        const [l, r] = splitPoly(poly, e.at, e.d); if (l && r) { cut = [l, r]; break; }
+      }
+      if (cut) todo.push(cut[1], cut[0]); else parts.push(poly);
     }
     if (!tile && parts.length < 2) continue;               // no floor, and no wall to fill it up to
     const c = center(h);
     let own = null;
     if (tile) { own = parts.find((p) => inside(p, c)) ?? parts.reduce((m, p) => (polyArea(p) > polyArea(m) ? p : m)); }
-    for (const p of parts) add({ at: k, poly: p, owner: tile && p === own ? k : null, fill: !(tile && p === own) });
+    for (const part of parts) {
+      let poly = part;
+      for (const e of ext) poly = withPoint(poly, e.at);   // so a wall that stops half way along a cut line splits its edge there
+      add({ at: k, poly, owner: tile && part === own ? k : null });
+    }
   }
   // Contacts: where two pieces' edges lie along one another (they are opposite ways round), and whether a wall is on the line.
   const contacts = new Map(pieces.map((p) => [p, []]));
@@ -209,7 +251,7 @@ function floorOfLevel(map, level) {
   const live = pieces.filter((p) => p.owner);
   const cells = live.map((p, n) => {
     const tile = level.tiles[p.owner], z = level.z + (tile.h ?? 0), region = regionAt(map, level.id, H.parse(p.owner))?.id ?? null;
-    return { n, hex: p.owner, at: p.at, fill: p.fill, poly: p.poly, z, lift: tile.lift, top: z + (tile.lift ?? 0.6) / UNIT, terrain: tile.t, region, piece: p };
+    return { n, hex: p.owner, at: p.at, fill: p.at !== p.owner, poly: p.poly, z, lift: tile.lift, top: z + (tile.lift ?? 0.6) / UNIT, terrain: tile.t, region, piece: p };
   });
   const cellOf = new Map(cells.map((c) => [c.piece, c]));
   const lowestAt = new Map();
@@ -286,7 +328,7 @@ export function cellParts(cell, k) {
 
 // ---------- walls: posts, faces, cut-aways ----------
 // A post stands where wall segments meet, so that corners close: where two ends meet, or an end meets the
-// side of another wall. { at: [x, y], kind: the tallest kind meeting there, kinds }
+// side of another wall. { at: [x, y], kind: the tallest kind meeting there, kinds, keys: the `key` of each wall face that meets there }
 const TALL = { wall: 3, curtain: 3, window: 2, rail: 1 };
 function posts(map, level) {
   const ws = map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]);
@@ -298,20 +340,23 @@ function posts(map, level) {
     ws.forEach((w, i) => { if (!ids.has(i) && distToSeg(e.at, [w.a, w.b]) <= TOL) { ids.add(i); kinds.add(w.kind); } });       // an end on the side of another
     if (ids.size < 2) continue;
     const list = [...kinds].sort((x, y) => TALL[y] - TALL[x]);
-    out.push({ at: e.at, kind: list[0], kinds: list });
+    out.push({ at: e.at, kind: list[0], kinds: list, keys: [...ids].sort((x, y) => x - y).map((i) => `w:${ws[i].id}`) });
   }
   return out.sort((a, b) => a.at[0] - b.at[0] || a.at[1] - b.at[1]);
 }
-// Every drawn wall segment as data for the cut-away: where it is, which way it faces, and whether there is floor
+// Every drawn wall segment, and every door's line, as data for the cut-away: where it is, which way it faces, and whether there is floor
 // on each side of it. n is the left-hand unit normal of a to b; floor.left and floor.right say if a point just off each side is floor.
 function faces(map, level, patches) {
   const cellsAt = new Map();
   for (const p of patches) for (const c of p.cells) { if (!cellsAt.has(c.at)) cellsAt.set(c.at, []); cellsAt.get(c.at).push(c); }
   const floorAt = (pt) => { const h = hexAt(pt[0], pt[1]); return [h, ...H.neighbors(h)].some((n) => (cellsAt.get(H.col(n)) ?? []).some((c) => inside(c.poly, pt))); };
-  return map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]).map((w) => {
-    const d = sub2(w.b, w.a), l = len2(d) || 1, n = [-d[1] / l, d[0] / l], mid = [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2], off = 0.75;
-    return { id: w.id, kind: w.kind, a: w.a, b: w.b, mid, n, floor: { left: floorAt([mid[0] + n[0] * off, mid[1] + n[1] * off]), right: floorAt([mid[0] - n[0] * off, mid[1] - n[1] * off]) } };
-  });
+  const one = (key, id, kind, a, b) => {
+    const d = sub2(b, a), l = len2(d) || 1, n = [-d[1] / l, d[0] / l], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], off = 0.75;
+    return { key, id, kind, a, b, mid, n, floor: { left: floorAt([mid[0] + n[0] * off, mid[1] + n[1] * off]), right: floorAt([mid[0] - n[0] * off, mid[1] - n[1] * off]) } };
+  };
+  const out = map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]).map((w) => one(`w:${w.id}`, w.id, w.kind, w.a, w.b));
+  for (const o of map.objects) if (o.level === level.id) { const s = objectSegment(o); if (s) out.push({ ...one(`o:${o.id}`, o.id, 'door', s[0], s[1]), object: true }); }     // a door or a portcullis lies in a wall and is lowered with it
+  return out;
 }
 // Which wall faces to lower, seen from a camera that is `toCam` away from what it follows (a unit vector on the
 // ground, map feet). A wall is cut away when it stands between the camera and a room: the camera is on one side,
