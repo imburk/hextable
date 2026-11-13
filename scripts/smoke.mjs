@@ -49,7 +49,8 @@ async function startServer() {
   execSync('node scripts/build.mjs', { cwd: ROOT, stdio: 'ignore' });
   const port = await freePort();
   dataDir = mkdtempSync(join(tmpdir(), 'hextable-smoke-'));
-  server = spawn(process.execPath, ['packages/server/src/index.js'], { cwd: ROOT, env: { ...process.env, PORT: String(port), DATA_DIR: dataDir }, stdio: 'ignore' });
+  // The server allows 5 hosted tables an hour per address (limits.js); a full run hosts more than that from one address.
+  server = spawn(process.execPath, ['packages/server/src/index.js'], { cwd: ROOT, env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, LIMIT_HOSTS: '1000' }, stdio: 'ignore' });
   const url = `http://127.0.0.1:${port}/`;
   for (let i = 0; i < 100; i++) {
     if (server.exitCode !== null) throw new Error('the table server exited at start');
