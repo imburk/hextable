@@ -162,7 +162,20 @@ export function describeStep(action, events, before, after) {
   switch (a.type) {
     case 'move': label = `${who} moved`; break;
     case 'attack': label = `${who} attacked ${name(a.target)}`; break;
-    case 'cast': label = `${who} cast ${ev('cast')?.name ?? 'a spell'}`; break;
+    case 'cast': {
+      // Its own cast, not a reaction cast against it (Counterspell). A spell that was countered
+      // is named only for the DM: players are told whose spell failed, not which.
+      const own = events.find((e) => e.type === 'cast' && e.actor === a.actor && !e.reaction), lost = ev('countered');
+      if (lost) { label = { label: `${who}'s ${lost.name} was countered`, shown: `${who}'s spell was countered` }; break; }
+      label = `${who} cast ${own?.name ?? 'a spell'}`; break;
+    }
+    // An answer to a reaction carries on the action that waited for it, and is named after that.
+    case 'react': {
+      const p = prior?.pending;
+      if (!p) { label = 'A reaction was answered'; break; }
+      const inner = describeStep(p.action, events, { tree: { ...prior, pending: undefined } }, after);
+      return { label: `${inner.label} (after ${name(p.ask.reactor)}'s reaction)`, shown: inner.shown && `${inner.shown}, after a reaction` };
+    }
     case 'spawn': label = `${name(ev('spawned')?.id)} was added`; break;
     case 'addCharacter': label = `${name(ev('spawned')?.id ?? ev('placed')?.id)} joined the party`; break;
     case 'reveal': label = `${who} was ${a.hidden ? 'hidden' : 'revealed'}`; break;
@@ -202,5 +215,9 @@ export function describeStep(action, events, before, after) {
   const named = ['actor', 'target', 'entity'].map((k) => a[k]).filter((id) => typeof id === 'string');
   const known = named.every((id) => classify(after, id) !== 'hidden');
   const seen = viewEvents(events, after, { role: 'player' }).length > 0;
-  return { label, shown: known && seen ? label : null };
+  const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
+  // An action that stopped to ask about a reaction did nothing yet: players are told nothing of it.
+  const asked = events.find((e) => e.type === 'reactionAsked');
+  if (asked) return { label: `${text} (waiting for ${name(asked.id)}'s reaction)`, shown: null };
+  return { label: text, shown: known && seen ? shown : null };
 }

@@ -106,7 +106,26 @@ function turnBeforeUnseen(state, ev) {
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...playerView(state), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer) };
+  return { ...playerView(state), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+}
+
+// An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
+// may know of it. The player who controls the creature being asked gets the question:
+// { n, reactor, trigger, options: [{ reaction, name, slots?, ac? }], by?, attack?, total?, ac?,
+// crit?, spell? } (answer with { type: 'react', prompt: n, take, slot? }). `by` is left out where
+// the party cannot see who set it off. Every other player gets only { waiting: true }: the table
+// waits, but not on whom or for what, nor what action is waiting. Nothing waits: null. The DM has
+// the whole record in the state (`pending`) and gets it here too.
+export function viewPrompt(state, viewer) {
+  const p = state.pending;
+  if (!p) return null;
+  if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
+  const t = state.entities[p.ask.reactor];
+  if (!t || typeof viewer?.userId !== 'string' || t.owner !== viewer.userId) return { waiting: true };
+  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => pick(o, ['reaction', 'name', 'slots', 'ac'])) };
+  if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
+  for (const k of ['attack', 'total', 'ac', 'crit', 'spell']) if (q[k] !== undefined) out[k] = q[k];
+  return structuredClone(out);
 }
 
 // The standing instructions for reactions (reactions.js) of the creatures this viewer controls,
@@ -373,6 +392,16 @@ export function viewEvents(events, state, viewer) {
           delete e.dice; delete e.bonus; delete e.rolled; delete e.by;
           out.push({ ...e, ...facesFor(ev) });
         }
+        break;
+      case 'reactionAsked':                            // a question about a reaction: to the player asked, never anyone else
+        if (typeof viewer?.userId === 'string' && ev.to === viewer.userId) {
+          const v = viewPrompt({ ...state, pending: { n: ev.n, ask: ev.ask } }, viewer);
+          if (v && !v.waiting) out.push({ type: ev.type, id: ev.id, n: ev.n, ask: v });
+        }
+        break;
+      case 'countered':                                // a spell failed to Counterspell: whose, and by whom where known; which spell only if it was theirs
+        out.push({ ...pick(ev, ['type', 'id']), ...(cls(ev.id) === 'open' ? pick(ev, ['spell', 'name']) : {}),
+          ...(ev.by !== undefined && cls(ev.by) !== 'hidden' ? { by: ev.by } : {}) });
         break;
       case 'manual':                                   // what the DM must apply by hand
         // Everyone sees what a spell does when the engine cannot apply it. Notes about what
