@@ -21,6 +21,7 @@ import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
+import { initClasses, formOf, formName } from './classes.js';
 import { createDice, MAX_DICE } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
@@ -122,6 +123,7 @@ function preview(e, a) {
 let flick = null, closeTray = null, armed = null;
 function act(action) {
   if (skipping()) return;
+  action = CLS.decorate(action);
   if (!toThrow(action)) return T.send(action);
   closeTray?.();
   const e = S.entities[action.actor], p = preview(e, action);
@@ -469,7 +471,7 @@ function refresh() {
     const pip = (label, have) => `<span class="${have ? 'have' : 'spent'}">${label}</span>`;
     const dying = !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`);
     const named = Object.keys(e.cond).filter((c) => e.cond[c] && c !== 'stable').map((c) => conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : ''));
-    const conds = [e.dead && 'Dead', dying, e.hidden && 'Hidden from players', ...named].filter(Boolean);
+    const conds = [e.dead && 'Dead', formOf(e) && `<b class="form">${esc(formName(e))} form</b>`, dying, e.hidden && 'Hidden from players', ...named].filter(Boolean);
     // Lasting effects this creature is under or is keeping up. Whoever controls the source can end one.
     const lasting = (S.effects || []).filter((fx) => fx.source === e.id || fx.parts.some((p) => p.target === e.id && !p.ended)).map((fx) => {
       const left = !fx.until ? '' : fx.until.clock !== undefined ? ` · until ${clockText(fx.until.clock)}` : enc ? ` · ${Math.max(0, fx.until.round - enc.round)} rounds` : '';
@@ -508,6 +510,7 @@ function refresh() {
           const armed = fb.aim && mode.kind === 'feature' && mode.id === fb.aim;
           bar.append(button(fb.label, fb.sub, `${fb.cls} ${armed ? 'armed' : ''}`, fb.why, () => (fb.aim ? setMode(armed ? MOVE : { kind: 'feature', id: fb.aim, name: fb.label }) : act(fb.send))));
         }
+        for (const cb of CLS.buttons(e)) bar.append(button(cb.label, cb.sub, cb.cls, cb.why, cb.onClick));
         if (e.features.secondWind && !hasFeat(e, 'second-wind') && (enc || e.hp < e.maxHp))
           bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
             blocked(S, e, 'bonus') || (!e.uses.secondWind && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '',
@@ -572,7 +575,7 @@ function refresh() {
           if (!sp.harmful) hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
           // Several targets (Magic Missile's darts, Bless): each tap adds one until there are enough, or Cast.
-          const most = targetCount(sp.def, e.level), picked = mode.picked ?? [];
+          const most = CLS.most(e, sp, targetCount(sp.def, e.level)), picked = mode.picked ?? [];
           if (most > 1 && picked.length) {
             hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
             go = true;
@@ -581,6 +584,7 @@ function refresh() {
       }
     }
   }
+  if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
   if (mode.kind === 'spawn') hint = `Tap a hex to add a ${MONSTERS[mode.monster].name}`;
   if (mode.kind === 'place') hint = `Tap a hex to place ${name(selId)}`;
   if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
@@ -601,6 +605,7 @@ function refresh() {
   HO.refresh();
   SC.refresh();
   RP.refresh();
+  CLS.sync(mode);
 }
 
 function renderLog() {
@@ -618,7 +623,8 @@ function renderSheet() {
   $('sheet-body').innerHTML = `
     <h2>${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
-    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}</p>
+    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
+    ${CLS.sheetBanner(e)}
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span></div>
     <div class="stats">${abil}</div>
     <p class="note">Saving throws: ${saves}</p>
@@ -628,13 +634,13 @@ function renderSheet() {
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
       ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${sp.name}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
-    ${featuresHtml(e)}
+    ${featuresHtml(e, mine(e))}
     ${mine(e) ? reactionsHtml(S, e) : ''}
     ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
-  bindReactions($('sheet-body'), e, act);
+  bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
   for (const b of $('sheet-body').querySelectorAll('[data-skill]')) b.onclick = () => act({ type: 'check', actor: e.id, skill: b.dataset.skill });
 }
 
@@ -747,7 +753,7 @@ R.onTap = ({ hex, id }) => {
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id }) : setMode(MOVE);
-  if (mode.kind === 'feature') { const f = mode.id; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id }) : undefined; }
+  if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
     if (mode.area) { mode.aim = hex; return refresh(); }
     return tapped && tapped.id !== selId ? act({ type: 'act', actor: selId, action: mode.id, target: id }) : setMode(MOVE);
@@ -757,7 +763,7 @@ R.onTap = ({ hex, id }) => {
     if (sp.area) { mode.aim = hex; return refresh(); }
     if (!tapped) return setMode(MOVE);
     if (!targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
-    const most = targetCount(sp.def, e.level);
+    const most = CLS.most(e, sp, targetCount(sp.def, e.level));
     if (most <= 1) return act({ type: 'cast', actor: selId, spell: mode.id, target: id, ...chosen(sp) });
     const picked = mode.picked ?? (mode.picked = []);
     if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
@@ -907,6 +913,10 @@ const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, 
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => S, isDM });
+// Class features that need a choice first (classes.js): Divine Spark's mode, a Wild Shape form, Metamagic...
+const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
+  arm: (m) => setMode({ kind: 'feature', ...m }),
+  castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // For the browser console, tests and future automation.
 window.hextable = { R, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
@@ -928,7 +938,7 @@ function start(transport, map = null) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    SC.refused(); RP.refused(msg); QE.refused(msg);
+    CLS.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => S && showUndo();

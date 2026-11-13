@@ -1663,6 +1663,80 @@ async function controlsTable(browser, url) {
   });
 }
 
+// ---------- class features that need a choice (#170) ----------
+// A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
+// casts with one Metamagic option and the Sorcery Points go down. Every control is driven by tapping.
+async function classes(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, tap = (page, sel) => (touch ? page.locator(sel).tap() : page.click(sel));
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const ids = {};
+      const A = { str: 10, dex: 12, con: 14, int: 10, wis: 16, cha: 16 };
+      const sheets = {
+        Cleo: { name: 'Cleo', class: 'cleric', level: 14, subclass: 'life', abilities: A, skills: ['insight', 'religion'], choices: {}, spells: [] },
+        Dru: { name: 'Dru', class: 'druid', level: 14, subclass: 'land', abilities: A, skills: ['nature', 'perception'], choices: {}, spells: [] },
+        Sorsha: { name: 'Sorsha', class: 'sorcerer', level: 15, subclass: 'draconic', abilities: { ...A, cha: 18 }, skills: ['arcana', 'insight'],
+          choices: { metamagic: ['careful', 'quickened'], 'metamagic-10': ['heightened', 'transmuted'], 'elemental-affinity': 'fire' }, spells: ['fire-bolt', 'fireball', 'hold-person', 'haste', 'burning-hands'] },
+      };
+      const uses = (n, f) => state(page, (S, a) => S.entities[a[0]].uses[a[1]], [ids[n], f]);
+      const pick = async (n) => { await closePanels(page); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
+      const bar = async (text) => { await pick(text.who); await tap(page, `#actions button:has-text("${text.btn}")`); };
+      const tapCreature = async (target) => {
+        await settle(page, target);
+        const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
+        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error('the target is off screen or under a panel');
+        await tapAt(page, touch, pt.x, pt.y);
+      };
+      const newest = (since) => state(page, (S, n) => S.timeline.slice(n).map((e) => e.type), since);
+
+      await run.do('a level 14 cleric, a level 14 druid and a level 15 sorcerer join the party', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(async (sh) => {
+          const D = await import('./shared/derive.js'), h = window.hextable;
+          document.getElementById('dm-auto').checked = false;
+          let q = 0;
+          for (const s of Object.values(sh)) { const r = D.derive(s); if (!r.record) throw new Error(JSON.stringify(D.validate(s))); h.act({ type: 'addCharacter', record: r.record, at: { q: -3 + q++, r: 4, z: 0 } }); }
+        }, sheets);
+        for (const n of Object.keys(sheets)) { await wait(page, (nm) => Object.values(window.hextable.state.entities).some((e) => e.name === nm), n); ids[n] = await state(page, (S, nm) => Object.values(S.entities).find((e) => e.name === nm).id, n); }
+      });
+
+      await run.do('the cleric offers Divine Spark with a chooser of its three modes', async () => {
+        await pick('Cleo');
+        await tap(page, '#actions button:has-text("Divine Spark")');
+        await waitShown(page, '#cp .cp-card');
+        const modes = await page.$$eval('#cp .cp-mode', (b) => b.map((x) => x.dataset.mode));
+        if (modes.join() !== 'heal,radiant,necrotic') throw new Error(`modes: ${modes}`);
+        const box = await page.$eval('#cp .cp-card', (x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, r.bottom, innerWidth, innerHeight]; });
+        if (box[0] < 0 || box[1] > box[3] || box[2] > box[4]) throw new Error(`the panel does not fit: ${JSON.stringify(box)}`);
+        const small = await page.$$eval('#cp .cp-mode', (b) => b.some((x) => x.getBoundingClientRect().height < 40));
+        if (small) throw new Error('a mode button is too small to touch');
+        await tap(page, '#cp-close'); await waitShown(page, '#cp', false);
+      });
+
+      for (const [mode, what] of [['heal', 'an ally'], ['radiant', 'a goblin'], ['necrotic', 'a goblin']]) {
+        await run.do(`Divine Spark in ${mode} mode: armed with the mode, then a tap on ${what} sends it`, async () => {
+          const target = what === 'an ally' ? ids.Dru : await state(page, (S) => Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden).id);
+          if (what !== 'an ally') await page.evaluate(([f, c]) => { const h = window.hextable; const S = h.state, e = S.entities[c]; h.act({ type: 'place', actor: f, to: { q: e.pos.q + 1, r: e.pos.r - 1 } }); }, [target, ids.Cleo]);
+          const before = await uses('Cleo', 'channel-divinity'), tl = await state(page, (S) => S.timeline.length);
+          await pick('Cleo'); await tap(page, '#actions button:has-text("Divine Spark")');
+          await tap(page, `#cp .cp-mode[data-mode="${mode}"]`);
+          await wait(page, () => window.hextable.mode.kind === 'feature');
+          const m = await page.evaluate(() => window.hextable.mode.extra?.mode); if (m !== mode) throw new Error(`armed with mode ${m}`);
+          await tapCreature(target);
+          await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['channel-divinity'] < b, [ids.Cleo, before]);
+          const types = await newest(tl);
+          if (types.includes('manual')) throw new Error(`the DM was handed it: ${types}`);
+          if (!types.some((t) => t !== 'std')) throw new Error(`nothing happened beyond the announcement: ${types}`);
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), ids.Cleo).catch(() => {});
+        });
+      }
+    } finally { await ctx.close(); }
+  });
+}
+
 // ---------- main ----------
 try {
   console.log('smoke: building and starting the table server');
@@ -1676,7 +1750,7 @@ try {
     await c.addInitScript((p) => { try { localStorage.setItem('hextable.pace', JSON.stringify(p)); } catch { /* storage unavailable */ } }, pace);
     return c;
   };
-  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline) runs one pass alone
+  const only = process.env.SMOKE_ONLY;       // SMOKE_ONLY=scenes (or maps, armed, dice, reactions, timeline, classes) runs one pass alone
   if (!only) {
     await solo(browser, url, 'solo at 1280x800', { viewport: { width: 1280, height: 800 } });
     await solo(browser, url, 'solo at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -1709,6 +1783,10 @@ try {
     await controlsSolo(browser, url, 'controls at 1280x800', { viewport: { width: 1280, height: 800 } });
     await controlsSolo(browser, url, 'controls at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     await controlsTable(browser, url);
+  }
+  if (!only || only === 'classes') {
+    await classes(browser, url, 'class controls at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await classes(browser, url, 'class controls at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   }
   if (!only || only === 'maps') {
     await stockMaps(browser, url, 'stock maps at 1280x800', { viewport: { width: 1280, height: 800 } });

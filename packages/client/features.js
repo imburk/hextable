@@ -3,6 +3,7 @@
 // when it can be used, an `action` (time, target, cost...). The engine decides everything; this file
 // only lists them and sends { type: 'feature', actor, feature }.
 import { blocked, up } from './shared/engine.js';
+import { needsChoice } from './classes.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'Free' };
@@ -14,9 +15,9 @@ export function usesText(u) {
   return `${n}, back on a Long Rest${u.short ? ` (${u.short} back on a Short Rest)` : ''}`;
 }
 // A feature the bar can send by itself: it needs no target (self, or an extra action / attacks).
-export const barFeature = (f) => !!f.action && f.action.time !== 'reaction' && !f.action.pool && (f.action.target?.self || f.action.gain);
+export const barFeature = (f) => !!f.action && !needsChoice(f) && f.action.time !== 'reaction' && !f.action.pool && (f.action.target?.self || f.action.gain);
 // A feature aimed at one creature (Stunning Strike): the bar arms it and a tap on the creature sends it.
-export const aimedFeature = (f) => !!f.action && f.action.time !== 'reaction' && !f.action.pool && !f.action.gain && !!f.action.target?.creature;
+export const aimedFeature = (f) => !!f.action && !needsChoice(f) && f.action.time !== 'reaction' && !f.action.pool && !f.action.gain && !!f.action.target?.creature;
 // Second Wind and friends are a feature here; the older hand-typed Second Wind has its own button.
 export const hasFeat = (e, id) => (e.feats ?? []).some((f) => f.id === id);
 
@@ -39,13 +40,14 @@ export function featureButtons(S, e) {
 }
 
 // The Features section of the sheet.
-export function featuresHtml(e) {
+export function featuresHtml(e, mineHere = false) {
   if (!e.feats?.length) return '';
   const rows = e.feats.map((f) => {
     const u = f.uses ? `<span class="fx-uses" data-feat-uses="${esc(f.id)}">${e.uses?.[f.id] ?? 0} of ${f.uses.max} left</span> · <span>${esc(usesText(f.uses))}</span>` : '';
     const how = f.action ? `<span>${TIME[f.action.time] ?? ''}</span>` : '';
+    const use = mineHere && needsChoice(f) ? `<p><button type="button" class="qb-use" data-feat-use="${esc(f.id)}">Use ${esc(f.name)}…</button></p>` : '';
     return `<details class="qb-feat" data-feat="${esc(f.id)}"><summary>${esc(f.name)}${f.uses ? ` · ${e.uses?.[f.id] ?? 0}/${f.uses.max}` : ''}</summary>
-      <p class="note">${[how, u].filter(Boolean).join(' · ')}</p><p class="note">${esc(f.text)}${f.tier === 'manual' ? ' (The DM applies this one.)' : ''}</p></details>`;
+      <p class="note">${[how, u].filter(Boolean).join(' · ')}</p><p class="note">${esc(f.text)}${f.tier === 'manual' ? ' (The DM applies this one.)' : ''}</p>${use}</details>`;
   }).join('');
   return `<section id="sheet-feats"><h3>Class features</h3>${rows}</section>`;
 }
