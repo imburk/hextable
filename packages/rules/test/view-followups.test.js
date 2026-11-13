@@ -45,7 +45,10 @@ test("Temporary Hit Points: a player is told of their own characters', never of 
   const mine = ok(apply(s, { type: "cast", actor: "wizard", spell: ward, target: "wizard" }, DM));
   const got = wizard.tempHp;
   assert.ok(got >= 6);
-  assert.deepEqual(viewEvents(mine.events, s, PAT).filter((e) => e.type === "tempHp"), [{ type: "tempHp", id: "wizard", amount: got, tempHp: got }]);
+  const [told0] = viewEvents(mine.events, s, PAT).filter((e) => e.type === "tempHp");
+  assert.deepEqual({ ...told0, dice: undefined, bonus: undefined }, { type: "tempHp", id: "wizard", amount: got, tempHp: got, dice: undefined, bonus: undefined });
+  assert.equal(told0.dice.length, 2, "the faces of the wizard's own roll go with it (docs/specs/dice.md)");
+  assert.equal(told0.bonus, 4);
   const theirs = ok(apply(s, { type: "cast", actor: "wizard", spell: ward, target: goblin.id }, DM));
   assert.ok(theirs.events.some((e) => e.type === "tempHp" && e.id === goblin.id));
   assert.deepEqual(viewEvents(theirs.events, s, PAT).filter((e) => e.type === "tempHp"), [], "a goblin's hit points are its own business");

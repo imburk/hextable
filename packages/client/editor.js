@@ -70,7 +70,7 @@ export class Editor {
     if (!this.on) return;
     this.on = false; this.pending = null;
     this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.traceLine = []; this.sel = null; this.endDrag = null; this.uvtt = null; this.R.setPins([]); this.R.setBars([]); this.pinSig = ''; this.barSig = '';
-    document.body.classList.remove('editing'); $('editor').hidden = true;
+    document.body.classList.remove('editing'); $('editor').hidden = true; this.#heightNums();
     if (this.S) this.refresh();
   }
   // How high to draw floors while editing: the level being edited and those below it.
@@ -272,6 +272,25 @@ export class Editor {
   #strokeAreaOf(st) { const was = this.stroke; this.stroke = st; const a = this.#strokeArea(); this.stroke = was; return a; }
 
   // ---------- tile height ----------
+  // While the Height tool is active every tile of the level shows its height (feet above the level) as a
+  // small number, kept over its tile by a frame loop that runs only then.
+  #heightNums() {
+    const want = this.on && this.tool === 'height' && !!this.S;
+    if (!want) { cancelAnimationFrame(this.hRaf); this.hRaf = 0; this.hBox?.remove(); this.hBox = null; this.hKey = ''; return; }
+    if (!this.hBox) { this.hBox = document.createElement('div'); this.hBox.id = 'ed-hnums'; this.R.labels.append(this.hBox); }
+    const l = this.level(), tiles = Object.entries(l.tiles).slice(0, 600), sig = `${l.id}|${tiles.map(([k, t]) => `${k}:${t.h ?? 0}`).join(',')}`;
+    if (sig !== this.hKey) {
+      this.hKey = sig; this.hBox.textContent = '';
+      this.hItems = tiles.map(([k, t]) => { const e = document.createElement('i'); e.textContent = String(t.h ?? 0); if (t.h) e.className = t.h > 0 ? 'up' : 'down'; this.hBox.append(e); return { e, hex: { ...H.parse(k), z: l.z + (t.h ?? 0) } }; });
+    }
+    if (this.hRaf) return;
+    const tick = () => {
+      if (!this.hBox) return void (this.hRaf = 0);
+      for (const { e, hex } of this.hItems) { const p = this.R.screenOf(hex); e.style.display = p ? '' : 'none'; if (p) e.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`; }
+      this.hRaf = requestAnimationFrame(tick);
+    };
+    this.hRaf = requestAnimationFrame(tick);
+  }
   static STEP = 2.5;
   #heightTap(h, l) {
     const tile = l.tiles[H.col(h)];
@@ -431,6 +450,7 @@ export class Editor {
     else if (this.props && !this.S.map.objects.some((o) => o.id === this.props.id)) { this.props = null; $('ed-form').innerHTML = ''; }
     if (this.tool === 'height' && this.hmode === 'stairs') $('ed-hint').textContent = this.pending ? 'Now tap the hex at the top of the stairs.' : HINTS.stairs;
     else if (this.tool === 'height') $('ed-hint').textContent = HINTS.height;
+    this.#heightNums();
     if (this.tool === 'props') $('ed-hint').textContent = this.props?.pick === 'to' ? 'Tap the tile it leads to (change level first if it goes up or down).' : this.props?.pick === 'link' ? 'Tap the other object.' : HINTS.props;
   }
 

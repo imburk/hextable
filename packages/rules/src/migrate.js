@@ -9,7 +9,7 @@ const MONSTER_IDS = { goblin: 'goblin-warrior' };
 import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 
-export const VERSION = 11;
+export const VERSION = 12;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -41,6 +41,8 @@ export function migrate(state) {
   if (state.settings) state.settings.sight ??= 'rooms';
   // And for what players are told when a creature they cannot see takes its turn (view.js).
   if (state.settings) state.settings.unseenTurns ??= 'say';
+  // Version 12: the table rule for who throws the dice (docs/specs/dice.md).
+  if (state.settings) state.settings.diceThrow ??= 'auto';
   // Handouts (no version of their own: a state without them simply has none yet).
   if (!Array.isArray(state.handouts)) state.handouts = [];
   // Scenes (no version of their own either): none going on.

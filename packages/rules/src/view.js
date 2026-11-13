@@ -260,6 +260,16 @@ const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
+  // The faces of a damage, healing or Temporary Hit Points roll (docs/specs/dice.md) go with the
+  // event only where the player has the number they add up to: always if one of theirs rolled
+  // them (with `rolled`, what the dice made before halving or Resistance); otherwise only if the
+  // faces and bonus make exactly the amount they are told. `by` is never sent.
+  const facesFor = (ev) => {
+    if (!ev.dice) return {};
+    const ours = ev.by !== undefined && ev.by !== null && cls(ev.by) === 'open';
+    if (ours) return { dice: structuredClone(ev.dice), bonus: ev.bonus, ...(ev.rolled !== undefined ? { rolled: ev.rolled } : {}) };
+    return ev.rolled === undefined ? { dice: structuredClone(ev.dice), bonus: ev.bonus } : {};
+  };
   // A record entry names the creatures the party did not know of when it happened (`unseen`, from
   // apply()): they stay unknown in it, whatever is known of them now. `unseen` itself is never sent.
   let was = null;
@@ -301,7 +311,7 @@ export function viewEvents(events, state, viewer) {
       }
       case 'damage':
       case 'heal': {
-        const e = pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']);
+        const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']), ...facesFor(ev) };
         if (cls(ev.target) === 'seen') { const t = state.entities[ev.target]; e.hp = ev.hp > 0 ? 1 : 0; e.health = healthOf(t); }
         out.push(e);
         break;
@@ -338,8 +348,14 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'concentration':
-      case 'tempHp':                                   // Temporary Hit Points gained or lost: hit points of a creature not theirs are private
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));
+        break;
+      case 'tempHp':                                   // Temporary Hit Points gained or lost: hit points of a creature not theirs are private
+        if (cls(ev.id) === 'open') {
+          const e = structuredClone(ev);
+          delete e.dice; delete e.bonus; delete e.rolled; delete e.by;
+          out.push({ ...e, ...facesFor(ev) });
+        }
         break;
       case 'manual':                                   // what the DM must apply by hand
         // Everyone sees what a spell does when the engine cannot apply it. Notes about what

@@ -282,8 +282,60 @@ async function solo(browser, url, label, opts) {
         await closePanels(page);
       });
 
+      await run.do('dice: under diceThrow "throw" an armed attack is not applied until it is thrown', async () => {
+        await closePanels(page);
+        const { pc, foe } = await diceDuel(page, page);
+        const before = await state(page, (S) => ({ tl: S.timeline.length, action: S.encounter.budget.action }));
+        await page.evaluate(([p, f]) => { const e = window.hextable.state.entities[p]; window.hextable.act({ type: 'attack', actor: p, target: f, attack: e.attacks.find((a) => a.type === 'melee').id }); }, [pc, foe]);
+        await waitShown(page, '#dice-tray');
+        await sleep(400);
+        const armed = await state(page, (S) => ({ tl: S.timeline.length, action: S.encounter.budget.action }));
+        if (armed.tl !== before.tl || armed.action !== before.action) throw new Error('the attack was applied before the throw');
+        if (touch) await page.locator('#dice-tray .dt-throw').tap(); else await page.click('#dice-tray .dt-throw');
+        await waitShown(page, '#dice', true);
+        await wait(page, ([p, n]) => window.hextable.state.timeline.length > n && window.hextable.state.timeline.some((e, i) => i >= n && e.type === 'attack' && e.actor === p), [pc, before.tl], 15000);
+        if ((await state(page, (S) => S.encounter.budget.action)) !== before.action - 1) throw new Error('the throw did not spend the action');
+        await page.evaluate(() => { window.hextable.dice.skip(); window.hextable.act({ type: 'setting', key: 'diceThrow', value: 'auto' }); window.hextable.act({ type: 'endEncounter' }); });
+        await wait(page, () => window.hextable.waiting === 0 && !window.hextable.state.encounter, null, 15000);
+      });
+
     } finally { await ctx.close(); }
   });
+}
+
+// ---------- dice ----------
+// The DM sets the table to throw dice, puts `pc` (or any living character) beside a living foe,
+// starts a fight there and ends turns until it is that character's. Runs on the DM's page; `watch`
+// is the page whose state shows the turn (the DM's, or a player's). Returns { pc, foe }.
+async function diceDuel(dm, watch, want = null) {
+  const idle = (p) => wait(p, () => window.hextable.waiting === 0, null, 20000);
+  const setup = await dm.evaluate((w) => {
+    const h = window.hextable;
+    document.getElementById('dm-auto').checked = false;
+    if (h.state.encounter) h.act({ type: 'endEncounter' });
+    h.act({ type: 'setting', key: 'diceThrow', value: 'throw' });
+    const S = h.state, alive = (e) => e.hp > 0 && !e.dead;
+    const pc = w ? S.entities[w] : Object.values(S.entities).find((e) => e.kind === 'pc' && alive(e) && e.attacks?.some((a) => a.type === 'melee'));
+    const foe = Object.values(S.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden);
+    if (pc.hp <= 0) h.act({ type: 'setHp', actor: pc.id, hp: pc.maxHp });
+    for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
+      h.act({ type: 'place', actor: pc.id, to: { q: foe.pos.q + dq, r: foe.pos.r + dr } });
+      const p = h.state.entities[pc.id].pos;
+      if (Math.max(Math.abs(p.q - foe.pos.q), Math.abs(p.r - foe.pos.r), Math.abs(p.q + p.r - foe.pos.q - foe.pos.r)) === 1) break;
+    }
+    h.act({ type: 'startEncounter', center: foe.pos });
+    return { pc: pc.id, foe: foe.id };
+  }, want);
+  await idle(dm);
+  for (let i = 0; i < 30; i++) {
+    await idle(watch);
+    const cur = await dm.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
+    if (cur === setup.pc) break;
+    await dm.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+    await idle(dm);
+  }
+  await wait(watch, (p) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === p; }, setup.pc, 20000);
+  return setup;
 }
 
 // ---------- multiplayer ----------
@@ -337,6 +389,42 @@ async function multiplayer(browser, url) {
       await run.do('the phone moves it and the DM sees it move', async () => {
         const pos = await selectAndMove(phone, true, id, name);
         await wait(host, ([i, p]) => { const q = window.hextable.state.entities[i].pos; return q.q === p.q && q.r === p.r && q.z === p.z; }, [id, pos]);
+      });
+
+      await run.do("dice: the phone throws its attack and the DM sees the dice; a monster's d20 is not shown to the phone", async () => {
+        const { pc, foe } = await diceDuel(host, phone, id);
+        const n = await host.evaluate(() => window.hextable.state.encounter.budget.action);
+        await phone.evaluate(([p, f]) => { const e = window.hextable.state.entities[p]; window.hextable.act({ type: 'attack', actor: p, target: f, attack: e.attacks.find((a) => a.type === 'melee').id }); }, [pc, foe]);
+        await waitShown(phone, '#dice-tray');
+        await sleep(300);
+        if ((await host.evaluate(() => window.hextable.state.encounter.budget.action)) !== n) throw new Error('the attack was applied before the throw');
+        await phone.locator('#dice-tray .dt-throw').tap();
+        await wait(host, (k) => window.hextable.state.encounter.budget.action === k - 1, n, 15000);
+        await wait(host, (p) => window.hextable.thrown.some((g) => g.type === 'attack' && g.side === 'party' && g.dice.some((d) => d.sides === 20)), pc, 15000);
+        // The monster attacks the phone's character, its dice thrown for the DM.
+        await wait(host, () => window.hextable.waiting === 0, null, 20000);
+        await wait(phone, () => window.hextable.waiting === 0, null, 20000);
+        for (let i = 0; i < 30; i++) {           // on round the order to the foe's turn
+          const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter.order[S.encounter.turn].id; });
+          if (cur === foe) break;
+          await host.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+          await wait(host, () => window.hextable.waiting === 0, null, 20000);
+        }
+        const sent = await host.evaluate(async ([p, f]) => {
+          const S = window.hextable.state;
+          if (S.encounter.order[S.encounter.turn].id !== f) return 'not its turn';
+          const def = S.entities[f].actions?.find((a) => JSON.stringify(a.effects ?? []).includes('"melee"'));
+          window.hextable.act(def ? { type: 'act', actor: f, action: def.id, target: p } : { type: 'attack', actor: f, target: p, attack: S.entities[f].attacks[0].id });
+          return 'sent';
+        }, [pc, foe]);
+        if (sent === 'sent') {
+          await wait(host, (f) => window.hextable.thrown.some((g) => g.type === 'attack' && g.side === 'foe'), foe, 15000);
+          await wait(phone, () => window.hextable.waiting === 0, null, 20000);
+          await sleep(500);
+        }
+        const leaked = await phone.evaluate(() => window.hextable.thrown.filter((g) => (g.type === 'initiative' ? g.ids.some((i) => window.hextable.state.entities[i]?.side !== 'party') : g.side !== 'party' && g.dice.some((d) => d.sides === 20))).map((g) => g.label));
+        if (leaked.length) throw new Error(`the phone was shown a monster's d20: ${leaked.join(', ')}`);
+        if (sent !== 'sent') throw new Error(`the monster could not attack: ${sent}`);
       });
     } finally { await phoneCtx.close(); await hostCtx.close(); }
   });

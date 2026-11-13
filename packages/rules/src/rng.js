@@ -18,5 +18,15 @@ export function roll(state, expr, { crit = false } = {}) {
   const bonus = m[3] ? +m[3].replace(/\s/g, '') : 0;
   const rolls = [];
   for (let i = 0; i < n; i++) rolls.push(die(state, sides));
-  return { total: Math.max(0, rolls.reduce((a, b) => a + b, 0) + bonus), rolls, bonus };
+  return { total: Math.max(0, rolls.reduce((a, b) => a + b, 0) + bonus), rolls, bonus, dice: rolls.map((value) => ({ sides, value })) };
 }
+
+// The faces a roll showed, for its event, so a client can draw the dice (docs/specs/dice.md):
+// { dice: [{ sides, value, drop?, neg? }], bonus }. The used faces, negated where `neg`, plus
+// `bonus` add up to the number the roll made, before anything clamps, halves or resists it.
+// `drop` is the d20 that Advantage or Disadvantage set aside; `neg` a die taken off (Bane).
+export const d20Faces = (r1, r2, used) => (r2 === null || r2 === undefined ? [{ sides: 20, value: r1 }]
+  : [{ sides: 20, value: r1, ...(used === r1 ? {} : { drop: true }) }, { sides: 20, value: r2, ...(used === r1 ? { drop: true } : {}) }]);
+export const negate = (dice) => dice.map((d) => ({ ...d, neg: true }));
+// What the used faces add up to.
+export const faceSum = (dice = []) => dice.reduce((a, d) => a + (d.drop ? 0 : d.neg ? -d.value : d.value), 0);

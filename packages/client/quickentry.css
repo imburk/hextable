@@ -25,3 +25,11 @@
 .qe-foot { position: sticky; bottom: -24px; margin: 16px -16px -24px; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); background: var(--panel-2); border-top: 1px solid var(--line); }
 .qe-foot .row { margin: 0; } .qe-save { flex: 1; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 @media (min-width: 560px) { .qe-abil { grid-template-columns: repeat(6, minmax(0, 1fr)); } .qe-skills { grid-template-columns: 1fr 1fr; column-gap: 12px; } }
+
+/* Build from class and level (buildsheet.js) */
+.qb .qe-head { flex-wrap: wrap; } #qe-to-build { flex: 1 1 100%; }
+.qb details { border-top: 1px solid var(--line); padding: 4px 0; } .qb summary { min-height: 40px; display: flex; align-items: center; cursor: pointer; }
+.qb-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.qb-stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; text-align: center; } .qb-stat small { display: block; color: var(--muted); font-size: 12px; } .qb-stat b { font: 700 20px var(--display); color: var(--accent); }
+.qb-derived table { width: 100%; } .qb-gain { border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; margin: 8px 0; }
+.qb .qe-foot .qe-problems { max-height: 28vh; overflow-y: auto; }

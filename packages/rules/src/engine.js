@@ -7,7 +7,7 @@
 // into numbers or animations; the server broadcasts them; the timeline records them;
 // an AI DM or AI character is just another caller of apply().
 import * as H from './hex.js';
-import { die, roll } from './rng.js';
+import { d20Faces, die, faceSum, negate, roll } from './rng.js';
 import { CONTENT, SPELLS, TILES, MONSTERS, MONSTER_ACTIONS } from './content/index.js';
 import { ABILITIES, CHOICES, SKILLS, lintRecord } from './content/schema.js';
 import { AREAS, actionProfile, begin, run, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from './effects.js';
@@ -361,7 +361,8 @@ function fall(s, t, feet, ev) {
   ev.push({ type: 'fell', id: t.id, feet });
   if (!dice) return;
   const mark = ev.length;
-  damage(s, t, roll(s, `${dice}d6`).total, 'bludgeoning', ev);
+  const r = roll(s, `${dice}d6`);
+  damage(s, t, [{ amount: r.total, type: 'bludgeoning', dice: r.dice, bonus: r.bonus }], null, ev);
   if (ev.slice(mark).some((x) => x.type === 'damage' && x.amount > 0)) condition(s, t, 'prone', ev);
 }
 // Forced movement: shove a creature so many feet straight away from a point, or toward it. It
@@ -473,14 +474,17 @@ function bumped(s, o, by, ev) { reveal(s, o, ev); unhide(s, o, ev, 'found', by);
 // ---------- encounters ----------
 
 const initiativeSort = (order) => order.sort((a, b) => b.init - a.init || b.dex - a.dex);
-function rollInit(s, e) {
+// `faces`, if given, gets the dice of the roll under the creature's id, for the event.
+function rollInit(s, e, faces = null) {
   const m = modifiers(s, e, 'initiative');
   if (e.hiding) m.advantage.push('hidden');                             // hidden is Invisible, and Invisible rolls Initiative with Advantage
   const two = (m.advantage.length > 0) !== (m.disadvantage.length > 0);
   const r1 = die(s, 20), r2 = two ? die(s, 20) : null;
   const d = !two ? r1 : m.advantage.length ? Math.max(r1, r2) : Math.min(r1, r2);
   // A monster's stat block gives its Initiative modifier outright (`initBonus`); anyone else adds their Dexterity modifier.
-  return { id: e.id, init: d + (e.initBonus ?? mod(e.abil.dex)) + m.add, dex: e.abil.dex };
+  const bonus = (e.initBonus ?? mod(e.abil.dex)) + m.add;
+  if (faces) faces[e.id] = { dice: d20Faces(r1, r2, d), bonus };
+  return { id: e.id, init: d + bonus, dex: e.abil.dex };
 }
 
 function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
@@ -493,9 +497,11 @@ function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
   for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
-    order: initiativeSort(who.map((e) => rollInit(s, e))),
+    order: null,
   };
-  ev.push({ type: 'encounterStart', center, radius, order: s.encounter.order.map((o) => ({ ...o })) });
+  const faces = {};
+  s.encounter.order = initiativeSort(who.map((e) => rollInit(s, e, faces)));
+  ev.push({ type: 'encounterStart', center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
   advanceTurn(s, ev);
 }
 
@@ -509,11 +515,11 @@ function joinEncounter(s, e, ev) {
   const enc = s.encounter, cur = current(s);
   reveal(s, e, ev);
   e.reactionUsed = false;
-  const slot = rollInit(s, e);
+  const faces = {}, slot = rollInit(s, e, faces);
   enc.order.push(slot);
   initiativeSort(enc.order);
   enc.turn = enc.order.findIndex((o) => o.id === cur);
-  ev.push({ type: 'joined', id: e.id, init: slot.init });
+  ev.push({ type: 'joined', id: e.id, init: slot.init, ...faces[e.id] });
 }
 
 function endEncounter(s, ev, result) {
@@ -549,7 +555,7 @@ function deathSave(s, e, ev) {
   if (e.death.f >= 3) e.dead = true;
   else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, ...(total !== d ? { total } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode }), ...(more.extra.length ? { extra: more.extra } : {}),
-    s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
+    dice: [...d20Faces(r1, r2, d), ...more.dice], bonus: m.add + all.add, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
 }
 
 function advanceTurn(s, ev) {
@@ -588,13 +594,14 @@ function advanceTurn(s, ev) {
 // for the roll's event, what was rolled for what: [{ name, dice, roll }].
 function rollDice(s, list) {
   let total = 0;
-  const extra = [];
+  const extra = [], dice = [];
   for (const d of list) {
-    const neg = d.dice.startsWith('-'), r = roll(s, d.dice.replace(/^[+-]/, '')).total * (neg ? -1 : 1);
+    const neg = d.dice.startsWith('-'), rr = roll(s, d.dice.replace(/^[+-]/, '')), r = rr.total * (neg ? -1 : 1);
     total += r;
     extra.push({ name: d.name, dice: d.dice, roll: r });
+    dice.push(...(neg ? negate(rr.dice) : rr.dice));
   }
-  return { total, extra };
+  return { total, extra, dice };
 }
 
 // `amount` is a number of `dtype` damage, or a list of { amount, type } parts that land together
@@ -633,7 +640,7 @@ function damage(s, t, amount, dtype, ev, { crit = false, raw = false } = {}) {
     if (soak) t.tempHp -= soak;
     lost += n - soak;
     if (!dying) t.hp = Math.max(0, t.hp - (n - soak));
-    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}) });
+    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   if (dying) {                                            // already dying
@@ -649,10 +656,23 @@ function damage(s, t, amount, dtype, ev, { crit = false, raw = false } = {}) {
   concentrationLost(s, ev, t, `${t.name} went down`);
 }
 
-function heal(s, t, amount, ev) {
+// The faces of a roll for its event (docs/specs/dice.md): `dice` and `bonus`, `rolled` where the
+// number they add up to is not the event's amount (halved, resisted, clamped), and `by`, who rolled.
+function rolledOf(r, amount) {
+  if (!r?.dice) return {};
+  const rolled = faceSum(r.dice) + (r.bonus ?? 0);
+  return { dice: r.dice, bonus: r.bonus ?? 0, ...(rolled !== amount ? { rolled } : {}), ...(r.by !== undefined ? { by: r.by } : {}) };
+}
+// Several rolls that add up to one number, as one: { total, dice, bonus }.
+function together(...rs) {
+  return { total: rs.reduce((a, r) => a + r.total, 0), dice: rs.flatMap((r) => r.dice ?? []), bonus: rs.reduce((a, r) => a + (r.bonus ?? 0), 0) };
+}
+
+// `r`, if given, is the roll the amount came from, for the event's dice.
+function heal(s, t, amount, ev, r = null) {
   if (t.hp <= 0) { delete t.cond.unconscious; delete t.cond.stable; t.death = { s: 0, f: 0 }; }
   t.hp = Math.min(t.maxHp, t.hp + amount);
-  ev.push({ type: 'heal', target: t.id, amount, hp: t.hp });
+  ev.push({ type: 'heal', target: t.id, amount, hp: t.hp, ...rolledOf(r, amount) });
   // In a fight a revived creature stays Prone until its turn, when standing costs half its Speed.
   // Outside one, movement isn't budgeted, so it simply gets up.
   if (t.cond.prone && !inFight(s, t.id)) { delete t.cond.prone; ev.push({ type: 'stood', id: t.id }); }
@@ -669,14 +689,14 @@ const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'h
 // Temporary Hit Points: they do not add up. A creature keeps the larger of what it has and what
 // it is given (the SRD lets it choose; nobody would choose fewer). From a lasting effect, they
 // vanish when it ends. They never wake a creature at 0 Hit Points.
-function tempHp(s, t, amount, ev, f = null) {
+function tempHp(s, t, amount, ev, f = null, r = null) {
   if (t.dead) return;
   const had = t.tempHp ?? 0;
-  if (amount <= had) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true });
+  if (amount <= had) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true, ...rolledOf(r, 0) });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   t.tempHp = amount;
   if (fx) { t.tempFx = fx.id; fx.parts.push({ target: t.id, temp: true }); } else delete t.tempFx;
-  ev.push({ type: 'tempHp', id: t.id, amount, tempHp: amount });
+  ev.push({ type: 'tempHp', id: t.id, amount, tempHp: amount, ...rolledOf(r, amount) });
 }
 
 // Advantage and Disadvantage for an attack, with the reasons. Any of each cancels to a normal roll.
@@ -717,7 +737,8 @@ function rollToHit(s, e, t, atk, ev, extra = {}) {
   const hit = nat !== 1 && (critRoll || nat + bonus >= ac);
   const crit = hit && (critRoll || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}), ...extra });
+    total: nat + bonus, ac, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
+    dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   renew(s, e, t);
@@ -736,20 +757,21 @@ function renew(s, e, t) {
 function resolveAttack(s, e, t, atk, ev, extra = {}) {
   const { hit, crit, mode } = rollToHit(s, e, t, atk, ev, extra);
   if (!hit) return;
-  let total = roll(s, atk.damage, { crit }).total;
+  const rs = [roll(s, atk.damage, { crit })];
   const notes = [];
-  if (atk.bonusOnAdv && mode === 'adv') total += roll(s, atk.bonusOnAdv, { crit }).total;
+  if (atk.bonusOnAdv && mode === 'adv') rs.push(roll(s, atk.bonusOnAdv, { crit }));
   const sneakKey = `sneak:${e.id}`;
   if (e.features.sneak && !atk.spell && (atk.finesse || atk.type === 'ranged') && !s.encounter?.flags[sneakKey] && mode !== 'dis') {
     const flank = living(s).some((o) => o.id !== e.id && up(o) && !incapacitated(o) && hostile(o, t) && apart(s, o, t) <= 1);     // an ally who is not Incapacitated
     if (mode === 'adv' || flank) {
-      total += roll(s, e.features.sneak, { crit }).total;
+      rs.push(roll(s, e.features.sneak, { crit }));
       if (s.encounter) s.encounter.flags[sneakKey] = true;
       notes.push('Sneak Attack');
     }
   }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
-  damage(s, t, dealt(s, e, t, [{ amount: total, type: atk.dtype }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit });
+  const r = together(...rs);
+  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
 }
 
@@ -809,9 +831,15 @@ function dealt(s, e, t, parts, sit, crit) {
   const out = parts.map((p) => ({ ...p }));
   for (const x of m.dealt) {
     const neg = typeof x.value === 'string' && x.value.startsWith('-');
-    const n = typeof x.value === 'string' ? roll(s, x.value.replace(/^[+-]/, ''), { crit }).total * (neg ? -1 : 1) : x.value;
-    if (x.types) out.push({ amount: Math.max(0, n), type: x.types[0], from: x.name });
-    else if (out.length) out[0].amount = Math.max(0, out[0].amount + n);
+    const r = typeof x.value === 'string' ? roll(s, x.value.replace(/^[+-]/, ''), { crit }) : null;
+    const n = r ? r.total * (neg ? -1 : 1) : x.value;
+    const dice = r ? (neg ? negate(r.dice) : r.dice) : [], bonus = r ? r.bonus * (neg ? -1 : 1) : x.value;
+    if (x.types) out.push({ amount: Math.max(0, n), type: x.types[0], from: x.name, dice, bonus, by: e.id });
+    else if (out.length) {
+      const p = out[0];
+      p.amount = Math.max(0, p.amount + n);
+      if (p.dice) { p.dice = [...p.dice, ...dice]; p.bonus = (p.bonus ?? 0) + bonus; }
+    }
   }
   return out;
 }
@@ -842,7 +870,7 @@ function savingThrow(s, t, abil, dc, extra = null, from = null) {
   // A monster's stat block gives its save outright (`saveBonus`); anyone else adds Proficiency to the modifier for a saving throw they are proficient in.
   const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
   const total = r + base + m.add + more.total;
-  return { roll: r, total, success: total >= dc, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
+  return { roll: r, total, success: total >= dc, dice: [...d20Faces(r1, r2, r), ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
 // ---------- ability checks ----------
@@ -869,7 +897,7 @@ function abilityCheck(s, e, what, dimToo = false) {
   const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
   const more = rollDice(s, m.dice);
   if (m.used.length) useUp(s, [], m.used);
-  return { roll: r, total: r + bonus + more.total, bonus, ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(r1, mode === 'normal' ? null : r2, r), ...more.dice], ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
     ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
@@ -1103,7 +1131,7 @@ function recharge(s, e, ev) {
     if (!def.recharge || !e.spent?.[def.id]) continue;
     const d = die(s, 6), ready = d >= def.recharge[0];
     if (ready) delete e.spent[def.id];
-    ev.push({ type: 'recharge', id: e.id, action: def.id, name: def.name, roll: d, ready });
+    ev.push({ type: 'recharge', id: e.id, action: def.id, name: def.name, roll: d, ready, dice: [{ sides: 6, value: d }], bonus: 0 });
   }
 }
 
@@ -1592,7 +1620,8 @@ const handlers = {
     if (s.encounter) s.encounter.budget.bonus--;
     e.uses.secondWind--;
     ev.push({ type: 'std', id: e.id, action: 'Second Wind' });
-    heal(s, e, roll(s, `1d10+${e.level}`).total, ev);
+    const r = roll(s, `1d10+${e.level}`);
+    heal(s, e, r.total, ev, { ...r, by: e.id });
   },
   // Use a feature of a built character (derive.js): { type: 'feature', actor, feature, target? |
   // targets? | hex?, amount? }. What it does is its data: effect steps (on the effect runner, a
@@ -2207,7 +2236,8 @@ const handlers = {
       if (e.hp <= 0) { ev.push({ type: 'manual', actor: e.id, name: 'Short Rest', text: `${e.name} is at 0 Hit Points and can't take a Short Rest.` }); continue; }
       for (let i = 0; i < (spend[e.id] ?? 0); i++) {
         e.hd--;
-        heal(s, e, Math.max(1, roll(s, `1d${e.hitDie}`).total + mod(e.abil.con)), ev);
+        const r = roll(s, `1d${e.hitDie}`);
+        heal(s, e, Math.max(1, r.total + mod(e.abil.con)), ev, { dice: r.dice, bonus: mod(e.abil.con), by: e.id });
       }
       for (const f of e.feats ?? []) {
         if (!f.uses) continue;
@@ -2305,7 +2335,7 @@ function look(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'] };
+export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'] };
 
 export function apply(s, action, ctx = { role: 'dm' }) {
   const ev = [];
