@@ -197,7 +197,7 @@ export function initScenes({ act, toast, transport, state, isDM, openPanel, star
     try {
       const portrait = await upload($('sc-npc-file'));
       act({ type: 'sceneNpc', npc: { ...(editing ? { id: editing } : {}), name, notes: $('sc-npc-notes').value, ...(portrait && { portrait }) } });
-      npcReset(); tools(false);
+      npcReset(); tools(!S()?.scene?.open);
     } catch (err) { toast(err.message); } finally { $('sc-npc-save').disabled = false; }
   };
   $('sc-npc-remove').onclick = () => { if (editing) act({ type: 'sceneNpc', npc: { id: editing }, remove: true }); npcReset(); refresh(); };
@@ -375,8 +375,7 @@ export function initScenes({ act, toast, transport, state, isDM, openPanel, star
     $('sc-prep').hidden = !prep;
     if (prep) $('sc-prep-text').textContent = wasOpened(sc) ? 'Set aside: the table is at the map. Change it, then open it to bring everyone back.' : 'Being prepared: nobody else can see this. Add who is there and your notes, then open it.';
     $('sc-go').disabled = !!s.encounter;
-    if (prep && !wasPrep) tools(true);
-    if (!prep && wasPrep) tools(false);
+    if (prep) tools(true); else if (wasPrep) tools(false);       // a scene being prepared is all tools
     wasPrep = prep;
     $('sc-fight').hidden = $('sc-out').hidden = prep;
     $('sc-end').textContent = $('sc-end').classList.contains('sure') ? 'Tap again' : prep ? 'Throw it away' : 'End the scene';
