@@ -1390,3 +1390,40 @@ test("history by fight: one fight's record, start to end, redacted for players",
   player.say({ t: "history", fight: "x" });
   assert.equal(player.last("error").error, "Name a fight by its number.");
 });
+
+// ---------- rewards (docs/specs/table-ui.md, Decision 4, E5 to E8) ----------
+test("rewards: until the DM publishes, a player is sent no XP figure, no loot and no hidden foe; then the card", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = tables.get(code).state;
+  player.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  fightHere(dm, state);
+  const foes = state.encounter.order.map((o) => state.entities[o.id]).filter((e) => e.side === "foe");
+  state.entities.m4.hiding = { dc: 30 };                        // a foe hiding by Stealth, set for the test
+  const n = player.raw.length;
+  for (const f of foes) if (state.encounter) dm.say({ t: "act", action: { type: "harm", actor: f.id, amount: f.hp } });
+  assert.equal(state.encounter, null);
+  dm.say({ t: "act", action: { type: "conclusion", edit: { bonus: [{ amount: 75, reason: "Secret bonus" }], loot: { add: [{ name: "Cursed amulet", to: "rogue" }] } } } });
+  assert.equal(dm.last("error"), undefined);
+  player.say({ t: "act", action: { type: "conclusion", publish: true } });
+  assert.equal(player.last("error").error, "Only the DM can settle the rewards.");
+  const before = JSON.stringify(player.raw.slice(n));
+  for (const secret of ["Secret bonus", "Cursed amulet", "conclusionReady", "conclusionEdited", "\"per\"", "\"base\""]) assert.ok(!before.includes(secret), `leaked: ${secret}`);
+  assert.deepEqual(player.receiver.state.conclusion, { id: state.conclusion.id, fight: state.conclusion.fight, pending: true });
+  assert.ok(dm.receiver.state.conclusion.xp.base > 0, "the DM has it all");
+
+  const m = player.raw.length;
+  dm.say({ t: "act", action: { type: "conclusion", publish: true } });
+  const after = player.raw.slice(m), text = JSON.stringify(after);
+  assert.ok(!text.includes("\"m4\"") && !text.includes(state.entities.m4.name), "the hidden foe is not named");
+  const card = player.receiver.state.conclusion;
+  assert.equal(card.published, true);
+  assert.equal(card.xp.bonus[0].reason, "Secret bonus");
+  assert.deepEqual(card.loot.map((l) => [l.name, l.to]), [["Cursed amulet", "rogue"]]);
+  const evs = after.flatMap((x) => x.events ?? []);
+  assert.ok(evs.some((e) => e.type === "conclusion") && evs.some((e) => e.type === "gear" && e.id === "rogue" && e.why === "loot"));
+  assert.ok(player.receiver.state.entities.rogue.gear.includes("Cursed amulet"));
+  assert.equal(known(player), JSON.stringify(expected(tables, code, player)));
+  player.say({ t: "history", types: ["conclusion"] });
+  assert.ok(!JSON.stringify(player.last("history")).includes(state.entities.m4.name));
+});
