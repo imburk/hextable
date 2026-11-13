@@ -80,9 +80,10 @@ export const spells3 = [
     time: "reaction", range: 60, components: ["s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Counterspell: as a Reaction when the caster sees a creature within 60 feet cast a spell with Verbal, Somatic or Material components, that creature makes a Constitution save. On a failure the spell dissipates with no effect and the action, Bonus Action or Reaction used to cast it is wasted; if a spell slot was used it is not expended. The engine does not see a spell being cast as something to react to, so the DM decides when this applies and applies the result."}],
-    tier: "manual", checked: true,
-    text: "A Reaction when a creature within 60 feet casts a spell with Verbal, Somatic or Material components: it makes a Constitution save or the spell fizzles, wasting its action and (if a slot was used) not spending the slot.",
+    reaction: { on: "cast" },
+    effects: [{"save": "con", "onFail": [{"counter": "spell"}]}],
+    tier: "auto", checked: true,
+    text: "A Reaction when a creature within 60 feet casts a spell with Verbal, Somatic or Material components: it makes a Constitution save or the spell fizzles, wasting its action and (if a slot was used) not spending the slot. Cast by standing instruction (never, always, or ask its player) against a spell the engine casts; spells the DM casts by hand, and reaction spells, are the DM's to counter.",
   },
   {
     id: "create-food-and-water", name: "Create Food and Water", source: "SRD 5.2.1",

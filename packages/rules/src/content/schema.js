@@ -23,7 +23,7 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'manual'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
@@ -39,10 +39,12 @@ export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex e
 export const OBJECT_BLOCKS = ['move', 'sight'];
 export const USE_TIMES = ['free', 'action'];
 export const TRIGGERS = ['enter', 'leave', 'near'];
-// What sets off a reaction given in data (a spell's or a feature's `reaction`; reactions.js).
-// `hit`: its creature is hit by an attack roll. (Leaving reach, for the Opportunity Attack, is the
-// engine's own and needs no data.) Others (seeing a spell cast, taking damage) come with stage B.
-export const REACTION_TRIGGERS = ['hit'];   // a creature steps onto a thing's hex, steps off it, or comes within so many feet
+// What sets off a reaction given in data (a spell's, a feature's or a monster trait's `reaction`;
+// reactions.js). `hit`: its creature is hit by an attack roll. `cast`: it sees a hostile creature
+// within the spell's range casting a spell (Counterspell). `damaged`: it takes damage from a hostile
+// creature it can see within the spell's range (Hellish Rebuke). (Leaving reach, for the
+// Opportunity Attack, is the engine's own and needs no data.) Features and traits use `hit` only.
+export const REACTION_TRIGGERS = ['hit', 'cast', 'damaged'];
 export const SKILLS = { acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int',
   insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha',
   persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis' };
@@ -132,6 +134,7 @@ function lintChoice(e, say) {
   }
   for (const k of used) if (c?.of !== k) say(`a step uses the chosen ${k}, but the spell has no \`choice: { of: "${k}" }\``);
 }
+const seenCounter = (actions) => { let n = false; for (const a of actions ?? []) walkSteps(a.effects, (st) => { if (st && 'counter' in st) n = true; }); return n; };
 function walkSteps(steps, visit) {
   for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) walkSteps(st[b], visit); }
 }
@@ -188,6 +191,9 @@ function lintSteps(steps, say, seen = { manual: false }) {
       if (step.of !== undefined && !['self', 'link'].includes(step.of)) say('`of` must be self or link');
     }
     if (kind === 'reveal' && !['self', 'link', 'target'].includes(step.reveal)) say('`reveal` must be self, link or target');
+    // `counter: "spell"`: the spell that set this reaction off fails (Counterspell; only in a spell
+    // whose reaction is `cast`).
+    if (kind === 'counter') { seen.counter = true; if (step.counter !== 'spell') say('`counter` must be "spell"'); }
     if (kind === 'manual') { seen.manual = true; if (!isText(step.manual)) say('a manual step needs text saying what the DM applies'); }
     for (const branch of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (step[branch]) lintSteps(step[branch], say, seen);
   }
@@ -264,15 +270,22 @@ function lintSpell(e, say) {
   if (e.reaction !== undefined) {
     // A spell cast as a Reaction by standing instruction: { on, blocks? }. `blocks` names spells
     // whose being aimed at the caster also sets it off, and which then do the caster no damage
-    // while it lasts (Shield and Magic Missile).
+    // while it lasts (Shield and Magic Missile). One set off by being hit is aimed at its caster;
+    // one set off by another creature (`cast`, `damaged`) is aimed at that one creature.
     const r = e.reaction;
     if (e.time !== 'reaction') say('`reaction` is for a spell cast as a Reaction');
     if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'blocks'].includes(k)) || !REACTION_TRIGGERS.includes(r.on)) say(`\`reaction\` is { on: ${REACTION_TRIGGERS.join(' | ')}, blocks? }`);
     if (r?.blocks !== undefined && !(Array.isArray(r.blocks) && r.blocks.length && r.blocks.every((x) => ID.test(x)))) say('`reaction.blocks` lists spell ids');
-    if (!e.target?.self) say('a reaction spell is aimed at its caster');
+    if (r?.on === 'hit' && !e.target?.self) say('a reaction spell set off by a hit is aimed at its caster');
+    if (r && r.on !== 'hit') {
+      if (!(e.target?.creature && (e.target.creature.count ?? 1) === 1)) say(`a reaction spell set off by \`${r.on}\` is aimed at the one creature that set it off`);
+      if (r.blocks !== undefined) say('`reaction.blocks` is for a spell set off by a hit');
+      if (typeof e.range !== 'number') say(`a reaction spell set off by \`${r.on}\` needs a range in feet`);
+    }
   }
   lintSelfSave(e, say);
   const seen = lintSteps(e.effects, say);
+  if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
 }
@@ -322,7 +335,21 @@ function lintMonster(e, say) {
     if (!isText(t.name) || !isText(t.text)) sub('needs a name and text');
     if (!Array.isArray(t.modifiers)) sub('needs a modifiers list (it may be empty)');
     else for (const m of t.modifiers) lintModifier(m, sub);
+    // A Reaction the engine takes by standing instruction: { on: 'hit', ac, attack?, manual? }.
+    // `ac` is added to its Armor Class against the attack that hit (Parry); `attack` limits it to
+    // melee or ranged attack rolls; `manual` is the rest of it, told to the DM when it is taken.
+    if (t.reaction !== undefined) {
+      const r = t.reaction;
+      if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'ac', 'attack', 'manual'].includes(k))) sub('reaction is { on: "hit", ac, attack?, manual? }');
+      else {
+        if (r.on !== 'hit') sub('reaction.on is "hit"');
+        if (!(isInt(r.ac) && r.ac > 0 && r.ac <= 10)) sub('reaction.ac is a whole number from 1 to 10');
+        if (r.attack !== undefined && !['melee', 'ranged'].includes(r.attack)) sub('reaction.attack is "melee" or "ranged"');
+        if (r.manual !== undefined && !isText(r.manual)) sub('reaction.manual is text for the DM');
+      }
+    }
   }
+  if (seenCounter(e.actions)) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   if (e.conditionImmune !== undefined && !(allOf(CONDITIONS)(e.conditionImmune) && e.conditionImmune.length > 0)) say('conditionImmune must be a list of conditions');
   if (!Array.isArray(e.actions) || !e.actions.length) say('needs one or more actions');
   for (const a of e.actions ?? []) {
@@ -431,7 +458,7 @@ function lintObject(e, say) {
     if (t.on === 'near' && !(isInt(t.feet) && t.feet > 0 && t.feet % 5 === 0)) sub('a near trigger needs `feet`, a multiple of 5');
     if (t.who !== undefined && !['any', 'party'].includes(t.who)) sub('`who` must be any or party');
     if (t.area !== undefined && !(isInt(t.area) && t.area > 0 && t.area % 5 === 0)) sub('`area` must be a radius in feet, a multiple of 5');
-    if (t.effects !== undefined) manual ||= lintSteps(t.effects, sub).manual;
+    if (t.effects !== undefined) { const seen = lintSteps(t.effects, sub); manual ||= seen.manual; if (seen.counter) sub('a `counter` step is for a spell cast as a Reaction to a spell being cast'); }
     if (t.effects === undefined && t.to === undefined) sub('needs effects or a state to go to');
   }
   if (!Array.isArray(e.use)) return say('needs a `use` list (it may be empty)');
@@ -447,7 +474,7 @@ function lintObject(e, say) {
     if (!USE_TIMES.includes(u.time)) sub(`time must be one of ${USE_TIMES.join(', ')}`);
     if (u.key !== undefined && typeof u.key !== 'boolean') sub('key must be true or false');
     if (u.check !== undefined) lintCheck(u.check, sub);
-    if (u.effects !== undefined) manual ||= lintSteps(u.effects, sub).manual;
+    if (u.effects !== undefined) { const seen = lintSteps(u.effects, sub); manual ||= seen.manual; if (seen.counter) sub('a `counter` step is for a spell cast as a Reaction to a spell being cast'); }
     if (u.to === undefined && u.effects === undefined) sub('needs effects or a state to go to');
   }
   if (e.tier === 'auto' && manual) say('marked auto but contains a manual step');
@@ -545,7 +572,7 @@ function lintGrants(g, cls, say) {
       if (!a.target?.creature) say('a pool of healing is aimed at a creature');
     } else if (a) {
       lintTarget(a.target, say);
-      lintSteps(bakeValues(a.effects, cls, say), say);
+      if (lintSteps(bakeValues(a.effects, cls, say), say).counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
     }
     for (const k of ['renew', 'noSpells', 'pool', 'firstAttack', 'endsWhenIncapacitated']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
   }
@@ -557,7 +584,7 @@ function lintGrants(g, cls, say) {
     const r = g.reaction;
     if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
     else {
-      if (!REACTION_TRIGGERS.includes(r.on)) say(`reaction.on is one of ${REACTION_TRIGGERS.join(', ')}`);
+      if (r.on !== 'hit') say('reaction.on is "hit" (a feature that cuts the damage of a hit)');
       if (r.cut !== 'half' && !(r.cut && typeof r.cut === 'object' && isDice(r.cut.dice) && Object.keys(r.cut).every((k) => ['dice', 'add'].includes(k)))) say('reaction.cut is "half" or { dice, add? }');
       if (r.cut?.add !== undefined) { if (!Array.isArray(r.cut.add)) say('reaction.cut.add is a list'); else for (const x of r.cut.add) lintAmount(x, cls, say, 'reaction.cut.add'); }
       if (r.seen !== undefined && r.seen !== true) say('reaction.seen is true or left out');
@@ -724,7 +751,7 @@ function lintFeat(f, say) {
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
   if (f.reaction !== undefined) {
     const r = f.reaction;
-    if (!(r && REACTION_TRIGGERS.includes(r.on) && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))
+    if (!(r && r.on === 'hit' && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))
       && Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k)) && (r.seen === undefined || r.seen === true)
       && (r.types === undefined || (allOf(DAMAGE_TYPES)(r.types) && r.types.length)))) sub('its reaction is { on, cut: "half" | { dice }, seen?, types? }.');
   }

@@ -5,9 +5,9 @@
 //
 // Resolution is a stack of frames kept in the game state (state.stack), not a chain of
 // function calls. Every loop counter and every "which branch am I in" lives in a frame as
-// plain data. Nothing pauses yet, so the stack is always empty again when apply() returns,
-// but because nothing is held in a JavaScript call stack, a later change can stop between two
-// steps to ask a player something, save or send the state, and carry on from the same place.
+// plain data, and the stack is always empty again when apply() returns. An action that stops to
+// ask a player about a reaction (engine.js, apply) is put back whole and run again from its start
+// with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
 import { STEPS } from './content/schema.js';
 import { roll } from './rng.js';
@@ -286,6 +286,13 @@ function exec(s, ev, kit, f, step, at) {
     const cut = f.cut;
     if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
     return kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+  }
+  // The spell that set this reaction off fails (Counterspell). Only a reaction to a spell being
+  // cast has one to stop (engine.js, castReaction marks its source `counters`).
+  if (kind === 'counter') {
+    if (!f.src.counters) return handOver(`${f.src.name} would stop a spell, but no spell is being cast for the engine to stop. The DM applies it.`);
+    f.src.countered = true;
+    return;
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
   if (kind === 'heal' || kind === 'tempHp') {

@@ -39,7 +39,7 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 - `src/tables.js` — who is at which table and what each person is told. No
   network code, so the tests drive it directly. The players' view is built once per change of
   the table and shared by every player (each copy adds only their own handouts and their own
-  creatures' standing instructions for reactions, `reactions`): the party sees as
+  creatures' standing instructions for reactions, `reactions`, and a reaction question, `prompt`): the party sees as
   one (`docs/specs/sight.md`). Under the `sight` table rules `los` and `light` a player's view also
   carries `sight: { rule, now, light? }`, the tiles the party sees now and the light on them.
 - `src/limits.js` — the per-address and per-connection limits, with an injectable clock.
@@ -69,13 +69,35 @@ Standing instructions for a creature's reactions are an ordinary action (rules
 
 | Action | Who | Events (as the DM gets them) |
 |---|---|---|
-| `{type:"reactions", actor, set:{[reactionId]: "always"\|"never"\|"miss"\|"ask"}}` | the creature's controller or the DM, at any time | `reactionsSet {id,set}` (never sent to a player) |
+| `{type:"reactions", actor, set:{[reactionId]: "always"\|"never"\|"miss"\|"ask"}}` | the creature's controller or the DM, at any time but while a question waits | `reactionsSet {id,set}` (never sent to a player) |
+| `{type:"react", prompt:n, take: reactionId\|null, slot?}` | the asked creature's controller, or the DM (overrides) | `reactionAnswered {id,n,take,by}` (DM only), then the waiting action's own events |
 
-Which values a reaction takes depends on it (`miss` only for one that adds to AC, `ask` only for
-the Opportunity Attack). A player's view carries `reactions: { [creatureId]: { [reactionId]: when } }`
-for their own creatures only, with only what differs from the default; the shared part of the
-view never has a creature's `reactions`. A reaction taken sends `reaction {id,reaction,name,trigger,against?}`
-to everyone who could see it.
+Which values a reaction takes depends on it (`miss` only for one that adds to AC). A player's view
+carries `reactions: { [creatureId]: { [reactionId]: when } }` for their own creatures only, with
+only what differs from the default; the shared part of the view never has a creature's
+`reactions`. A reaction taken sends `reaction {id,reaction,name,trigger,against?}` to everyone who
+could see it (`trigger`: `leave`, `hit`, `targeted`, `cast`, `damaged`).
+
+**Asking in the moment** (Decision 4 build notes, part 2). Where a player's creature has `ask`, the
+action that reaches it stops and nothing it did is kept; the state's `pending` holds it (the DM's
+view has it whole). Each player's view carries `prompt`:
+
+- `null`: nothing waits.
+- for the player who controls the creature asked:
+  `{ n, reactor, trigger, options: [{ reaction, name, slots?, ac? }], by?, attack?, total?, ac?, crit?, spell? }`.
+  `slots` are the spell slot levels it may use (the lowest is used if `slot` is not sent); `ac` is
+  what an option adds to Armor Class; `total` and `ac` (top level) are the attack roll and the Armor
+  Class it beat, for `hit`. `by` only where the party knows of that creature. A `cast` question
+  never names the spell.
+- for every other player: `{ waiting: true }`, nothing more.
+
+The player asked also gets `reactionAsked {id,n,ask}` (live and in `history`); nobody else does.
+Until it is answered every action but `react`, `say`, `note`, `claim`, `release`, `askCheck` and
+the handout actions is refused with "The table is waiting for a reaction to be answered." The
+answer re-runs the waiting action, which may ask again (a new `n`). There is no time limit in the
+engine or the server; the DM answers for a player who does not. A spell lost to Counterspell
+sends `countered {id,by?}` to players, with `spell` and `name` only if it was theirs. The DM's
+undo of an answer puts the question back.
 
 ### Scene actions, events and view
 
