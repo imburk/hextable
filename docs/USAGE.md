@@ -43,9 +43,14 @@ yet known or not reported.
 | 13 Nov | Ultra | Renderer R2, floors module | #140 / #149 | Sonnet | 214k | 62 min | merged |
 | 13 Nov | Ultra | Engine security fixes | #136 / #151 | Opus | 290k | 87 min | merged (state 16) |
 | 13 Nov | Ultra | Reaction prompt screen, Fantasy Grounds import button | #146 / #152 | Sonnet | 219k | 71 min | merged |
-| 13 Nov | Ultra | Cut-away walls, caves (R2 rest, R7) | #150 | Sonnet | ? | ? | running |
-| 13 Nov | Ultra | Event timeline and pace (R3) | #153 | Sonnet | ? | ? | running |
-| 13 Nov | Ultra | Class features 7 to 15, party's classes | #154 | Opus | ? | ? | running |
+| 13 Nov | Ultra | Cut-away walls, caves (R2 rest, R7) | #150 / #156 | Sonnet | 280k | 98 min | merged |
+| 13 Nov | Ultra | Event timeline and pace (R3) | #153 / #160 | Sonnet | 242k | about 100 min, with a restart | merged |
+| 13 Nov | Ultra | Three small engine items; class features 7 to 15, five classes | #154 / #157, #164 | Opus | 480k | about 125 min, with a restart | merged (state 17) |
+| 13 Nov | Ultra | Party spells re-tier | #159 / #161 | Sonnet | 154k | 32 min | merged |
+| 13 Nov | Ultra | Animations on beats (R4) | #162 | Sonnet | ? | ? | running |
+| 13 Nov | Ultra | Table controls: pace, stock maps in the lobby, import report | #163 | Sonnet | ? | ? | running |
+| 13 Nov | Ultra | Spell vocabulary and the spells it unlocks | #165 | Opus | ? | ? | running |
+| 13 Nov | Ultra | Independent review of #164 (report only) | #166 | Sonnet | ? | ? | running |
 
 Times on the night of 13 November are long because up to six agents shared one machine; the same
 jobs run alone took a quarter of the time on 12 November.
