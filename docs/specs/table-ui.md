@@ -1,0 +1,1063 @@
+# Spec: table UI
+
+Status: draft by an agent, to be reviewed by the design owner. Issue #181
+(the owner's notes after a play session in which the party was wiped); it
+absorbs #173 (menu with Settings and About).
+
+Covers what the player and the DM touch around the map: the slide-out drawer,
+the combat tracker, the context action panel, what happens when a fight is
+lost or won, the log, and where preferences and table settings live. It says
+what the engine already gives, what it must add, and the order to build in.
+
+Nothing here changes a rule except one: when a fight is lost (Decision 1). It
+is marked there. Everything else is presentation, or new records the engine
+keeps.
+
+## Rules that bind this design
+
+Stated once; every decision below obeys them.
+
+- **Everything goes through `apply()`.** The UI sends actions and reads
+  events. The two things that are not actions today, `undo` and `redo`, are
+  server messages about the DM's history (`packages/server/README.md`, Undo);
+  Decision 1 adds one more in the same family, and says why.
+- **The client computes nothing.** It shows what its view gives
+  (`packages/rules/src/view.js`) and asks the engine's own helpers
+  (`blocked`, `usesFor`, `targetsFor`, `reactionsOf`) why something is
+  greyed. Sorting and filtering what the view holds is presentation. Totals,
+  XP, loot and who is defeated are the engine's.
+- **A player is sent nothing hidden.** No screen here needs a secret to draw
+  itself. Where a screen would reveal one (XP that adds up a hidden monster),
+  the DM's step sits in front of it.
+- **Phones are first-class.** Every layout below is given for 390 x 844 with
+  one thumb, and for 1280 x 800. Targets are at least 44 px; nothing depends
+  on hover; every greyed thing says why in text on the screen, not in a
+  tooltip or a toast alone.
+- **Themes restyle only.** All colour, type and radius come from the tokens
+  in `themes.js` (`--panel`, `--accent`, `--line`...). No layout or wording
+  depends on a theme.
+- **No dependencies, no bundler.** Plain ES modules, as `CLAUDE.md` says.
+- **Only SRD 5.2 content.** XP values come from the SRD's own table
+  ("Experience Points by Challenge Rating", SRD 5.2 page 253,
+  `reference/srd52/srd52-flow.txt` near line 43403) and are already in the
+  pack: every monster entry in `content/srd52/monsters-*.js` carries `cr` and
+  `xp`. The XP needed per level is the "Character Advancement" table
+  (`reference/srd52/srd52.txt`, lines 1426 to 1470, section "Level
+  Advancement"). The SRD has **no treasure tables**: its Equipment chapter and
+  Magic Items chapter (page 204 on) list items and prices, nothing says what a
+  monster drops. Loot is therefore what the DM puts in, never rolled by the
+  engine.
+
+## Where we are
+
+What exists, and what does not. File and function are given so a builder can
+check. "No" means a search of `packages/` found nothing.
+
+| Feature | Exists today | Does not exist |
+|---|---|---|
+| **End of a fight** | `endEncounter(s, ev, result)` in `engine.js`, results `victory`, `defeat`, `ended` (the DM's `endEncounter` action), `stalemate` (nobody left to take a turn, from `advanceTurn`). Event `encounterEnd { result, rounds }`, sent to players as it is (`AS_IS` in `view.js`). `checkEnd` runs after every action that can down someone. The client writes one log line from it (`describe` in `app.js`: "The fight is won." / "The party has fallen." / ...). `scenes.js` ends an open scene when a fight starts. | Anything after the log line: no screen, no summary, no record of who took part, where, or what was won. `encounterStart` carries no fight id, `encounterEnd` does not say which fight ended. |
+| **Defeat** | `checkEnd` ends the fight with `defeat` the moment no party member is `up` (`up(e)` is `!e.dead && e.hp > 0`). A party member at 0 Hit Points is **not up**, though by the rules still dying. Death saves are rolled only in `advanceTurn`, so once the fight is gone nobody rolls (debt W10 in `docs/DEBT.md`). `rest` hands a dying creature to the DM with a `manual` event. The monster AI (`ai.js`) only picks targets that are `up`. | A defeat screen; any choice for the DM; any distinction between "everyone is at 0" and "everyone is dead or stable". |
+| **Undo** | `history.js`: the last 30 steps (`UNDO_LIMIT`), 8 MB (`UNDO_BYTES`), reverse patches that restore state, dice seed and timeline exactly. DM only (`{t:"undo"}`, `{t:"redo"}`; `tables.js` handlers). Saved beside the table on the server (`<CODE>.undo.json`); in solo it lives in the tab only and a reload starts it afresh (`localTransport` in `transport.js`). Labels per viewer: `describeStep` returns `{ label, shown }`, `shown` null when players must be told nothing. | A way back to the start of a fight: a fight of a few rounds is easily more than 30 steps (every move, attack, end of turn, and every monster step is one). Nothing marks a fight's start or the last rest. |
+| **XP and CR** | Content: `cr` and `xp` on every pack monster (`aboleth`: `cr: 10`, `xp: 5900`). `schema.js` `lintMonster` checks `cr` is a number but **not `xp`**. | `legacyMonster()` in `content/index.js` drops both when it builds `MONSTERS`, so a creature entity has neither; the way to the number is `CONTENT.monsters[e.tpl].xp`. No `xp` on a character, no level thresholds as data, no award, no `levelUp` trigger: `levelUp` is a DM action that takes a whole new sheet (`engine.js`, `levelUp`). No XP share rule. |
+| **Loot, items, inventory** | `e.gear`: a list of short strings on every creature (`makeEntity`), checked as names (`derive.js`: at most 60 strings of at most 60 characters). Used by name only: `hasKey`, `hasTool`. Weapons and armour as data (`content/srd52/equipment.js`), lights as data (`content/lights.js`). A map `chest` object with open and closed states (`objects.js`). | Loot record, coins, quantities, weight, magic items as content, containers with contents, piles on the map, anything an item does when used (potion, scroll, wand charges). |
+| **Giving, dropping** | `give { actor, item, take? }`, **DM only** (`engine.js`). Event `gear { id, item, taken? }`. The DM's log shows it (`describe`, "X receives Y."). | `gear` is **not in `AS_IS` in `view.js`**, so players are sent nothing when gear changes, and their log never shows it. No action for a player to hand an item over, drop it, or pick it up. |
+| **Rests** | `rest` (long: Hit Points, slots, features with uses, Hit Dice, one Exhaustion level) and `shortRest` (spend Hit Point Dice, features that return on a short rest), both **DM only** and refused in a fight (`engine.js`). The DM's Short Rest panel is `initShortRest` in `features.js`. Event `rest { short? }`. | A way for a player to ask for one. |
+| **Follow, lead** | `follow { actor, leader }` and `follow { actor, leader: null }` by whoever controls `actor`; `marchingOrder` and **`partyFollow` DM only**. The bar's Follow, Stop following and Lead the party buttons are in `refresh()` in `app.js`; Lead is shown only to the DM. | Lead the party for a player. |
+| **Searching** | One action, `search { actor }`: a single Wisdom (Perception) check against everything hidden within 15 ft: secret doors and traps (objects with `find`), and enemies hiding (`hiding.dc`). In a fight it costs the Action. Table setting `passiveFind` (`off`, `traps`, `all`) lets passive Perception find things without it. Events `check { search: true, found }`, `noticed`, `triggered`, `unhidden`. | Two kinds of search. A "trap suspected" flag: nothing in the state says a player suspects something. |
+| **Opening doors** | `use { actor, object, verb }`; `usesFor(S, e)` lists what is in reach with a `why` when it cannot be done now (not your turn, no key, no action). The bar shows each as a button. Event `object`. | Nothing missing. |
+| **Hide, Dash, Disengage, Dodge** | Actions `hide`, `dash`, `disengage`, `dodge`; `hideProblem(S, e)` and `blocked(S, e, time)` give the reason. | Help, Ready, Utilize, Influence: not in the engine. |
+| **Stand up** | A prone creature stands by itself at the start of its turn for half its Speed (`advanceTurn`, event `stood`), and when a fight ends. | An action to stand during a turn. |
+| **Spells** | `e.spells` is a flat list of ids: cantrips and prepared spells together (`derive.js`). `SPELLS[id]` (`effects.js`, `spellProfile`) has `level`, `time`, `range`, `aim`, `harmful`, `heals`, `turn`, and `.def`, the pack entry, which has `school`, `classes` (spell lists it is on), `time`, `concentration`, `ritual`, `text`. Slots: `e.slots`, `e.slotsMax`. A cast outside a fight takes a slot. | A tag for damage, healing, control or utility. Known-but-not-prepared spells (a spellbook). Ritual casting without a slot. More than one class on a character (that is #175). |
+| **Class features** | `e.feats` (each with `uses`, `action`, `text`), `e.uses[id]` left. `features.js`: `featureButtons`, `usesText`, `featuresHtml`. `classes.js` (#170): choosers for Divine Spark, Wild Shape, Lay On Hands, Font of Magic, Divine Intervention, Metamagic, drawn as a card over the screen (`#cp`, z-index 14). | Nothing missing that this spec needs. |
+| **Conditions, concentration** | `e.cond[id]` (`level?`); `S.effects[]` `{ id, name, source, conc, lasts, until, parts }` (`durations.js`), sent to players for effects on or from their own (`viewEffects`). `CONTENT.conditions[id].text` says what a condition does. The card shows them as pills with remaining rounds and an end button for effects you own (`#c-res`, `data-fx`, action `endEffect`). | A machine-readable "how this condition ends". `lasts` is a phrase ("1 minute"); `until` is a round or a clock time; a condition set by the DM has neither. |
+| **Reactions** | `reactions.js`: `reactionsOf(e)`, `canReact(e)`, standing instructions (`reactions` action); `e.reactionUsed`. The question when a player's instruction is `ask`: view field `prompt`, drawn as a modal by `reactionprompt.js` (`#rp`, z-index 15) that blocks the table until answered. The sheet's Reactions section is `reactionsHtml` in `reactionsheet.js`. | A "take a reaction now" button: reactions are answered to a prompt or by standing instruction. |
+| **The tracker** | `createTracker` in `tracker.js`: `#tracker`, opened by `#btn-tracker`. Rows from `S.encounter.order` (or the party outside a fight, plus hidden creatures for the DM). Health numbers for your own side, a word for the rest; size, height, hidden, Reaction used (own side only), conditions, lasting effects with `(C)`. The DM's tick boxes, amount, damage and heal, Skip turn, Reveal. A horizontal strip of names, `#order`, also shows the order. | The "someone unseen" slot the view sends (`order` has `{ someone: true }`) is dropped from the tracker's rows (`rows()` filters it out); the strip shows it. No initiative numbers in the rows. |
+| **The log** | `log[]` in `app.js`, filled by `beat()` from each event through `describe()`: `[text, class, dice?]`, last 300 kept, last 120 shown flat in `#log`. On joining, the last 50 visible entries are asked for (`recent`). `T.history({ types, since, limit })` (limit at most 200). Everything is redacted per viewer in `viewEvents`. | Grouping. Filters. A record of which entries belong to which fight. Entries for gear changes seen by players (above). |
+| **Preferences** | `prefs` in `transport.js`, JSON in `localStorage`: `hextable.theme`, `hextable.pace`, `hextable.dice`, `hextable.diceAutoMine`, `hextable.diceMonsters`, `hextable.renderer`. Also `hextable.session` and `hextable.solo`, which are not preferences. The floors look, wall cut-away and caves are **address parameters** only (`?hex`, `?nocut`, `?nocave`, read in `themes.js`). Table rules: `state.settings`, changed by the DM's `setting` action, validated against `SETTINGS` in `engine.js`; players are sent them all. | A place where a player changes any of these in one screen. |
+| **Panels** | `index.html`: top bar `#top` with `#btn-undo`, `#btn-tracker`, `#btn-log`, `#btn-handouts`, `#btn-look`, `#btn-dm`, `#btn-leave`; `<aside>`s `#tracker`, `#sheet`, `#log`, `#handouts`, `#dm`, each a fixed panel on the right (`.panel`, z-index 5; the tracker is on the left, z-index 4); `openPanel(id)` in `app.js` shows one of `sheet`, `log`, `dm`, `handouts`. The dock `#dock` holds `#party` (character chips), `#card` (name, `#btn-sheet`, `#btn-end`, Hit Points, `#c-res` pills, `#actions` bar). | One menu; About; attribution (#173). |
+
+## The seven decisions
+
+### Decision 1: defeat
+
+**Question.** What do players and the DM see when the party is wiped, and what
+exactly is "wiped"?
+
+**What the rules say.** A creature at 0 Hit Points falls unconscious and
+makes a Death Saving Throw at the start of each of its turns; three
+successes make it Stable, three failures kill it, a natural 20 puts it back
+on its feet with 1 Hit Point, and damage to it adds failures (SRD 5.2,
+"Dropping to 0 Hit Points"; the engine does all of this, `deathSave` and
+`damage` in `engine.js`). So **a party that is all at 0 Hit Points is down,
+not defeated**: its members are still rolling.
+
+**What the engine does.** It ends the fight at the first moment nobody is up
+(`checkEnd`), so the saves are never rolled (debt W10) and a 20 can never
+save anyone. The owner's party did not get its saves.
+
+**Options for when "defeat" is.**
+
+- A. Keep: defeat when no party member is up. Simple, wrong by the rules.
+- B. Defeat when no party member can still act or roll: every party member is
+  dead, or at 0 Hit Points and Stable. While anyone is dying and a foe is
+  up, the fight goes on, saves roll on their turns, monsters take theirs.
+- C. Defeat only when everyone is dead. Too late: a party of Stable
+  characters among monsters that cannot or will not finish them is stuck.
+
+**Choice: B**, and it is the one rules change in this spec. In words:
+
+> The party has fallen when **no party member is up and none is dying**: each
+> is dead, or at 0 Hit Points and Stable. Dying, and rolling death saves, is
+> not defeat.
+
+Outside a fight (a trap, a fall, a spell) nobody rolls saves (W10), so the
+same words are: **no party member is up**; the screen shows the dying ones as
+dying and the DM settles them as today.
+
+"Party member" means a creature with `side: 'party'` and `kind: 'pc'`.
+Companions and summons on the party's side do not keep the party standing.
+
+The monster AI keeps its rule (it only picks targets that are up), so while
+the party lies dying the monsters pass their turns. That is kinder than the
+SRD's coup de grace (damage on a creature at 0 within 5 feet is a critical
+hit and adds failures) and is an open question below; the DM can `harm` a
+dying character by hand.
+
+**When the screen appears.** The moment the engine sends
+`encounterEnd { result: 'defeat' }` for a fight, or, outside a fight, when
+the state first has no party member up. The screen is drawn from the state,
+not only from the event, so a player who reloads or joins late sees it too:
+`fallen(S)` is true when there is no `S.encounter` and every party `pc` is
+dead or at 0. It stays until the DM chooses, or until any party member is up
+again.
+
+**What players see.** One quiet card over the map; the map stays visible
+behind it and tappable for looking around.
+
+```
+  ┌──────────────────────────────────┐
+  │  The party has fallen.           │
+  │                                  │
+  │  Brenna    died                  │
+  │  Tor       down, stable          │
+  │  Ilya      died                  │
+  │                                  │
+  │  The DM will decide what         │
+  │  happens next.                   │
+  └──────────────────────────────────┘
+```
+
+Tone: short, plain, no jokes and no "game over". One line says what
+happened, one line per character says how they ended, one line says who
+decides. States per character: "died", "down, stable", and outside a fight
+"down, dying". Nothing about the monsters is shown beyond what the map shows.
+A player can close the card to look at the map; it comes back from the Log
+entry of that fight. A player is never given a choice: the table is the DM's
+to steer.
+
+**What the DM sees.** The same card, with three choices, each with what it
+does in one sentence:
+
+```
+  ┌──────────────────────────────────────────────┐
+  │ The party has fallen.                        │
+  │ Brenna died. Tor is down and stable.         │
+  │ Ilya died.                                   │
+  │                                              │
+  │ [ Go back to the start of the fight ]        │
+  │   The table as it was when initiative was    │
+  │   called, with new dice. Undo brings this    │
+  │   back.                                      │
+  │ [ Go back to the last rest ]                 │
+  │   The table as it was after the last rest.   │
+  │ [ Carry on from here ]                       │
+  │   Capture, rescue or new characters: Quick   │
+  │   entry is under Menu, DM.                   │
+  └──────────────────────────────────────────────┘
+```
+
+- **Go back to the start of the fight** ("rewind"). Not enough with `undo`
+  alone: it keeps 30 steps. The engine lane adds a **fight pin**: when
+  `startEncounter` succeeds, `history.js` keeps a full copy of the state as it
+  was just before (`mark(state)`, which already leaves out the timeline), and
+  a **rest pin** the same way after `rest` and `shortRest`. A new server
+  message `{t:"rewind", to:"fight"|"rest"}` (DM only, handled beside
+  `undo` in `tables.js`, and `t.rewind` in `localTransport`) restores the
+  pinned state **except the dice stream**, so that the same choices do not
+  roll the same results. It records one step, so Undo takes the rewind itself
+  back and the lost fight returns. Everyone is sent a whole view, and the
+  event `rewound { to }` (players see it too: "The DM took the table back to
+  the start of the fight."). A pin is dropped by `loadMap`, and a fight pin
+  by `rest`, `shortRest`, and when it is replaced by the next fight.
+  The message is not an action because it changes the history, not the game,
+  exactly like `undo`; the DM-only check, the exact restore and the
+  `{ label, shown }` convention are the ones `history.js` already has.
+- **Go back to the last rest.** The rest pin. Offered only if there is one.
+- **Carry on from here.** Closes the card and changes nothing. The DM's own
+  tools do the rest: `heal` and `stable` by `mend` and `condition`, `place`,
+  `spawn`, `addCharacter` and Quick entry for new characters.
+- The owner's "restart the scene" is the rest pin: it is the largest
+  restore that does not throw away the story. A `loadMap` restart needs no
+  pin; it is in the DM panel already.
+- A choice that is not available is shown greyed with why ("No fight to go
+  back to: the fight began more than a rest ago.").
+
+**Solo.** The same card, since in solo you are the DM and every hero. Its
+three lines are in the first person: "Try the fight again", "Go back to the
+last rest", "Carry on". The pins are kept in `localStorage`
+(`hextable.solo.pins`) because the history is not; if the browser refuses the
+space, those two choices are greyed and say so.
+
+**The mirror.** `encounterEnd { result: 'victory' }` (and `ended`, when the DM
+ends it) leads to the conclusion in Decision 4. `stalemate` leads to nothing
+but its log line.
+
+### Decision 2: the drawer
+
+**Question.** One menu for everything that is a panel today.
+
+**Options.** (a) Keep five separate panels and add two. (b) One drawer with
+tabs. (c) One drawer that is a list, each item opening a full screen.
+Choice **(b)**: tabs keep the tracker one tap away during a fight, which (c)
+makes two.
+
+**What it is.**
+
+- A burger button, `#btn-menu` (new), in `#top`. `aria-label="Menu"`,
+  `aria-expanded`, `aria-controls="drawer"`. It carries one badge: the sum of
+  the DM's waiting players (`#dm-badge`), the player's unseen handouts
+  (`#ho-badge`) and, for the DM, an undecided conclusion.
+- A slide-out `<aside id="drawer">`. It comes from the **right** by default.
+  The side is a client preference: `hextable.drawerSide`, `"right"` or
+  `"left"`; the burger sits on the same side, the status box on the other
+  (`#top` flips with `flex-direction: row-reverse`; `body[data-drawer]` is
+  the hook for CSS). Left is for left-handed thumbs; nothing else changes.
+- Tabs, in this order: **Turns** (called **Party** outside a fight; the
+  tracker, Decision 3), **Sheet**, **Log**, **Handouts** (only if there are
+  any, or for the DM), **DM** (DM only), **Settings**, **About**. Every tab
+  is an existing panel re-parented, not rewritten (below).
+
+**Where today's things go.**
+
+| Today (`index.html`) | Goes to |
+|---|---|
+| `#btn-undo` | Stays in the top bar for the DM: undoing must be one tap. |
+| `#btn-tracker`, `#tracker` | Tab Turns / Party. The button is removed; `createTracker` gets the drawer section as its `root`. |
+| `#btn-log`, `#log` (`#log-list`, `#note-form`) | Tab Log. `#note-form` stays with it. |
+| In `#log`: `.dice-prefs`: `#dice-show`, `#pace-pick`, `#dice-auto-mine`, `#pace-table` | Tab Settings. They are device preferences. |
+| `#btn-handouts`, `#ho-badge`, `#handouts` | Tab Handouts, badge on the tab. `handouts.js` and `scenes.js` are given `openPanel`; it becomes `drawer.open(tab)`. |
+| `#btn-look` (cycles themes blind) | Tab Settings: a Theme select over `THEMES`. |
+| `#btn-dm`, `#dm-badge`, `#dm` | Tab DM, badge on the tab. Its sections do not change in this spec. Its `#dm-dice-monsters` (a device preference) moves to Settings, under "For the DM, on this device". |
+| `#btn-leave` | Tab Settings, group "Table" (players, online). The DM's Leave stays in the DM tab (`#dm-leave`). |
+| `#btn-sheet`, `#sheet` | The button stays in the card; it opens the drawer on tab Sheet. `#sheet` and `#sheet-body` become that tab. |
+| `#order` strip, `#hint`, `#cam`, `#pace-wait` | Stay where they are. A tap on `#order` opens the drawer on Turns. |
+| `#party`, `#card`, `#actions` | Decision 6. |
+| `#scene`, `#viewer`, `#cp`, `#rp`, `#lobby`, `#editor`, `#toast` | Unchanged. They sit above the drawer (z-index: the drawer is 5; `#cp` 14, `#rp` and `#viewer` 15, `#toast` 20). |
+
+Re-parenting keeps every element id, so `$('log')`, `$('sheet')`, `renderLog`,
+`renderSheet`, `renderDM` and the smoke script keep working. `.panel`'s
+`position: fixed` is overridden inside the drawer.
+
+**About** (closes the second half of #173). One data file, `about.js`, holds
+the text, so a legal change is one edit and no page fetches anything:
+
+1. The SRD 5.2 attribution, word for word as in `reference/srd52/README.md`
+   ("This work includes material from the System Reference Document 5.2
+   ("SRD 5.2") by Wizards of the Coast LLC, available at
+   https://www.dndbeyond.com/srd. The SRD 5.2 is licensed under the Creative
+   Commons Attribution 4.0 International License, available at
+   https://creativecommons.org/licenses/by/4.0/legalcode.").
+2. Hextable's own licence (MIT, `LICENSE`).
+3. Three.js r187, MIT, with the copyright line from
+   `packages/client/vendor/README.md`.
+4. The five fonts the page loads from Google Fonts (`index.html`: Baloo 2,
+   Nunito, Silkscreen, Source Sans 3, Vollkorn SC). The builder confirms each
+   one's licence on its Google Fonts page before writing it down; none is
+   assumed here.
+5. Model packs later, each with its licence from
+   `packages/client/assets/models/LICENSES.md` when that file exists.
+6. The game's version and the table's state version, so a bug report can say
+   which.
+
+About is a drawer tab, so it is one tap from the burger at any time, on a
+phone too, including before a table is joined: the lobby (`#lobby`) gets an
+"About" link that opens the same drawer.
+
+**On a phone** (up to 600 px wide, the breakpoint `style.css` already uses).
+
+```
+ closed                           open (right side)
+┌─────────────────────────┐      ┌─────────────────────────┐
+│ Round 3 · 08:06  [↶][☰] │      │▒▒│ Menu              [✕] │
+│ [Tor][Goblin 2][Brenna] │      │▒▒│ Turns Sheet Log Sett.▸│
+│                         │      │▒▒│───────────────────────│
+│          map            │      │▒▒│ Round 3     Tor's turn│
+│                         │      │▒▒│ ...rows...            │
+│                         │      │▒▒│                       │
+├─────────────────────────┤      ├─────────────────────────┤
+│ action panel            │      │ action panel (visible)  │
+└─────────────────────────┘      └─────────────────────────┘
+```
+
+- Width `min(92vw, 420px)`; the remaining strip of map is a scrim: a tap on it
+  closes the drawer.
+- Height: from the top of the screen down to the top of the dock
+  (`top: 0; bottom: var(--dock-h)`; `--dock-h` is already kept up to date in
+  `refresh()`). So it is as tall as the screen allows and **never covers the
+  action panel**.
+- A pending reaction question (`#rp`, z-index 15) is above it, and the
+  drawer does not close under it; when `state.prompt` or `state.pending` is
+  set, the drawer is hidden for the length of the question and restored
+  after.
+- Close by: the scrim, the X, the burger, Escape, or a **swipe** away from
+  the open side (a drag that starts on the drawer's header, past 60 px or a
+  quick flick). It is **not** opened by swiping from the screen edge: the
+  canvas owns single-finger drags (`touch-action: none` on `#gl`), and the
+  left edge belongs to the browser's back gesture.
+- Safe areas: `env(safe-area-inset-top/right/bottom)`.
+- Tabs scroll sideways in a strip; each is at least 64 px wide and 44 px high.
+
+**On a desktop** (900 px and wider; `closeDM()` in `app.js` already uses
+900).
+
+```
+┌───────────────────────────────────────────────────────┬──────────────┐
+│ Round 3 · Day 1 08:06                          [↶] [☰]│ Menu     [📌][✕]│
+│ [Tor][Goblin 2][Brenna]                               │ Turns Sheet ..│
+│                                                       │ Round 3       │
+│                      map                              │ ▶ Tor   14/24 │
+│                                              [+]      │   Goblin 2 .. │
+│                                              [−]      │               │
+│            ┌───── action panel (max 760) ─────┐       │               │
+└───────────────────────────────────────────────────────┴──────────────┘
+```
+
+- Width 360 px. A **pin** button keeps it open: `hextable.drawerPin`
+  (default off). Pinned, the canvas element's box shrinks by the drawer's
+  width (`#gl { inset: 0 var(--drawer-w) 0 0 }`; `render.js` already follows
+  the canvas size with a `ResizeObserver`, so no renderer change), and `#cam`,
+  `#top`, `#order`, `#hint` and the dock move out from under it. Unpinned, it
+  floats over the map with a scrim that does not block the map (a click on the
+  map closes it), so a tracker can be opened for a glance and dismissed by
+  clicking the map.
+- Keyboard: `m` toggles the drawer (not while typing; the existing key
+  handler already skips inputs), Escape closes an unpinned drawer, `Tab` moves
+  through it and, unpinned, is trapped in it while open; focus returns to the
+  burger on close. The tab strip is `role="tablist"` with arrow keys.
+
+**Screen readers.** `#drawer` is `role="dialog" aria-modal="true"` while it
+covers the map (phone, or desktop unpinned) and `role="complementary"` when
+pinned; its heading names the tab. Opening moves focus to the heading;
+closing returns it to `#btn-menu`. A visually hidden `aria-live="polite"`
+region says "Round 3. Tor's turn." when the turn changes, once, never per
+Hit Point change. The slide itself is skipped under `prefers-reduced-motion`.
+
+**Preference.** `hextable.drawerSide`, `hextable.drawerPin`, and the last open
+tab (in memory only; it is not worth storing).
+
+### Decision 3: the tracker in the drawer
+
+**Question.** What does each row show, to whom, without leaking.
+
+**Choice.** Keep what `tracker.js` already does and fix what it lacks.
+Vertical, in initiative order, header "Round N" and whose turn it is. The
+horizontal `#order` strip stays: it is the glance when the drawer is shut.
+
+**A player's row** is built only from the view (`playerView`,
+`viewEncounter`):
+
+| Part | Source | Own side | Others |
+|---|---|---|---|
+| Initiative | `S.encounter.order[i].init` | the number (the view sends `init` and `dex` for open creatures only) | none |
+| Name, side colour | `e.name`, `e.side` | yes | yes, for creatures the party can see |
+| Health | `e.hp`, `e.maxHp`, `e.tempHp` / `e.health` | `14 / 24 +3` and a bar | the word (Healthy, Bloodied, Down, Dead) and a bar from `hpFraction`; never a number |
+| Dying | `e.death` (open creatures) | `Dying 1✓ 0✗`, or `Stable` | none |
+| Turn | `S.encounter.turn`, `current()` | `aria-current="step"`, accent fill, scrolled into view | same |
+| Reaction | `e.reactionUsed` (open creatures) | "Reaction used" | **nothing**: the view does not send it, and the row does not guess |
+| Conditions | `e.cond` (all for open; `visibleConditions` for seen) | all | only the ones that show by looking |
+| Concentration, lasting effects | `S.effects` (`viewEffects`) | `Bless (C) 8r` | those the view sent, e.g. a foe's `Hex (C)` |
+| Size, height | `e.size`, `e.pos` | yes | yes |
+| Unseen turn | `{ someone: true }` in `order` | | a ghost row, "Something moves unseen", not tappable. Added: `rows()` drops it today. A run of unseen turns is already one slot, so no count leaks; under `unseenTurns: 'quiet'` there is no slot and so no row |
+
+**The DM's row** is the DM's whole state: exact `hp / maxHp` for everyone,
+initiative for everyone, creatures hidden from the players marked "Hidden
+from players" (that tag exists), the tick boxes, the typed amount with
+Damage and Heal for the ticked, a `-` and `+` per row, Skip turn on the
+current row and Reveal on hidden ones (all existing; they are kept as they
+are, in the same actions: `harm`, `mend`, `setHp` for the dead, `endTurn`,
+`reveal`). On a phone the DM's controls collapse behind an "Edit" button on
+the header so the list gets the room.
+
+```
+ Round 3                         Tor's turn
+ ┌─────────────────────────────────────────┐
+ │▶18 ▌Tor        14/24 +3 ▓▓▓▓░           │  your own: numbers
+ │     Bless (C) 8r · Reaction used        │
+ │ 12 ▌Brenna     Dying 1✓ 0✗              │
+ │    ▌Goblin 2   Bloodied ▓▓░░░           │  a foe: word and bar
+ │     Prone · Hex (C)                     │
+ │    ░ Something moves unseen             │
+ │    ▌Goblin 1   Dead                     │  struck through
+ └─────────────────────────────────────────┘
+```
+
+**Tapping a row** selects that creature and moves the camera to it (what
+`ctx.pick` does now: `select(id)` and `R.focus(id)`). On a phone it then
+closes the drawer, since the map is what was asked for; tapping a tick box or
+a DM button does not. A row of a creature whose full record the viewer has
+(`e.abil`) has a small "Sheet" button that opens tab Sheet for it.
+
+**Why not move the order strip into the drawer too.** A fight is played with
+the drawer shut; the strip costs one line and says whose turn is next.
+
+### Decision 4: combat conclusion
+
+**Question.** When a fight is won (or the DM ends it), what is awarded, who
+decides, who sees what, what is written down.
+
+**What the SRD says.** A monster's XP is set by its CR; XP "is awarded for
+defeating the monster in combat or otherwise neutralizing it", and the Game
+Master awards it; at certain totals a character gains a level (SRD 5.2,
+"Experience Points" under Monsters, page 253, with the table, and the
+Character Advancement table under "Level Advancement"). It does **not** say
+how a group divides it, and gives no treasure tables. So: the XP **values**
+are the SRD's; dividing them **equally among the party members who took
+part** is a table convention, made a table setting (`xpShare`, below) with
+that as the default; loot is whatever the DM enters.
+
+**What exists.** See the table above: the data is in the pack, nothing in the
+engine uses it, and an item is only a string in `e.gear`.
+
+**What a "loot" record is.** Given that items are strings, a loot line is the
+smallest thing that fits `give`:
+
+```
+{ id, name, qty, from?, to }
+  name   up to 60 characters, the same rule as `gear`; the client offers
+         names from the pack (weapons, armour, lights) and free text
+  qty    a whole number, default 1; "Arrow x20" goes into gear as one string
+  from   the name of the creature it came from (for the log), optional
+  to     a party member's id, or null: carried by nobody yet
+```
+
+Coins are loot lines ("35 gp"). There is no currency in the engine; one is
+not invented here. When structured items arrive (an `items` content kind),
+`name` becomes an item id and nothing else here changes.
+
+**The flow.**
+
+1. The fight ends. If the result is `victory` or `ended`, the engine builds a
+   **conclusion** and keeps it in `state.conclusion`. It is private to the DM
+   (players are sent only `{ id, pending: true }`). Defeat does not make one.
+   The table setting `conclusion` (`dm`, `auto`, `off`; default `dm`) decides
+   whether the DM reviews it, it is published at once, or none is made
+   (milestone levelling). In solo the one person sees the DM's form with a
+   single button, "Done".
+2. **The DM's step, before players see anything.** A card over the map:
+   - Foes that took part, each with its XP and a checkbox "counts" (defeated
+     creatures start ticked: the engine ticks a foe that is not up; a foe that
+     fled or was talked down is the DM's to tick, which is the SRD's
+     "otherwise neutralizing").
+   - Bonus XP: lines of amount and **reason** ("Freed the prisoner").
+   - The share each party member gets: the engine's figure, editable per
+     member; a member who was not in the fight, or died, starts at zero.
+   - Loot: lines to add, remove, and assign to a member or to nobody.
+   - [Show to the players] and [No rewards].
+   Every edit is an action (`conclusion { edit }`) so it is undoable and the
+   DM can leave the step half done and come back from the DM tab.
+3. **Publishing** is one action. The engine adds each member's XP to `xp`,
+   puts each assigned loot line into that member's `gear` (as `give` does),
+   writes the record to the timeline, and sends players the result.
+4. **What players then see** (a card over the map, like Decision 1's, one
+   tap to dismiss, reopenable from the Log):
+
+```
+  ┌──────────────────────────────────────┐
+  │  The fight is won.      4 rounds     │
+  │  Goblin warrior x3, Wolf             │
+  │                                      │
+  │  Experience        +450 each         │
+  │    +50  Freed the prisoner           │
+  │  Tor   1,150 / 2,700 to level 4      │
+  │                                      │
+  │  Found                               │
+  │    Shortbow          Ilya            │
+  │    35 gp             the party       │
+  │                                      │
+  │  [ Continue ]                        │
+  └──────────────────────────────────────┘
+```
+
+   While the DM is still deciding, players see a small non-blocking line
+   ("The fight is over. The DM is working out the rewards.") from the
+   `pending` marker, never a blocked screen. If a member's `xp` reaches the
+   next row of the Character Advancement table, the card says "Ready to level
+   up: ask your DM", from the `levelReady` event. Levelling itself stays the
+   DM's `levelUp` action; this spec does not change it.
+5. **What is written down.** Two timeline entries, in the same action:
+   - `conclusion`, the whole published record (below), tagged `fight`.
+   - A `chronicle` entry (title "A fight at the old watchtower: won", text
+     with rounds, who was beaten, XP and loot, `tags: ['fight']`,
+     `public: true`), so the DM's chronicle, `recall` and any later AI DM
+     read it through the same path as every other entry. The log (Decision
+     5) shows the `conclusion` and hides the matching chronicle line inside
+     the fight's group.
+   The `conclusion` event is sent to players shaped like the card they see
+   (creatures they know of only; the totals and reasons the DM published).
+
+**Leaks.** A player's per-head XP adds up every defeated foe, hidden ones too.
+The DM's step is exactly where that is decided: the DM can edit the figures
+before publishing. The published `foes` list holds only creatures the party
+knew of at that moment (`classify`), the same rule `viewEvents` uses.
+
+**What the engine must add**, few and named (full table below):
+
+- `state.conclusion` and `xp` on characters, state version 18, with a
+  migration that gives each existing character the XP its level starts at.
+- The Character Advancement table as content data (`advancement.js` in the
+  pack; no functions, no imports).
+- One action `conclusion` with three forms: `{ edit: { foes?, bonus?, per?,
+  loot? } }`, `{ publish: true }`, `{ skip: true }`. DM only.
+- Events: `conclusionReady` (DM only), `conclusion` (published, shaped per
+  viewer), `xp { id, amount, total }`, `levelReady { id, level }`, and
+  `gear` extended and sent to players (below).
+- Two table settings: `conclusion` and `xpShare` (`split`, `full`).
+- `encounterStart` gains `id` (the fight's id) and `where` (the name of the
+  revealed region the fight is in, else the map's name); `encounterEnd`
+  gains `fight` (that id). These feed Decision 5.
+
+### Decision 5: the log by combat
+
+**Question.** One collapsible entry per fight, with a summary and the
+blow-by-blow, exploring in between, and trades and loot always recorded.
+
+**Today.** A flat array of lines, no fights, no filter (see "Where we are").
+`encounterStart` and `encounterEnd` already bracket a fight in the event
+stream, and `describe()` already writes every line in words.
+
+**Choice.** Group on the client, from the stream the viewer was sent, and
+keep the one thing it cannot do itself (which entries belong to which fight
+after a reload) as a small engine addition.
+
+```
+ ▸ Exploring · Day 1 08:00                      6 entries
+ ▾ Fight 1 · The goblin camp · 4 rounds · Won
+     Tor, Ilya and Brenna beat 3 goblin warriors and a wolf
+     450 XP each · 2 items
+     ┌ Round 1
+     │  Roll initiative! Tor 18, Goblin 2 ...
+     │  Tor's turn ... attacks Goblin 2 ... Hit.
+     └ Round 2 ...
+     ┌ Spoils
+     │  Ilya receives Shortbow.
+     │  35 gp: the party's.
+ ▸ Exploring · Day 1 09:10                      3 entries
+```
+
+- **Entries.** `log[]` becomes a list of `{ kind, text, cls, dice, round,
+  fight, t }`, built in `beat()`. `kind` is one of `combat`, `explore`,
+  `loot`, `talk`, `dm`. A fight group opens at `encounterStart` and closes at
+  `encounterEnd`; the `conclusion` event that follows belongs to it. Between
+  fights, entries go in an "Exploring" group that ends at the next fight or
+  after a long gap of world time (an hour; the engine clock is in minutes).
+  A fight that is taken back with undo (`undone` of `startEncounter`) is
+  closed as "Taken back". A fight still going shows "In progress".
+- **Summary line**, in this order, each part only if the view sent it: place
+  (`encounterStart.where`), rounds (`encounterEnd.rounds`), outcome
+  (Won, Fell, Ended by the DM, Stalemate), who (party names, and foes by
+  name and number from the `conclusion` the viewer got), XP per head
+  (`conclusion.xp`), and the number of items (`conclusion.loot`). A fight
+  with no conclusion shows what it has and no placeholders.
+- **Inside**, the existing lines, grouped under "Round N" headings from the
+  existing `turn` events, using `<details>` so a screen reader and the
+  keyboard get collapsing for free. A fight is collapsed once it is over,
+  open while it is going on.
+- **Always recorded: trades, loot, items picked up, dropped or given.**
+  Events today:
+
+  | Event | Today | Seen by players today |
+  |---|---|---|
+  | `gear { id, item, taken? }` (DM's `give`) | yes | **No** (not in `AS_IS`) |
+  | `light { id, ... }` | yes | yes |
+  | `object` (a chest opened, a door) | yes | yes |
+  | `chronicle` (DM's) | yes | only if `public` |
+  | loot, XP, a conclusion | **no** | no |
+  | a player handing an item to another, dropping it, picking it up | **no** | no |
+
+  The engine must add (full table below): `gear` seen by players for
+  creatures that are theirs, with `why` (`dm`, `loot`, `pass`, `drop`,
+  `pickup`) and `with` (the other creature) so one event says "Ilya gave
+  Tor a rope"; the `conclusion` and `xp` events; and, as a later stage, the
+  actions `pass`, `drop` and `pickUp` (with a `pile` object on the map for
+  what is dropped, a content addition under `docs/specs/maps-and-objects.md`).
+  Until those exist the log shows exactly what exists, and nothing is
+  invented to fill it.
+- **Filters**, as chips above the list, several at once, remembered as
+  `hextable.logFilter`: Fights, Exploring, Loot and trades, Talk (`say`
+  lines and notes). The DM also has **DM only** (`undone`, `redone`,
+  `chronicle`, `manual` and the events players are never sent). Filtering
+  keeps each fight's summary line and shows inside only the matching
+  entries.
+- **Per viewer.** The client filters nothing for secrecy: it draws what its
+  view delivered. `viewEvents` already redacts live events and `history`
+  alike, including creatures the party did not know of when something
+  happened (`unseen` in the record). `history.js`'s `{ label, shown }` rule
+  is the model for the new events: an event carries its words for the DM and
+  its (possibly shorter or absent) words for players, and an event with
+  nothing a player may be told is not sent. The undo lines ("Taken back:
+  ...") already work this way and stay.
+- **After a reload.** The first 50 visible entries come with the join
+  (`recent`). The summaries are asked for by type
+  (`{ t:"history", types:["encounterEnd","conclusion"], limit:200 }`), and
+  the blow-by-blow of one fight is asked for when its group is opened
+  (`{ t:"history", fight: id }`, new: the server returns the record between
+  that fight's `encounterStart` and `encounterEnd`, through `viewEvents`, up
+  to 500 entries). In solo the whole timeline is local (`recall(S, ...)`) and
+  nothing is asked for.
+
+### Decision 6: the context action panel
+
+**Question.** An always-present panel that changes with the situation, holds
+everything a creature can do, and leaves the map visible and tappable.
+
+**What it replaces.** The card in `#dock` and the bar in `#actions`: one long
+scrolling row of buttons built in `refresh()` from attacks, spells, features,
+class buttons (`CLS.buttons`), Second Wind, Higher/Lower for fliers, Follow,
+Search, Hide, objects in reach, Dash, Disengage, Dodge. Every one of those
+buttons becomes a row in a tab below, with the same behaviour: the arming of
+a target (`setMode`), the `#hint` bar above the map, the engine's refusal
+shown as it came. Nothing is lost; the order is what changes.
+
+**What stays.** `#party` (the character chips) above the panel. The card's
+head (name, level and class, **Sheet**, **End turn**), the Hit Point bar,
+and the pill row (`#c-res`) of Action, Bonus Action, Move, Reaction and slots.
+`#hint` above the map. The class choosers in `classes.js` stay as the cards
+over the screen they are; the panel opens them.
+
+**Structure.**
+
+```
+┌ head       Tor · Cleric 3            [Sheet] [End turn]
+├ hp         ▓▓▓▓▓▓░░ 14/24 HP · AC 16
+├ status     Action · Bonus · Move 20 ft · Reaction ·  L1 ●●○  L2 ●○
+│            Bless (C) 8r ▸   Poisoned ▸                 (tap: how it ends)
+├ rows       the active tab's rows, two and a half visible on a phone
+└ tabs       at the bottom edge, in the thumb's reach
+```
+
+Tabs sit at the **bottom** of the panel (like a phone's navigation bar), so a
+thumb reaches them without stretching; End turn stays in the head, large and
+accent-coloured, as it is now.
+
+**Which tabs, when** (the panel is a function of the state and the selected
+creature, `panelContext(S, e)`, pure and tested; the engine's `blocked()` and
+`inFight()` are its inputs):
+
+| Situation | Tabs | Default |
+|---|---|---|
+| Not in a fight | **Explore**, Spells, Features, Items | Explore |
+| In a fight, your turn | **Attacks**, Spells, **Bonus**, **Move**, Features, Items | Attacks (Spells if the creature has no attack) |
+| In a fight, another's turn | **Reactions**, Spells, Features, Items (the last three browsable, every row greyed "It isn't your turn") | Reactions, if it is available; else the last tab used |
+| A creature that is not yours (DM selects a monster) | the same as yours, from its `actions` | as above |
+| Down, dying or dead | one tab, "Down", with the death save count and what ends it | |
+
+The default tab is chosen when a turn starts and when the fight begins or
+ends. A device preference, `hextable.panelTab` (`auto`, the above; or
+`remember`, the last tab used in each situation), lets a player keep their own
+habit.
+
+**Explore tab** (outside a fight). Most likely first. "Likely" is decided by
+a pure function over the view, `rankExplore(S, e)`, in this order, each rule
+using only what the view and the engine's helpers say:
+
+1. **An object in reach.** `usesFor(S, e)` returns, for a door or lever
+   within reach, a row with its label ("Open", "Close", "Unlock") and a `why`
+   if it cannot be done. Those that can be done come first, nearest the top.
+2. **Following.** If `e.follow` is set, "Stop following Brenna" is first of
+   the walking rows; else "Follow...", which arms a tap on a party member
+   exactly as today (`mode.kind === 'follow'`, with the nearest ally
+   offered). "Lead the party" is shown to the DM only (`partyFollow` is DM
+   only); for players it is not shown rather than shown greyed.
+3. **Hurt.** If `e.hp` is at or below half of `e.maxHp` (your own numbers),
+   healing you can do now: Cure Wounds / Healing Word, Second Wind, Lay On
+   Hands, as shortcuts that jump to the same rows in Spells and Features.
+   For the DM the Short rest and Long rest buttons (`shortRest`, `rest`, DM
+   only) come up when any party member is under half or has used slots.
+4. **Something found or sprung.** If a `noticed` or `triggered` event is in
+   the last two updates of the log, **Search** moves up.
+5. **Search** (always offered). With `settings.passiveFind` = `off` it is in
+   the top four, because nothing else finds things; with `traps` or `all` it
+   drops below the rows above, because passive Perception already does part
+   of the work.
+6. **Light.** If the party's sight rule is `light` and the tile under `e`
+   is not Bright (`S.sight.light`), and the creature has no light, "Light a
+   torch" (below).
+7. **Hide**, with `hideProblem()` as its reason when it cannot be done.
+8. **Rituals**: spells with `def.ritual`, below.
+9. **Check...**: opens the Sheet's skills (tap to roll, as today).
+
+The first four rows are shown as large buttons in a two-by-two grid; the rest
+are under "More". All rows follow the greyed-with-reason rule.
+
+**One Search, not two.** The owner asked for "search for secret doors" and
+"search for traps". The engine has one `search` action, one Perception check
+against everything hidden within 15 ft (secret doors, traps, hiders); two
+buttons would send the same action and mislead. One button, sub-line "secret
+doors, traps, things hiding · 15 ft". Both owner's items are met by it.
+
+**Rituals and light, honestly.** Ritual casting does not exist: a ritual
+spell (`def.ritual`) is cast like any spell, with a slot, and takes no ten
+extra minutes. The panel lists ritual spells under Explore and casts them as
+they are today; ritual casting (no slot, outside a fight, ten minutes on the
+clock) is an engine item below. Lighting a torch is DM-only (`setLight`);
+players get the row greyed with "Only the DM hands out light" until the
+engine lets the controller light something their `gear` names (below).
+
+**Reactions tab** (another creature's turn). The tab is greyed when the
+creature has no reactions (`reactionsOf(e)` empty), or the Reaction is spent
+(`e.reactionUsed`: "Reaction used this round"), and says so. Inside:
+`reactionsHtml` (status and the standing instruction for each: always,
+never, miss, ask; `bindReactions` sends `reactions`), as the sheet shows it
+now. **When a question is pending** (`S.prompt` for this player), the tab
+becomes active, pulses (not under reduced motion) and shows "A question is
+waiting". The question itself stays the modal `#rp`: the engine stops the
+whole table while it waits (`packages/server/README.md`, "Asking in the
+moment"), so it has to be impossible to miss and impossible to tap past, and
+`reactionprompt.js` already does that and is tested. The tab does not
+duplicate it.
+
+**Attacks tab.** `e.attacks` (characters) or `e.actions` (monsters,
+including Multiattack and what is left of it). Each row: name, bonus, damage
+and type, reach or range, and for monsters recharge and uses per day. Tap
+arms it (`setMode`), as today.
+
+**Spells tab.** Spell slots are a strip at the top and are always there,
+whatever the sort: `Level 1 ●●○  Level 2 ●○`, pips from `e.slots` and
+`e.slotsMax` (pact slots show as one row of the pact level). A "Metamagic"
+button and Sorcery Points appear here for a sorcerer (`CLS.buttons`).
+Rows grouped by level (Cantrips first), each: name, level, cost chip (A, B,
+R), range, a one-line effect (`sp.short`, or the healing dice), and the why
+when greyed.
+
+- **Sort** (one at a time; `hextable.spellSort`): Level (default), Name,
+  School (`def.school`), Casting time (`def.time`).
+- **Filters** (chips, several at once, not remembered between sessions):
+
+  | Chip | From |
+  |---|---|
+  | Casting time: Action, Bonus, Reaction, Longer | `def.time` (`action`, `bonus`, `reaction`, anything else is Longer) |
+  | Concentration | `def.concentration` |
+  | Ritual | `def.ritual` |
+  | Cantrips, Prepared | `sp.level === 0`, `sp.level > 0`. **The engine has no spellbook**: `e.spells` is cantrips and prepared spells together, so Prepared is "not a cantrip" and nothing more. A wizard's unprepared spells are not represented. |
+  | Can cast now | the row is not greyed |
+  | Kind: Damage, Healing, Control, Utility | a derived tag, below |
+  | Class | shown only if the creature has more than one class |
+
+- **Where the Kind tag comes from, without inventing data.** The pack has no
+  such field and none is added. A spell's `def.effects` are steps from a
+  closed list (`STEPS` in `schema.js`), and `spellProfile` already walks them
+  to decide `harmful` and `heals`. A new pure function there,
+  `spellKinds(def)`, returns the kinds from the steps it finds:
+  **Damage** for `attack` or `damage` (or `fall`), **Healing** for `heal`,
+  `tempHp` or `cure`, **Control** for a harmful `condition`, `move`,
+  `teleport`, a `modifier` with `against`, or a `zone`, and **Utility** when
+  none of them. A spell can have several. It is returned as `sp.kinds`; the
+  client only reads it. The builder lists how the 339 spells fall out and
+  fixes the function, not the data, where the split looks wrong; a spell
+  entered as `manual` (no steps) is Utility, honestly.
+- **Class filter and multiclass.** The engine has one class per character
+  (`e.cls`, one `casting` in `derive.js`); multiclassing is #175. The Class
+  chip is hidden until a character carries more than one, and what it needs
+  from #175 is one thing: **each entry of `e.spells` must say which class
+  gives it** (for example `e.spellClass[spellId] = classId`). The spell's own
+  `def.classes` is the list of lists it is on, and cannot say which of the
+  character's classes chose it. No guessing from it.
+- **Greyed, and why**, written under the row, from the engine's own checks:
+  `blocked(S, e, sp.time)` ("It isn't Tor's turn", "Tor has already used an
+  action this turn"), no slot ("Tor has no level 2 spell slots left"), the
+  one-slot-spell-per-turn rule, and range ("Nobody within 60 ft", from
+  `targetsFor`, for spells aimed at a creature). The toast on a tap stays as
+  well.
+
+**Bonus tab.** Everything that costs a Bonus Action, from every kind:
+spells with `time: 'bonus'`, features whose `action.time` is `bonus` (Bardic
+Inspiration, Second Wind), and the standard actions that are a Bonus Action
+for this creature (`actTime`: Disengage or Hide with Nimble Escape). It is a
+filter on the other tabs, kept as a tab because it is the question a player
+asks every turn: "what can I still do with my bonus action?" Each row also
+appears in its own tab.
+
+**Move tab.** Speed left (`budget.move`), as a number and a bar; **Dash**,
+**Disengage**, **Dodge**, **Hide**, **Search** and the objects in reach
+(`usesFor`), each with its cost and the why; Higher/Lower for fliers (as
+today). **Stand up** does not exist as an action: the engine stands a prone
+creature by itself at the start of its turn for half its Speed. Until the
+engine gets one (below), a prone creature's Move tab says "Prone. You stand
+at the start of your turn, using half your Speed." and offers no button.
+
+**Features tab.** Every feature with uses, and the resource it spends, as
+rows: name, pips `3 / 4` from `e.uses[f.id]` and `f.uses.max`, "back on a
+Short Rest" or "Long Rest" (`usesText`), cost chip, why. Channel Divinity,
+Sorcery Points (shown as a pool with the Font of Magic conversions inside),
+Wild Shape (with the current form, "leave form"), Lay On Hands (the pool and
+its chooser), Rage, Bardic Inspiration, Second Wind. A feature that needs a
+choice opens the card from `classes.js`; one that needs a target arms it
+(`aimedFeature`). Features with no uses (passive ones) are not listed here;
+they are on the Sheet.
+
+**Items tab.** What exists: the creature's `gear` (strings), with its light
+if it carries one. Nothing in the engine lets an item *do* anything: no
+potions, scrolls or wands with charges, no `items` content, no `item`
+action. So the tab is a list, an honest small one, and the DM's torch.
+"Potions, scrolls, charges" are a later stage (an `items` content kind that
+reuses the effect steps spells use, and an `item` action), listed in the
+engine table as not scheduled.
+
+**Conditions on you, how each ends.** The status line carries a pill per
+condition and per lasting effect; tapping one opens a small card:
+
+| Source | Says |
+|---|---|
+| A lasting effect (`S.effects`) | its name, `lasts` ("1 minute"), and `until` as "3 rounds left" or "until 14:30" (the formatting `tracker.js` already has) |
+| A concentration effect (`conc`) | "Concentrating on Bless." "Ends if you take damage and fail a Constitution save (DC 10 or half the damage, at most 30), cast another spell that needs Concentration, or are incapacitated." (SRD "Concentration"; the engine's rule is `concentrationCheck`.) A button, **End it**, sends `endEffect` (exists, for effects you own). |
+| A condition with no effect behind it | `CONTENT.conditions[id].text` ("Cannot see. ..."), and "Until the DM removes it" for one the DM set with `condition` (the engine's own words when it applies one that nothing ends: "Nothing ends it yet: the DM removes it") |
+| Prone | "You stand at the start of your turn, for half your Speed." |
+| Dying | "Death saves 1✓ 0✗: rolled for you at the start of your turn." |
+
+**Layouts.**
+
+390 x 844, your turn, Spells tab, a spell armed (rows shrink so the map is
+free):
+
+```
+┌──────────────────────────────────────┐ 0
+│ Round 3 · 08:06             [↶]  [☰] │ top bar 52
+│ [Tor][Goblin 2][Brenna][Goblin 1]    │ order strip 30
+├──────────────────────────────────────┤ 82
+│                                      │
+│                the map               │
+│        (canvas: taps go to it)       │  about 470 px
+│                                [+]   │
+│                                [−]   │
+│  Fire Bolt: tap a target   [Cancel]  │ #hint
+├──────────────────────────────────────┤ 560
+│ (Tor) (Brenna) (Ilya)                │ #party chips, 36
+│ Tor · Cleric 3       [Sheet][End turn]│ head, 40
+│ ▓▓▓▓▓▓░░ 14/24 HP · AC 16            │ 20
+│ L1 ●●○  L2 ●○ · Bless (C) 8r ▸       │ status, 28
+│ ┌──────────────────────────────────┐ │
+│ │ Fire Bolt  cantrip · A · 120 ft  │ │ rows, 2 x 52
+│ │ Guiding Bolt L1 · A · 4d6 radiant│ │
+│ └──────────────────────────────────┘ │
+│ [Attacks][Spells][Bonus][Move][Feat]▸│ tabs, 48, at the thumb
+└──────────────────────────────────────┘ 844
+```
+
+- Compact by default: about 286 px of panel, so the map keeps about 470 px.
+- **Browsing a long list** (Spells with filters) raises the panel to at most
+  55 % of the height; **arming a row collapses it again** to the compact
+  height, so the map is free to tap a target. Cancelling brings it back. A
+  drag on the head moves between compact and raised.
+- With a spell armed on a phone the rows are hidden and only head, status
+  and tabs remain, about 160 px.
+
+1280 x 800, the drawer pinned:
+
+```
+┌──────────────────────────────────────────────────────────┬────────────┐
+│ Round 3 · Day 1 08:06                             [↶] [☰]│ Turns  ... │
+│ [Tor][Goblin 2][Brenna][Goblin 1]                        │ Round 3    │
+│                                                          │ ▶Tor  14/24│
+│                         the map                          │  Goblin 2  │
+│                                                  [+]     │            │
+│                                                  [−]     │            │
+│       Fire Bolt: tap a target [Cancel]                   │            │
+│   ┌──────────────── action panel (max 760) ───────────┐  │            │
+│   │ (Tor)(Brenna)(Ilya)                               │  │            │
+│   │ Tor · Cleric 3                [Sheet] [End turn]  │  │            │
+│   │ ▓▓▓▓▓▓░░ 14/24 · AC 16 · L1 ●●○ L2 ●○ · Bless (C) │  │            │
+│   │ Fire Bolt   cantrip A 120 ft  | Guiding Bolt L1 A │  │            │
+│   │ Sacred Flame cantrip A DEX    | Bless L1 A C      │  │            │
+│   │ [Attacks][Spells][Bonus][Move][Features][Items]   │  │            │
+│   └───────────────────────────────────────────────────┘  │            │
+└──────────────────────────────────────────────────────────┴────────────┘
+```
+
+On a desktop the rows run in two columns, and the panel is at most 40 % of
+the height. The tabs read as a bar, `1` to `6` switch to them when no field
+has focus.
+
+**How armed features and class choosers fit.** Arming is unchanged: a tap on
+a row sets `mode` (`attack`, `spell`, `feature`, `action`, `follow`);
+`refresh()` computes highlights and the hint as it does now. The panel only
+reads `mode` to paint the armed row and to collapse. `CLS.sync(mode)` and
+`CLS.refused(msg)` keep working because the choosers are still opened by the
+same callbacks. `button()` in `app.js` is replaced by a row builder that
+adds the visible `why` line and `aria-disabled` instead of `opacity: .45`
+alone.
+
+### Decision 7: preferences and settings
+
+**Rule.** A thing that changes how *this person's screen* looks or behaves is
+a **client preference** and lives in `localStorage` under `hextable.*`
+(through `prefs`). A thing that changes **the rules or what the whole table
+sees** is a **table setting**, lives in `state.settings`, and is set by the
+DM with the `setting` action. A player never needs a table setting to be
+changeable, and a table setting never depends on a device.
+
+| What | Kind | Stored | Exists |
+|---|---|---|---|
+| Theme | client | `hextable.theme` | yes (`btn-look`) |
+| Drawer side (right, left) | client | `hextable.drawerSide` | new |
+| Drawer pinned (desktop) | client | `hextable.drawerPin` | new |
+| Default action tab (auto, remember) | client | `hextable.panelTab` | new |
+| Spell sort order | client | `hextable.spellSort` | new |
+| Log filters | client | `hextable.logFilter` | new |
+| Animation speed on this device (follow the table, flow, instant) | client, may only be quicker than the table's | `hextable.pace` | yes |
+| Dice shown (full, quick, off); always throw my dice at once | client | `hextable.dice`, `hextable.diceAutoMine` | yes |
+| Throw the monsters' dice for me (DM, this device) | client | `hextable.diceMonsters` | yes |
+| Floors look (rooms, hex); cut away near walls; cave edges | client | `hextable.floors`, `hextable.cutaway`, `hextable.caves` | **address parameters only today** (`?hex`, `?nocut`, `?nocave` in `themes.js`); they become stored preferences, the address parameter still wins for a test |
+| Renderer | client, advanced | `hextable.renderer` | yes (`?renderer=`); stays out of Settings |
+| Pace of the table (wait, flow, instant) | **table** | `settings.pace` | yes |
+| How dice are rolled (auto, throw) | table | `settings.diceThrow` | yes |
+| Sight, unseen turns, cover, climbing, vertical distance, passive finds, engage range, auto-engage | table | `settings.*` | yes |
+| Who reviews rewards (dm, auto, off) | table | `settings.conclusion` | new |
+| How XP is shared (split, full) | table | `settings.xpShare` | new |
+| The session token, the solo game, saved pins | not preferences | `hextable.session`, `hextable.solo`, `hextable.solo.pins` | `pins` new |
+
+The Settings tab shows the client preferences, grouped (Look, Controls,
+Animation and dice, Table), and a read-only list of the table's rules in
+plain words for players ("The DM has set the table to: wait for each beat."
+is `#pace-table` today); for the DM each line is a link to where it is
+changed (the DM tab). Preferences are per device, not per person: there are
+no accounts.
+
+## What the engine must add
+
+One table for the engine lane. "Version" is the state version
+(`VERSION` in `migrate.js`, 17 today); "view" is what each role is sent
+(`view.js`). Server messages are not state. "Needed for" is the task stage
+in the next section.
+
+| # | Addition | Kind | Who may send | DM sees | Players see | Version | Needed for |
+|---|---|---|---|---|---|---|---|
+| E1 | `checkEnd`: defeat only when no party `pc` is up and none is dying (dead, or Stable); outside a fight `fallen` as Decision 1 says. Tests for: all dying keeps the fight going; a 20 revives; all Stable ends it. | rule change, no new shape | engine | `encounterEnd { result: 'defeat' }`, now after the saves | the same | no | 5 |
+| E2 | Fight pin and rest pin in `history.js`: `pin(kind, mark)`, `rewind(state, kind)`, kept in the history dump (`v: 2`, older files load with no pins), counted in `UNDO_BYTES`, never trimmed first. A pin is made when `startEncounter`, `rest` and `shortRest` succeed; dropped by `loadMap`, and the fight pin by a rest. `rewind` keeps `state.rng`. | history | — | `undoable` gains `pins: { fight, rest }` (booleans) | nothing | no | 5 |
+| E3 | `{t:"rewind", to:"fight"\|"rest"}`: server handler in `tables.js` beside `undo`, and `t.rewind` in `localTransport` with pins kept in `hextable.solo.pins`. DM only; "Only the DM can rewind." Records one undoable step. | server message | DM | `rewound { to, label }` and a whole view | `rewound { to }` if the step is `shown`, and a whole view | no | 5 |
+| E4 | `ADVANCEMENT`: the Character Advancement table as pack data (`content/srd52/advancement.js`: level, xp, proficiency bonus), linted. `lintMonster` also requires `xp`. | content | — | — | — | no | 6 |
+| E5 | `xp` on a party `pc` (number), and `state.conclusion` (below). Migration to version 18: `conclusion: null`; each `pc` gets the `xp` its level starts at, from E4. | state | engine | both whole | `xp` on open creatures (every player sees the party's); `conclusion`: `{ id, pending: true }` unpublished, else the published shape | **17 to 18** | 6 |
+| E6 | At `endEncounter` with `victory` or `ended` (not `defeat`, not `stalemate`), under `settings.conclusion` (`dm`: build and wait; `auto`: build and publish; `off`: nothing), build `state.conclusion = { id, fight, result, rounds, where, foes: [{ id, name, tpl, xp, counts }], party: [ids], xp: { base, bonus: [{ id, amount, reason }], per: { [pcId]: n } }, loot: [{ id, name, qty, from?, to }], published: false }`. `base` is the sum of `CONTENT.monsters[tpl].xp` over foes with `counts`; a creature with no `tpl` is 0. Under `xpShare: 'split'`, `per[id] = floor((base + bonus) / n)`, n the party `pc`s who took part and are not dead; under `full`, each gets `base + bonus`. | engine | engine | `conclusionReady { id }` | — | 18 | 6 |
+| E7 | Action `conclusion`: `{ edit: { foes?: { id: bool }, bonus?: [{ amount, reason }], per?: { id: n }, loot?: { add?: [{ name, qty?, to? }], remove?: [id], assign?: { id: toId\|null } } } }`, `{ publish: true }`, `{ skip: true }`. Refused unless there is an unpublished conclusion. `publish`: adds `per` to each `xp` (and emits `levelReady` where a threshold is crossed), pushes each assigned loot line into that member's `gear`, records the `conclusion` event and a public `chronicle` (`tags: ['fight']`), sets `published`. `skip` clears it. Limits: 40 loot lines, 20 bonus lines, name 60, reason 80. | action | DM only ("Only the DM can settle the rewards.") | events `conclusionEdited { id }` (never to players), `conclusion`, `xp`, `gear`, `levelReady`, `chronicle` | `conclusion` (shaped: creatures the party knew only; totals, bonus reasons, loot), `xp { id, amount, total }`, `gear` (open creatures), `levelReady { id, level }`, `chronicle` (public) | 18 | 6 |
+| E8 | `view.js`: `conclusion` in `playerView` (pending marker, then published shape); event `gear` sent to players for creatures that are open (theirs). Extend `gear` with `why` (`dm`, `loot`, `pass`, `drop`, `pickup`) and `with`. | view | — | everything | as the cell above | no | 6 |
+| E9 | Settings `conclusion` (`dm`, `auto`, `off`; default `dm`) and `xpShare` (`split`, `full`; default `split`) in `SETTINGS`. | settings | DM (`setting`) | in `settings` | in `settings` (sent as today) | no (absent means default) | 6 |
+| E10 | `encounterStart` gains `id` and `where`; `encounterEnd` gains `fight`. `where` is the name of a revealed region holding the fight's centre, else the map's name; never an unrevealed one. | event fields | engine | all | all | no | 7 |
+| E11 | `{t:"history", fight: id}`: the server returns the record from that fight's `encounterStart` to its `encounterEnd`, through `viewEvents`, up to 500 entries. | server message | any member | redacted as `history` is | redacted as `history` is | no | 7 |
+| E12 | `spellKinds(def)` in `effects.js`, returned as `sp.kinds` by `spellProfile`; a test that lists every spell's kinds so a mistake shows. | rules helper | — | — | — | no | 4 |
+| E13 | Multiclass: each entry of `e.spells` says which class gives it (`e.spellClass[id]`), and `e.classes` lists the classes. Asked of #175, not built here. | state | engine (#175) | yes | yes (own) | with #175 | 4 (the Class chip only) |
+| E14 | `stand { actor }`: a prone creature on its turn stands, spending half its Speed (floor, in feet); event `stood`. The SRD allows it during a move. | action | controller, DM | `stood` | `stood` | no | 4 (optional) |
+| E15 | `cast { ritual: true }`: a spell with `def.ritual`, outside a fight, no slot, ten minutes on the clock; refused otherwise. | action field | controller, DM | `cast`, `time` | the same | no | 3 (optional) |
+| E16 | `setLight` allowed for the controller when their `gear` names the item (the same name match `hasKey` and `hasTool` use). | permission | controller, DM | `light` | `light` | no | 3 (optional) |
+| E17 | Items between creatures: `pass { actor, item, to }` (a party member within 5 ft), `drop { actor, item }`, `pickUp { actor, object }`, and a map object kind `pile` with `contents` (a content addition and an amendment to `maps-and-objects.md`). One `gear` event per side with `why` and `with`. | actions, content | controller, DM | `gear` | `gear` for open creatures; `object` for a pile in view | 18 or later | 6g (after 6) |
+| E18 | Items that do things (potions, scrolls, wands with charges): an `items` content kind reusing the effect steps, and an `item` action. | content, action | controller, DM | — | — | later | not scheduled |
+| E19 | The monster AI may attack a creature at 0 Hit Points (SRD: within 5 ft, a critical hit that adds failures). Only if the owner says so (question 1). | AI | engine | — | — | no | after 5 |
+
+Nothing in E1 to E19 lets a client send what the engine should compute: the
+client sends `conclusion`, `pass`, `rewind` and the existing actions, and
+reads `state` and events.
+
+## Tasks
+
+Ordered so each stage is useful alone. "Client agent" is a Sonnet client-lane
+agent; "engine lane" is the strongest model, since these change `engine.js`,
+`view.js` or the server (`docs/DEBT.md`). Each task is one pull request and
+lists the files it may touch (`AGENTS.md`: anything else, stop and say so in
+the issue). Every one runs `npm test` and `npm run build`; the client ones are
+checked at 390 x 844 with touch and at 1280 x 800 (`npm run smoke` by hand).
+
+| # | Task | Who | Touches | Done when |
+|---|---|---|---|---|
+| T1 | **The drawer, Settings, About.** Closes #173. `#btn-menu`, `#drawer` with tabs Turns (the existing tracker for now), Sheet, Log, Handouts, DM, Settings, About; the existing panels re-parented by id; side and pin preferences; Theme select replaces `#btn-look`; device preferences moved into Settings; floors, cut-away and caves become stored preferences (address parameters still win); `about.js` text; the splash line and an About link on `#lobby`. | client agent | `packages/client/index.html`, `style.css`, `app.js`, `themes.js`, `drawer.js` (new), `about.js` (new), `handouts.js` and `scenes.js` (only the `openPanel` they are given), `scripts/smoke.mjs`, `docs/` | Every old button's job is reachable; the drawer opens from the right and, with the preference, from the left; on a phone it stops above the dock and the dock stays usable; Escape, scrim, swipe and burger close it; focus returns to the burger; About shows the SRD text exactly as `reference/srd52/README.md` has it; the smoke script still passes; nothing is lost from the list in Decision 2. |
+| T2 | **The tracker in the drawer.** Rows as in Decision 3: initiative for own side, unseen ghost row, Dying counts, Reaction used for own side only, DM's controls kept and folded behind Edit on a phone; `#order` opens the drawer on the tracker; the turn is announced once per turn through the live region. | client agent | `packages/client/tracker.js`, `style.css`, `index.html`, `app.js` (small) | A player's tracker, with a hidden creature acting, shows no number and no name that the view did not send; the DM's shows all; tapping a row selects, focuses and, on a phone, closes the drawer; works at both sizes; a test in `tests/` drives `rows`/`rowHTML` from a `playerView` and from the full state. |
+| T3 | **The action panel shell.** `actionpanel.js`: the head, status line with how-it-ends cards, and tabs by `panelContext`; the **Explore** and **Reactions** tabs from what exists (`usesFor`, Follow, Search, Hide, `reactionsHtml`); one temporary tab, "All", holding today's `#actions` bar unchanged so nothing is lost before T4; compact and raised heights; the `panelTab` preference. E15 and E16 optional beside it. | client agent (engine lane for E15, E16) | `packages/client/index.html`, `style.css`, `app.js`, `actionpanel.js` (new), `reactionsheet.js`, `features.js` (export only) | Exploring shows Explore first with the ranking of Decision 6, the DM's rest buttons, no Lead the party for a player; on another's turn Reactions is greyed with a reason or, with a pending prompt, active and pulsing while `#rp` still answers; the map stays tappable at both sizes; `panelContext` and `rankExplore` have tests. |
+| T4e | **Spell kinds.** E12 (and E14 `stand` if taken). | engine lane | `packages/rules/src/effects.js`, `engine.js` (only if E14), `tests/` | `spellKinds` returns kinds for every spell; the test prints the split; no pack file changed. |
+| T4a | **Attacks, Bonus, Move, Features tabs.** Rows with visible reasons; Bonus built as the filter described; Move with the budget, standard actions, objects in reach, fly; Features with pips and recharge text; "All" removed once these cover what it held. | client agent | `actionpanel.js`, `app.js` (the `refresh()` bar code is removed), `features.js`, `classes.js` (only where it returns buttons), `style.css`, `tests/` | Every button the old bar built has a row; a greyed row names its reason on screen; Second Wind, Dash, Disengage, Hide, Search, objects and fly rows behave as before; the choosers still open; monsters' `actions` list under Attacks. |
+| T4b | **Spells and Items tabs.** The slot strip, sort, filters, the Kind chip from `sp.kinds`, Cantrips and Prepared, Can cast now, the Class chip hidden until #175, Metamagic entry, Items as gear and light. | client agent | `actionpanel.js`, `style.css`, `tests/` | The slot strip is visible whatever the sort; sort and each filter work and combine; a spell greyed shows its reason, including "Nobody within N ft"; a spell armed collapses the panel on a phone and cancelling restores it; sort order is remembered. |
+| T5e | **Defeat, engine.** E1, E2, E3. | engine lane | `packages/rules/src/engine.js`, `history.js`, `packages/server/src/tables.js`, `packages/client/transport.js` (`rewind`, pins), `packages/server/README.md`, `docs/DEBT.md` (strike W10 where fixed), `tests/` | A party all at 0 keeps fighting until saves resolve; a 20 revives; all-Stable or all-dead ends in `defeat`; `rewind` restores the fight start with new dice and Undo takes it back; a pin survives a server restart and is dropped by `loadMap`; players cannot send `rewind`. |
+| T5c | **Defeat, client.** `defeat.js`: the card for players and the DM, from `fallen(S)`; the three choices with their greyed reasons from `undoable.pins`; solo wording; reopen from the DM tab. | client agent | `packages/client/defeat.js` (new), `index.html`, `style.css`, `app.js`, `transport.js` (`rewind` call only), `tests/` | The owner's scenario (party wiped) shows the card for a player and the DM at both sizes; Rewind returns the start of the fight and the log says so; Carry on closes it; a reload while defeated shows it again. |
+| T6e | **Rewards, engine.** E4 to E9. | engine lane | `packages/rules/src/engine.js`, `view.js`, `migrate.js`, `content/srd52/advancement.js` (new), `content/index.js`, `content/schema.js`, `packages/server/README.md`, `tests/` | A won fight makes a conclusion with XP from the pack; `edit`, `publish`, `skip` work and are undoable; players get the pending marker and, after publish, the shaped record and no more; gear events reach players for their own; `levelReady` fires at a threshold; a hidden foe's XP does not name it; state migrates 17 to 18. |
+| T6c | **Rewards, client.** `conclusion.js`: the DM's step (foes, bonus lines with reasons, shares, loot add and assign), the card players see, the pending line, "Ready to level up"; the settings in the DM tab. | client agent | `packages/client/conclusion.js` (new), `index.html`, `style.css`, `app.js`, `tablecontrols.js`, `tests/` | A DM can win a fight, add 50 XP "Freed the prisoner" and a shortbow for Ilya, publish, and every player sees exactly that; before publish players see only the pending line; solo is one step. |
+| T6g | **Items between creatures.** E17: `pass`, `drop`, `pickUp`, `pile`; the Items tab rows "Give...", "Drop". | engine lane, then client agent | `engine.js`, `view.js`, `content/srd52/objects.js`, `docs/specs/maps-and-objects.md`, `actionpanel.js`, `tests/` | An item can be handed over and dropped and picked up; each is a `gear` event the players of the table see and the log shows; a pile on the map is seen only where it is in view. |
+| T7e | **The log, engine.** E10 and E11. | engine lane | `engine.js`, `packages/server/src/tables.js`, `packages/server/README.md`, `tests/` | `encounterStart` has `id` and `where`; `encounterEnd` has `fight`; `history { fight }` returns one fight's record, redacted; a hidden creature's lines are absent for a player. |
+| T7c | **The log by combat.** `logview.js`: groups, summaries from `conclusion`, rounds, filters, the Exploring runs, lazy load of older fights; the log's `kind` on every `describe` result. | client agent | `packages/client/logview.js` (new), `app.js` (`beat`, `renderLog`, `describe`), `style.css`, `tests/` | A fight is one collapsed entry with its summary line; open it for the blow-by-blow by round; trades, loot and picked-up or dropped items (as far as the engine sends them) are always present and filterable; a player's log holds nothing a player was not sent; the DM-only chip shows the rest; a reload rebuilds the groups. |
+
+T1, T2 and T3 and T4a to T4b are client-only apart from small engine items
+marked optional; they can go in this order with no engine wait. T5e and T6e
+can start at any time and are independent of each other; T5c needs T5e, T6c
+needs T6e, T7c needs T6e and T7e. T4b's Class chip waits for #175 and ships
+hidden meanwhile.
+
+## Risks
+
+- **`app.js` is one file of nearly a thousand lines, and T1, T3 and T4a all
+  edit its `refresh()`.** Land them one at a time, in order, and move code
+  out of `app.js` into the new module in the same PR, never leave a copy.
+- **The panels share ids with the smoke script and with `handouts.js`,
+  `scenes.js` and `classes.js`.** Re-parent, do not rename. T1 runs the
+  smoke script before and after.
+- **Pins cost storage.** A pin is a full copy of the state without the
+  timeline. On the server they share the 8 MB budget; in solo they are in
+  `localStorage` (about 5 MB) next to the game, and a big map can leave no
+  room. The pin is then not made, the DM is told once, and Decision 1 greys
+  the choice with its reason. A table that never rewinds pays for two copies.
+- **Changing `checkEnd` changes how every fight ends.** A party that is all
+  down and dying used to end the fight at once; now the fight runs on a few
+  rounds with the monsters passing. Test it against the existing fight tests,
+  and the AI's `endTurn` for a foe with nobody to attack.
+- **XP numbers can leak a hidden monster.** Handled by the DM's step; and the
+  `auto` setting turns that step off on purpose, so its description in the DM
+  panel says so.
+- **Sorting and filtering are presentation, but the Kind tag is derived.**
+  A wrong tag is a wrong filter, not a wrong rule. The test that prints every
+  spell's kinds is there to be read by a person once.
+- **Many tabs on a small screen.** Six tabs at 390 px is 65 px each; the
+  labels are short and the strip scrolls. If a playtest shows it is too
+  tight, Bonus (a filter) is the one to fold into Spells and Features.
+- **A pinned drawer narrows the canvas.** The renderer follows the canvas
+  size, but the camera still centres on the canvas, so the focused creature
+  is centred in what is left. That is wanted.
+- **The class chip, Items that do things, ritual casting and a spellbook are
+  engine work that is not scheduled or belongs to others (#175).** The
+  panel ships without them and says so on screen instead of showing a control
+  that does nothing.
+
+## Questions for the owner
+
+Only those whose answer changes the design. Each has a default, and work
+proceeds on the default.
+
+1. **Should monsters finish off the dying?** By the SRD an attack within 5 ft
+   on a creature at 0 Hit Points is a critical hit that adds failures. With
+   defeat as Decision 1 puts it, the AI leaves the dying alone. *Default: it
+   does, no change to the AI; the DM can `harm` by hand. E19 if you want it.*
+2. **Rewind and the dice.** After "go back to the start of the fight", should
+   the dice **repeat** (the same choices give the same results, like Undo) or
+   **continue** (new dice)? *Default: continue.*
+3. **How XP is shared.** The SRD gives each monster's XP and says the GM
+   awards it, and says nothing about dividing it. *Default: divided equally
+   among the characters who took part and did not die; `xpShare` `full`
+   gives each the whole amount.* Should a character who fell and was brought
+   back still share? *Default: yes, if alive at the end.*
+4. **Can a player lead the party?** `partyFollow` is DM only; the owner's
+   Explore tab lists "lead the party". Letting a player send everyone else
+   falling in behind them overrides other players' characters. *Default:
+   DM only; the row is not shown to players, who can still Follow.*
+5. **Two searches or one.** *Default: one (Decision 6).* Say if the two
+   labels matter for how the table talks, and the one button can carry
+   both words.
+6. **Should the drawer open itself?** At the start of a fight, or when the
+   DM publishes rewards. *Default: no, the burger carries a badge; the
+   defeat and rewards cards open themselves because they are the table's
+   turning points.*
+7. **Items that do things.** The Items tab lists names until potions and
+   scrolls exist as content with effects. Is that worth a milestone ahead of
+   Reactions? *Default: later (E18), after Roadmap milestone 2.*
