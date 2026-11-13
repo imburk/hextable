@@ -609,6 +609,34 @@ can run in parallel after R2. R10 decides the rest.
   Picking, highlights, levels above, objects, sizes and the DM's dimming are
   untouched. Not done: clipping and filling to walls, so a room's outline still
   follows hex edges (R2).
+- **R10 vendoring** (`vendor-three`). Three.js **r187** (tag `r187`, commit `7e89746a687bb88271253698fa108b1dd59825d0`) is in
+  `packages/client/vendor/three/`, with upstream's LICENSE and `packages/client/vendor/README.md` (the version, the upstream
+  path, size and SHA-256 of every file, the five rewritten import lines, the upgrade steps). Files: `three.module.js` and
+  `three.core.js` (r187 splits the build in two; the first imports the second), `GLTFLoader.js`, and its two helpers
+  `BufferGeometryUtils.js` and `SkeletonUtils.js`, all flat in one folder. Upstream ships **no minified file** in `build/`, so
+  the readable build is what is vendored; nothing here can minify it (no npm), and that is left, see below.
+  **Measured sizes replace the spec's estimate** (600 KB and 145 KB gzipped for r145, "roughly +50 to +70 %"): the Three.js
+  scripts are 2,304,270 bytes raw and **457,683 gzipped** (`gzip -9`, file by file; three.core.js alone is 1,474,799 and
+  289,875). The game's own scripts today (every `.js` in `dist/`, 95 files) are 2,620,347 raw and 605,873 gzipped, so Three.js adds
+  **+88 % raw and +75.5 % gzipped**: about three times the spec's 150 to 250 KB. The cause is that r145 was one minified file of
+  600 KB and r187 is two unminified ones; a minified r187 would likely be about a third of the raw size, and the gzipped size
+  perhaps 120 to 200 KB (an estimate, not measured). It is paid once, only by a client that loads the Three renderer, and then comes from
+  the browser's cache; the default renderer and the page load fetch nothing from `vendor/` (checked in the smoke pass).
+  **Server.** `packages/server/src/index.js` sends html, js, css, json and svg files of the built game gzipped when the request's
+  `Accept-Encoding` allows it (`q=0` and `*` are read), with `Vary: Accept-Encoding` and the right `Content-Length`; each file is
+  compressed once, with Node's `zlib`, and kept until its modification time or size changes. Files under 1 KB, other types, and
+  requests with a `Range` header go as they were; uploads and table files (`assets-http.js`) are untouched. Before this the
+  server sent everything raw. `.json` and `.svg` now have their proper content types (they were `application/octet-stream`).
+  **What R11 imports.** Nothing imports the vendored files yet except `packages/client/three-check.js`, which only the smoke pass
+  uses. `render-three.js` imports from `./vendor/three/three.module.js` (`import * as THREE` or named imports), the glTF loader
+  from `./vendor/three/GLTFLoader.js` (`GLTFLoader`) and `clone` from `./vendor/three/SkeletonUtils.js`, and loads them with a
+  dynamic `import()` when the `'three'` kind is chosen, so that `renderer.js` does not pull 458 KB into every page (a static import in
+  `renderer.js` would). Do not import the files by any other path and do not edit them. Needs WebGL 2. The addons are not
+  reachable as `three/addons/...`; there is no import map. Check: `SMOKE_ONLY=three npm run smoke` (the page loads without
+  fetching `vendor/`, then the module is imported, a cube is drawn on an `OffscreenCanvas`, the loaders import, and the files
+  arrive gzipped).
+  Not done: a minified build (needs a person with npm and a named tool, see `vendor/README.md`); tree shaking (a browser gets
+  the whole library); the CSP is unchanged (`script-src 'self'` already allows the files).
 - **R1 turned on** (13 November, owner's decision). `floors` is `'rooms'` unless the page address has `?hex`.
   Decision 8 (Three.js) is accepted by the owner on the same day.
 - **R2 floors module** (built). `packages/client/floors.js` is pure (no WebGL, no DOM) and imports only from
