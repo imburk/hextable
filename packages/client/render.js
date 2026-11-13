@@ -10,7 +10,7 @@ import { allTiles, footprint, ground, shown, surfaces, under } from './shared/sp
 const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };      // how much bigger a pawn is drawn
 const girth = (e) => GIRTH[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
-import { buildFloors, cellParts } from './floors.js';
+import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
 
 // Lasting zones (a spell's area that stays): tinted by the damage type of the spell's steps, neutral if it has none.
 // A theme may replace any of these with its own `zones: { fire: [r, g, b], neutral: [r, g, b] }`.
@@ -47,6 +47,8 @@ export function lightAt(clock) {
 }
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5;                     // seconds a hit flash and a critical shake last
+const FT = UNIT;                           // drawing units in a foot
+const FULL = 10 * FT, SILL = 3 * FT, WINDOW_TOP = 7 * FT, DOOR_TALL = 7 * FT;      // a full wall, a window's sill, where its glass ends, a door's leaf
 const SLAB = 0.35;                                   // thickness of a floor that has something under it
 
 const VS = `
@@ -228,7 +230,7 @@ export class Renderer {
     gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    this.terrain = new Mesh(gl); this.grid = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
+    this.terrain = new Mesh(gl); this.wallMesh = new Mesh(gl); this.floorData = []; this.cutSig = ''; this.cutYaw = null; this.grid = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.edgeAge = 9; this.anim = 0; this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -415,11 +417,20 @@ export class Renderer {
     // tiles at one height are drawn as one flat floor with one edge round it, and the hexes as a faint grid. Rooms that
     // meet at the same height with no wall between (an archway) run on into each other; a wall stands on the floor.
     // The shapes come from floors.js: a wall that crosses a hex cuts it, and floor is filled out to a wall (R2).
-    const rooms = th.floors === 'rooms' ? new Set(map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id)) : new Set();
+    const caves = th.floors === 'rooms' && th.caves ? new Set(caveLevels(map)) : new Set();      // mostly rock with open hexes: drawn as a cave (floors.js, caveOf)
+    const rooms = th.floors === 'rooms' ? new Set([...map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id), ...caves]) : new Set();
     // Players under the los and light rules: a place remembered but not in view now is dimmed, one in view in
     // Dim Light or Darkness darkened (docs/specs/sight.md, decision 6). Colour only; the renderer plan owns more.
     const sight = this.state.sight, now = new Map(Object.entries(sight?.now ?? {}).map(([l, cols]) => [l, new Set(cols)]));
     const seenShade = (levelId, k) => (!sight ? 1 : !now.get(levelId)?.has(k) ? 0.5 : sight.light?.[levelId]?.[k] === 'dark' ? 0.38 : sight.light?.[levelId]?.[k] === 'dim' ? 0.7 : 1);
+    // The colour of a hex's floor as the table sees it: dimmed when a fight has locked it, when only the DM has it, or by what the party remembers.
+    const tintOf = (lv, key, base) => {
+      let c = base.slice();
+      if (enc && !enc.arena[key]) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
+      if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (lv.tiles[key]?.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+      const f = seenShade(lv.id, key);
+      return f === 1 ? c : c.map((v) => v * f);
+    };
     // A level with a picture that has arrived is floored by the picture: its hexes are only a faint outline.
     const gb = new Builder(), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
     this.pics = []; const pv = [];
@@ -437,6 +448,7 @@ export class Renderer {
         gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
         continue;
       }
+      if (caves.has(h.level.id)) continue;                                // a cave is all drawn below
       const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
       const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
       const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;              // a room's floor is one even colour, not a patchwork
@@ -462,11 +474,8 @@ export class Renderer {
         }
       }
     }
-    // Walls and doors, drawn low enough to see over.
-    const WALLS = { wall: [1.15, th.wall ?? [0.44, 0.42, 0.4]], window: [0.55, th.wallWindow ?? [0.55, 0.62, 0.68]], rail: [0.5, th.wall ?? [0.44, 0.42, 0.4]], curtain: [1.15, th.curtain ?? [0.38, 0.3, 0.45]] };
-    const baseOf = (id) => (map.levels.find((l) => l.id === id)?.z ?? 0) * UNIT + 0.55;
     // Rooms: the floors of levels with walls or regions, from floors.js. Colour follows the tile each piece is drawn as.
-    const floors = rooms.size ? buildFloors(map, { levels: [...rooms].filter((id) => !hid(id) && !pictured.has(id)) }) : { levels: [] };
+    const floors = rooms.size ? buildFloors(map, { levels: [...rooms].filter((id) => !hid(id) && !pictured.has(id)), caves: [...caves] }) : { levels: [] };
     const wpt = (p, y) => [p[0] * UNIT, y, p[1] * UNIT];
     for (const fl of floors.levels) {
       const lv = map.levels.find((l) => l.id === fl.id);
@@ -487,6 +496,7 @@ export class Renderer {
         }
         for (const e of pa.outline) {                                   // where the floor ends or steps down: a skirt, and a low kerb along its outline
           if (e.kind !== 'open' && e.kind !== 'drop') continue;
+          if (e.kind === 'open' && caves.has(fl.id)) continue;               // a cave's edge is drawn as rock
           const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
           let c = th.tiles[t.t].slice();
           if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
@@ -501,12 +511,43 @@ export class Renderer {
           b.quad(ib, ia, fa, fb, shade(c, th.rim * 0.9));
         }
       }
+      if (caves.has(fl.id)) this.#drawCave(b, caveOf(map, fl), lv, tintOf);
+    }
+    this.floorData = floors.levels;
+    this.terrain.set(b); this.grid.set(gb); this.shadows.set(sb); this.#buildEdge(); this.#buildWalls(true);
+  }
+  // Walls, doors and the things standing in hexes, into their own mesh: which walls are cut down depends on where the
+  // camera is, so this is built again when that changes and the floors are not. With the theme's `cutaway` (on
+  // by default, rooms look only) the walls between the camera and a room are low and capped dark, and the rest stand at
+  // full height (docs/specs/renderer.md, decision 1); without it every wall is low, as it was.
+  #buildWalls(force = false) {
+    const b = new Builder(), th = this.theme, map = this.state.map;
+    let cut = this.#cutSet();
+    const cutting = cut !== null, high = (id) => cutting && this.floorData.some((f) => f.id === id), sig = cut ? [...cut].sort().join() : '';
+    this.cutYaw = this.cam.yaw;
+    if (!force && sig === this.cutSig) return;
+    this.cutSig = sig;
+    const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;
+    cut ??= new Set();
+    const col = { wall: th.wall ?? [0.44, 0.42, 0.4], window: th.wallWindow ?? [0.55, 0.62, 0.68], curtain: th.curtain ?? [0.38, 0.3, 0.45] };
+    const LOW = { wall: 1.15, window: 0.55, rail: 0.5, curtain: 1.15 };               // drawing units: how low they have always been
+    const baseOf = (id) => (map.levels.find((l) => l.id === id)?.z ?? 0) * UNIT + 0.55;
+    const half = 0.09, capped = (c) => shade(c, 0.5);
+    // A wall of this kind: low (today's look and a cut-away stub, with a dark cap), or full height.
+    const run = (kind, level, key, p, q, base = baseOf(level)) => {
+      if (!high(level) || kind === 'rail' || cut.has(key)) return this.#slab(b, p, q, base, LOW[kind] ?? LOW.wall, half, col[kind] ?? col.wall, high(level) && kind !== 'rail' ? capped(col[kind] ?? col.wall) : null);
+      if (kind === 'window') { this.#slab(b, p, q, base, SILL, half, col.wall); this.#slab(b, p, q, base + SILL, WINDOW_TOP - SILL, half, col.window); return; }
+      this.#slab(b, p, q, base, FULL, half, col[kind] ?? col.wall);
+    };
+    for (const fl of this.floorData) {
+      if (hid(fl.id)) continue;
       for (const post of fl.posts) {                                    // a post at every join, so a corner closes
-        const [h, col] = WALLS[post.kind] ?? WALLS.wall, s = 0.26;
-        this.#slab(b, [post.at[0] - s, post.at[1]], [post.at[0] + s, post.at[1]], baseOf(fl.id), h + 0.04, 0.09, col);
+        const s = 0.26, up = post.keys.some((k) => !cut.has(k)), kind = post.kind === 'rail' ? 'rail' : post.kind === 'window' ? 'wall' : post.kind;
+        if (high(fl.id) && up && kind !== 'rail') this.#slab(b, [post.at[0] - s, post.at[1]], [post.at[0] + s, post.at[1]], baseOf(fl.id), post.kind === 'window' ? WINDOW_TOP : FULL + 0.04, half, col[kind] ?? col.wall);
+        else this.#slab(b, [post.at[0] - s, post.at[1]], [post.at[0] + s, post.at[1]], baseOf(fl.id), (LOW[post.kind] ?? LOW.wall) + 0.04, half, col[post.kind] ?? col.wall, high(fl.id) && post.kind !== 'rail' ? capped(col[post.kind] ?? col.wall) : null);
       }
     }
-    for (const w of map.walls) { if (hid(w.level)) continue; const [h, c] = WALLS[w.kind] ?? WALLS.wall; this.#slab(b, w.a, w.b, baseOf(w.level), h, 0.09, c); }
+    for (const w of map.walls) if (!hid(w.level)) run(w.kind, w.level, `w:${w.id}`, w.a, w.b);
     for (const o of map.objects) {
       if (hid(o.level)) continue;
       const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;       // only the DM is ever sent an unseen one
@@ -518,14 +559,46 @@ export class Renderer {
         if (objectBlocks(o, 'move') || o.def === 'lever') b.lathe(w.x, w.z, y, [[0.12, 0], [0.12, o.def === 'lever' ? 0.7 : 1.1], [0, o.def === 'lever' ? 0.8 : 1.2]], 6, 0, () => [...col, 1]);
         continue;
       }
-      const shut = objectBlocks(o, 'move'), c = th.door ?? [0.5, 0.33, 0.17];
-      if (shut) this.#slab(b, seg[0], seg[1], baseOf(o.level), unseen ? 1.25 : 1.0, 0.07, unseen ? [0.62, 0.3, 0.55] : objectBlocks(o, 'sight') ? c : [0.3, 0.3, 0.32]);
+      const shut = objectBlocks(o, 'move'), c = th.door ?? [0.5, 0.33, 0.17], tall = high(o.level) && !cut.has(`o:${o.id}`), leaf = tall ? DOOR_TALL : unseen ? 1.25 : 1.0;
+      if (tall) this.#slab(b, seg[0], seg[1], baseOf(o.level) + DOOR_TALL, FULL - DOOR_TALL, 0.09, th.wall ?? [0.44, 0.42, 0.4]);       // the wall over the door
+      if (shut) this.#slab(b, seg[0], seg[1], baseOf(o.level), leaf, 0.07, unseen ? [0.62, 0.3, 0.55] : objectBlocks(o, 'sight') ? c : [0.3, 0.3, 0.32]);
       else {                                                            // open: the leaf stands swung back against its hinge
         const [p, q] = seg, dx = q[0] - p[0], dy = q[1] - p[1];
-        this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), 1.0, 0.05, c);
+        this.#slab(b, p, [p[0] - dy * 0.8, p[1] + dx * 0.8], baseOf(o.level), leaf, 0.05, c);
       }
     }
-    this.terrain.set(b); this.grid.set(gb); this.shadows.set(sb); this.#buildEdge();
+    this.wallMesh.set(b);
+  }
+  // The keys of the wall faces cut down for the camera as it is now, or null if there is no cut-away.
+  #cutSet() {
+    if (this.theme.floors !== 'rooms' || this.theme.cutaway === false || !this.floorData.length) return null;
+    const yaw = this.cam.yaw, toCam = [Math.sin(yaw), Math.cos(yaw)], out = new Set();
+    for (const fl of this.floorData) for (const i of cutaway(fl.walls, toCam)) out.add(fl.walls[i].key);
+    return out;
+  }
+  // A cave (docs/specs/renderer.md, decision 1; floors.js caveOf): the open floor is drawn as patches already. Here: the strip
+  // of floor out to the pushed edge, a face of rock standing up from that edge, and the rock as a dark mass at one height.
+  #drawCave(b, cv, lv, tintOf) {
+    const th = this.theme, rock = th.tiles.rock ?? [0.45, 0.43, 0.4], wpt = (p, y) => [p[0] * UNIT, y, p[1] * UNIT], noise = (p, k) => 0.5 + 0.5 * Math.sin(p[0] * 7.31 + p[1] * 3.17 + k);
+    const lit = (c, f) => [c[0] * f, c[1] * f, c[2] * f, 1];
+    for (const { closed, points } of cv.chains) {
+      const m = closed ? points.length : points.length - 1;
+      for (let i = 0; i < m; i++) {
+        const a = points[i], c = points[(i + 1) % points.length], y = a.z * UNIT, top = a.top * UNIT, floor = tintOf(lv, a.hex, th.tiles[lv.tiles[a.hex].t]);
+        b.quad(wpt(a.p, y), wpt(c.p, y), wpt(c.q, y), wpt(a.q, y), [...floor, 1]);                    // the floor goes out to the pushed edge
+        const rc = tintOf(lv, a.hex, rock), v = 0.8 + 0.2 * noise(a.q, 0), mid = y + (top - y) * 0.4;
+        b.quad(wpt(a.q, y), wpt(c.q, y), wpt(c.q, mid), wpt(a.q, mid), lit(rc, 0.55 * v));            // the foot of the face is darker
+        b.quad(wpt(a.q, mid), wpt(c.q, mid), wpt(c.q, top), wpt(a.q, top), lit(rc, 0.85 * v));
+      }
+    }
+    for (const r of cv.rock) {
+      const c0 = tintOf(lv, r.hex, rock), col = lit(c0, 0.5), n = r.ring.length, top = r.top * UNIT;
+      const mid = [r.ring.reduce((s, p) => s + p[0], 0) / n, r.ring.reduce((s, p) => s + p[1], 0) / n], M = wpt(mid, top);
+      for (let i = 0; i < n; i++) b.tri(wpt(r.ring[(i + 1) % n], top), wpt(r.ring[i], top), M, col);       // the top of the mass, fanned from its middle, one colour
+      const face = (s, to, f) => { for (let j = 0; j < 3; j++) { const p = r.ring[(s + j) % n], q = r.ring[(s + j + 1) % n]; b.quad(wpt(p, top), wpt(q, top), wpt(q, to), wpt(p, to), lit(c0, f)); } };
+      for (const s of r.bare) face(s, Math.min(-1.5, top - 1.5), 0.42);                                     // a side that meets nothing: down to the ground
+      for (const s of r.steps) face(s.at, s.to * UNIT, 0.4);                                                // beside lower rock: a step down
+    }
   }
   // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
   #buildEdge() {
@@ -549,13 +622,13 @@ export class Renderer {
     this.edge.set(eb);
   }
   // An upright slab along a line given in map feet.
-  #slab(b, p, q, y0, height, half, col) {
+  #slab(b, p, q, y0, height, half, col, cap = null) {
     const ax = p[0] * UNIT, az = p[1] * UNIT, bx = q[0] * UNIT, bz = q[1] * UNIT, len = Math.hypot(bx - ax, bz - az) || 1;
     const nx = (-(bz - az) / len) * half, nz = ((bx - ax) / len) * half, y1 = y0 + height;
     const c = [[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]];
     const lo = c.map(([x, z]) => [x, y0, z]), hi = c.map(([x, z]) => [x, y1, z]);
     const face = (a, b2, c2, d, f) => { b.quad(a, b2, c2, d, shade(col, f)); b.quad(d, c2, b2, a, shade(col, f)); };
-    face(hi[0], hi[1], hi[2], hi[3], 1.1);
+    if (cap) { b.quad(hi[0], hi[1], hi[2], hi[3], cap); b.quad(hi[3], hi[2], hi[1], hi[0], cap); } else face(hi[0], hi[1], hi[2], hi[3], 1.1);
     for (let i = 0; i < 4; i++) { const n = (i + 1) % 4; face(hi[i], hi[n], lo[n], lo[i], i % 2 ? 0.7 : 0.9); }
   }
 
@@ -668,7 +741,9 @@ export class Renderer {
     gl.uniform3fv(this.loc.uGrade, lt.light);
     gl.uniform2f(this.loc.uFog, c.dist + th.fog[0] * 0.5, th.fog[1]);
     gl.disable(gl.BLEND);
+    if (this.cutYaw === null || Math.abs(Math.atan2(Math.sin(c.yaw - this.cutYaw), Math.cos(c.yaw - this.cutYaw))) > 0.015) this.#buildWalls();       // the walls that are cut away follow the camera
     this.terrain.draw(this.loc, ident());
+    this.wallMesh.draw(this.loc, ident());
     if (this.pics.length) this.#drawPictures(C, sky, lt.light);
     for (const a of this.actors.values()) {
       const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0;      // drawn only: the pawn is not really moved; it shakes across the screen whichever way the camera faces

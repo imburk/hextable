@@ -120,6 +120,50 @@ test('a wall that ends inside a hex leaves the hex whole', () => {
   assert.ok(cells.every((c) => c.poly.length === 6));
 });
 
+test('walls that bend inside a hex cut it there, and the floor on the near side of the bend is its own patch', () => {
+  const E = [12.3, 7.1];                                      // inside a hex, away from its middle
+  const m = mk(block(0, 6, 0, 3), [{ a: E, b: [60, E[1]] }, { a: E, b: [E[0], 40] }]);
+  const fl = F.buildFloors(m), cells = cellsOf(fl), eps = 1e-6;
+  const cen = (c) => [c.poly.reduce((s, v) => s + v[0], 0) / c.poly.length, c.poly.reduce((s, v) => s + v[1], 0) / c.poly.length];
+  let bent = 0;
+  for (const c of cells) {
+    const [x, y] = cen(c), inCorner = x > E[0] && y > E[1];
+    if (inCorner) assert.ok(c.poly.every((v) => v[0] >= E[0] - eps && v[1] >= E[1] - eps), 'a cell in the corner stays inside it');
+    else assert.ok(c.poly.every((v) => !(v[0] > E[0] + eps && v[1] > E[1] + eps)), 'and no cell outside reaches into it');
+    if (c.poly.some((v) => near(v[0], E[0], eps) && near(v[1], E[1], eps))) bent++;
+  }
+  assert.ok(bent >= 2, 'the hex is cut at the bend');
+  assert.equal(fl.levels[0].patches.length, 2, 'the corner and the rest are two floors');
+  assert.ok(cells.every((c) => !c.fill || c.at !== c.hex), 'pieces of a hex that are not across a wall from its middle are not picture-only');
+  const edges = fl.levels[0].patches.flatMap((p) => p.outline).filter((e) => e.kind === 'wall');
+  assert.ok(edges.some((e) => near(e.a[0], E[0], 1e-3) || near(e.b[0], E[0], 1e-3)), 'the floors meet along the wall');
+});
+
+test('a wall across a corridor, ending on its side walls, cuts the end of the corridor: it follows the wall, not the tiles', () => {
+  const tiles = {}; for (let q = 0; q <= 4; q++) tiles[`${q},0`] = 'stone';
+  const cap = 21.3, m = mk(tiles, [{ a: [-3, -6], b: [cap, -6] }, { a: [-3, 6], b: [cap, 6] }, { a: [cap, -6], b: [cap, 6] }]), cells = cellsOf(F.buildFloors(m));
+  for (const y of [-5.5, -2, 0, 2, 5.5]) { assert.ok(pointIn(cells, cap - 0.4, y), `floor by the wall at ${y}`); assert.ok(!pointIn(cells, cap + 0.4, y), `none beyond it at ${y}`); }
+  assert.ok(cells.every((c) => c.poly.every((v) => v[0] <= cap + 1e-6)));
+  const cut = F.buildFloors(m).levels[0].patches[0].outline.filter((e) => near(e.a[0], cap, 1e-6) && near(e.b[0], cap, 1e-6));
+  assert.ok(cut.length >= 1 && cut.every((e) => e.kind === 'open'), 'the end is a floor edge standing on the wall');
+});
+
+test('a wall that stops short of another by a hair still cuts', () => {
+  const tiles = {}; for (let q = 0; q <= 4; q++) tiles[`${q},0`] = 'stone';
+  const m = mk(tiles, [{ a: [-3, -6], b: [30, -6] }, { a: [-3, 6], b: [30, 6] }, { a: [21.3, -5.9], b: [21.3, 5.9] }]);
+  assert.ok(!pointIn(cellsOf(F.buildFloors(m)), 21.8, 0));
+});
+
+test('doors are wall faces too, and a post lists the walls that meet at it', () => {
+  const m = mk(block(0, 3, 0, 1), [{ id: 'w1', a: [0, 0], b: [10, 0] }, { id: 'w2', a: [10, 0], b: [10, 10] }]);
+  m.walls = m.walls.map((w, i) => ({ ...w, id: ['w1', 'w2'][i] }));
+  m.objects.push({ id: 'o1', def: 'door-wooden', level: 'ground', at: { q: 1, r: 0 }, edge: 0, state: 'closed' });
+  const lv = F.buildFloors(m).levels[0];
+  assert.deepEqual(lv.walls.map((w) => w.key).slice(0, 2), ['w:w1', 'w:w2']);
+  assert.ok(lv.walls.some((w) => w.key === 'o:o1' && w.object));
+  assert.deepEqual(lv.posts.find((p) => near(p.at[0], 10) && near(p.at[1], 0)).keys, ['w:w1', 'w:w2']);
+});
+
 test('pieces of one traced wall that meet end to end on a line cut like one wall', () => {
   const tiles = {}; for (let q = 0; q <= 8; q++) tiles[`${q},0`] = 'stone';
   const m = mk(tiles, [{ a: [-3, -6], b: [20, -6] }, { a: [20, -6], b: [47, -6] }, { a: [-3, 6], b: [47, 6] }]);
@@ -165,7 +209,12 @@ test('cut-away: the wall between the camera and the room is lowered, the far wal
   assert.equal(cut(south, [0, 1]), true, 'the camera is to the south: the south wall is in the way');
   assert.equal(cut(north, [0, 1]), false, 'and the north wall stands');
   assert.equal(cut(north, [0, -1]), true); assert.equal(cut(south, [0, -1]), false);
-  assert.equal(cut(south, [1, 0]), false, 'seen edge on it is left alone');
+  assert.equal(cut(south, [1, 0]), true, 'seen edge on, a wall with floor beside it goes down with its neighbours');
+  const lone = { ...south, floor: { left: false, right: false } };
+  assert.equal(cut(lone, [1, 0]), false, 'and one with no floor beside it stands');
+  assert.equal(cut(lone, [0, 1]), false);
+  const part = { ...south, floor: { left: true, right: true } };
+  assert.equal(cut(part, [0, 1]) && cut(part, [0, -1]), true, 'a partition is cut from either side');
 });
 
 test('levels: only levels with walls or regions are built, and a level above is its own floor', () => {
@@ -185,3 +234,69 @@ test('the output is plain data and the same every time', () => {
   assert.equal(a, b);
   assert.ok(a.length > 100);
 });
+
+// ---------- caves ----------
+const { default: stockCave } = await import(pathToFileURL(join(tmp, 'shared/content/maps/cave.js')).href);
+const caveOf = (map) => { const fl = F.buildFloors(map, { caves: F.caveLevels(map) }); return { fl: fl.levels[0], cave: F.caveOf(map, fl.levels[0]) }; };
+const inPoly = (poly, [x, y]) => poly.every((a, i) => { const b = poly[(i + 1) % poly.length]; return (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) > 1e-6; });
+
+test('a level that is mostly rock with open tiles and no walls is a cave; others are not', () => {
+  assert.deepEqual(F.caveLevels(stockCave), ['ground']);
+  assert.deepEqual(F.caveLevels(mk(block(0, 3, 0, 3), [{ a: [100, 100], b: [110, 100] }])), [], 'no rock');
+  assert.deepEqual(F.caveLevels(mk({ ...block(0, 3, 0, 3, 'rock'), '1,1': 'stone' })), ['ground']);
+  assert.deepEqual(F.caveLevels(mk({ ...block(0, 3, 0, 3, 'rock'), '1,1': 'stone' }, [{ a: [0, 0], b: [10, 0] }])), [], 'a level with walls is drawn as rooms');
+  assert.deepEqual(F.caveLevels(mk(block(0, 3, 0, 3, 'rock'))), [], 'all rock is not a cave');
+  assert.deepEqual(F.caveLevels(mk({ ...block(0, 9, 0, 9), '0,0': 'rock' })), [], 'a little rock is not a cave');
+});
+
+test('a cave floor is the open tiles only: rock is not floor', () => {
+  const { fl } = caveOf(stockCave), open = Object.values(stockCave.levels[0].tiles).filter((t) => t.t !== 'rock').length;
+  assert.equal(fl.patches.reduce((n, p) => n + p.cells.length, 0), open);
+  assert.ok(fl.patches.every((p) => p.terrain !== 'rock'));
+});
+
+test('the edge of a cave is pushed into the rock and never into the floor, and by a bounded amount', () => {
+  const { fl, cave } = caveOf(stockCave), cells = fl.patches.flatMap((p) => p.cells);
+  let n = 0, moved = 0;
+  for (const ch of cave.chains) for (const pt of ch.points) {
+    n++;
+    const d = Math.hypot(pt.q[0] - pt.p[0], pt.q[1] - pt.p[1]);
+    assert.ok(d <= F.CAVE_PUSH * 1.35 + 1e-9, `pushed ${d} ft`);
+    if (d > 0.1) moved++;
+    assert.ok(!cells.some((c) => inPoly(c.poly, pt.q)), 'a pushed point is never inside an open hex');
+  }
+  assert.ok(n > 500 && moved > n * 0.9, 'the edge is ragged all the way round');
+  const ds = new Set(cave.chains.flatMap((c) => c.points.map((p) => Math.hypot(p.q[0] - p.p[0], p.q[1] - p.p[1]).toFixed(2))));
+  assert.ok(ds.size > 100, 'and not by one amount');
+});
+
+test('the same map is the same cave every time, and a different map is a different cave', () => {
+  const a = JSON.stringify(caveOf(stockCave).cave), b = JSON.stringify(caveOf(structuredClone(stockCave)).cave);
+  assert.equal(a, b);
+  const other = structuredClone(stockCave); other.id = 'another-cave';
+  assert.notEqual(JSON.stringify(caveOf(other).cave.chains), JSON.stringify(caveOf(stockCave).cave.chains));
+  assert.equal(F.caveSeed(stockCave, 'ground'), F.caveSeed(structuredClone(stockCave), 'ground'));
+  for (let i = 0; i < 200; i++) { const v = F.valueNoise(i * 0.37, i * 0.91, 5); assert.ok(v >= 0 && v < 1); }
+  assert.equal(F.valueNoise(3.3, 4.4, 9), F.valueNoise(3.3, 4.4, 9));
+});
+
+test('rock tiles are outlined with the same pushed points as the floor edge, and stand above the floor beside them', () => {
+  const { fl, cave } = caveOf(stockCave), push = new Map();
+  for (const ch of cave.chains) for (const pt of ch.points) push.set(pt.p.map((v) => v.toFixed(1)).join(), pt.q);
+  assert.equal(cave.rock.length, Object.values(stockCave.levels[0].tiles).filter((t) => t.t === 'rock').length);
+  let shared = 0;
+  for (const r of cave.rock) {
+    assert.equal(r.ring.length, 18);
+    assert.ok(F.polyArea(r.ring) > 0 && r.ring.every((p, i) => i === 0 || Math.hypot(p[0] - r.ring[i - 1][0], p[1] - r.ring[i - 1][1]) < 4), 'a sane outline');
+    for (const p of r.ring) if ([...push.values()].some((q) => q === p)) shared++;
+    const mid = center(H_parse(r.hex));
+    assert.ok(winding(r.ring, mid) !== 0, 'a rock tile still holds its own middle');
+  }
+  assert.ok(shared > 500);
+  const floorTop = Math.max(...fl.patches.map((p) => p.top));
+  assert.ok(cave.rock.every((r) => r.top > 0) && Math.max(...cave.rock.map((r) => r.top)) >= floorTop + F.CAVE_WALL - 1e-9);
+  assert.ok(cave.chains.every((c) => c.points.every((p) => p.top > p.z)), 'rock is higher than the floor at its foot');
+});
+// Is the point inside the polygon (any shape): the winding number.
+const winding = (poly, [x, y]) => { let w = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], c = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]); if (a[1] <= y) { if (b[1] > y && c > 0) w++; } else if (b[1] <= y && c < 0) w--; } return w; };
+const H_parse = (k) => { const [q, r] = k.split(',').map(Number); return { q, r }; };

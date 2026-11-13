@@ -314,7 +314,10 @@ The effect stack (decision 2) is unchanged and still empty whenever `apply()` re
   `ask` the player chooses among all that could be taken (a `miss` one only where it would turn the
   hit into a miss); otherwise the first is taken, as before.
 - *What others are told.* Every other player gets `prompt: { waiting: true }` in their view and
-  nothing else: not who, not why, not the waiting action. The question event (`reactionAsked`) goes
+  nothing else: not who, not why, not the waiting action. They get even that only when the party
+  can perceive what set the question off (the triggering creature and the waiting action's actor are
+  not hidden from the party); otherwise `null`, so an unseen attacker does not show itself by making
+  the table wait (#154). A player who tries to act meanwhile is still refused because the table waits. The question event (`reactionAsked`) goes
   to the player asked alone, live and in the record; `reactionAnswered` is the DM's. The waiting
   step's history label is shown to no player; the answer's is the waiting action's label with
   ", after a reaction", naming nobody asked.

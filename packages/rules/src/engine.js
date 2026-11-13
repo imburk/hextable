@@ -2367,11 +2367,20 @@ const handlers = {
     const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
     const first = map.starts[0] ?? H.parse(Object.keys(map.levels[0].tiles)[0]);
     const start = landing(map, first, first.z ?? 0);
-    const party = Object.values(s.entities).filter((e) => e.side === 'party'), spots = [];
+    const party = Object.values(s.entities).filter((e) => e.side === 'party'), spots = [], taken = new Set();
+    const take = (p) => { spots.push(p); taken.add(H.key(p)); };
+    // The map's starts in order, each where a creature can stand (walkable ground, nothing solid on
+    // it, not taken); then, for anyone left, the spiral out from the first start, as before.
+    const B = barriers(map);
+    for (const st of map.starts) {
+      if (spots.length >= party.length) break;
+      const p = landing(map, st, st.z ?? 0), level = p && ground(map, p)?.level;
+      if (walkable(p) && level && !B.solid(level.id, p) && !taken.has(H.key(p))) take(p);
+    }
     for (let n = 0; n < 12 && spots.length < party.length; n++) {
       for (const h of H.range(start, n)) {
         const p = H.dist(h, start) === n ? landing(map, h, start.z) : null;
-        if (walkable(p) && Math.abs(p.z - start.z) <= STEP_MAX && spots.length < party.length) spots.push(p);
+        if (walkable(p) && Math.abs(p.z - start.z) <= STEP_MAX && spots.length < party.length && !taken.has(H.key(p))) take(p);
       }
     }
     spots.length === party.length || fail("That map has no room for the party at its start.");
@@ -2621,7 +2630,7 @@ function look(s, ev) {
 }
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'] };
+export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'] };
 
 // The fields of an action that name creatures, one id or a list of them. (`follow`'s `leader` is
 // not one: its handler gives one answer for a creature that is not there and one not in the party.)

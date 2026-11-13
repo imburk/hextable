@@ -300,6 +300,22 @@ async function solo(browser, url, label, opts) {
         await wait(page, () => window.hextable.waiting === 0 && !window.hextable.state.encounter, null, 15000);
       });
 
+      // Last, because it replaces the map: the stock maps are drawn as rooms with a cut-away and as a cave (docs/specs/renderer.md).
+      await run.do('the stock dungeon is drawn with a cut-away that follows the camera, and the stock cave as a cave', async () => {
+        const load = async (id) => { await page.evaluate((m) => window.hextable.ED.stock(m), id); await wait(page, (m) => window.hextable.state.map.id === m, id); await sleep(400); };
+        await load('dungeon');
+        const walls = await page.evaluate(async () => {
+          const R = window.hextable.R, seen = new Set(); R.cam.pitch = 0.95;
+          for (const yaw of [0.5, 2.1, 3.6, 5.2]) { R.cam.yaw = yaw; await new Promise((r) => setTimeout(r, 250)); seen.add(R.cutSig); }
+          return { levels: R.floorData.length, faces: R.floorData.reduce((n, l) => n + l.walls.length, 0), built: R.wallMesh.n, cuts: seen.size };
+        });
+        if (!walls.levels || !walls.faces || !walls.built) throw new Error(`the dungeon's walls were not built: ${JSON.stringify(walls)}`);
+        if (walls.cuts < 2) throw new Error(`the cut-away did not change as the camera went round: ${JSON.stringify(walls)}`);
+        await load('cave');
+        const cave = await page.evaluate(() => { const R = window.hextable.R; return { levels: R.floorData.length, built: R.terrain.n, cells: R.floorData.reduce((n, l) => n + l.patches.reduce((m, p) => m + p.cells.length, 0), 0) }; });
+        if (cave.levels !== 1 || cave.cells < 100 || cave.built < 5000) throw new Error(`the cave was not built: ${JSON.stringify(cave)}`);
+      });
+
     } finally { await ctx.close(); }
   });
 }
