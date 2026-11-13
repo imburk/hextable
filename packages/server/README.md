@@ -98,6 +98,17 @@ Since #169: a creature not of the party in a form is seen by players only as the
 (Divine Intervention) is refused through `feature` (use `cast` with `via`); a second Bardic
 Inspiration die is refused for a creature that holds one.
 
+**Multiclassing (#175). State version 18.** A sheet for `setSheet` and `levelUp` may list
+`classes: [{ class, level, subclass?, spells? }, ...]` (the first class taken first) in place of
+`class`, `level`, `subclass` and `spells`; a sheet with one class is unchanged. `levelUp` takes one
+more level in a class the character has, or level 1 in a new class at the end of the list; the
+new class's prerequisites are checked by `validate`. The record of such a character carries
+`classes [{ id, level, subclass? }]`, `hitDice` (a count by die size, when there are several sizes)
+and `spellAbil` (spell id to ability, for spells of a class whose ability is not `castAbil`); the
+creature carries `hdBy` (Hit Dice left by size) beside `hd`. `shortRest` `spend` spends the largest
+dice first. A feature both classes have is played under the later class's id in front
+(`bard-spellcasting`, `paladin-channel-divinity`), with its own uses and `choices` key.
+
 **Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
 Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
 player may name only a place the party has been shown; with no `hex` the DM moves the caster.

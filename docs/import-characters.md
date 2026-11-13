@@ -24,15 +24,15 @@ says why when it is not.
 | From the file | To |
 |---|---|
 | `name` | the name with the player's name dropped: one trailing `[...]` or `(...)` is removed and never kept (the files seen so far use parentheses) |
-| `classes` | the class with the most levels, by name. The others go to `report.multiclass`; a class that is not SRD 5.2 cannot be built |
-| `classes/*/specialization` | the SRD subclass when the name matches it (the 2014 "Draconic Bloodline" is the SRD Draconic subclass). Otherwise see "Stand-ins" |
+| `classes` | every SRD 5.2 class, by name. One class gives a sheet with `class` and `level`; two or more give a multiclass sheet, `classes: [{ class, level, subclass?, spells? }]` (#175). The first class taken is the one whose saving throw proficiencies the sheet shows (only the first class gives them), else the sheet's first; when that cannot be told, `report.adjustments` says which was taken. A class that is not SRD 5.2 goes to `report.multiclass` and is not built (the SRD ones still are) |
+| `classes/*/specialization` | for each class, the SRD subclass when the name matches it (the 2014 "Draconic Bloodline" is the SRD Draconic subclass). Otherwise see "Stand-ins" |
 | `abilities/*/score` | `abilities`, clamped to 20 (reported) |
 | `skilllist` (`prof` 1 or 2) | `skills` (the class's picks) and `extraSkills` (the rest); 2 is expertise as far as the class has it; 3 (half proficiency) is not proficiency |
 | `inventorylist` armour carried 2 (equipped), Shield | `armour`, `shield`, only if the class is trained in it |
 | `weaponlist` carried 1 or 2 (through its link to the inventory item) | `weapons`, by name against the pack ("Crossbow, Heavy" is a Heavy Crossbow; "Greatsword, +2" is a Greatsword), only if the class is proficient and the character holds twelve attacks at most |
 | `proficiencylist` | `tools` for names that look like tools; armour and weapon training is the class's |
 | `speed/base`, `size`, `senses` | `speed`, `size`, `senses` (Darkvision and the like) when the engine can hold them |
-| `powers` with a `school` | `spells`: the class's own groups (`Spells (Class)`) and the generic `Spells` group, matched by normalised name (`Detect Magic (RIT) (30) (C)` is Detect Magic), on the class list, within the 5.2 limits |
+| `powers` with a `school` | `spells` (on a multiclass sheet, each class's `spells`): the class's own groups (`Spells (Class)`) and the generic `Spells` group (for the first class that casts), matched by normalised name (`Detect Magic (RIT) (30) (C)` is Detect Magic), on the class list, within the 5.2 limits |
 | other carried non-magic items | `gear`, names only |
 | `languagelist`, `hp` damage, spent slots | `report.languages` and `report.state`, because a sheet has no field for them |
 
@@ -46,12 +46,12 @@ replaced by `[a long entry, N characters]`.
 
 | Category | Holds |
 |---|---|
-| `multiclass` | the classes not built |
+| `multiclass` | the classes not built (not SRD 5.2) |
 | `subclass` | a subclass that is not SRD 5.2 |
 | `species`, `background` | names; the pack has no species or backgrounds. Species traits and innate spells are listed |
 | `feats` | every feat (the pack has none), saying whether SRD 5.2 has it |
 | `features` | class features on the sheet that are not auto in the pack: `tier` `manual` or `assist` where the pack has them, none where it does not (a subclass or 2014 feature) |
-| `spells` | spells not in the pack, not on the class list, over the 5.2 limit, or of another class |
+| `spells` | spells not in the pack, not on the class list, over the 5.2 limit, or of a class not built; on a multiclass sheet also a class that casts with no spells listed under its group |
 | `magicItems` | every magic item, by name. A weapon or armour with a base in the pack is imported as the plain base (`importedAs`) and listed here |
 | `gear` | weapons and armour not imported and why, items marked not carried, entries too long to be names |
 | `proficiencies` | tool entries that are choices or not tools |
@@ -73,7 +73,9 @@ A sheet at level 3 or more must name the SRD subclass, a feature with options ne
 
 - The file's "prepared" flags are a list only when about as many spells are flagged as the sheet says it prepares. A cleric
   or druid whose sheet flags the whole class list is not read as a choice: no leveled spells are imported, one entry says so.
-- A multiclass sheet may keep another class's spells in the group of its first class; they are reported under that class.
+- A multiclass sheet may keep another class's spells in the group of its first class. They are read as that class's, so
+  they may be refused as not on its list or over its limit, and the other class may get none (one entry says so); the DM
+  moves them. The prerequisites (13 in each class's primary ability) are checked: a sheet that misses one does not load.
 - Magic items, feats, species, backgrounds and non-SRD subclasses are never given stats. A table that wants them needs a
   private, table-local form (a name-only note or a custom entry the DM types); they cannot enter the repo.
 
