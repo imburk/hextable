@@ -15,7 +15,11 @@ import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './render.js';
 import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker } from './tracker.js';
-import { THEMES } from './themes.js';
+import { initDrawer } from './drawer.js';
+import { initSettings } from './settings.js';
+import { aboutHTML } from './about.js';
+import { VERSION } from './shared/migrate.js';
+import { THEMES, setLook } from './themes.js';
 import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
@@ -316,7 +320,9 @@ function onUpdate(state, events, fresh) {
   S = state;
   TL.setPace(pace());
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh();
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); D.reset();
+    if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
+    splashDone();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
   if (first && pendingMap && isDM()) { act(pendingMap); pendingMap = null; }      // the lobby's chosen map, once the new table has its first state
@@ -430,7 +436,6 @@ function refresh() {
   document.body.classList.toggle('fight', !!enc);
   $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
   $('clock').textContent = clockText(S.clock);
-  $('btn-dm').hidden = !isDM();
   $('btn-leave').hidden = isDM() || !!T.solo;
   showUndo();
 
@@ -601,7 +606,7 @@ function refresh() {
   ED.sync();
 
   if (!$('log').hidden) renderLog();
-  if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet').hidden = true; }
+  if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet-body').innerHTML = '<p class="note">Select one of the characters to see its sheet.</p>'; }
   tracker.render();
   TC.sync(S);
   if (isDM()) renderDM();
@@ -609,6 +614,9 @@ function refresh() {
   SC.refresh();
   RP.refresh();
   CLS.sync(mode);
+  D.sync(S);
+  ST.sync(S);
+  if (!$('about').hidden) renderAbout();
 }
 
 function renderLog() {
@@ -654,7 +662,7 @@ function renderDM() {
   renderMarch();
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
-  $('dm-dice-throw').value = S.settings.diceThrow ?? 'auto'; $('dm-dice-monsters').checked = autoMonsters();
+  $('dm-dice-throw').value = S.settings.diceThrow ?? 'auto';
   const lvl = dmLevel(); $('dm-ambient').value = lvl?.light ?? 'bright'; $('dm-ambient-level').textContent = lvl ? lvl.name : '';
   const lit = S.entities[selId]?.light; $('dm-torch').disabled = !S.entities[selId]; $('dm-torch').textContent = lit ? 'Put out selected\'s light' : 'Give selected a torch';
   $('dm-vertical').value = S.settings.vertical ?? 'max'; $('dm-cover').value = S.settings.cover ?? 'on'; $('dm-creature-cover').checked = S.settings.creatureCover !== 'off'; $('dm-climb').checked = S.settings.climbing !== 'off';
@@ -817,17 +825,22 @@ $('hint-go').onclick = () => {
 };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
-const tracker = createTracker({ root: $('tracker'), button: $('btn-tracker'), dock: $('dock'), state: () => S, isDM, mine, act, toast, pick: (id) => { select(id); R.focus(id); refresh(); } });
-$('btn-tracker').onclick = tracker.toggle;
-const panels = ['sheet', 'log', 'dm', 'handouts'];
-const openPanel = (id) => { for (const p of panels) $(p).hidden = p !== id || !$(p).hidden; refresh(); };
-$('btn-sheet').onclick = () => openPanel('sheet'); $('btn-log').onclick = () => openPanel('log'); $('btn-dm').onclick = () => openPanel('dm');
-for (const b of document.querySelectorAll('[data-close]')) b.onclick = () => ($(b.dataset.close).hidden = true);
-$('btn-look').onclick = () => {
-  const ids = Object.keys(THEMES); themeId = ids[(ids.indexOf(themeId) + 1) % ids.length];
-  prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); toast(THEMES[themeId].name, true);
-};
-const closeDM = () => { if (window.innerWidth < 900) $('dm').hidden = true; };
+const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, act, toast,
+  pick: (id) => { select(id); R.focus(id); refresh(); if (!D.wide) D.close(); },      // on a phone the map is what was asked for
+  openSheet: (id) => { select(id); D.open('sheet'); refresh(); } });
+// The drawer holds every panel (drawer.js); what it shows is rendered here once its tab is the one open.
+const D = initDrawer({ prefs, state: () => S, isDM, change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+const openPanel = (id) => D.open(id);
+$('btn-sheet').onclick = () => D.open('sheet');
+$('order').onclick = () => D.open('turns');
+$('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
+$('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
+const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
+const setTheme = (id) => { if (!THEMES[id]) return; themeId = id; prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); };
+const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM });
+// Where the drawer covers the map, a DM tool that asks for a tap on the map closes it first.
+const closeDM = () => { if (!D.pinnedOpen()) D.close(); };
+$('dm-edit').addEventListener('click', closeDM);
 $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
@@ -861,14 +874,6 @@ function dmLevel() { const e = S?.entities[selId]; return (e && under(S.map, e.p
 $('dm-sight').onchange = (ev) => act({ type: 'setting', key: 'sight', value: ev.target.value });
 $('dm-unseen-turns').onchange = (ev) => act({ type: 'setting', key: 'unseenTurns', value: ev.target.value });
 $('dm-dice-throw').onchange = (ev) => act({ type: 'setting', key: 'diceThrow', value: ev.target.value });
-$('dm-dice-monsters').onchange = (ev) => prefs.set('hextable.diceMonsters', ev.target.checked);
-// This device's dice: how they are shown, and whether this player's own are thrown at once.
-$('dice-show').value = DICE.show;
-$('dice-show').onchange = (ev) => { DICE.show = ev.target.value; };
-$('dice-auto-mine').checked = autoMine();
-$('pace-pick').value = prefs.get('hextable.pace') ?? '';
-$('pace-pick').onchange = (ev) => { prefs.set('hextable.pace', ev.target.value || null); TL.setPace(pace()); syncPlaying(); };
-$('dice-auto-mine').onchange = (ev) => prefs.set('hextable.diceAutoMine', ev.target.checked);
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
 $('dm-auto').onchange = () => S && onUpdate(S, []);
@@ -889,8 +894,10 @@ function leaveTable(btn) {
   }
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
   TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
-  for (const id of ['dm', 'sheet', 'log', 'card', 'handouts', 'viewer']) $(id).hidden = true;
-  $('btn-dm').hidden = $('btn-leave').hidden = $('btn-undo').hidden = true;
+  D.close(false); D.reset();
+  for (const id of ['card', 'viewer']) $(id).hidden = true;
+  $('btn-leave').hidden = $('btn-undo').hidden = true;
+  D.sync(null);
   lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
 }
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
@@ -922,7 +929,14 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+
+// ---------- the splash ----------
+// The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to
+// choose from, and in any case after a few seconds (drawer.css also takes it away by itself if this script never runs).
+const splashDone = () => { const sp = $('splash'); if (sp.hidden || sp.classList.contains('done')) return; sp.classList.add('done'); setTimeout(() => { sp.hidden = true; }, 300); };
+new MutationObserver(() => { if (!$('lobby').hidden) splashDone(); }).observe($('lobby'), { attributes: true, attributeFilter: ['hidden'] });
+setTimeout(splashDone, 10000);
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
@@ -934,6 +948,7 @@ function start(transport, map = null) {
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
   T = transport; S = null;
+  $('splash-text').textContent = T.solo ? 'Opening your game\u2026' : 'Connecting to the table\u2026';
   lobbyBusy(!T.solo);
   T.on.update = received;
   closeTray?.(); armed = null; DICE.skip();

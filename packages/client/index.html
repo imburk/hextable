@@ -12,22 +12,22 @@
 <link rel="stylesheet" href="./scenes.css">
 <link rel="stylesheet" href="./reactionprompt.css">
 <link rel="stylesheet" href="./classes.css">
+<link rel="stylesheet" href="./drawer.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
 <div id="labels" aria-hidden="true"></div>
 <canvas id="dice" aria-label="Dice: tap to skip" hidden></canvas>
 
+<div id="splash" role="status">
+  <div id="splash-card"><h1>Hextable</h1><p id="splash-text">Loading&hellip;</p><div class="splash-bar" aria-hidden="true"><i></i></div><button type="button" id="splash-about" class="quiet">About</button></div>
+</div>
+
 <header id="top">
   <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
   <nav id="tools">
     <button type="button" id="btn-undo" hidden disabled>Undo</button>
-    <button type="button" id="btn-tracker" aria-controls="tracker" aria-expanded="false">Tracker</button>
-    <button type="button" id="btn-log" aria-controls="log">Log</button>
-    <button type="button" id="btn-handouts" aria-controls="handouts" hidden>Handouts<b id="ho-badge" hidden></b></button>
-    <button type="button" id="btn-look" title="Change the look">Look</button>
-    <button type="button" id="btn-dm" aria-controls="dm" hidden>DM<b id="dm-badge" hidden></b></button>
-    <button type="button" id="btn-leave" class="leave" hidden>Leave</button>
+    <button type="button" id="btn-menu" aria-label="Menu" aria-expanded="false" aria-controls="drawer"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><b id="menu-badge" hidden></b></button>
   </nav>
 </header>
 <ol id="order" aria-label="Turn order"></ol>
@@ -54,17 +54,31 @@
   </div>
 </footer>
 
-<aside id="tracker" hidden aria-label="Combat tracker"></aside>
-<aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
-<aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2>
-  <div class="dice-prefs"><label class="assign">Dice on this device <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label><label class="assign">Animation on this device <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label><label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label><p class="note" id="pace-table"></p></div>
-  <ol id="log-list"></ol>
-  <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
-</aside>
-<aside id="handouts" class="panel" hidden><button type="button" class="close" data-close="handouts">Close</button><h2>Handouts</h2><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></aside>
-<aside id="dm" class="panel" hidden>
-  <button type="button" class="close" data-close="dm">Close</button>
-  <h2>Dungeon Master</h2>
+<aside id="drawer" aria-labelledby="drawer-title" hidden>
+  <header id="drawer-head">
+    <h2 id="drawer-title" tabindex="-1">Turns</h2>
+    <button type="button" id="drawer-pin" aria-pressed="false" aria-label="Keep the menu open beside the map" title="Keep open">Pin</button>
+    <button type="button" id="drawer-close" aria-label="Close the menu">&times;</button>
+  </header>
+  <div id="drawer-tabs" role="tablist" aria-label="Menu">
+    <button type="button" role="tab" id="tab-turns" data-tab="turns" aria-controls="tracker" aria-selected="false" tabindex="-1">Turns</button>
+    <button type="button" role="tab" id="tab-sheet" data-tab="sheet" aria-controls="sheet" aria-selected="false" tabindex="-1">Sheet</button>
+    <button type="button" role="tab" id="tab-log" data-tab="log" aria-controls="log" aria-selected="false" tabindex="-1">Log</button>
+    <!-- the Handouts tab keeps the id handouts.js looks for: the button and its badge -->
+    <button type="button" role="tab" id="btn-handouts" data-tab="handouts" aria-controls="handouts" aria-selected="false" tabindex="-1" hidden>Handouts<b id="ho-badge" hidden></b></button>
+    <button type="button" role="tab" id="tab-dm" data-tab="dm" aria-controls="dm" aria-selected="false" tabindex="-1" hidden>DM<b id="dm-badge" hidden></b></button>
+    <button type="button" role="tab" id="tab-settings" data-tab="settings" aria-controls="settings" aria-selected="false" tabindex="-1">Settings</button>
+    <button type="button" role="tab" id="tab-about" data-tab="about" aria-controls="about" aria-selected="false" tabindex="-1">About</button>
+  </div>
+  <div id="drawer-body">
+    <section id="tracker" class="tabpanel" role="tabpanel" aria-labelledby="tab-turns" hidden></section>
+    <section id="sheet" class="tabpanel" role="tabpanel" aria-labelledby="tab-sheet" hidden><div id="sheet-body"></div></section>
+    <section id="log" class="tabpanel" role="tabpanel" aria-labelledby="tab-log" hidden>
+      <ol id="log-list"></ol>
+      <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
+    </section>
+    <section id="handouts" class="tabpanel" role="tabpanel" aria-labelledby="btn-handouts" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
+    <section id="dm" class="tabpanel" role="tabpanel" aria-labelledby="tab-dm" hidden>
   <div id="dm-table"></div>
   <section><h3>Take back</h3>
     <div class="row"><button type="button" id="dm-undo" class="undo" disabled><span>Undo</span><small></small></button><button type="button" id="dm-redo" class="undo" disabled><span>Redo</span><small></small></button></div>
@@ -83,7 +97,6 @@
     <label class="assign">How fast the table plays out what happens <select id="dm-pace"></select></label>
     <p class="note">Players can make it quicker on their own device, never slower.</p>
     <label class="assign">Dice <select id="dm-dice-throw"><option value="auto">Rolled as soon as someone acts</option><option value="throw">Thrown by whoever acts: a tap or flick sends the action</option></select></label>
-    <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me (on this device)</label>
     <label class="check"><input type="checkbox" id="dm-engage" checked> Start a fight when the party comes near enemies</label>
     <label class="assign">How near the party comes before the fight starts <select id="dm-engage-range"><option value="10">10 ft</option><option value="30">30 ft</option><option value="60">60 ft</option></select></label>
     <label class="assign">Noticing hidden things in passing (passive Perception) <select id="dm-passive"><option value="off">Off: only a Search finds them</option><option value="traps">Traps only</option><option value="all">Everything</option></select></label>
@@ -132,7 +145,39 @@
     <div class="row"><button type="button" id="dm-export">Export table</button></div>
   </section>
   <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
+</section>
+    <section id="settings" class="tabpanel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+      <section><h3>Look</h3>
+        <label class="assign">Theme <select id="set-theme"></select></label>
+        <label class="assign">Floors <select id="set-floors"><option value="rooms">Rooms, with a faint grid</option><option value="hex">Each hex on its own</option></select></label>
+        <label class="check"><input type="checkbox" id="set-cutaway"> Cut walls down where they hide a room</label>
+        <label class="check"><input type="checkbox" id="set-caves"> Draw caves with a ragged edge</label>
+        <p class="note" id="set-look-note" hidden></p>
+      </section>
+      <section><h3>Controls</h3>
+        <label class="assign">Menu opens from the <select id="set-side"><option value="right">Right</option><option value="left">Left</option></select></label>
+        <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>
+        <p class="note" id="set-pin-note">Wide screens only. The map makes room for it.</p>
+      </section>
+      <section><h3>Animation and dice, on this device</h3>
+        <label class="assign">Dice <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label>
+        <label class="assign">Animation <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label>
+        <label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label>
+      </section>
+      <section id="set-dm-box" hidden><h3>For the DM, on this device</h3>
+        <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me</label>
+      </section>
+      <section id="set-table-box"><h3>Table</h3>
+        <p class="note" id="pace-table"></p>
+        <ul id="set-rules" class="set-rules"></ul>
+        <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave</button></div>
+      </section>
+    </section>
+    <section id="about" class="tabpanel" role="tabpanel" aria-labelledby="tab-about" hidden></section>
+  </div>
+  <div id="drawer-live" class="sr-only" role="status" aria-live="polite"></div>
 </aside>
+<div id="drawer-scrim" hidden></div>
 
 <div id="lobby" hidden>
   <form id="lobby-card" autocomplete="off">
@@ -145,6 +190,7 @@
     <div class="row"><input id="lobby-code" maxlength="6" placeholder="ABC123"><button type="button" id="lobby-join">Join</button></div>
     <div class="row"><button type="button" id="lobby-solo" class="quiet">Play solo on this device</button></div>
     <p id="lobby-msg" role="status"></p>
+    <div class="row"><button type="button" id="lobby-about" class="quiet">About Hextable</button></div>
   </form>
 </div>
 <div id="editor" aria-label="Map editor" hidden></div>
