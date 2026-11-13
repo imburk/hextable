@@ -11,7 +11,7 @@ place stay behind, and it works in solo and at a table. It cannot be done in the
 
 | Id | Map | Size | What is in it |
 |---|---|---|---|
-| `tavern` | The Copper Kettle | 2 levels | Common room with a bar (a rail with a flap), kitchen with a serving hatch, a locked pantry, a back hall, stairs down to a cellar with a locked wine store and a secret door to a smugglers' cache. Windows on the front wall. |
+| `tavern` | The Copper Kettle | 2 levels | Common room with a bar (a rail with a flap), kitchen with a serving hatch, a locked pantry, a back hall, stairs down to a cellar with a locked wine store and a secret door to a smugglers' cache. Windows along the outer wall of the common room. |
 | `dungeon` | The Sunken Vault | 1 level | Eight rooms and their passages: entry hall, locked storeroom, a hexagonal great hall (diagonal walls), armory, barracks behind a portcullis, a shrine, a locked crypt (iron door) and a vault behind a secret door. Dim, with dark crypt and vault. |
 | `cave` | Hollow Deep | 1 level | A bright cave mouth, a one-hex passage, a cavern with a pool and stalagmites, a slope of 2.5 ft steps up to a 10 ft ledge (a climb anywhere else), and a crawlway to a grotto. No walls: the rock hexes are the walls. Dark inside. |
 | `forest-road` | The Old Road | 1 level | A road through the woods, a clearing on each side of the bend, boulders for cover, an overturned cart, a stream with banks and a stone bridge. Forest hexes are Difficult Terrain. |
