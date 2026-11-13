@@ -1733,6 +1733,47 @@ async function classes(browser, url, label, opts) {
           await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), ids.Cleo).catch(() => {});
         });
       }
+
+      await run.do('the druid takes a form from the list the engine offers, and the card and the sheet say so', async () => {
+        await pick('Dru');
+        await tap(page, '#actions button:has-text("Wild Shape")');
+        await waitShown(page, '#cp .cp-card');
+        const forms = await page.$$eval('#cp-form option', (o) => o.map((x) => x.value));
+        const bad = await page.evaluate(async (f) => { const { CONTENT } = await import('./shared/content/index.js'); return f.filter((id) => CONTENT.monsters[id].type !== 'beast' || CONTENT.monsters[id].cr > 1); }, forms);
+        if (forms.length < 20 || !forms.includes('wolf') || bad.length) throw new Error(`forms: ${forms.length}, outside the druid's limits: ${bad}`);
+        await page.selectOption('#cp-form', 'wolf');
+        const before = await uses('Dru', 'wild-shape');
+        await tap(page, '#cp-use');
+        await wait(page, (i) => window.hextable.state.entities[i].form, ids.Dru);
+        if (await uses('Dru', 'wild-shape') !== before - 1) throw new Error('the use was not spent');
+        const form = await state(page, (S, i) => S.entities[i].form, ids.Dru);
+        if ((form.block ?? form) !== 'wolf') throw new Error(`form: ${JSON.stringify(form)}`);
+        if (!/Wolf form/.test(await page.$eval('#c-res', (x) => x.textContent))) throw new Error('the card does not say the druid is a wolf');
+        await closePanels(page); await tap(page, '#btn-sheet'); await waitShown(page, '#sheet-form');
+        if (!/form of a Wolf/.test(await page.$eval('#sheet-form', (x) => x.textContent))) throw new Error('the sheet banner');
+        await tap(page, '#sheet [data-leave-form]');
+        await wait(page, (i) => !window.hextable.state.entities[i].form, ids.Dru);
+        if (await shown(page, '#sheet-form')) throw new Error('the banner stayed after leaving the form');
+      });
+
+      await run.do('a refusal is shown in the panel with the choice kept; a form is changed and left from the bar', async () => {
+        await pick('Dru');
+        await tap(page, '#actions button:has-text("Wild Shape")'); await page.selectOption('#cp-form', 'brown-bear'); await tap(page, '#cp-use');
+        await waitShown(page, '#cp-err');
+        if (!/room/.test(await page.$eval('#cp-err', (x) => x.textContent))) throw new Error('the engine\'s refusal is not in the panel');
+        if ((await page.$eval('#cp-form', (x) => x.value)) !== 'brown-bear') throw new Error('the choice was not kept');
+        await page.selectOption('#cp-form', 'boar'); await tap(page, '#cp-use');
+        await wait(page, (i) => (window.hextable.state.entities[i].form?.block ?? window.hextable.state.entities[i].form) === 'boar', ids.Dru);
+        await pick('Dru');
+        if (!/Boar/.test(await page.$eval('#actions', (x) => x.textContent))) throw new Error('the bar does not say the druid is a boar');
+        if (!(await page.$$eval('#actions button', (b) => b.some((x) => /Gore|Tusk/i.test(x.textContent))))) throw new Error('the bar shows no attack of the form');
+        await tap(page, '#actions button:has-text("Wild Shape")');
+        if (!/Boar/.test(await page.$eval('#cp-form-now', (x) => x.textContent))) throw new Error('the panel does not say which form');
+        await page.selectOption('#cp-form', 'panther'); await tap(page, '#cp-use');
+        await wait(page, (i) => (window.hextable.state.entities[i].form?.block ?? window.hextable.state.entities[i].form) === 'panther', ids.Dru);
+        await pick('Dru'); await tap(page, '#actions button:has-text("Wild Shape")'); await tap(page, '#cp-leave');
+        await wait(page, (i) => !window.hextable.state.entities[i].form, ids.Dru);
+      });
     } finally { await ctx.close(); }
   });
 }
