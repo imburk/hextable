@@ -38,9 +38,9 @@ Points are percent of the Pro weekly limit, the lead's turns included. Agent
 work did not draw on the Fable meter; only the lead's own turns did. A Max
 account has five times the Pro allowance.
 
-## State of main (13 November, 4:50 AM Eastern)
+## State of main (13 November, 6:55 AM Eastern)
 
-- 669 tests pass; content check clean; build clean. Last merged: #152. **State version 16.**
+- 746 tests pass; content check clean; build clean. Last merged: #164. **State version 17.**
 - The lead conversation ("Beej") is on the owner's **Ultra** account, which replaces "Max" below:
   it leads, builds and merges. Parallel work is allowed: one engine job at a time, with client,
   render, content, server and read-only jobs beside it. The lead checks agents hourly.
@@ -60,9 +60,21 @@ Merged on the night of 13 November (costs in `docs/USAGE.md`):
 | #149 | Renderer R2: floors module, clip and fill to walls |
 | #151 | Security fixes from the #132 review: hidden ids, empty updates, keyed dice (state 16) |
 | #152 | Reaction prompt screen; Fantasy Grounds import button |
+| #156 | Cut-away walls drawn; walls that bend inside a hex cut the floor; caves (R7) |
+| #157 | Reaction waiting notice only when the trigger can be perceived; `loadMap` uses all starts; `pace` table setting |
+| #160 | Renderer R3: the event timeline and pace |
+| #161 | Party spells: one raised; the table of missing vocabulary is in `docs/DEBT.md` |
+| #164 | Class features 7 to 15 for Paladin, Cleric, Druid, Sorcerer, Bard (state 17); unreviewed until #166 reports |
 
-Running when this was written: #150 (cut-away walls, caves), #153 (R3 timeline and pace),
-#154 (three small engine items, then class features 7 to 15 for Paladin, Cleric, Druid, Sorcerer, Bard).
+Running when this was written: #162 (R4 animations), #163 (pace control, stock maps in the lobby,
+import report to the chronicle), #165 (engine lane: teleport, cure, kill rider, terrain and obscuring,
+with the party's spells raised), #166 (independent review of #164, report only).
+
+Lessons from the night: after merging main into a branch, grep for conflict markers before
+committing (the lead once committed them in `docs/DEBT.md`, fixed in #158). Smoke steps that depend
+on timing or on where the party stands fail under load or after placement changes: reproduce in
+Node before blaming the game. A workspace restart stops agents; they resume by themselves, but
+unpushed work stays local, so check `git ls-remote` against the worktree.
 
 ## Owner's goals, set 13 November
 
@@ -77,11 +89,12 @@ Running when this was written: #150 (cut-away walls, caves), #153 (R3 timeline a
 
 ## Next work, in order
 
-Engine lane (Opus), one at a time: #154, then multiclassing, then feats and magic item bonuses
-with attunement, then levels 7+ for the other seven classes, then what is left of the review
-(DEBT T11: ids that reveal how many creatures are hidden, kick, upload by anyone who hosts).
-Render lane (Sonnet): #150, #153, then R4 (animations on beats), R5 (the interface), R10 (vendor
-Three.js and measure), R11.
+Engine lane (Opus), one at a time: #165, then fixes from the #166 review, then multiclassing,
+then feats and magic item bonuses with attunement, then levels 7+ for the other seven classes,
+then what is left of the #132 review (DEBT T11).
+Render lane (Sonnet): #162 (R4), then R5 (the interface), R10 (vendor Three.js and measure), R11.
+Client lane (Sonnet): #163, then the controls #164 lists under "For the client job" (Wild Shape
+form, Divine Spark mode, Metamagic choice and the rest).
 Content and client (Sonnet or Haiku): spells the party prepares that are below `auto`
 (Dispel Magic, Counterspell, Misty Step, Revivify, Moonbeam, Fire Storm); a lobby choice for stock
 maps; a notes field so an import report stays with its character; players importing their own sheet.
