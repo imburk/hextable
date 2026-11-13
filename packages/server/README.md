@@ -94,6 +94,14 @@ it ends); `save` and `attack` events may carry `rescued {name, dice, add}` (a Ba
 die or Peerless Skill) and a `save` may carry `careful` or `reroll`. A creature seen by players
 carries `form` (the Beast's id) while in one. State version 17.
 
+**Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
+Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
+player may name only a place the party has been shown; with no `hex` the DM moves the caster.
+`choice` may be a condition (Lesser Restoration). A teleport arrives as a `moved` event with a
+one-hex `path` and `teleport: true`. New event `remains {id, remains}` (`frozen-statue` or `dust`,
+sent where the creature is known); a creature seen by players carries `remains` when it has some.
+A repeat save made on taking damage is a `save` event with `against`. State version 17, unchanged.
+
 **Asking in the moment** (Decision 4 build notes, part 2). Where a player's creature has `ask`, the
 action that reaches it stops and nothing it did is kept; the state's `pending` holds it (the DM's
 view has it whole). Each player's view carries `prompt`:

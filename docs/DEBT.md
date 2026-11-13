@@ -229,15 +229,23 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Tongues (3) | 1 | manual | manual | Languages as state (a `languages` field on a creature, which a sheet does not have yet, C9) |
 | Misty Step (2) | 1 | manual | ~~manual~~ **auto** (#165) | ~~**`teleport`** step: up to 30 feet to an unoccupied space the caster can see~~ (#165: the `teleport` step; the destination is the cast's `hex`. Nothing left for the engine; a client that sends no `hex` hands the move to the DM) |
 
+**#165** added the vocabulary the first five rows below ask for (docs/specs/rules-expansion.md, "Build notes: what the
+party's spells asked for") and raised, of the party's spells: Misty Step, Lesser Restoration (manual to auto), Heal,
+Protection from Poison, Cone of Cold, Ice Storm (assist to auto); Sleet Storm, Charm Monster, Dominate Monster and
+Disintegrate stay assist with less left to the DM. Outside the party's set: Grease (assist to auto), Dimension Door and
+Fog Cloud (manual to assist); Web, Entangle, Charm Person, Dominate Person and Dominate Beast stay assist with more run by
+the engine. Every one was compared with the SRD text. After it spells are 45 auto / 86 assist / 208 manual. Not done:
+the client cannot yet aim a teleport (a cast with no `hex` hands the move to the DM) nor draw a spell's terrain or fog.
+
 Which single addition unlocks the most of these (the engine lane's list):
 
 | Addition | Unlocks to `auto` | Held at assist only by it, or partly |
 |---|---|---|
-| `cure` step with a `choice` of condition (Lesser Restoration, Heal) | lesser restoration, heal | protection from poison (also needs the condition-scoped `save` modifier) |
-| A rider on a kill (`onKill` branch on a damage step, with a `set` state) | cone of cold | disintegrate (also needs an object as a target) |
-| `terrain` and `obscures` on an area or zone | ice storm | sleet storm (also `breakConcentration`) |
-| `ends: { on: "damaged" }` and a "fighting it" tag | | charm monster, dominate monster (also `higher.slot.duration`) |
-| `teleport` step | misty step | teleport, teleportation circle (also a destination off the map) |
+| ~~`cure` step with a `choice` of condition (Lesser Restoration, Heal)~~ (#165) | ~~lesser restoration, heal~~ | ~~protection from poison~~ (#165 built the scoped save too: auto) |
+| ~~A rider on a kill~~ (#165: `onKill`, `onZero`, `kill`, `remains`) | ~~cone of cold~~ | disintegrate (still needs an object as a target) |
+| ~~`terrain` and `obscures` on an area or zone~~ (#165) | ~~ice storm~~ | sleet storm (#165 added `endConcentration`; dousing flames is left) |
+| ~~`ends: { on: "damaged" }` and a "fighting it" tag~~ (#165) | | charm monster (attitude), dominate monster (`higher.slot.duration`, commands) |
+| ~~`teleport` step~~ (#165) | ~~misty step~~ | teleport, teleportation circle (also a destination off the map) |
 | `dispel` step | dispel magic | |
 | `revive` step and aiming at the dead | revivify | |
 | An "attacker can see the target" tag | | faerie fire (also light and the Invisible rule) |
