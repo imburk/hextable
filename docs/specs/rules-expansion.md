@@ -973,7 +973,7 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     left unchosen, and options picked in two such features may not repeat.
   - *Forms* (`forms.js`, Decision 7, first build): a form lays a pack monster's stat block over a
     creature: size, AC, speeds, senses, Strength, Dexterity and Constitution, attacks (none) and
-    actions (the block's), defences and initiative; save and skill bonuses are the better of its
+    actions (the block's), Vulnerabilities and initiative; Resistances, damage and condition Immunities are its own together with the block's (class features are kept: Nature's Ward, #169); save and skill bonuses are the better of its
     own (its proficiencies and Proficiency Bonus with the new scores) and the block's. Hit Points,
     mental scores, features and proficiencies stay. What was replaced is kept on `e.form` and put
     back when the lasting effect holding it ends (its hours, a new form, the Bonus Action with no
