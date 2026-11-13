@@ -232,6 +232,21 @@ function lintCommon(e, say) {
   if (fn) say(`contains a function at ${fn}; content is data only`);
 }
 
+// A saving throw is made by the creatures a spell affects. A spell aimed at its caster that has a
+// save step is almost always wrong, so the linter flags it. Each exception here has a one-line
+// reason; an exception that no longer applies is flagged too, so this list cannot go stale.
+const SELF_SAVE_EXCEPTIONS = {
+  'contact-other-plane': 'flagged, awaiting review: the SRD save is the caster\'s own, so this may be a valid self-save rather than an error',
+};
+function lintSelfSave(e, say) {
+  let hasSave = false;
+  walkSteps(e.effects, (st) => { if ('save' in st) hasSave = true; });
+  const selfSave = Boolean(e.target?.self) && hasSave;
+  const exempt = Object.hasOwn(SELF_SAVE_EXCEPTIONS, e.id);
+  if (selfSave && !exempt) say('a spell aimed at its caster has a saving throw step; the save belongs to the creatures it affects, so aim it at them (or list it in SELF_SAVE_EXCEPTIONS with a reason)');
+  if (exempt && !selfSave) say('is in SELF_SAVE_EXCEPTIONS but is no longer a self-targeted spell with a save; remove it from the list');
+}
+
 function lintSpell(e, say) {
   lintCommon(e, say);
   if (!(isInt(e.level) && e.level >= 0 && e.level <= 9)) say('level must be 0 to 9');
@@ -256,6 +271,7 @@ function lintSpell(e, say) {
     if (r?.blocks !== undefined && !(Array.isArray(r.blocks) && r.blocks.length && r.blocks.every((x) => ID.test(x)))) say('`reaction.blocks` lists spell ids');
     if (!e.target?.self) say('a reaction spell is aimed at its caster');
   }
+  lintSelfSave(e, say);
   const seen = lintSteps(e.effects, say);
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
