@@ -63,6 +63,8 @@ export function judge(tag, sit, s) {
     case 'spell.cantrip': return sit.cantrip === undefined ? null : sit.cantrip;   // damage from a cantrip (Potent Spellcasting)
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
+    // "If you or your allies are fighting it": a fight is on, the target is in it, and it is hostile to the source.
+    case 'target.fought': return a && t ? !!s.encounter && s.encounter.order.some((o) => o.id === t.id) && a.side !== t.side : null;
     // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
     // sees its target, and whether its target sees it changes nothing.
     case 'target.unseen': return a && t ? (a.object ? true : canSee(s, a, t) === 'no') : null;
@@ -133,6 +135,8 @@ function inScope(m, sit) {
   if (!m.scope) return true;
   if (m.scope.skill !== undefined && m.scope.skill !== sit.skill) return false;
   if (m.scope.ability !== undefined && m.scope.ability !== sit.ability) return false;
+  // A save to avoid or end a condition: `sit.conditions` are those the save is about.
+  if (m.scope.condition !== undefined && !(sit.conditions ?? []).includes(m.scope.condition)) return false;
   return true;
 }
 

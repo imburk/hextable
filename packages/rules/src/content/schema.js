@@ -23,7 +23,13 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'manual'];
+// Lists of steps inside a step, run when something about it comes out a certain way.
+// `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
+// took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
+export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked', 'onZero', 'onKill'];
+// What is left of a creature a spell killed: a `remains` step records it on the body.
+export const REMAINS = ['frozen-statue', 'dust'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
@@ -32,7 +38,9 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
-  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip'];
+  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
+  // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
+  'target.fought'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
@@ -73,7 +81,8 @@ function lintWhen(when, say) {
   for (const t of when) if (!TAGS.includes(t)) say(`unknown situation tag "${t}"`);
 }
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES };
+// `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion') };
 function lintModifier(m, say) {
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -86,8 +95,10 @@ function lintModifier(m, say) {
   // `scope` limits a check or a save to one skill or ability; "chosen" is the caster's choice.
   if (m.scope !== undefined) {
     const sc = m.scope;
-    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => k !== 'skill' && k !== 'ability')) say('`scope` gives a skill or an ability');
+    // `scope.condition`: a save to avoid or end that condition (Protection from Poison).
+    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition'].includes(k))) say('`scope` gives a skill, an ability or a condition');
     else {
+      if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.')))) say('`scope.condition` names a condition, on a save');
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
       if (!['check', 'save'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
@@ -125,6 +136,22 @@ function lintZone(e, say) {
   if (e.duration === 'instant') say('a zone needs a duration');
 }
 
+// `terrain`: the spell's area is Difficult Terrain (`difficult: true`) and/or Heavily or Lightly
+// Obscured (`obscured: 'heavy' | 'light'`) while it lasts; an instant spell says how long with
+// `lasts: 'nextTurnEnd'` (until the end of the caster's next turn: Ice Storm). An Emanation that
+// moves with its caster cannot carry it yet.
+function lintTerrain(e, say) {
+  const t = e.terrain;
+  if (t === undefined) return;
+  if (!t || typeof t !== 'object' || !Object.keys(t).length) return say('`terrain` must be an object');
+  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
+  if (t.difficult !== undefined && t.difficult !== true) say('`terrain.difficult` is true or left out');
+  if (t.obscured !== undefined && !['heavy', 'light'].includes(t.obscured)) say('`terrain.obscured` is "heavy" or "light"');
+  if (!t.difficult && !t.obscured) say('`terrain` makes the area difficult or obscured');
+  if (!e.target?.area || e.target.area.count || e.target.area.choose || e.target.area.shape === 'emanation') say('`terrain` needs a single area that stays where it is laid out');
+  if (e.duration === 'instant' ? t.lasts !== 'nextTurnEnd' : t.lasts !== undefined) say('`terrain.lasts` is "nextTurnEnd", for an instant spell only (otherwise it lasts as the spell does)');
+}
+
 // Every "chosen" in a spell's steps needs a `choice` of the right kind.
 function lintChoice(e, say) {
   const used = new Set();
@@ -135,7 +162,7 @@ function lintChoice(e, say) {
     if (m.scope?.ability === 'chosen') used.add('ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
-  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); });
+  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); });
   const c = e.choice;
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
@@ -146,9 +173,9 @@ function lintChoice(e, say) {
 }
 const seenCounter = (actions) => { let n = false; for (const a of actions ?? []) walkSteps(a.effects, (st) => { if (st && 'counter' in st) n = true; }); return n; };
 function walkSteps(steps, visit) {
-  for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (st[b]) walkSteps(st[b], visit); }
+  for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of BRANCHES) if (st[b]) walkSteps(st[b], visit); }
 }
-function lintSteps(steps, say, seen = { manual: false }) {
+function lintSteps(steps, say, seen = { manual: false }, under = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   for (const step of steps) {
     const kinds = STEPS.filter((k) => k in step);
@@ -165,6 +192,8 @@ function lintSteps(steps, say, seen = { manual: false }) {
       if (!ABILITIES.includes(step.save)) say(`save uses unknown ability "${step.save}"`);
       if (!step.onFail && !step.onSuccess) say('a save step needs onFail or onSuccess');
       if (step.dc !== undefined && !(isInt(step.dc) && step.dc > 0)) say('a save step\'s dc is a whole number');
+      // `advantageIf: [tags]`: the target has Advantage on this save when every tag holds ("if you or your allies are fighting it").
+      if (step.advantageIf !== undefined) { if (!(Array.isArray(step.advantageIf) && step.advantageIf.length)) say('`advantageIf` lists situation tags'); else lintWhen(step.advantageIf, say); }
     }
     if (kind === 'damage') {
       if (!isDice(step.damage)) say(`damage "${step.damage}" is not dice like 2d6+3`);
@@ -182,7 +211,10 @@ function lintSteps(steps, say, seen = { manual: false }) {
       const ends = step.ends;
       if (ends !== undefined) {
         if (!['turnStart', 'turnEnd', 'save', 'damaged'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd, save or damaged');
-        if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart or turnEnd)');
+        // `at: 'damaged'`: the save is repeated whenever the creature takes damage (Dominate Monster).
+        if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd', 'damaged'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart, turnEnd or damaged)');
+        // `by: 'source'` on `damaged`: only damage from the source or its allies ends it (Charm Monster).
+        if (ends?.by !== undefined && !(ends.by === 'source' && ends.on === 'damaged')) say('`ends.by` is "source", on an ending `on: "damaged"`');
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
       }
     }
@@ -205,7 +237,28 @@ function lintSteps(steps, say, seen = { manual: false }) {
     // whose reaction is `cast`).
     if (kind === 'counter') { seen.counter = true; if (step.counter !== 'spell') say('`counter` must be "spell"'); }
     if (kind === 'manual') { seen.manual = true; if (!isText(step.manual)) say('a manual step needs text saying what the DM applies'); }
-    for (const branch of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (step[branch]) lintSteps(step[branch], say, seen);
+    // `teleport: feet`: the creature it works on (the caster: only a spell aimed at its caster may
+    // have one) goes to the place the caster names within that many feet; `see: true`, a place it
+    // can see; `blocked`: steps run on it instead if that place turns out occupied.
+    if (kind === 'teleport') {
+      seen.teleport = true;
+      if (!(isInt(step.teleport) && step.teleport > 0 && step.teleport % 5 === 0)) say('`teleport` must be a distance in feet, a multiple of 5');
+      if (step.see !== undefined && step.see !== true) say('`see` is true or left out');
+    }
+    if (step.blocked !== undefined && kind !== 'teleport') say('`blocked` is for a teleport step');
+    // `cure: [conditions]`: the conditions end on the creature it works on (Heal); "chosen" is one
+    // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
+    // Exhaustion is not ended this way: a spell lowers it by levels.
+    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), or "chosen"');
+    for (const b of ['onZero', 'onKill']) if (step[b] !== undefined && kind !== 'damage') say(`\`${b}\` is for a damage step`);
+    // `kill: true`: the creature dies, a character at 0 Hit Points too; `remains`: what is left of
+    // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.
+    if ((kind === 'kill' || kind === 'remains') && !under) say(`a \`${kind}\` step goes under a damage step's onZero or onKill`);
+    if (kind === 'kill' && step.kill !== true) say('`kill` is true');
+    // `endConcentration: true`: the creature loses Concentration on whatever it holds (Sleet Storm).
+    if (kind === 'endConcentration' && step.endConcentration !== true) say('`endConcentration` is true');
+    if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
+    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill');
   }
   return seen;
 }
@@ -279,6 +332,7 @@ function lintSpell(e, say) {
   lintHigher(e, say);
   lintChoice(e, say);
   lintZone(e, say);
+  lintTerrain(e, say);
   if (e.reaction !== undefined) {
     // A spell cast as a Reaction by standing instruction: { on, blocks? }. `blocks` names spells
     // whose being aimed at the caster also sets it off, and which then do the caster no damage
@@ -298,6 +352,7 @@ function lintSpell(e, say) {
   lintSelfSave(e, say);
   const seen = lintSteps(e.effects, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
+  if (seen.teleport && !(e.target?.self && e.effects.some((st) => 'teleport' in st))) say('a `teleport` step is for a spell aimed at its caster, in its own list of steps');
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
 }

@@ -101,7 +101,7 @@ function boundary(s, ev, e, kit, when) {
       if (p.ended || !p.ends) continue;
       if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && p.born === now)) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
-        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc);
+        const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
         ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name });
         useUp(s, ev, used ?? []);
         if (sv.success) endPart(s, ev, fx, p);
@@ -125,11 +125,23 @@ export function fightOver(s, ev) {
   tick(s, ev);
 }
 
-// A creature took damage: what was to end when it did ends (`ends.on: 'damaged'`: Turn Undead's
-// and Abjure Foes' Frightened, "until it takes any damage").
-export function damaged(s, ev, t) {
+// A creature took damage, from `by` (a creature's id, or null): what was to end when it did ends
+// (`ends.on: 'damaged'`: Turn Undead's and Abjure Foes' Frightened, "until it takes any damage";
+// with `by: 'source'`, only damage from the effect's source or its allies: Charm Monster), and a
+// save repeated whenever it takes damage is made (`ends: { on: 'save', at: 'damaged' }`: Dominate Monster).
+export function damaged(s, ev, t, by = null, kit = null) {
+  const side = (id) => s.entities[id]?.side;
   for (const fx of [...effectsOf(s)]) {
-    for (const p of fx.parts) if (!p.ended && p.ends?.on === 'damaged' && p.target === t.id) endPart(s, ev, fx, p);
+    for (const p of fx.parts) {
+      if (p.ended || p.target !== t.id || !p.ends) continue;
+      if (p.ends.on === 'damaged' && (p.ends.by !== 'source' || (by !== null && side(by) !== undefined && side(by) === side(fx.source)))) endPart(s, ev, fx, p);
+      else if (p.ends.on === 'save' && p.ends.at === 'damaged' && kit && !t.dead) {
+        const { used, ...sv } = kit.savingThrow(s, t, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
+        ev.push({ type: 'save', id: t.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name });
+        useUp(s, ev, used ?? []);
+        if (sv.success) endPart(s, ev, fx, p);
+      }
+    }
     if (spent(fx)) endEffect(s, ev, fx, `${t.name} took damage`);
   }
 }

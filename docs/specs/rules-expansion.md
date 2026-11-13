@@ -786,8 +786,96 @@ entry names what was added to `schema.js` and what the engine does with it.
   only); players are not sent `fx.zone`. A `damage` step may say `type: 'chosen'` with a
   `choice` of damage type (Spirit Guardians' radiant or necrotic).
   Not built: moving a zone after it is cast (Moonbeam's Magic action), a zone that changes
-  something while a creature is inside it (Spirit Guardians' halved Speed, Difficult Terrain),
+  something while a creature is inside it (Spirit Guardians' halved Speed; Difficult Terrain and
+  obscuring came with #165, `terrain`),
   walls of free shape (Wall of Fire). The renderer draws each zone in the state it is given (a tinted patch by damage type, name on hover or tap); players are not sent zones yet.
+
+#### Build notes: what the party's spells asked for (amendment, #165)
+
+Settled while adding the general vocabulary the party-spells table in `docs/DEBT.md` asks for
+(issue #165). Each part has a linter rule and tests through `apply()` in
+`packages/rules/test/spell-vocab.test.js`.
+
+- **`teleport` step.** `{ teleport: feet, see?: true, blocked?: [steps] }`, only in the own list of
+  steps of a spell aimed at its caster (the linter says so). The `cast` action names the
+  destination in `hex`, the field an area spell is aimed with (`hex.z` asks for a height, as `move`'s
+  `to` does; otherwise the surface in that column nearest the caster). It is checked before anything
+  is spent (`teleportSpot`): within `feet` of where the caster stands (height counted by the table
+  rule), not the hex it is on, ground or air its whole body fits in, inside the arena while it is in
+  a fight, a space it can see when `see` is set (sight.js, `canSee` on a stand-in of its size at that
+  place), and not a space taken by a creature it knows of. A player may name only a place the party
+  has been shown (not in an unrevealed region), and is told no more than that about any other. The
+  SRD Teleportation rules: no movement is spent, nothing provokes an Opportunity Attack, the creature
+  arrives as one `moved` event with a one-hex `path` and `teleport: true` (the view filters it as any
+  `moved`: under the line-of-sight rules a player is sent it only where the place is in view). If a
+  creature it could not know of stands there, it appears in the nearest unoccupied space instead
+  (the SRD lets it choose; the engine takes the first it finds on the nearest ring), unless the step
+  has `blocked`, whose steps then run on it and it stays (Dimension Door's 4d6 Force). Landing in a
+  zone sets the zone off as walking in does; a thing on the floor that goes off when stepped on is
+  told to the DM instead (it is not run from inside a spell). Landing in the air: it falls, by the
+  engine's gravity after the action. Landing in the arena from outside a fight joins it. A cast with
+  no `hex` spends what the spell costs and hands the move to the DM (a `manual` event), so a client
+  that does not yet aim teleports still casts the spell. `spellProfile()` gives
+  `teleport: { feet, see }` so a client can arm a hex pick. A destination off the map, passengers and
+  "a place you can describe" stay with the DM. Not run: a teleport aimed at another creature.
+- **`cure` step.** `{ cure: [conditions] }` ends those conditions on the creature it works on
+  (Heal: Blinded, Deafened, Poisoned), or `{ cure: ["chosen"] }` with the spell's
+  `choice: { of: 'condition', from: [...] }` (Lesser Restoration's one of four; `condition` is a new
+  kind of choice, made in the `cast` action's `choice` as the others are, and the client's choice
+  menu shows it with nothing new). A condition it does not have is passed over; one a lasting effect
+  holds ends with that effect's part, and an effect with nothing left ends (Hold Person). Exhaustion
+  is not ended this way (a spell lowers it by levels). This is the spell-step twin of the class
+  features' `cure` (Lay On Hands' pool), which stays a pool option.
+- **A save scoped to a condition.** A modifier on `save` (or `save.<ability>`) may say
+  `scope: { condition }`: it applies to a saving throw made to avoid or end that condition
+  (Protection from Poison's Advantage against Poisoned). A save step is about the conditions in its
+  `onFail`; a repeat save of a condition's `ends` is about that condition; a Countercharm reroll
+  is about the conditions it rerolls against. `savingThrow()` takes them as `about`.
+- **A rider on a kill.** A `damage` step may have `onZero` (steps run on its target when this
+  damage took it from above 0 Hit Points to 0) and `onKill` (when it was alive and this damage
+  killed it, by the engine's rules: a monster at 0, a character by massive damage or death saves).
+  Damage steps that land together share them; a successful save's half damage counts (the branch
+  runs at full, not halved). Two steps that only make sense there (the linter keeps them under these
+  branches): `kill: true` (it dies outright, a character at 0 Hit Points too: Disintegrate) and
+  `remains: 'frozen-statue' | 'dust'` (what is left of the body, `creature.remains`, event
+  `remains`; players see it on a creature they know of, in the seen record and the event). Cone of
+  Cold's statue and Disintegrate's dust. The DM's `setHp` raising a dead creature clears `remains`.
+  Who can revive dust (True Resurrection, Wish) is not enforced: the engine has no revival step.
+  `remains` is a new optional field on a creature; old saves lack it and need no migration, so the
+  state version stays 17.
+- **Terrain and obscuring on an area** (`terrain.js`). A spell may say
+  `terrain: { difficult?: true, obscured?: 'heavy' | 'light', lasts? }`: while its lasting effect
+  runs, its area (laid out as for its steps, one shape that stays where it was laid out: not an
+  Emanation, not `count` or `choose`) is Difficult Terrain and/or Heavily or Lightly Obscured. It is
+  `fx.terrain` on the effect: `{ area, hexes, origin, difficult?, obscured? }`, with the height of a
+  cylinder, cube or sphere judged from where it went off, as a zone's is. An instant spell says how
+  long with `lasts: 'nextTurnEnd'` and gets an effect of its own that ends at the end of the caster's
+  next turn (Ice Storm's hail; a part `{ target: caster, ends: { on: 'turnEnd', of: 'source' } }`
+  that holds nothing). **Movement:** a walking step onto such ground costs double (`moveOptions`;
+  Difficult Terrain does not stack with a crowd or a step up); a flyer is not on the ground.
+  **Sight:** by the SRD, a creature trying to see something in a Heavily Obscured space is Blinded
+  for it: `sees()` says `{ see: 'no', why: 'obscured' }` when every part of the target is in one, and
+  'dim' (Lightly Obscured) for a light one, whatever the light. Blindsight sees in it; Truesight
+  does not. Only the target's space counts (the SRD's wording), so a creature in the fog sees out.
+  That feeds everything sight feeds: attack rolls (Unseen Attackers and Targets), Hide (a creature
+  in the fog may Hide), Opportunity Attacks, a teleport's "a space you can see", and, under the
+  `light` sight rule, which creatures players are sent (the vision cache is keyed on the effects that
+  obscure). Under the `los` rule players' view of creatures is line of sight only, as it is for
+  darkness. What a player is shown of the map tiles in fog is unchanged (the client is not sent
+  `fx.terrain` and has nothing to draw it with yet). Ice Storm, Grease, Sleet Storm, Fog Cloud, Web,
+  Entangle.
+- **`endConcentration` step.** `{ endConcentration: true }`: the creature it works on loses
+  Concentration on whatever it holds (Sleet Storm's failed save).
+- **Ending on damage, and "fighting it".** An `ends: { on: 'damaged' }` may say `by: 'source'`:
+  only damage from the effect's source or a creature on its side ends it ("until you or your allies
+  damage it": Charm Person, Charm Monster). Damage from no creature (a trap, the DM's `harm`) does
+  not. `ends: { on: 'save', save, at: 'damaged' }` repeats the save whenever the creature takes
+  damage, the part ending on a success ("ending the spell on itself": the Dominate spells); the save
+  event says `against`. A save step may say `advantageIf: [tags]`, Advantage when every tag holds,
+  with a new tag `target.fought`: a fight is on, the target is in it, and it is hostile to the
+  source. That is how the engine reads the SRD's undefined "if you or your allies are fighting it";
+  a DM who reads it otherwise overrides by hand. Not built: a creature's attitude (Friendly), the
+  Dominate spells' commands, and their longer Concentration from a higher slot.
 
 ### A class
 

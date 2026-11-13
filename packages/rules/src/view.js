@@ -44,6 +44,7 @@ function seenRecord(e) {
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
     ...(e.form ? { form: e.form.block } : {}),                                       // the shape it has taken is plain to see (Wild Shape)
+    ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
   };
 }
 
@@ -305,7 +306,7 @@ const pick = (ev, keys) => {
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
-  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid']);
+  'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid', 'remains']);
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
