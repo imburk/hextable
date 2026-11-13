@@ -642,7 +642,10 @@ function lintGrants(g, cls, say) {
     const au = g.aura;
     if (!au || typeof au !== 'object' || !Object.keys(au).every((k) => ['range', 'modifiers', 'immune'].includes(k))) say('aura is { range, modifiers?, immune? }');
     else {
-      if (!(isInt(au.range) && au.range > 0 && au.range % 5 === 0)) say('aura.range is feet, a multiple of 5');
+      // A range may grow with the class (`{ byLevel }`: Aura Expansion makes the Paladin's auras 30 feet at 18).
+      const feet = (n) => isInt(n) && n > 0 && n % 5 === 0;
+      if (amountish(au.range)) { lintAmount(au.range, cls, say, 'aura.range'); if (au.range.byLevel === undefined || !Object.values(au.range.byLevel).every(feet)) say('aura.range grows by { byLevel } in feet, multiples of 5'); }
+      else if (!feet(au.range)) say('aura.range is feet, a multiple of 5');
       if (au.modifiers !== undefined) { if (!Array.isArray(au.modifiers) || !au.modifiers.length) say('aura.modifiers is a list'); else for (const m of bakeValues(au.modifiers, cls, say)) lintModifier(m, say); }
       if (au.immune !== undefined && !(allOf(CONDITIONS)(au.immune) && au.immune.length)) say('aura.immune lists conditions');
       if (!au.modifiers && !au.immune) say('an aura gives modifiers or immunities');
@@ -787,10 +790,17 @@ function lintFeature(f, cls, say, ids) {
   }
   // A feature that only adds steps to another's (`with`: Sear Undead in Turn Undead) grants nothing of its own.
   if (f.grants?.freeCast && !f.uses) sub('a freeCast needs uses');
-  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id)) sub('marked auto but grants nothing');
+  // A feature whose whole effect is an aura's range growing at its level (Aura Expansion) grants nothing itself.
+  if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id) && !byLevelAt(cls).has(f.level)) sub('marked auto but grants nothing');
   // A manual feature may still have its cost enforced: an action whose only steps are manual.
   const costOnly = (g) => Object.keys(g).length === 1 && g.action?.effects?.every((st) => 'manual' in st);
   if (f.tier === 'manual' && f.grants && !costOnly(f.grants)) sub('marked manual but grants something');
+}
+// The class levels at which an aura's range grows (`{ byLevel }`): a feature there may be that change (Aura Expansion).
+function byLevelAt(cls) {
+  const out = new Set();
+  for (const f of [...(cls.features ?? []), ...(cls.subclass?.features ?? [])]) for (const l of Object.keys(f.grants?.aura?.range?.byLevel ?? {})) out.add(+l);
+  return out;
 }
 // The features a class's steps name in `with` (a step kept only for a character that has that feature).
 function withRefs(cls) {

@@ -990,6 +990,10 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   - Careful Spell protects other creatures, never the caster. Malformed `metamagic` is a refusal. A
     feature that casts (`freeCast`, Divine Intervention) is refused through `feature` and keeps its use.
     `shortRest` refuses a creature named twice in `restore`.
+  - An aura's `range` may be `{ byLevel }` (feet): the Paladin's three auras are 10 feet, 30 from level
+    18, so Aura Expansion is `auto` and grants nothing itself (the linter allows that for a feature at
+    a level where an aura's range grows). Range is measured from the edge of the holder's space, as an
+    Emanation extends from a creature (a Large paladin reaches further from its origin hex).
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

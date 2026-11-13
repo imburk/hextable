@@ -7,6 +7,7 @@ import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
 import { describeStep, mark } from "../src/history.js";
+import { aurasOn } from "../src/modifiers.js";
 import { diff, snapshot } from "../src/patch.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, KIM = { role: "player", userId: "kim" };
@@ -173,4 +174,31 @@ test("Subtle Spell with a costly Material component can still be Counterspelled;
   };
   assert.equal(tryCast("chromatic-orb", { slot: 1, choice: "fire" }), true, "the diamond is still there to see");
   assert.equal(tryCast("fire-bolt", {}), false, "nothing to see");
+});
+
+// L4 and what the review did not cover: auras. Aura Expansion: "Your Aura of Protection is now a
+// 30-foot Emanation"; Courage and Devotion work "while in your Aura of Protection". An Emanation
+// "extends in straight lines from a creature" (Rules Glossary): from the edge of its space, so a
+// Large paladin's aura reaches 10 feet from any hex it fills.
+test("paladin auras: 30 feet from level 18 (Aura Expansion), measured from a Large holder's edge", () => {
+  const range = (level, id) => derive(paladin(level)).record.feats.find((f) => f.id === id)?.aura.range;
+  assert.deepEqual([6, 17, 18].map((l) => range(l, "aura-of-protection")), [10, 10, 30]);
+  assert.deepEqual([10, 18].map((l) => range(l, "aura-of-courage")), [10, 30]);
+  assert.deepEqual([7, 18].map((l) => range(l, "aura-of-devotion")), [10, 30]);
+  assert.equal(derive(paladin(18)).record.feats.find((f) => f.id === "aura-expansion").tier, "auto");
+  const inAura = (level, size, at) => {
+    const s = field(paladin(level));
+    s.entities.hero.size = size;
+    ok(apply(s, { type: "place", actor: "rogue", to: at }, DM));
+    return aurasOn(s, s.entities.rogue).some((a) => a.name === "Aura of Protection");
+  };
+  assert.equal(inAura(17, "medium", { q: -6, r: 0 }), false);
+  assert.equal(inAura(18, "medium", { q: -6, r: 0 }), true, "30 feet at 18");
+  assert.equal(inAura(18, "medium", { q: -7, r: 0 }), false);
+  // A Large creature fills four hexes; 10 feet from the far edge of them is in reach.
+  const s = field(paladin(6)), big = s.entities.hero;
+  const far = [{ q: 3, r: 0 }, { q: 0, r: 3 }, { q: -3, r: 0 }, { q: 0, r: -3 }, { q: 3, r: -3 }, { q: -3, r: 3 }];
+  const reach = (size) => { big.size = size; return far.filter((h) => { ok(apply(s, { type: "place", actor: "rogue", to: h }, DM)); return aurasOn(s, s.entities.rogue).length > 0; }).length; };
+  assert.equal(reach("medium"), 0, "15 feet from a Medium paladin is out");
+  assert.ok(reach("large") > 0, "but 10 feet from the edge of a Large one's space is in");
 });
