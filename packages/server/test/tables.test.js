@@ -1178,6 +1178,10 @@ test("a hosted table rolls from a key the server made, which no message to a pla
   const all = JSON.stringify(player.raw);
   assert.ok(!all.includes(key) && !all.includes('"rng"'), "no player message holds the key or the counter");
   assert.ok(JSON.stringify(dm.raw).includes(key), "the DM's view has it");
+  // A server left to itself (as index.js makes it) keys every table it hosts, each differently.
+  const plain = createTables(), codes = [seated(plain).code, seated(plain).code];
+  const keys = codes.map((c) => plain.get(c).state.rng);
+  assert.ok(keys.every((r) => /^[0-9a-f]{64}$/.test(r.key) && r.n === 0) && keys[0].key !== keys[1].key);
 });
 
 test("a saved table with a 32-bit seed is given a key when loaded, and its undo history is dropped", () => {

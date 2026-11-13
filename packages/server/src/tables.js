@@ -38,11 +38,15 @@ export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 export const MAX_SAYS_PER_MINUTE = 30;
 const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed = () => randomInt(1e9), key = () => randomBytes(32).toString("hex"), now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
+  // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
+  // rolls (an integer rng, as before version 16) unless they also give a key.
+  key ??= seed ? () => null : () => randomBytes(32).toString("hex");
+  seed ??= () => randomInt(1e9);
   // code -> { code, state, members: [{ id, token, name, role, approved }] }
   const tables = new Map();
   // Dice from a key the server made (docs/specs/hidden-information.md, section 7). `key` returning
-  // null keeps the game's integer seed, for tests that want the dice a seed gives.
+  // null keeps the game's integer seed.
   const rekey = (state) => {
     if (!state || !Number.isInteger(state.rng)) return false;
     const k = key();
