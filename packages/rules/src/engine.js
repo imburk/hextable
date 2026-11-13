@@ -2176,6 +2176,8 @@ const handlers = {
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.
     if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
+    // A feature that casts a spell (Divine Intervention) is used by casting: `cast` with `via`.
+    (!f.freeCast || f.action) || fail(`${f.name} casts a spell: cast the spell through it (cast with via "${f.id}").`);
     const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);

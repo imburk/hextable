@@ -109,3 +109,17 @@ test("a foe in a Wild Shape form is only the Beast to players: views, patches, e
   assert.equal(view(s, KIM).entities.hero.name, "Ven");
   assert.equal(view(s, KIM).entities.hero.form.block, "wolf");
 });
+
+const cleric = (level) => ({ name: "San", class: "cleric", level, subclass: "life", abilities: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+  skills: ["insight", "medicine"], choices: { "divine-order": "protector", "blessed-strikes": "divine-strike" }, armour: "chain-mail", shield: true,
+  weapons: ["warhammer"], spells: ["sacred-flame"] });
+
+// M3. Divine Intervention casts a spell; the `feature` action cannot, so it is refused and spends nothing.
+test("Divine Intervention through `feature` is refused and keeps its use; `cast` with `via` casts", () => {
+  const s = field(cleric(10)), snap = JSON.stringify(s);
+  no(apply(s, { type: "feature", actor: "hero", feature: "divine-intervention" }, DM), /cast/i);
+  assert.equal(JSON.stringify(s), snap);
+  assert.equal(s.entities.hero.uses["divine-intervention"], 1);
+  ok(apply(s, { type: "cast", actor: "hero", spell: "healing-word", target: "hero", via: "divine-intervention" }, DM));
+  assert.equal(s.entities.hero.uses["divine-intervention"], 0);
+});
