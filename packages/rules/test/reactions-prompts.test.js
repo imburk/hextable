@@ -419,7 +419,7 @@ test("migration to version 15: a waiting reaction is kept whole or dropped", () 
   good.version = 14;
   migrate(good);
   assert.equal(good.version, VERSION);
-  assert.equal(VERSION, 15);
+  assert.ok(VERSION >= 15);                   // 16 since the keyed dice (#136)
   assert.deepEqual(good.pending, s.pending);
   ok(react(good, { take: "shield" }));
   const bad = structuredClone(s);

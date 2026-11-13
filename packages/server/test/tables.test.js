@@ -674,7 +674,9 @@ test("undo: a hidden monster's spawn, taken back, reaches no player in any form"
   dm.say({ t: "undo" });
   assert.equal(id in state.entities, false);
   const sent = player.raw.slice(n);
-  assert.equal(sent.length, 3);
+  // Nothing of the player's changed, so they are sent nothing at all (#136: an empty whole view
+  // for each step used to go out, and said that the DM was doing something).
+  assert.equal(sent.length, 0);
   for (const m of sent) {
     const text = JSON.stringify(m);
     assert.equal(text.includes(id) || text.includes("Greyjaw"), false, `leaked: ${text}`);
@@ -1094,4 +1096,126 @@ test("a reaction question goes to the player asked and to the DM; other players 
   assert.ok(dm.receiver.state.pending, "undoing the answer puts the question back");
   const told = kim.last("update").events[0];
   assert.ok(told && told.type === "undone" && !/Rogue|rogue/.test(told.label) && !told.label.includes(st().entities.rogue.name), told?.label);
+});
+
+// Security review #132, H1 (issue #136): the review's repro, driven as the server drives it.
+test("a player who names a hidden creature in `targets` is told what an id that is nothing gets", () => {
+  const tables = createTables({ seed: () => 12345 });
+  const { dm, player, code } = seated(tables);
+  player.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  dm.say({ t: "act", action: { type: "spawn", monster: "ogre", name: "Grak the Ambusher", at: { q: 10, r: -10 }, hidden: true } });
+  const ogre = dm.last("update").events.find((e) => e.type === "spawned").id;
+  const t = tables.get(code), before = JSON.stringify(t.state), n = player.raw.length;
+  const answers = [ogre, "m99"].map((id) => {
+    player.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "magic-missile", targets: [id] } });
+    return JSON.stringify(player.raw.at(-1));
+  });
+  assert.equal(answers[0], answers[1]);
+  assert.equal(JSON.parse(answers[0]).error, "No such creature.");
+  assert.ok(!answers[0].includes("Grak"));
+  assert.equal(player.raw.length, n + 2);                             // one refusal each, and no update
+  assert.equal(JSON.stringify(t.state), before);
+  assert.equal(t.state.encounter, null);
+});
+
+// Security review #132, M3 (issue #136): what the party cannot know of sends a player nothing at all,
+// not an empty update, and the updates they are sent still arrive in an unbroken sequence.
+test("a player is sent nothing when nothing they may know of changed, and stays in sequence, reconnect included", () => {
+  const tables = createTables({ seed: () => 12345 });
+  const { dm, player, code } = seated(tables);
+  player.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  dm.say({ t: "act", action: { type: "setting", key: "unseenTurns", value: "quiet" } });
+  dm.say({ t: "act", action: { type: "reveal", actor: "m1", hidden: true } });
+  const n = player.raw.length;
+  dm.say({ t: "act", action: { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 3 }, hidden: true } });
+  dm.say({ t: "act", action: { type: "place", actor: "m1", to: { q: 3, r: 0 } } });
+  dm.say({ t: "act", action: { type: "place", actor: "m1", to: { q: 3, r: 1 } } });
+  assert.deepEqual(player.raw.slice(n), []);
+  assert.equal(dm.raw.slice(n).filter((m) => m.t === "update").length >= 3, true);
+  // The next thing the player may see comes as a patch that follows on from the last one: no
+  // gap, so no request for the whole state.
+  dm.say({ t: "act", action: { type: "reveal", actor: "m1" } });
+  const u = player.raw.at(-1);
+  assert.equal(u.t, "update");
+  assert.ok(u.patch, "a patch, not a full state");
+  assert.ok(player.last("update").state.entities.m1, "the receiver used it");
+  const ups = player.raw.filter((m) => m.t === "update");
+  assert.ok(ups.slice(1).every((m, i) => m.seq === ups[0].seq + i + 1), "numbered without gaps");
+  assert.equal(ups.filter((m) => m.state).length, 1, "no request for the whole state was needed");
+  // A second connection for the same player (a reconnect) starts from a full state and is
+  // numbered on its own; hidden activity sends it nothing either.
+  const again = client(tables);
+  again.say({ t: "resume", code, token: player.last("welcome").token });
+  const m = again.raw.length;
+  dm.say({ t: "act", action: { type: "place", actor: "m2", to: { q: 2, r: 0 } } });
+  dm.say({ t: "act", action: { type: "reveal", actor: "m2", hidden: true } });
+  const k = again.raw.length;
+  dm.say({ t: "act", action: { type: "place", actor: "m2", to: { q: 2, r: 1 } } });
+  assert.deepEqual(again.raw.slice(k), []);
+  dm.say({ t: "act", action: { type: "reveal", actor: "m2" } });
+  const ups2 = again.raw.filter((x) => x.t === "update");
+  assert.ok(ups2[0].state && ups2.slice(1).every((x, i) => x.patch && x.seq === ups2[0].seq + i + 1));
+  assert.ok(m < again.raw.length && again.last("update").state.entities.m2);
+});
+
+// Security review #132, M1 (issue #136; docs/specs/hidden-information.md, section 7).
+test("a hosted table rolls from a key the server made, which no message to a player ever holds", () => {
+  const key = "5a".repeat(32);
+  const tables = createTables({ seed: () => 5, key: () => key });
+  const { dm, player, code } = seated(tables);
+  const t = tables.get(code);
+  assert.deepEqual(t.state.rng, { key, n: 0 });
+  player.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  dm.say({ t: "act", action: { type: "startEncounter", center: { q: 0, r: 0 } } });
+  for (let i = 0; i < 60 && t.state.encounter; i++) {
+    const id = current(t.state), before = dm.count("error");
+    dm.say({ t: "act", action: aiStep(t.state, id) ?? { type: "endTurn", actor: id } });
+    if (dm.count("error") > before) dm.say({ t: "act", action: { type: "endTurn", actor: id } });
+  }
+  player.say({ t: "history", limit: 200 });
+  player.say({ t: "sync" });
+  assert.ok(t.state.rng.n > 10, "the dice were rolled from the key");
+  const all = JSON.stringify(player.raw);
+  assert.ok(!all.includes(key) && !all.includes('"rng"'), "no player message holds the key or the counter");
+  assert.ok(JSON.stringify(dm.raw).includes(key), "the DM's view has it");
+  // A server left to itself (as index.js makes it) keys every table it hosts, each differently.
+  const plain = createTables(), codes = [seated(plain).code, seated(plain).code];
+  const keys = codes.map((c) => plain.get(c).state.rng);
+  assert.ok(keys.every((r) => /^[0-9a-f]{64}$/.test(r.key) && r.n === 0) && keys[0].key !== keys[1].key);
+});
+
+test("a saved table with a 32-bit seed is given a key when loaded, and its undo history is dropped", () => {
+  const d = disk();
+  const first = d.open({ key: () => null });                  // as a table saved before version 16
+  const { dm, code } = seated(first);
+  dm.say({ t: "act", action: { type: "chronicle", title: "Something" } });
+  const old = first.get(code).state;
+  assert.equal(Number.isInteger(old.rng), true);
+  d.flush(first, code);
+  const saved = JSON.parse(d.tablesOnDisk.get(code));
+  saved.state.version = 15;
+  d.tablesOnDisk.set(code, JSON.stringify(saved));
+  const second = d.open({ key: () => "c3".repeat(32) });
+  const t = second.get(code);
+  assert.equal(t.state.version, VERSION);
+  assert.deepEqual(t.state.rng, { key: "c3".repeat(32), n: 0 });
+  const dm2 = sitDM(second, code, dm.last("welcome").token);
+  assert.deepEqual(dm2.last("undoable").undo, []);
+  dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin" } });
+  assert.ok(t.state.rng.n > 0 || t.state.encounter, "it plays on, from the key");
+});
+
+// Security review #132, L6 (issue #136): an action that throws part way leaves the game as it was.
+test("an action that throws part way through leaves the table's game exactly as it was", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, code } = seated(tables);
+  const t = tables.get(code);
+  const before = JSON.stringify(t.state);
+  // advanceTime moves the clock, then the record is written; make writing it fail.
+  t.state.timeline.push = () => { throw new TypeError("disk on fire"); };
+  dm.say({ t: "act", action: { type: "advanceTime", minutes: 60 } });
+  assert.equal(dm.last("error").error, "The table couldn't make sense of that action.");
+  delete t.state.timeline.push;
+  assert.equal(t.state.clock, JSON.parse(before).clock, "the clock is put back");
+  assert.ok(JSON.stringify(t.state) === before, "and so is everything else");
 });

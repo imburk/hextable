@@ -10,7 +10,7 @@ import { migrateMap } from './map.js';
 import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 import { validPending } from './reactions.js';
 
-export const VERSION = 15;
+export const VERSION = 16;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -60,6 +60,9 @@ export function migrate(state) {
   // whole is dropped, and the table simply is not waiting: the action it held never happened.
   if (state.pending !== undefined && !validPending(state.pending)) delete state.pending;
   if (state.asked !== undefined && !(Number.isInteger(state.asked) && state.asked >= 0)) delete state.asked;
+  // Version 16: `rng` may be a keyed generator, { key, n } (rng.js). An integer seed is kept as it
+  // is and rolls as it always did, so the game replays exactly; the rules cannot make a key, so the
+  // table server gives a table a new one when it loads it (packages/server/src/tables.js).
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

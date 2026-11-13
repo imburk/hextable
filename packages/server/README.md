@@ -140,8 +140,12 @@ Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 
 An update's `state` is the receiver's view of the game and never includes the
 timeline. The first update a connection gets carries the whole view; later
-ones carry a `patch` with only what changed, numbered by `seq`. A client that
-sees a gap in `seq` sends `sync` and is sent the whole view again. The patch
+ones carry a `patch` with only what changed, numbered by `seq`. `seq` counts the
+updates sent on that connection (1, 2, 3, ...), not changes to the table: a
+connection for which nothing it may see changed (no event for it and an empty
+patch, such as a player while a hidden creature acts) is sent nothing at all, and
+no number is used up. A client that sees a gap in `seq` sends `sync` and is sent
+the whole view again. The patch
 format is in `packages/rules/src/patch.js`. Past entries come through `history`, redacted for players in the
 same way as live events. On joining or rejoining, each client is sent its last
 50 visible entries with `recent: true`.
@@ -274,7 +278,8 @@ whole game exactly, the dice seed, the clock and the timeline entries included.
   built through the same view as every other update. The DM's events are
   `[{type:"undone"|"redone", label}]`. Players get the same event only if they could
   see the step: every creature it names is one they know of, and at least one of its
-  events reached them. Otherwise their update has no events.
+  events reached them. Otherwise their update has no events, and a player whose
+  view the step did not change is sent nothing.
 - After every recorded action, undo and redo, the DM's connections get
   `{t:"undoable", undo:[labels], redo:[labels]}`, newest first. Players never do.
 - Redo does not re-roll: the seed comes back with everything else, so the same
@@ -315,6 +320,11 @@ WebSockets, and gives it a disk that survives restarts for `DATA_DIR`. The
   creatures only as name, position and a health word. Creatures the DM marks
   hidden are not sent at all until the party finds them. Players still see
   the whole map and every creature that is not hidden. See `docs/specs/hidden-information.md`.
+- The dice of a hosted table come from a 256-bit key the server makes with
+  `randomBytes` (ChaCha20, `rules/src/rng.js`), so they cannot be worked out from
+  the rolls players see. A table saved with the older 32-bit seed is given a key
+  once, when the server loads it, and its undo history is dropped. The DM's view,
+  the export and the undo file hold the key; nothing sent to a player does.
 - Anyone with a table code can ask to join, and the DM decides. There are no
   accounts or passwords.
 - The DM's browser runs the monster AI, so monsters wait while the DM is away.
