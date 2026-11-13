@@ -83,7 +83,7 @@ export class ThreeRenderer {
   constructor(canvas, labels, theme) {
     this.canvas = canvas; this.labels = labels; this.theme = theme;
     this.three = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.three.autoClear = true;
+    this.three.autoClear = true; this.three.outputColorSpace = THREE.LinearSRGBColorSpace;      // colours are written as they are, as render.js does (no sRGB conversion of the clear colour)
     this.scene = new THREE.Scene(); this.scene.matrixWorldAutoUpdate = false;
     this.camera = new THREE.PerspectiveCamera((0.75 * 180) / Math.PI, 1, 0.3, 200);       // the same lens as render.js: 0.75 rad, near 0.3, far 200
     const V3 = (...a) => ({ value: new THREE.Vector3(...a) });
