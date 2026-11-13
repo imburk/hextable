@@ -147,3 +147,15 @@ test("Radiant Strikes through apply(): a melee weapon or Unarmed Strike hit adds
   assert.equal(strike(11, "longsword", 99).length, 0, "a miss");
   assert.equal(strike(10, "longsword", -30).filter((x) => x.dtype === "radiant").length, 0, "before level 11");
 });
+
+// L1. `restore` naming one creature twice would spend one use twice.
+test("a Short Rest's restore names each creature once; a duplicate is refused and changes nothing", () => {
+  const s = field(sorc(10));
+  s.entities.hero.uses["font-of-magic"] = 0;
+  const snap = JSON.stringify(s);
+  no(apply(s, { type: "shortRest", restore: ["hero", "hero"] }, DM), /once/);
+  assert.equal(JSON.stringify(s), snap);
+  ok(apply(s, { type: "shortRest", restore: ["hero"] }, DM));
+  assert.equal(s.entities.hero.uses["sorcerous-restoration"], 0);
+  assert.equal(s.entities.hero.uses["font-of-magic"], 5);
+});

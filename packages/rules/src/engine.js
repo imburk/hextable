@@ -2805,6 +2805,7 @@ const handlers = {
     // `restore: { of, max }`), regaining what was spent up to its most, for one of its uses.
     const restore = a.restore ?? [];
     Array.isArray(restore) || fail('Name who restores points.');
+    new Set(restore).size === restore.length || fail('Name each creature that restores points once.');
     const refills = restore.map((id) => {
       const e = ent(s, id), f = (e.feats ?? []).find((x) => x.restore && (e.uses[x.id] ?? 0) > 0);
       who.includes(e) || fail(`${e.name} isn't resting.`);
