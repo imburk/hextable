@@ -22,6 +22,7 @@ import { initHandouts } from './handouts.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
 import { createDice, MAX_DICE } from './dice.js';
+import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
 
 const $ = (id) => document.getElementById(id);
@@ -44,6 +45,31 @@ function applyTheme() {
 }
 applyTheme();
 const R = new Renderer($('gl'), $('labels'), THEMES[themeId]);
+
+// The timeline (docs/specs/renderer.md, decisions 2 and 3): the events of an update play as beats, one after another. The log
+// line and the floating text of an event come on its beat, the picture is brought to what the beats have shown, and in `wait`
+// the player's controls skip instead of acting until the beats are done. The pace is this device's own preference
+// (`hextable.pace`: 'wait', 'flow' or 'instant'; unset follows the table, then reduced motion), read only through pace().
+// The table setting `pace` (state.settings.pace) is read too once the engine has it; a player may only make it quicker.
+const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+const pace = () => paceFor({ table: S?.settings?.pace, mine: prefs.get('hextable.pace'), reduced: reducedMotion() });
+const AI_PAUSE = 350;       // ms after the picture is still before a monster's next step, in `wait`
+let tookBack = false, floatRun = { id: 0, n: 0 };
+const played = [];          // the last beats played on this device with their times, for tests: window.hextable.played
+const TL = createTimeline({
+  clock: () => performance.now() / 1000,
+  pace: pace(),
+  onBeat: (ev, ctx) => beat(ev, ctx),
+  onShow: (state, events) => { if (S) R.setState(state, events); },
+  onDone: (u) => { if (S && u.meta.first && selId) R.focus(selId, true); },
+  onIdle: () => idled(),
+});
+setInterval(() => TL.tick(), 33);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) TL.skip(); });      // a tab that was hidden shows everything at once on its return
+// A tap on a control or the map, while beats play in `wait`, skips them instead of acting.
+const skipping = () => TL.pace === 'wait' && TL.busy() && TL.skip();
+const syncPlaying = () => { const on = TL.pace === 'wait' && TL.busy(); $('pace-wait').hidden = !on; document.body.classList.toggle('playing', on); };
+$('pace-wait').onclick = () => TL.skip();
 
 const isDM = () => T?.you?.role === 'dm';
 const mine = (e) => !!e && (isDM() || e.owner === T.you.userId);
@@ -94,6 +120,7 @@ function preview(e, a) {
 }
 let flick = null, closeTray = null, armed = null;
 function act(action) {
+  if (skipping()) return;
   if (!toThrow(action)) return T.send(action);
   closeTray?.();
   const e = S.entities[action.actor], p = preview(e, action);
@@ -154,7 +181,7 @@ function received(state, events, fresh) {
   flick = null;
   if (!groups.length && !waiting) return onUpdate(state, events, fresh);
   waiting++;
-  chain = chain.then(() => DICE.play(groups)).then(() => {
+  chain = chain.then(() => (groups.length ? TL.whenIdle().then(() => DICE.play(groups)) : null)).then(() => {      // the dice of an update are thrown once the beats before it are done
     waiting--;
     try { onUpdate(state, events, fresh); } catch (e) { setTimeout(() => { throw e; }); }
   });
@@ -246,59 +273,78 @@ function describe(ev) {
     default: return HO.describe(ev) ?? SC.describe(ev);       // handouts and private notes; scenes
   }
 }
-function floaters(events) {
-  let i = 0;
-  const f = (id, text, cls) => R.floater(id, text, cls, i++ * 0.28);
-  for (const ev of events) {
-    if (ev.type === 'attack') { if (!ev.hit) f(ev.target, 'Miss', 'miss'); else if (ev.crit) f(ev.target, 'Critical!', 'crit'); }
-    else if (ev.type === 'damage') f(ev.target, ev.amount ? `−${ev.amount}` : 'Immune', 'dmg');
-    else if (ev.type === 'heal') f(ev.target, `+${ev.amount}`, 'heal');
-    else if (ev.type === 'save' && ev.success) f(ev.id, 'Saved', 'miss');
-    else if (ev.type === 'note') f(ev.id, ev.text, 'crit');
-    else if (ev.type === 'std') f(ev.id, ev.action, '');
-    else if (ev.type === 'cond') f(ev.id, conditionName(ev.cond), '');
-    else if (ev.type === 'down') f(ev.id, 'Down!', 'dmg');
-    else if (ev.type === 'revealed') f(ev.id, 'Spotted!', 'crit');
-    else if (ev.type === 'cast') f(ev.actor, ev.name, '');
-    else if (ev.type === 'deathSave') f(ev.id, `Death Save ${ev.roll}`, ev.roll >= 10 ? 'heal' : 'dmg');
+// The floating text an event throws, as [id, text, class], or null.
+function floatOf(ev) {
+  if (ev.type === 'attack') return !ev.hit ? [ev.target, 'Miss', 'miss'] : ev.crit ? [ev.target, 'Critical!', 'crit'] : null;
+  if (ev.type === 'damage') return [ev.target, ev.amount ? `−${ev.amount}` : 'Immune', 'dmg'];
+  if (ev.type === 'heal') return [ev.target, `+${ev.amount}`, 'heal'];
+  if (ev.type === 'save' && ev.success) return [ev.id, 'Saved', 'miss'];
+  if (ev.type === 'note') return [ev.id, ev.text, 'crit'];
+  if (ev.type === 'std') return [ev.id, ev.action, ''];
+  if (ev.type === 'cond') return [ev.id, conditionName(ev.cond), ''];
+  if (ev.type === 'down') return [ev.id, 'Down!', 'dmg'];
+  if (ev.type === 'revealed') return [ev.id, 'Spotted!', 'crit'];
+  if (ev.type === 'cast') return [ev.actor, ev.name, ''];
+  if (ev.type === 'deathSave') return [ev.id, `Death Save ${ev.roll}`, ev.roll >= 10 ? 'heal' : 'dmg'];
+  return null;
+}
+// An event plays: its log line, its floating text, and where the camera goes. With pace `instant` the floaters are
+// staggered by 0.28 s as they always were; on a beat they come when the beat does.
+function beat(ev, ctx) {
+  if (!S) return;
+  played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
+  const d = describe(ev); if (d) log.push(ev.dice?.length ? [d[0], d[1], ev.dice] : d);
+  if (log.length > 300) log.splice(0, log.length - 300);
+  if (!$('log').hidden) renderLog();
+  const f = floatOf(ev);
+  if (f) {
+    if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
+    R.floater(f[0], f[1], f[2], ctx.instant ? floatRun.n++ * 0.28 : 0);
   }
+  if (ev.type === 'turn' && ev.id) { if (mine(S.entities[ev.id]) && S.entities[ev.id].kind === 'pc') select(ev.id); R.focus(ev.id); }
+  else if (ev.type === 'moved' && ev.id === selId) R.focus(selId);
+  else if (ev.type === 'map') R.focus(selId ?? Object.values(S.entities).find((e) => e.side === 'party')?.id, true);     // a new place: look at the party
 }
 
 // ---------- state updates ----------
 function onUpdate(state, events, fresh) {
   const first = !S || fresh;
   S = state;
+  TL.setPace(pace());
   if (first) {
     log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
   }
   QE.events(events);
   SC.events(events);
-  for (const ev of events) {
-    const d = describe(ev); if (d) log.push(ev.dice?.length ? [d[0], d[1], ev.dice] : d);
-    if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
-  }
-  if (log.length > 300) log.splice(0, log.length - 300);
-  R.setState(S, events);
-  floaters(events);
-  const turn = events.findLast?.((e) => e.type === 'turn');
-  if (turn?.id) { if (mine(S.entities[turn.id]) && S.entities[turn.id].kind === 'pc') select(turn.id); R.focus(turn.id); }
+  for (const ev of events) if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
   if (!S.entities[selId]) {
     const own = Object.values(S.entities).find((e) => e.kind === 'pc' && (isDM() ? true : e.owner === T.you.userId));
     selId = own?.id ?? null;
   }
-  if (first && selId) R.focus(selId, true);
-  else if (events.some((e) => e.type === 'moved' && e.id === selId)) R.focus(selId);
-  if (events.some((e) => e.type === 'map')) R.focus(selId ?? Object.values(S.entities).find((e) => e.side === 'party')?.id, true);     // a new place: look at the party
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
   if (mode.kind === 'attack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
-  refresh();
   clearTimeout(aiTimer);
   aiSent = null;
+  tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
+  // Undo and redo take the table back, and a question waiting for an answer must not sit behind queued beats: both show at once.
+  const urgent = !!(S.prompt || S.pending);
+  TL.push(S, events, { first, fresh: first, flush: tookBack || urgent, instant: tookBack || urgent });
+  syncPlaying();
+}
+// The beats of everything received have played: the screen is in line with the table.
+function idled() {
+  if (!S || !T) return;
+  played.push({ type: 'idle', t: performance.now() });
+  syncPlaying();
+  refresh();
   const cur = S.entities[current(S)];
-  const tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
-  if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack)
-    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) { aiSent = cur.id; act(a); } }, 800);
+  if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack) {
+    clearTimeout(aiTimer);
+    // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
+    // server never waits. Otherwise as before, 800 ms after the update.
+    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) { aiSent = cur.id; act(a); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
+  }
 }
 
 // The nearest other living party member: whom Follow picks if nobody is tapped.
@@ -312,7 +358,7 @@ function button(label, sub, cls, why, onClick) {
   const b = document.createElement('button');
   b.type = 'button'; b.className = `${cls} ${why ? 'off' : ''}`;
   b.innerHTML = `<span>${esc(label)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}`;
-  b.onclick = () => (why ? toast(why) : onClick());
+  b.onclick = () => { if (skipping()) return; if (why) toast(why); else onClick(); };
   return b;
 }
 
@@ -684,7 +730,7 @@ $('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick 
 
 // ---------- taps ----------
 R.onTap = ({ hex, id }) => {
-  if (!S || !T) return;
+  if (!S || !T || skipping()) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
@@ -807,6 +853,8 @@ $('dm-dice-monsters').onchange = (ev) => prefs.set('hextable.diceMonsters', ev.t
 $('dice-show').value = DICE.show;
 $('dice-show').onchange = (ev) => { DICE.show = ev.target.value; };
 $('dice-auto-mine').checked = autoMine();
+$('pace-pick').value = prefs.get('hextable.pace') ?? '';
+$('pace-pick').onchange = (ev) => { prefs.set('hextable.pace', ev.target.value || null); TL.setPace(pace()); syncPlaying(); };
 $('dice-auto-mine').onchange = (ev) => prefs.set('hextable.diceAutoMine', ev.target.checked);
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
@@ -827,7 +875,7 @@ function leaveTable(btn) {
     return;
   }
   clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
-  T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
+  TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   for (const id of ['dm', 'sheet', 'log', 'card', 'handouts', 'viewer']) $(id).hidden = true;
   $('btn-dm').hidden = $('btn-leave').hidden = $('btn-undo').hidden = true;
   lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
@@ -845,6 +893,7 @@ addEventListener('keydown', (ev) => {
   if (ev.target.tagName === 'INPUT') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); return redo(); }
+  if (ev.key === 'Escape' && skipping()) return;
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (ev.key === 'q') R.rotate(-Math.PI / 12); if (ev.key === 'e') R.rotate(Math.PI / 12);
 });
@@ -855,12 +904,13 @@ const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, st
 const RP = initReactionPrompt({ act, state: () => S, isDM });
 
 // For the browser console, tests and future automation.
-window.hextable = { R, ED, act, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- joining a table ----------
 // While a host or join request is in flight, the buttons are off so a second tap can't send a second request.
 const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled = on; };
 function start(transport) {
+  TL.skip();                    // what is still playing belongs to the old table
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
   T = transport; S = null;
@@ -872,7 +922,7 @@ function start(transport) {
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     SC.refused(); RP.refused(msg); QE.refused(msg);
-    if (expired) { S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
+    if (expired) { TL.skip(); S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => S && showUndo();
   T.on.history = (msg) => {

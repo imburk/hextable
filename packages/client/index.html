@@ -40,6 +40,7 @@
 </div>
 
 <footer id="dock">
+  <button type="button" id="pace-wait" hidden aria-label="Playing: tap to skip">…</button>
   <div id="party" aria-label="Characters"></div>
   <div id="card" hidden>
     <div id="card-head">
@@ -55,7 +56,7 @@
 <aside id="tracker" hidden aria-label="Combat tracker"></aside>
 <aside id="sheet" class="panel" hidden><button type="button" class="close" data-close="sheet">Close</button><div id="sheet-body"></div></aside>
 <aside id="log" class="panel" hidden><button type="button" class="close" data-close="log">Close</button><h2>Table log</h2>
-  <div class="dice-prefs"><label class="assign">Dice on this device <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label><label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label></div>
+  <div class="dice-prefs"><label class="assign">Dice on this device <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label><label class="assign">Animation on this device <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label><label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label></div>
   <ol id="log-list"></ol>
   <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
 </aside>

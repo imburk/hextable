@@ -237,3 +237,8 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 #sheet-reactions .rx { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 #sheet-reactions .rx label { display: grid; gap: 2px; min-width: 0; } #sheet-reactions .rx small { color: var(--muted); font-size: 12px; }
 #sheet-reactions .rx select { min-height: 44px; flex: 0 1 13em; min-width: 8em; max-width: 55%; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2, #222); color: inherit; font: inherit; }
+
+/* The timeline (docs/specs/renderer.md, decision 3): while beats play in `wait`, a quiet "…" and the controls dimmed. A tap skips. */
+#pace-wait { position: absolute; right: 12px; top: -38px; min-width: 44px; min-height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
+#pace-wait[hidden] { display: none; }
+body.playing #actions, body.playing #btn-end { opacity: 0.5; }

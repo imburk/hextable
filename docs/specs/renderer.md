@@ -630,6 +630,51 @@ can run in parallel after R2. R10 decides the rest.
   - The renderer draws posts at wall joins in rooms mode at today's low wall height.
   - Tests: `packages/client/test/floors.test.js` (picked up by the existing `npm test` glob). It copies the rules
     next to `floors.js` as `./shared` in a temporary folder, as the build does.
+  Not done: a wall that ends or bends inside a hex does not cut it, so a room whose walls turn inside a hex still
+  follows hex edges there; the end of a corridor follows its tiles (fill only runs from a neighbouring piece);
+  cut-away is data and a tested function but is not drawn (walls are still low, full height with cut-away is the
+  follow-up); colour is even per cell, not smooth across a floor; no rim shading between patches; Decision 1's
+  outdoors, caves and picture floors are untouched.
+- **R3 timeline and pace** (built). `packages/client/timeline.js` is pure (no DOM, no WebGL, no imports; the clock is
+  passed in) with tests in `packages/client/test/timeline.test.js`. `planBeats(events, state)` gives each event a start
+  time in seconds from the table in decision 2; `createTimeline` plays the updates it is given one after another
+  (`push`, `tick`, `skip`, `busy`, `whenIdle`, `shown`) and calls `onBeat(ev)`, `onShow(shownState, events)`, `onDone`
+  and `onIdle`. Settled:
+  - Grouping: after an `attack`, the `damage`, `down`, `died`, `cond`, `condEnd`, `tempHp`, `concentration` and `save`
+    that follow it start together as the strike ends (0.6 s melee, 0.8 s when the target is more than a hex away,
+    judged from the positions in the state). After a `cast`, every `save`, `damage`, `heal`, `down`, `died`, `cond`,
+    `condEnd`, `tempHp`, `concentration`, `effectStart`, `effectEnd`, `size` and `speed` that follows starts together. A
+    `moved` is its own beat and keeps its own length when the rest of the update is scaled to 3 s. A failed `save` shows
+    nothing of its own and takes no time. `act` is not a leader: a monster's Multiattack is plain attack beats.
+  - The shown state. The transport changes one state object in place, so the timeline copies hit points, temporary
+    hit points, `dead`, place and conditions of every creature when an update arrives, and shows those copies. A
+    creature's hit points change when its `damage`, `heal` or `deathSave` beat plays (to the `hp` the event carries),
+    `dead` when `died` plays, place when `moved` or `placed` plays, conditions when `cond`, `condEnd` or `stood` plays.
+    Everything else in the state (map, regions, objects, effects) is shown when the update's first beat starts; doors,
+    regions and the arena get their own timing with R4. At rest the shown state is the state itself.
+  - Catch-up: more than 3 s behind plays at double speed; more than 8 s, only the newest update plays and the others are
+    shown at once (their log lines are kept). A hidden tab skips on its return. A fresh state (joining, a reset), an
+    undo or redo, and any update that carries a question for a player (`state.prompt` or `state.pending`) are shown
+    at once and finish what was queued first, so the reaction prompt never sits behind beats (the strike that led to the
+    question is not animated).
+  - In `app.js` the log line, the floating text and the camera move to the beat of their event; the roll of dice is
+    still thrown before the update's beats start (it waits for the queue to be still), which keeps the order dice,
+    then picture. The character card, tracker, sheet and action bar are redrawn when the picture is still, not per
+    beat. In `wait` the dock shows a quiet "…" (a tap on it, on the map or on a control, or Escape, skips and does
+    not act), and the monster AI starts its next step 350 ms after the picture is still; in `flow` and `instant` it
+    keeps its 800 ms. The server never waits.
+  - `pace` is read in one place, `pace()` in `app.js`, from `paceFor({ table, mine, reduced })`: the table's setting
+    (`state.settings.pace`, `wait` if absent), which a player may only make quicker through their own preference
+    `hextable.pace` (the "Animation on this device" choice in the log panel); with no preference, the browser's
+    reduced-motion setting means `instant`. Pace `instant` runs every beat inside `push`, with the floaters staggered by
+    0.28 s as before, which is today's behaviour.
+  - The table setting `pace` (`wait`, `flow`, `instant`; default `wait`) is in `SETTINGS` (PR #157), and `app.js` reads it
+    from `state.settings.pace`; a DM control that sends `{ type: 'setting', key: 'pace', value }` is not built yet.
+  - `npm run smoke` runs every page at pace `instant`; `SMOKE_ONLY=timeline` runs the pacing pass at `wait` (a goblin's
+    hit in order with the "…" until the fall is done; a tap, Escape and a button skip without acting; a DM's monsters
+    act only when the picture is still while a phone follows).
+  Not done: a speed of 1x or 2x chosen by the player (the timeline has `setSpeed`), animations for doors, falls and
+  deaths (R4), and the camera gliding on a `turn` is still `R.focus` as before.
   Not done at that point (finished in the next two notes): a wall that ends or bends inside a hex; the end of a corridor;
   the cut-away. Still not done: colour is even per cell, not smooth across a floor; no rim shading between patches;
   Decision 1's outdoors and picture floors are untouched.
