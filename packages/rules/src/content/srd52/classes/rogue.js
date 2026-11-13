@@ -178,9 +178,12 @@ export const rogue = {
       "id": "uncanny-dodge",
       "name": "Uncanny Dodge",
       "level": 5,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "When an attacker you can see hits you, use your Reaction to halve the attack's damage. Reactions are not prompted yet; the DM applies it."
+      "text": "When an attacker you can see hits you with an attack roll, use your Reaction to halve the attack's damage (round down). Taken by standing instruction.",
+      "grants": {
+        "reaction": { "on": "hit", "seen": true, "cut": "half" }
+      }
     },
     {
       "id": "expertise-6",

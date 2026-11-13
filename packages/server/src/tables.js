@@ -14,7 +14,7 @@ import { createHistory, describeStep, mark, undoable } from "../../rules/src/his
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate } from "../../rules/src/migrate.js";
 import { newGame } from "../../rules/src/scenario.js";
-import { playerView, view, viewEvents, viewHandouts } from "../../rules/src/view.js";
+import { playerView, view, viewEvents, viewHandouts, viewReactions } from "../../rules/src/view.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I/L
 const makeCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
@@ -74,7 +74,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // The timeline is the table's record (capped, see timeline.js) and grows, so it is never part of
   // an update, even the DM's. It is read through the history message instead.
   // The party sees as one, so the players' view is built once per change of the table (its `seq`) and
-  // shared; each player's copy differs only in the handouts shown to them. The costly part inside it,
+  // shared; each player's copy differs only in the handouts shown to them and the standing
+  // instructions of their own creatures' reactions. The costly part inside it,
   // what the party can see, is itself kept until something it depends on moves (rules vision.js).
   const shared = new WeakMap();
   const forPlayers = (t) => {
@@ -85,12 +86,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return out;
   };
   const stateFor = (t, m) => (m.role === "dm" ? { ...view(t.state, { role: m.role, userId: m.id }), timeline: undefined }
-    : { ...forPlayers(t).base, handouts: viewHandouts(t.state, { role: m.role, userId: m.id }) });
-  // What was sent, for the next difference: a player's is the shared one with their handouts.
+    : { ...forPlayers(t).base, handouts: viewHandouts(t.state, { role: m.role, userId: m.id }), reactions: viewReactions(t.state, { role: m.role, userId: m.id }) });
+  // What was sent, for the next difference: a player's is the shared one with their handouts and
+  // their own creatures' standing instructions for reactions.
   const snapFor = (t, m, state) => {
     if (m.role === "dm") return snapshot(state);
     const { snap } = forPlayers(t);
-    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts) } };
+    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions) } };
   };
   const eventsFor = (t, m, events) => viewEvents(events, t.state, { role: m.role, userId: m.id });
 

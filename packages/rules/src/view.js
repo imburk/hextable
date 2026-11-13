@@ -106,7 +106,17 @@ function turnBeforeUnseen(state, ev) {
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...playerView(state), handouts: viewHandouts(state, viewer) };
+  return { ...playerView(state), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer) };
+}
+
+// The standing instructions for reactions (reactions.js) of the creatures this viewer controls,
+// and of nobody else's: { [creature id]: { [reaction id]: when } }. Only what was set is kept;
+// anything absent is the default. Like handouts, the one part of a player's view that is theirs alone.
+export function viewReactions(state, viewer) {
+  const out = {};
+  if (typeof viewer?.userId !== 'string') return out;
+  for (const [id, e] of Object.entries(state.entities)) if (e.owner === viewer.userId && e.reactions) out[id] = structuredClone(e.reactions);
+  return out;
 }
 
 // The scene going on, as players are told of it: its title and picture and who is in it, with
@@ -126,6 +136,7 @@ export function playerView(state) {
     const c = classify(state, id);
     if (c === 'open') {
       entities[id] = structuredClone(e);
+      delete entities[id].reactions;                     // standing instructions are their controller's and the DM's (viewReactions)
       if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
     }
     else if (c === 'seen') entities[id] = seenRecord(e);
@@ -321,8 +332,13 @@ export function viewEvents(events, state, viewer) {
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));
         else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(caster !== null && cls(caster) === 'open' ? ['dc'] : [])]));
         break;
+      case 'reaction':                                 // a creature took a Reaction: who, what, and against whom, as anyone watching would see
+        out.push({ ...pick(ev, ['type', 'id', 'reaction', 'name', 'trigger']),
+          ...(ev.against !== undefined && cls(ev.against) !== 'hidden' ? { against: ev.against } : {}),
+          ...(ev.amount !== undefined && cls(ev.id) === 'open' ? { amount: ev.amount, ...facesFor(ev) } : {}) });
+        break;
       case 'cast':
-        out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name', 'slot']),
+        out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name', 'slot', 'reaction']),
           hexes: hexesOf(ev.hexes),
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
         break;
