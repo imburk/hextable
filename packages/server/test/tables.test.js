@@ -1427,3 +1427,28 @@ test("rewards: until the DM publishes, a player is sent no XP figure, no loot an
   player.say({ t: "history", types: ["conclusion"] });
   assert.ok(!JSON.stringify(player.last("history")).includes(state.entities.m4.name));
 });
+
+test("an action type every object has is refused like any unknown action; the table is unchanged and keeps working", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const state = () => tables.get(code).state;
+  for (const who of [player, dm]) {
+    for (const type of ["toString", "constructor", "valueOf", "__proto__", "hasOwnProperty", "isPrototypeOf", "nonsense"]) {
+      const before = JSON.stringify(state()), updates = dm.count("update"), errors = who.count("error");
+      who.say({ t: "act", action: { type, actor: "rogue" } });
+      assert.equal(who.count("error"), errors + 1, type);
+      assert.match(who.last("error").error, new RegExp(`^Unknown action: ${type}$`));
+      assert.equal(JSON.stringify(state()), before, `${type} changed the table`);
+      assert.equal(dm.count("update"), updates, `${type} was broadcast`);
+    }
+  }
+  // A type that is not a string, and no type, never reach the rules: the table refuses them first.
+  for (const action of [{ type: 5 }, { type: null }, { type: ["move"] }, { type: { toString: 1 } }, { actor: "rogue" }]) {
+    const before = JSON.stringify(state());
+    player.say({ t: "act", action });
+    assert.equal(player.last("error").error, "That isn't an action.");
+    assert.equal(JSON.stringify(state()), before);
+  }
+  dm.say({ t: "act", action: { type: "rest" } });
+  assert.equal(dm.last("update").events[0].type, "rest");
+});
