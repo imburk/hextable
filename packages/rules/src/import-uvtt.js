@@ -6,12 +6,12 @@
 // `line_of_sight` and `objects_line_of_sight` are lists of polylines of {x,y}, `portals` each have
 // position, bounds (two points), rotation, closed, freestanding, and `image` is a base64 PNG or WEBP.
 // A square is 5 feet, so every coordinate is multiplied by 5. Lights are not read.
-import * as H from './hex.js';
+import { HEX, col } from './grid.js';
 import { FT } from './space.js';
 import { MAP_LIMITS, lintMap, newMap } from './map.js';
 
-const S3 = Math.sqrt(3);
-const SIZE = FT / S3;                                   // hex size such that fromWorld matches walls.js `center`
+const G = HEX;                                          // the grid the file is laid on (hexes until task S11)
+const S3 = Math.sqrt(3);                                // for the count of hexes a picture needs
 const ok = (v) => typeof v === 'number' && Number.isFinite(v);
 const pt = (p) => p && typeof p === 'object' && ok(p.x) && ok(p.y);
 const round = (v) => Math.round(v * 1000) / 1000;
@@ -83,14 +83,7 @@ export function importUvtt(json, options = {}) {
   const approx = (widthFt * heightFt) / (FT * FT * S3 / 2);
   if (approx > maxTiles * 1.1) fail(`This map is ${res.map_size.x} by ${res.map_size.y} squares, which needs about ${Math.round(approx)} hexes; the limit is ${maxTiles}.`);
   const tiles = {};
-  const rMin = Math.floor((y0 - pad) / (FT * S3 / 2)) - 1, rMax = Math.ceil((y1 + pad) / (FT * S3 / 2)) + 1;
-  for (let r = rMin; r <= rMax; r++) {
-    const qMin = Math.floor((x0 - pad) / FT - r / 2) - 1, qMax = Math.ceil((x1 + pad) / FT - r / 2) + 1;
-    for (let q = qMin; q <= qMax; q++) {
-      const cx = FT * (q + r / 2), cy = FT * (S3 / 2) * r;
-      if (cx >= x0 - pad && cx <= x1 + pad && cy >= y0 - pad && cy <= y1 + pad) tiles[H.col({ q, r })] = { t: 'stone' };
-    }
-  }
+  for (const h of G.cellsIn(x0 - pad, y0 - pad, x1 + pad, y1 + pad)) tiles[col(h)] = { t: 'stone' };
   if (Object.keys(tiles).length > maxTiles) fail(`This map needs more than ${maxTiles} hexes.`);
 
   // Doors: a portal is a door standing on its own line, in the hex nearest its middle.
@@ -101,8 +94,8 @@ export function importUvtt(json, options = {}) {
     const a = feet(p.bounds[0]), b = feet(p.bounds[1]);
     if (a[0] === b[0] && a[1] === b[1]) { badPortals++; continue; }
     const mid = pt(p.position) ? feet(p.position) : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const at = H.fromWorld(mid[0], mid[1], SIZE);
-    if (!tiles[H.col(at)]) { tiles[H.col(at)] = { t: 'stone' }; added++; }
+    const at = G.cell(mid[0], mid[1]);
+    if (!tiles[col(at)]) { tiles[col(at)] = { t: 'stone' }; added++; }
     if (p.freestanding) freestanding++;
     objects.push({ id: `d${objects.length + 1}`, def: 'door-wooden', level: 'ground', at, seg: { a, b }, state: p.closed === false ? 'open' : 'closed' });
   }

@@ -1,6 +1,6 @@
 // Class features and ability checks (engine.js): secondWind, feature (with Font of Magic and
 // Wild Shape), use (objects), check, search and hide, and watching for hidden creatures.
-import * as H from '../hex.js';
+import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTER_ACTIONS, MONSTERS } from '../content/index.js';
 import { ABILITIES, SKILLS } from '../content/schema.js';
@@ -9,7 +9,7 @@ import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
 import { apart, FT, ground, overlapAt, STEP_MAX } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
-import { barriers, center, distToSegment, objectDef, objectSegment } from '../walls.js';
+import { barriers, distToSegment, objectDef, objectSegment } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { able, actTime, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
@@ -19,10 +19,10 @@ import { checkEnd, objectEffects, resolve } from './resolve.js';
 
 // Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
 function nearObject(s, e, o) {
-  const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[H.col(o.at)]?.h ?? 0);
+  const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[col(o.at)]?.h ?? 0);
   if (!ground(s.map, e.pos) || Math.abs(e.pos.z - z) > STEP_MAX) return false;
-  const seg = objectSegment(o);
-  return seg ? distToSegment(center(e.pos), seg) <= FT + 1e-9 : H.dist(e.pos, o.at) <= 1;     // within 5 ft
+  const seg = objectSegment(o), G = gridOf(s.map);
+  return seg ? distToSegment(G.center(e.pos), seg) <= FT + 1e-9 : G.dist(e.pos, o.at) <= 1;     // within 5 ft
 }
 const hasKey = (e, key) => e.gear.some((g) => String(g).toLowerCase() === key.toLowerCase());
 
