@@ -864,7 +864,7 @@ export function initActionPanel(ctx) {
       card.toggleAttribute('data-raised', raised);
       card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
       if (panes[tab] && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
-      if (tab === 'items' && picking) panes.items.querySelector('.ap-pick')?.scrollIntoView({ block: 'nearest' });       // the chooser must be on screen, not below the fold
+      if (tab === 'items' && (picking || giving)) panes.items.querySelector('.ap-pick')?.scrollIntoView({ block: 'nearest' });       // the chooser must be on screen, not below the fold
       return tab;
     },
     get tab() { return sel.tab ?? card.dataset.tab; },
