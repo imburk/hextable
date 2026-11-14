@@ -179,6 +179,8 @@ export const handlers = {
     if (act.form && (a.form !== undefined || e.form)) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
+    // A feature that only takes other actions (Patient Defense below level 10) does nothing outside a fight.
+    if (act.acts && !fighting && !(act.effects ?? []).length) fail(`${f.name} only matters in a fight.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
     const live = act.renew ? effectsOf(s).find((fx) => fx.source === e.id && fx.feature === f.id) : null;
     if (live) {

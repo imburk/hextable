@@ -143,6 +143,10 @@ test("Patient Defense with a Focus Point: Disengage and Dodge as a Bonus Action,
   const f0 = u.entities.hero.uses["monks-focus"];
   ok(apply(u, { type: "disengage", actor: "hero", bonus: true }, DM));
   assert.equal(u.entities.hero.uses["monks-focus"], f0, "the free version costs no Focus");
+  // Outside a fight below level 10 it would do nothing: refused, and no Focus Point spent.
+  const w = field(9);
+  no(apply(w, { type: "feature", actor: "hero", feature: "patient-defense" }, DM), /only matters in a fight/);
+  assert.equal(w.entities.hero.uses["monks-focus"], 9);
   // With no Focus Points it is refused and nothing changes.
   const v = field(10);
   fight(v); turnOf(v, "hero");
