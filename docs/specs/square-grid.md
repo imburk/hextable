@@ -1,6 +1,7 @@
 # Spec: square grid
 
-Status: draft by an agent, to be reviewed by the design owner. Issue #240.
+Status: agreed. Issue #240; the owner's answers of 14 November are recorded under "The owner's
+answers" below and in the decisions they change. Built so far: S0 to S6.
 
 The owner asked on 13 November: "can we pivot to squares?" He brought four
 published battle maps, all drawn on a square grid. `maps-and-objects.md`
@@ -228,6 +229,28 @@ the corridor table.
 
 The rest of this spec is the design for B.
 
+## The owner's answers (14 November)
+
+Recorded on #240; they replace the defaults the questions at the end proposed.
+
+1. **Option B**: both grids, each map chooses.
+2. **Diagonals: measured for real, with the next square as a bonus**, the default on square maps.
+   A side step costs 5 ft; a diagonal step its true length, 5 x √2 (about 7.07 ft), doubled by
+   Difficult Terrain and the like as any step is. A creature may enter a square whenever it has
+   any movement left, even if the step costs more than is left; that step uses up the rest. So at
+   Speed 30 a pure diagonal run is 5 squares (4 paid in full, the fifth on the remainder). The SRD's
+   count (every diagonal 5 ft) and "every second diagonal 10 ft" stay as values of the table
+   setting `diagonals` (Decision 5). The second is not in the SRD 5.2.1 and is labelled so.
+   **Reach and range** (the lead's proposal, built as the default of the setting `squareRange`; the
+   owner has not objected): centre to centre for real, rounded down to a whole 5 ft, so a diagonal
+   neighbour (7.07 ft) is within a 5-ft reach.
+3. **Areas**: a square is in an area when its centre is inside the real shape (Decision 6, `round`).
+4. **Cover** is judged by what the obstacle is and where it stands, not by counting corners
+   (Decision 7, replacing the four-corner rule proposed there).
+5. **New maps**: the DM picks the grid each time, squares listed first; UVTT files import as squares.
+
+Questions 6 and 7 (stock maps, the valley) stay open on their defaults.
+
 ## The decisions
 
 ### Decision 1: one geometry interface, chosen by the map
@@ -316,9 +339,25 @@ The map document gains `grid` and renames `hexFeet`:
 
 ### Decision 5: movement, reach and size on squares
 
-- **Diagonals cost the same as a side step** (SRD 1817-1823): `G.dist` is the
-  larger of `|dq|` and `|dr|`, and each step to one of the 8 neighbours costs
-  5 ft, 10 in Difficult Terrain, through the same `moveOptions` code.
+- **Diagonals by the table rule `diagonals`** (owner's answer 2), square maps only; absent means
+  `real`. `G.dist` stays the SRD's count (the larger of `|dq|` and `|dr|`); what a step costs is
+  the rule's, in `moveOptions`:
+  - `real` (default, a table rule): a side step 5 ft, a diagonal 5 x √2 ft, times whatever
+    doubles a step (Difficult Terrain, climbing, crawling, a creature's space). A creature with any
+    movement left may enter one more square; that step uses up the rest (one bonus at most, since
+    nothing is left after it). Straight runs come out as by the SRD.
+  - `srd`: every diagonal 5 ft (SRD 1817-1823).
+  - `alternate`: every second diagonal in a turn 10 ft, counted through the turn
+    (`encounter.budget.diagonals`, 0 or 1, absent meaning 0). Not in the SRD 5.2.1; the setting's
+    words say so.
+  Reachability on squares is a least-cost search over feet that need not be whole; the squares a
+  client highlights (it runs `moveOptions` on its view) and the way walked come from the same
+  search, and the cost charged is the cost of that way. Movement left is kept in feet and may be
+  fractional; players are sent the number itself (the client rounds down for display).
+- **Reach and range by the table rule `squareRange`** (owner's answer 2), square maps only: `real`
+  (default) measures centre to centre and rounds down to whole cells; `srd` counts squares
+  (1826-1829). It is `space.js` `measure`, used by `gap` and `apartAt` and so by every reach and
+  range check (attacks, spells, areas aimed at a point, Opportunity Attacks, traps, Search).
 - **Corners** (SRD 1824-1825): a diagonal step is refused if a wall that
   blocks movement touches the corner it passes (the existing segment test
   `crosses` already counts touching), or if either of the two squares beside
@@ -326,11 +365,9 @@ The map document gains `grid` and renames `hexFeet`:
   that fills its square). A creature does not count as a terrain feature, so
   a diagonal between two creatures is allowed. A flyer obeys the same rule
   below a wall's top.
-- **Reach and adjacency**: unchanged code. `apartAt` takes the nearest parts
-  of two creatures with `G.dist`, which is the SRD's "count squares from a
-  square adjacent to one of them" (1826-1829). A goblin diagonal to the
-  fighter is within 5 ft and provokes an Opportunity Attack when it walks
-  away.
+- **Reach and adjacency**: `apartAt` takes the nearest parts of two creatures by `measure`. Under
+  either `squareRange` a goblin diagonal to the fighter is within 5 ft and provokes an
+  Opportunity Attack when it walks away.
 - **Footprints** come from the SRD table (1893-1943): 1, 2 by 2, 3 by 3,
   4 by 4. A big creature's position names its **north-west square**; the
   renderer already draws a creature at the middle of its parts
@@ -340,9 +377,8 @@ The map document gains `grid` and renames `hexFeet`:
   13 by 13 block (169 squares against 127 hexes). **Marching order** keeps
   `KEEP_UP = 2` squares. **Flyers** move in the 8 directions and up and down
   (world.js:132 loops over `G.DIRS`).
-- **Cost.** The corner rule is new engine code and the one place a square
-  step is not just "a neighbour". Diagonal 5-10-5 counting is not built
-  (question 2).
+- **Cost.** The corner rule, the diagonal costs and the square search are new engine code
+  (`engine/world.js`); hex maps keep hex.js's search untouched.
 
 ### Decision 6: areas on squares
 
@@ -366,7 +402,9 @@ lines and cubes; squares keep that and make one choice explicit.
     (1826-1829). A 20-ft Sphere covers 81 squares (2,025 sq ft, 61% more
     than the sphere), but "within 15 feet" means one thing for a target and
     an area.
-  Neither is SRD; the table picks (question 3). On hexes nothing changes
+  Neither is SRD. **The owner chose `round`** (answer 3: a square is in an area when its centre is
+  inside the real shape); whether `grid` is kept as a value of `areaFill` is S7's to settle with the
+  lead. On hexes nothing changes
   (hex counting is already close to round: 61 hexes for 20 ft).
 - Areas keep their heights (`maps-and-objects.md`, M6 build note) and walls
   still shelter what is behind them.
@@ -376,12 +414,25 @@ lines and cubes; squares keep that and make one choice explicit.
 - Lines of sight are already segments between points in feet; only the
   corners change: `G.corners(h)` gives four on a square (a little inside the
   true corner, as the hex ones are, sight.js:9).
-- **Cover from corners** (design choice; the SRD judges cover by how much of
-  the target is covered, 1992-2010, and gives no grid method): with four
-  corners, all four reached and the centre clear is no cover; two or three
-  is Half; one is Three-Quarters; none and the centre blocked is Total. That
-  keeps today's proportions (six corners: up to 2 Three-Quarters, up to 4
-  Half). Question 4.
+- **Cover by what the obstacle is and where it stands** (owner's answer 4; it replaces the
+  four-corner count first proposed here). The owner's definitions: **Half Cover**, anything that
+  does not fully cover the target; **Three-Quarters Cover**, something that fully covers the
+  target but has a hole in it, or is askew of the direction of attack; **Total Cover**, a wall, or
+  something bigger than the target, directly between the target and the attack. The lead's
+  reading for the engine (S8 builds it; awaiting the owner's confirmation): "directly between" is
+  the line from the attacker to the target's centre, and what can be seen is the lines to the
+  target's corners (`G.corners`):
+
+  | What the lines find | Cover |
+  |---|---|
+  | Centre line clear, every corner visible | none |
+  | Centre line clear, some corner hidden; or another creature on the line | Half |
+  | Centre line blocked by something solid, but part of the target still visible round it (askew) | Three-Quarters |
+  | Everything blocked, but by something with a hole (window, rail, portcullis: wall kinds the map has) | Three-Quarters |
+  | Everything blocked by something solid | Total |
+
+  The DM can still set cover by hand. The rule does not depend on the grid; using it on hexes too
+  is a separate decision (it would change results on existing hex maps and their tests).
 - **What players are sent**: `view.js` sends a wall's stretches that lie
   within a cell's corner of a cell they were shown. That radius becomes
   `G.cornerReach` (5/√3 on hexes, 5/√2 on squares). Too small and players
@@ -404,7 +455,7 @@ lines and cubes; squares keep that and make one choice explicit.
 
 ### Decision 9: the editor and the importer on squares
 
-- **New map**: the DM picks hexes or squares (question 5). A map's grid
+- **New map**: the DM picks the grid each time, squares listed first (owner's answer 5). A map's grid
   cannot be changed in the editor once it has tiles.
 - **Align to the picture's grid** (square maps): tap two opposite corners of
   one square on the picture, or of a run of N squares, and the picture's
@@ -468,6 +519,8 @@ the order things were added). The test of S0 pins that.
 | E7 | `view.js` wall pieces by `G.cornerReach` | view | fewer or more wall pieces, by grid | no |
 | E8 | `loadMap` ends lasting areas tied to the old map's cells | rule fix | `effectEnd` events | no |
 | E9 | Engine messages use `G.word` | text | "square" on square maps | no |
+| E10 | Table rule `diagonals: 'real' \| 'srd' \| 'alternate'` (square maps only; absent means `real`), with `encounter.budget.diagonals` under `alternate` | setting | in `settings` | no (absent means default) |
+| E11 | Table rule `squareRange: 'real' \| 'srd'` (square maps only; absent means `real`) | setting | in `settings` | no (absent means default) |
 
 ## Tasks
 
@@ -488,7 +541,7 @@ map.
 | S3b | **Other client callers.** `app.js`, `actionpanel.js`, `timeline.js` (`hexDist` goes), `editor.js` (imports only, no square behaviour); the two smoke passes that import `shared/hex.js` import `shared/grid.js`. | client | Sonnet | those files, `scripts/smoke/armed.mjs`, `scripts/smoke/solo.mjs` | as S3a, plus smoke `maps`, `import`, `actionpanel`; no client file imports `shared/hex.js` |
 | S4 | **Map format 2 and state version 21.** E2, E3: `grid`, `cellFeet`, `migrateMap`, linter (a `square` map is refused with "Square maps come in a later version" until S6), `view.js` header; `gen-maps.mjs` writes format 2 and the five stock maps are regenerated; the protocol note in the server README. | engine | Opus | `map.js`, `migrate.js`, `view.js`, `scripts/gen-maps.mjs`, `content/maps/*.js` (regenerated only), `packages/server/README.md`, `packages/rules/test/space.test.js` (line 79 only), new tests | `fixtures/table-v1.json` and both v20 fixtures load as `grid: 'hex'` at version 21 and play their tests; a format-1 document migrates; a square map is refused with the sentence; the stock maps lint and differ from before only in the header |
 | S5 | **Square geometry.** `SQUARE` in `grid.js`, every member of the interface table; still refused by the linter. | engine | Opus | `grid.js`, `grid.test.js` | property tests on `SQUARE`: `dist` equals breadth-first steps over `neighbors`; `range(c, n)` is exactly the cells with `dist <= n`; `cell(center(h)) = h`; `corners` are the four at ±2.5 ft; `edgeSegment` is the shared side; `beside` of a diagonal is the two cells it passes; a 15-ft cone is 7 squares east and 6 diagonal; footprints are 1, 4, 9, 16 cells |
-| S6 | **Moving on squares.** The linter accepts `square`; corner rule (E4); footprints, Tiny sharing, the arena, marching, flyers by `G`; the `G` default removed from `space.js`; E8 in `loadMap`. A test fixture `square-room` (a small square map with a corridor, a pillar and a door). | engine | Opus | `map.js`, `space.js`, `engine/world.js`, `engine/movement.js`, `engine/resolve.js`, `engine/dm.js`, `packages/rules/test/fixtures/square-room.js` (new), `packages/rules/test/square-moving.test.js` (new) | with Speed 30 a Medium creature moves 6 squares diagonally in a turn (SRD 1814-1821); a diagonal past a wall's corner or a pillar is refused and the side route allowed (1824); a Large creature fills 2 by 2 and passes the 10-ft corridor at every offset, not the 5-ft one; a goblin diagonal to the fighter provokes an Opportunity Attack when it walks away (1826-1829, 2075); a fifth Tiny creature cannot share a square (1913); the arena is the 13 by 13 block; loading a square map seats the party and ends the old map's zones; every hex test still passes |
+| S6 | **Moving on squares.** The linter accepts `square`; corner rule (E4); footprints, Tiny sharing, the arena, marching, flyers by `G`; the `G` default removed from `space.js`; E8 in `loadMap`; E10 and E11 (#252); `loadMap` migrates a format 1 map. A test fixture `square-room` (a small square map with a corridor, a pillar and a door). | engine | Opus | `map.js`, `space.js`, `engine/world.js`, `engine/movement.js`, `engine/resolve.js`, `engine/dm.js`, `packages/rules/test/fixtures/square-room.js` (new), `packages/rules/test/square-moving.test.js` (new) | with Speed 30 a Medium creature moves 6 squares diagonally in a turn under `diagonals: 'srd'` (SRD 1814-1821), 5 under `real`, 4 under `alternate`; a diagonal past a wall's corner or a pillar is refused and the side route allowed (1824); a Large creature fills 2 by 2 and passes the 10-ft corridor at every offset, not the 5-ft one; a goblin diagonal to the fighter provokes an Opportunity Attack when it walks away (1826-1829, 2075); a fifth Tiny creature cannot share a square (1913); the arena is the 13 by 13 block; loading a square map seats the party and ends the old map's zones; every hex test still passes |
 | S7 | **Areas on squares.** `layout` by `G`; E5 `areaFill` with `round` as default, in `SETTINGS`. | engine | Opus | `engine/world.js`, `engine/dm.js` (`SETTINGS` only), `packages/rules/test/square-areas.test.js` (new) | on `square-room`: a 20-ft Sphere covers 49 squares under `round` and 81 under `grid`; Burning Hands (15-ft cone) catches the creatures on the 7 squares east and not one beside them; Lightning Bolt (100 by 5 ft line) aimed diagonally is one square wide; Thunderwave (15-ft cube from self) is the 3 by 3 in front; a wall still shelters what is behind it; every hex area test still passes |
 | S8 | **Sight, cover and what players are sent on squares.** E6, E7; the vision flood over `G.neighbors`. | engine | Opus | `sight.js`, `vision.js`, `view.js`, `packages/rules/test/square-sight.test.js` (new) | cover from a pillar beside the line is Half and from a wall end Three-Quarters, by the four-corner rule; the property test "over a long random game nothing the party cannot see reaches any player" (`sight-views.test.js`, seed 3) passes on a square map too; a wall is sent only where it runs beside a shown square; **reviewed for hidden information before merge** |
 | S9a | **The default renderer draws squares.** Tile prisms, highlights and rims from `G.corners`, picking by `G.cell`, floors and cut-away, grid overlay, the arena. A smoke pass `square` that loads `square-room`, walks diagonally, aims a cone and checks each tap lands on the square under it. | render | Sonnet | `render.js`, `floors.js`, `packages/client/test/floors.test.js` (new tests only), `scripts/smoke/square.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=square` passes at both sizes with no page errors; squares meet walls with no gaps; every existing smoke pass still passes |
@@ -528,12 +581,41 @@ map.
 - **S7**: the cell counts of each shape are read once by a person against
   the SRD shape definitions; they are design choices, pinned by tests.
 
+### Build notes: S6 (#252)
+
+- **Search.** Hex maps run hex.js's `reachable` as before. Square maps run `squareSearch` in
+  `engine/world.js`: Dijkstra over steps that each say `flat` (times the step's length: 5 ft, or a
+  diagonal's by the rule) and `extra` feet (a climb's height). Under `alternate` a state is a
+  square and whether an odd number of diagonals has been taken. `route(reach, key)` gives the way
+  and the cost at each step; `walk` spends `start - cost`, one subtraction, so fractions never
+  pile up (on hexes the step-by-step subtraction is kept; there every cost is whole or half feet).
+- **One tolerance.** `EPS_FT = 1e-6` and `below(a, b)` are the only comparison of feet on squares.
+  Costs are sums of whole feet and multiples of 5√2: two routes of equal length can differ in the
+  last bit, two of different length differ by far more than the tolerance. Only `+`, `-`, `*` and
+  the constant `Math.SQRT2` are used (no `Math.hypot`), so every engine gets the same bits.
+- **The bonus square** under `real` applies to any step (walking, climbing, a ladder, flying): the
+  step's cost is capped at what is left. With a whole Speed and no diagonal, nothing is ever left
+  over, so straight runs are the SRD's.
+- **Corners.** A wall or shut door touching the corner already blocks the centre-to-centre line
+  (`crosses` counts touching). `cornerFree` checks the two squares beside the step: blocked if the
+  surface there at the walker's height is impassable (rock, deep water) or holds something solid,
+  or the ground there rises above the walker; a square with no floor, or lower ground, is not a
+  feature. Every part of a big creature obeys it; so does a push and a flyer.
+- **Reach and range** are `space.js` `measure(s, G)`, whole-number arithmetic (an integer square
+  root), used by `gap` and `apartAt`; `apartAt` now takes the map's grid when none is given.
+- **The `G` default** is not removed from `shapeOf`, `footprint` and `overlapAt`: their callers
+  outside S6's files (sight, zones, casting, features, characters, sheets, the renderers) do not
+  pass a grid yet; `docs/DEBT.md` T20 lists them. Every caller in S6's files passes it.
+- **E8** ends every terrain effect and every zone that does not follow a creature on any map
+  change, hex maps included (the one deliberate change on hexes). **`loadMap`** runs `migrateMap`
+  on the map it is sent before linting it.
+
 ## Out of scope
 
 - Converting a hex map to squares or back, and converting saved tables
   (that is Option A).
 - Removing hexes.
-- 5-10-5 diagonals unless the owner asks (question 2); flanking (not in the
+- Flanking (not in the
   SRD); squeezing (not in the SRD 5.2.1; as on hexes, the DM's `place`).
 - Gridless play, other grids (offset hexes, isometric).
 - Redrawing the five stock maps or the valley on squares (question 6, 7).
@@ -558,24 +640,16 @@ map.
 
 ## Questions for the owner
 
-Each has a default; work proceeds on the default.
+Each has a default; work proceeds on the default. Questions 1 to 5 are answered (see "The
+owner's answers"); they are struck here.
 
-1. **A, B or C?** *Default: B.*
-2. **Diagonals.** The SRD counts every diagonal as one square (lines
-   1817-1823). Some tables count every second diagonal double (5-10-5);
-   that is not in the SRD 5.2.1. Do you want it as a table rule?
-   *Default: no, the SRD count only.* And should creatures block a diagonal
-   corner as walls do? *Default: no, the SRD names walls, large trees and
-   terrain features (1824-1825).*
-3. **Which squares a Sphere, Cylinder or Emanation covers.** `round`: the
-   squares whose centres are inside the shape (a 20-ft Sphere is 49
-   squares). `grid`: counted as range is counted (81 squares). *Default:
-   `round`, with `grid` as the table rule `areaFill`.*
-4. **Cover on squares.** Four corners reached: none; two or three: Half;
-   one: Three-Quarters; none and the centre blocked: Total. *Default: that.*
-5. **New maps.** When the DM makes a new map, which grid is offered first?
-   *Default: the DM picks each time, squares first; UVTT files import as
-   squares.*
+1. ~~**A, B or C?**~~ Answered: B.
+2. ~~**Diagonals.**~~ Answered: measured for real with the next square as a bonus, the SRD count
+   and every-second-diagonal-double as table rules. Creatures do not block a diagonal corner (the
+   SRD names walls, large trees and terrain features, 1824-1825; not asked again).
+3. ~~**Which squares a Sphere, Cylinder or Emanation covers.**~~ Answered: centres inside the real shape.
+4. ~~**Cover on squares.**~~ Answered: by what the obstacle is and where it stands (Decision 7).
+5. ~~**New maps.**~~ Answered: the DM picks each time, squares first; UVTT files import as squares.
 6. **Stock maps.** *Default: keep the five on hexes and add one square map
    (S12).* Redrawing all five on squares is five content jobs.
 7. **The valley.** *Default: stays a hex map.*
