@@ -115,7 +115,10 @@ async function pacing(browser, url, label, opts) {
         // A card can come up over the map when the beats end (the party fallen, the rewards): a tap made again would land on its buttons, so
         // a repeat is made only while the point is still bare map.
         for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())) && (k === 0 || await onCanvas(page, canvasPt.x, canvasPt.y)); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
-        if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
+        if (await page.evaluate(() => window.hextable.timeline.busy())) {
+          const d = await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return { at: `${e?.tagName}#${e?.id}.${e?.className}`, body: document.body.className, active: document.activeElement?.id, hp: Object.values(window.hextable.state.entities).filter((q) => q.kind === 'pc').map((q) => q.hp).join('/'), enc: !!window.hextable.state.encounter }; }, [canvasPt.x, canvasPt.y]);
+          throw new Error(`the tap did not skip (tapped ${Math.round(canvasPt.x)},${Math.round(canvasPt.y)}): ${JSON.stringify(d)}`);
+        }
         const after = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
         if (before !== after) {
           // Say what changed, so a failure on a machine we cannot look at names it.
