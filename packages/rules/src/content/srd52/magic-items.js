@@ -21,9 +21,11 @@
 //              modifier's damage types is that type
 //   charges    { max, regain? }: charges, and the dice of them regained at dawn
 //   activate   what using it does, run by the `use` action with `item` (docs/specs/table-ui.md, E18):
-//              [{ name?, time, cost?, consumed?, spell?, level?, dc?, effects? }]. The engine spends the time,
-//              the charges and a consumed item, and runs `effects` on the effect runner; a spell cast from an
-//              item goes to the DM with its numbers, so an item whose only magic is a spell is still `manual`.
+//              [{ name?, time, cost?, consumed?, spell?, level?, upTo?, self?, dc?, effects? }]. The engine spends
+//              the time, the charges and a consumed item, and runs `effects` on the effect runner; a spell cast
+//              from an item goes through the cast path at its own casting time (`time` is then the spell's, for
+//              reading), at `level`, raised by one a charge past `cost` up to `upTo`; `self`: on its user only.
+//              Such an item is as far applied as its spells are; "once a dawn" uses are not tracked.
 export const items = [
   // ---------- weapons ----------
   { id: "weapon-plus-1", name: "Weapon, +1", category: "weapon", rarity: "uncommon", wear: "weapon", base: { weapon: "any" }, bonus: 1, tier: "auto", source: "SRD 5.2.1", checked: true,
@@ -89,7 +91,7 @@ export const items = [
     grants: { speeds: { swim: 40 } } },
   { id: "ring-of-jumping", name: "Ring of Jumping", category: "ring", rarity: "uncommon", attune: true, wear: "ring", tier: "manual", source: "SRD 5.2.1", checked: true,
     text: "Cast Jump from it, on yourself only, while worn (the DM applies it).",
-    activate: [{ time: "bonus", spell: "jump" }] },
+    activate: [{ time: "bonus", spell: "jump", self: true }] },
   { id: "ring-of-shooting-stars", name: "Ring of Shooting Stars", category: "ring", rarity: "very-rare", attune: true, wear: "ring", charges: { max: 6, regain: "1d6" }, tier: "manual", source: "SRD 5.2.1", checked: true,
     text: "Cast Dancing Lights or Light from it. 6 charges, 1d6 back at dawn: 1 casts Faerie Fire, 2 make up to four spheres of lightning (DC 15 Dexterity save), 1 to 3 launch motes that burst into sparks (DC 15 Dexterity save, 5d4 Radiant). The DM applies it.",
     activate: [{ time: "action", spell: "dancing-lights" }, { time: "action", spell: "light" }, { time: "action", spell: "faerie-fire", cost: 1 },
@@ -169,8 +171,8 @@ export const items = [
     text: "+1 to Armor Class while it orbits your head.", grants: { modifiers: [{ on: "ac", op: "add", value: 1 }] } },
   { id: "ioun-stone-strength", name: "Ioun Stone (Strength)", category: "wondrous", rarity: "very-rare", attune: true, wear: "orbit", tier: "auto", source: "SRD 5.2.1", checked: true,
     text: "Strength +2, to at most 20, while it orbits your head.", grants: { abilityBonus: { str: 2, max: 20 } } },
-  { id: "helm-of-telepathy", name: "Helm of Telepathy", category: "wondrous", rarity: "uncommon", attune: true, wear: "head", tier: "manual", source: "SRD 5.2.1", checked: true,
-    text: "Telepathy to 30 feet while worn, and each once a dawn, Detect Thoughts or Suggestion (save DC 13) cast from it (the DM applies them).",
+  { id: "helm-of-telepathy", name: "Helm of Telepathy", category: "wondrous", rarity: "uncommon", attune: true, wear: "head", tier: "assist", source: "SRD 5.2.1", checked: true,
+    text: "Telepathy to 30 feet while worn, and each once a dawn, Detect Thoughts or Suggestion (save DC 13) cast from it (the DM keeps track of the once a dawn).",
     activate: [{ time: "action", spell: "detect-thoughts", dc: 13 }, { time: "action", spell: "suggestion", dc: 13 }] },
   { id: "chime-of-opening", name: "Chime of Opening", category: "wondrous", rarity: "rare", wear: "carried", charges: { max: 10 }, tier: "manual", source: "SRD 5.2.1", checked: true,
     text: "A Magic action strikes it to cast Knock, heard 300 feet away. Ten uses, then it cracks (the DM applies it).",
@@ -190,12 +192,12 @@ export const items = [
     activate: [{ time: "action", consumed: true, effects: [{ manual: "The token's effect, by its kind; then it is gone." }] }] },
 
   // ---------- staffs and wands ----------
-  { id: "staff-of-healing", name: "Staff of Healing", category: "staff", rarity: "rare", attune: { by: ["bard", "cleric", "druid"] }, wear: "weapon", charges: { max: 10, regain: "1d6+4" }, tier: "manual", source: "SRD 5.2.1", checked: true,
-    text: "10 charges, 1d6 + 4 back at dawn: cast Cure Wounds (1 charge a spell level, at most 4), Lesser Restoration (2) or Mass Cure Wounds (5) with your own spellcasting ability. Spending the last, a 1 on a d20 makes it vanish. The DM applies it.",
-    activate: [{ time: "action", spell: "cure-wounds", cost: 1 }, { time: "action", spell: "lesser-restoration", cost: 2 }, { time: "action", spell: "mass-cure-wounds", cost: 5 }] },
-  { id: "wand-of-magic-missiles", name: "Wand of Magic Missiles", category: "wand", rarity: "uncommon", wear: "weapon", charges: { max: 7, regain: "1d6+1" }, tier: "manual", source: "SRD 5.2.1", checked: true,
-    text: "7 charges, 1d6 + 1 back at dawn: spend 1 to 3 to cast Magic Missile at level 1 to 3. Spending the last, a 1 on a d20 destroys it. The DM applies it.",
-    activate: [{ time: "action", spell: "magic-missile", level: 1, cost: 1 }] },
+  { id: "staff-of-healing", name: "Staff of Healing", category: "staff", rarity: "rare", attune: { by: ["bard", "cleric", "druid"] }, wear: "weapon", charges: { max: 10, regain: "1d6+4" }, tier: "assist", source: "SRD 5.2.1", checked: true,
+    text: "10 charges, 1d6 + 4 back at dawn: cast Cure Wounds (1 charge a spell level, at most 4), Lesser Restoration (2) or Mass Cure Wounds (5) with your own spellcasting ability. Spending the last, a 1 on a d20 makes it vanish (the DM rolls it).",
+    activate: [{ time: "action", spell: "cure-wounds", cost: 1, upTo: 4 }, { time: "bonus", spell: "lesser-restoration", cost: 2 }, { time: "action", spell: "mass-cure-wounds", cost: 5 }] },
+  { id: "wand-of-magic-missiles", name: "Wand of Magic Missiles", category: "wand", rarity: "uncommon", wear: "weapon", charges: { max: 7, regain: "1d6+1" }, tier: "assist", source: "SRD 5.2.1", checked: true,
+    text: "7 charges, 1d6 + 1 back at dawn: spend 1 to 3 to cast Magic Missile at level 1 to 3. Spending the last, a 1 on a d20 destroys it (the DM rolls it).",
+    activate: [{ time: "action", spell: "magic-missile", level: 1, cost: 1, upTo: 3 }] },
 
   // ---------- potions and scrolls ----------
   { id: "potion-of-healing", name: "Potion of Healing", category: "potion", rarity: "common", wear: "carried", tier: "auto", source: "SRD 5.2.1", checked: true,
@@ -229,7 +231,7 @@ export const items = [
   { id: "potion-of-resistance", name: "Potion of Resistance", category: "potion", rarity: "uncommon", wear: "carried", variant: "damageType", tier: "manual", source: "SRD 5.2.1", checked: true,
     text: "Drink it for Resistance to one damage type, set by the potion, for 1 hour.",
     activate: [{ time: "bonus", consumed: true, effects: [{ manual: "Resistance to the potion's damage type for 1 hour." }] }] },
-  { id: "spell-scroll", name: "Spell Scroll", category: "scroll", rarity: "varies", wear: "carried", variant: "spell", tier: "manual", source: "SRD 5.2.1", checked: true,
-    text: "Holds one spell. If it is on your spell list, read it to cast the spell at its casting time with no Material components; then it crumbles. A spell above what you can cast needs a check of your spellcasting ability against DC 10 + its level. Its level sets its rarity, save DC and attack bonus (13 and +5 up to level 2, 15 and +7 at 3 to 4, 17 and +9 at 5 to 6, 18 and +10 at 7 to 8, 19 and +11 at 9; Common at level 0 to 1 up to Legendary at 9). The DM applies it.",
+  { id: "spell-scroll", name: "Spell Scroll", category: "scroll", rarity: "varies", wear: "carried", variant: "spell", tier: "assist", source: "SRD 5.2.1", checked: true,
+    text: "Holds one spell. If it is on your spell list, read it to cast the spell at its casting time with no Material components; then it crumbles. A spell above what you can cast needs a check of your spellcasting ability against DC 10 + its level. Its level sets its rarity, save DC and attack bonus (13 and +5 up to level 2, 15 and +7 at 3 to 4, 17 and +9 at 5 to 6, 18 and +10 at 7 to 8, 19 and +11 at 9; Common at level 0 to 1 up to Legendary at 9).",
     activate: [{ time: "action", consumed: true, effects: [{ manual: "Cast the scroll's spell (its own casting time), with the scroll's save DC and attack bonus." }] }] },
 ];

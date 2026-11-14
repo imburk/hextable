@@ -1322,6 +1322,52 @@ What was settled while building, where it differs from the text above, and what 
   uses, extra charges for a higher spell level (Wand of Magic Missiles, Staff of Healing), Use Magic Device's 1d6 and
   any-scroll reading, the d20 on the last charge, an interrupted reading keeping the scroll.
 
+### E18b: spells from items, and charges at dawn, engine (PR for #284)
+
+- **A spell from an item goes through `cast`.** `use` with `item` on a use with `spell` (or a Spell Scroll) calls
+  `castFromItem` (casting.js), the cast path with an item record: the action's aim goes to it as on `cast`
+  (`target`, `targets`, `hex`, `choice`, `spare`), and `level` raises the spell where extra charges may. Refused with an
+  item: `via`, `slot`, `metamagic`, `empower`, `overchannel`, `repel` (those are a class's own casting). Everything is
+  checked before anything is spent; a harmful spell outside a fight starts it, as `cast` does, and spends nothing.
+  features.js imports casting.js for this (handler modules did not import each other before; there is no cycle).
+- **What it is, by the SRD ("Spells Cast from Items").** No spell slot, so not the one slot spell of a turn; the
+  lowest caster level (a cantrip's damage as at level 1); the spell's own casting time, range and duration, whatever
+  the use's `time` says (Lesser Restoration from the Staff of Healing is a Bonus Action; Scrying from the Crystal Ball
+  takes 10 minutes, so not in a fight); Concentration if the spell needs it; a Magic action is still refused on Action
+  Surge's extra action after another. Save DC and attack: the item's `dc` if it gives one (Helm of Telepathy 13), else
+  the user's own (`spellStats`, with modifiers), else 8 + Proficiency Bonus and the Proficiency Bonus; a heal's
+  "spellcasting ability modifier" is the user's, +0 for a user with none. A user with several spellcasting abilities
+  gets the one `castAbilOf` gives (the SRD lets them choose; not offered).
+- **Components, Counterspell, hiding.** A wand, staff, ring or helm casts with no components unless its text says
+  otherwise (none in the pack does), so nobody can see it being cast: no Counterspell window and a hiding user stays
+  hidden. A Spell Scroll loses only Material components: its Verbal and Somatic ones open the Counterspell window,
+  and a Verbal one gives a hiding reader away. A countered reading is interrupted, so the scroll is kept (SRD "If the
+  casting is interrupted, the scroll isn't lost"); the action is spent.
+- **More charges, higher level (`upTo`).** A use with `upTo` costs one charge more a level past its own: Wand of
+  Magic Missiles 1 to 3 (cost 1, `level: 1`, `upTo: 3`), Staff of Healing's Cure Wounds 1 to 4. `level` outside that
+  is refused, and on a use without `upTo` (Mass Cure Wounds, a scroll). The `item` event carries `level` when raised
+  and the `cast` event `slot` (the level it was cast at, as for a slot) and `item` (the item's name).
+- **`self`.** Ring of Jumping: Jump on its wearer only.
+- **A Spell Scroll's order.** Checked (list, casting time, aim), then the time spent and the `item` event (without
+  `consumed`), then the ability check if the spell is above the reader's level (a failure: "the spell fades", the
+  scroll is gone, nothing cast), then the Counterspell window, then the scroll goes (`gear` with `why: 'used'`,
+  `taken`) and the spell is cast.
+- **Dawn (rests.js).** The clock counts minutes from midnight of day 1; dawn is 06:00 (`DAWN`, `dawnsBetween`).
+  When `rest`, `shortRest` or `advanceTime` carries the clock past dawns, each built character's item entry with
+  `charges` set below its most and a `charges.regain` rolls that many times (once a dawn), up to the most:
+  `recharged { id, key, item, pack, gained, charges, max, dice, rolls }`, sent to players for a party creature only. An
+  item with no `regain` (the Chime of Opening) gets nothing back. Items whose text says a use comes back once a dawn
+  (Helm of Telepathy, Dagger of Venom, Iron Bands) are not tracked: the DM gets one `manual` (partial, DM only)
+  naming them at each dawn. The text is read only to word that reminder; nothing is applied from it.
+- **Tiers.** The linter now counts a spell use as something the engine applies. Wand of Magic Missiles, Staff of
+  Healing, Spell Scroll and Helm of Telepathy are `assist` (the last-charge d20, "once a dawn", and the Helm's
+  Detect Thoughts are the DM's); Ring of Jumping, Ring of Shooting Stars, Chime of Opening and Crystal Ball stay
+  `manual`, as their spells are (the cast path hands a manual spell's text to the DM, as for any caster).
+- **Left out.** The clock moving by rounds in a fight is not watched for dawn; "once a dawn" uses (a sheet entry has no
+  field for them: derive.js); Use Magic Device; the d20 on the last charge; Metamagic and the Evoker's additions on a
+  spell from an item (refused: they are for the class's own spells, a reading the SRD leaves open); choosing among
+  several spellcasting abilities.
+
 ### T7c: the log by combat (PR for #286)
 
 What was settled while building, where it differs from Decision 5, and what was left.
