@@ -32,3 +32,7 @@
   #ap-explore .ap-list { grid-template-columns: 1fr 1fr; }
   #card[data-raised] :is(#ap-explore, #ap-reactions, #ap-down) { max-height: max(112px, calc(40vh - 150px)); }
 }
+
+/* The card is a grid; its rows must not grow to the width of the bar of buttons, which scrolls sideways inside it. */
+#card { grid-template-columns: minmax(0, 1fr); }
+#ap-body, #ap-all { min-width: 0; }

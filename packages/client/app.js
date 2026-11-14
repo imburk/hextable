@@ -947,7 +947,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
 const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }) });
-new ResizeObserver(() => { if (S) sizeDock(); }).observe($('dock'));
+new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
 window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
