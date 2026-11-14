@@ -330,3 +330,4 @@ utility with nothing the engine can roll or track; they stay with the DM and no 
 
 Prompts (decisions after a roll), ~~companions and summons~~ (#279, drafted in `docs/specs/companions.md`, to be reviewed), ~~the renderer plan~~ (#66, drafted in
 `docs/specs/renderer.md`, to be reviewed), the persistent world and the AI DM interface.
+| T14 | The log by combat (`docs/specs/table-ui.md`, T7c, #286). (1) Exploring between older fights is not rebuilt after a reload online: only fights are asked for, so the Exploring runs that came before the last 50 entries are gone. (2) The log is drawn again in full on every entry while the Log tab is open; at 2500 entries (the most it keeps) a windowed list would be better. (3) `pass`, `drop` and `pickup` lines are written but the engine sends no such events yet (T6g). |

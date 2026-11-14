@@ -1367,3 +1367,25 @@ What was settled while building, where it differs from the text above, and what 
   field for them: derive.js); Use Magic Device; the d20 on the last charge; Metamagic and the Evoker's additions on a
   spell from an item (refused: they are for the class's own spells, a reading the SRD leaves open); choosing among
   several spellcasting abilities.
+
+### T7c: the log by combat (PR for #286)
+
+What was settled while building, where it differs from Decision 5, and what was left.
+
+- **Files.** `logview.js` (new: the model, `kindOf`, `view`, `html`, and `initLogView` for the page), `app.js` (`beat`, `renderLog`, `describe`, and the `history` handler), `style.css` (`.lg-*`), `smoke/log.mjs`
+  (`SMOKE_ONLY=log`), `test/logview.test.js`. `index.html` is not touched: the chip row is made by `logview.js` and put in front of `#log-list`.
+- **Model.** The log is a list of blocks, not a flat list: a fight block (by the engine's `fight` id) or an Exploring block (ends at the next fight or after 60 minutes of world time, read from `ev.t`, or the
+  state's clock for a live event). Each entry is `{ type, kind, text, cls, dice, round, spoils, t }`. `describe` now returns `[text, class, kind]`; `kind` is `combat`, `explore`, `loot`, `talk` or `dm`, decided by event
+  type (`kindOf`). Inside a fight everything that is not loot, talk or DM-only counts as `combat` for the filters; outside a fight a stray blow counts as `explore`.
+- **Fights.** Opened by `encounterStart`, closed by `encounterEnd`. What follows belongs to the fight until its `conclusion` or `conclusionSkipped`: `gear` with `why: 'loot'`, `levelReady`, `conclusionReady` and the
+  conclusion itself, under "Spoils". The matching `chronicle` (tag `fight`) is dropped inside the group. `undone` of "The fight began" and `rewound` to the fight close it as "Taken back". A fight is open while
+  it goes on and collapsed once over; the last Exploring block is open; what a person opens or closes stays so across redraws.
+- **Summary.** Place, rounds, outcome, then "Party beat Foes", XP each (or per name when they differ) and the number of items, each only if the view sent it. A fight with no conclusion shows the first three.
+- **Filters.** Chips as in the decision, several at once, empty meaning everything; kept as `hextable.logFilter` (a list of kinds). A player has no DM only chip and a stored one is ignored. A fight keeps its summary
+  under any filter; an Exploring block with nothing that matches is left out.
+- **After a reload.** Online: the `recent` 50 are read first (a fight that began before them is marked as not loaded), then `{ types: ['encounterStart','encounterEnd','conclusion'], limit: 200 }` makes one collapsed block
+  per older fight, and opening one asks `{ t:"history", fight }` (once; "Loading" shows meanwhile; `cut` is said). Solo: the whole local timeline is read (`recall`), so a reload rebuilds the groups and nothing is asked for.
+  Older fights come in front of everything, in the order of their ids; Exploring between old fights is not rebuilt (only fights are asked for).
+- **Gear lines.** `describe` says `pass`, `drop` and `pickup` (`why`, `with`) as the spec's table has them; the engine does not send those yet (T6g), so today only the DM's gift and loot appear.
+- **Left out.** Numbering of fights counts the fights this device holds (it is stable once the summaries have come); a log that holds more than 2500 entries drops its oldest blocks; the whole list is drawn again on
+  every entry while the Log tab is open (fine at this size, a windowed list if it is not); no defeat entry (see DEBT T13 (5)).
