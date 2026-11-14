@@ -170,6 +170,10 @@ body.editing #dock, body.editing #hint { display: none !important; }
 #editor .ed-notes { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; max-height: 32vh; overflow-y: auto; }
 #editor .ed-notes ul { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 3px; } #editor .ed-notes .bad { margin: 0; color: #e88; }
 #editor .ed-notes button.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; } #editor .ed-notes[hidden] { display: none; }
+#ed-grid { color: var(--muted); font-size: 13px; white-space: nowrap; }
+#ed-alignask { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; } #ed-alignask[hidden] { display: none; }
+#ed-alignhint { color: var(--muted); font-size: 13px; flex: 1 1 10em; }
+#ed-bgpix label { gap: 6px; }
 #ed-bgstate, #ed-scalehint { color: var(--muted); font-size: 13px; flex: 1 1 10em; }
 #ed-bg select { flex: 1 1 9em; min-width: 0; } #ed-nudgestep { flex: 0 0 5.5em !important; }
 #ed-scaleask { display: inline-flex; gap: 6px; align-items: center; } #ed-scaleask[hidden] { display: none; }
