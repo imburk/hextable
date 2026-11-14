@@ -1,0 +1,38 @@
+name: Bug
+description: Something in the game does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Solo (GitHub Pages)
+        - Multiplayer (the public table server)
+        - My own server
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and browser
+      placeholder: "iPhone 14, Safari / Windows 11, Firefox 132"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Open the drawer, then About. Copy the version line.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again
+      description: A table export or a screenshot helps a great deal. Do not attach anything from a published adventure.
