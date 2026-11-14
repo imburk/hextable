@@ -28,7 +28,7 @@ const HINTS = {
   props: 'Tap a door or thing to set its state, name, key, DCs and links.',
   start: 'Tap the hex where the party starts.',
   level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
-  file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
+  file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls, doors and lights, on squares or on hexes.',
 };
 // What differs on squares: the words (hex, hexes) are the grid's own, and a few hints say something else.
 const SQUARE_HINTS = {
@@ -82,7 +82,7 @@ export class Editor {
   stop() {
     if (!this.on) return;
     this.on = false; this.pending = null;
-    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.traceLine = []; this.sel = null; this.endDrag = null; this.uvtt = null; this.R.setPins([]); this.R.setBars([]); this.pinSig = ''; this.barSig = '';
+    this.R.onPoint = null; this.R.onDrag = null; this.stroke = null; this.props = null; this.scaling = null; this.traceLine = []; this.sel = null; this.endDrag = null; this.uvtt = null; this.uvttSrc = null; this.R.setPins([]); this.R.setBars([]); this.pinSig = ''; this.barSig = '';
     document.body.classList.remove('editing'); $('editor').hidden = true; this.#heightNums();
     if (this.S) this.refresh();
   }
@@ -942,24 +942,37 @@ export class Editor {
   async importUvtt(file) {
     if (!file) return;
     if (file.size > 60e6) return this.toast('That file is too big to be a map.');
+    const text = await file.text(), base = String(file.name ?? '').replace(/\.[^.]*$/, '');
+    // Squares are what these files are drawn on, so they are the default; hexes stay an option. Nothing changes until Load.
+    this.#readUvtt('square', { text, name: base.slice(0, 60) || undefined, id: slug(base) });
+  }
+  // Run the importer on the file already read, on the grid asked for. A file that cannot be read changes nothing: the dialog
+  // that was open stays as it was.
+  #readUvtt(grid, fresh) {
+    const src = fresh ?? this.uvttSrc;
     let res;
-    try { res = importUvtt(await file.text(), { name: String(file.name ?? '').replace(/\.[^.]*$/, '').slice(0, 60) || undefined, id: slug(String(file.name ?? '').replace(/\.[^.]*$/, '')) }); }
-    catch (err) { return this.toast(err instanceof UvttError ? err.message : 'That file could not be read as a Universal VTT map.'); }
-    this.uvtt = res; this.tool = 'file';
+    try { res = importUvtt(src.text, { grid, name: src.name, id: src.id }); }
+    catch (err) {
+      if (!fresh) this.#renderNotes();                    // the dialog stays as it was, with its own grid chosen
+      return this.toast(err instanceof UvttError ? err.message : 'That file could not be read as a Universal VTT map.');
+    }
+    this.uvttSrc = src; this.uvtt = res; this.uvttGrid = grid; this.tool = 'file';
     this.#renderNotes();
     this.refresh();
   }
   #renderNotes() {
     const box = $('ed-notes'), u = this.uvtt;
     if (!u) { box.hidden = true; box.innerHTML = ''; return; }
-    const bad = lintMap(u.map);
+    const bad = lintMap(u.map), g = this.uvttGrid;
     box.hidden = false;
     box.innerHTML = `<strong>${esc(u.map.name)}</strong>
+      <div class="ed-row" role="radiogroup" aria-label="Grid"><label><input type="radio" name="ed-uvtt-grid" value="square"${g === 'square' ? ' checked' : ''}> Squares</label> <label><input type="radio" name="ed-uvtt-grid" value="hex"${g === 'hex' ? ' checked' : ''}> Hexes</label></div>
       <div class="ed-row"><button type="button" class="go" id="ed-uvtt-load"${bad.length ? ' disabled' : ''}>Load this map</button>${u.image ? '<button type="button" id="ed-uvtt-bare">Load without the picture</button>' : ''}<button type="button" id="ed-uvtt-cancel">Cancel</button></div>
       ${bad.length ? `<p class="bad">This map cannot be loaded: ${esc(bad[0])}</p>` : ''}
       <ul>${u.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
     box.scrollIntoView?.({ block: 'nearest' });
-    $('ed-uvtt-cancel').onclick = () => { this.uvtt = null; this.#renderNotes(); this.refresh(); };
+    for (const r of box.querySelectorAll('input[name="ed-uvtt-grid"]')) r.onchange = () => { if (r.checked && r.value !== this.uvttGrid) this.#readUvtt(r.value, false); };
+    $('ed-uvtt-cancel').onclick = () => { this.uvtt = null; this.uvttSrc = null; this.#renderNotes(); this.refresh(); };
     $('ed-uvtt-load').onclick = () => this.#loadUvtt(true);
     if (u.image) $('ed-uvtt-bare').onclick = () => this.#loadUvtt(false);
   }
@@ -975,12 +988,12 @@ export class Editor {
         map.levels[0].image = { asset: rec.id, feet: u.image.size, origin: u.image.origin };
       } catch (err) { $('ed-uvtt-load').disabled = false; return this.toast(`The picture could not be saved: ${err.message}`); }
     }
-    this.uvtt = null; this.#renderNotes();
+    this.uvtt = null; this.uvttSrc = null; this.#renderNotes();
     this.levelId = null; this.region = ''; this.pending = null; this.traceLine = []; this.sel = null;
     this.tool = 'trace'; this.tmode = 'edit';
     this.act({ type: 'loadMap', map });
     this.refresh();
-    this.toast('Map loaded. Check the walls and doors, and fill the floor if hexes are missing.', true);
+    this.toast(`Map loaded. Check the walls and doors, and fill the floor if ${map.grid === 'square' ? 'squares' : 'hexes'} are missing.`, true);
   }
   // The picture as a File the store will take. One too big for the store is shrunk and saved as WebP.
   async #fitPicture(image, store) {
