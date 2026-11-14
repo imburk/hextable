@@ -613,6 +613,29 @@ Where the build settled a detail the design left open, or changed it.
   WebP), sets it as the ground level's background and sends `loadMap`; the editor then opens Trace.
   A refusal shows the importer's message.
 
+- **Piles: what lies on the ground** (amendment for E17 of `table-ui.md`, PR for #290). A third object kind,
+  `pile`, beside `door` and `thing`: it stands in one cell, has one state, blocks nothing, gives no light, has
+  no uses, triggers, `find` or DCs (the linter in `content/schema.js` refuses them). The pack has one, `pile`
+  ("Items on the ground", state `lying`). A placed pile carries `contents`: `{ id, name }` for an item known by
+  name, or `{ id, item, base?, type?, spell?, charges? }` for a magic item of the pack (a sheet's item entry
+  without its key, `equipped` or `attuned`); ids `c1, c2...` within the pile, at most 40 things. The engine
+  makes a pile when something is dropped where there is none (id `pile-<level>-<q>_<r>`, from where it lies, so it
+  counts nothing a player could not see) and takes
+  it off the map when the last thing is picked up. The DM can lay one down with `mapEdit`. `map.js` does not
+  lint `contents` (it was not in this job): the engine reads only well-formed entries (`pileContents`,
+  engine/world.js) and never offers, sends or picks up the rest. Players are sent `contents` (each thing's `id`,
+  `name` or `item` with what names it, never `charges`) only while the pile is in view; a pile remembered under
+  the los and light rules is sent without it. The actions are in `table-ui.md` (E17 build notes) What a creature the party does not know
+  of drops goes onto a pile of its own in that cell, marked `by` (its id, `-h1` on the id), never onto the pile
+  the party sees: players are not sent it and can't name it, and a party drop there is exactly a drop onto a bare
+  cell (ids, `placed`, the 40-thing room, what is gone). When the party knows of that creature or it is gone from
+  the map (`seePiles`, run after every action from `watch`) the pile joins the cell's open pile, or becomes it.
+  The DM may see two pile records in one cell. The 40-thing limit holds a drop only: a merge moves everything,
+  so a pile can hold more after one (nothing is lost and the hidden drop was never refused for what the party
+  could not see), and nothing more is dropped onto it until it is under 40 again. A concealed dropper that dies
+  keeps its record marked until the DM reveals or removes it. A thing in a cell is out of reach behind a wall or shut door (`nearObject` asks `unblocked`,
+  as `pass` does; review of #291); this holds for every thing in a cell, levers and chests too.
+
 ## Sources
 
 - [Universal VTT (Dungeondraft guide)](https://dungeondraft-encyclopaedia.gitbook.io/guide/final-steps/exporting-your-map/universal-vtt)

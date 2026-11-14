@@ -56,7 +56,9 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
 
 // Things on a map (docs/specs/maps-and-objects.md).
-export const OBJECT_KINDS = ['door', 'thing'];       // a door stands on a hex edge or a traced line; a thing stands in a hex
+// A door stands on a hex edge or a traced line; a thing stands in a hex; a pile is what lies on the ground in a
+// cell: items dropped there (`contents` on the placed object, E17), picked up with `pickUp`, never used.
+export const OBJECT_KINDS = ['door', 'thing', 'pile'];
 export const OBJECT_BLOCKS = ['move', 'sight'];
 export const USE_TIMES = ['free', 'action'];
 export const TRIGGERS = ['enter', 'leave', 'near'];
@@ -569,6 +571,13 @@ function lintObject(e, say) {
     if (u.to === undefined && u.effects === undefined) sub('needs effects or a state to go to');
   }
   if (e.tier === 'auto' && manual) say('marked auto but contains a manual step');
+  // A pile is only what lies there: nothing hidden, nothing in the way, no light, no triggers, no uses (taking
+  // from it is the `pickUp` action), and one state.
+  if (e.kind === 'pile') {
+    if (states.length !== 1) say('a pile has one state');
+    if (states.some((st) => e.states[st]?.hidden || e.states[st]?.blocks?.length || e.states[st]?.light)) say('a pile hides nothing, blocks nothing and gives no light');
+    if (e.use.length || e.triggers !== undefined || e.find !== undefined || e.dc !== undefined) say('a pile has no uses, triggers, find or DCs: it is picked up with `pickUp`');
+  }
 }
 
 // ---------- equipment: weapons and armour (content/srd52/equipment.js) ----------
