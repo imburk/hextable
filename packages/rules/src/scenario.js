@@ -2,6 +2,7 @@
 import * as H from './hex.js';
 import { makeEntity } from './engine.js';
 import { MONSTERS, PREGENS } from './content/index.js';
+import { derive, validate } from './derive.js';
 import { VERSION } from './migrate.js';
 import { newMap } from './map.js';
 import { HEX, SQUARE } from './grid.js';
@@ -12,8 +13,35 @@ const hash = (q, r, seed) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
+// Who stands in the valley's party and where, for up to PARTY_MAX heroes: the four starter spots, then two beside them.
+export const PARTY_MAX = 6;
+const PARTY_SPOTS = [[-6, 2], [-7, 3], [-7, 2], [-8, 3], [-8, 2], [-6, 3]];
+const STARTERS = ['fighter', 'rogue', 'cleric', 'wizard'];
+const COLORS = { fighter: '#c8553d', rogue: '#4a7c59', cleric: '#d9a441', wizard: '#5b6fb5' };
+
+// `opts.party` is the heroes of a new game, 1 to PARTY_MAX of them, each `{ pregen: 'fighter' }` (a starter hero by its id, once at most)
+// or `{ sheet }` (a build sheet, derive.js: it must pass `validate`). A bad party throws and nothing is made. Without it the party is the
+// four starters, exactly as before. A built hero is `pc1`, `pc2`...; its sheet is kept on it, as `setSheet` keeps it.
+export function partyProblems(party) {
+  if (!Array.isArray(party) || party.length < 1 || party.length > PARTY_MAX) return [`A party is 1 to ${PARTY_MAX} characters.`];
+  const bad = [], seen = new Set();
+  party.forEach((p, i) => {
+    const who = `Character ${i + 1}`;
+    if (p?.pregen !== undefined) {
+      if (!STARTERS.includes(p.pregen)) bad.push(`${who}: there is no starter character "${p.pregen}".`);
+      else if (seen.has(p.pregen)) bad.push(`${who}: the ${p.pregen} is already in the party.`);
+      seen.add(p.pregen);
+    } else if (p?.sheet) {
+      const v = validate(p.sheet);
+      if (v.length) bad.push(`${who}: ${v[0]}`);
+    } else bad.push(`${who}: neither a starter nor a sheet.`);
+  });
+  return bad;
+}
+
 export function newGame(seed = 7, opts = {}) {
-  if (opts?.grid === 'square') return squareValley(newGame(seed));
+  if (opts?.party !== undefined) { const bad = partyProblems(opts.party); if (bad.length) throw new Error(bad[0]); }
+  if (opts?.grid === 'square') return squareValley(newGame(seed, { party: opts.party }));
   const tiles = {};
   const smooth = (h) => (hash(h.q, h.r, seed) + H.neighbors(h).reduce((a, n) => a + hash(n.q, n.r, seed), 0)) / 7;
   for (const h of H.range({ q: 0, r: 0 }, 13)) {
@@ -33,9 +61,12 @@ export function newGame(seed = 7, opts = {}) {
     entities: {}, encounter: null, conclusion: null, scene: null, effects: [], handouts: [], timeline: [], settings: { sight: 'rooms', autoEngage: true, passiveFind: 'off', vertical: 'max', climbing: 'on', cover: 'on', creatureCover: 'on', engageRange: 10, unseenTurns: 'say', diceThrow: 'auto', pace: 'wait', conclusion: 'dm', xpShare: 'split' },
   };
   const add = (tpl, over) => { flat(over.pos); s.entities[over.id] = makeEntity(tpl, over); };
-  const colors = { fighter: '#c8553d', rogue: '#4a7c59', cleric: '#d9a441', wizard: '#5b6fb5' };
-  [['fighter', -6, 2], ['rogue', -7, 3], ['cleric', -7, 2], ['wizard', -8, 3]].forEach(([k, q, r]) =>
-    add(PREGENS[k], { id: k, kind: 'pc', side: 'party', pos: { q, r, z: 0 }, look: { color: colors[k] } }));
+  (opts?.party ?? STARTERS.map((pregen) => ({ pregen }))).forEach((p, i) => {
+    const [q, r] = PARTY_SPOTS[i], pos = { q, r, z: 0 };
+    if (p.pregen) return add(PREGENS[p.pregen], { id: p.pregen, kind: 'pc', side: 'party', pos, look: { color: COLORS[p.pregen] } });
+    add(derive(p.sheet).record, { id: `pc${i + 1}`, kind: 'pc', side: 'party', pos });
+    s.entities[`pc${i + 1}`].sheet = structuredClone(p.sheet);
+  });
   [['goblin-warrior', 4, -1], ['goblin-warrior', 5, -2], ['goblin-warrior', 5, 0], ['wolf', 6, -1], ['skeleton', 0, -9], ['skeleton', 1, -10]].forEach(([k, q, r], i) => {
     const n = Object.values(s.entities).filter((o) => o.tpl === k).length + 1;
     add(MONSTERS[k], { id: `m${i + 1}`, tpl: k, name: `${MONSTERS[k].name} ${n}`, pos: { q, r, z: 0 } });
@@ -74,7 +105,7 @@ function squareValley(hexGame) {
     e.pos = { q: at.q, r: at.r, z: 0 };
     tiles[`${at.q},${at.r}`] = { t: 'grass', lift: 0.6 };       // the same trampled ground the hex valley gives each creature
   }
-  const start = s.entities.fighter.pos;
+  const start = Object.values(s.entities).find((e) => e.kind === 'pc').pos;   // the first hero, as the hex valley placed them
   s.map = newMap({ id: 'valley-squares', name: 'The valley', grid: 'square', levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: start.q, r: start.r }] });
   return s;
 }
