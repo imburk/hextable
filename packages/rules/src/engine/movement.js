@@ -1,7 +1,7 @@
 // Movement actions (engine.js): move, dash, stand, disengage, and walking together (follow,
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
-import { gridOf, col, key, pathTo } from '../grid.js';
-import { apart, apartAt, footprint, FT, ground, landing, STEP_MAX, unseenAt } from '../space.js';
+import { gridOf, col, key } from '../grid.js';
+import { apart, apartAt, footprint, FT, ground, landing, measure, STEP_MAX, unseenAt } from '../space.js';
 import { entered, snapshot } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
@@ -9,7 +9,7 @@ import { objectDef } from '../walls.js';
 import { canReact, instruction, OPPORTUNITY, opportunityAttack, reactionsOf } from '../reactions.js';
 import { modifiers, speedOf } from '../modifiers.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, need, unblocked, up } from './shared.js';
-import { airspace, aloft, along, byMarch, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, below, byMarch, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { checkEnd, engage, KIT, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
 
@@ -28,12 +28,12 @@ function threatsAt(s, e, pos) {
 // off. Returns true if something did, which ends the creature's movement there.
 function trip(s, e, prev, ev, before) {
   let fired = false;
-  const G = gridOf(s.map);
+  const G = gridOf(s.map), far = measure(s, G);                       // how far a trigger reaches: as range is measured
   if (!ground(s.map, e.pos)) return false;                             // nothing on the floor notices what is not on it
   for (const o of s.map.objects) {
     const def = objectDef(o);
     if (!def.triggers?.length || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) continue;
-    const nearest = (pos) => Math.min(...footprint(e, pos).map((f) => G.dist(f, o.at)));      // any part of a big creature sets a thing off
+    const nearest = (pos) => Math.min(...footprint(e, pos, G).map((f) => far(f, o.at)));      // any part of a big creature sets a thing off
     const was = nearest(prev), now = nearest(e.pos);
     const t = def.triggers.find((x) => x.from.includes(o.state) && (x.who !== 'party' || e.side === 'party') &&
       (x.on === 'enter' ? now === 0 && was > 0 : x.on === 'leave' ? was === 0 && now > 0 : now * FT <= x.feet && was * FT > x.feet));
@@ -44,7 +44,7 @@ function trip(s, e, prev, ev, before) {
       fired = true;
     }
     if (t.to && t.to !== o.state) setObject(s, o, t.to, ev);
-    if (t.effects) objectEffects(s, o, t.effects, t.area ? living(s).filter((c) => gridOf(s.map).dist(c.pos, o.at) * FT <= t.area && Math.abs(c.pos.z - objectZ(s, o)) <= STEP_MAX) : [e], ev);
+    if (t.effects) objectEffects(s, o, t.effects, t.area ? living(s).filter((c) => far(c.pos, o.at) * FT <= t.area && Math.abs(c.pos.z - objectZ(s, o)) <= STEP_MAX) : [e], ev);
   }
   return fired;
 }
@@ -74,7 +74,12 @@ function walk(s, e, reach, tk, ev, fighting) {
   const flush = () => { if (seg.length) ev.push({ type: 'moved', id: e.id, path: seg }); seg = []; };
   if (notice(s, e, ev, flush)) return null;
   const range = Math.max(ENGAGE_RANGE, Math.floor((s.settings.engageRange ?? 10) / FT));
-  for (const step of pathTo(reach, tk)) {
+  // Movement is spent as the route goes. On squares it is what was left at the start less the
+  // route's cost so far, one subtraction, so fractions of a foot never pile up; on hexes, step by
+  // step as it always was (the same numbers: there every cost is whole or half feet).
+  const square = gridOf(s.map).kind === 'square', base = s.encounter?.budget?.move;
+  let spent = 0;
+  for (const { h: step, cost, p } of route(reach, tk)) {
     if (fighting && s.encounter && !e.cond.disengaged) {
       for (const o of threatsAt(s, e, prev)) {
         if (apartAt(s, o, o.pos, e, step) <= 1) continue;
@@ -103,7 +108,12 @@ function walk(s, e, reach, tk, ev, fighting) {
       if (!up(e)) break;
     }
     const k = key(step);
-    if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(key(prev)).cost;
+    if (fighting && s.encounter) {
+      const b = s.encounter.budget;
+      if (square) b.move = base - cost; else b.move -= cost - spent;
+      if (p !== undefined) b.diagonals = p;                              // 'alternate': is the next diagonal a second one?
+    }
+    spent = cost;
     const was = e.pos, zonesBefore = snapshot(s);
     e.pos = step; seg.push(step); prev = step; walked.push(step);
     lookAround(s, ev, [e], flush);
@@ -129,7 +139,7 @@ function walk(s, e, reach, tk, ev, fighting) {
   flush();
   return walked;
 }
-const KEEP_UP = 2;                   // hexes: a follower stays this close to the one in front where the ground allows
+const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.march ?? -1)) + 1;
 
 // The leader has walked `walked` (from where it set off). Everyone following it, and everyone
@@ -197,7 +207,7 @@ export const handlers = {
     if (!node || !node.canStop) {
       if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");
       if (node) fail('That hex is occupied.');
-      fail(fighting ? `Too far. ${e.name} has ${s.encounter.budget.move} ft of movement left.` : "Can't get there.");
+      fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft of movement left.` : "Can't get there.");
     }
     // Moved on its own, it walks on its own: it no longer follows anyone.
     if (!fighting && e.follow) unfollow(s, e, ev);
@@ -231,7 +241,7 @@ export const handlers = {
       current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
       const speed = speedOf(s, e), cost = Math.floor(speed / 2 / FT) * FT;
       speed > 0 || fail(`${e.name} has a Speed of 0 and cannot stand up.`);
-      s.encounter.budget.move >= cost || fail(`Standing up takes ${cost} ft of movement; ${e.name} has ${s.encounter.budget.move} ft left.`);
+      !below(s.encounter.budget.move, cost) || fail(`Standing up takes ${cost} ft of movement; ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft left.`);
       s.encounter.budget.move -= cost;
     }
     delete e.cond.prone;

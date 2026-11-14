@@ -5,7 +5,7 @@ import { HEX, gridOf, col, key, pathTo, reachable } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile } from '../effects.js';
-import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, overlapAt, regionAt, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
+import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule } from '../vision.js';
@@ -32,9 +32,9 @@ export function airspace(map, h, column = surfaces(map, h), height = HEADROOM) {
 // footprint needs a floor within a step of that height that can be stood on, and no wall may
 // run between two parts of it. A creature of one hex is checked by its caller.
 export function fitsOn(map, e, h, B) {
-  const shape = shapeOf(e), G = gridOf(map);
+  const G = gridOf(map), shape = shapeOf(e, G);
   if (shape.length === 1) return true;
-  const base = ground(map, h)?.level, parts = footprint(e, h);
+  const base = ground(map, h)?.level, parts = footprint(e, h, G);
   for (const f of parts.slice(1)) {
     const sf = surfaces(map, f).find((x) => Math.abs(x.z - h.z) <= STEP_MAX);
     if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, f)) return false;
@@ -46,6 +46,107 @@ export function fitsOn(map, e, h, B) {
 const wallsAt = (map, z) => map.levels.filter((l) => l.z <= z && z < l.z + WALL_HEIGHT);
 
 const SIZE_ORDER = Object.keys(SIZES);                 // tiny to gargantuan
+
+// ---------- squares: diagonals, corners and the search ----------
+// How a diagonal step is counted on a square map, a table rule (`settings.diagonals`; absent means
+// 'real'). On hexes there are no diagonals and none of this applies.
+//   real       the owner's rule, the default: a diagonal step costs its true length, 5 x √2 feet,
+//              and whatever doubles a step (Difficult Terrain, climbing, swimming, crawling) doubles
+//              that. A creature may enter a square whenever it has any movement left, even if the
+//              step costs more than is left; that step uses up the rest. Not the SRD's count.
+//   srd        every diagonal costs what a side step does (SRD 5.2.1 1817-1823).
+//   alternate  every second diagonal costs double, counted through the turn ("5-10-5"). A table
+//              rule; it is not in the SRD 5.2.1.
+export const DIAGONALS = ['real', 'srd', 'alternate'];
+// Feet of movement are compared with this one tolerance, and nowhere else by hand. Under 'real'
+// costs are sums of 5 x √2 and whole feet: two routes of the same length can come out a last bit
+// apart in floating point, while two of different lengths are always far more than this apart.
+export const EPS_FT = 1e-6;
+// Is `a` less than `b` by more than rounding?
+export const below = (a, b) => a < b - EPS_FT;
+// Feet of movement left, as a message says it: whole feet, rounded down, on a square map (where
+// 'real' leaves fractions); as it is on hexes.
+export const feetLeft = (s, n) => (gridOf(s.map).kind === 'square' ? Math.floor(n + EPS_FT) : n);
+const DIAGONAL_FT = FT * Math.SQRT2;
+
+// SRD 5.2.1 1824-1825: "Diagonal movement can't cross the corner of a wall, a large tree, or
+// another terrain feature that fills its space." A wall that touches the corner already blocks the
+// line between the two centres (walls.js `crosses` counts touching). What is left is the two squares
+// the step passes between (`G.beside`): neither may be filled at the walker's height, by something
+// solid standing in it (a pillar, a statue, a tree) or by ground that cannot be entered (rock, deep
+// water), or by ground that rises above a step. A creature is not a terrain feature, and a square
+// with no floor at all, or one lower down, does not fill the space.
+export function cornerFree(map, G, B, a, b, z) {
+  for (const c of G.beside(a, b)) {
+    const column = surfaces(map, c);
+    if (!column.length) continue;
+    const near = column.find((sf) => Math.abs(sf.z - z) <= STEP_MAX);
+    if (near ? TILES[near.tile.t].cost === Infinity || B.solid(near.level.id, c) : column[0].z > z) return false;
+  }
+  return true;
+}
+
+// The ways a creature can move on a square map: a least-cost search over feet that need not be
+// whole, by the diagonal rule. Each step from `stepsFn` is { h, max, flat, extra, diag }: it costs
+// `flat` times the length of the step (5 ft, or a diagonal's by the rule) plus `extra` feet (a
+// climb's height), and no more than `max` may be spent getting there. Under 'alternate' the search
+// keeps whether an odd number of diagonals has been taken (`parity` at the start), so a place can
+// be reached two ways; the cheaper is kept, the first found among equals. Returns what hex.js's
+// `reachable` returns (a Map of key -> { cost, prev, h }); `route` gives the way to each place.
+const ROUTES = new WeakMap();
+function squareSearch(start, budget, stepsFn, rule, parity) {
+  const alt = rule === 'alternate', state = (k, p) => (alt ? `${k}|${p}` : k);
+  const first = { cost: 0, h: start, p: parity, back: null, diag: false };
+  const states = new Map([[state(key(start), parity), first]]);
+  let seq = 0;
+  const heap = [{ node: first, seq: seq++ }];
+  const before = (a, b) => below(a.node.cost, b.node.cost) || (!below(b.node.cost, a.node.cost) && a.seq < b.seq);
+  const push = (node) => { let i = heap.push({ node, seq: seq++ }) - 1; while (i > 0) { const q = (i - 1) >> 1; if (!before(heap[i], heap[q])) break; [heap[q], heap[i]] = [heap[i], heap[q]]; i = q; } };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let i = 0; ;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && before(heap[l], heap[m])) m = l; if (r < heap.length && before(heap[r], heap[m])) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; }
+    }
+    return top.node;
+  };
+  while (heap.length) {
+    const cur = pop();
+    if (cur.stale) continue;
+    for (const st of stepsFn(cur.h)) {
+      const lim = Math.min(budget, st.max ?? budget);
+      if (!below(cur.cost, lim)) continue;                                      // nothing left to move with
+      const len = !st.diag ? FT : rule === 'real' ? DIAGONAL_FT : alt && cur.p ? 2 * FT : FT;
+      let c = cur.cost + st.flat * len + st.extra;
+      if (below(lim, c)) { if (rule !== 'real') continue; c = lim; }           // 'real': the last step takes what is left
+      else if (c > lim) c = lim;                                                // the same, but for rounding
+      const p = alt && st.diag ? 1 - cur.p : cur.p, k = state(key(st.h), p), old = states.get(k);
+      if (old && !below(c, old.cost)) continue;
+      if (old) old.stale = true;
+      const node = { cost: c, h: st.h, p, back: cur, diag: !!st.diag };
+      states.set(k, node);
+      push(node);
+    }
+  }
+  const best = new Map();
+  for (const node of states.values()) { const k = key(node.h), had = best.get(k); if (!had || below(node.cost, had.cost)) best.set(k, node); }
+  const out = new Map();
+  for (const [k, node] of best) out.set(k, { cost: node.cost, prev: node.back ? key(node.back.h) : null, h: node.h });
+  ROUTES.set(out, (k) => {
+    const steps = [];
+    for (let n = best.get(k); n?.back; n = n.back) steps.unshift({ h: n.h, cost: n.cost, diag: n.diag, ...(alt ? { p: n.p } : {}) });
+    return steps;
+  });
+  return out;
+}
+// The way to the place `k` that `moveOptions` found, from the first step: [{ h, cost }] with the
+// feet spent by each step's end (and, under 'alternate', `p`: whether an odd number of diagonals
+// has then been taken).
+export function route(reach, k) {
+  const f = ROUTES.get(reach);
+  return f ? f(k) : pathTo(reach, k).map((h) => ({ h, cost: reach.get(key(h)).cost }));
+}
+
 // Map of position key -> {cost, prev, canStop, h} that this creature can move to right now.
 // Walking steps onto surfaces in neighbouring columns; a bigger rise or drop is a climb; a ladder
 // or the like joins two places; and a creature that can fly moves through the air in 5 ft steps.
@@ -58,7 +159,7 @@ export function moveOptions(s, e) {
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
-  const inWay = (h, test) => others.some((o) => overlapAt(o, o.pos, e, h) && test(o));
+  const inWay = (h, test) => others.some((o) => overlapAt(o, o.pos, e, h, G) && test(o));
   // SRD "Moving around Other Creatures": an ally, an Incapacitated or Tiny creature, or one two sizes
   // larger or smaller can be passed through; any other creature's space but a Tiny one or an ally's
   // is Difficult Terrain. Nobody ends a move in an occupied space (canStop, below).
@@ -67,10 +168,14 @@ export function moveOptions(s, e) {
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
   // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
   const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
-  const big = shapeOf(e).length > 1, tall = sizeOf(e).height;
+  const big = shapeOf(e, G).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
-  const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
-  const onHazard = (levelId, h) => (big ? footprint(e, h) : [h]).some((f) => hazards.has(`${levelId}|${col(f)}`));
+  const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from, G).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h, G)[i])));
+  const onHazard = (levelId, h) => (big ? footprint(e, h, G) : [h]).some((f) => hazards.has(`${levelId}|${col(f)}`));
+  // A diagonal step on squares, by every part of the creature, passes no corner (cornerFree).
+  const square = G.kind === 'square';
+  const diagonal = (from, n) => square && G.beside(from, n).length > 0;
+  const cornersFree = (from, h) => (big ? footprint(e, from, G).map((f, i) => [f, footprint(e, h, G)[i]]) : [[from, h]]).every(([a, b]) => cornerFree(map, G, B, a, b, from.z));
   // Acrobatic Movement (`surfaces`): with no armour or Shield, across water without falling in. It may
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
@@ -87,7 +192,7 @@ export function moveOptions(s, e) {
     const def = objectDef(o);
     if (def.triggers?.some((t) => t.on === 'enter' && t.effects && t.from.includes(o.state)) && (e.side !== 'party' || !def.states[o.state].hidden)) hazards.add(`${o.level}|${col(o.at)}`);
   }
-  const reach = reachable(e.pos, budget, (from) => {
+  const steps = (from) => {
     const out = [], here = ground(map, from)?.level;
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
     if (here && from !== e.pos && onHazard(here.id, from)) return out;
@@ -103,9 +208,12 @@ export function moveOptions(s, e) {
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
           if (blocks(h)) continue;
+          const diag = diagonal(from, n);
+          if (diag && !cornersFree(from, h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            out.push({ h, cost: Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) * FT, max: limit.walk });   // Difficult Terrain does not stack
+            const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1);                     // Difficult Terrain does not stack
+            out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag });
           } else if (climbs) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.
@@ -113,7 +221,8 @@ export function moveOptions(s, e) {
             if (lowCol.some((x) => x.z > lowZ && x.z < highZ + HEADROOM)) continue;
             const top = dz > 0 ? sf.level : here;
             if (B.blocked(top.id, from, n)) continue;
-            out.push({ h, cost: terrain * FT + up_ * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
+            const extra = up_ * (climbSpeed > 0 ? 1 : 2);
+            out.push({ h, cost: terrain * FT + extra, max: limit.climb, flat: terrain, extra, diag });
           }
         }
       }
@@ -123,7 +232,8 @@ export function moveOptions(s, e) {
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = key(a) === key(from) ? b : b && key(b) === key(from) ? a : null;
         if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
-        out.push({ h, cost: Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
+        const cost = Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2);
+        out.push({ h, cost, max: limit.climb, flat: 0, extra: cost, diag: false });
       }
     }
     if (flying) {
@@ -133,23 +243,28 @@ export function moveOptions(s, e) {
         const n = i < 0 ? from : around[i];
         if (from.z + dz > top || (fighting && !enc.arena[col(n)])) continue;
         const h = { q: n.q, r: n.r, z: from.z + dz }, column = columnOf(n), room = airspace(map, h, column, tall);
-        if (!room || (big && footprint(e, h).some((f, i) => i > 0 && !airspace(map, f, columnOf(f), tall)))) continue;
+        if (!room || (big && footprint(e, h, G).some((f, i) => i > 0 && !airspace(map, f, columnOf(f), tall)))) continue;
         // No passing through a floor on the way up or down.
         if (dz > 0 && column.some((sf) => sf.z > from.z && sf.z <= h.z)) continue;
         if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
         if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${col(n)}`)))) continue;
         if (walled_ && n !== from && [from.z, h.z].some((z) => wallsAt(map, z).some((l) => B.blocked(l.id, from, n, z - l.z >= FT ? 'tall' : 'move')))) continue;
         if (blocks(h)) continue;
-        out.push({ h, cost: crowded(h) ? 2 * FT : FT, max: limit.fly });
+        const diag = diagonal(from, n);
+        if (diag && !cornersFree(from, h)) continue;
+        const flat = crowded(h) ? 2 : 1;
+        out.push({ h, cost: flat * FT, max: limit.fly, flat, extra: 0, diag });
       }
     }
     return out;
-  });
+  };
+  // Hexes: hex.js's search, as it always was. Squares: the search by the diagonal rule.
+  const reach = square ? squareSearch(e.pos, budget, steps, s.settings.diagonals ?? 'real', fighting ? (enc.budget.diagonals | 0) & 1 : 0) : reachable(e.pos, budget, steps);
   const start = key(e.pos);
   // Nobody stops in another creature's space, except that a few Tiny ones can share a hex.
   const share = sizeOf(e).shares;
   for (const [k, v] of reach) {
-    const there = others.filter((o) => overlapAt(o, o.pos, e, v.h));
+    const there = others.filter((o) => overlapAt(o, o.pos, e, v.h, G));
     v.canStop = k !== start && !wet.has(k) && (!there.length || (!!share && there.length < share && there.every((o) => sizeOf(o).shares)));
   }
   return reach;
@@ -251,7 +366,7 @@ export function objectStep(s, id, of, state, ev) {
 export function roomAt(s, e, to) {
   if (!airspace(s.map, to, undefined, sizeOf(e).height)) return 'Nothing can stand there.';
   if (!fitsOn(s.map, e, to, barriers(s.map))) return `${e.name} does not fit there.`;
-  if (inFight(s, e.id) && footprint(e, to).some((f) => !s.encounter.arena[col(f)])) return 'The arena is locked until the fight ends.';
+  if (inFight(s, e.id) && footprint(e, to, gridOf(s.map)).some((f) => !s.encounter.arena[col(f)])) return 'The arena is locked until the fight ends.';
   return '';
 }
 
@@ -313,7 +428,7 @@ export function findable(s, e, o, feet) {
   if (!def.states[o.state].hidden || !def.find || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) return false;
   const level = s.map.levels.find((l) => l.id === o.level), G = gridOf(s.map);
   const near = objectHexes(o).filter((h) => level.tiles[col(h)] && shown(s.map, o.level, h)).sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos))[0];
-  return !!near && G.dist(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) });
+  return !!near && measure(s, G)(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) });
 }
 export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 
@@ -341,7 +456,7 @@ function layout(s, e, area, range, aim) {
     const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : (t) => gap(s, origin, t.pos) <= n;
     return { hexes: G.range(aim, n), origin, high };
   }
-  const front = Math.max(...footprint(e).map((f) => G.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
+  const front = Math.max(...footprint(e, e.pos, G).map((f) => G.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
   if (shape === 'line') {
     if (range > 0 || G.dist(aim, e.pos) === 0) return null;
     const flat = G.along(e.pos, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
@@ -385,8 +500,8 @@ export function aimArea(s, e, name, area, range, hex) {
     if (d * FT > range) fail(`That is ${ft(d)} away. ${name} reaches ${range} ft.`);
   }
   const l = layout(s, e, area, range, hex) || fail(`The engine cannot lay out ${name} there.`);
-  const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(key)), origin = l.origin;
-  const targets = living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t).some((f) => keys.has(col(f))) && l.high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
+  const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(key)), origin = l.origin, G = gridOf(s.map);
+  const targets = living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f))) && l.high(t) && footprint(t, t.pos, G).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
   return { targets, hexes, origin: origin === e.pos ? null : origin };
 }
 
@@ -529,7 +644,7 @@ export function catchUp(s, arena, walked, ev) {
     }
     if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     f.pos = best.v.h;
-    ev.push({ type: 'moved', id: f.id, path: pathTo(mine, best.k), caughtUp: true });
+    ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
     lookAround(s, ev, [f]);
     party.add(f.id);
   }

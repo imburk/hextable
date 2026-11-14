@@ -66,8 +66,7 @@ export function lintMap(doc, extra = []) {
   if (doc.format !== MAP_FORMAT) bad.push(`Its format is ${doc.format}; this game reads format ${MAP_FORMAT}.`);
   if (!text(doc.id)) bad.push('It has no id.');
   if (!text(doc.name)) bad.push('It has no name.');
-  if (doc.grid === 'square') bad.push('Square maps come in a later version.');            // until task S6
-  else if (!GRIDS.includes(doc.grid)) bad.push(`Its grid is "${doc.grid}"; it can be ${GRIDS.join(' or ')}.`);
+  if (!GRIDS.includes(doc.grid)) bad.push(`Its grid is "${doc.grid}"; it can be ${GRIDS.join(' or ')}.`);
   const G = gridOf(doc);
   if (doc.cellFeet !== 5) bad.push(`A ${G.word.one} must be 5 feet.`);
   if (!Array.isArray(doc.levels) || !doc.levels.length) return [...bad, 'It has no levels.'];

@@ -187,12 +187,13 @@ test("SQUARE has every member HEX has, in the same order, and is never what a pl
   // E, N, W, S (across a side), then NE, NW, SW, SE.
   assert.deepEqual(SQ.DIRS, [[1, 0], [0, -1], [-1, 0], [0, 1], [1, -1], [-1, -1], [-1, 1], [1, 1]]);
   for (const k of ["col", "key", "parse", "reachable", "pathTo"]) assert.equal(SQ[k], H[k], k);
-  // gridOf follows the map; but no map in play can be square yet, because the linter refuses one.
+  // gridOf follows the map: the valley and the stock maps are hex maps. Since task S6 the linter
+  // no longer refuses a square map (square-moving.test.js plays one).
   const { lintMap } = await import("../src/map.js");
   const { STOCK_MAPS } = await import("../src/content/maps/index.js");
   for (const m of [newGame(1).map, ...STOCK_MAPS.map((x) => x.map)]) {
     assert.equal(gridOf(m), HEX, m.id);
-    assert.deepEqual(lintMap({ ...structuredClone(m), grid: "square" }), ["Square maps come in a later version."], m.id);
+    assert.ok(!lintMap({ ...structuredClone(m), grid: "square" }).includes("Square maps come in a later version."), m.id);
   }
   assert.equal(gridOf({ grid: "hex" }), HEX);
   assert.equal(gridOf({}), HEX);
