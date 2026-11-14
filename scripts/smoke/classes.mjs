@@ -21,9 +21,9 @@ async function classes(browser, url, label, opts) {
       };
       const uses = (n, f) => state(page, (S, a) => S.entities[a[0]].uses[a[1]], [ids[n], f]);
       const pick = async (n) => { await closePanels(page); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
-      // The Features tab holds a row for each class feature; the spell buttons and Metamagic are still in the tab with id `all` (T4b's).
+      // The Features tab holds a row for each class feature; the spells and Metamagic are rows of the Spells tab.
       const feat = async (name) => { await panelTab(page, 'features'); await tap(page, `#ap-features [data-row]:has-text("${name}")`); };
-      const spellsTab = async () => { await panelTab(page, 'all'); };
+      const spellsTab = async () => { await panelTab(page, 'spells'); };
       const tapCreature = async (target) => {
         await settle(page, target);
         const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
@@ -130,7 +130,7 @@ async function classes(browser, url, label, opts) {
         }
         const before = await uses('Sorsha', 'font-of-magic');
         await pick('Sorsha');
-        await spellsTab(); await tap(page, '#actions button:has-text("Metamagic")');
+        await spellsTab(); await tap(page, '#ap-spells [data-row="metamagic"]');
         await waitShown(page, '#cp .cp-card');
         const opts = await page.$$eval('#cp [data-meta]', (b) => b.map((x) => x.dataset.meta));
         if (opts.join() !== 'careful,quickened,heightened,transmuted') throw new Error(`the options known: ${opts}`);

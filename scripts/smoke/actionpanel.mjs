@@ -44,7 +44,7 @@ async function solo(browser, url, label, opts) {
         await pick(page, 'Brenna');
         await waitTab(page, 'explore');
         await waitShown(page, '#ap-explore');
-        if (await shown(page, '#actions')) throw new Error('today\'s bar is showing in front of Explore');
+        if (await shown(page, '#ap-spells')) throw new Error('the Spells tab is showing in front of Explore');
         const r = await rows(page);
         if (r.indexOf('search') < 0 || r.indexOf('search') > 3) throw new Error(`Search is not in the top four with passive finds off: ${r}`);
         for (const want of ['follow', 'lead', 'shortRest', 'longRest', 'hide', 'check']) if (!r.includes(want)) throw new Error(`no ${want} row in ${r}`);
@@ -68,7 +68,7 @@ async function solo(browser, url, label, opts) {
         if (!/Second Wind/.test(sw.t) || !/\d \/ \d/.test(sw.t) || !/Back on a/.test(sw.t)) throw new Error(`no pips or recharge text: ${sw.t}`);
         if (sw.off !== 'true' || !sw.why || !/full Hit Points/.test(sw.t)) throw new Error(`a greyed row does not say why on screen: ${JSON.stringify(sw)}`);
         await clear(page, touch, false);
-        await page.click('#ap-tab-explore'); await waitTab(page, 'explore'); await waitShown(page, '#actions', false);
+        await page.click('#ap-tab-explore'); await waitTab(page, 'explore'); await waitShown(page, '#ap-spells', false);
         if (!touch) { await page.keyboard.press('2'); await waitTab(page, 'features'); await page.keyboard.press('1'); await waitTab(page, 'explore'); }
       });
 
@@ -117,7 +117,7 @@ async function solo(browser, url, label, opts) {
         await closeMenu(page);
         const other = await state(page, (S) => S.encounter.order.map((o) => o.id).find((i) => S.entities[i].kind === 'pc' && i !== S.encounter.order[S.encounter.turn].id));
         await page.evaluate((i) => window.hextable.select(i), other);
-        await waitTab(page, 'reactions'); await waitShown(page, '#ap-reactions'); await waitShown(page, '#actions', false);
+        await waitTab(page, 'reactions'); await waitShown(page, '#ap-reactions'); await waitShown(page, '#ap-spells', false);
         await waitShown(page, '#ap-reactions .rx select');
         if (await page.$('#ap-reactions #sheet-reactions')) throw new Error('the sheet\'s section id is used twice');
         await clear(page, touch, true); await shot('reactions');
@@ -145,7 +145,7 @@ async function solo(browser, url, label, opts) {
         }
         const me = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
         await page.evaluate((i) => window.hextable.select(i), me);
-        await waitTab(page, 'attacks'); await waitShown(page, '#ap-attacks'); await waitShown(page, '#btn-end'); await waitShown(page, '#actions', false);
+        await waitTab(page, 'attacks'); await waitShown(page, '#ap-attacks'); await waitShown(page, '#btn-end'); await waitShown(page, '#ap-spells', false);
         const tabs = await page.$$eval('#ap-tabs [data-tab]', (b) => b.map((x) => x.dataset.tab));
         for (const want of ['attacks', 'bonus', 'move']) if (!tabs.includes(want)) throw new Error(`no ${want} tab in ${tabs}`);
         await clear(page, touch, true); await shot('turn');

@@ -1263,3 +1263,26 @@ What was settled while building, where it differs from the text above, and what 
   already exposes. Not in the panel yet (DEBT T19): the Brutal Strike and Cunning Strike choices on an attack, Intimidating Presence's targets, Self-Restoration's `cure`, the `free` standing instructions on
   Reactions, and the new events.
 - **Not verified.** A real finger; a screen reader on the new rows; the three themes beyond Classic; objects in reach and a prone creature in a browser (the unit tests cover the rows; the send is the old one).
+
+### T4b: the Spells tab (PR for #277)
+
+What was settled while building, where it differs from the text above, and what was left.
+
+- **Files.** `actionpanel.js` (pure: `spellRow`, `spellRows`, `slotStrip`, `filterSpells`, `sortSpells`, `castGroup`, `noFilters`, `filtersOn`; the page code draws them), `actionpanel.css`, `style.css` (the old bar's `#actions` rules are gone),
+  `app.js` (the spell-button builder in `refresh()` is gone; the panel is given `metamagic(e)`, the Metamagic button of `classes.js`), tests in `packages/client/test/actionpanel.test.js`, and the Spells steps in `SMOKE_ONLY=paneltabs`.
+- **The tab id `all` is gone.** The tab is `spells`, its pane `#ap-spells`. `index.html` was not on the issue's list and still carries the temporary pane (`#ap-all` holding `#actions`): `initActionPanel` takes that element, renames it `ap-spells`
+  and empties it. The markup should be tidied the next time `index.html` is touched. (The `all` value of `hextable.panelTab` and the `open()` line were already gone with T4a.)
+- **Slot strip.** `Level 1 ●●○ Level 2 ●○` from `e.slots` and `e.slotsMax`, in a bar that sticks to the top of the pane, so it stays whatever the sort, the filters or the scroll; a screen reader hears "2 of 3 left". Pact slots are one entry,
+  "Pact slots, level N". A creature with no slots has no strip. The strip shares its line with the Sort select and the Filters button (the compact pane is short).
+- **Sort** (Level, Name, School, Casting time) is kept per device in `hextable.spellSort`. Level groups Cantrips first; Name is one list; School and Casting time group under headings. Within a group: level, then name.
+- **Filters**, kept while the page is open and not between sessions: Casting time (Action, Bonus, Reaction, Longer), Cantrips, Prepared, Kind (Damage, Healing, Control, Utility), Concentration, Ritual, Can cast now. One chip of a group is enough
+  (Action or Bonus; Cantrips or Prepared); every group that has a chip on must pass. They sit behind a Filters button with a count (and Clear) so the compact pane keeps room for rows. **Class is not drawn** (#175).
+  A spell with `sp.kinds === []` (the engine cannot tell what it is for, E12) passes every Kind chip and says "kind not known" on its row while a Kind chip is on. Prepared is "not a cantrip" (the engine has no spellbook).
+- **Greyed.** `spellWhy` (turn, action, no slot, one slot a turn), then range: a spell aimed at a creature with nobody in `targetsFor` says "Nobody within N ft." The engine's list counts allies, since it lets a harmful spell be aimed at
+  one, so the reason shows only when nobody at all is in range. The same row feeds the Bonus tab, so it has the reason too. A tap on a greyed row shows the toast and sends nothing.
+- **Metamagic** is a row at the top of the list (not sorted or filtered away) with the Sorcery Points; it opens the same card as before.
+- **A spell armed** collapses the card on a phone (the shell's rule: any mode but move, up to 600 px) and Cancel puts it back, from this tab as from any other; checked in the smoke at both sizes.
+- **Explore's healing shortcuts** for spells now jump to `spell:<id>` in the Spells tab; the filters are cleared first so the row cannot be hidden.
+- **Items** is not built (E17, E18); the tab stays in `panelContext` and is not drawn.
+- **Not verified.** A real finger, a screen reader, the themes beyond Classic, and "Nobody within N ft." in a browser (the valley's map is too small to put everyone out of a cantrip's range; a unit test covers it).
+

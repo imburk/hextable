@@ -1,15 +1,14 @@
 // The action panel (docs/specs/table-ui.md, Decision 6, task T3): the card at the foot of the screen. Its head (name, Sheet, End turn),
 // Hit Point bar and status line (with a small card on how each condition or lasting effect ends), and tabs chosen by what the
-// table is doing, `panelContext(S, e)`. Built here: Explore (outside a fight, ranked by `rankExplore`), Reactions (on another's
-// turn), Down, and one temporary tab, "All", which holds today's action bar (`#actions`, still built by app.js) until T4a and T4b
-// give each of its buttons a row in its own tab.
+// table is doing, `panelContext(S, e)`. Built here: Explore (outside a fight, ranked by `rankExplore`), Attacks, Spells, Bonus, Move,
+// Features, Reactions (on another's turn) and Down. The Items tab waits for the engine (E17, E18).
 //
 // The top of this file is pure: it reads a state (a full state or a player's view) and the engine's own helpers, and returns
 // plain data, so a test can drive it with no page. `initActionPanel` below is the only part that touches the page. Nothing here
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { inFight, current, up, blocked, usesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { inFight, current, up, blocked, targetsFor, usesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile } from './shared/effects.js';
 import { reactionsOf, canReact } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
@@ -23,10 +22,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 
 // ---------- which tabs, when ----------
-export const TAB_LABEL = { explore: 'Explore', attacks: 'Attacks', spells: 'Spells', bonus: 'Bonus', move: 'Move', features: 'Features', items: 'Items', reactions: 'Reactions', down: 'Down', all: 'Spells' };
-// The tabs that have rows today. Spells and Items are T4b's; until then the tab with id `all` (labelled Spells) holds the spell buttons (and Metamagic) as the
-// action bar built them, and there is no Items tab (the bar had no item buttons).
-export const BUILT = new Set(['explore', 'reactions', 'down', 'attacks', 'bonus', 'move', 'features']);
+export const TAB_LABEL = { explore: 'Explore', attacks: 'Attacks', spells: 'Spells', bonus: 'Bonus', move: 'Move', features: 'Features', items: 'Items', reactions: 'Reactions', down: 'Down' };
+// The tabs that have rows today. Items waits for the engine (E18 items that do things, E17 items between creatures): until then it is in `panelContext` and not drawn.
+export const BUILT = new Set(['explore', 'reactions', 'down', 'attacks', 'spells', 'bonus', 'move', 'features']);
 
 // Whether the Reactions tab is available for `e` now, and if not why, in words. A question waiting for this creature makes it
 // active whatever else is true: `S.prompt` is what a player is sent, `S.pending` what the DM is sent.
@@ -54,15 +52,13 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
 }
 
-// The tabs the shell draws: the built ones in the spec's order, with the temporary spell tab (id `all`) where Spells goes. `has` says which tabs have anything in
-// them: Attacks and Features are left out when empty (a wizard has no attack; a monster no features); Bonus and Move are always there on your turn, and a
-// Bonus tab with nothing available says why. `spells`: the creature has spell buttons.
+// The tabs the shell draws: the built ones in the spec's order. `has` says which tabs have anything in them: Attacks, Spells and Features are left out when
+// empty (a wizard has no attack; a monster no features); Bonus and Move are always there on your turn, and a Bonus tab with nothing available says why.
 export function visibleTabs(ctx, { spells = true, attacks = true, features = true } = {}) {
   const out = [];
   for (const t of ctx.tabs) {
-    if (t.id === 'spells') { if (spells) out.push({ id: 'all', label: TAB_LABEL.all, built: true }); continue; }
     if (!t.built) continue;
-    if ((t.id === 'attacks' && !attacks) || (t.id === 'features' && !features)) continue;
+    if ((t.id === 'attacks' && !attacks) || (t.id === 'spells' && !spells) || (t.id === 'features' && !features)) continue;
     out.push(t);
   }
   return out;
@@ -78,7 +74,7 @@ export function defaultTab(ctx, tabs, { pref = 'auto', last = {} } = {}) {
     if (has(last.wait)) return last.wait;
   }
   if (has(ctx.default)) return ctx.default;
-  return has('all') ? 'all' : tabs[0]?.id ?? null;
+  return has('spells') ? 'spells' : tabs[0]?.id ?? null;
 }
 
 // ---------- the Explore tab ----------
@@ -105,7 +101,7 @@ const dimHere = (S, e) => {
 const wearyParty = (S) => Object.values(S.entities).some((x) => x.side === 'party' && x.kind === 'pc' && !x.dead && (hurt(x) || x.hp <= 0 || Object.keys(x.slotsMax ?? {}).some((l) => (x.slots?.[l] ?? 0) < x.slotsMax[l])));
 
 // What to offer outside a fight, most likely first (Decision 6). Rows: { id, kind, label, sub, why, send?, ... }. `kind` says what a tap does:
-// an action to send (`send`), `follow` (arm a tap on a party member), `jump` (go to a button of the All tab), `ritual`, `shortRest`, `check`.
+// an action to send (`send`), `follow` (arm a tap on a party member), `jump` (go to a row of another tab), `ritual`, `shortRest`, `check`.
 // The first four are drawn as large buttons, the rest under "More". Inputs: `dm`; `mode` (follow armed); `found`: a `noticed` or
 // `triggered` event came in the last two updates.
 export function rankExplore(S, e, { dm = false, mode = null, found = false } = {}) {
@@ -126,12 +122,12 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
     }
     if (dm && !enc) follows.push(row({ id: 'lead', kind: 'send', label: 'Lead the party', sub: 'Everyone follows; then tap where to go', send: { type: 'partyFollow', leader: e.id } }));
   }
-  // 3. Hurt: the healing this creature can do now, as shortcuts to its buttons (Spells and Features come with T4a and T4b), and the DM's rests.
+  // 3. Hurt: the healing this creature can do now, as shortcuts to its rows in Spells and Features, and the DM's rests.
   const aid = [];
   if (hurt(e)) {
     for (const id of e.spells ?? []) {
       const sp = SPELLS[id];
-      if (sp?.heals && !spellWhy(S, e, sp)) aid.push(row({ id: `heal:${id}`, kind: 'jump', label: sp.name, sub: `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · heals`, jump: sp.name, jumpTab: 'all' }));
+      if (sp?.heals && !spellWhy(S, e, sp)) aid.push(row({ id: `heal:${id}`, kind: 'jump', label: sp.name, sub: `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · heals`, jump: `spell:${id}`, jumpTab: 'spells' }));
     }
     for (const f of e.feats ?? []) {
       if (!HEAL_FEATS.includes(f.id)) continue;
@@ -247,11 +243,53 @@ export function moveBudget(S, e) {
   return { left: feetShown(S, b.move), max: feetShown(S, max), prone: !!e.cond?.prone };
 }
 
-// A spell as a row (the Bonus tab lists the spells that cost a Bonus Action; the rest are T4b's).
+// ---------- the Spells tab (T4b) ----------
+// A spell as a row. `why` is the engine's own reason it cannot be cast now (`spellWhy`), then the range: a spell aimed at a creature with nobody within its range says so
+// (`targetsFor`, the engine's own list of who it could be aimed at). The Bonus tab lists the spells that cost a Bonus Action; the Spells tab lists them all.
+const LONGER = { minute: '1 minute', hour: '1 hour' };
+export const castGroup = (sp) => (CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : 'Longer');
+const rangeWhy = (S, e, sp) => {
+  if (sp.aim !== 'creature' || !(sp.range > 0)) return '';
+  try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${sp.range} ft.`; } catch { return ''; }
+};
 export function spellRow(S, e, id, { mode = null } = {}) {
   const sp = SPELLS[id], what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
-  return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', what].filter(Boolean).join(' · '), why: spellWhy(S, e, sp),
-    chip: CHIP[sp.time] ?? 'Action', time: sp.time, armed: armedBy(mode, 'spell', id) };
+  const range = sp.aim === 'self' ? 'Self' : sp.range > 0 ? `${sp.range} ft` : '';
+  return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', range, sp.def.concentration ? 'Concentration' : '', sp.def.ritual ? 'Ritual' : '', what].filter(Boolean).join(' · '),
+    why: spellWhy(S, e, sp) || rangeWhy(S, e, sp), chip: CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : (LONGER[sp.time] ?? sp.time), time: sp.time, armed: armedBy(mode, 'spell', id),
+    level: sp.level, school: sp.def.school ?? '', cast: castGroup(sp), conc: !!sp.def.concentration, ritual: !!sp.def.ritual, kinds: sp.kinds ?? [] };
+}
+
+// The slot strip: one entry per spell level the creature has slots of (`e.slots` left, `e.slotsMax`); Pact Magic's are one row of the pact level.
+export function slotStrip(e) {
+  return Object.keys(e.slotsMax ?? {}).map(Number).sort((a, b) => a - b).map((l) => ({ level: l, left: e.slots?.[l] ?? 0, max: e.slotsMax[l], label: e.pact ? `Pact slots, level ${l}` : `Level ${l}` }));
+}
+
+export const SPELL_SORTS = { level: 'Level', name: 'Name', school: 'School', time: 'Casting time' };
+export const SPELL_KIND_CHIPS = ['damage', 'healing', 'control', 'utility'];
+export const SPELL_CASTS = ['Action', 'Bonus', 'Reaction', 'Longer'];
+export const noFilters = () => ({ cast: [], conc: false, ritual: false, level: [], can: false, kind: [] });
+export const filtersOn = (f) => f.cast.length + f.level.length + f.kind.length + (f.conc ? 1 : 0) + (f.ritual ? 1 : 0) + (f.can ? 1 : 0);
+
+// The rows of the Spells tab: every spell of `e`, then Metamagic for a sorcerer (`meta`: the button classes.js builds, or null).
+export function spellRows(S, e, { mode = null } = {}) {
+  return (e.spells ?? []).filter((id) => SPELLS[id]).map((id) => spellRow(S, e, id, { mode }));
+}
+// The filters combine: a creature's row must pass every kind of chip that is on, and any one chip of the same kind (Action or Bonus; Cantrips or Prepared;
+// Damage or Healing). The engine has no spellbook, so Prepared is "not a cantrip". A spell whose kind the engine cannot tell (`kinds` empty) passes every Kind chip.
+export function filterSpells(rows, f) {
+  return rows.filter((r) => (!f.cast.length || f.cast.includes(r.cast)) && (!f.conc || r.conc) && (!f.ritual || r.ritual) && (!f.can || !r.why) &&
+    (!f.level.length || f.level.includes(r.level === 0 ? 'cantrip' : 'prepared')) && (!f.kind.length || !r.kinds.length || r.kinds.some((k) => f.kind.includes(k))));
+}
+// Rows in groups, as the sort says: Level (Cantrips first), Name (one list), School, Casting time. Within a group by level, then name.
+export function sortSpells(rows, sort = 'level') {
+  const byName = (a, b) => a.level - b.level || a.label.localeCompare(b.label);
+  if (sort === 'name') return rows.length ? [{ head: '', rows: [...rows].sort((a, b) => a.label.localeCompare(b.label)) }] : [];
+  const key = { level: (r) => (r.level ? `Level ${r.level}` : 'Cantrips'), school: (r) => (r.school ? r.school[0].toUpperCase() + r.school.slice(1) : 'Other'), time: (r) => r.cast }[sort] ?? ((r) => (r.level ? `Level ${r.level}` : 'Cantrips'));
+  const groups = new Map();
+  for (const r of [...rows].sort(byName)) { const k = key(r); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
+  const order = sort === 'time' ? SPELL_CASTS : null;
+  return [...groups].map(([head, list]) => ({ head, rows: list })).sort((a, b) => (order ? order.indexOf(a.head) - order.indexOf(b.head) : sort === 'school' ? a.head.localeCompare(b.head) : 0));
 }
 
 // Everything that costs a Bonus Action, from every kind (Decision 6): spells with `time: 'bonus'`, features whose action is a Bonus Action, the standard actions that are
@@ -281,6 +319,7 @@ export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
   if (id === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
   if (id === 'move') return moveRows(S, e, { fly });
   if (id === 'features') return featureRows(S, e, { mode });
+  if (id === 'spells') return spellRows(S, e, { mode });
   return [];
 }
 
@@ -341,7 +380,7 @@ const ARMS = (m) => !!m && m.kind !== 'move';
 
 // ctx: { prefs, state(), isDM(), mine(e), act, toast, skipping(), setMode(m), move (the idle mode), castSpell(e, id, armed), openSheet(),
 //        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ aloft, alt }),
-//        fly(e, delta) (change the height of the next move), render(), selected() }.
+//        fly(e, delta) (change the height of the next move), metamagic(e) (the Metamagic button of classes.js, or null), render(), selected() }.
 export function initActionPanel(ctx) {
   const { prefs } = ctx;
   const card = $('card'), body = $('ap-body'), tabsEl = $('ap-tabs'), how = $('ap-how');
@@ -349,8 +388,14 @@ export function initActionPanel(ctx) {
   const pref = () => (prefs.get('hextable.panelTab') === 'remember' ? 'remember' : 'auto');
   const last = () => prefs.get('hextable.panelLast') ?? {};
   const narrow = () => { try { return matchMedia('(max-width: 600px)').matches; } catch { return false; } };
-  const panes = { explore: $('ap-explore'), attacks: $('ap-attacks'), bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down'), all: $('ap-all') };
-  const LISTS = ['explore', 'attacks', 'bonus', 'move', 'features'];
+  // index.html still carries the temporary pane of the old action bar (`#ap-all` and `#actions`); it is the Spells pane now.
+  const spellsEl = $('ap-all') ?? $('ap-spells');
+  spellsEl.id = 'ap-spells'; spellsEl.setAttribute('aria-labelledby', 'ap-tab-spells'); spellsEl.textContent = '';
+  const panes = { explore: $('ap-explore'), attacks: $('ap-attacks'), spells: spellsEl, bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down') };
+  const LISTS = ['explore', 'attacks', 'spells', 'bonus', 'move', 'features'];
+  // The Spells tab's sort (kept on this device) and filters (kept while the page is open, not between sessions).
+  const sortNow = () => (SPELL_SORTS[prefs.get('hextable.spellSort')] ? prefs.get('hextable.spellSort') : 'level');
+  let filters = noFilters(), filtersOpen = false, refocus = null;
 
   const setHtml = (el, html) => { if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; } };
 
@@ -376,7 +421,7 @@ export function initActionPanel(ctx) {
   addEventListener('pointerup', (ev) => {
     if (!drag || ev.pointerId !== drag.id) return;
     const dy = ev.clientY - drag.y; drag = null;
-    if (Math.abs(dy) > 30 && sel.tab !== 'all') { raised = dy < 0; ctx.render(); }
+    if (Math.abs(dy) > 30) { raised = dy < 0; ctx.render(); }
   });
   addEventListener('pointercancel', () => { drag = null; });
   // 1 to 6 switch to a tab when no field has focus.
@@ -396,6 +441,7 @@ export function initActionPanel(ctx) {
       case 'send': case 'use': return ctx.act(r.send);
       case 'arm': return ctx.setMode(r.armed ? ctx.move : r.mode);
       case 'spell': return ctx.castSpell(e, r.spell, r.armed);
+      case 'meta': return ctx.metamagic?.(e)?.onClick();
       case 'chooser': return ctx.openFeature(e, r.feature);
       case 'fly': return ctx.fly(e, r.delta);
       case 'follow': if (r.armed) { ctx.setMode(ctx.move); return ctx.act(r.send); } return ctx.setMode({ kind: 'follow' });
@@ -403,9 +449,9 @@ export function initActionPanel(ctx) {
       case 'shortRest': return ctx.shortRest();
       case 'check': return ctx.openSheet();
       case 'jump': {
-        choose(r.jumpTab ?? 'all');
-        const b = r.jumpTab === 'features' ? panes.features.querySelector(`[data-row="${CSS.escape(r.jump)}"]`)
-          : [...$('actions').querySelectorAll('button')].find((x) => x.querySelector('span')?.textContent === r.jump);
+        if (r.jumpTab === 'spells') filters = noFilters();                        // a filter must not hide the row we are going to
+        choose(r.jumpTab);
+        const b = panes[r.jumpTab].querySelector(`[data-row="${CSS.escape(r.jump)}"]`);
         if (b) { b.scrollIntoView({ block: 'nearest', inline: 'center' }); b.focus({ preventScroll: true }); }
         return;
       }
@@ -418,6 +464,18 @@ export function initActionPanel(ctx) {
       const r = (rowsBy[id] ?? []).find((x) => x.id === b.dataset.row); if (r) run(r);
     });
   }
+  // The Spells tab's own controls: the sort, the filters, and Clear. A chip is `data-f="group:value"` (`conc`, `ritual` and `can` have no value).
+  const keep = (sel) => { refocus = sel; ctx.render(); const b = refocus && panes.spells.querySelector(refocus); refocus = null; b?.focus({ preventScroll: true }); };
+  panes.spells.addEventListener('click', (ev) => {
+    const c = ev.target.closest('[data-f], [data-filters], [data-clear]'); if (!c) return;
+    if (c.dataset.filters !== undefined) { filtersOpen = !filtersOpen; return keep('[data-filters]'); }
+    if (c.dataset.clear !== undefined) { filters = noFilters(); return keep('[data-filters]'); }
+    const [g, v] = c.dataset.f.split(':');
+    if (v === undefined) filters[g] = !filters[g];
+    else filters[g] = filters[g].includes(v) ? filters[g].filter((x) => x !== v) : [...filters[g], v];
+    keep(`[data-f="${CSS.escape(c.dataset.f)}"]`);
+  });
+  panes.spells.addEventListener('change', (ev) => { if (ev.target.matches('[data-sort]')) { prefs.set('hextable.spellSort', ev.target.value); keep('[data-sort]'); } });
   panes.explore.addEventListener('toggle', (ev) => { if (ev.target.matches('details.ap-more')) moreOpen = ev.target.open; }, true);
 
   const pipDots = (p) => (p.max <= 8 ? `<span class="pips" aria-hidden="true">${'●'.repeat(Math.max(0, Math.min(p.left, p.max)))}${'○'.repeat(Math.max(0, p.max - p.left))}</span> ` : '');
@@ -455,6 +513,35 @@ export function initActionPanel(ctx) {
   for (const id of [...LISTS, 'reactions', 'down']) panes[id].addEventListener('scroll', () => cueFor(panes[id]), { passive: true });
 
   const exploreHtml = (list) => `<div class="ap-grid">${list.filter((r) => r.grid).map(rowHtml).join('')}</div>${list.some((r) => !r.grid) ? `<details class="ap-more"${moreOpen ? ' open' : ''}><summary>More</summary><div class="ap-list">${list.filter((r) => !r.grid).map(rowHtml).join('')}</div></details>` : ''}`;
+
+  // The Spells tab: the slot strip (always there, whatever the sort), the sort and filters, Metamagic, then the spells in groups.
+  const slotsHtml = (e) => {
+    const strip = slotStrip(e);
+    return strip.length ? `<div class="ap-slots" role="group" aria-label="Spell slots">${strip.map((t) => `<span class="ap-slot${t.left ? '' : ' spent'}"><b>${esc(t.label)}</b> <span class="pips" aria-hidden="true">${'●'.repeat(Math.max(0, Math.min(t.left, t.max)))}${'○'.repeat(Math.max(0, t.max - t.left))}</span><span class="sr-only"> ${t.left} of ${t.max} left</span></span>`).join('')}</div>` : '';
+  };
+  const chip = (f, label, on) => `<button type="button" class="ap-fchip" data-f="${esc(f)}" aria-pressed="${on}">${esc(label)}</button>`;
+  const toolbarHtml = () => {
+    const n = filtersOn(filters), sort = sortNow();
+    const panel = !filtersOpen ? '' : `<div class="ap-filters">
+      <span class="ap-fgroup" role="group" aria-label="Casting time">${SPELL_CASTS.map((c) => chip(`cast:${c}`, c, filters.cast.includes(c))).join('')}</span>
+      <span class="ap-fgroup" role="group" aria-label="Level">${chip('level:cantrip', 'Cantrips', filters.level.includes('cantrip'))}${chip('level:prepared', 'Prepared', filters.level.includes('prepared'))}</span>
+      <span class="ap-fgroup" role="group" aria-label="Kind">${SPELL_KIND_CHIPS.map((k) => chip(`kind:${k}`, k[0].toUpperCase() + k.slice(1), filters.kind.includes(k))).join('')}</span>
+      <span class="ap-fgroup" role="group" aria-label="Other">${chip('conc', 'Concentration', filters.conc)}${chip('ritual', 'Ritual', filters.ritual)}${chip('can', 'Can cast now', filters.can)}</span></div>`;
+    const bar = `<div class="ap-tools"><label>Sort <select data-sort>${Object.entries(SPELL_SORTS).map(([k, v]) => `<option value="${k}"${k === sort ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+      <button type="button" data-filters aria-expanded="${filtersOpen}">Filters${n ? ` (${n})` : ''} ${filtersOpen ? '▴' : '▾'}</button>${n ? '<button type="button" data-clear>Clear</button>' : ''}</div>`;
+    return { bar, panel };
+  };
+  function spellsPane(S, e, mode) {
+    const all = spellRows(S, e, { mode }), shown = filterSpells(all, filters), groups = sortSpells(shown, sortNow()), meta = ctx.metamagic?.(e);
+    const metaRow = meta ? { id: 'metamagic', kind: 'meta', label: meta.label, sub: meta.sub, why: meta.why, armed: /\barmed\b/.test(meta.cls ?? ''), chip: 'Cast with' } : null;
+    rowsBy.spells = [...(metaRow ? [metaRow] : []), ...shown];
+    const kindOn = filters.kind.length > 0;
+    const mark = (r) => (kindOn && !r.kinds.length ? { ...r, sub: `${r.sub} · kind not known` } : r);
+    const tb = toolbarHtml();
+    setHtml(panes.spells, `<div class="ap-spellhead">${slotsHtml(e)}${tb.bar}</div>${tb.panel}${metaRow ? `<div class="ap-list">${rowHtml(metaRow)}</div>` : ''}${
+      groups.map((g) => `${g.head ? `<h4 class="ap-head">${esc(g.head)}</h4>` : ''}<div class="ap-list">${g.rows.map((r) => rowHtml(mark(r))).join('')}</div>`).join('')}${
+      all.length && !shown.length ? '<p class="ap-why-line">No spell matches these filters.</p>' : ''}`);
+  }
 
   function reactionsPane(S, e, r) {
     const el = panes.reactions;
@@ -523,7 +610,7 @@ export function initActionPanel(ctx) {
       setHtml(tabsEl, tabsNow.map((t, i) => {
         const off = t.id === 'reactions' && !t.ok && !t.pending;
         return `<button type="button" role="tab" id="ap-tab-${t.id}" data-tab="${t.id}" aria-selected="${t.id === tab}" aria-controls="ap-${t.id}" tabindex="${t.id === tab ? 0 : -1}" class="${off ? 'off ' : ''}${t.pending ? 'pulse' : ''}"${off ? ' aria-disabled="true"' : ''}${i < 6 ? ` aria-keyshortcuts="${i + 1}"` : ''}>${esc(t.label)}${t.pending ? '<i class="sr-only"> (a question is waiting)</i>' : ''}</button>`;
-      }).join('') + (tab !== 'all' && tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body" aria-label="${raised ? 'Less room' : 'More room'}" title="${raised ? 'Less room' : 'More room'}">${raised ? '▾' : '▴'}</button>` : ''));
+      }).join('') + (tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body" aria-label="${raised ? 'Less room' : 'More room'}" title="${raised ? 'Less room' : 'More room'}">${raised ? '▾' : '▴'}</button>` : ''));
 
       // the panes: only the open one is shown
       for (const [id, el] of Object.entries(panes)) el.hidden = id !== tab;
@@ -538,14 +625,15 @@ export function initActionPanel(ctx) {
         rowsBy[tab] = list;
         setHtml(panes[tab], listHtml(head, list));
       }
+      if (tab === 'spells') spellsPane(S, e, mode);
       if (tab === 'reactions') reactionsPane(S, e, react ?? reactionState(S, e, { dm }));
       if (tab === 'down') downPane(S, e);
       body.hidden = !tabsNow.length;
       card.dataset.tab = tab ?? '';
       card.dataset.situation = ctxNow.situation;
-      card.toggleAttribute('data-raised', raised && tab !== 'all');
+      card.toggleAttribute('data-raised', raised);
       card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
-      if (panes[tab] && tab !== 'all' && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
+      if (panes[tab] && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
       return tab;
     },
     get tab() { return sel.tab ?? card.dataset.tab; },
