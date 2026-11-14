@@ -219,18 +219,25 @@ export function actionProfile(a) {
 // ---------- running steps ----------
 
 // { total, dice, bonus }: the faces go on the damage event (docs/specs/dice.md).
-const rollDamage = (s, step, crit) => {
+// `max`: every die shows its highest number and none is rolled (Overchannel: "deal maximum damage");
+// the faces say so (`max: true`), so the log does not pass them off as rolled.
+const maxRoll = (expr, crit) => {
+  const m = /^(?:(\d+)d(\d+))?\s*([+-]?\s*\d+)?$/.exec(String(expr).trim());
+  const n = (m?.[1] ? +m[1] : 0) * (crit ? 2 : 1), sides = +m?.[2] || 0, bonus = m?.[3] ? +m[3].replace(/\s/g, '') : 0;
+  return { total: Math.max(0, n * sides + bonus), bonus, dice: Array.from({ length: n }, () => ({ sides, value: sides, max: true })) };
+};
+const rollDamage = (s, step, crit, max = false) => {
   let total = 0, bonus = 0;
   const dice = [];
-  for (let i = 0; i < (step.times || 1); i++) { const r = roll(s, step.damage, { crit }); total += r.total; bonus += r.bonus; dice.push(...r.dice); }
+  for (let i = 0; i < (step.times || 1); i++) { const r = max ? maxRoll(step.damage, crit) : roll(s, step.damage, { crit }); total += r.total; bonus += r.bonus; dice.push(...r.dice); }
   return { total, dice, bonus };
 };
 
 // In an area, damage is rolled once and shared by everyone caught in it. Returns
-// { path: total } for every damage step that is not under an attack roll.
-export function sharedRolls(s, steps) {
+// { path: total } for every damage step that is not under an attack roll. `max`: see rollDamage.
+export function sharedRolls(s, steps, max = false) {
   const shared = {};
-  walk(steps, (step, at, inAttack) => { if ('damage' in step && !inAttack) shared[at] = rollDamage(s, step, false); });
+  walk(steps, (step, at, inAttack) => { if ('damage' in step && !inAttack) shared[at] = rollDamage(s, step, false, max); });
   return shared;
 }
 
@@ -254,7 +261,8 @@ export function run(s, ev, kit, floor = 0) {
     if (f.kind === 'each') {
       if (f.t >= f.targets.length) { stack.pop(); continue; }
       // `told` is shared by the targets of one effect, so a manual step's text is shown once, not once per target.
-      stack.push({ kind: 'seq', steps: f.steps, path: '', i: 0, actor: f.actor, target: f.targets[f.t++], src: f.src, shared: f.shared, told: (f.told ??= {}) });
+      // `n`: which of the targets this is (the second ray of Scorching Ray is 1), for Empowered Evocation.
+      stack.push({ kind: 'seq', steps: f.steps, path: '', i: 0, actor: f.actor, n: f.t, target: f.targets[f.t++], src: f.src, shared: f.shared, told: (f.told ??= {}) });
       continue;
     }
     if (f.i >= f.steps.length) { stack.pop(); continue; }
@@ -270,7 +278,7 @@ function exec(s, ev, kit, f, step, at) {
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
-      crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, ...extra });
+      crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, n: f.n, ...extra });
   };
 
   if (kind === 'manual') {
@@ -339,7 +347,16 @@ function exec(s, ev, kit, f, step, at) {
     // instance of damage (one death-save failure, one Concentration save). A later step whose
     // `when` cannot be judged is left to run on its own, which hands it to the DM.
     // A shared roll from before faces were kept is a bare number.
-    const amount = (st, path) => { const r0 = f.shared?.[path] ?? rollDamage(s, st, !!f.crit), r = typeof r0 === 'number' ? { total: r0 } : r0;
+    // `src.max`: dice at their highest (Overchannel). `src.empower`: a number added to one damage roll,
+    // the step at `path` (and with `n`, only for that target: one ray of several), once (Empowered
+    // Evocation); a shared roll had it added when it was rolled (engine/casting.js).
+    const amount = (st, path) => { let r0 = f.shared?.[path];
+      if (r0 === undefined) {
+        r0 = rollDamage(s, st, !!f.crit, !!f.src.max);
+        const emp = f.src.empower;
+        if (emp && !emp.done && emp.path === path && (emp.n === undefined || emp.n === f.n)) { emp.done = true; r0 = { ...r0, total: r0.total + emp.add, bonus: r0.bonus + emp.add }; ev.push({ type: 'note', id: f.actor, text: `${emp.name}: +${emp.add} damage` }); }
+      }
+      const r = typeof r0 === 'number' ? { total: r0 } : r0;
       return { amount: f.half || f.evade ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
     const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
     const parts = [{ ...amount(step, at), type: step.type }], landed = [[step, at]];

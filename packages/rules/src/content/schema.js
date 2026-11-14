@@ -622,7 +622,10 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   'evasion', 'surfaces', 'selfCure', 'allTypes', 'fleet',
   // Sneak Attack dice traded for effects (Cunning Strike and the features that add to it), and how many
   // magic items it may be attuned to (Use Magic Device).
-  'cunning', 'attune'];
+  'cunning', 'attune',
+  // Since the casters' levels 7 to 15 (#232): an ability modifier added to one damage roll of a school's spells
+  // (Empowered Evocation), and maximum damage at a growing cost (Overchannel).
+  'empowered', 'overchannel'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -905,6 +908,14 @@ function lintGrants(g, cls, say) {
       }
     }
   }
+  // `empowered: { school, list, ability }`: a spell of that school on that class's list adds the ability's
+  // modifier to one of its damage rolls, the caster's pick (`cast` with `empower`: Empowered Evocation).
+  if (g.empowered !== undefined && !(g.empowered && SCHOOLS.includes(g.empowered.school) && ID.test(g.empowered.list ?? '') && ABILITIES.includes(g.empowered.ability) && Object.keys(g.empowered).length === 3)) say('empowered is { school, list, ability }');
+  // `overchannel: { list, maxSlot, die }`: a damaging spell of that list cast with a slot up to `maxSlot` may deal
+  // its dice at their highest (`cast` with `overchannel: true`); from the second use before a Long Rest the caster
+  // takes `die`s of Necrotic damage per slot level, one more each time, ignoring Resistance and Immunity.
+  if (g.overchannel !== undefined && !(g.overchannel && ID.test(g.overchannel.list ?? '') && isInt(g.overchannel.maxSlot) && g.overchannel.maxSlot >= 1 && g.overchannel.maxSlot <= 9
+    && [4, 6, 8, 10, 12].includes(g.overchannel.die) && Object.keys(g.overchannel).length === 3)) say('overchannel is { list, maxSlot, die }');
   if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
@@ -1206,7 +1217,8 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
-  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning'];
+  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
+  'empowered', 'overchannel'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1265,6 +1277,8 @@ function lintFeat(f, say) {
     else for (const o of x.options ?? []) if (o.effects) lintSteps(o.effects, sub);
   }
   if (f.selfCure !== undefined && !(f.selfCure && allOf(CONDITIONS)(f.selfCure.conditions) && f.selfCure.conditions.length)) sub('its selfCure is { conditions }.');
+  if (f.empowered !== undefined && !(f.empowered && SCHOOLS.includes(f.empowered.school) && ID.test(f.empowered.list ?? '') && ABILITIES.includes(f.empowered.ability))) sub('its empowered is { school, list, ability }.');
+  if (f.overchannel !== undefined && !(f.overchannel && ID.test(f.overchannel.list ?? '') && isInt(f.overchannel.maxSlot) && f.overchannel.maxSlot >= 1 && f.overchannel.maxSlot <= 9 && [4, 6, 8, 10, 12].includes(f.overchannel.die))) sub('its overchannel is { list, maxSlot, die }.');
   if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');
   if (f.action?.acts !== undefined && !(Array.isArray(f.action.acts) && allOf(['dash', 'disengage', 'dodge'])(f.action.acts))) sub('its action acts lists dash, disengage or dodge.');
   if (f.reroll !== undefined && !(f.reroll && ID.test(f.reroll.cost ?? '') && (f.reroll.add === undefined || (isInt(f.reroll.add) && f.reroll.add >= 0 && f.reroll.add <= 30)))) sub('its reroll is { cost, add? }.');

@@ -33,6 +33,7 @@ export const handlers = {
       e.uses.secondWind = e.features.secondWind || 0;
       for (const f of e.feats ?? []) if (f.uses) e.uses[f.id] = f.uses.max;   // every feature with uses
       for (const f of e.feats ?? []) if (f.relentless) delete e.uses[f.id];   // Relentless Rage's DC is 10 again
+      for (const f of e.feats ?? []) if (f.overchannel) delete e.uses[f.id];  // Overchannel is free again
       if (e.hitDie) e.hd = e.level;                                        // and all spent Hit Point Dice
       if (e.hitDice) e.hdBy = { ...e.hitDice };
       if (e.tempHp) { e.tempHp = 0; delete e.tempFx; }

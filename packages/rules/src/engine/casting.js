@@ -12,7 +12,8 @@ import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, castAbilOf, control, ent, fail, featOf, ft, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
 import { aimArea, creatures, reveal, roomAt, showPlace, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, checkEnd, engage, reactAgainst, resolve, startEncounter } from './resolve.js';
+import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter } from './resolve.js';
+import { roll } from '../rng.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -156,6 +157,55 @@ function metamagicFor(s, e, sp, a, slot) {
 }
 const nice = (id) => id[0].toUpperCase() + id.slice(1);
 
+// ---------- the Evoker (#232) ----------
+// Empowered Evocation (`empowered: { school, list, ability }`): a spell of that school on that class's
+// list adds the ability's modifier to one of its damage rolls. `a.empower` is false to go without, or
+// which roll: for a spell with several damage steps the step (0 for the first), for rays or darts
+// aimed at several targets the ray (0 for the first, in the order of `targets`). Left out, it is added
+// where the spell makes one damage roll; where it makes several, the DM is told, as the player picks.
+// Overchannel (`overchannel: { list, maxSlot, die }`): `a.overchannel: true` on a damaging spell of
+// that list cast with a slot of level 1 to `maxSlot` deals its dice at their highest; uses since the
+// last Long Rest are counted in `uses[feature id]`, and from the second the caster takes so many of
+// `die` per slot level in Necrotic damage, one more each time, ignoring Resistance and Immunity.
+// Returns { empower?, told?, overchannel? }, checked before anything is spent.
+function evokerFor(e, sp, a, slot, via, targets) {
+  const out = {};
+  (a.empower === undefined || a.empower === false || (Number.isInteger(a.empower) && a.empower >= 0 && a.empower < 20)) || fail('empower is false, or which damage roll it adds to (0 for the first).');
+  (a.overchannel === undefined || a.overchannel === true) || fail('overchannel is true or left out.');
+  const paths = [];
+  walkSteps(sp.def.effects ?? [], (st, at) => { if ('damage' in st) paths.push(at); });
+  const onList = (list) => (sp.def.classes ?? []).includes(list);
+  const ef = (e.feats ?? []).find((f) => f.empowered);
+  if (a.empower !== undefined && a.empower !== false) {
+    ef || fail(`${e.name} has no feature that adds to a spell's damage roll.`);
+    (sp.def.school === ef.empowered.school && onList(ef.empowered.list)) || fail(`${ef.name} is for ${nice(ef.empowered.list)} spells of the ${nice(ef.empowered.school)} school.`);
+    paths.length || fail(`${sp.name} deals no damage for ${ef.name} to add to.`);
+  }
+  if (ef && a.empower !== false && sp.def.school === ef.empowered.school && onList(ef.empowered.list) && paths.length) {
+    const add = mod(e.abil[ef.empowered.ability] ?? 10), rays = !!sp.repeat && targets.length > 1;
+    if (add > 0) {
+      if (a.empower === undefined && (paths.length > 1 || rays)) out.told = `${ef.name}: ${e.name} may add ${add} to one damage roll of ${sp.name}. It makes several, so the player picks one and the DM adds it (or send empower with the roll).`;
+      else if (rays) {
+        paths.length === 1 || fail(`${ef.name}: the DM adds it to ${sp.name}; the engine picks no roll of a spell with several rays and several damage steps.`);
+        (a.empower ?? 0) < targets.length || fail(`${sp.name} has ${targets.length} rays or darts here; empower names one, from 0.`);
+        out.empower = { add, path: paths[0], n: a.empower ?? 0, name: ef.name };
+      } else {
+        (a.empower ?? 0) < paths.length || fail(`${sp.name} makes ${paths.length} damage roll${paths.length === 1 ? '' : 's'}; empower names one, from 0.`);
+        out.empower = { add, path: paths[a.empower ?? 0], name: ef.name };
+      }
+    }
+  }
+  if (a.overchannel) {
+    const of = (e.feats ?? []).find((f) => f.overchannel) || fail(`${e.name} can't Overchannel.`);
+    const x = of.overchannel;
+    onList(x.list) || fail(`${of.name} is for ${nice(x.list)} spells.`);
+    (sp.level >= 1 && !via && slot >= 1 && slot <= x.maxSlot) || fail(`${of.name} is for a spell cast with a spell slot of level 1 to ${x.maxSlot}.`);
+    paths.length || fail(`${sp.name} deals no damage for ${of.name} to make the most of.`);
+    out.overchannel = of;
+  }
+  return out;
+}
+
 export const handlers = {
 
   // { type: 'cast', actor, spell, target? | hex?, slot? }
@@ -212,6 +262,7 @@ export const handlers = {
     // With no `hex` the engine has nowhere to take the caster and the DM moves it.
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
     const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
+    const evo = evokerFor(e, sp, a, slot, via, targets);
 
     // What it costs.
     if (sp.level > 0 && !via) {
@@ -294,15 +345,36 @@ export const handlers = {
       fx.terrain = { area: { ...sp.area }, hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
     }
     const before = ev.length;
+    const shared = sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps, !!evo.overchannel) : null;
+    if (evo.overchannel) ev.push({ type: 'note', id: e.id, text: `${evo.overchannel.name}: ${sp.name} deals its maximum damage` });
+    // Empowered Evocation on a roll shared by everyone it hits: added once, to that roll.
+    if (evo.empower && shared?.[evo.empower.path]) {
+      const r0 = shared[evo.empower.path];
+      shared[evo.empower.path] = { ...r0, total: r0.total + evo.empower.add, bonus: r0.bonus + evo.empower.add };
+      ev.push({ type: 'note', id: e.id, text: `${evo.empower.name}: +${evo.empower.add} damage` });
+      evo.empower.done = true;
+    }
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}),
-        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}) },
+        ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
+        ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
-      shared: sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps) : null,
+      shared,
     });
     resolve(s, ev);
+    // Overchannel after the first use since a Long Rest: Necrotic damage to the caster, right after the spell.
+    if (evo.overchannel) {
+      const of = evo.overchannel, n = e.uses[of.id] ?? 0;
+      e.uses[of.id] = n + 1;
+      if (n >= 1 && !e.dead) {
+        const r = roll(s, `${slot * (n + 1)}d${of.overchannel.die}`);
+        ev.push({ type: 'note', id: e.id, text: `${of.name}: ${n + 1}d${of.overchannel.die} Necrotic per slot level, ignoring Resistance and Immunity` });
+        damage(s, e, [{ amount: r.total, type: 'necrotic', dice: r.dice, bonus: r.bonus, by: null }], null, ev, { pierce: true });
+      }
+    }
+    if (evo.told) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: evo.told, partial: true });
 
     // Whatever the engine did not do, it says, so nothing is quietly skipped.
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });

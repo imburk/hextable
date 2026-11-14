@@ -180,7 +180,8 @@ export function advanceTurn(s, ev) {
 // Temporary Hit Points are lost first (SRD); `raw` (the DM setting Hit Points) leaves them alone.
 // `cut` is a reaction that cuts this damage (Uncanny Dodge: { half }, Deflect Attacks: { less }),
 // taken with the other adjustments, before Resistance (SRD "Order of Application").
-export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null } = {}) {
+// `pierce`: the damage ignores Resistance and Immunity (Overchannel's Necrotic damage to its caster).
+export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null, pierce = false } = {}) {
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const dying = t.hp <= 0, before = t.hp;
@@ -207,9 +208,9 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
-    const resisted = applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
+    const resisted = !pierce && applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
-    if (applies(m.immune, t.immune)) n = 0;
+    if (!pierce && applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
     const ref = cut ? base[pi] : p.amount;                 // after a reaction's cut, Resistance is judged against what was left
     const note = n === 0 && ref > 0 ? 'immune' : resisted && vulnerable && ref > 0 ? 'resisted and vulnerable' : n < ref ? 'resisted' : n > ref ? 'vulnerable' : undefined;
