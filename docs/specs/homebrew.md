@@ -1,8 +1,10 @@
 # Spec: homebrew, and a builder an AI can drive
 
 Status: draft by an agent, to be reviewed by the design owner. Issue #237, part B
-(the owner's request of 13 November). Nothing here is built. No code is written
-by this spec.
+(the owner's request of 13 November), amended by #278 to agree with the owner's
+homebrew answers of 14 November (#237): **strictly the DM adds homebrew**,
+homebrew monsters are never sent to players, and AI help stays outside the game
+for now. Nothing here is built. No code is written by this spec.
 
 The owner asked: given the engine as it is, what can be added to support
 homebrew rules, and how would they be constructed? Is there a builder for the
@@ -23,8 +25,13 @@ the questions for the owner. Style follows `table-ui.md`.
   tag is an engine change with a spec amendment, never a pack (`CLAUDE.md`).
   Homebrew therefore cannot do what the vocabulary cannot; what it cannot say
   becomes a `manual` step with text for the DM, and the tier says so.
-- **The repo stays SRD-only.** Homebrew packs belong to a table (or to a
-  player's device), never to the repo, and never to `content/srd52/`.
+- **The repo stays SRD-only.** Homebrew packs belong to a table (or to the
+  device of the person who runs it as DM), never to the repo, and never to
+  `content/srd52/`.
+- **Strictly the DM adds homebrew.** Players cannot upload homebrew in the app,
+  neither to a table nor in a character file for review. A player who wants
+  something added gets it to the DM outside the app, and the DM adds it to their
+  own pack if they agree (the owner's decision, 14 November).
 - **Never trust a client.** A pack is linted on the server by the same linter
   as the SRD pack, with stricter limits, before it can touch a table. A client
   that lints for its user's convenience proves nothing to the server.
@@ -34,12 +41,16 @@ the questions for the owner. Style follows `table-ui.md`.
 - **The engine never pretends.** A homebrew spell the engine cannot fully run
   is `assist` or `manual`, and the table is told in words, as for SRD entries.
 - **Players are sent only what their characters can see.** Homebrew monsters
-  are secrets until met (Decision 5).
+  are never sent to players: their stat blocks stay with the DM, as SRD
+  monsters' do (Decision 5).
 - **The rules package is pure.** The schema export, the linter, the reader and
   the dry run are plain functions with no I/O, no clock and no `Math.random`;
   the dry run uses a seed.
 - **No dependencies, no bundler.** JSON Schema is produced by our own function;
   no validator library is added.
+- **No model is called from inside the game.** AI help is outside the app: the
+  app hands out instructions to copy into any AI the user already has, takes the
+  result pasted back, lints it and shows the reading (Decision 8).
 - **No text copied from any rulebook.** The builder, the reader's sentences and
   the examples are written for this project. The project says "5E compatible".
 - **Phones are first-class.** The builder is a form that works at 390 x 844.
@@ -316,10 +327,12 @@ and `assets` (`export` in `tables.js`). In solo the packs live in the browser
 
 **Who adds a pack.** The **DM only**, by a server message `pack` with the
 pack as JSON (the frame limit is raised for the DM to 256 KB plus the envelope;
-a DM's map actions already may be 1 MB). Players never upload packs to a
-table. A player who has their own homebrew (a character using a homebrew spell)
-offers it as part of a character file's `bundle` (Decision 7), which the DM
-reads; it is never added without the DM.
+a DM's map actions already may be 1 MB). **Players cannot upload homebrew at
+all**: not to a table, not as a file for the DM to review in the app. A character
+file does not carry homebrew content either (Decision 4). A player who wants
+something added hands it to the DM outside the app; the DM writes or pastes it
+into their own pack if they agree. The server refuses a `pack` message from any
+sender who is not the table's DM.
 
 The server's steps on `pack`: size and budget; `lintPack` strict; the pack
 `id` is new or the `version` is higher; the cross-reference check against the
@@ -353,26 +366,27 @@ inputs.
 ### Decision 4: homebrew in the compatibility report of the portable-characters spec
 
 A character file (`portable-characters.md`) lists in `needs.homebrew` the
-`{ id, pack, hash }` of every homebrew entry its sheet names, and may carry a
-`bundle` with those entries as data (at most 16 entries, 64 KB, linted strictly
-like any pack, never trusted). The report's kinds, for homebrew:
+`{ id, pack, hash }` of every homebrew entry its sheet names, so a table can say
+what it lacks. **The file never carries the entries themselves** (there is no
+`bundle`), and **homebrew is never taken from a file**: a travelling character
+that names homebrew is still accepted as a character file, but nothing of that
+homebrew enters the table from it. The report's kinds, for homebrew:
 
-- **Table has it, same hash:** nothing to say.
+- **Table has it, same id and hash** (the DM's own pack holds a matching entry):
+  nothing to say. It plays.
 - **Table has the id with a different hash:** "a different thing with the same
-  name": the DM sees the two readings side by side (Decision 6) and chooses
-  to accept the table's version or refuse.
-- **Table lacks it, and the file carries it:** the DM can read the entry and
-  **add it to the table** as a new pack `from-<character>` (a one-click
-  version of the pack upload, with the same lint and review), or accept without it
-  (it goes into `parked`), or refuse.
-- **Table lacks it, no bundle:** accept without it (parked) or refuse; no
-  guess.
+  name": the DM sees the table's entry's reading (Decision 6), and the table's
+  version is the one that plays; the DM accepts that or refuses.
+- **Table lacks it:** the report shows the piece as **"not in this table's
+  rules"**. The DM can accept without it (it is taken off the playing copy and
+  goes into `parked`, as the Fantasy Grounds importer leaves things off), replace
+  it with a stand-in under the stand-in rules of `portable-characters.md`, or
+  refuse the character. There is no "add it to the table" button in the review:
+  a DM who wants it adds it to their own pack outside the review (Decision 3),
+  and the player offers the character again.
 
-The DM never adds a bundle's content without reading its reading; a bundle that
-fails strict lint is dropped and the report says so.
-
-**Cost.** Two fields in the file format and one report kind. Touches
-`compat.js` of the portable-characters spec.
+**Cost.** One field in the file format and one report kind. Touches `compat.js`
+of the portable-characters spec.
 
 ### Decision 5: what players are sent of a pack
 
@@ -383,7 +397,7 @@ what their character needs to play, never what it does not.**
   its spells, items, feats, weapons, armour, objects. These are needed to show
   a spell list, a magic item on a sheet and a door's states, and are no more
   secret than the SRD's.
-- **Never sent:** monsters. The client draws a creature from the view's
+- **Never sent:** monsters (the owner's decision, 14 November). The client draws a creature from the view's
   `seenRecord` (name, health word), and the SRD stat blocks in the client
   bundle are public SRD content; a homebrew monster's stats are a surprise and
   stay on the server. A creature that has been met is shown as the view shows any
@@ -467,9 +481,12 @@ change to a sentence is a visible change.
 
 **Question.** What does a person who does not know the vocabulary use?
 
-**Choice.** A client screen, `homebrew.js`, in the table settings (DM) and on
-the start screen (My homebrew, a device library like My characters). It builds
-one entry at a time. For a **spell** (the first target; monsters and items
+**Choice.** A client screen, `homebrew.js`, for the person running the table as DM: in the
+table settings, and on the start screen as the DM's own device library ("My
+homebrew", used when that person is the DM, solo play included). Players do not
+get it: a player has no way to add homebrew to a table (Decision 3), and the
+portable character screens offer SRD content only. It builds one entry at a
+time. For a **spell** (the first target; monsters and items
 follow the same pattern):
 
 1. **Basics**: name, level, school, casting time, range, components, duration,
@@ -491,7 +508,7 @@ follow the same pattern):
    "The DM plays this".
 6. **Try it**: a dry run (below).
 7. **Save** adds the entry to the pack being edited on this device. **Add to
-   table** (DM) uploads the pack through Decision 3.
+   table** uploads the pack through Decision 3 (the DM only).
 
 **Dry run.** `dryRun(kind, entry, { seed })` in the rules package makes a
 throw-away game from `newGame(seed)`, installs the entry through the registry
@@ -523,7 +540,8 @@ raw data they cannot read?
 **Choice.** The same three functions, offered to a model, with a fixed
 procedure around them:
 
-1. The user describes the entry in words, in an AI tool of their own.
+1. The user (the DM) describes the entry in words, in an AI tool of their own,
+   outside the game.
 2. The model **reads the schema** (`schemaOf`), writes an entry, and **calls
    `lintEntry`**; on problems it reads the plain sentences and fixes the entry,
    repeating until the linter is silent (the model's loop, not the user's).
@@ -533,8 +551,8 @@ procedure around them:
    show data" fold and is not what the button says. The approval is for one
    `hash`: if the entry changes by one character the reading is regenerated and
    the approval is void.
-5. The approved entry goes into the user's pack on their device (or, for a DM,
-   to the table through Decision 3), where the server lints it again.
+5. The approved entry goes into the DM's pack on their device, and to the table
+   through Decision 3, where the server lints it again.
 
 **Why the user can trust the reading.** The reading is produced by our code from
 the data the engine will run, not by the model. A model that writes a spell that
@@ -552,9 +570,10 @@ approves in words.
 | **The server** | `budget`, `lintPack` strict and the hash on every pack a DM uploads; nothing is trusted from a client. **No public lint endpoint**: an unauthenticated route that runs the linter and the dry run is a CPU target, and no part of this design needs it. | Required |
 | **A small CLI**, `scripts/hb.mjs`, no dependencies | `hb schema <kind>`, `hb lint <file>`, `hb read <file>`, `hb dryrun <file> --seed n`. Reads and writes JSON on the user's machine; the AI tool the user already runs (a coding assistant, say) calls it as a shell tool. | Cheap |
 | **A tool server** `scripts/hb-mcp.mjs` | The same four functions as tools of a stdio tool server in the style of the Model Context Protocol (JSON-RPC 2.0 over stdio; the part needed is small and is written here without a library), so a chat client that supports such tools can call them directly. | Stretch |
-| **Inside the app, a model call** | A "Describe it" box that sends the user's words to a model service. This needs a key, a network call from the browser, a privacy statement (the user's text leaves the device), and a place to pay; none exists. | Stretch, not recommended now |
+| **Inside the app, a model call** | A "Describe it" box that sends the user's words to a model service. This needs a key, a network call from the browser, a privacy statement (the user's text leaves the device), and a place to pay; none exists. | **Not planned: the owner's decision is that AI help stays outside the game for now.** A built-in assistant remains a possible later offering of the official server (`portable-characters.md`, Decision 8) and needs its own spec |
 
-**The cheap in-app route.** "Paste from an AI" needs no key: the screen shows a
+**The in-app route is the only one the app has.** "Paste from an AI" needs no
+key and calls no model: the screen shows a
 **Copy instructions** button that puts the schema, a short written brief (one
 page, in the repo's own words: what the vocabulary is, the loop above, "if you
 cannot express it, use a manual step and say what the DM does") and the user's
@@ -588,7 +607,7 @@ schema export and the brief's vocabulary list agree.
 | Paste-from-AI screen with Copy instructions | Small once the three functions exist | |
 | CLI | Small | Thin over the functions |
 | Tool server (stdio) | Small to medium (stretch) | Needs care and tests |
-| In-app model call | Stretch | Keys, privacy, cost |
+| In-app model call | Not planned (outside the game for now) | Keys, privacy, cost; a later offering of the official server, if ever |
 | **Homebrew subclasses of SRD classes** | Large; engine | `derive`, `validate`, `lintClass`, `classOf`, the build screen and the importer assume one subclass per class |
 | **Homebrew species and backgrounds** | Large; engine | No such content kind and no sheet field |
 | **New conditions or damage types** | Large; engine | The closed lists are read in many places |
@@ -609,9 +628,9 @@ spec does not schedule it; it names the groups so the milestone
 | H3 | `readEntry` | rules | n/a | `content/reader.js` (new), `tests` | no |
 | H4 | `registry.js`: `overlayOf(packs)`, `using(overlay, fn)`; `loadPack` | rules | n/a | `content/registry.js` (new), `content/index.js` (export the builders), `tests` | no |
 | H5 | `state.packs` and the action `setPacks` | state, action | DM (the server composes it) | `engine/dm.js`, `migrate.js`, `tests` | 20 to 21 |
-| H6 | Message `pack` (add, update, remove), the table record, the filtered view `packs`, the export, limits | server | DM | `tables.js`, `index.js`, `limits.js`, `packages/server/README.md`, `view.js` (nothing for players but the filtered message) | no |
+| H6 | Message `pack` (add, update, remove; DM only), the table record, the filtered view `packs`, the export, limits | server | DM | `tables.js`, `index.js`, `limits.js`, `packages/server/README.md`, `view.js` (nothing for players but the filtered message) | no |
 | H7 | `dryRun` | rules | n/a | `content/dryrun.js` (new), `tests` | no |
-| H8 | Compatibility kinds for homebrew | rules | n/a | `compat.js` (portable-characters P2) | no |
+| H8 | Compatibility kinds for homebrew (ids and hashes only; nothing taken from a file) | rules | n/a | `compat.js` (portable-characters P2) | no |
 
 ## Tasks
 
@@ -627,8 +646,8 @@ Ordered so each stage is useful alone. Models and lanes as in
 | B4 | **The registry.** H4: `overlayOf`, `using`, cached profiles. | engine | Opus | `content/registry.js`, `content/index.js`, `tests` | A homebrew spell cast in a test game runs its steps; two overlays called in turn never leak ids; a throw inside `using` restores the lookups; an overlay with an SRD id is refused; `CONTENT` and `SPELLS` are the same objects as before when no overlay is installed. |
 | B5 | **Packs on a table, state and server.** H5 and H6: `state.packs`, migration, `setPacks`, the `pack` message, storage, limits, the export, and the filtered `packs` message. | engine, server | Opus | `engine/dm.js`, `migrate.js`, `tables.js`, `index.js`, `limits.js`, `view.js` (only if the filter lives there), `packages/server/README.md`, `tests` | A DM adds a lint-clean pack and members get the filtered `packs`; a player cannot send `pack`; a pack that fails strict lint changes nothing and the sentences are returned; removing a pack in use is refused with what blocks it; a restart keeps the packs; the export has them; a player's messages hold no homebrew monster text (the hidden-information test). State migrates 20 to 21. |
 | B6 | **The dry run.** H7. | engine | Opus | `content/dryrun.js`, `tests` | A seeded dry run of an invented spell twice gives byte-identical output; it touches no state outside its own game; a monster entry fights a pregenerated character for one round and returns the events. |
-| B7 | **Pack manager, client.** Upload a file, the review (every entry's reading and tier, counts by tier, the licence text), add, update, remove; the player's side receiving packs. | client | Sonnet | `index.html`, `style.css`, `packmanager.js` (new), `tablecontrols.js`, `transport.js` (message pass-through), `app.js` (install the filtered overlay), `tests` | At both sizes a DM uploads a pack file and sees a reading for each entry; a bad file shows the linter's sentences; a player at the table sees a homebrew spell on a sheet and in the spell list, and no monster. |
-| B8 | **Compatibility, homebrew kinds.** H8 and the review rows. | engine, client | Opus then Sonnet | `compat.js`, `reviewchar.js` | A character file naming a homebrew spell the table lacks shows "missing content" with the bundle's reading and the three choices; the same id with another hash shows both readings. |
+| B7 | **Pack manager, client.** For the DM only: upload a file, the review (every entry's reading and tier, counts by tier, the licence text), add, update, remove; the player's side receiving packs. | client | Sonnet | `index.html`, `style.css`, `packmanager.js` (new), `tablecontrols.js`, `transport.js` (message pass-through), `app.js` (install the filtered overlay), `tests` | At both sizes a DM uploads a pack file and sees a reading for each entry; a bad file shows the linter's sentences; a player at the table sees a homebrew spell on a sheet and in the spell list, and no monster. |
+| B8 | **Compatibility, homebrew kinds.** H8 and the review rows. | engine, client | Opus then Sonnet | `compat.js`, `reviewchar.js` | A character file naming a homebrew spell the table lacks shows "not in this table's rules" with the choices accept without it, stand in or refuse, and adds nothing to the table; the same id with another hash shows the table's reading and says the table's version plays; a matching id and hash shows nothing. |
 | B9 | **Builder, spells, slice one.** Basics, target, effect cards for save, attack, damage, heal, condition, the "by hand" card, the live reading and lint, the tier banner; Save to the device library. | client | Sonnet | `homebrew.js` (new), `style.css`, `index.html`, `tests` | At 390 x 844 a person builds "Ember Burst" without typing JSON, sees the reading of Decision 6, sees the banner "The engine plays all of this", and saves; a deliberate error (dice "x") shows the linter's sentence under the field and blocks Save. |
 | B10 | **Builder, spells, slice two.** Areas, higher levels, zones and terrain, choices, modifiers; Try it (dry run). | client | Sonnet | `homebrew.js`, `tests` | Every step and field `shapes.js` lists for spells has a control; Try it shows the cast and the average of 200 seeded casts. |
 | B11 | **Paste from an AI.** The Copy instructions button, the paste box, lint, reading and the approval of one `hash`; the brief. | client | Sonnet | `homebrew.js`, `aibrief.js` (new), `tests` | A pasted valid entry shows its reading and Approve; changing one character voids the approval; an invalid one lists the linter's sentences; the raw data is behind a fold. |
@@ -688,9 +707,12 @@ B3; B9 needs B2 and B3; B10 needs B6; B11 needs B3 and B9.
     manager. The state keeps `packs` ids, and an undo that would remove a pack's
     id from the state while the table still has the pack is refused by
     `setPacks` being outside the undo set (`undoable` in `history.js`).
-14. **Hidden-information interplay with characters.** A character file's
-    `bundle` can reveal a player's homebrew to the DM only; the DM chooses
-    whether to add it; no other player is sent it until it is in a pack.
+14. **Characters and homebrew.** A character file carries homebrew ids and
+    hashes only, never entries (no `bundle`), so a file cannot smuggle content
+    into a table. A test offers a file naming a homebrew id the table lacks and
+    asserts nothing of it enters any pack, state or player message, and that the
+    report says "not in this table's rules". A `pack` message from a player is
+    refused.
 
 ## Risks
 
@@ -715,19 +737,26 @@ B3; B9 needs B2 and B3; B10 needs B6; B11 needs B3 and B9.
 
 ## Questions for the owner
 
-Only those whose answer changes the design. Each has a default, and work
-proceeds on the default.
+Questions 1 to 3 are **settled** by the owner's answers of 14 November (#237):
 
-1. **Who may upload a pack.** *Default: the DM only; a player offers
-   homebrew inside a character file's `bundle`, which the DM reads.* The
-   alternative is players uploading to the table with DM approval.
-2. **Are homebrew monsters hidden from players?** *Default: yes, never
-   sent.* The cost is that a player's client cannot show a monster's
-   description before it is met.
-3. **An in-app model call.** *Default: no; the in-app route is "Copy
-   instructions" and "Paste from an AI", and the CLI and a tool server serve
-   people who run an AI tool.* The stretch needs a key, a payment path and a
-   privacy statement.
+1. *Who adds homebrew.* **Strictly the DM.** Players cannot upload homebrew in
+   the app at all, neither to a table nor in a character file for review. A
+   player who wants something gets it to the DM outside the app, and the DM adds
+   it to their own pack. A travelling character that names homebrew is still
+   accepted as a file, but its homebrew is never taken from the file: the report
+   shows each piece as "not in this table's rules", and it plays only if the DM's
+   own packs already hold a matching entry, else it is replaced by a stand-in or
+   left off. (Decisions 3 and 4. The second half is the lead's reading, to be
+   confirmed by the owner.)
+2. *Homebrew monsters hidden from players.* **Yes, never sent.** (Decision 5.)
+3. *An in-app model call.* **No. AI help stays outside the game for now:** the
+   app gives instructions to copy into any AI the user already has, the result is
+   pasted back, the app lints it and shows the plain-language reading. A built-in
+   assistant remains a possible later offering of the official server.
+   (Decision 8.)
+
+Still open. Each has a default, and work proceeds on the default.
+
 4. **Which vocabulary growth comes first** if homebrew and the SRD are to play
    better by the rules: a `summon` step, an Armor Class formula, an "on weapon
    hit" trigger, an ability modifier in damage, or homebrew subclasses?
@@ -741,12 +770,17 @@ proceeds on the default.
 6. **Hosting user text on the public server.** *Default: allowed, with
    the limits above, plain text only; the DM can remove a pack; no automatic
    moderation.* Do you want a take-down contact in About, and a way for the
-   operator to delete a table's packs?
-7. **A player's homebrew library on their device ("My homebrew").** *Default:
-   yes, local only, like My characters.*
+   operator to delete a table's packs? (If the project runs an official server,
+   this becomes its operating duty; see `portable-characters.md`, Decision 8.)
+7. **A device library of homebrew ("My homebrew").** Players cannot add
+   homebrew, so the library is for the person running a table as DM, solo play
+   included. *Default: yes, DM only, local to the device; the portable character
+   screens offer SRD content only.*
 8. **Does a table that uses homebrew say so in the lobby?** A joining player
    sees "this table uses 2 homebrew packs" before approval? *Default: no; the
-   player is told after approval, as for the table's settings.*
+   player is told after approval, as for the table's settings. A character
+   that would lose homebrew is told so in its own compatibility report in any
+   case.*
 9. **Schedule.** *Default: build B1 to B6 (the pure functions and the registry)
    in Next after milestone 2, the pack manager and the spell builder next, the
    paste route with them, the tool server and monsters' builder later.*
