@@ -154,7 +154,8 @@ export const handlers = {
   loadMap(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.encounter || fail("The map can't change in the middle of a fight.");
-    const map = migrateMap(structuredClone(a.map));
+    let map;
+    try { map = migrateMap(structuredClone(a.map)); } catch { fail("That map can't be used. It is not a map document."); }
     const problems = lintMap(map);
     problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
     const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
@@ -271,9 +272,9 @@ export const SETTINGS = { sight: SIGHT_RULES,
 // What the square-map settings mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   diagonals: {
-    real: 'Diagonals are measured for real (the default): a step to a side costs 5 ft, a diagonal step about 7 ft (5 x 1.41), doubled by Difficult Terrain as any step is. A creature with any movement left may still enter one more square; that step uses up the rest. A table rule, not the SRD count.',
+    real: 'Diagonals are measured for real (the default): a step to a side costs 5 ft, a diagonal step about 7 ft (5 x 1.41), doubled by Difficult Terrain as any step is. A creature with any movement left may still enter one more square on the flat (not up or down: climbing, stairs, a ladder or flying up is paid in full); that step uses up the rest. Forced movement counts diagonals the same way, with no extra square. A table rule, not the SRD count.',
     srd: 'Every diagonal costs 5 ft, the same as a step to a side, as the SRD counts squares.',
-    alternate: 'Every second diagonal in a turn costs 10 ft (5, 10, 5, 10...). A table rule; it is not in the SRD.',
+    alternate: 'Every second diagonal in a turn costs 10 ft (5, 10, 5, 10...); forced movement counts its own diagonals the same way. A table rule; it is not in the SRD.',
   },
   squareRange: {
     real: 'Reach and range are measured centre to centre for real and rounded down to a whole 5 ft (the default): the 8 squares around a creature are within 5 ft, three squares diagonally are 20 ft. A table rule, not the SRD count.',

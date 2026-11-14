@@ -444,7 +444,7 @@ function shapeShift(s, e, f, act, a, ev) {
   if (time && fighting) need(s, e, time);
   const body = { size: tpl.size };
   (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for a ${m.name} there.`);
-  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} becoming a ${m.name}.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} becoming a ${m.name}.`);
 
   // Paid for: from here it happens.
   if (time && fighting) enc.budget[time]--;

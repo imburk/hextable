@@ -53,7 +53,9 @@ const SIZE_ORDER = Object.keys(SIZES);                 // tiny to gargantuan
 //   real       the owner's rule, the default: a diagonal step costs its true length, 5 x √2 feet,
 //              and whatever doubles a step (Difficult Terrain, climbing, swimming, crawling) doubles
 //              that. A creature may enter a square whenever it has any movement left, even if the
-//              step costs more than is left; that step uses up the rest. Not the SRD's count.
+//              step costs more than is left, if the step is on the flat (same height, Difficult
+//              Terrain or not); that step uses up the rest. A step up or down is paid in full.
+//              Not the SRD's count.
 //   srd        every diagonal costs what a side step does (SRD 5.2.1 1817-1823).
 //   alternate  every second diagonal costs double, counted through the turn ("5-10-5"). A table
 //              rule; it is not in the SRD 5.2.1.
@@ -87,7 +89,10 @@ export function cornerFree(map, G, B, a, b, z) {
 }
 
 // The ways a creature can move on a square map: a least-cost search over feet that need not be
-// whole, by the diagonal rule. Each step from `stepsFn` is { h, max, flat, extra, diag }: it costs
+// whole, by the diagonal rule. Each step from `stepsFn` is { h, max, flat, extra, diag, level }:
+// `level` is an ordinary step into a neighbouring square on the same footing (on foot over no
+// more than an ordinary rise, STEP_FREE, Difficult Terrain or not; or flying level), the only kind the 'real' rule's last square may be; a step up
+// or down (stairs, a climb, a ladder, flying up or down) is paid in full. It costs
 // `flat` times the length of the step (5 ft, or a diagonal's by the rule) plus `extra` feet (a
 // climb's height), and no more than `max` may be spent getting there. Under 'alternate' the search
 // keeps whether an odd number of diagonals has been taken (`parity` at the start), so a place can
@@ -118,7 +123,7 @@ function squareSearch(start, budget, stepsFn, rule, parity) {
       if (!below(cur.cost, lim)) continue;                                      // nothing left to move with
       const len = !st.diag ? FT : rule === 'real' ? DIAGONAL_FT : alt && cur.p ? 2 * FT : FT;
       let c = cur.cost + st.flat * len + st.extra;
-      if (below(lim, c)) { if (rule !== 'real') continue; c = lim; }           // 'real': the last step takes what is left
+      if (below(lim, c)) { if (rule !== 'real' || !st.level) continue; c = lim; }   // 'real': the last step on the flat takes what is left
       else if (c > lim) c = lim;                                                // the same, but for rounding
       const p = alt && st.diag ? 1 - cur.p : cur.p, k = state(key(st.h), p), old = states.get(k);
       if (old && !below(c, old.cost)) continue;
@@ -213,7 +218,7 @@ export function moveOptions(s, e) {
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
             const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1);                     // Difficult Terrain does not stack
-            out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag });
+            out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag, level: up_ <= STEP_FREE });     // a rise the cost does not count
           } else if (climbs) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.
@@ -253,7 +258,7 @@ export function moveOptions(s, e) {
         const diag = diagonal(from, n);
         if (diag && !cornersFree(from, h)) continue;
         const flat = crowded(h) ? 2 : 1;
-        out.push({ h, cost: flat * FT, max: limit.fly, flat, extra: 0, diag });
+        out.push({ h, cost: flat * FT, max: limit.fly, flat, extra: 0, diag, level: dz === 0 });
       }
     }
     return out;

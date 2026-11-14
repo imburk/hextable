@@ -15,7 +15,7 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { tryLand } from './sheets.js';
 
@@ -40,9 +40,15 @@ export function fall(s, t, feet, ev) {
 }
 // Forced movement: shove a creature so many feet straight away from a point, or toward it. It
 // stops at a wall, a drop, or anything in the way. It provokes nothing and sets nothing off.
+// On squares each step costs what the table's diagonal rule says (`diagonals`; no last square on
+// what is left, as there is for a creature's own move), and every part of a big creature must
+// cross no wall and pass no corner, as when it walks.
 function push(s, t, feet, dir, from, ev) {
   const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
-  for (let i = 0; i < Math.floor(feet / FT); i++) {
+  const square = G.kind === 'square', rule = s.settings.diagonals ?? 'real';
+  let left = feet, odd = false;
+  const stride = (a, b) => (!square || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT);
+  for (let i = 0; square ? left > 0 : i < Math.floor(feet / FT); i++) {
     const here = ground(s.map, t.pos), d0 = G.dist(t.pos, from), w = G.toWorld(t.pos);
     if (!here) break;
     let best = null;
@@ -52,11 +58,13 @@ function push(s, t, feet, dir, from, ev) {
       if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
       const h = { q: n.q, r: n.r, z: sf.z };
       if (living(s).some((c) => c.id !== t.id && overlapAt(c, c.pos, t, h, G)) || !fitsOn(s.map, t, h, B)) continue;
-      if (!footprint(t, t.pos, G).every((f, j) => cornerFree(s.map, G, B, f, footprint(t, h, G)[j], t.pos.z))) continue;     // squares: not past a corner
+      if (square && below(left, stride(t.pos, n))) continue;                                                              // not enough of the push left for this step
+      if (square && !footprint(t, t.pos, G).every((f, j) => { const g = footprint(t, h, G)[j]; return !B.blocked(here.level.id, f, g) && cornerFree(s.map, G, B, f, g, t.pos.z); })) continue;     // every part: no wall, no corner
       const nw = G.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
+    if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
     const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
     entered(s, ev, KIT, zonesBefore);                                    // pushed into a zone: it goes off once this effect is done

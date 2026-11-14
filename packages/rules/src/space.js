@@ -95,13 +95,13 @@ export const WALL_HEIGHT = 10, HEADROOM = 5;
 
 // ---------- size ----------
 // A creature fills a footprint of hexes, anchored on the hex of its position, and stands so high.
-// The shape is the grid's (`G.footprint`); `G` is the map's grid. Every caller in the movement
-// code passes it (task S6). Hexes if not given, because callers outside that code (sight.js,
-// zones.js, casting, features, characters, sheets and the renderers) do not pass it yet: on a
-// square map they get a hex shape for a Large or bigger creature (docs/DEBT.md).
+// The shape is the grid's (`G.footprint`). Every caller in packages/rules/src and the client
+// passes the map's grid, `gridOf(map)`, and a test (square-moving.test.js) reads the source and
+// fails on a call that leaves it out, so no rules code measures a square map in hexes (task S6).
+// The hex default stays for the hex tests that call these directly.
 export const sizeOf = (e) => SIZES[e?.size] ?? SIZES.medium;
 export const shapeOf = (e, G = HEX) => G.footprint(e?.size);
-// The hexes a creature fills when it stands at `pos` (its own position if none is given).
+// The cells a creature fills when it stands at `pos` (its own position if none is given).
 export const footprint = (e, pos = e.pos, G = HEX) => shapeOf(e, G).map(([dq, dr]) => ({ q: pos.q + dq, r: pos.r + dr, z: pos.z ?? 0 }));
 // Would two creatures be in each other's space, one at `pa` and the other at `pb`?
 export function overlapAt(a, pa, b, pb, G = HEX) {

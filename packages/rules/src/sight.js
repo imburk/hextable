@@ -81,7 +81,7 @@ export function inView(map, a, b) {
 }
 // Between two creatures (or a creature and a position): does any part of one see any part of the other?
 export function inViewOf(map, a, b) {
-  const pa = a.pos ? footprint(a) : [a], pb = b.pos ? footprint(b) : [b];
+  const G = gridOf(map), pa = a.pos ? footprint(a, a.pos, G) : [a], pb = b.pos ? footprint(b, b.pos, G) : [b];
   return pa.some((x) => pb.some((y) => inView(map, x, y)));
 }
 
@@ -91,7 +91,7 @@ export const COVER = { none: 0, half: 2, threeQuarters: 5 };
 // `from` is a creature or a position; `others` are creatures that might stand in the way.
 export function coverOf(s, from, target, others = []) {
   const map = s.map, rules = s.settings ?? {}, G = gridOf(map);
-  const origins = from.pos ? footprint(from) : [from], parts = footprint(target);
+  const origins = from.pos ? footprint(from, from.pos, G) : [from], parts = footprint(target, target.pos, G);
   let best = { corners: -1 };
   for (const o of origins) for (const t of parts) {
     const a = sightline(map, o, t), b = a.corners === 6 ? a : sightline(map, t, o);
@@ -107,7 +107,7 @@ export function coverOf(s, from, target, others = []) {
     const p = G.center(best.o), q = G.center(best.t), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     for (const c of others) {
       if (c === from || c === target || c.dead || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
-      for (const f of shapeOf(c).length === 1 ? [c.pos] : footprint(c)) {
+      for (const f of shapeOf(c, G).length === 1 ? [c.pos] : footprint(c, c.pos, G)) {
         const m = G.center(f), t = ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / (len * len);
         if (t > 0.05 && t < 0.95 && Math.hypot(m[0] - (p[0] + t * (q[0] - p[0])), m[1] - (p[1] + t * (q[1] - p[1]))) < 1.5) return 'half';
       }
@@ -188,11 +188,11 @@ export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) 
   // in a Lightly Obscured one it sees as in Dim Light. The least obscured part of a big creature
   // counts. Truesight does not see through fog; Blindsight (above) does.
   let fog = 2;
-  if (terrainsOf(s).length) fog = Math.max(...(target.pos ? footprint(target) : [target]).map((p) => ({ heavy: 0, light: 1 })[obscuredAt(s, p)] ?? 2));
+  if (terrainsOf(s).length) fog = Math.max(...(target.pos ? footprint(target, target.pos, gridOf(s.map)) : [target]).map((p) => ({ heavy: 0, light: 1 })[obscuredAt(s, p)] ?? 2));
   if (fog === 0) return { see: 'no', why: 'obscured' };
   if (truesight) return fog === 1 ? { see: 'dim', why: 'obscured' } : { see: 'yes' };
   const src = sources ?? lightSources(s);
-  let best = Math.max(...(target.pos ? footprint(target) : [target]).map((p) => LEVEL[lightAt(s, p, src)]));
+  let best = Math.max(...(target.pos ? footprint(target, target.pos, gridOf(s.map)) : [target]).map((p) => LEVEL[lightAt(s, p, src)]));
   if ((senses.darkvision ?? 0) >= d) best = Math.min(2, best + 1);
   if (fog < best) return { see: 'dim', why: 'obscured' };
   return best === 2 ? { see: 'yes' } : best === 1 ? { see: 'dim', why: 'dim' } : { see: 'no', why: 'dark' };

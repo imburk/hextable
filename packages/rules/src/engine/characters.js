@@ -38,7 +38,7 @@ export const handlers = {
     for (let n = 0; n < 8 && !spot; n++) for (const h of G.range(centre, n)) {
       const p = G.dist(h, centre) === n ? landing(s.map, h, centre.z) : null;
       if (!spot && p && Math.abs(p.z - centre.z) <= STEP_MAX && TILES[ground(s.map, p).tile.t].cost < Infinity && !B.solid(ground(s.map, p).level.id, p) &&
-          fitsOn(s.map, body, p, B) && !living(s).some((o) => overlapAt(o, o.pos, body, p))) spot = p;
+          fitsOn(s.map, body, p, B) && !living(s).some((o) => overlapAt(o, o.pos, body, p, gridOf(s.map)))) spot = p;
     }
     spot || fail('There is no room for another character there.');
     const id = `pc${++s.seq}`;
@@ -57,7 +57,7 @@ export const handlers = {
     problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
     const body = { size: a.record.size ?? 'medium' };
     (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
-    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
     const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
     const lost = e.maxHp - e.hp;
     Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed, ...(e.reactions ? { reactions: e.reactions } : {}) });
@@ -117,7 +117,7 @@ export const handlers = {
     Object.hasOwn(SIZES, a.size) || fail('Unknown size.');
     const body = { size: a.size };
     (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${a.size} there.`);
-    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
     e.size = a.size;
     ev.push({ type: 'size', id: e.id, size: a.size });
   },

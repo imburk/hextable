@@ -7,7 +7,10 @@
 // 1826-1829, 2075-2078). The arena, marching, flyers and loadMap on squares. Hex maps as before.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, current, moveOptions, SETTINGS, targetsFor } from "../src/engine.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { apply, current, makeEntity, moveOptions, SETTINGS, targetsFor } from "../src/engine.js";
+import { derive } from "../src/derive.js";
+import { barriers } from "../src/walls.js";
 import { SETTING_TEXT } from "../src/engine/dm.js";
 import { below, EPS_FT, route } from "../src/engine/world.js";
 import { gridOf, SQUARE } from "../src/grid.js";
@@ -26,8 +29,8 @@ const near = (a, b) => Math.abs(a - b) < 1e-9;
 
 // The valley's party in the square room, out of the way along the south wall; the monsters stay
 // behind in the valley. `edit` changes the map before it is loaded.
-function room({ diagonals, squareRange, edit } = {}) {
-  const s = newGame(14), map = squareRoom();
+function room({ diagonals, squareRange, edit, seed = 14 } = {}) {
+  const s = newGame(seed), map = squareRoom();
   if (edit) edit(map);
   ok(apply(s, { type: "loadMap", map }, DM));
   ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
@@ -416,4 +419,180 @@ test("on a hex map the square settings change nothing", () => {
     assert.equal(shape(s), want, `${key} ${value}`);
     assert.equal(gap(s, s.entities.fighter.pos, s.entities.m1.pos), wantGap);
   }
+});
+
+// ---------- the review of #255: the map's grid everywhere, and the fixes ----------
+
+test("H1: no size change puts two creatures in one square; a change that cannot fit is refused and changes nothing", () => {
+  // setSize: a goblin on 7,7 is the fourth square of a Large fighter at 6,6; on 10,10, of a Huge one at 8,8.
+  for (const [size, at, gob] of [["large", [6, 6], [7, 7]], ["huge", [8, 8], [10, 10]], ["gargantuan", [8, 8], [11, 11]]]) {
+    const s = room();
+    s.entities.fighter.pos = { q: at[0], r: at[1], z: 0 };
+    spawn(s, ...gob);
+    const before = JSON.stringify(s);
+    no(apply(s, { type: "setSize", actor: "fighter", size }, DM), /Someone is in the way of Brenna growing|in the way/);
+    assert.equal(JSON.stringify(s), before, size);
+  }
+  // editCharacter with a Large record, likewise.
+  const A = { str: 16, dex: 12, con: 14, int: 10, wis: 12, cha: 10 };
+  const fighterSheet = { name: "Big", class: "fighter", level: 1, abilities: A, skills: ["athletics", "perception"], armour: "chain-mail", weapons: ["longsword"] };
+  const e = room();
+  const rec = derive(fighterSheet).record;
+  e.entities.hero = makeEntity(rec, { id: "hero", kind: "pc", side: "party", pos: { q: 6, r: 6, z: 0 } });
+  spawn(e, 7, 7);
+  const before = JSON.stringify(e);
+  no(apply(e, { type: "editCharacter", actor: "hero", record: { ...rec, size: "large" } }, DM), /in the way/);
+  assert.equal(JSON.stringify(e), before);
+  // Wild Shape into a Brown Bear (Large) by the player, with a goblin on the bear's fourth square.
+  const sheet = { name: "Ven", class: "druid", level: 8, subclass: "land", abilities: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 }, skills: ["nature", "perception"],
+    choices: { "primal-order": "warden" }, armour: "leather-armor", shield: true, weapons: ["quarterstaff"], spells: ["produce-flame", "cure-wounds"] };
+  const w = room();
+  w.entities.druid = makeEntity(derive(sheet).record, { id: "druid", kind: "pc", side: "party", pos: { q: 6, r: 6, z: 0 } });
+  ok(apply(w, { type: "claim", entity: "druid", user: "pat", userName: "Pat" }, PAT));
+  spawn(w, 7, 7);
+  const b = JSON.stringify(w);
+  no(apply(w, { type: "feature", actor: "druid", feature: "wild-shape", form: "brown-bear" }, PAT), /in the way/);
+  assert.equal(JSON.stringify(w), b);
+  // With room, the bear takes 2 by 2.
+  w.entities.druid.pos = { q: 2, r: 8, z: 0 };
+  ok(apply(w, { type: "feature", actor: "druid", feature: "wild-shape", form: "brown-bear" }, PAT));
+  assert.equal(footprint(w.entities.druid, w.entities.druid.pos, SQUARE).length, 4);
+  // Misty Step onto the fourth square of an ogre the wizard can see is refused (not moved aside).
+  const m = room();
+  const wiz = m.entities.wizard;
+  wiz.spells.push("misty-step"); wiz.slots[2] = 2; wiz.pos = { q: 5, r: 9, z: 0 };
+  spawn(m, 5, 5, "ogre");
+  const mb = JSON.stringify(m);
+  no(apply(m, { type: "cast", actor: "wizard", spell: "misty-step", hex: { q: 6, r: 6 } }, DM), /occupied/);
+  assert.equal(JSON.stringify(m), mb);
+});
+
+test("H2: a Large, Huge or Gargantuan party member sees from its own squares only, not through a wall", () => {
+  const wallAt = (m) => { m.walls.push({ id: "w", level: "ground", a: [37.5, -2.5], b: [37.5, 72.5], kind: "wall" }); };
+  // The wall runs between columns 7 and 8. Each viewer stands wholly on one side, the goblin on the other.
+  const cases = [
+    ["large", [8, 8], [5, 8]], ["huge", [8, 8], [5, 8]], ["gargantuan", [8, 8], [5, 8]],
+    ["large", [5, 5], [10, 8]], ["huge", [4, 4], [10, 8]], ["gargantuan", [3, 3], [10, 8]],
+  ];
+  for (const [size, at, gob] of cases) {
+    const s = room({ edit: wallAt });
+    for (const id of ["rogue", "cleric", "wizard"]) delete s.entities[id];
+    ok(apply(s, { type: "setting", key: "sight", value: "los" }, DM));
+    const f = s.entities.fighter;
+    f.pos = { q: at[0], r: at[1], z: 0 };
+    ok(apply(s, { type: "setSize", actor: "fighter", size }, DM));
+    assert.ok(footprint(f, f.pos, SQUARE).every((p) => (p.q >= 8) === (at[0] >= 8)), `${size} wholly on one side`);
+    const g = spawn(s, ...gob), friend = spawn(s, at[0] >= 8 ? 13 : 1, 13);
+    ok(apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, PAT));
+    const v = view(s, PAT);
+    assert.equal(!!v.entities[g.id], false, `${size} at ${at}: the goblin beyond the wall is not sent`);
+    assert.equal(!!v.entities[friend.id], true, `${size} at ${at}: one on its own side is`);
+  }
+});
+
+test("M1: the last square on what is left is for a step on the flat; climbing or a step up is paid in full", () => {
+  for (const h of [10, 30]) {
+    const s = fighterTurn({ edit: (m) => { m.levels[0].tiles["7,1"] = { t: "stone", h }; } });
+    ok(apply(s, { type: "move", actor: "fighter", to: { q: 6, r: 1 } }, DM));
+    assert.equal(s.encounter.budget.move, 5);
+    assert.equal(stop(s, "fighter", 7, 1), undefined);
+    assert.equal(moveOptions(s, s.entities.fighter).get(`7,1,${h}`), undefined, `a ${h}-ft face is not climbed on 5 ft`);
+    assert.ok(canStop(s, "fighter", 6, 2), "a step on the flat is");
+  }
+  // 1.72 ft left after 4 diagonals and a side step... here: 5,5 after four diagonals; 6,6 is a step up 4 ft (Difficult).
+  const t = fighterTurn({ edit: (m) => { m.levels[0].tiles["6,6"] = { t: "stone", h: 4 }; m.levels[0].tiles["6,5"] = { t: "forest" }; } });
+  ok(apply(t, { type: "move", actor: "fighter", to: { q: 5, r: 5 } }, DM));
+  assert.ok(t.encounter.budget.move > 1.7 && t.encounter.budget.move < 1.72);
+  const o = moveOptions(t, t.entities.fighter);
+  assert.equal(o.get("6,6,4"), undefined, "a step up 4 ft is not on the flat");
+  assert.equal(o.get("6,5")?.canStop, true, "Difficult Terrain on the flat still is");
+  assert.equal(o.get("6,5").cost, t.encounter.budget.move, "and uses up the rest");
+  // Flying: level, yes; up, no. A Giant Eagle (fly 80 ft) left with a fraction.
+  const f = fighterTurn();
+  const eagle = spawn(f, 3, 9, "giant-eagle");
+  turnOf(f, eagle.id);
+  f.encounter.budget.move = 1 - (eagle.speeds.fly - eagle.speed);     // 1 ft of flying left this turn
+  const fo = moveOptions(f, eagle);
+  assert.ok([...fo.values()].some((v) => v.h.z === 0 && v.h.q === 4 && v.h.r === 9), "level: on what is left");
+  assert.ok(![...fo.values()].some((v) => v.h.z === 5), "up: paid in full, and there is not enough");
+});
+
+test("M2 and L2: a push on squares moves every part past no wall or corner, and counts diagonals by the rule", () => {
+  // The reviewer's case: a wall from 27.5,17.5 to 27.5,22.5 ends on the corner of 5,4 / 6,4 / 5,5 / 6,5.
+  const stub = (m) => { m.walls = m.walls.filter((w) => w.id !== "stub"); m.walls.push({ id: "st", level: "ground", a: [27.5, 17.5], b: [27.5, 22.5], kind: "wall" }); };
+  let pushedOgre = 0;
+  for (let seed = 1; seed < 60 && pushedOgre < 3; seed++) {
+    const s = room({ seed, edit: stub });
+    const w = s.entities.wizard;
+    w.spells.push("thunderwave"); w.slots[1] = 3;
+    const og = spawn(s, 4, 4, "ogre"); og.hp = og.maxHp = 999;
+    w.pos = { q: 3, r: 3, z: 0 };
+    fight(s); turnOf(s, "wizard");
+    const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "thunderwave", hex: { q: 4, r: 4 } }, DM));
+    const mv = r.events.find((e) => e.type === "moved" && e.forced && e.id === og.id);
+    if (!mv) continue;
+    pushedOgre++;
+    const B = barriers(s.map);
+    let at = { q: 4, r: 4 };
+    for (const step of mv.path) {
+      const parts = footprint(og, at, SQUARE), next = footprint(og, step, SQUARE);
+      parts.forEach((p, j) => assert.ok(!B.blocked("ground", p, next[j]), `seed ${seed}: part ${p.q},${p.r} -> ${next[j].q},${next[j].r} crosses a wall`));
+      at = step;
+    }
+  }
+  assert.ok(pushedOgre > 0, "some seed pushes the ogre");
+  // Thunderwave's 10 ft, diagonally: one square for real (7.07 ft; a second would be 14.1), two by the
+  // SRD's count; under 'alternate' a diagonal (5) and then, the next diagonal being 10, a side step (5).
+  for (const [diagonals, n] of [["real", 1], ["srd", 2], ["alternate", 2]]) {
+    let seen = 0;
+    for (let seed = 1; seed < 60 && !seen; seed++) {
+      const s = room({ seed, diagonals });
+      const w = s.entities.wizard;
+      w.spells.push("thunderwave"); w.slots[1] = 3;
+      const g = spawn(s, 4, 4); g.hp = g.maxHp = 999;
+      w.pos = { q: 3, r: 3, z: 0 };
+      fight(s); turnOf(s, "wizard");
+      const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "thunderwave", hex: { q: 4, r: 4 } }, DM));
+      const mv = r.events.find((e) => e.type === "moved" && e.forced && e.id === g.id);
+      if (!mv) continue;
+      seen++;
+      assert.deepEqual(mv.path.map((p) => [p.q, p.r]), (diagonals === "alternate" ? [[5, 5], [6, 5]] : [[5, 5], [6, 6]]).slice(0, n), `${diagonals}: ${JSON.stringify(mv.path)}`);
+    }
+    assert.ok(seen, diagonals);
+  }
+});
+
+test("L1: a map that cannot be copied is refused with a sentence, not a throw", () => {
+  const s = newGame(3), before = JSON.stringify(s);
+  no(apply(s, { type: "loadMap", map: { f() {} } }, DM), /^That map can't be used\. It is not a map document\.$/);
+  assert.equal(JSON.stringify(s), before);
+});
+
+test("every caller of footprint, shapeOf and overlapAt in the rules and the client passes the map's grid", () => {
+  const want = { footprint: 3, shapeOf: 2, overlapAt: 5 };
+  const roots = [new URL("../src/", import.meta.url), new URL("../src/engine/", import.meta.url), new URL("../../client/", import.meta.url)];
+  const args = (src, open) => {                       // the top-level arguments of the call whose "(" is at `open`
+    let depth = 0, n = 0, any = false;
+    for (let i = open; i < src.length; i++) {
+      const c = src[i];
+      if ("([{".includes(c)) { depth++; continue; }
+      if (")]}".includes(c)) { depth--; if (depth === 0) return any ? n + 1 : 0; continue; }
+      if (depth === 1 && c === ",") n++;
+      else if (depth === 1 && !/\s/.test(c)) any = true;
+    }
+    return -1;
+  };
+  let calls = 0;
+  for (const root of roots) for (const f of readdirSync(root).filter((x) => x.endsWith(".js"))) {
+    const path = new URL(f, root), src = readFileSync(path, "utf8");
+    if (f === "space.js" && root.href.endsWith("/src/")) continue;    // where they are defined
+    for (const [name, n] of Object.entries(want)) {
+      if (new RegExp(`const ${name} = `).test(src)) continue;          // a file with its own function of that name (the renderers' shapeOf)
+      for (const m of src.matchAll(new RegExp(`(?<![\\w.$])${name}\\(`, "g"))) {
+        calls++;
+        assert.equal(args(src, m.index + name.length), n, `${f}: ${src.slice(m.index, src.indexOf("\n", m.index)).slice(0, 120)}`);
+      }
+    }
+  }
+  assert.ok(calls > 30, `${calls} calls checked`);
 });

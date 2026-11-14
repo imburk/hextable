@@ -542,7 +542,7 @@ export class Renderer {
 
   // Where a creature's pawn stands when its own hex is `pos`: the middle of the hexes it fills.
   #spot(e, pos) {
-    const base = this.#stand(pos), parts = footprint(e ?? {}, pos);
+    const base = this.#stand(pos), parts = footprint(e ?? {}, pos, this.G);
     if (parts.length === 1) return base;
     let x = 0, z = 0;
     for (const f of parts) { const w = this.G.toWorld(f); x += w.x; z += w.z; }
@@ -856,7 +856,7 @@ export class Renderer {
     for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = this.G.toWorld(e.pos); b.flatHex(w.x, w.z, this.#stand({ q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
     const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
       const e = s.entities[id]; if (!e) return;
-      for (const f of footprint(e)) { const k = cellKey(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }      // every hex it fills
+      for (const f of footprint(e, e.pos, this.G)) { const k = cellKey(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }      // every hex it fills
     };
     for (const id of hl.targets) ringOn(id, c.target);
     for (const id of hl.allies) ringOn(id, c.ally);
@@ -1079,7 +1079,7 @@ export class Renderer {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;               // above this floor, or under it in the room below
         const hex = { q: h.q, r: h.r, z: column[i].z };
-        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.z === hex.z && footprint(e).some((f) => f.q === hex.q && f.r === hex.r));
+        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
         return { hex, id: occ?.id ?? null };
       }
       if (y < -60) break;
