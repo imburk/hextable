@@ -236,7 +236,7 @@ export function finishTurn(s, e, ev, pick = undefined) {
   return !!s.encounter;
 }
 
-// ---------- stepping away (docs/specs/table-ui.md, "E19: stepping away") ----------
+// ---------- stepping away (docs/specs/table-ui.md, "E20: stepping away") ----------
 // A table convenience the SRD has no rule for (it has no "delay your turn"): a creature whose player
 // has stepped away (a break, a phone call, a lost connection) is set aside in the turn order, and the
 // table rule `away` says what becomes of its turns while it is (SETTING_TEXT.away, dm.js):

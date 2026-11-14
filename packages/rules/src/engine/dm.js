@@ -41,7 +41,7 @@ export const handlers = {
     ev.push({ type: 'released', id: e.id });
   },
 
-  // ----- stepping away (resolve.js, AWAY; docs/specs/table-ui.md, E19) -----
+  // ----- stepping away (resolve.js, AWAY; docs/specs/table-ui.md, E20) -----
   // { type: 'stepAway', actor, how? }: set a creature aside in the turn order while its player is
   // away. Its player may (the "need a break" button), as the table rule `breaks` allows: at once
   // (`on`), as a request the DM then grants by sending this action (`ask`), or not at all (`off`).

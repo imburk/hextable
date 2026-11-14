@@ -527,7 +527,7 @@ export function viewEvents(events, state, viewer) {
       case 'attuned':
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'on', 'end', 'cleared', 'failed']));
         break;
-      // Stepping away (E19): a party creature's only, as the table is told of its own. Of another creature
+      // Stepping away (E20): a party creature's only, as the table is told of its own. Of another creature
       // set aside by the DM nothing is said: players see its place in the order and what it does, as for any creature.
       case 'away':
       case 'back':

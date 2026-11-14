@@ -273,7 +273,7 @@ export function describeStep(action, events, before, after) {
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;
-    // Stepping away (E19). Players are told of a party creature's; of another's only that the order changed.
+    // Stepping away (E20). Players are told of a party creature's; of another's only that the order changed.
     case 'stepAway': case 'stepBack': {
       const back = a.type === 'stepBack', asked = ev('away')?.asked || ev('back')?.asked;
       const text = back ? (asked ? `${who} took back asking to step away` : `${who} came back`) : asked ? `${who} asked to step away` : `${who} stepped away`;

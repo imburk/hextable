@@ -1,4 +1,4 @@
-// Stepping away during a fight (docs/specs/table-ui.md, "E19: stepping away"; issue #300, from the
+// Stepping away during a fight (docs/specs/table-ui.md, "E20: stepping away"; issue #300, from the
 // owner's first comment on #246): a creature set aside in the turn order by the DM or by its own
 // player, the table rules `away` and `breaks`, and what is played for it. A table convenience: the
 // SRD has no rule for delaying a turn.
