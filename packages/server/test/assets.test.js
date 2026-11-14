@@ -403,7 +403,7 @@ function slowUpload(port, code, token, { length = 100_000, first = 20, from } = 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test("slow uploads hold at most two places per address and two per table; others still upload", async () => {
-  const { port } = await start();
+  const { port } = await start({ TRUST_PROXY: "1" });            // the test plays the proxy: one entry, the client's (#205)
   const one = await table(port), two = await table(port);
   const held = [slowUpload(port, one.code, one.dm.token, { from: "10.0.0.1" }), slowUpload(port, one.code, one.dm.token, { from: "10.0.0.1" })];
   await sleep(200);                                                // both are being read now
@@ -473,7 +473,7 @@ test("an upload needs the DM's seat with a live connection; one too big for the 
 });
 
 test("file reads are rate-limited per address; a served file is a picture with headers that run nothing", async () => {
-  const { port } = await start({ LIMIT_ASSET_READ_BURST: "3", LIMIT_ASSET_READ_RATE: "0.001" });
+  const { port } = await start({ LIMIT_ASSET_READ_BURST: "3", LIMIT_ASSET_READ_RATE: "0.001", TRUST_PROXY: "1" });
   const { dm, pat, sam, code } = await table(port);
   const { asset } = await (await upload(port, code, dm.token, PNG)).json();
   const res = await get(port, `/assets/${code}/${asset.id}`, dm.token);

@@ -11,6 +11,8 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 | `PORT` | `8080` | Port to listen on (`0`: any free port, printed at start) |
 | `DATA_DIR` | `./data` | Where tables are saved, one JSON file each |
 | `TIMELINE_CAP` | `5000` | Timeline entries a table keeps besides chronicle entries (see below) |
+| `TRUST_PROXY` | `0` | Proxies in front of the server that append to `x-forwarded-for`. `0`: use the socket's address and ignore the header (see Address below) |
+| `CLIENT_IP_HEADER` | none | A header the platform sets itself and overwrites, such as `x-real-ip`; read instead of `x-forwarded-for` when `TRUST_PROXY` is above 0 |
 | `LIMIT_CONNECTIONS` | `20` | Open WebSocket connections per address |
 | `LIMIT_HOSTS` / `LIMIT_HOST_WINDOW_MS` | `5` / `3600000` | `host` messages per address per window |
 | `LIMIT_JOINS` / `LIMIT_JOIN_WINDOW_MS` | `20` / `600000` | `join` messages per address per window |
@@ -222,9 +224,28 @@ with no entries.
 
 ## Limits and hardening
 
-- **Address.** Limits are per client address: the first entry of `x-forwarded-for` when
-  present, else the socket's address. Run behind a proxy that sets that header (the usual
-  hosts do). With no proxy a client can forge it and dodge the per-address limits.
+- **Address (#205).** Limits are per client address. By default that is the socket's own
+  address, and `x-forwarded-for` is ignored, because a client can put anything at the left of
+  it. Behind a proxy every client then looks like the proxy, so set `TRUST_PROXY` to the
+  number of proxies that append to the header: the server takes the Nth entry from the right
+  (the one the nearest trusted proxy wrote), never the leftmost, and uses the socket address
+  if there are fewer entries than that. Alternatively set `CLIENT_IP_HEADER` (with
+  `TRUST_PROXY=1` to switch it on) to a single-valued header the platform overwrites. A value
+  that is not an IP address falls back to the socket address, and IPv4-mapped IPv6 is read as
+  IPv4. Only set these when the server is reachable through the proxy alone; a server also open
+  to the internet directly lets a client forge what a proxy would have written.
+  **Railway:** unset, every player shares the proxy's address and its limits, so set the
+  variable in the service's dashboard (the Dockerfile does not). Railway's own statements
+  disagree on which `x-forwarded-for` entry is the client (see PR #205), so test it on the live
+  service before choosing. There is no debug endpoint; use the connection limit as the probe.
+  Deploy with `TRUST_PROXY=1` and `LIMIT_CONNECTIONS=1`, then run this in two terminals, the
+  second only after the first is connected (it holds the connection open), changing only the
+  fake leftmost address:
+  `curl -i -N --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'X-Forwarded-For: 198.51.100.1' https://<service>/ws`
+  (then `198.51.100.2` in the second). If the second prints `Too many requests`, the entry
+  at the right is you and `TRUST_PROXY=1` is right. If it connects, the right-hand entry is
+  something else (a Railway hop) or the header was replaced: repeat with `CLIENT_IP_HEADER=x-real-ip`.
+  Never run production with `LIMIT_CONNECTIONS=1`; restore the default afterwards.
 - **Connections and messages.** At most 20 open connections per address; at most 5 `host`
   messages per address per hour and 20 `join` messages per address per 10 minutes; each
   connection may burst 20 messages and sustain 5 a second. Over a limit the client gets
@@ -315,7 +336,7 @@ Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/ma
 7. Disk and memory must not be exhausted: per-file, per-table and whole-server byte caps; per-address limits on uploads and reads; uploads read at once capped per address, per table and on the server, each with a deadline and a minimum rate; partial files and orphaned folders cleared.
 8. Another site must not upload or read with a visitor's session: the token is in a header (not a cookie, not a URL), so cross-site requests carry none, and uploads with a foreign `Origin` are refused.
 9. Tokens are compared in constant time and only seated, let-in members count.
-10. Not covered: a malformed image that exploits the browser's own decoder, a player who saves a picture they were shown, and per-address limits behind no proxy (see Address above). Anyone can host a table and so become a DM; uploads are bounded, not prevented. Many addresses together can still take the 8 server-wide upload places, each for at most the deadline.
+10. Not covered: a malformed image that exploits the browser's own decoder, a player who saves a picture they were shown, and per-address limits when `TRUST_PROXY` is set wrongly for the host (see Address above). Anyone can host a table and so become a DM; uploads are bounded, not prevented. Many addresses together can still take the 8 server-wide upload places, each for at most the deadline.
 
 ## Exporting a table
 
