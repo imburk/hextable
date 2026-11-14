@@ -109,7 +109,9 @@ async function pacing(browser, url, label, opts) {
         });
         if (!canvasPt) throw new Error('no bare map to tap');
         // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
-        for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
+        // A card can come up over the map when the beats end (the party fallen, the rewards): a tap made again would land on its buttons, so
+        // a repeat is made only while the point is still bare map.
+        for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())) && (k === 0 || await onCanvas(page, canvasPt.x, canvasPt.y)); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
         const after = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
         if (before !== after) {
