@@ -1,10 +1,11 @@
 import { beats } from './beats.mjs';
 import { join } from 'node:path';
+import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 import { sleep, scenario, wait, state, open, playSolo, tapAt, closePanels, selectAndMove } from './lib.mjs';
 
 // ---------- the Three.js renderer at parity (R11) ----------
-// `?renderer=three` against the default renderer, for the same state and the same camera, on the valley, the stock dungeon and the stock
-// cave: where a hex is on the screen (`screenOf`), which hex a tap picks, the plane questions and the axes agree to a pixel or two; the
+// `?renderer=three` against the default renderer, for the same state and the same camera, on the valley, the stock dungeon, the stock
+// cave and the engine's square-room fixture (S9b: a map on squares; there a Large creature, a fight, the highlights and the arena too): where a hex is on the screen (`screenOf`), which hex a tap picks, the plane questions and the axes agree to a pixel or two; the
 // game plays on the Three.js renderer (a tap moves a character, a fight starts and ends). Frame times from `stats()` are printed for
 // both (software GL here: they only compare the two). SMOKE_SHOTS=<dir> saves a screenshot of each renderer on each map.
 const PARITY_PX = 1.5;
@@ -65,11 +66,12 @@ async function threeParity(browser, url, label, opts) {
         if (!asked.three.some((u) => u.endsWith('three.module.js'))) throw new Error('the Three.js renderer did not load the library');
       });
       const valley = await pages.gl.evaluate(() => structuredClone(window.hextable.state.map));
-      for (const map of ['valley', 'dungeon', 'cave']) {
+      for (const map of ['valley', 'dungeon', 'cave', 'square']) {
         await run.do(`${map}: screenOf, picking, plane questions and axes agree; screenshots; frame times`, async () => {
           for (const k of ['gl', 'three']) {
             const pg = pages[k];
-            if (map !== 'valley') { await pg.evaluate((m) => window.hextable.ED.stock(m), map); await wait(pg, (m) => window.hextable.state.map.id === m, map); }
+            if (map === 'square') { await pg.evaluate((m) => window.hextable.act({ type: 'loadMap', map: m }), squareRoom()); await wait(pg, () => window.hextable.state.map.grid === 'square'); }
+            else if (map !== 'valley') { await pg.evaluate((m) => window.hextable.ED.stock(m), map); await wait(pg, (m) => window.hextable.state.map.id === m, map); }
             else await pg.evaluate((m) => window.hextable.act({ type: 'loadMap', map: m }), valley);      // the same valley in both: Three.js draws on Math.random (its ids), so the two pages' random valleys can differ
             await closePanels(pg);
             await pg.evaluate(() => { const h = window.hextable, pc = Object.values(h.state.entities).find((e) => e.kind === 'pc'); h.R.focus(pc.id, true); h.R.rotate(0.3); h.R.zoom(0.8); h.R.inset = 90; });
@@ -87,6 +89,47 @@ async function threeParity(browser, url, label, opts) {
           if (r.n < 6) throw new Error(`only ${r.n} points could be tapped on the canvas`);
         });
       }
+      await run.do('square: a Large creature, a fight and the highlights are on the same squares in both renderers, and every tap on the ogre picks it', async () => {
+        const sqBoth = (fn, arg) => Promise.all(['gl', 'three'].map((k) => pages[k].evaluate(fn, arg)));
+        await sqBoth(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); h.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }); });
+        for (const k of ['gl', 'three']) await wait(pages[k], () => !!window.hextable.state.encounter && window.hextable.waiting === 0, null, 20000);
+        const ids = await sqBoth(() => Object.values(window.hextable.state.entities).find((e) => e.size === 'large').id);
+        await sqBoth((ogre) => { const R = window.hextable.R, S = window.hextable.state; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5; }, null);
+        await sleep(1200);
+        const th = await pages.three.evaluate((id) => { const R = window.hextable.R.inner, a = R.actors.get(id), want = [[9, 9], [10, 9], [9, 10], [10, 10]].map(([q, r]) => R.G.toWorld({ q, r })); return { edge: R.edge.n, kind: window.hextable.R.kind, dx: a.x - want.reduce((s, w) => s + w.x, 0) / 4, dz: a.z - want.reduce((s, w) => s + w.z, 0) / 4, k: a.k, overlay: R.overlay.n, terrain: R.terrain.n }; }, ids[1]);
+        if (th.kind !== 'three') throw new Error(`the renderer is ${th.kind}`);
+        if (!(th.edge > 0)) throw new Error('no arena edge was drawn on the square map');
+        if (Math.abs(th.dx) > 0.01 || Math.abs(th.dz) > 0.01) throw new Error(`the Large pawn is ${th.dx.toFixed(2)}, ${th.dz.toFixed(2)} drawing units from the middle of its four squares`);
+        if (!(th.k >= 2)) throw new Error(`the Large pawn is drawn at ${th.k} times a Medium one: too small for 2 by 2 squares`);
+        // four-sided tiles: the outline the renderer builds every cell from has four corners, and the terrain holds no more than a square's
+        // prisms or floors take (a hex's would need more: 6 + 6 + 6 triangles of fan, rim and side where a square's take 2 + 8 + 8)
+        const sides = await pages.three.evaluate(async () => { const { Builder } = await import('./three-build.js'); return new Builder(window.hextable.R.inner.G).shape.length; });
+        if (sides !== 4) throw new Error(`a cell's outline has ${sides} corners in the Three.js renderer on a square map`);
+        const hits = {};
+        for (const k of ['gl', 'three']) {
+          const pts = await pages[k].evaluate(() => { const R = window.hextable.R; return [[9, 9, -1, -1], [10, 9, 1, -1], [9, 10, -1, 1], [10, 10, 1, 1], [5, 5, 0, 0], [5, 5, 0.9, 0.9], [5, 5, 0.9, -0.9], [6, 5, -0.97, 0], [8, 8, 0, 0]].map(([q, r, a, b]) => [q, r, R.screenPoint(5 * q + a * 0.8 * 2.5 + (a === 0 && b === 0 ? 0 : 0), 5 * r + b * 0.8 * 2.5, 0)]); });
+          await pages[k].evaluate(() => { const R = window.hextable.R; window.__tap = R.onTap; window.__hit = null; R.onTap = (hit) => { window.__hit = hit; }; });
+          hits[k] = [];
+          for (const [q, r, p] of pts) {
+            if (!p || p.x < 4 || p.y < 4 || p.x > opts.viewport.width - 60 || !(await pages[k].evaluate(([x, y]) => document.elementFromPoint(x, y)?.id === 'gl', [p.x, p.y]))) { hits[k].push('ui'); continue; }
+            await pages[k].evaluate(() => { window.__hit = null; });
+            await tapAt(pages[k], touch, p.x, p.y);
+            hits[k].push(await pages[k].evaluate(() => window.__hit && { hex: window.__hit.hex, id: window.__hit.id }));
+          }
+          await pages[k].evaluate(() => { window.hextable.R.onTap = window.__tap; });
+        }
+        let seen = 0;
+        hits.gl.forEach((a, i) => { if (a === 'ui' || hits.three[i] === 'ui') return; seen++; if (JSON.stringify(a) !== JSON.stringify(hits.three[i])) throw new Error(`tap ${i}: ${JSON.stringify(a)} in the default renderer, ${JSON.stringify(hits.three[i])} in Three.js`); });
+        for (let i = 0; i < 4; i++) if (hits.three[i] !== 'ui' && hits.three[i]?.id !== ids[1]) throw new Error(`a tap on the ogre's square ${i} picked ${JSON.stringify(hits.three[i])} in Three.js`);
+        if (seen < 4) throw new Error(`only ${seen} of the taps could reach the canvas`);
+        console.log(`       square fight: ${seen} taps picked the same in both; the ogre is ${th.k}x wide on its four squares; arena edge ${th.edge} vertices`);
+        if (process.env.SMOKE_SHOTS) for (const k of ['gl', 'three']) await pages[k].screenshot({ path: join(process.env.SMOKE_SHOTS, `square-fight-${tag}-${k}.png`) });
+        const view = {};
+        for (const k of ['gl', 'three']) view[k] = await measureView(pages[k], touch);
+        const r = compareViews(view.gl, view.three);
+        console.log(`       square fight: worst screenOf ${r.worst.screen.toFixed(2)} px, ${r.same}/${r.n} picks the same`);
+        if (r.bad.length) throw new Error(`${r.bad.length} differences, first: ${r.bad.slice(0, 3).join(' | ')}`);
+      });
     } finally { for (const c of ctxs) await c.close(); }
   });
   await scenario(`${label}: the game plays on the Three.js renderer`, async (run) => {
