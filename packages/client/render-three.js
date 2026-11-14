@@ -601,7 +601,7 @@ export class ThreeRenderer {
       } else if (pts.size === 2) {
         moved = 99;
         const [a, b] = [...pts.values()], dist = Math.hypot(a[0] - b[0], a[1] - b[1]), ang = Math.atan2(a[1] - b[1], a[0] - b[0]);
-        if (pinch) { this.zoom(pinch.dist / dist); c.yaw -= ang - pinch.ang; }
+        if (pinch) { this.zoom(pinch.dist / dist); c.yaw += ang - pinch.ang; }      // the map turns the way the fingers turn
         pinch = { dist, ang };
       }
     }, on);
