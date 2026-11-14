@@ -599,34 +599,48 @@ Settled in the review of #313:
 
 - **The order.** An entry with `after: masterId` carries its master's `init` and is not sorted with the rest:
   `initiativeSort` (world.js) sorts the others as before (stably, so a tie stays as it stood) and puts each
-  `after` entry straight behind its master and that master's earlier companions, in the order they stand,
-  which is the order they joined. With no `after` entries it is the old sort, exactly.
+  `after` entry straight behind its master and that master's earlier companions, in the order they stand.
+  With no `after` entries it is the old sort, exactly. A full sort happens only at the start of a fight and of a
+  round (where any change is safe).
+- **Joining in the middle of a round puts the new entry in and moves nothing else** (`insertSlot`; review of
+  #317, B1: a whole re-sort could move a companion of a master set aside to the end of the round past the
+  creature whose turn it was, giving it two turns). A companion goes behind its master's group; any other
+  creature before the first creature it outranks among those in their own initiative place, as a stable sort
+  would have put it, and before those set aside to the end.
 - **Joining.** At the start of a fight, and when a creature joins one, a companion with `turn: 'after'` whose
-  master has a place takes it with no roll (`joined { id, init, after }`). One whose master is not in the fight
-  rolls its own Initiative and its controller is told (a `note` for the party's own; for another's, a `manual`
-  for the DM alone, so players are never told it belongs to someone).
-- **Changing places in a round.** When the order and the bonds stop agreeing (a master joins after its
-  companion, the DM bonds or frees a creature in the fight), `followMasters` moves an entry at once only if
-  every creature that has had its turn this round still has and every one still to come still is, and the
-  creature whose turn it is stays put. Otherwise the move waits for the start of the next round (`newRound`),
-  so no creature has two turns in a round or loses one. A companion bonded in its master's turn, whose own turn
-  is still to come, so acts straight after the master in that round.
-- **Stepping away (E20) is left as it was:** a master moved to the end of the round goes alone; its `after`
-  companions keep its count.
+  master has a place takes it with no roll (`joined { id, init, after }`), **only if the party knows of both**
+  (`unknown` in vision.js: not hiding, not hidden, not out of sight; review of #317, M1). Otherwise it rolls
+  its own Initiative as an unbonded creature would, so players get exactly what an unbonded creature gives: a
+  seen creature always acting straight after an unseen turn, or an unseen turn always straight after a seen
+  creature, would tell them the two belong together. Its controller is told why (a `note` for the party's own;
+  for another's, a `manual` for the DM alone).
+- **Later moves.** When the order and the bonds stop agreeing (a master joins after its companion, either of
+  them comes to be known to the party, the DM bonds a creature in the fight), `followMasters` moves the one
+  entry behind its master's group. It runs after every action (at the end of `settleBonds`) and at the start
+  of each round. Mid-round it moves the entry only if every creature that has had its turn this round still has
+  and every one still to come still is. It does not move the creature whose turn it is, and does not move one
+  while it or its master is set aside (E20). Otherwise the move waits for the next round. Once in place a
+  companion stays there, whoever hides later: the party saw where it stood. The knowledge check runs before
+  the los/light pass of the same action (engine.js runs `look` after `settleBonds`), so under those rules the
+  move can come one action after the party first sees them.
+- **A freed companion** (the DM's `bond { to: null }` in a fight) loses `after` and keeps its place and its
+  count: it does not roll again. At the next full sort it is sorted on that count by its own Dexterity.
+- **Stepping away (E20).** A master moved to the end of the round goes alone; its `after` companions keep its
+  count. A creature taken back in (`stepBack`) after the creature whose turn it is goes behind that creature's
+  companions, not between them (L4).
 - **The DM's bond** takes `turn: 'after'`; `turn: 'none'` and `orders: 'command'` are still refused (C5, C6).
 - **The `summon` part.** A creature a spell keeps is a part `{ target, summon: true }` of the lasting effect its
-  `bond.fx` names. `durations.js` `holds(s, e)` says whether that part still stands; `settleBonds` vanishes the
-  creature (`why: 'ended'`) after the action once it does not, by Concentration lost, its time run out or
+  `bond.fx` names. `durations.js` `holds(s, e)` says whether that part still stands. `settleBonds` vanishes the
+  creature (`why: 'ended'`) after the action once it does not: Concentration lost, its time run out, or
   `endEffect`. `vanish` takes its place in the order, and passes the turn if it was its own. Ending the part
   itself changes nothing in `durations.js`: the layer under `resolve.js` cannot vanish a creature.
 - **Long Rest.** After a `rest`, a companion whose bond has `ends: ['longRest']` vanishes (`why: 'rest'`) if its
   master finished the rest (a master at 0 Hit Points does not).
-- **From the C1 reviews.** The record an unseen vanish leaves has no `bond` (it does not count toward
-  `BOND_MAX` or stop its master being bonded; `companionsOf` also passes by a `vanished` record kept from
-  before). A consequence: it counts toward a fight's XP, as any unseen death does, which keeps the twin
-  property (owner's question 6 is about companions players could know of). `effectStart`/`effectEnd`'s `why`
-  becomes "it ended" also when it names a creature the effect was on that players do not know of.
-- **What players are sent.** `after` only on an Open entry whose master is Open (`view.js`, the order, the
+- **From the C1 reviews.** The record an unseen vanish leaves has no `bond`: it does not count toward
+  `BOND_MAX` or stop its master being bonded, and `companionsOf` also passes by a `vanished` record kept from
+  before. A consequence: in a fight it counts toward the XP, as any unseen death does. The DM's note says so,
+  and the DM may untick it. `effectStart`/`effectEnd`'s `why` becomes "it ended" also when it names a creature
+  the effect was on that players do not know of.
+- **What players are sent.** `after` only on an Open entry whose master is Open (`view.js`: the order, the
   `encounterStart` order and `joined`); a foe's companion's entry stays `{ id }`.
 - **No state version bump:** `after` on an entry is optional, and nothing else in the shape changed.
-

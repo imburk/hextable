@@ -16,7 +16,7 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { tryLand } from './sheets.js';
 
@@ -123,13 +123,14 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   };
   // Each rolls, in the order the creatures are kept, but a companion whose turn is its master's and whose master
   // is in the fight: it takes the master's count, straight after it (Decision 3). One whose master is not here rolls.
-  const faces = {}, ids = new Set(who.map((e) => e.id));
-  const behind = (e) => (e.bond?.turn === 'after' && typeof e.bond.to === 'string' && ids.has(e.bond.to) && !s.entities[e.bond.to].bond ? e.bond.to : null);
+  // Only where the party knows of both: else it rolls as an unbonded creature would (world.js, joinLead).
+  const faces = {}, ids = new Set(who.map((e) => e.id)), m0 = who.filter((e) => !e.bond).map((e) => ({ id: e.id }));
+  const behind = (e) => (ids.has(e.bond?.to) && !s.entities[e.bond.to].bond ? joinLead(s, m0, e)?.id ?? null : null);
   const slots = who.map((e) => (behind(e) ? { id: e.id, init: null, dex: e.abil.dex, after: behind(e) } : rollInit(s, e, faces)));
   for (const o of slots) if (o.after) o.init = slots.find((x) => x.id === o.after).init;
   s.encounter.order = initiativeSort(slots);
   ev.push({ type: 'encounterStart', fight: s.encounter.id, where: s.encounter.where, center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
-  for (const e of who) if (!behind(e)) ownCount(e, ev);
+  for (const e of who) if (!behind(e)) ownCount(s, e, m0, ev);
   advanceTurn(s, ev);
 }
 
@@ -302,7 +303,11 @@ export function settleOrder(s) {
   for (const id of Object.keys(moved)) if (!enc.order.some((o) => o.id === id)) delete moved[id];
   const rest = enc.order.filter((o) => !moved[o.id]);
   for (const o of enc.order.filter((x) => moved[x.id]?.after)) {
-    const at = rest.findIndex((x) => x.id === moved[o.id].after);
+    let at = rest.findIndex((x) => x.id === moved[o.id].after);
+    // Behind the companions that take their turn straight after that creature's (or after its master's, if it is
+    // one), not between them (review of #317, L4).
+    const lead = at < 0 ? null : rest[at].after ?? rest[at].id;
+    while (at >= 0 && rest[at + 1]?.after === lead) at++;
     rest.splice(at < 0 ? rest.length : at + 1, 0, o);
   }
   const ends = enc.order.filter((x) => moved[x.id] && !moved[x.id].after).sort((a, b) => moved[a.id].n - moved[b.id].n);
@@ -886,7 +891,7 @@ function vanishUnseen(s, e, why, ev) {
   for (const x of Object.values(s.entities)) for (const [c, v] of Object.entries(x.cond ?? {})) if (x.id !== e.id && v?.source === e.id) left.push(`${x.name} is ${conditionName(c)} from it`);
   ev.push({ type: 'vanished', id: e.id, name, why });
   ev.push({ type: 'manual', actor: null, name, partial: true,
-    text: `${name} vanished where the party could not see it. So that the party learns nothing it could not, its record stays, dead and hidden, and what it did goes on as after a death${left.length ? `: ${left.join('; ')}` : ''}. End what should end (endEffect, condition) when the party could know, and remove ${name} when nothing of it is needed.` });
+    text: `${name} vanished where the party could not see it. So that the party learns nothing it could not, its record stays, dead and hidden, and what it did goes on as after a death${left.length ? `: ${left.join('; ')}` : ''}. End what should end (endEffect, condition) when the party could know, and remove ${name} when nothing of it is needed.${inFight(s, e.id) ? ` If this fight is won, ${name} counts toward its XP as any death does, unless you untick it.` : ''}` });
   if (why === 'hp0' && kind === 'object')
     ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} reverts to the object it was. The damage that took it past 0 carries over to that object: the DM's to apply.` });
   checkEnd(s, ev);
@@ -905,6 +910,9 @@ export function settleBonds(s, ev) {
     else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);
     else if (m && !e.dead && Number.isFinite(b.leash) && apart(s, e, m) * FT > b.leash) vanish(s, e, 'leash', ev);
   }
+  // A companion whose place behind its master can now be taken (its master joined, or came to be known to the
+  // party) takes it, if that is safe in the middle of the round (world.js, followMasters).
+  followMasters(s, true);
 }
 
 // ---------- actions ----------

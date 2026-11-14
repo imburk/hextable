@@ -453,3 +453,169 @@ test("an AI-played fight with after companions on both sides: everyone plays, th
     assert.ok(!all.includes(`"after":"${mage}"`), "a foe's after reached a player");
   }
 });
+
+// ---------- review of #317 ----------
+
+// Turns of a round from the events: a turn set aside part-way and taken up again is not a second one.
+const realTurns = (evs, round) => evs.filter((e, i) => e.type === "turn" && e.id && e.round === round && !(evs[i + 1]?.type === "awayTurn" && evs[i + 1].how === "resumed")).map((e) => e.id);
+
+for (const grid of [null, "square"]) for (const how of ["end", "endKeep"]) {
+  test(`a master set aside to the end of the round (${how}), tied with another, and a creature joins: its companion still has one turn${grid ? " (squares)" : " (hexes)"} (B1)`, () => {
+    const s = table(grid), f = s.entities.fighter;
+    const g1 = spawn(s, "goblin-warrior", spot(s, f.pos, 5), "Master"), g2 = spawn(s, "goblin-warrior", spot(s, f.pos, 6), "Twin");
+    const pet = spawn(s, "wolf", spot(s, f.pos, 7), "Pet");
+    bond(s, pet, g1, { turn: "after" });
+    const all = [...ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM)).events];
+    // Master and Twin on one count and Dexterity, Master first; the rogue before them, the rest after.
+    const O = s.encounter.order, set = (id, o) => Object.assign(O.find((x) => x.id === id), o);
+    set(g1, { init: 12, dex: 14 }); set(g2, { init: 12, dex: 14 }); set(pet, { init: 12 });
+    for (const id of ["rogue", "wizard", "fighter", "cleric"]) set(id, { init: id === "rogue" ? 20 : 3, dex: 10 });
+    const ai = O.findIndex((x) => x.id === g1), bi = O.findIndex((x) => x.id === g2);
+    if (bi < ai) [O[ai], O[bi]] = [O[bi], O[ai]];
+    const cur = current(s); initiativeSort(O); s.encounter.turn = ids(s).indexOf(cur);
+    assert.deepEqual(ids(s).slice(0, 4), ["rogue", g1, pet, g2]);
+    while (current(s) !== g1) all.push(...endTurn(s).events);
+    all.push(...ok(apply(s, { type: "stepAway", actor: g1, how }, DM)).events);
+    while (current(s) !== g2) all.push(...endTurn(s).events);              // its companion has had its turn
+    all.push(...ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: spot(s, f.pos, 9), name: "Late" }, DM)).events);
+    const round = s.encounter.round;
+    while (s.encounter.round === round) all.push(...endTurn(s).events);
+    const t = realTurns(all, round);
+    assert.equal(new Set(t).size, t.length, `two turns in round ${round}: ${t.join(" ")}`);
+    assert.equal(t.filter((x) => x === pet).length, 1);
+  });
+}
+
+test("random fights with joins, bonds, frees, kills and stepping away: nobody has two turns in a round", () => {
+  const lcg = (seed) => { let x = seed; return (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; }; };
+  for (const grid of [null, "square"]) for (let seed = 1; seed <= 12; seed++) {
+    const rnd = lcg(seed * 7 + (grid ? 1 : 0)), s = table(grid, seed), f = s.entities.fighter, pool = [];
+    const mk = (mon, name, c, n) => { const at = spot(s, c, n, 4); if (!at) return null; const id = spawn(s, mon, at, name); pool.push(id); s.entities[id].initBonus = rnd(20) - 8; return id; };
+    const boss = mk("goblin-warrior", "Boss", f.pos, 5);
+    for (let i = 0; i < 3; i++) { const p = mk("wolf", `P${i}`, f.pos, i); if (p && rnd(2)) bond(s, p, "fighter", { turn: "after" }); }
+    for (let i = 0; i < 2; i++) { const p = mk("wolf", `F${i}`, s.entities.m5.pos, i); if (p && rnd(2)) bond(s, p, boss, { turn: rnd(2) ? "after" : "own" }); }
+    const r0 = apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM);
+    if (!r0.ok) continue;
+    const turns = {};
+    const note = (evs) => evs.forEach((e, i) => { if (e.type === "turn" && e.id && !(evs[i + 1]?.type === "awayTurn" && evs[i + 1].how === "resumed")) (turns[e.round] ??= []).push(e.id); });
+    note(r0.events);
+    for (let step = 0; step < 70 && s.encounter; step++) {
+      const op = rnd(24), live = pool.filter((id) => s.entities[id] && !s.entities[id].dead), pick = () => live[rnd(live.length)];
+      let a = null;
+      if (op === 0) mk("goblin-warrior", `G${step}`, f.pos, 6 + rnd(6));
+      else if (op <= 2) { const id = pick(), m = rnd(2) ? "fighter" : boss; if (id && id !== m && s.entities[m] && !s.entities[m].bond) a = { type: "bond", actor: id, to: m, turn: rnd(3) ? "after" : "own" }; }
+      else if (op === 3) { const id = pick(); if (id && s.entities[id].bond) a = { type: "bond", actor: id, to: null }; }
+      else if (op === 4) { const id = pick(); if (id && !ids(s).includes(id)) a = { type: "move", actor: id, to: spot(s, f.pos, rnd(10), 4) }; }
+      else if (op === 5) { const id = pick(); if (id) a = { type: "harm", actor: id, amount: 9999 }; }
+      else if (op >= 18) {
+        const who = [...pool, "fighter", "rogue", "wizard", "cleric"].filter((id) => s.entities[id] && !s.entities[id].dead && ids(s).includes(id)), id = who[rnd(who.length)];
+        if (id) a = s.entities[id].away ? { type: "stepBack", actor: id } : { type: "stepAway", actor: id, how: ["end", "endKeep", "hold", "dodge"][rnd(4)] };
+      }
+      const r = a ? apply(s, a, DM) : apply(s, { type: "endTurn", actor: current(s) }, DM);
+      if (r.ok) note(r.events);
+      else if (!a) break;
+      if (!s.encounter) break;
+      const o = ids(s);
+      assert.equal(new Set(o).size, o.length, "no creature twice in the order");
+      for (const e of s.encounter.order) if (e.after && o.includes(e.after)) assert.equal(e.init, s.encounter.order.find((x) => x.id === e.after).init);
+    }
+    for (const [round, who] of Object.entries(turns)) assert.equal(new Set(who).size, who.length, `${grid ?? "hex"} seed ${seed} round ${round}: ${who.join(" ")}`);
+  }
+});
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+  const twin = (setup, steps) => {
+    const run = (bonded) => {
+      const s = table(grid), log = [];
+      const ctx = setup(s, bonded);
+      log.push(ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 6 }, DM)));
+      for (let i = 0; i < steps && s.encounter; i++) { if (ctx.at?.[i]) log.push(ctx.at[i](s)); log.push(endTurn(s)); }
+      return { s, ctx, seen: [U1, U2].map((u) => log.map((r) => json(viewEvents(r.events, s, u)))), view: [U1, U2].map((u) => json(view(s, u))), tl: json(viewEvents(s.timeline, s, U1)), seq: s.seq };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.seen, B.seen, "the events players get");
+    assert.deepEqual(A.view, B.view, "their view");
+    assert.equal(A.tl, B.tl, "the record");
+    assert.equal(A.seq, B.seq);
+    return A;
+  };
+
+  test(`a seen companion of a master hiding in the fight keeps its own count: players get what an unbonded creature gives${on} (M1)`, () => {
+    const A = twin((s, bonded) => {
+      const mage = spawn(s, "goblin-warrior", spot(s, s.entities.fighter.pos, 6, 4), "Mage");
+      s.entities[mage].hiding = true; s.entities[mage].initBonus = 30;
+      const pet = spawn(s, "wolf", spot(s, s.entities.fighter.pos, 1, 2), "Pet"); s.entities[pet].initBonus = -10;
+      if (bonded) bond(s, pet, mage, { turn: "after", kind: "summon" });
+      return { mage, pet };
+    }, 14);
+    const { mage, pet } = A.ctx;
+    assert.ok(ids(A.s).includes(mage), "the mage is in the fight, hiding");
+    assert.ok(!A.s.encounter.order.find((o) => o.id === pet).after, "not behind a master the party does not know of");
+    // Once the party knows of the mage, the pet goes behind it (now, or at the next round).
+    ok(apply(A.s, { type: "reveal", actor: mage, hidden: false }, DM));
+    for (let i = 0; i < ids(A.s).length + 1 && A.s.encounter; i++) endTurn(A.s);
+    behindMaster(A.s, mage, [pet]);
+  });
+
+  test(`a seen companion whose hiding master joins the fight later keeps its own count${on} (M1)`, () => {
+    twin((s, bonded) => {
+      const mage = spawn(s, "goblin-warrior", spot(s, s.entities.m5.pos, 0, 1), "Mage");
+      s.entities[mage].hiding = true; s.entities[mage].initBonus = 30;
+      const pet = spawn(s, "wolf", spot(s, s.entities.fighter.pos, 1, 2), "Pet"); s.entities[pet].initBonus = -10;
+      if (bonded) bond(s, pet, mage, { turn: "after", kind: "summon" });
+      return { mage, pet, at: { 1: (x) => ok(apply(x, { type: "move", actor: mage, to: spot(x, x.entities.fighter.pos, 8, 4) }, DM)) } };
+    }, 14);
+  });
+
+  test(`a hiding companion of a seen master keeps its own count: its unseen turn does not sit behind the master${on} (M1)`, () => {
+    const A = twin((s, bonded) => {
+      const boss = spawn(s, "goblin-warrior", spot(s, s.entities.fighter.pos, 6, 4), "Boss"); s.entities[boss].initBonus = 12;
+      const pet = spawn(s, "wolf", spot(s, s.entities.fighter.pos, 1, 2), "Pet"); s.entities[pet].initBonus = -10;
+      if (bonded) bond(s, pet, boss, { turn: "after", kind: "summon" });
+      s.entities[pet].hiding = true;
+      return { boss, pet };
+    }, 14);
+    assert.ok(!A.s.encounter.order.find((o) => o.id === A.ctx.pet).after);
+    assert.ok(A.s.timeline.some((e) => e.type === "manual" && e.partial && /does not know of it or of its master/.test(e.text)), "the DM is told why");
+  });
+}
+
+test("companions bonded in the fight stand behind the master in the order they joined; a freed one keeps its place and count (L1, L2)", () => {
+  for (const grid of [null, "square"]) {
+    const s = table(grid), f = s.entities.fighter;
+    const a = spawn(s, "wolf", spot(s, f.pos, 0, 2), "A"), b = spawn(s, "wolf", spot(s, f.pos, 1, 2), "B");
+    s.entities[b].initBonus = 40; s.entities[a].initBonus = -10;
+    spawn(s, "goblin-warrior", spot(s, f.pos, 5), "G");
+    bond(s, a, "fighter", { turn: "after" }); bond(s, b, "fighter");
+    ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM));
+    bond(s, b, null); bond(s, b, "fighter", { turn: "after" });
+    while (s.encounter.round < 2) endTurn(s);
+    behindMaster(s, "fighter", [a, b]);
+    const count = s.encounter.order.find((o) => o.id === a).init, at = ids(s).indexOf(a);
+    bond(s, a, null);
+    const o = s.encounter.order.find((x) => x.id === a);
+    assert.ok(!o.after);
+    assert.equal(o.init, count, "it keeps the count");
+    assert.equal(ids(s).indexOf(a), at, "and its place");
+  }
+});
+
+test("a creature back from stepping away is put behind the companions of the creature whose turn it is, not between them (L4)", () => {
+  for (const grid of [null, "square"]) {
+    const s = table(grid), f = s.entities.fighter;
+    const p = spawn(s, "wolf", spot(s, f.pos, 0, 2), "Pup"), q = spawn(s, "wolf", spot(s, f.pos, 1, 2), "Pip Two");
+    for (const id of [p, q]) bond(s, id, "fighter", { turn: "after" });
+    spawn(s, "goblin-warrior", spot(s, f.pos, 5), "G");
+    s.entities.rogue.initBonus = 60;
+    ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM));
+    assert.equal(current(s), "rogue");
+    ok(apply(s, { type: "stepAway", actor: "rogue", how: "hold" }, DM));   // from its next turn, which passes untaken
+    endTurn(s);
+    for (let i = 0; i < 30 && !(current(s) === "fighter" && s.encounter.held?.rogue === s.encounter.round); i++) endTurn(s);
+    assert.equal(current(s), "fighter");
+    ok(apply(s, { type: "stepBack", actor: "rogue" }, DM));
+    const o = ids(s), i = o.indexOf("fighter");
+    assert.deepEqual(o.slice(i, i + 4), ["fighter", p, q, "rogue"], `${o.join(" ")} ${json(s.encounter.moved)} ${json(s.encounter.held)}`);
+  }
+});

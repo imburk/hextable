@@ -38,7 +38,7 @@ export const handlers = {
       const from = e.bond.to;
       delete e.bond;
       ev.push({ type: 'unbonded', id: e.id, from });
-      followMasters(s, true);                        // in a fight it keeps its place for now, and has its own from the next round
+      followMasters(s, true);                        // in a fight it keeps its place and its count (it does not roll again)
       return;
     }
     typeof a.to === 'string' || fail('Name its master ({ to: id }), or free it ({ to: null }).');
