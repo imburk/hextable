@@ -70,7 +70,7 @@ async function pacing(browser, url, label, opts) {
       });
       let ids;
       await run.do('a goblin hits: attack, damage and the fall play in order before the controls wake', async () => {
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 40; i++) {
           ids = await foeTurn(page, 1);
           await setPace(page, 'wait');
           const r = await strikeAndWatch(page, ids);
@@ -87,14 +87,14 @@ async function pacing(browser, url, label, opts) {
           if (r.still.busy || r.still.waiting) throw new Error('the controls did not wake');
           return;
         }
-        throw new Error('the goblin missed twelve times');
+        throw new Error('the goblin missed forty times');
       });
       await run.do('a tap on the map skips the beats and does not act', async () => {
         ids = await foeTurn(page, null);
         await setPace(page, 'wait');
         await page.evaluate(strike, [ids.pc, ids.foe]);
         if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
-        const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn]));
+        const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
         const pt = await page.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.kind === 'pc'); const p = h.R.screenOf({ q: e.pos.q + 2, r: e.pos.r, z: e.pos.z }); return p; });
         await sleep(60);
         // The point must be bare map. The old fallback (the middle, 120 px down) lands on the turn-order strip on a phone, and a tap there
@@ -107,7 +107,7 @@ async function pacing(browser, url, label, opts) {
         // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
         for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
-        if (before !== (await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn])))) throw new Error('the tap acted as well as skipped');
+        if (before !== (await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn])))) throw new Error('the tap acted as well as skipped');
         if (await shown(page, '#pace-wait')) throw new Error('"…" is still showing');
       });
       await run.do('Escape skips too, and a button tap skips without acting', async () => {
