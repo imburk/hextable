@@ -139,5 +139,14 @@ export function actTime(e, kind, a) {
   if (a.bonus) { (nimble || e.bonusActs?.includes(kind)) || fail(`${e.name} can't take that as a Bonus Action.`); return 'bonus'; }
   return nimble ? 'bonus' : 'action';
 }
+// Fleet Step (`fleet: { of }`): the feature it names (Step of the Wind) taken without a Bonus Action,
+// on the creature's turn in a fight, once a turn, after a Bonus Action that was not that feature.
+// `used:<feature>:<id>` marks that feature taken with a Bonus Action this turn.
+export const fleetOf = (e) => { const f = (e.feats ?? []).find((x) => x.fleet); return f && featOf(e, f.fleet.of) ? f.fleet.of : null; };
+export function fleetFree(s, e, id) {
+  const enc = s.encounter;
+  if (!enc || current(s) !== e.id || enc.budget.bonus > 0 || fleetOf(e) !== id) return false;
+  return !enc.flags[`used:${id}:${e.id}`] && !enc.flags[`fleet:${e.id}`];
+}
 export const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i]; return false; };
 

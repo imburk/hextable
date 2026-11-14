@@ -485,6 +485,9 @@ export function derive(sheet) {
     }
     if (g.reroll) out.reroll = { cost: g.reroll.cost, ...(g.reroll.add !== undefined ? { add: amount(g.reroll.add, c, level, abil) } : {}) };
     if (g.missed) out.missed = structuredClone(g.missed);
+    for (const k of ['evasion', 'surfaces']) if (g[k]) out[k] = true;
+    if (g.selfCure) out.selfCure = { conditions: [...g.selfCure.conditions] };
+    if (g.fleet) out.fleet = { ...g.fleet };
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
     if (g.critOn) critOn = Math.min(critOn, g.critOn);
@@ -500,6 +503,11 @@ export function derive(sheet) {
     if (to?.cure) to.cure.conditions = [...new Set([...to.cure.conditions, ...cu.conditions])];
   }
 
+  // A feature reaction another lets work against any damage type (Deflect Energy on Deflect Attacks).
+  for (const x of feats) {
+    const w = x.f.grants?.allTypes, to = w && feat.find((o) => o.id === w.of)?.reaction;
+    if (to) delete to.types;
+  }
   // A feature whose lasting effect another makes last without renewing (Persistent Rage on Rage): its
   // parts no longer end with the turn, and it ends early only on the condition named.
   for (const x of feats) {

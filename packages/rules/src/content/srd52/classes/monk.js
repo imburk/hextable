@@ -208,13 +208,38 @@ export const monk = {
       "id": "patient-defense",
       "name": "Patient Defense",
       "level": 2,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Take the Disengage action as a Bonus Action, or spend 1 Focus Point to take Disengage and Dodge as a Bonus Action (the DM applies the Focus Point version).",
+      "text": "Take the Disengage action as a Bonus Action (disengage with bonus), or spend 1 Focus Point to take Disengage and Dodge as a Bonus Action (the feature); from level 10 that also gives two rolls of your Martial Arts die in Temporary Hit Points.",
       "grants": {
         "bonusActs": [
           "disengage"
-        ]
+        ],
+        "action": {
+          "time": "bonus",
+          "cost": {
+            "resource": "monks-focus"
+          },
+          "target": {
+            "self": true
+          },
+          "acts": [
+            "disengage",
+            "dodge"
+          ],
+          "effects": [
+            {
+              "tempHp": {
+                "byLevel": {
+                  "10": "2d8",
+                  "11": "2d10",
+                  "17": "2d12"
+                }
+              },
+              "with": "heightened-focus"
+            }
+          ]
+        }
       }
     },
     {
@@ -223,11 +248,33 @@ export const monk = {
       "level": 2,
       "tier": "assist",
       "checked": true,
-      "text": "Take the Dash action as a Bonus Action, or spend 1 Focus Point to take Disengage and Dash as a Bonus Action with double jump distance (the DM applies the Focus Point version).",
+      "text": "Take the Dash action as a Bonus Action (dash with bonus), or spend 1 Focus Point to take Disengage and Dash as a Bonus Action (the feature). Your doubled jump distance, and from level 10 the willing creature you carry, are the DM's.",
       "grants": {
         "bonusActs": [
           "dash"
-        ]
+        ],
+        "action": {
+          "time": "bonus",
+          "cost": {
+            "resource": "monks-focus"
+          },
+          "target": {
+            "self": true
+          },
+          "acts": [
+            "disengage",
+            "dash"
+          ],
+          "effects": [
+            {
+              "manual": "Step of the Wind: the monk's jump distance is doubled for the turn. The engine does not model jumps; the DM applies it."
+            },
+            {
+              "manual": "Heightened Focus: the monk may take a willing Large or smaller creature within 5 feet along until the end of its turn, without that creature provoking Opportunity Attacks. The DM moves it.",
+              "with": "heightened-focus"
+            }
+          ]
+        }
       }
     },
     {
@@ -250,12 +297,21 @@ export const monk = {
       "id": "uncanny-metabolism",
       "name": "Uncanny Metabolism",
       "level": 2,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "On rolling Initiative, regain all Focus Points and Hit Points equal to Monk level + a Martial Arts die roll, once per Long Rest. The DM applies it.",
+      "text": "When you roll Initiative, regain all spent Focus Points and Hit Points equal to your Monk level plus a roll of your Martial Arts die, once per Long Rest. Used when it gives something back, by standing instruction (always or never).",
       "uses": {
         "max": 1,
         "recharge": "long"
+      },
+      "grants": {
+        "initiative": {
+          "regain": "monks-focus",
+          "heal": {
+            "column": "martial-arts"
+          },
+          "addLevel": true
+        }
       }
     },
     {
@@ -266,7 +322,25 @@ export const monk = {
       "checked": true,
       "text": "When hit by an attack roll whose damage includes Bludgeoning, Piercing or Slashing, use your Reaction to reduce the attack's total damage by 1d10 + Dexterity modifier + Monk level (taken by standing instruction). If that brings it to 0, the monk may spend 1 Focus Point to redirect it: a creature within 5 feet (melee) or 60 feet (ranged) makes a Dexterity save or takes two Martial Arts dice + Dexterity modifier. The DM applies the redirect.",
       "grants": {
-        "reaction": { "on": "hit", "types": ["bludgeoning", "piercing", "slashing"], "cut": { "dice": "1d10", "add": [{ "mod": "dex" }, { "perLevel": 1 }] } }
+        "reaction": {
+          "on": "hit",
+          "types": [
+            "bludgeoning",
+            "piercing",
+            "slashing"
+          ],
+          "cut": {
+            "dice": "1d10",
+            "add": [
+              {
+                "mod": "dex"
+              },
+              {
+                "perLevel": 1
+              }
+            ]
+          }
+        }
       }
     },
     {
@@ -377,17 +451,23 @@ export const monk = {
       "id": "evasion",
       "name": "Evasion",
       "level": 7,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "On a Dexterity save for half damage, take none on a success and half on a failure, unless Incapacitated. The DM applies it."
+      "text": "On a Dexterity save against an effect that does half damage on a success, take none on a success and half on a failure, unless you are Incapacitated.",
+      "grants": {
+        "evasion": true
+      }
     },
     {
       "id": "acrobatic-movement",
       "name": "Acrobatic Movement",
       "level": 9,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Without armor or Shield, move along vertical surfaces and across liquids on your turn."
+      "text": "Without armor or a Shield, move along vertical surfaces (as with a Climb Speed equal to your Speed) and across water on your turn; you can't stop on water.",
+      "grants": {
+        "surfaces": true
+      }
     },
     {
       "id": "heightened-focus",
@@ -395,42 +475,66 @@ export const monk = {
       "level": 10,
       "tier": "assist",
       "checked": true,
-      "text": "Flurry of Blows makes three strikes (applied); Patient Defense with a Focus Point also grants two Martial Arts dice of Temporary Hit Points, and Step of the Wind can carry a willing creature (the DM applies those)."
+      "text": "Flurry of Blows makes three Unarmed Strikes; Patient Defense with a Focus Point also gives two rolls of your Martial Arts die in Temporary Hit Points (both applied); Step of the Wind with a Focus Point can carry a willing creature (the DM's)."
     },
     {
       "id": "self-restoration",
       "name": "Self-Restoration",
       "level": 10,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "At the end of each of your turns, end Charmed, Frightened or Poisoned on yourself; going without food and drink gives no Exhaustion."
+      "text": "At the end of each of your turns, end one of Charmed, Frightened or Poisoned on yourself (in that order of choice). Going without food and drink gives you no Exhaustion (the engine does not track food).",
+      "grants": {
+        "selfCure": {
+          "conditions": [
+            "charmed",
+            "frightened",
+            "poisoned"
+          ]
+        }
+      }
     },
     {
       "id": "deflect-energy",
       "name": "Deflect Energy",
       "level": 13,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Deflect Attacks works against any damage type."
+      "text": "Deflect Attacks works against attacks of any damage type.",
+      "grants": {
+        "allTypes": {
+          "of": "deflect-attacks"
+        }
+      }
     },
     {
       "id": "disciplined-survivor",
       "name": "Disciplined Survivor",
       "level": 14,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Proficiency in all saving throws; spend 1 Focus Point to reroll a failed save (the DM applies the reroll).",
+      "text": "Proficiency in all saving throws. When you fail a save, spend 1 Focus Point to reroll it and use the new roll; taken by standing instruction (always or never) where the new roll could succeed.",
       "grants": {
-        "saves": "all"
+        "saves": "all",
+        "reroll": {
+          "cost": "monks-focus"
+        }
       }
     },
     {
       "id": "perfect-focus",
       "name": "Perfect Focus",
       "level": 15,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "On rolling Initiative without using Uncanny Metabolism, regain Focus Points up to 4."
+      "text": "When you roll Initiative and don't use Uncanny Metabolism, regain Focus Points until you have 4, if you have 3 or fewer.",
+      "grants": {
+        "initiative": {
+          "regain": "monks-focus",
+          "upTo": 4,
+          "unless": "uncanny-metabolism"
+        }
+      }
     },
     {
       "id": "superior-defense",
@@ -516,9 +620,14 @@ export const monk = {
         "id": "fleet-step",
         "name": "Fleet Step",
         "level": 11,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
-        "text": "After a Bonus Action other than Step of the Wind, use Step of the Wind at once."
+        "text": "After a Bonus Action other than Step of the Wind, use Step of the Wind without a Bonus Action, once a turn. That it comes immediately after is not enforced.",
+        "grants": {
+          "fleet": {
+            "of": "step-of-the-wind"
+          }
+        }
       },
       {
         "id": "quivering-palm",

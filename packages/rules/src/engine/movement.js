@@ -8,7 +8,7 @@ import { sightRule, unknown } from '../vision.js';
 import { objectDef } from '../walls.js';
 import { canReact, instruction, OPPORTUNITY, opportunityAttack, reactionsOf } from '../reactions.js';
 import { modifiers, speedOf } from '../modifiers.js';
-import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, hostile, inFight, less, living, need, unblocked, up } from './shared.js';
+import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, need, unblocked, up } from './shared.js';
 import { airspace, aloft, along, byMarch, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { checkEnd, engage, KIT, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
@@ -212,8 +212,12 @@ export const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
     const time = actTime(e, 'dash', a);
-    need(s, e, time);
-    s.encounter.budget[time]--; s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
+    // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
+    const sotw = time === 'bonus' ? fleetOf(e) : null, free = !!sotw && fleetFree(s, e, sotw);
+    need(s, e, free ? null : time);
+    if (free) s.encounter.flags[`fleet:${e.id}`] = true; else s.encounter.budget[time]--;
+    if (sotw) s.encounter.flags[`used:${sotw}:${e.id}`] = true;
+    s.encounter.budget.move += speedOf(s, e); s.encounter.budget.dashes = (s.encounter.budget.dashes | 0) + 1;
     ev.push({ type: 'std', id: e.id, action: 'Dash' });
   },
   // Stand up from Prone (E14). In a fight, on its own turn, for half its Speed (the SRD lets it be done

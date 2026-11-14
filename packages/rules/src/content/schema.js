@@ -608,7 +608,11 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   'moveWith', 'brutal', 'relentless', 'initiative', 'persist',
   // A failed saving throw rolled again for a use of a feature (Indomitable, Disciplined Survivor), and
   // what a missed attack roll gives against that target (Studied Attacks).
-  'reroll', 'missed'];
+  'reroll', 'missed',
+  // Evasion; moving along walls and across water (Acrobatic Movement); conditions ended at the end of
+  // its turns (Self-Restoration); another feature's reaction against any damage type (Deflect Energy);
+  // another feature used without a Bonus Action after a different one (Fleet Step).
+  'evasion', 'surfaces', 'selfCure', 'allTypes', 'fleet'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -676,7 +680,9 @@ function lintGrants(g, cls, say) {
   }
   if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    // `acts`: the feature's action also takes these actions (Patient Defense with a Focus Point: Disengage and Dodge).
+    if (a?.acts !== undefined && !(Array.isArray(a.acts) && a.acts.length && allOf(['dash', 'disengage', 'dodge'])(a.acts) && new Set(a.acts).size === a.acts.length && a.target?.self)) say('action acts lists dash, disengage or dodge, on the creature itself');
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
     if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
     if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
@@ -849,6 +855,20 @@ function lintGrants(g, cls, say) {
     if (!(x && x.modifier && x.ends && Object.keys(x).length === 2 && ['turnStart', 'turnEnd'].includes(x.ends.on) && Object.keys(x.ends).length === 1)) say('missed is { modifier, ends: { on: turnStart | turnEnd } }');
     else { lintModifier(x.modifier, say); if (!x.modifier.on.startsWith('attack.roll')) say('missed gives a modifier on attack.roll'); }
   }
+  // `evasion: true`: an effect that lets it make a Dexterity save for half damage does none on a
+  // success and half on a failure, while it is not Incapacitated (Evasion).
+  if (g.evasion !== undefined && g.evasion !== true) say('evasion is true');
+  // `surfaces: true`: while it wears no armour and holds no Shield, it moves along vertical surfaces
+  // as with a Climb Speed equal to its Speed, and across water, where it cannot stop (Acrobatic Movement).
+  if (g.surfaces !== undefined && g.surfaces !== true) say('surfaces is true');
+  // `selfCure: { conditions }`: at the end of each of its turns, one of these conditions it has ends
+  // (the first of the list it has: Self-Restoration).
+  if (g.selfCure !== undefined && !(g.selfCure && allOf(CONDITIONS)(g.selfCure.conditions) && g.selfCure.conditions.length && Object.keys(g.selfCure).length === 1)) say('selfCure is { conditions }');
+  // `allTypes: { of }`: that feature's reaction is taken against an attack of any damage type (Deflect Energy).
+  if (g.allTypes !== undefined && !(g.allTypes && ID.test(g.allTypes.of ?? '') && Object.keys(g.allTypes).length === 1)) say('allTypes is { of: feature id }');
+  // `fleet: { of }`: after a Bonus Action that is not that feature, the creature may use it without
+  // spending a Bonus Action, once a turn (Fleet Step with Step of the Wind).
+  if (g.fleet !== undefined && !(g.fleet && ID.test(g.fleet.of ?? '') && Object.keys(g.fleet).length === 1)) say('fleet is { of: feature id }');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
 const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
@@ -1149,7 +1169,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
-  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed'];
+  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1168,7 +1188,8 @@ function lintFeat(f, say) {
         && (fm.tempHp === undefined || (isInt(fm.tempHp) && fm.tempHp >= 0 && fm.tempHp <= 100)))) sub('its form is { types, maxCr, fly, hours, tempHp? }.');
     } else if (!a.gain && !a.pool) {
       lintTarget(a.target, sub);
-      if (a.modes === undefined) lintSteps(a.effects, sub);
+      // An action that takes other actions may have no steps left for this character (Patient Defense below level 10).
+      if (a.modes === undefined) { if (!(a.acts && Array.isArray(a.effects) && !a.effects.length)) lintSteps(a.effects, sub); }
       else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects }.');
       else for (const m of a.modes) lintSteps(m.effects, sub);
     }
@@ -1200,6 +1221,10 @@ function lintFeat(f, say) {
   if (f.relentless !== undefined && !(f.relentless && ID.test(f.relentless.while ?? '') && isInt(f.relentless.dc) && isInt(f.relentless.step) && isInt(f.relentless.hp) && f.relentless.hp > 0 && f.relentless.hp <= 100)) sub('its relentless is { while, dc, step, hp }.');
   if (f.initiative !== undefined && !(f.initiative && ID.test(f.initiative.regain ?? '') && (f.initiative.upTo === undefined || isInt(f.initiative.upTo))
     && (f.initiative.heal === undefined || isDice(f.initiative.heal)) && (f.initiative.unless === undefined || ID.test(f.initiative.unless)))) sub('its initiative is { regain, upTo?, heal?, unless? }.');
+  for (const k of ['evasion', 'surfaces']) if (f[k] !== undefined && f[k] !== true) sub(`its ${k} is true.`);
+  if (f.selfCure !== undefined && !(f.selfCure && allOf(CONDITIONS)(f.selfCure.conditions) && f.selfCure.conditions.length)) sub('its selfCure is { conditions }.');
+  if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');
+  if (f.action?.acts !== undefined && !(Array.isArray(f.action.acts) && allOf(['dash', 'disengage', 'dodge'])(f.action.acts))) sub('its action acts lists dash, disengage or dodge.');
   if (f.reroll !== undefined && !(f.reroll && ID.test(f.reroll.cost ?? '') && (f.reroll.add === undefined || (isInt(f.reroll.add) && f.reroll.add >= 0 && f.reroll.add <= 30)))) sub('its reroll is { cost, add? }.');
   if (f.missed !== undefined) { if (!(f.missed && f.missed.modifier && ['turnStart', 'turnEnd'].includes(f.missed.ends?.on))) sub('its missed is { modifier, ends }.'); else lintModifier(f.missed.modifier, sub); }
   if (f.reaction?.on === 'saveFailed') {

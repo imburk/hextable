@@ -270,7 +270,7 @@ function exec(s, ev, kit, f, step, at) {
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
-      crit: f.crit, mode: f.mode, half: f.half, told: f.told, hit: f.hit, weapon: f.weapon, ...extra });
+      crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, ...extra });
   };
 
   if (kind === 'manual') {
@@ -325,7 +325,12 @@ function exec(s, ev, kit, f, step, at) {
       if (again) { const { used: u2, ...sv2 } = again; sv = sv2; ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true }); useUp(s, ev, u2 ?? []); }
     }
 
-    if (!sv.success) return branch('onFail', { half: false });
+    // Evasion: a Dexterity save for half damage does none on a success and half on a failure (the
+    // failure's other effects still happen).
+    const evade = step.save === 'dex' && step.half && step.onFail && kit.evades?.(t);
+    if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage' });
+    if (!sv.success) return branch('onFail', { half: false, ...(evade ? { evade: true } : {}) });
+    if (evade) return;
     if (step.half && step.onFail) return branch('onFail', { half: true });      // same effect, half the damage
     return branch('onSuccess', { half: false });
   }
@@ -335,7 +340,7 @@ function exec(s, ev, kit, f, step, at) {
     // `when` cannot be judged is left to run on its own, which hands it to the DM.
     // A shared roll from before faces were kept is a bare number.
     const amount = (st, path) => { const r0 = f.shared?.[path] ?? rollDamage(s, st, !!f.crit), r = typeof r0 === 'number' ? { total: r0 } : r0;
-      return { amount: f.half ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
+      return { amount: f.half || f.evade ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
     const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
     const parts = [{ ...amount(step, at), type: step.type }], landed = [[step, at]];
     while (f.i < f.steps.length && stepKind(f.steps[f.i]) === 'damage') {

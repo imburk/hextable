@@ -6,7 +6,7 @@ import { apart, FT } from '../space.js';
 import { turnInZones } from '../zones.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
 import { able, control, current, ent, fail, featOf, ft, inFight, need, up, walled } from './shared.js';
-import { rollMode } from './rolls.js';
+import { cure, rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { advanceTurn, checkEnd, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
 
@@ -174,6 +174,11 @@ export const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
     delete e.cond.disengaged;
+    // Self-Restoration: one of these conditions ends on it at the end of each of its turns (the first it has).
+    for (const f of e.feats ?? []) {
+      const c = f.selfCure?.conditions.find((x) => e.cond[x]);
+      if (c) { ev.push({ type: 'std', id: e.id, action: f.name }); cure(s, e, [c], ev); }
+    }
     turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
     checkEnd(s, ev);
     if (!s.encounter) return;

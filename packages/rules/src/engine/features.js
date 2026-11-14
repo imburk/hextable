@@ -11,7 +11,7 @@ import { apart, FT, ground, overlapAt, STEP_MAX } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
 import { barriers, center, distToSegment, objectDef, objectSegment } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
-import { able, actTime, control, current, ent, fail, featOf, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
+import { able, actTime, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, objectName, objectOf, objectShown, SEARCH_FEET, setObject, unhide } from './world.js';
 import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
@@ -192,7 +192,9 @@ export const handlers = {
     // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
     if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
     if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.`);
-    if (time && fighting) need(s, e, time);
+    // Fleet Step: Step of the Wind right after another Bonus Action, without one of its own.
+    const free = time === 'bonus' && fighting && fleetFree(s, e, f.id);
+    if (time && fighting) need(s, e, free ? null : time);
     if ((act.gain || act.firstAttack) && !(fighting && current(s) === e.id)) fail(`${f.name} is used on ${e.name}'s turn in a fight.`);
     if (act.firstAttack) {
       !enc.flags[`attacked:${e.id}`] || fail(`${f.name} is decided before the first attack roll of the turn.`);
@@ -234,7 +236,7 @@ export const handlers = {
     }
 
     // Paid for: from here it happens.
-    if (time && fighting) enc.budget[time]--;
+    if (time && fighting) { if (free) enc.flags[`fleet:${e.id}`] = true; else enc.budget[time]--; if (time === 'bonus') enc.flags[`used:${f.id}:${e.id}`] = true; }
     if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
     if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
     if (act.pool) {
@@ -258,7 +260,14 @@ export const handlers = {
       ev.push({ type: 'std', id: e.id, action: `${pounce.name} (${feet} ft)` });
     }
     if (act.noSpells) breakConcentration(s, ev, e.id, `${e.name} entered ${f.name}`);
+    // Actions the feature's action also takes (Patient Defense: Disengage and Dodge; Step of the Wind: Disengage and Dash).
+    if (fighting) for (const x of act.acts ?? []) {
+      if (x === 'dodge') e.cond.dodging = {};
+      else if (x === 'disengage') e.cond.disengaged = {};
+      else if (x === 'dash') { enc.budget.move += speedOf(s, e); enc.budget.dashes = (enc.budget.dashes | 0) + 1; }
+    }
     const steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects)), targets = aimed.targets;
+    if (!steps.length) return ev.push({ type: 'std', id: e.id, action: f.name });     // nothing more (Patient Defense below level 10)
     let fx = null;
     if (act.duration && act.duration !== 'instant') {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
