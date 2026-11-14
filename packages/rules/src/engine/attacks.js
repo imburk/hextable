@@ -5,8 +5,12 @@ import { turnEnded } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { turnInZones } from '../zones.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, ft, inFight, need, up, walled } from './shared.js';
-import { aimAction, showPlace } from './world.js';
+import { able, control, current, ent, fail, featOf, ft, hostile, inFight, living, need, up, walled } from './shared.js';
+import { cure, rollMode } from './rolls.js';
+import { aimAction, showPlace, unhide } from './world.js';
+import { SIZES } from '../content/schema.js';
+import { coverOf } from '../sight.js';
+import { conditionName } from '../modifiers.js';
 import { advanceTurn, checkEnd, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
 
 function checkRange(s, e, t, atk) {
@@ -71,6 +75,50 @@ function takeAction(s, e, def, a, ev) {
   checkEnd(s, ev);
 }
 
+// Brutal Strike (`brutal` on a built character's features): on its own turn, after the feature named
+// in `after` that turn (Reckless Attack), once a turn, on an attack using Strength that has no
+// Disadvantage. Returns the option to apply ({ id, name, dice, effects, unique? }), or refuses.
+function brutalFor(s, e, t, atk, id) {
+  const fs = (e.feats ?? []).filter((f) => f.brutal), base = fs.find((f) => f.brutal.dice);
+  base || fail(`${e.name} has no Brutal Strike.`);
+  const options = fs.flatMap((f) => f.brutal.options);
+  const o = (typeof id === 'string' && options.find((x) => x.id === id)) || fail(`Choose a ${base.name} effect: ${options.map((x) => x.name).join(', ')}.`);
+  const flags = s.encounter.flags;
+  current(s) === e.id || fail(`${base.name} is used on ${e.name}'s turn.`);
+  flags[`${base.brutal.after}:${e.id}`] || fail(`${base.name} needs ${featOf(e, base.brutal.after)?.name ?? base.brutal.after} this turn.`);
+  !flags[`brutal:${e.id}`] || fail(`${e.name} has already used ${base.name} this turn.`);
+  atk.abil === 'str' || fail(`${base.name} is for an attack using Strength.`);
+  const m = rollMode(s, e, t, atk);
+  !m.dis.length || fail(`That attack roll has Disadvantage (${m.dis.join(', ')}), so ${base.name} can't be used on it.`);
+  return { ...structuredClone(o), dice: base.brutal.dice };
+}
+
+// Cunning Strike (`cunning` on a built character's features): Cunning Strike effects for this attack,
+// each named once, at most as many as its features allow, on an attack that can deal Sneak Attack on a
+// turn it has not yet, with Sneak Attack dice enough to pay for them, the gear they need, a target of
+// the size they need, and (Stealth Attack) made while hidden. Returns the options, or refuses.
+const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function cunningFor(s, e, t, atk, list) {
+  const fs = (e.feats ?? []).filter((f) => f.cunning), options = fs.flatMap((f) => f.cunning.options ?? []);
+  options.length || fail(`${e.name} has no Cunning Strike.`);
+  const max = Math.max(1, ...fs.map((f) => f.cunning.max ?? 1));
+  (Array.isArray(list) && list.length && list.every((x) => typeof x === 'string') && new Set(list).size === list.length) || fail('Name the Cunning Strike effects, each once.');
+  list.length <= max || fail(`${e.name} can add ${max === 1 ? 'one Cunning Strike effect' : `${max} Cunning Strike effects`} to an attack.`);
+  const chosen = list.map((id) => structuredClone(options.find((o) => o.id === id) ?? fail(`Choose Cunning Strike effects from: ${options.map((o) => o.name).join(', ')}.`)));
+  const m = /^(\d+)d\d+$/.exec(e.features?.sneak ?? '');
+  (m && !atk.spell && (atk.finesse || atk.type === 'ranged')) || fail('Cunning Strike goes with Sneak Attack, which needs a Finesse or Ranged weapon.');
+  !s.encounter.flags[`sneak:${e.id}`] || fail(`${e.name} has already dealt Sneak Attack this turn.`);
+  const cost = chosen.reduce((n, o) => n + o.cost, 0);
+  // At least one die must be left to roll: an effect is added "when you deal Sneak Attack damage".
+  cost < +m[1] || fail(`Those effects cost ${cost} Sneak Attack dice; ${e.name}'s Sneak Attack is ${e.features.sneak}, and at least one die must be left to deal Sneak Attack damage.`);
+  for (const o of chosen) {
+    if (o.needs) e.gear?.some((g) => slug(g) === o.needs) || fail(`${o.name} needs ${o.needs === 'poisoners-kit' ? "a Poisoner's Kit" : o.needs} on ${e.name}'s person.`);
+    if (o.size) SIZES.indexOf(t.size ?? 'medium') <= SIZES.indexOf(o.size) || fail(`${o.name} works on a creature of ${o.size[0].toUpperCase() + o.size.slice(1)} size or smaller.`);
+    if (o.keepHidden) e.hiding || fail(`${o.name} is for an attack made while hidden.`);
+  }
+  return chosen;
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -79,6 +127,7 @@ export const handlers = {
     const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
+      (a.brutal === undefined && a.cunning === undefined) || fail(`Brutal Strike and Cunning Strike are made with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
       return takeAction(s, e, def, { target: a.target }, ev);
@@ -99,6 +148,8 @@ export const handlers = {
     const pooled = !flurry && !bonusTime && fromPool(b, atk.id);
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
+    const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
     if (flurry) { if (--b.bonusAttacks.left <= 0) delete b.bonusAttacks; }
     else if (bonusTime) b.bonus--;
     else if (pooled) fromPool(b, atk.id, true);
@@ -107,7 +158,8 @@ export const handlers = {
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
     }
-    resolveAttack(s, e, t, atk, ev);
+    if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
+    resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
     checkEnd(s, ev);
   },
 
@@ -151,7 +203,22 @@ export const handlers = {
   endTurn(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
+    // Self-Restoration (`selfCure`): its player picks which of the conditions it has ends (`cure`).
+    // With only one there is nothing to pick; with several and no pick, the DM is told.
+    const sc = (e.feats ?? []).find((f) => f.selfCure), can = sc ? sc.selfCure.conditions.filter((c) => e.cond[c]) : [];
+    if (a.cure !== undefined) {
+      sc || fail(`${e.name} has nothing that ends a condition at the end of its turn.`);
+      (typeof a.cure === 'string' && can.includes(a.cure)) || fail(can.length ? `${sc.name} can end ${can.map(conditionName).join(' or ')} on ${e.name} now.` : `${e.name} has none of the conditions ${sc.name} ends.`);
+    }
     delete e.cond.disengaged;
+    // Stealth Attack: still hidden after its attack only if it ends the turn behind Three-Quarters or
+    // Total Cover from every enemy that is up.
+    if (s.encounter.flags[`stealth:${e.id}`] && e.hiding && living(s).some((o) => up(o) && hostile(o, e) && !['threeQuarters', 'total'].includes(coverOf(s, o, e)))) unhide(s, e, ev, 'attack');
+    if (can.length) {
+      const c = a.cure ?? (can.length === 1 ? can[0] : null);
+      if (c) { ev.push({ type: 'std', id: e.id, action: sc.name }); cure(s, e, [c], ev); }
+      else ev.push({ type: 'manual', actor: e.id, name: sc.name, text: `${e.name} is ${can.map(conditionName).join(' and ')}. ${sc.name} ends one of them at the end of its turn, its player's choice; none was sent, so the DM removes the one the player picks.` });
+    }
     turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
     checkEnd(s, ev);
     if (!s.encounter) return;

@@ -6,10 +6,10 @@ import { lintRecord } from '../content/schema.js';
 import { FT, ground, landing, overlapAt, STEP_MAX } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
-import { ATTUNE_MAX, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
+import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
 import { control, ent, fail, inFight, living } from './shared.js';
 import { fitsOn, joinEncounter, lookAround } from './world.js';
-import { landItem, makeEntity, remake, resheet } from './sheets.js';
+import { donned, landItem, makeEntity, remake, resheet } from './sheets.js';
 
 export const handlers = {
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
@@ -64,6 +64,7 @@ export const handlers = {
     if (e.look && !a.record.look) fresh.look = e.look;
     s.entities[e.id] = fresh;
     ev.push({ type: 'edited', id: e.id });
+    donned(s, fresh, ev);
   },
   // A character built from class and level (derive.js). { type: 'setSheet', sheet, actor?, at? }
   // Without `actor` it joins the party as addCharacter does; with one, that character is made
@@ -190,7 +191,7 @@ export const handlers = {
       else {
         x.attuned !== true || fail(`${e.name} is already attuned to ${itemName(def, x)}.`);
         const why = attuneProblem(sheet, def); !why || fail(why);
-        heldItems(sheet).filter((y) => y.x.attuned === true).length < ATTUNE_MAX || fail(`${e.name} is attuned to ${ATTUNE_MAX} items already: end one first.`);
+        heldItems(sheet).filter((y) => y.x.attuned === true).length < attuneMax(sheet) || fail(`${e.name} is attuned to ${attuneMax(sheet)} items already: end one first.`);
         !heldItems(sheet).some((y) => y.x.attuned === true && y.x.item === x.item) || fail(`${e.name} is attuned to another ${def.name} already.`);
       }
       sheet.attuning = { item: x.id, ...(a.end ? { end: true } : {}) };

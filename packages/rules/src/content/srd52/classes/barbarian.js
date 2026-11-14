@@ -374,41 +374,157 @@ export const barbarian = {
       "id": "instinctive-pounce",
       "name": "Instinctive Pounce",
       "level": 7,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "As part of the Bonus Action to enter Rage, move up to half your Speed. The DM moves you."
+      "text": "Entering your Rage with its Bonus Action in a fight also gives you up to half your Speed of movement that turn. The engine adds it to the turn's movement; that you take it as part of the Bonus Action is not enforced.",
+      "grants": {
+        "moveWith": {
+          "of": "rage"
+        }
+      }
     },
     {
       "id": "brutal-strike",
       "name": "Brutal Strike",
       "level": 9,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "With Reckless Attack, forgo Advantage on one Strength attack; on a hit it deals 1d10 more and a Forceful Blow or Hamstring Blow. The engine cannot take that choice; the DM applies it."
+      "text": "On your turn, after using Reckless Attack, give up Advantage on one Strength attack roll that has no Disadvantage (`brutal` on the attack). On a hit it deals 1d10 more of the attack's type and one effect: Forceful Blow (pushed 15 feet straight away; your move of up to half your Speed toward it, without Opportunity Attacks, is the DM's) or Hamstring Blow (Speed 15 feet less until the start of your next turn; only the most recent one holds).",
+      "grants": {
+        "brutal": {
+          "after": "reckless-attack",
+          "dice": "1d10",
+          "options": [
+            {
+              "id": "forceful-blow",
+              "name": "Forceful Blow",
+              "effects": [
+                {
+                  "move": 15,
+                  "dir": "away"
+                },
+                {
+                  "manual": "Forceful Blow: the barbarian may now move up to half its Speed straight toward the target without provoking Opportunity Attacks. The DM moves it."
+                }
+              ]
+            },
+            {
+              "id": "hamstring-blow",
+              "name": "Hamstring Blow",
+              "unique": true,
+              "effects": [
+                {
+                  "modifier": {
+                    "on": "speed",
+                    "op": "add",
+                    "value": -15
+                  },
+                  "ends": {
+                    "on": "turnStart",
+                    "of": "source"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "id": "relentless-rage",
       "name": "Relentless Rage",
       "level": 11,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Dropping to 0 Hit Points while raging, make a DC 10 Constitution save (DC +5 each later use, reset by a rest) to have Hit Points equal to twice your Barbarian level instead. The DM applies it."
+      "text": "Dropping to 0 Hit Points while raging without dying outright, make a Constitution save, DC 10 and 5 more for each use since your last Short or Long Rest. On a success your Hit Points become twice your Barbarian level.",
+      "grants": {
+        "relentless": {
+          "while": "rage",
+          "dc": 10,
+          "step": 5,
+          "hp": {
+            "perLevel": 2
+          }
+        }
+      }
     },
     {
       "id": "improved-brutal-strike",
       "name": "Improved Brutal Strike",
       "level": 13,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Adds the Staggering Blow and Sundering Blow options to Brutal Strike."
+      "text": "Two more Brutal Strike effects: Staggering Blow (Disadvantage on its next saving throw, and no Opportunity Attacks until the start of your next turn) and Sundering Blow (the next attack roll another creature makes against it before the start of your next turn gets +5; only one such bonus a roll).",
+      "grants": {
+        "brutal": {
+          "options": [
+            {
+              "id": "staggering-blow",
+              "name": "Staggering Blow",
+              "effects": [
+                {
+                  "modifier": {
+                    "on": "save",
+                    "op": "disadvantage",
+                    "uses": 1
+                  }
+                },
+                {
+                  "modifier": {
+                    "on": "opportunity",
+                    "op": "autoFail"
+                  },
+                  "ends": {
+                    "on": "turnStart",
+                    "of": "source"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "sundering-blow",
+              "name": "Sundering Blow",
+              "effects": [
+                {
+                  "modifier": {
+                    "on": "attack.received",
+                    "op": "add",
+                    "value": 5,
+                    "uses": 1,
+                    "except": "source",
+                    "stack": false
+                  },
+                  "ends": {
+                    "on": "turnStart",
+                    "of": "source"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "id": "persistent-rage",
       "name": "Persistent Rage",
       "level": 15,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "On rolling Initiative, regain all uses of Rage once per Long Rest; Rage lasts 10 minutes without being extended and ends early only on Unconscious or donning Heavy armor. The engine still asks you to extend it; the DM applies this."
+      "text": "When you roll Initiative with uses of Rage spent, you can regain them all, once per Long Rest: set by standing instruction (never until you set it to always). Your Rage lasts 10 minutes without being extended and ends early only when you are Unconscious or don Heavy armor.",
+      "uses": {
+        "max": 1,
+        "recharge": "long"
+      },
+      "grants": {
+        "initiative": {
+          "regain": "rage"
+        },
+        "persist": {
+          "of": "rage",
+          "endsOn": "unconscious"
+        }
+      }
     },
     {
       "id": "improved-brutal-strike-17",
@@ -478,17 +594,24 @@ export const barbarian = {
         "id": "retaliation",
         "name": "Retaliation",
         "level": 10,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "When a creature within 5 feet damages you, use your Reaction to make a melee attack against it. Reactions are not prompted yet."
+        "text": "When a hostile creature within 5 feet damages you, use your Reaction to make one melee attack against it (your first melee attack). Taken by standing instruction.",
+        "grants": {
+          "reaction": {
+            "on": "damaged",
+            "attack": "melee",
+            "within": 5
+          }
+        }
       },
       {
         "id": "intimidating-presence",
         "name": "Intimidating Presence",
         "level": 14,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "As a Bonus Action, creatures of your choice in a 30-foot Emanation make a Wisdom save (DC 8 + Strength modifier + Proficiency Bonus) or are Frightened for 1 minute, repeating the save each turn. Once per Long Rest, or spend a Rage to use it again.",
+        "text": "As a Bonus Action, creatures of your choice within 30 feet (up to 20) make a Wisdom save (DC 8 + Strength modifier + Proficiency Bonus) or are Frightened for 1 minute, repeating the save at the end of each of their turns. Once per Long Rest; with no use left, a use of Rage pays for it.",
         "uses": {
           "max": 1,
           "recharge": "long"
@@ -497,11 +620,33 @@ export const barbarian = {
           "action": {
             "time": "bonus",
             "target": {
-              "self": true
+              "creature": {
+                "range": [
+                  30,
+                  30
+                ],
+                "count": 20
+              }
+            },
+            "duration": "1 minute",
+            "orCost": {
+              "resource": "rage",
+              "n": 1
             },
             "effects": [
               {
-                "manual": "Intimidating Presence: each creature of your choice within 30 feet makes a Wisdom save (DC 8 + Strength modifier + Proficiency Bonus) or is Frightened for 1 minute, repeating the save at the end of each of its turns."
+                "save": "wis",
+                "dc": "str",
+                "onFail": [
+                  {
+                    "condition": "frightened",
+                    "ends": {
+                      "on": "save",
+                      "save": "wis",
+                      "at": "turnEnd"
+                    }
+                  }
+                ]
               }
             ]
           }

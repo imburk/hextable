@@ -61,6 +61,7 @@ export function judge(tag, sit, s) {
     case 'attack.str': return sit.str === undefined ? null : sit.str;              // an attack using Strength (Rage, Reckless Attack)
     case 'attack.spell': return sit.spell === undefined ? null : sit.spell;        // the attack roll of a spell (Innate Sorcery)
     case 'spell.cantrip': return sit.cantrip === undefined ? null : sit.cantrip;   // damage from a cantrip (Potent Spellcasting)
+    case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     // "If you or your allies are fighting it": a fight is on, the target is in it, and it is hostile to the source.
@@ -110,7 +111,8 @@ export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || auras
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
     // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, part: p };
+    // `except`: it does not hold for rolls that creature makes (Sundering Blow: "another creature").
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p };
   }
   const auras = aurasOn(s, e);
   for (const [id, inst] of conditionsOf(e)) {
@@ -147,19 +149,24 @@ function inScope(m, sit) {
 //     min, max,                     the least and the most the number may be (Barkskin: AC at least 17)
 //     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
 //     used: [parts]                 single-use modifiers that applied, for the roll's maker to use up
+//     floor, floorBy                a d20 lower than `floor` counts as it (Reliable Talent), and whose it is
 //     taken: [{ value, types, name, once, key }] }   for damage.taken: an amount (or dice) added
 //                                   to damage of those types (all, if none), at most once a turn if `once`
 // `side` says which end of an attack `e` is on, for wording the reasons as the log always has
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null };
+  const once = new Set();
   for (const src of sources(s, e)) {
     if (src.against && sit.target?.id !== src.against) continue;
+    if (src.except && sit.attacker?.id === src.except) continue;
     for (const m of src.modifiers) {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (!inScope(m, sit)) continue;
+      // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
+      if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
       // `onFail`: dice added only after the roll failed (Bardic Inspiration, Peerless Skill); the
@@ -173,6 +180,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       else if (m.op === 'set') out.set = out.set === null ? value : Math.min(out.set, value);
       else if (m.op === 'min') out.min = out.min === null ? value : Math.max(out.min, value);
       else if (m.op === 'max') out.max = out.max === null ? value : Math.min(out.max, value);
+      else if (m.op === 'floor') { if (value > (out.floor ?? 0)) { out.floor = value; out.floorBy = src.name; } }
       else if (m.op === 'advantage') out.advantage.push(reason);
       else if (m.op === 'disadvantage') out.disadvantage.push(reason);
       else if (m.op === 'autoFail') out.autoFail = true;

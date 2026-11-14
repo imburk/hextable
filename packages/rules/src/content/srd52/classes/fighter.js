@@ -330,14 +330,22 @@ export const fighter = {
       "id": "indomitable",
       "name": "Indomitable",
       "level": 9,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "When you fail a saving throw, reroll it with a bonus equal to your Fighter level and use the new roll. More uses at 13 and 17. The engine cannot reroll after a roll; spending a use shows this to the DM.",
+      "text": "When you fail a saving throw, you can reroll it with a bonus equal to your Fighter level and use the new roll; once per Long Rest (twice from level 13, three times from 17). Set by standing instruction (never until you set it to always); taken where the new roll could succeed.",
       "uses": {
         "max": {
           "column": "indomitable"
         },
         "recharge": "long"
+      },
+      "grants": {
+        "reroll": {
+          "cost": "indomitable",
+          "add": {
+            "perLevel": 1
+          }
+        }
       }
     },
     {
@@ -346,7 +354,7 @@ export const fighter = {
       "level": 9,
       "tier": "manual",
       "checked": true,
-      "text": "Replace a weapon's mastery property with Push, Sap or Slow for an attack. Mastery properties are not built."
+      "text": "When you attack with a weapon whose mastery property you can use, replace that property with Push, Sap or Slow for the attack. Weapon mastery properties are not built yet (Weapon Mastery is manual), so the DM applies it."
     },
     {
       "id": "two-extra-attacks",
@@ -363,9 +371,21 @@ export const fighter = {
       "id": "studied-attacks",
       "name": "Studied Attacks",
       "level": 13,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "After you miss a creature, you have Advantage on your next attack roll against it before the end of your next turn. The DM applies it."
+      "text": "When you miss a creature with an attack roll, you have Advantage on your next attack roll against it before the end of your next turn.",
+      "grants": {
+        "missed": {
+          "modifier": {
+            "on": "attack.roll",
+            "op": "advantage",
+            "uses": 1
+          },
+          "ends": {
+            "on": "turnEnd"
+          }
+        }
+      }
     },
     {
       "id": "epic-boon",
@@ -473,7 +493,7 @@ export const fighter = {
         "level": 10,
         "tier": "manual",
         "checked": true,
-        "text": "In combat, give yourself Heroic Inspiration when you start your turn without it. Heroic Inspiration is not built; the DM tracks it."
+        "text": "In combat, give yourself Heroic Inspiration whenever you start your turn without it. The engine does not track Heroic Inspiration (rerolling any die), so the DM tracks it and applies the reroll."
       },
       {
         "id": "superior-critical",
