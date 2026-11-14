@@ -4,12 +4,13 @@
 // default renderer's. Terrain, walls, overlay and pawns are built by three-build.js (pure) into one BufferGeometry per kind and drawn
 // with one small ShaderMaterial that does what render.js's shader does (a colour per vertex, one directional light, fog, the hour's
 // grade, a tint per draw), so the pictures agree. Picking is still the hex-column march (Decision 8): only the camera ray is Three's.
-// No glTF here (R12) and no real shadows (blobs only).
+// No glTF here (R12). Real shadows (docs/specs/renderer.md, R15): a depth pass from the sun into a shadow map, read by the floors; the blobs
+// are drawn when it is off. The governor gives them up before it gives up any pixel ratio.
 import * as THREE from './vendor/three/three.module.js';
 import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
-import { createGovernor, pixelLevels } from './governor.js';
+import { createGovernor, shadowLevels } from './governor.js';
 import { hpFraction, lightAt, zoneHexes } from './render.js';
 import { Builder, UNIT, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, makeBlob, makePawn, makeVeil, model, sightSig, spot, stand, surfY, swingDoor, tileSig } from './three-build.js';
 
@@ -38,24 +39,105 @@ void main() {
 const FS = `
 varying vec4 vCol; varying float vFog; uniform vec3 uSky;
 void main() { gl_FragColor = vec4(mix(vCol.rgb, uSky, vFog * 0.8), vCol.a); }`;
-const VS_PIC = `
+// Real shadows (R15). The floors read a depth map drawn from the sun: `uSMap` the depths, `uSVP` the sun's matrix, `uSP` = (the size of
+// a texel in drawing units, how dark a shadow is, the depth bias, the width of the soft edge in texels). The point is nudged along the
+// surface's normal by a texel and a half so a floor does not shadow itself; nine taps, turned a different way at each pixel, make the edge soft.
+const SH_VS_DECL = `
+#ifdef SHADOWS
+varying vec3 vWp, vWn;
+#endif`;
+const SH_FS = `
+#ifdef SHADOWS
+varying vec3 vWp, vWn; uniform sampler2D uSMap; uniform mat4 uSVP; uniform vec4 uSP; uniform vec3 uLight;
+const vec2 POI[8] = vec2[8](vec2(-0.613392, 0.617481), vec2(0.170019, -0.040254), vec2(-0.299417, 0.791925), vec2(0.645680, 0.493210), vec2(-0.651784, 0.717887), vec2(0.421003, 0.027070), vec2(-0.817194, -0.271096), vec2(-0.705374, -0.668203));
+float shadowAt(vec3 wp, vec3 n) {
+  float facing = dot(n, uLight);
+  if (facing <= 0.02) return 0.0;
+  vec3 c = (uSVP * vec4(wp + n * uSP.x * 1.5, 1.0)).xyz * 0.5 + 0.5;
+  if (c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0) return 0.0;
+  float fade = smoothstep(0.0, 0.07, min(min(c.x, c.y), min(1.0 - c.x, 1.0 - c.y))) * smoothstep(0.02, 0.3, facing);
+  float a = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  mat2 rot = mat2(cos(a), sin(a), -sin(a), cos(a));
+  vec2 texel = 1.0 / vec2(textureSize(uSMap, 0));
+  float s = step(texture2D(uSMap, c.xy).r + uSP.z, c.z);
+  for (int i = 0; i < 8; i++) s += step(texture2D(uSMap, c.xy + rot * POI[i] * uSP.w * texel).r + uSP.z, c.z);
+  return s / 9.0 * fade * uSP.y;
+}
+#endif`;
+const SH_TINT = 'vec3(0.5, 0.55, 0.72)';       // what a full shadow multiplies a floor's colour by (cooler than the light)
+const VS_R = VS.replace('varying vec4 vCol;', `${SH_VS_DECL}\nvarying vec4 vCol;`).replace('  gl_Position =', '#ifdef SHADOWS\n  vWp = w.xyz; vWn = n;\n#endif\n  gl_Position =');
+const FS_R = `varying vec4 vCol; varying float vFog; uniform vec3 uSky;${SH_FS}
+void main() {
+  vec3 col = vCol.rgb;
+#ifdef SHADOWS
+  col *= mix(vec3(1.0), ${SH_TINT}, shadowAt(vWp, normalize(vWn)));
+#endif
+  gl_FragColor = vec4(mix(col, uSky, vFog * 0.8), vCol.a);
+}`;
+const VS_PIC = `${SH_VS_DECL}
 uniform vec2 uFog; varying vec2 vUV; varying float vFog;
-void main() { gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); vUV = uv; vFog = clamp((gl_Position.w - uFog.x) / uFog.y, 0.0, 1.0); }`;
-const FS_PIC = `
-varying vec2 vUV; varying float vFog; uniform vec3 uSky, uGrade; uniform sampler2D uTex;
-void main() { vec4 t = texture2D(uTex, vUV); gl_FragColor = vec4(mix(t.rgb * uGrade, uSky, vFog * 0.8), 1.0); }`;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+#ifdef SHADOWS
+  vWp = w.xyz; vWn = vec3(0.0, 1.0, 0.0);
+#endif
+  gl_Position = projectionMatrix * viewMatrix * w; vUV = uv; vFog = clamp((gl_Position.w - uFog.x) / uFog.y, 0.0, 1.0);
+}`;
+const FS_PIC = `varying vec2 vUV; varying float vFog; uniform vec3 uSky, uGrade; uniform sampler2D uTex;${SH_FS}
+void main() {
+  vec3 col = texture2D(uTex, vUV).rgb * uGrade;
+#ifdef SHADOWS
+  col *= mix(vec3(1.0), ${SH_TINT}, shadowAt(vWp, vec3(0.0, 1.0, 0.0)));
+#endif
+  gl_FragColor = vec4(mix(col, uSky, vFog * 0.8), 1.0);
+}`;
+// The depth pass: only where each triangle lands in the sun's view matters, so there is nothing to colour.
+const VS_DEPTH = 'void main() { gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }';
+const FS_DEPTH = 'void main() { gl_FragColor = vec4(1.0); }';
+
+// The shadow setting: the address (`?shadows=on|off|auto`) first, then the device preference `hextable.shadows`, else 'auto'.
+// 'auto' is on for a desktop or tablet and off for a phone until the governor sees headroom; 'on' and 'off' are kept.
+export const SHADOW_MODES = ['auto', 'on', 'off'];
+export function shadowMode(search = '', pref) {
+  let q = null;
+  try { q = new URLSearchParams(search).get('shadows'); } catch { /* no address */ }
+  const k = q ?? pref;
+  return SHADOW_MODES.includes(k) ? k : 'auto';
+}
+// A phone: a touch screen whose shorter side is under 600 CSS pixels. (A tablet is not, and starts with its shadows on.)
+export const isPhone = ({ coarse, w, h }) => !!coarse && Math.min(w, h) < 600;
+// The sun's box over the board (pure: tested in Node). `bounds` is the board's extent in drawing units, `focus` where the camera looks,
+// `dist` how far away it is, `size` the shadow map's width in texels, `light` the unit vector toward the sun. The box covers the whole
+// board if it is small and otherwise the stretch of it that can be on screen, centred on the focus and moved in whole texels so the
+// shadows do not crawl as the camera pans. Returns the centre, the half width, the texel's size in drawing units, and the depth range.
+export function shadowBox({ bounds, focus, dist, size, light }) {
+  const cx = (bounds.x0 + bounds.x1) / 2, cz = (bounds.z0 + bounds.z1) / 2, hb = Math.hypot(bounds.x1 - bounds.x0, bounds.z1 - bounds.z0) / 2 + 1;
+  const hs = Math.min(hb, Math.max(14, dist * 1.15)), texel = (2 * hs) / size;
+  let c = hs >= hb ? [cx, (bounds.y0 + bounds.y1) / 2, cz] : [focus[0], focus[1], focus[2]];
+  if (hs < hb) {
+    const r = norm(cross3([0, 1, 0], [-light[0], -light[1], -light[2]])), u = cross3(r, [-light[0], -light[1], -light[2]]);
+    const snap = (v) => Math.round(v / texel) * texel, dr = dot3(c, r), du = dot3(c, u);
+    c = [c[0] + r[0] * (snap(dr) - dr) + u[0] * (snap(du) - du), c[1] + r[1] * (snap(dr) - dr) + u[1] * (snap(du) - du), c[2] + r[2] * (snap(dr) - dr) + u[2] * (snap(du) - du)];
+  }
+  const D = hs * 1.3 + (bounds.y1 - bounds.y0) + 8;
+  return { centre: c, half: hs, texel, near: 0.5, far: 2 * D, back: D };
+}
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 // One drawable: a Mesh over a geometry built from a Builder, with its own material (its tint is its own).
 // order: draw order among the blended things (the default renderer's order); blend: drawn with alpha and without writing depth.
 class Piece {
-  constructor(R, { flat = false, lit = 1, blend = false, offset = false, order = 0 } = {}) {
+  constructor(R, { flat = false, lit = 1, blend = false, offset = false, order = 0, recv = false, cast = false } = {}) {
     this.R = R; this.geom = null; this.own = true; this.on = true; this.n = 0; this.blend = blend;
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { uLight: R.u.light, uGrade: flat ? R.u.flat : R.u.grade, uFog: R.u.fog, uSky: R.u.sky, uTint: { value: new THREE.Vector4(1, 1, 1, 1) }, uLit: { value: lit } },
-      vertexShader: VS, fragmentShader: FS, transparent: blend, depthWrite: !blend, polygonOffset: offset, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+      uniforms: { uLight: R.u.light, uGrade: flat ? R.u.flat : R.u.grade, uFog: R.u.fog, uSky: R.u.sky, uTint: { value: new THREE.Vector4(1, 1, 1, 1) }, uLit: { value: lit }, ...(recv ? R.u.sh : {}) },
+      vertexShader: recv ? VS_R : VS, fragmentShader: recv ? FS_R : FS, transparent: blend, depthWrite: !blend, polygonOffset: offset, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
     this.mesh.frustumCulled = false; this.mesh.matrixAutoUpdate = false; this.mesh.matrixWorldAutoUpdate = false; this.mesh.renderOrder = order; this.mesh.visible = false;
+    if (cast) this.mesh.layers.enable(1);                    // layer 1 is what the sun's camera sees: the things that cast shadows
+    if (recv) R.receivers.add(this.mat);
     R.scene.add(this.mesh);
   }
   #geometry(arr) {
@@ -76,7 +158,7 @@ class Piece {
   show(v) { this.on = v; this.mesh.visible = v && this.n > 0; }
   tint(r, g, b, a) { this.mat.uniforms.uTint.value.set(r, g, b, a); this.mat.transparent = this.blend || a < 1; this.mat.depthWrite = !this.blend; }
   place(m) { this.mesh.matrixWorld.fromArray(m); }
-  free() { if (this.geom && this.own) this.geom.dispose(); this.geom = null; this.n = 0; this.R.scene.remove(this.mesh); this.mat.dispose(); }
+  free() { if (this.geom && this.own) this.geom.dispose(); this.geom = null; this.n = 0; this.R.scene.remove(this.mesh); this.R.receivers.delete(this.mat); this.mat.dispose(); }
 }
 
 export class ThreeRenderer {
@@ -88,10 +170,12 @@ export class ThreeRenderer {
     this.camera = new THREE.PerspectiveCamera((0.75 * 180) / Math.PI, 1, 0.3, 200);       // the same lens as render.js: 0.75 rad, near 0.3, far 200
     const V3 = (...a) => ({ value: new THREE.Vector3(...a) });
     this.u = { light: V3(...norm([0.45, 0.8, 0.35])), grade: V3(1, 1, 1), flat: V3(1, 1, 1), sky: V3(0, 0, 0), fog: { value: new THREE.Vector2(60, 34) } };
+    this.u.sh = { uSMap: { value: null }, uSVP: { value: new THREE.Matrix4() }, uSP: { value: new THREE.Vector4(0.02, 0.85, 0.01, 4) } };       // what the floors read the shadow map through
+    this.receivers = new Set(); this.sh = { on: false, size: 0, rt: null, cam: null, mat: null, key: '', calls: 0, passes: 0 }; this.bounds = { x0: -10, x1: 10, z0: -10, z1: 10, y0: 0, y1: 4 };
     this.images = new Map(); this.picMeshes = []; this.onPicture = null; this.assetUrl = null;
     this.bars = []; this.barZ = 0; this.pins = []; this.pinZ = 0;
     const o = (order, extra) => ({ flat: true, lit: 0, blend: true, order, ...extra });
-    this.terrain = new Piece(this); this.wallMesh = new Piece(this); this.doorMesh = new Piece(this);
+    this.terrain = new Piece(this, { recv: true }); this.wallMesh = new Piece(this, { cast: true }); this.doorMesh = new Piece(this, { cast: true });
     this.grid = new Piece(this, o(10, { offset: true })); this.shadows = new Piece(this, o(11, { offset: true })); this.overlay = new Piece(this, o(13));
     this.edge = new Piece(this, o(14)); this.edgeId = null; this.edgeBase = 0; this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.anim = 0;
     this.actors = new Map();
@@ -105,7 +189,11 @@ export class ThreeRenderer {
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;
     this.onTap = () => {}; this.onHover = () => {}; this.onPoint = null; this.onDrag = null;
     this.#input();
-    this.gov = createGovernor(pixelLevels(window.devicePixelRatio));
+    this.phone = isPhone({ coarse: window.matchMedia?.('(pointer: coarse)').matches, w: screen.width, h: screen.height });
+    this.shMode = shadowMode(location.search, (() => { try { return JSON.parse(localStorage.getItem('hextable.shadows')); } catch { return null; } })());
+    this.#ladder();
+    this.onShadows = (ev) => this.setShadows(ev.detail);          // the Settings tab says so (settings.js), for it has no other way to this renderer
+    window.addEventListener('hextable-shadows', this.onShadows);
     this.frameTimes = []; this.drawCalls = 0; this.dead = false;
     let cw = 0, ch = 0;
     this.ro = new ResizeObserver(() => { if (canvas.clientWidth !== cw || canvas.clientHeight !== ch) { cw = canvas.clientWidth; ch = canvas.clientHeight; this.gov.reset(); } this.#resize(); }); this.ro.observe(canvas);
@@ -155,7 +243,7 @@ export class ThreeRenderer {
         const el = document.createElement('div');
         el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div><em class="marks"></em>';
         this.labels.append(el);
-        a = { piece: new Piece(this, { order: 5 }), blob: new Piece(this, { flat: true, lit: 0, blend: true, order: 12, offset: true }).share(this.blobGeom), ...w, yaw: 0, way: [], el, key: '', fade: 1 };
+        a = { piece: new Piece(this, { order: 5, cast: true }), blob: new Piece(this, { flat: true, lit: 0, blend: true, order: 12, offset: true }).share(this.blobGeom), ...w, yaw: 0, way: [], el, key: '', fade: 1 };
         if (!calm) { a.fade = 0; a.hold = true; a.holdAt = now; }
         this.actors.set(e.id, a);
       }
@@ -164,7 +252,7 @@ export class ThreeRenderer {
       const key = `${e.dead}|${e.side}|${e.size}|${this.G.kind}`; a.k = girth(e, this.G);
       if (key !== a.key) {
         const dies = !calm && a.key !== '' && e.dead && a.wasDead === false;
-        if (dies) { const gp = new Piece(this, { order: 5 }).set(makePawn({ ...e, dead: false }, this.theme, this.G)); a.dying?.piece.free(); a.dying = { piece: gp, t0: now, dur: SECS.fall }; }
+        if (dies) { const gp = new Piece(this, { order: 5, cast: true }).set(makePawn({ ...e, dead: false }, this.theme, this.G)); a.dying?.piece.free(); a.dying = { piece: gp, t0: now, dur: SECS.fall }; }
         a.key = key; a.piece.set(makePawn(e, this.theme, this.G));
       }
       a.wasDead = !!e.dead;
@@ -208,7 +296,7 @@ export class ThreeRenderer {
   }
   // A creature that stays on screen a moment after it is gone from where it was: it fades out as a copy of its pawn (its geometry is shared).
   #ghost(a, g) {
-    const piece = new Piece(this, { order: 5 }).share(a.piece);
+    const piece = new Piece(this, { order: 5, cast: true }).share(a.piece);
     this.ghosts.push({ piece, src: a, x: a.x, y: a.y, z: a.z, yaw: a.yaw, tiltNow: a.tiltNow ?? 0, k: a.k ?? 1, ...g });
   }
 
@@ -315,11 +403,11 @@ export class ThreeRenderer {
   zoom(f) { this.cam.dist = Math.max(7, Math.min(48, this.cam.dist * f)); }
   stats() {
     const f = this.frameTimes, s = [...f].sort((a, b) => a - b);
-    return { frameMs: s.length ? s[s.length >> 1] : 0, quality: this.gov.step, pixelRatio: this.gov.ratio, drawCalls: this.drawCalls };
+    return { frameMs: s.length ? s[s.length >> 1] : 0, quality: this.gov.step, pixelRatio: this.gov.ratio, drawCalls: this.drawCalls, shadows: this.sh.on, shadowMode: this.shMode, shadowCalls: this.sh.calls, shadowPasses: this.sh.passes, shadowSize: this.sh.on ? this.sh.size : 0 };
   }
   dispose() {
     if (this.dead) return;
-    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.();
+    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.(); window.removeEventListener('hextable-shadows', this.onShadows); this.#shadowFree();
     for (const a of this.actors.values()) { a.el.remove(); a.piece.free(); a.blob.free(); a.dying?.piece.free(); }
     for (const g of this.ghosts) this.#dropGhost(g);
     for (const v of this.veils.values()) v.piece.free();
@@ -333,7 +421,7 @@ export class ThreeRenderer {
   #measure(ms, now) {
     this.frameTimes.push(ms); if (this.frameTimes.length > 120) this.frameTimes.shift();
     this.drawCalls = this.three.info.render.calls;
-    if (this.gov.sample(ms, now) !== null) this.#resize();
+    if (this.gov.sample(ms, now) !== null) { this.#applyLevel(); this.#resize(); }
   }
   floater(id, text, cls = '', delay = 0) {
     const el = document.createElement('div');
@@ -381,7 +469,7 @@ export class ThreeRenderer {
       if (tries < 3) setTimeout(() => this.state && !this.dead && this.#fetchPictures(), RETRY_MS + 100);
     }
   }
-  #clearPictures() { for (const m of this.picMeshes) { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); } this.picMeshes = []; }
+  #clearPictures() { for (const m of this.picMeshes) { this.scene.remove(m); m.geometry.dispose(); this.receivers.delete(m.material); m.material.dispose(); } this.picMeshes = []; }
 
   #buildTerrain() {
     const s = this.state, built = buildTerrain({ map: s.map, enc: s.encounter, sight: s.sight, theme: this.theme, ceiling: this.ceiling, hasPicture: (id) => this.hasPicture(id) });
@@ -390,11 +478,12 @@ export class ThreeRenderer {
       const g = new THREE.BufferGeometry(), { x0, x1, z0, z1, y } = p;
       g.setAttribute('position', new THREE.Float32BufferAttribute([x0, y, z0, x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z1, x1, y, z0], 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0], 2));
-      const m = new THREE.ShaderMaterial({ uniforms: { uFog: this.u.fog, uSky: this.u.sky, uGrade: this.u.grade, uTex: { value: this.images.get(p.asset)?.tex } }, vertexShader: VS_PIC, fragmentShader: FS_PIC, side: THREE.DoubleSide });
+      const m = new THREE.ShaderMaterial({ uniforms: { uFog: this.u.fog, uSky: this.u.sky, uGrade: this.u.grade, uLight: this.u.light, uTex: { value: this.images.get(p.asset)?.tex }, ...this.u.sh }, vertexShader: VS_PIC, fragmentShader: FS_PIC, side: THREE.DoubleSide });
+      m.defines = this.sh.on ? { SHADOWS: '' } : {}; this.receivers.add(m);
       const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.matrixAutoUpdate = false; mesh.matrixWorldAutoUpdate = false; mesh.renderOrder = 1;
       this.scene.add(mesh); this.picMeshes.push(mesh);
     }
-    this.floorData = built.floorData;
+    this.floorData = built.floorData; this.#measureBoard(built.terrain.d);
     this.terrain.set(built.terrain); this.grid.set(built.grid); this.shadows.set(built.shadows);
     const e = buildEdge({ map: s.map, enc: s.encounter, theme: this.theme, ceiling: this.ceiling }); this.edge.set(e.b); this.edgeBase = e.base;
     this.#buildWalls(true);
@@ -409,6 +498,76 @@ export class ThreeRenderer {
     this.wallMesh.set(b);
   }
   #buildOverlay() { this.overlay.set(buildOverlay({ state: this.state, hl: this.hl, theme: this.theme, pins: this.pins, pinZ: this.pinZ, bars: this.bars, barZ: this.barZ })); }
+
+  // ---------- shadows ----------
+  // The governor's ladder for this device and setting: shadows are given up before any pixel ratio.
+  #ladder() {
+    const { levels, start } = shadowLevels(window.devicePixelRatio, { shadows: this.shMode, phone: this.phone });
+    this.gov = createGovernor(levels, { start });
+    this.#applyLevel();
+  }
+  // The setting changed (the Settings tab): 'auto', 'on' or 'off'.
+  setShadows(mode) {
+    if (!SHADOW_MODES.includes(mode) || mode === this.shMode) return;
+    this.shMode = mode; this.#ladder(); this.#resize();
+  }
+  #applyLevel() {
+    const on = !!(this.gov.level?.shadows ?? false);
+    if (on === this.sh.on) return;
+    this.sh.on = on;
+    if (on) this.#shadowMake(); else this.#shadowFree();
+    const defines = on ? { SHADOWS: '' } : {};
+    for (const m of this.receivers) { m.defines = { ...defines }; m.needsUpdate = true; }
+    this.u.sh.uSMap.value = on ? this.sh.rt.depthTexture : null;
+  }
+  #shadowMake() {
+    const sh = this.sh, max = this.three.capabilities.maxTextureSize;
+    sh.size = Math.min(max, this.phone ? 1024 : 2048);
+    sh.rt = new THREE.WebGLRenderTarget(sh.size, sh.size, { depthBuffer: true });
+    sh.rt.depthTexture = new THREE.DepthTexture(sh.size, sh.size);
+    sh.rt.depthTexture.minFilter = sh.rt.depthTexture.magFilter = THREE.NearestFilter;
+    sh.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.5, 100); sh.cam.layers.set(1);
+    sh.mat = new THREE.ShaderMaterial({ vertexShader: VS_DEPTH, fragmentShader: FS_DEPTH, side: THREE.DoubleSide, colorWrite: false });
+    sh.key = '';
+  }
+  #shadowFree() {
+    const sh = this.sh;
+    sh.rt?.depthTexture?.dispose(); sh.rt?.dispose(); sh.mat?.dispose();
+    sh.rt = null; sh.cam = null; sh.mat = null; sh.key = '';
+  }
+  // The board's extent, from the terrain's vertices (position is the first three of ten floats).
+  #measureBoard(d) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < d.length; i += 10) { const x = d[i], y = d[i + 1], z = d[i + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    if (x0 <= x1) this.bounds = { x0, x1, z0, z1, y0: Math.min(y0, 0), y1: y1 + 4 };       // walls and creatures stand up to four units above the highest floor
+  }
+  // Draws what casts into the shadow map, from the sun. It is redrawn only when something that casts has moved (or the box has), so a
+  // table at rest costs nothing here.
+  #shadowPass(c) {
+    const sh = this.sh, L = this.u.light.value;
+    const box = shadowBox({ bounds: this.bounds, focus: [c.x, c.y, c.z], dist: c.dist, size: sh.size, light: [L.x, L.y, L.z] });
+    const cam = sh.cam, ctr = box.centre;
+    cam.left = -box.half; cam.right = box.half; cam.top = box.half; cam.bottom = -box.half; cam.near = box.near; cam.far = box.far;
+    cam.position.set(ctr[0] + L.x * box.back, ctr[1] + L.y * box.back, ctr[2] + L.z * box.back);
+    cam.up.set(0, 1, 0); cam.lookAt(ctr[0], ctr[1], ctr[2]); cam.updateProjectionMatrix(); cam.updateMatrixWorld(true);
+    this.u.sh.uSVP.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    const bias = Math.max(0.03, box.texel * 2);
+    this.u.sh.uSP.value.set(box.texel, 0.85, bias / (box.far - box.near), Math.max(1.5, Math.min(6, 0.1 / box.texel)));
+    // has anything that casts changed? (a hash of where each caster is, which geometry it has, and the box)
+    let h = 17;
+    const mix = (v) => { h = (Math.imul(h, 31) + Math.round(v * 1000)) | 0; };
+    for (const m of this.scene.children) if (m.layers.isEnabled(1)) { mix(m.visible ? 1 : 0); mix(m.geometry.id); for (const e of m.matrixWorld.elements) mix(e); }
+    for (const e of this.u.sh.uSVP.value.elements) mix(e);
+    if (h === sh.key) return;
+    sh.key = h;
+    const prev = { rt: this.three.getRenderTarget() };
+    this.three.setRenderTarget(sh.rt);
+    this.scene.overrideMaterial = sh.mat;
+    this.three.render(this.scene, cam);
+    this.scene.overrideMaterial = null;
+    this.three.setRenderTarget(prev.rt);
+    sh.calls = this.three.info.render.calls; sh.passes++;
+  }
 
   // ---------- frame ----------
   #resize() {
@@ -461,6 +620,7 @@ export class ThreeRenderer {
     if (!this.state) { this.three.clear(); return; }
     if (this.cutYaw === null || Math.abs(Math.atan2(Math.sin(c.yaw - this.cutYaw), Math.cos(c.yaw - this.cutYaw))) > 0.015) this.#buildWalls();
     this.#placeThings(dt);
+    if (this.sh.on) this.#shadowPass(c);
     this.three.render(this.scene, this.camera);
     this.anim += dt;
     this.#labels(C, dt);
@@ -479,6 +639,7 @@ export class ThreeRenderer {
       a.piece.show(!(a.dying && fading)); pawn(a, a.piece, fading ? a.fade : 1);
       if (a.dying) { a.dying.piece.show(true); pawn(a, a.dying.piece, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur)); }
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);
+      a.blob.show(!this.sh.on);
       a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));
     }
     for (const g of this.ghosts) { pawn(g, g.piece, 1 - Math.min(1, (this.now - g.t0) / g.dur)); }
