@@ -285,6 +285,11 @@ function describe(ev) {
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
     case 'hid': return [`${n(ev.id)} is hidden.`];
     case 'unhidden': return [ev.why === 'found' ? `${n(ev.id)} has been found${ev.by ? ` by ${n(ev.by)}` : ''}!` : ev.why === 'attack' ? `${n(ev.id)} gives itself away by attacking!` : ev.why === 'spell' ? `${n(ev.id)} gives itself away by casting!` : `${n(ev.id)} is heard and no longer hidden.`, 'head'];
+    // Magic items (E18): a use, putting on and taking off, Attunement. A creature the viewer does not control is told what was used, never its charges.
+    case 'item': return [`${n(ev.id)} uses ${ev.item}: ${ev.use}${ev.target ? ` on ${n(ev.target)}` : ''}${ev.charges !== undefined ? ` (${ev.charges}/${ev.max} charges left)` : ''}${ev.consumed ? ', used up' : ''}.`];
+    case 'equip': return [`${n(ev.id)} ${ev.on ? 'readies' : 'puts away'} ${ev.item}.`];
+    case 'attuning': return [ev.cleared ? `${n(ev.id)} no longer means to attune to anything.` : ev.end ? `${n(ev.id)} will end their Attunement to ${ev.item} at the next Short Rest.` : `${n(ev.id)} will attune to ${ev.item} at the next Short Rest.`];
+    case 'attuned': return [ev.failed ? `${n(ev.id)} couldn't ${ev.end ? 'end the Attunement to' : 'attune to'} ${ev.item}: ${ev.failed}` : `${n(ev.id)} ${ev.end ? 'is no longer attuned to' : 'is now attuned to'} ${ev.item}.`];
     case 'light': return [ev.bright || ev.dim ? `${n(ev.id)} carries ${ev.name ? `a ${ev.name.toLowerCase()}` : 'a light'}.` : `${n(ev.id)}'s light goes out.`];
     case 'follow': return [ev.leader ? `${n(ev.id)} follows ${n(ev.leader)}.` : ev.why ? `${n(ev.id)} couldn't keep up with ${n(ev.was)} and stops following.` : `${n(ev.id)} stops following ${n(ev.was)}.`];
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];

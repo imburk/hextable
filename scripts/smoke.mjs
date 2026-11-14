@@ -46,6 +46,7 @@ const REGISTRY = {
   newgame: ['newgame'],
   actionpanel: ['actionpanel'],
   paneltabs: ['paneltabs'],
+  items: ['items'],
   link: ['link'],
   square: ['square'],
 };

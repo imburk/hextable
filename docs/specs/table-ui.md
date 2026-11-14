@@ -1283,9 +1283,29 @@ What was settled while building, where it differs from the text above, and what 
 - **Metamagic** is a row at the top of the list (not sorted or filtered away) with the Sorcery Points; it opens the same card as before.
 - **A spell armed** collapses the card on a phone (the shell's rule: any mode but move, up to 600 px) and Cancel puts it back, from this tab as from any other; checked in the smoke at both sizes.
 - **Explore's healing shortcuts** for spells now jump to `spell:<id>` in the Spells tab; the filters are cleared first so the row cannot be hidden.
-- **Items** is not built (E17, E18); the tab stays in `panelContext` and is not drawn.
+- **Items** was built in the next job (see "T4b: the Items tab" below).
 - **Not verified.** A real finger, a screen reader, the themes beyond Classic, and "Nobody within N ft." in a browser (the valley's map is too small to put everyone out of a cantrip's range; a unit test covers it).
 
+
+### T4b: the Items tab (PR for #285)
+
+What was settled while building, where it differs from the text above, and what was left.
+
+- **Files.** `actionpanel.js` (pure: `itemRows`, `gearRows`, `lightRow`, `potionTargets`; the page code draws them), `actionpanel.css`, `app.js` (the log's lines for `item`, `equip`, `attuning`, `attuned`; nothing else),
+  tests in `packages/client/test/actionpanel.test.js`, and `SMOKE_ONLY=items` (`scripts/smoke/items.mjs`). `index.html` has no element for the tab, so `initActionPanel` makes `#ap-items` after `#ap-features` (as the Spells pane did).
+- **Drawn when** the creature carries something: a magic item on its sheet, kit by name, or a light. A monster has no tab. In a fight the tab is there on every turn, since `itemUsesFor` greys a use with the engine's own reason ("It isn't Orla's turn.").
+- **Three parts.** *Use*: one row for each use from `itemUsesFor(S, e)`, the ones that can be done first, then the greyed with the reason written on the row; the cost chip (Action, Bonus, Free) and charges as pips, `7 / 7 charges` and `1 a use`. Identical
+  rows without charges (two Potions of Healing) are one row with `x2`; a tap uses the first. *Carried*: each magic item of the sheet with where it is (Carried, Held or Worn, Not held, Needs attunement, Attuned, Attuning at the next Short Rest) and its buttons;
+  kit that is only a name (a hand-typed creature's `gear`) is one "Also carried" line. *Light*: the light carried, or Light a torch.
+- **Buttons.** Wield and Put away (a weapon or Shield) or Wear and Take off (the rest) send `equip`; Attune, End attunement, and Cancel attuning (or Keep attunement, for an end that is waiting) send `attune`. An item that is only carried has neither. The reasons are the engine's words,
+  worked out in the panel where the action allows no dry run: "can't change what they wear in the middle of a fight", "can't attune ... in the middle of a fight", `attuneProblem` and the three-item limit. A greyed button shows its reason under it, and a tap on it shows the toast and sends nothing.
+  What the panel cannot know (an Attunement to a second copy of an item) the engine refuses and the toast says.
+- **Whom a potion is for.** The row for a potion has a target picker, built in the pane and not on the map: tapping it lists the drinker and each creature not dead within 5 ft (in the fight, if there is one; at 0 Hit Points counts, as in the SRD) and sends `target` only when someone else is chosen. With nobody near, one tap
+  sends it. The map is not tapped for a target: the pane is already open, and the picker is large enough for a thumb. The engine still checks reach, walls and height.
+- **Light.** `setLight` is the DM's: for a player the row is greyed "Only the DM hands out light." as in Explore. A carried light shows "Put out the torch" for the DM.
+- **Log.** `item`: "Orla uses Potion of Healing: Drink on Ilya (6/7 charges left), used up."; `equip`: readies or puts away; `attuning` and `attuned`.
+- **Not verified.** A real finger; a screen reader; the themes beyond Classic; a player's own table (the smoke is solo as the DM; the panel reads `e.sheet`, which a controller is sent); a scroll (the pack's `spell-scroll` needs a `spell` on the sheet; `itemUsesFor` is tested in the engine's own tests).
+- **Left out.** Give and drop (E17, T6g). A dice tray for a potion's roll (`rollsDice` in `app.js` does not know item uses, so the engine rolls at once). Charges back at dawn (the DM sets `charges` on the sheet, engine item). Spells cast from an item arrive as a `manual` for the DM.
 
 ### E18: using items, engine (PR for #276)
 

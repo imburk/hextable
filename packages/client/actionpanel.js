@@ -1,15 +1,18 @@
 // The action panel (docs/specs/table-ui.md, Decision 6, task T3): the card at the foot of the screen. Its head (name, Sheet, End turn),
 // Hit Point bar and status line (with a small card on how each condition or lasting effect ends), and tabs chosen by what the
 // table is doing, `panelContext(S, e)`. Built here: Explore (outside a fight, ranked by `rankExplore`), Attacks, Spells, Bonus, Move,
-// Features, Reactions (on another's turn) and Down. The Items tab waits for the engine (E17, E18).
+// Features, Items (gear, a Use row for each use of an item, the light), Reactions (on another's turn) and Down. Giving and dropping
+// items waits for the engine (E17).
 //
 // The top of this file is pure: it reads a state (a full state or a player's view) and the engine's own helpers, and returns
 // plain data, so a test can drive it with no page. `initActionPanel` below is the only part that touches the page. Nothing here
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { inFight, current, up, blocked, targetsFor, usesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile } from './shared/effects.js';
+import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
+import { LIGHTS } from './shared/content/lights.js';
 import { reactionsOf, canReact } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
 import { SPELLS, MONSTERS } from './shared/content/index.js';
@@ -23,8 +26,8 @@ const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 
 // ---------- which tabs, when ----------
 export const TAB_LABEL = { explore: 'Explore', attacks: 'Attacks', spells: 'Spells', bonus: 'Bonus', move: 'Move', features: 'Features', items: 'Items', reactions: 'Reactions', down: 'Down' };
-// The tabs that have rows today. Items waits for the engine (E18 items that do things, E17 items between creatures): until then it is in `panelContext` and not drawn.
-export const BUILT = new Set(['explore', 'reactions', 'down', 'attacks', 'spells', 'bonus', 'move', 'features']);
+// The tabs that have rows today.
+export const BUILT = new Set(['explore', 'reactions', 'down', 'attacks', 'spells', 'bonus', 'move', 'features', 'items']);
 
 // Whether the Reactions tab is available for `e` now, and if not why, in words. A question waiting for this creature makes it
 // active whatever else is true: `S.prompt` is what a player is sent, `S.pending` what the DM is sent.
@@ -52,13 +55,13 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
 }
 
-// The tabs the shell draws: the built ones in the spec's order. `has` says which tabs have anything in them: Attacks, Spells and Features are left out when
+// The tabs the shell draws: the built ones in the spec's order. `has` says which tabs have anything in them: Attacks, Spells, Features and Items are left out when
 // empty (a wizard has no attack; a monster no features); Bonus and Move are always there on your turn, and a Bonus tab with nothing available says why.
-export function visibleTabs(ctx, { spells = true, attacks = true, features = true } = {}) {
+export function visibleTabs(ctx, { spells = true, attacks = true, features = true, items = true } = {}) {
   const out = [];
   for (const t of ctx.tabs) {
     if (!t.built) continue;
-    if ((t.id === 'attacks' && !attacks) || (t.id === 'spells' && !spells) || (t.id === 'features' && !features)) continue;
+    if ((t.id === 'attacks' && !attacks) || (t.id === 'spells' && !spells) || (t.id === 'features' && !features) || (t.id === 'items' && !items)) continue;
     out.push(t);
   }
   return out;
@@ -313,6 +316,74 @@ export function bonusRows(S, e, { mode = null, fly = null } = {}) {
   return { rows: rows.map((r) => (r.why || !why ? r : { ...r, why })), available: !why, why };
 }
 
+// ---------- the Items tab (T4b, E18) ----------
+// What a creature carries and what it can do with it. Three parts: `uses`, a row for each use of an item, as `itemUsesFor` (the engine's own list, with its reason a row is greyed);
+// `gear`, each magic item of the sheet with where it is (carried, worn or held, attuned) and the buttons that change that (the `equip` and `attune` actions); and `light`, the light carried.
+// A potion is given to the user or to a creature within `reach` (5 ft), so its row has `reach` and `targets` (`potionTargets`). Nothing here decides a rule: the engine's words are the reasons.
+const GEAR_WORDS = (def) => (def.wear === 'weapon' || def.wear === 'shield' ? { on: 'Wield', off: 'Put away', is: 'Held', not: 'Not held' } : { on: 'Wear', off: 'Take off', is: 'Worn', not: 'Not worn' });
+
+// Who a potion can be given to besides its drinker: creatures not dead within `reach` feet (the engine checks walls and height), in the fight if there is one.
+export function potionTargets(S, e, reach) {
+  if (!(reach > 0) || !e.pos) return [];
+  const G = gridOf(S.map), fighting = !!S.encounter && inFight(S, e.id);
+  return Object.values(S.entities).filter((x) => x.id !== e.id && !x.dead && x.pos && G.dist(e.pos, x.pos) * FT <= reach && (!fighting || inFight(S, x.id)))
+    .sort((a, b) => G.dist(e.pos, a.pos) - G.dist(e.pos, b.pos) || a.name.localeCompare(b.name)).map((x) => ({ id: x.id, name: x.name, hp: x.hp, down: x.hp <= 0 }));
+}
+
+// The gear of a built creature: one entry per magic item on its sheet. `acts`: { id, label, why, send } for `equip` (Wear, Take off, Wield, Put away) and `attune`.
+export function gearRows(S, e) {
+  const sheet = e.sheet;
+  if (!sheet || !Array.isArray(sheet.items)) return [];
+  const fighting = !!S.encounter && inFight(S, e.id), pending = sheet.attuning ?? null;
+  const attunedNow = heldItems(sheet).filter((y) => y.x.attuned === true).length;
+  return heldItems(sheet).map(({ x, def }) => {
+    const w = GEAR_WORDS(def), name = itemName(def, x), acts = [], state = [];
+    if (def.wear === 'carried') state.push('Carried');
+    else {
+      const on = x.equipped === true;
+      state.push(on ? w.is : w.not);
+      acts.push({ id: `equip:${x.id}`, label: on ? w.off : w.on, why: fighting ? `${e.name} can't change what they wear in the middle of a fight.` : '', send: { type: 'equip', actor: e.id, item: x.id, on: !on } });
+    }
+    if (def.attune) {
+      const mine = pending?.item === x.id, ending = mine && pending.end === true;
+      state.push(x.attuned === true ? (ending ? 'Attuned, ending at the next Short Rest' : 'Attuned') : mine ? 'Attuning at the next Short Rest' : 'Needs attunement');
+      if (mine) acts.push({ id: `attune:${x.id}`, label: ending ? 'Keep attunement' : 'Cancel attuning', why: fighting ? `${e.name} can't attune to an item in the middle of a fight.` : '', send: { type: 'attune', actor: e.id, item: null } });
+      else if (x.attuned === true) acts.push({ id: `attune:${x.id}`, label: 'End attunement', why: fighting ? `${e.name} can't attune to an item in the middle of a fight.` : '', send: { type: 'attune', actor: e.id, item: x.id, end: true } });
+      else acts.push({ id: `attune:${x.id}`, label: 'Attune', send: { type: 'attune', actor: e.id, item: x.id },
+        why: fighting ? `${e.name} can't attune to an item in the middle of a fight.` : attuneProblem(sheet, def) || (attunedNow >= attuneMax(sheet) ? `${e.name} is attuned to ${attuneMax(sheet)} items already: end one first.` : '') });
+    }
+    return { id: `gear:${x.id}`, key: x.id, label: name, sub: state.join(' · '), acts, pack: def.id };
+  });
+}
+
+// The light a creature carries, as one row: put it out (the DM), or light a torch (the DM; a player is told so, as in Explore).
+export function lightRow(S, e, { dm = false } = {}) {
+  if (e.light) {
+    const l = e.light, name = l.item && LIGHTS[l.item] ? LIGHTS[l.item].name.toLowerCase() : 'light';
+    return { id: 'light', kind: 'send', label: `Put out the ${name}`, sub: `Carried: Bright ${l.bright} ft, then Dim ${l.dim} ft more`, chip: '', why: dm ? '' : 'Only the DM hands out light.', send: { type: 'setLight', actor: e.id, item: null } };
+  }
+  return { id: 'light', kind: 'send', label: 'Light a torch', sub: 'Bright 20 ft, then Dim 20 ft more', chip: '', why: dm ? '' : 'Only the DM hands out light.', send: { type: 'setLight', actor: e.id, item: 'torch' } };
+}
+
+// The Items tab: { uses, gear, also, light }. `also`: what the creature carries that is only a name (`gear`, for a creature typed in by hand or plain kit).
+export function itemRows(S, e, { dm = false } = {}) {
+  const row = (u) => ({ id: `item:${u.key}:${u.which}`, kind: 'item', label: u.label, sub: [u.item, u.consumed ? 'used up' : '', u.spell && SPELLS[u.spell] ? SPELLS[u.spell].name : ''].filter((t, i, a) => t && a.indexOf(t) === i && t !== u.label).join(' · '),
+    why: u.why, chip: CHIP[u.time] ?? '', time: u.time, reach: u.reach, targets: u.reach ? potionTargets(S, e, u.reach) : [],
+    pips: u.charges !== undefined ? { left: u.charges, max: u.max, unit: 'charges', text: u.cost ? `${u.cost} a use` : '' } : null, send: { type: 'use', actor: e.id, item: u.key, which: u.which } });
+  // Two of the same potion (or scroll of one spell, or any item with no charges) are one row, "x2"; a tap uses the first.
+  const all = [];
+  for (const u of itemUsesFor(S, e)) {
+    const r = row(u), twin = !u.charges && u.charges !== 0 && all.find((o) => !o.pips && o.group === `${u.pack}|${u.which}|${u.item}|${u.why}`);
+    if (twin) { twin.count++; continue; }
+    all.push({ ...r, count: 1, group: `${u.pack}|${u.which}|${u.item}|${u.why}` });
+  }
+  for (const r of all) if (r.count > 1) r.sub = [r.sub, `x${r.count}`].filter(Boolean).join(' · ');
+  const uses = [...all.filter((r) => !r.why), ...all.filter((r) => r.why)];
+  const gear = gearRows(S, e), also = (e.gear ?? []).filter((g) => typeof g === 'string' && g);
+  const carried = gear.length > 0 || also.length > 0 || !!e.light;
+  return { uses, gear, also, light: carried ? lightRow(S, e, { dm }) : null, any: carried };
+}
+
 // The rows of the tab `id` for `e` ('' for a tab with none). One place for the shell and the tests.
 export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
   if (id === 'attacks') return attackRows(S, e, { mode });
@@ -391,8 +462,11 @@ export function initActionPanel(ctx) {
   // index.html still carries the temporary pane of the old action bar (`#ap-all` and `#actions`); it is the Spells pane now.
   const spellsEl = $('ap-all') ?? $('ap-spells');
   spellsEl.id = 'ap-spells'; spellsEl.setAttribute('aria-labelledby', 'ap-tab-spells'); spellsEl.textContent = '';
-  const panes = { explore: $('ap-explore'), attacks: $('ap-attacks'), spells: spellsEl, bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down') };
+  // The Items pane is made here: index.html carries no element for it (it was not on the issue's list; tidy it next time that file is touched).
+  const itemsEl = $('ap-items') ?? (() => { const el = document.createElement('div'); el.id = 'ap-items'; el.setAttribute('role', 'tabpanel'); el.setAttribute('aria-labelledby', 'ap-tab-items'); el.hidden = true; $('ap-features').after(el); return el; })();
+  const panes = { items: itemsEl, explore: $('ap-explore'), attacks: $('ap-attacks'), spells: spellsEl, bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down') };
   const LISTS = ['explore', 'attacks', 'spells', 'bonus', 'move', 'features'];
+  let picking = null;                                    // the Items row whose potion is being given: { id, actor }
   // The Spells tab's sort (kept on this device) and filters (kept while the page is open, not between sessions).
   const sortNow = () => (SPELL_SORTS[prefs.get('hextable.spellSort')] ? prefs.get('hextable.spellSort') : 'level');
   let filters = noFilters(), filtersOpen = false, refocus = null;
@@ -439,6 +513,11 @@ export function initActionPanel(ctx) {
     if (r.why) return ctx.toast(r.why);
     switch (r.kind) {
       case 'send': case 'use': return ctx.act(r.send);
+      case 'item': {
+        // A potion can be given to someone within reach: ask whom, unless there is only the drinker. Anything else is sent as it is.
+        if (r.targets?.length) { picking = picking?.id === r.id ? null : { id: r.id, actor: e.id }; return ctx.render(); }
+        return ctx.act(r.send);
+      }
       case 'arm': return ctx.setMode(r.armed ? ctx.move : r.mode);
       case 'spell': return ctx.castSpell(e, r.spell, r.armed);
       case 'meta': return ctx.metamagic?.(e)?.onClick();
@@ -464,6 +543,26 @@ export function initActionPanel(ctx) {
       const r = (rowsBy[id] ?? []).find((x) => x.id === b.dataset.row); if (r) run(r);
     });
   }
+  // The Items tab's own controls: a use row (through `run`), whom a potion is for, and the equip and attune buttons of a piece of gear.
+  panes.items.addEventListener('click', (ev) => {
+    const S = ctx.state(), e = S.entities[ctx.selected()];
+    const pick = ev.target.closest('[data-pick], [data-pick-cancel]');
+    if (pick && e && !ctx.skipping()) {
+      const r = picking && (rowsBy.items ?? []).find((x) => x.id === picking.id);
+      if (pick.dataset.pickCancel !== undefined || !r) { picking = null; return ctx.render(); }
+      const who = pick.dataset.pick; picking = null;
+      ctx.act(who === 'self' ? r.send : { ...r.send, target: who });
+      return ctx.render();
+    }
+    const g = ev.target.closest('[data-gact]');
+    if (g) {
+      const a = (rowsBy.itemsGear ?? []).find((x) => x.id === g.dataset.gact);
+      if (a && e && !ctx.skipping()) { if (a.why) return ctx.toast(a.why); ctx.act(a.send); }
+      return;
+    }
+    const b = ev.target.closest('[data-row]'); if (!b) return;
+    const r = (rowsBy.items ?? []).find((x) => x.id === b.dataset.row); if (r) run(r);
+  });
   // The Spells tab's own controls: the sort, the filters, and Clear. A chip is `data-f="group:value"` (`conc`, `ritual` and `can` have no value).
   const keep = (sel) => { refocus = sel; ctx.render(); const b = refocus && panes.spells.querySelector(refocus); refocus = null; b?.focus({ preventScroll: true }); };
   panes.spells.addEventListener('click', (ev) => {
@@ -510,7 +609,7 @@ export function initActionPanel(ctx) {
     }
     cueFor(el);
   }
-  for (const id of [...LISTS, 'reactions', 'down']) panes[id].addEventListener('scroll', () => cueFor(panes[id]), { passive: true });
+  for (const id of [...LISTS, 'items', 'reactions', 'down']) panes[id].addEventListener('scroll', () => cueFor(panes[id]), { passive: true });
 
   const exploreHtml = (list) => `<div class="ap-grid">${list.filter((r) => r.grid).map(rowHtml).join('')}</div>${list.some((r) => !r.grid) ? `<details class="ap-more"${moreOpen ? ' open' : ''}><summary>More</summary><div class="ap-list">${list.filter((r) => !r.grid).map(rowHtml).join('')}</div></details>` : ''}`;
 
@@ -541,6 +640,23 @@ export function initActionPanel(ctx) {
     setHtml(panes.spells, `<div class="ap-spellhead">${slotsHtml(e)}${tb.bar}</div>${tb.panel}${metaRow ? `<div class="ap-list">${rowHtml(metaRow)}</div>` : ''}${
       groups.map((g) => `${g.head ? `<h4 class="ap-head">${esc(g.head)}</h4>` : ''}<div class="ap-list">${g.rows.map((r) => rowHtml(mark(r))).join('')}</div>`).join('')}${
       all.length && !shown.length ? '<p class="ap-why-line">No spell matches these filters.</p>' : ''}`);
+  }
+
+  // The Items tab: what can be used (greyed with the engine's reason), what is carried and how, the light.
+  function itemsPane(S, e, dm) {
+    const it = itemRows(S, e, { dm });
+    if (picking && (picking.actor !== e.id || !it.uses.some((r) => r.id === picking.id && !r.why && r.targets.length))) picking = null;
+    const lightList = it.light ? [it.light] : [];
+    rowsBy.items = [...it.uses, ...lightList]; rowsBy.itemsGear = it.gear.flatMap((g) => g.acts);
+    const picker = (r) => `<div class="ap-pick" role="group" aria-label="Who is it for?"><span>Give it to</span><button type="button" data-pick="self">${esc(e.name)}</button>${
+      r.targets.map((t) => `<button type="button" data-pick="${esc(t.id)}">${esc(t.name)}${t.down ? ' (down)' : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
+    const uses = it.uses.map((r) => { const on = picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r) : ''); }).join('');
+    const gear = it.gear.map((g) => `<div class="ap-row ap-gear info" data-gear="${esc(g.key)}"><span class="ap-top"><span class="ap-t">${esc(g.label)}</span></span>${g.sub ? `<small class="ap-s">${esc(g.sub)}</small>` : ''}${
+      g.acts.length ? `<span class="ap-acts">${g.acts.map((a) => `<button type="button" data-gact="${esc(a.id)}" aria-disabled="${a.why ? 'true' : 'false'}"${a.why ? ` aria-describedby="ap-w-${esc(a.id).replace(/[^\w-]/g, '_')}"` : ''}${a.why ? ' class="off"' : ''}>${esc(a.label)}</button>`).join('')}</span>${
+        g.acts.filter((a) => a.why).map((a) => `<small class="ap-why" id="ap-w-${esc(a.id).replace(/[^\w-]/g, '_')}">${esc(a.why)}</small>`).join('')}` : ''}</div>`).join('');
+    const also = it.also.length ? `<div class="ap-row ap-gear info"><span class="ap-top"><span class="ap-t">Also carried</span></span><small class="ap-s">${esc(it.also.join(', '))}</small></div>` : '';
+    setHtml(panes.items, `${it.uses.length ? `<h4 class="ap-head">Use</h4><div class="ap-list">${uses}</div>` : ''}${gear || also ? `<h4 class="ap-head">Carried</h4><div class="ap-list">${gear}${also}</div>` : ''}${
+      lightList.length ? `<h4 class="ap-head">Light</h4><div class="ap-list">${lightList.map(rowHtml).join('')}</div>` : ''}${!it.any ? '<p class="ap-why-line">Nothing carried.</p>' : ''}`);
   }
 
   function reactionsPane(S, e, r) {
@@ -576,7 +692,7 @@ export function initActionPanel(ctx) {
   return {
     // Events of an update: a `noticed` or `triggered` one moves Search up for the next two updates.
     updated(events) { found = [events.some((ev) => ev.type === 'noticed' || ev.type === 'triggered'), found[0]]; },
-    fresh() { found = [false, false]; sel = { key: '', tab: null }; howKey = null; raised = false; },
+    fresh() { found = [false, false]; sel = { key: '', tab: null }; howKey = null; raised = false; picking = null; },
     // Draws the card for `e` (or hides it): the head, the status, the tabs and the open tab. `mode` is app.js's current mode.
     render(e, mode, { my, full }) {
       const S = ctx.state(), enc = S.encounter, cur = current(S);
@@ -598,7 +714,7 @@ export function initActionPanel(ctx) {
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
       const fly = ctx.flyInfo(e);
-      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: !!(e.attacks?.length || e.actions?.length), features: featureRows(S, e).length > 0 };
+      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: !!(e.attacks?.length || e.actions?.length), features: featureRows(S, e).length > 0, items: itemRows(S, e, { dm }).any };
       tabsNow = visibleTabs(ctxNow, has);
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
@@ -626,6 +742,7 @@ export function initActionPanel(ctx) {
         setHtml(panes[tab], listHtml(head, list));
       }
       if (tab === 'spells') spellsPane(S, e, mode);
+      if (tab === 'items') itemsPane(S, e, dm);
       if (tab === 'reactions') reactionsPane(S, e, react ?? reactionState(S, e, { dm }));
       if (tab === 'down') downPane(S, e);
       body.hidden = !tabsNow.length;
