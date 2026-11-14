@@ -1,8 +1,11 @@
 # Spec: characters that travel between games
 
 Status: draft by an agent, to be reviewed by the design owner. Issue #237, part A
-(the owner's request of 13 November). Nothing here is built. No code is written
-by this spec.
+(the owner's request of 13 November), amended by #278 to agree with the owner's
+decisions for online play recorded in #244 (the official server, monikers,
+reputation, the lobby, admission, forks and the hash). Nothing here is built.
+No code is written by this spec. Decision 8 is the online layer; it is not
+scheduled and the first seven decisions are built without it.
 
 The owner asked for four things:
 
@@ -20,9 +23,10 @@ The owner asked for four things:
 This spec says where such a character lives, what its history can and cannot
 prove, what the history records, what leaves a table with the character, how
 the compatibility report works, how privacy is kept, what the level meter shows
-and how it all fits the build screen, the importer and `setSheet`. It ends with
-the jobs in build order, the review points for security and hidden
-information, and the questions for the owner.
+and how it all fits the build screen, the importer and `setSheet`. Decision 8
+adds what the official server changes. It ends with the jobs in build order, the
+review points for security and hidden information, and the questions for the
+owner.
 
 It is written in the style of `table-ui.md`: each decision gives the question,
 the options, the choice, the reason and the cost.
@@ -55,7 +59,9 @@ Stated once; every decision below obeys them (`CLAUDE.md`, `AGENTS.md`).
 - **Content is data; only SRD 5.2.1 content is in the repo.** A character file
   names content by id. It never carries rules text copied from a book.
 - **No personal data beyond a name the player chose.** The repo and the public
-  server are public (Decision 7).
+  server are public (Decision 7). The only names that travel are the
+  character's name and a **moniker**, a handle the person chose, never a real
+  name (Decision 8).
 - **Plain JavaScript, no dependencies, no bundler.** Ed25519 and SHA-256 come
   from Web Crypto, not from a library.
 - **Phones are first-class.** Every screen below works at 390 x 844 with touch.
@@ -86,11 +92,35 @@ Settled by the issue: the start screen offers a portable character; the record
 shows how the character came to be; the DM chooses own or new characters; there
 is a compatibility analysis shown to both sides before admission.
 
+Settled by the owner's decisions of 13 and 14 November (#244, #237, #278), which
+win over anything older in this file:
+
+- **One official server**, the project's own, built into the game. It alone
+  makes things **official** (reputation, validation of characters and
+  histories). It is not required to play, host or hold characters. No other
+  service can grant the designation; other servers may sign histories, and those
+  count as unofficial (Decisions 2, 4 and 8).
+- **Monikers**: everyone who uses the official server registers a unique moniker.
+  A history names the DM of each table by moniker, always (Decisions 3 and 8).
+- **The official server stores a hash, not the character.** Players keep their
+  files on their own device; server-side backups may later be a paid upgrade
+  (Decisions 1, 4 and 8).
+- **A character's level meter and history grade are visible to everyone,
+  including in the lobby before joining** (Decision 6).
+- **Admission is a step of setting up the adventure**; the DM sets the
+  adventure's level; a higher-level character is forked (Decisions 5 and 8).
+- **Every character has a unique id and every fork is a unique character**
+  (Decision 8).
+- **Reputation belongs to the moniker and grows only from play recorded on the
+  official server**; anonymous play statistics are a separate switch with no
+  penalty for opting out (Decision 8).
+- **Dates**: a character's history shows the date only (Decision 3).
+
 Open and decided here: where the character lives, what "history" can mean,
 what is recorded, what leaves, how differences are handled, how the meter reads.
 Questions that only the owner can answer are at the end, each with a default.
 
-## The seven decisions
+## The eight decisions
 
 ### Decision 1: a portable character is a file, kept on the player's device
 
@@ -125,18 +155,23 @@ ending `.hextable-character.json`, at most 96 KB, with this shape:
   edits: [ { at: 'YYYY-MM-DD', fields: ['abilities', 'spells'] } ],   // changes made outside play, by the player: self-reported (Decision 3)
   keys: { '<keyId>': '<public key, base64>' },   // the public keys of the servers that signed blocks
   needs: { packs: [{ id: 'srd52', version: 1 }], homebrew: [{ id, pack, hash }] },   // what the sheet names beyond the SRD, for the report (Decision 5)
-  parked: [ { kind: 'spell', id, name } ],       // things a table could not take and left aside (Decision 5)
-  bundle: { ... }                 // optional: the homebrew entries the sheet names, as data, so a DM can read them (homebrew.md)
+  parked: [ { kind: 'spell', id, name } ]        // things a table could not take and left aside (Decision 5)
 }
 ```
 
-Nothing in the file is a secret, and nothing in it names a person (Decision 7).
+Nothing in the file is a secret, and nothing in it names a person beyond
+monikers (Decisions 7 and 8). **The file never carries homebrew content**: it
+lists homebrew ids and hashes in `needs.homebrew` so a table can say what it
+lacks, but the entries themselves are never taken from a file (`homebrew.md`,
+Decision 4). A character's own `cid` is its unique id (Decision 8).
 The sheet stays exactly the shape `validate` knows: the history travels beside
 the sheet, not inside it, so `SHEET_FIELDS` and `validate` do not change.
 
 **Where each part is made.** The player's device makes `cid`, `sheet`, `born`
 (with `by: 'self'`) and `edits`. A server makes `blocks` and `keys`. The device
-never makes a block, because it holds no key a table would trust.
+never makes a block, because it holds no key a table would trust. The official
+server keeps, for each `cid`, only the hash of the latest officially recorded
+head and a small public summary (Decision 8); the file stays with the player.
 
 **Reasons.** No account system is needed; the character is not tied to a
 server; the player can back it up, move it between devices and hand it to a
@@ -144,7 +179,8 @@ friend. It is the same idea as the table export the DM already has
 (`export` in `tables.js`).
 
 **Cost.** Lost files are lost characters; the device copy is the only backup
-until the player exports. A copy can be made, so a character can be in two
+until the player exports. The hash on the official server cannot restore a lost
+file; server-side backups are a possible paid upgrade, not part of this spec. A copy can be made, so a character can be in two
 places at once (Decision 2 says what that does to the record). The device
 list lives in `localStorage` next to `hextable.solo` and shares its roughly
 5 MB; the list holds at most 20 characters and the screen says so when full.
@@ -165,13 +201,14 @@ as the person who runs it. A player on their own device can forge any file
 they hold. A DM is, at a small table, the authority: the DM sends `setSheet`
 and `levelUp` and can make any character any level.
 
-**Three grades of evidence, and no more.** Every part of a character's history
+**Four grades of evidence, and no more.** Every part of a character's history
 falls into exactly one grade, and the display names the grade:
 
 | Grade | What it is | What it proves | What it does not prove |
 |---|---|---|---|
-| **Signed here** | A block signed by *this* server's key, for a character this server's table held | That this server wrote it and nobody changed it since (the signature covers a chain of hashes) | That the play was fair, that the DM did not hand the levels out (the record says which levels were XP-backed and which the DM granted), that the players were real |
-| **Signed elsewhere** | A block signed by another server's key. The signature is checked. Whether anyone **vouches for that key** is a separate question: the table's DM and the server's operator keep a list of keys they trust (Decision 4). | That the holder of that key wrote it and it is unchanged | Everything above, and in addition that the key belongs to an honest server. **A key nobody has vouched for gives no more weight than no signature at all**, because anyone can make a key and sign any history they like |
+| **Official** | A block signed by the project's own key, whose public half is built into the game, for play recorded on the official server (Decision 8) | That the official server wrote it, nobody changed it, and (through the stored hash) that this file leads to the latest officially recorded state | That the DM did not hand the levels out, that the play was fair. Official means *recorded and validated by the project*, not *honest* |
+| **Signed here** | A block signed by *this* server's key, for a character this server's table held, where this server is not the official one. Unofficial | That this server wrote it and nobody changed it since (the signature covers a chain of hashes) | That the play was fair, that the DM did not hand the levels out (the record says which levels were XP-backed and which the DM granted), that the players were real |
+| **Signed elsewhere** | A block signed by another unofficial server's key. The signature is checked. Whether anyone **vouches for that key** is a separate question, answered per table by the DM (Decision 4). A key a DM trusts never makes a block **official**. | That the holder of that key wrote it and it is unchanged | Everything above, and in addition that the key belongs to an honest server. **A key nobody has vouched for gives no more weight than no signature at all**, because anyone can make a key and sign any history they like |
 | **Self-reported** | Anything without a signature: a file made on a device, edits made outside play, the whole of a character that never sat at a table, and anything after the last block | Nothing. It is the player's claim | |
 
 A second, different server **can verify** a first server's blocks: the
@@ -200,9 +237,9 @@ cannot find out about a block the file leaves out.
 
 **Therefore the claim this feature makes is narrow.** A signed history shows
 *what a server wrote down, in what order, and that it has not been altered
-since*. Where the signing server is one the receiving table trusts, that is
-good evidence that the character came by its levels at tables run by people
-the receiving DM trusts. It is a label that helps a DM decide. It is not an
+since*. Where the signing server is the official one, or one the receiving DM
+has chosen to trust, that is good evidence that the character came by its levels
+at tables run by people the receiving DM trusts. It is a label that helps a DM decide. It is not an
 anti-cheat and the interface never says "verified" without saying by whom.
 
 **Checks the receiver can add without trust.** A *consistency check* runs on
@@ -247,13 +284,13 @@ another character's record, and a player is sent only their own, on request
 (Decision 6).
 
 **What is recorded.** A closed list of entry kinds. Every field is a number, an
-id from the pack, a day, or one of a few words; **no free text from a player or
+id from the pack, a day (a date only, never a time), a moniker, or one of a few words; **no free text from a player or
 a DM is ever copied in**, which keeps names, jokes and plot out of the file.
 
 | Kind | When | Fields |
 |---|---|---|
-| `born` | The character first exists: built on the start screen (made by the device, self-reported), made at a table by `setSheet` without an `actor`, or imported | `level`, `how`, `by`: `self` or `table` |
-| `joined` | A table admits the file (Decision 5) | `level`, `xp`, `from`: the verdict the table gave the incoming history (`none`, `unsigned`, `broken`, `signed-here`, `signed-trusted`, `signed-unknown`), `adjusted`: the number of stand-ins the DM chose |
+| `born` | The character first exists: built on the start screen (made by the device, self-reported), made at a table by `setSheet` without an `actor`, imported (Fantasy Grounds now, Roll20 later: Decision 8) or a ready-made hero | `level`, `how`, `by`: `self` or `table`. For an import or a ready-made hero this is the one self-reported line that says how the character arrived |
+| `joined` | A table admits the file (Decision 5) | `level`, `xp`, `fork`: set when this admission was a fork (Decision 8), `from`: the verdict the table gave the incoming history (`none`, `unsigned`, `broken`, `official`, `signed-here`, `signed-trusted`, `signed-unknown`), `adjusted`: the number of stand-ins the DM chose |
 | `levelUp` | `levelUp` succeeds (the engine pushes the `std` event "reached level N") | `from`, `to`, `class`, `xp` at that moment, `basis`: `xp` when the character's XP was at or above `xpFor(to)`, else `dm` (the DM raised the level without the XP) |
 | `reset` | `setSheet` with an `actor` changes the level by more than one, or changes class | `from`, `to`, `basis: 'dm'` |
 | `xp` | A conclusion is published (`xp` events from `publish` in `rewards.js`) | `n` gained, `foes`: how much of it came from foes and how much from the DM's bonus lines (the engine holds both: `xp.base` and `xp.bonus`) |
@@ -261,12 +298,15 @@ a DM is ever copied in**, which keeps names, jokes and plot out of the file.
 | `left` | The character is sent off or leaves (Decision 5) | `level`, `xp`, `kept`: the items it leaves with, `stayed`: those left at the table |
 | `revoked` | An undo or rewind took back entries that a signed block had already sealed | `n`: the block |
 
-The "which DM" of the owner's list: by default **the table, not a person**. A
-block names the server (its key), a random per-table id (`tid`, made when the
-table is hosted, never the six-character join code, which lets people in) and
-the day. A DM who wants their name on it ticks "sign my name on characters"
-for the table, and the name they typed when hosting (`cleanName`, 24 letters)
-goes into the blocks. It is off by default (Decision 7, question 5).
+The "which DM" of the owner's list: **the DM's moniker, always**, not opt-in.
+A block names the server (its key), a random per-table id (`tid`, made when the
+table is hosted, never the six-character join code, which lets people in), the
+day and the DM's moniker (`dm`). A table whose DM has no moniker (a table on an
+unofficial server, or a DM who never registered) records `dm: null` and the
+meter says "a DM who is not registered"; the name a DM typed when hosting
+(`cleanName`) is never copied in, because it is not unique and not chosen as an
+identity. A DM's moniker in a character's history is the same moniker that
+holds the DM's reputation (Decision 8).
 
 **Outside play.** Anything the player does to the file without a table (the
 build screen opens a file and saves a new sheet; Decision 6) adds an entry to
@@ -280,11 +320,12 @@ record says "changed since the last block".
 block, plus the character's head, plus a signature:
 
 ```js
-{ cid, n, prev: '<hash of block n-1 or null>', tid, at: 'YYYY-MM-DD', key: '<keyId>',
+{ cid, n, prev: '<hash of block n-1 or null>', tid, dm: '<moniker>' | null, at: 'YYYY-MM-DD', key: '<keyId>',
   entries: [ ... ], head: { level, xp, sheetHash }, sig: '<Ed25519 over the canonical block without sig>' }
 ```
 
-`prev` makes the chain: removing or reordering a block breaks it. A new table
+`dm` (the DM's moniker or null) sits beside `tid` in the block, and `at` is a
+date only. `prev` makes the chain: removing or reordering a block breaks it. A new table
 continues the incoming chain, so a character's whole life is one chain with
 blocks from several servers. The date and the key come from the server; the
 package that builds and checks blocks has neither.
@@ -308,8 +349,8 @@ server) can say so; no other can.
 `packages/rules/src/lineage.js`, both async because Web Crypto is:
 
 ```js
-verifyChain(file, { trusted, own, content }) -> {
-  verdict: 'none' | 'broken' | 'self-reported' | 'signed-unknown' | 'signed-trusted' | 'signed-here',
+verifyChain(file, { trusted, own, official, content }) -> {
+  verdict: 'none' | 'broken' | 'self-reported' | 'signed-unknown' | 'signed-trusted' | 'signed-here' | 'official',
   consistent: boolean, problems: [ 'plain words' ],
   born: { level, by }, level, blocks: [ { n, signer: 'here'|'trusted'|'unknown', at, level } ],
   editedSinceLastBlock: boolean, forked: boolean,
@@ -318,8 +359,8 @@ verifyChain(file, { trusted, own, content }) -> {
 lineageStep({ before, after, events }) -> [ entries ]      // what apply() just did to this character
 ```
 
-`trusted` is the set of key ids the table's DM and the server's operator
-vouch for; `own` is this server's key id. The same function runs in the
+`trusted` is the set of key ids the table's DM has chosen to trust; `official`
+is the project's built-in public key; `own` is this server's key id. The same function runs in the
 browser to show a file before it is sent and on the server to decide what the
 DM is told; **the server's answer is the one the DM sees**, because a client
 can show whatever it likes.
@@ -331,7 +372,7 @@ derived from observation. Entries a crash lost between an action and the next
 save are lost (the table file is saved on every action, `save(table)`, so the
 window is small).
 
-### Decision 4: servers sign, and trust is chosen, not assumed
+### Decision 4: servers sign; one key is official, and other trust is a table's own choice
 
 **Question.** What does a server need in order to sign, and how does a table
 decide whose signatures count?
@@ -347,22 +388,29 @@ decide whose signatures count?
   cannot write `DATA_DIR` already refuses to start (`index.js`), so a key is
   always kept with the tables it signs for. If the data directory is lost, the
   key is lost and the server has a new identity: old files still verify, as
-  "signed elsewhere" by a key nobody now vouches for.
-- **Who is trusted.** A table trusts itself ("signed here": its own server's
-  key), plus keys listed by the server's operator in the environment
-  (`TRUSTED_KEYS`, comma-separated key ids), plus keys the DM adds for this
-  table in the join review (the DM sees the key id and the server name the
-  file claims, and ticks "trust this server for this table"). The list is kept
-  in the table's record, not the state, and is never sent to players.
-- **No central list.** The project does not run a registry of servers, and the
-  repo carries no key list. If the owner wants a "reference server" key,
-  it is added to the operator's `TRUSTED_KEYS` like any other (question 1).
-- **Fork check, same server only.** The server keeps the head hash of every
-  `cid` it has sealed. When a file arrives whose chain passes through a block
-  of this server's but is not at the head, the report says "this character
-  was continued here by another copy", not "cheating": playing a copy at two
-  tables is allowed (question 10). A rolled-back file (blocks removed) is
-  caught the same way when it returns to the same server.
+  "signed elsewhere" by a key nobody now vouches for. (The official key is
+  kept with more care, a matter for the operator notes of Decision 8.)
+- **One official key.** The project has a single trusted server, built into
+  the game, and its **public** key ships with the game (a public key is not a
+  secret; the private key stays on the project's server). Blocks that verify
+  against it are **official**. **Nothing grants the designation to anyone
+  else**: not an operator's setting, not a DM's tick, not a list. The
+  designation rests on the project's signing key, not on the code, because the
+  licence (AGPL) lets anyone run a modified server (Decision 8).
+- **Who else is trusted, and what that means.** A table trusts itself ("signed
+  here": its own server's key) and the official key. A DM may also tick "trust
+  this server for this table" in the join review for another server's key (the
+  DM sees the key id and the server name the file claims). The list is kept in
+  the table's record, not the state, and is never sent to players. A trusted
+  key makes a history *signed by a server this table trusts*, never *official*;
+  an operator-wide `TRUSTED_KEYS` list is not built (question 12).
+- **Fork check.** On the **official** server the check is the stored hash
+  (Decision 8): a file whose history does not lead to the recorded fingerprint
+  is detected, whether edited, rolled back or an older copy. On an unofficial
+  server the check is as before, same server only: it keeps the head hash of
+  every `cid` it has sealed, and a file whose chain passes through one of its
+  blocks but is not at the head is reported "continued here by another copy",
+  neutrally. Whether and how a copy may then play is Decision 8's id rule.
 
 **Reasons.** Signatures that anyone can check without calling the signing
 server (offline, in a browser, on a second server) need public-key signatures.
@@ -385,7 +433,8 @@ players like the others (it is not a secret that a table takes own characters):
 
 | Setting | Values | Default | Meaning |
 |---|---|---|---|
-| `characters` | `new`, `own-trusted`, `own` | `new` | `new`: today's behaviour, the DM makes or assigns the characters; offering a file is not shown. `own-trusted`: own characters may be offered, and the DM is told when the history's verdict is not signed by this table or a key it trusts, who may still choose to accept. `own`: own characters may be offered, any history. |
+| `characters` | `new`, `own-trusted`, `own` | `new` | `new`: today's behaviour, the DM makes or assigns the characters; offering a file is not shown. `own-trusted`: own characters may be offered, and the DM is told when the history's verdict is not official, signed by this table, or signed by a key it trusts, who may still choose to accept. `own`: own characters may be offered, any history. |
+| `level` | none, or 1 to 20 | none | The adventure's character level (Decision 8, "Admission"). With none set, the DM reads the meter and decides. |
 | `takeaway` | `everything`, `level-only`, `nothing` | `everything` | What a character leaves with (below). |
 
 Settings are chosen by the DM in the table settings (`tablecontrols.js`) and
@@ -395,6 +444,11 @@ for the review*; it does not make the server accept anything the review would
 refuse.
 
 #### The flow
+
+How characters arrive is a step of setting up the adventure (Decision 8,
+"Admission"); `characters` above is the simple form of it for a table that does
+not use the adventure setup. The flow below is the route "supplied by a player
+and approved by the DM".
 
 1. On the lobby, with a table code typed, a player can choose "Join with a
    character from this device" or "Join and build one at the table" (today's
@@ -420,8 +474,12 @@ refuse.
    opens the report and the level meter. The offering player sees the part of the
    report that concerns their own file (see "Who sees what").
 5. **Accept** sends the engine action `admit` (below) with the report's choices;
-   **Decline** drops the offer and tells the player why in the DM's own words
-   (a short text the DM may type, 80 letters, shown to that player only).
+   **Decline** drops the offer. Either way the player is told the outcome about
+   their own character: **accepted**, **refused** or **accepted with changes**,
+   with the compatibility report for their own file, plus an optional short note
+   from the DM (80 letters, typed by the DM, shown to that player only). A
+   player who is still waiting sees the same report about their own file, so a
+   refusal is never the first they hear of a problem.
 6. A player already at a table with a character who offers another does not get
    two: `claim` already refuses a second character for a player (`engine/dm.js`).
    Offering again replaces the first offer.
@@ -453,14 +511,14 @@ do about it.
 
 | Kind | What is compared | What the DM can do |
 |---|---|---|
-| **Missing content** | Every id the sheet names (class, subclass, spells, feats, magic items, weapons, armour, tools): is it in this table's content? Homebrew ids (Decision 5 of `homebrew.md`: `hb-...`) are looked for among the table's homebrew packs. | **Refuse** the character. **Accept without it**: the entry is taken off the playing copy and written to `parked` in the file (a name, never stats), and the report says what the character does not have here. **Stand in**: a stand-in rule below. For a homebrew entry the file's `bundle` lets the DM read what it was and add it to the table (homebrew.md) instead. |
-| **Different version of content** | The `needs.packs` versions (`pack.version` in `content/srd52/pack.js`) against the table's; for homebrew, the `hash` of the entry against the table's entry with the same id. | **Accept** (the table's version plays), or **refuse**. A homebrew entry with the same id and a different hash is flagged separately: it is a different thing with the same name. |
+| **Missing content** | Every id the sheet names (class, subclass, spells, feats, magic items, weapons, armour, tools): is it in this table's content? Homebrew ids (`hb-...`, `homebrew.md`) are looked for among the DM's own packs for this table. **Homebrew is never taken from a file.** A homebrew piece plays only if the DM's own packs already hold an entry with the same id and hash; otherwise the report shows it as "not in this table's rules". | **Refuse** the character. **Accept without it**: the entry is taken off the playing copy and written to `parked` in the file (a name, never stats), and the report says what the character does not have here. **Stand in**: a stand-in rule below. For a homebrew piece the DM can do nothing about it inside the review: a DM who wants it adds it to their own pack outside the review, from what the player gave them outside the app, and the player offers again. |
+| **Different version of content** | The `needs.packs` versions (`pack.version` in `content/srd52/pack.js`) against the table's; for homebrew, the `hash` of the entry against the table's entry with the same id. | **Accept** (the table's version plays), or **refuse**. A homebrew entry with the same id and a different hash is flagged separately: it is a different thing with the same name, and the table's entry is the one that plays. |
 | **Tier differences** | The sheet's features and items by tier (`auto`, `assist`, `manual`; `derive(sheet).record.feats`, `CONTENT.items[x].tier`). Not a fault, a fact: "of this character's 21 features, 4 need you to apply them by hand." | Accept. Information, never a block on its own. |
 | **Table rules** | The table's `settings` against the `rules` snapshot a block records (the settings that touch characters: `conclusion`, `xpShare`, `passiveFind`, `vertical`, `climbing`, `cover`, `creatureCover`; the list is a constant in `compat.js`). The snapshot is a signed claim like the rest: it says which rules the previous table played under. | Accept. Information: "levelled at a table where Experience Points were shared in full; here they are split." |
-| **Level range** | The sheet's level and `born.level` against the table. A new table setting is *not* added for ranges in this spec (question 3); the DM sees the level and the meter and decides. | Refuse or accept. |
-| **History** | `verifyChain` verdict and the meter (Decision 6): signed here, signed by a key this table trusts, signed by an unknown key, self-reported, inconsistent, broken. With `characters: 'own-trusted'` a verdict below "signed by a trusted key" is highlighted and needs the DM's explicit tick. A broken chain is refused whatever the setting says. | Accept (with the tick), refuse. |
+| **Level range** | The sheet's level and `born.level` against the adventure's `level` setting if the DM set one, else against what the DM sees in the meter. A character above the adventure's level is offered as a **fork** rewound to that level (Decision 8); one below it may be raised at the table and recorded as such (the lead's assumption, awaiting the owner). | Refuse, accept, fork, or raise. |
+| **History** | `verifyChain` verdict and the meter (Decision 6): official, signed here, signed by a key this table trusts, signed by an unknown key, self-reported, inconsistent, broken. With `characters: 'own-trusted'` a verdict below "signed by a trusted key" is highlighted and needs the DM's explicit tick. A broken chain is refused whatever the setting says. On the official server a file that does not lead to the stored hash is refused as official and may be offered only as an unofficial character. | Accept (with the tick), refuse. |
 | **Sheet rules the engine cannot play** | What `validate` says about *this* engine: a sheet built for a later version, a feature with no engine support at this version. | Refuse; or, with the stand-in rule, the nearest legal sheet. |
-| **Imported** | `born.how` is `imported-fgxml`: the DM is told the stand-ins that import made (the count in `born`, not the importer's text). | Accept. |
+| **Imported** | `born.how` is `imported-fgxml` (or a later importer's value, or `pregen`): the DM is told the stand-ins that import made (the count in `born`, not the importer's text). | Accept. |
 
 **Stand-ins, modelled on the Fantasy Grounds importer.** The importer's
 `adjustments` (`{ what, from, to, why }`) are the pattern: where a sheet needs a
@@ -497,8 +555,8 @@ changes how a fight plays.
 
 **What leaves.** The `takeaway` setting decides:
 
-- `everything` (the default): the sheet as it stands, level and items and
-  attunement, and the XP.
+- `everything` (the default, the owner's answer): the sheet as it stands, level
+  and items and attunement, and the XP, **with the DM's sign-off at send-off**.
 - `level-only`: the sheet with the items it gained at this table taken off
   (the record knows them: `item` entries). They are listed in `stayed` and
   stay on the table's record, not in the file.
@@ -514,7 +572,8 @@ player sees the result before it is made and may say no to taking it. The DM
 cannot take away what the player arrived with: the send-off only removes
 things the record says this table gave.
 
-*Who decides the level.* Nobody removes a level a character earned at this
+*Who decides the level.* The DM sets the level the adventure starts at (Decision 8);
+after that nobody removes a level a character earned at this
 table, since a level is not an item; a DM who does not want it counted can mark
 the character `nothing`. The meter shows what the record says.
 
@@ -544,7 +603,8 @@ theme tokens, `--accent` and friends, and no layout depends on a theme):
 | Segment kind | Looks like | Words | Meaning |
 |---|---|---|---|
 | **Arrived** | Plain fill up to the notch, then the notch | "Created at level 12" or "Started at level 1" | Levels up to `born.level`: the character did not grow through them here; it was made at that level. For a character grown from level 1 the notch sits under 1 and there are no arrived segments to speak of. |
-| **Earned, signed here** | Solid | "Gained at this table" | A `levelUp` with `basis: 'xp'` in a block signed by this server. |
+| **Earned, official** | Solid with a small seal mark | "Gained at a table recorded by the official server" | A `levelUp` with `basis: 'xp'` in a block signed by the official key. |
+| **Earned, signed here** | Solid | "Gained at this table" | A `levelUp` with `basis: 'xp'` in a block signed by this server, which is not the official one. |
 | **Earned, signed by a trusted server** | Solid with a small tick mark | "Gained at a table whose server you trust" | The same, signed by a key in the trusted set. |
 | **Earned, signed by an unknown server** | Outlined with a dashed edge | "Signed by a server nobody here knows" | Valid signature, no one vouches: reads like self-reported on purpose. |
 | **Granted** | Diagonal hatch | "Given by the DM, no XP" | A `levelUp` or `reset` with `basis: 'dm'`, in any signed block. Counts as the signer's record, flagged. |
@@ -569,10 +629,15 @@ says so ("The player says it was created at level 12"). A `born` made by a
 table (`by: 'table'`: the DM made the character with `setSheet`) is signed by
 that table.
 
-**Who sees it.** The owner, on their own sheet, and the DM, on the sheet and in
-the review. Other players are not sent it (Decision 7). The meter is also
-shown on the start screen's My characters list, for the player's own files,
-with the same words.
+**Who sees it.** **Everyone** sees a character's level meter and history grade,
+including in the lobby before joining (the owner's decision, replacing the
+earlier default of owner and DM only). What everyone sees is the summary: the
+meter's figures (level, where it started, the count of levels by kind) and the
+grade. The block-by-block **Details** (each day, table and DM) stay with the
+owner and the DM until the owner says otherwise (question 6). On the official
+server the summary is kept beside the hash so it can be shown while the owner is
+offline (Decision 8). The meter is also shown on the start screen's My
+characters list with the same words.
 
 #### The start screen
 
@@ -612,7 +677,8 @@ meter to make visible.
 - **Table settings**: the `characters` and `takeaway` choices, and the list of
   trusted servers for this table.
 - **The lobby**: a pending member with an offer shows its summary line and
-  Review.
+  Review. Where an adventure states what characters it admits, the lobby applies
+  that screening before the DM is asked (Decision 8).
 - **The review**: the meter, the verdict in words, then the differences grouped
   by what the DM can do, each with its choice (Refuse, Accept, Stand in) and a
   default; at the bottom Accept and Decline. On a phone the review is one
@@ -626,13 +692,15 @@ meter to make visible.
 The repo and the public server are public. The rule: **the file carries
 nothing about a person beyond the name the player gave the character.**
 
-- Never recorded: the player's name (`m.name`), the DM's name unless the table
-  ticked it (Decision 3), the member id or session token, the join code,
+- Never recorded: the player's table name (`m.name`), a real name of anyone,
+  the member id or session token, the join code,
   addresses, device information, chronicle text, notes, handouts, the table's
   map or other characters' names, any free text from a player or DM.
 - Recorded: the character's name (it is in the sheet; the player chose it),
-  levels, XP totals, pack ids, a day, a random table id, a server key id, the
-  settings listed in `compat.js`.
+  levels, XP totals, pack ids, a date (never a time), a random table id, the DM's
+  **moniker** (Decision 3), a server key id, the settings listed in `compat.js`.
+  A moniker is a handle chosen for the purpose, never a real name; it is public
+  on purpose, because reputation belongs to it (Decision 8).
 - The offered file is stored in the table's record only while the table keeps
   it, shown to the DM, and removed when the offer is declined or the member
   leaves. It is not copied into the chronicle; the report's text goes into the
@@ -653,6 +721,129 @@ on their own history, and **not** the table's settings or its homebrew; those
 are sent only after approval, as `stateFor` already holds. The DM sees the
 whole report.
 
+### Decision 8: the official server and online play
+
+Recorded from the owner's decisions in #244. **Not scheduled.** Nothing in
+Decisions 1 to 7 waits for this; it is written so that they do not have to be
+redone when it comes. An official server is a service the project operates
+(accounts, cost, moderation, take-down, abuse of the reputation board); that
+work is named at the end of this decision and is for the owner to schedule.
+
+**What "official" means.** One server, the project's own, built into the game.
+It validates characters and their histories and keeps reputation. It is **not
+required**: anyone can play and host without it, and such play is simply not
+official. No separate service can grant the designation; other servers can sign
+histories and those count as unofficial (Decision 4). "Official" rests on the
+project's signing key, not on the code (AGPL: anyone may run a modified server).
+
+**Moniker.** Everyone who uses the official server registers a **unique
+moniker**, a chosen handle and never a real name. It is the only identity: no
+real name, no address, no device data. A person without a moniker still plays
+unofficially.
+
+**What the official server stores per character: a hash.** Players keep their
+characters on their own phone or PC. For each character id the server keeps the
+fingerprint (hash) of the latest officially recorded state of its history and
+checks it at each connection. A file presented later is official only if its
+history leads to the recorded fingerprint, so an edited file, or an older copy
+from before a loss or a death, is detected. New entries are signed and the stored
+fingerprint moves forward. It cannot restore a lost file (server-side backups
+could be a paid upgrade, outside this spec) and it cannot show a character in the
+lobby while its owner is offline. The default is therefore to keep, beside the
+hash, a **small public summary**: id, owner's moniker, name, class, level and the
+meter's figures. That summary is public by design (it is what the lobby shows),
+so it holds nothing else.
+
+**Unique ids and forks.** Every character has a unique id (`cid`), and **every
+fork is a unique character**: when a character is forked, one keeps the original
+id and the other gets a new one, with the shared ancestry visible in its
+history. Proposed rule, awaiting the owner's confirmation: the original keeps its
+id and the fork gets the new one. On the official server a character id can be in
+one adventure at a time, so playing it in a second adventure means forking it
+first. If two diverged histories with the same id ever reach the official server
+(played off the record in two places), the first one seen keeps the id and the
+other is registered as a fork. This replaces the earlier "one copy at two tables:
+allowed" default for official play; unofficial servers still only flag neutrally
+(Decision 4). The "Duplicate" button on the start screen already makes a new id.
+
+**Admission to an adventure.** How characters arrive is a step of setting up the
+adventure, and **every character is new to that adventure**. The DM switches on
+the routes: **built at the table**; **from the DM's stable** (characters the DM
+keeps); **supplied by a player and approved by the DM** (the flow of Decision 5);
+**nominated by a player** (the player proposes one the DM holds or may make).
+The DM sets the adventure's character level. A character above it can be
+**forked**: a duplicate rewound to that level with later history stripped,
+marked as a fork. A lower-level one may be raised at the table, recorded as such
+(the lead's assumption, unconfirmed). What leaves with a character is everything,
+with the DM's sign-off at send-off (Decision 5). An adventure also states what
+characters it admits; the first screening item is the character (level,
+compatibility, history grade) and **the lobby applies it before the DM is
+asked**. Stretch: the DM can **suspend** things a character brings (an item that
+would undo the adventure) for the length of the adventure; items first, spells
+and features later.
+
+**The lobby.** It lists games with information such as one-shot or campaign,
+estimated length and reputation for completing adventures. A character's level
+meter and history grade are visible to everyone there, before joining.
+
+**Reputation and reliability.** A **reputation board** (reputation, not power) for
+a community that generates its own interest. **Reputation belongs to the player
+(the moniker), not to a character**; a player may have many characters. It grows
+**only from play recorded on the official server**, so it is attributable by
+nature. **Reliability is its own stat**, separate from reputation: for example how
+often a player finishes the estimated play time of the adventures they join, so
+that someone who constantly drops out is visible. **DMs have reputation too**: a
+moniker has a DM reputation and a DM reliability beside its player ones.
+
+**Play statistics.** Statistics on how long play takes are collected from the
+outset, for regression against things like DM reputation, monsters per
+encounter, number of encounters and types of monsters, with the aim of honest
+estimated lengths in the lobby. They are **non-attributable**, **completely
+transparent** (anyone can see exactly what is reported) and carry a **separate
+switch with no penalty for opting out** (reputation never depends on it). Two
+streams: the anonymous statistics carry a reputation *band*, not a moniker, so no
+table or person can be picked out; reputation records are attributable and are a
+separate thing. They use UTC timestamps; the proposed default is exact durations
+but start times rounded to the hour, and coarse buckets reported only above a
+minimum number of games, so a small table is not identifying.
+
+**Dates.** A character's history shows the date only (Decision 3). The anonymous
+statistics use UTC timestamps, rounded as above.
+
+**AI stand-ins and companions (recorded, not specified here).** An AI takes over
+the character of a player who bails out, with an **engagement score** that can
+correspond to a player's, possibly in facets (imagination, tactics, aggression,
+compassion, effectiveness). Stepping away mid-fight (pushing down the order, a
+"need a break" button, an AI stand-in for the gap) is recorded on #246, the
+connection status indicator on #246 as well. Companions (familiars, pets, mounts,
+summons) are a player controlling more than one creature, attached to a
+character; they need their own spec (listed in the index). A wanted importer is
+Roll20 (no official file export exists; it would read a third-party extension's
+export and needs a sample). A ready-made hero or an imported character becomes a
+travelling character whose history starts with one self-reported line saying how
+it arrived (`born`, Decision 3).
+
+**Points the eventual build must face.**
+
+- **A service the project runs:** accounts, cost, moderation, take-down, and
+  abuse of the reputation board.
+- **Scores about how a person plays are personal data:** consent, visibility,
+  deletion and European privacy law apply. A player must be able to **see,
+  contest and remove their own** scores; the engagement score and the
+  reputation and reliability stats are designed to that. Consent for the
+  anonymous statistics must be freely given, which is why opting out has no
+  penalty.
+- **The designation rests on the project's signing key.** Its loss or leak is the
+  operator's emergency (a new key; old official files then read as unknown until
+  re-signed), stated in the operator notes.
+- **Public summary and the lobby are public.** Nothing in the summary may be
+  something a player would not want a stranger to see.
+
+**Cost.** A server the project runs, a registry of monikers, the hash and summary
+store, the reputation and statistics stores, and the privacy work. None of it
+touches `apply()`: it is bookkeeping about what the engine did, like the record
+of Decision 3.
+
 ## What the engine and server must add
 
 One table for the engine and server lanes. "Touches" is the file that changes.
@@ -662,9 +853,9 @@ One table for the engine and server lanes. "Touches" is the file that changes.
 | A1 | `lineage.js`: canonical JSON, SHA-256 hashes, `lineageStep`, block building and `verifyChain`, `meter` | pure rules | n/a | `packages/rules/src/lineage.js`, `tests` | no |
 | A2 | `characterfile.js`: envelope shape, limits, parse and build | pure rules | n/a | `packages/rules/src/characterfile.js`, `tests` | no |
 | A3 | `compat.js`: the differences and the stand-in rules | pure rules | n/a | `packages/rules/src/compat.js`, `tests` | no |
-| A4 | Settings `characters`, `takeaway` | settings | DM (`setting`) | `engine/dm.js` (`SETTINGS`) | no (absent means default) |
+| A4 | Settings `characters`, `takeaway`, `level` | settings | DM (`setting`) | `engine/dm.js` (`SETTINGS`) | no (absent means default) |
 | A5 | Action `admit` | action | DM (the server composes it) | `engine/characters.js`, `tests` | no |
-| A6 | Server key, `GET /api/server`, `TRUSTED_KEYS` | server | n/a | `packages/server/src/identity.js` (new), `index.js` | no |
+| A6 | Server key, `GET /api/server`, the built-in official public key, the DM's per-table trust list | server | n/a | `packages/server/src/identity.js` (new), `index.js` | no |
 | A7 | Per-table record `chars`, sealing, `reconcile`, `revoked`, fork check | server | n/a | `tables.js` | no |
 | A8 | Messages `offer`, `offerResult`, `take` (the file for the owner or DM), frame limit raised for a player while `characters` is not `new` | server messages | pending member, member, DM | `tables.js`, `index.js`, `packages/server/README.md` | no |
 | A9 | `view.js` unchanged. `playerView` sends no `chars`. A test that proves it. | review | n/a | `tests` | no |
@@ -686,7 +877,7 @@ checked at 390 x 844 with touch and at 1280 x 800.
 |---|---|---|---|---|---|
 | P1 | **Lineage, pure.** A1: canonical JSON (keys sorted, integers only), `sheetHash`, `lineageStep` for `levelUp`, `reset`, `xp`, `item`, `verifyChain` with verdicts, `meter` segments. Ed25519 and SHA-256 through `globalThis.crypto.subtle`. | engine | Opus | `packages/rules/src/lineage.js`, `packages/rules/test/lineage.test.js` | A chain made in the test verifies; changing any byte of an entry, a signature, `prev`, `head` or the sheet gives `broken` (or `editedSinceLastBlock` for the sheet alone); a key nobody trusts gives `signed-unknown` and the same meter weight as `self-reported`; a levelUp whose XP is below `xpFor(to)` has `basis: 'dm'`; a 5,000-entry or deeply nested hostile chain is refused in bounded time and never throws; two runs give identical bytes. |
 | P2 | **The file, pure.** A2 and A3: envelope limits and parse, `compat` with the kinds of Decision 5 and the stand-in rules. | engine | Opus | `packages/rules/src/characterfile.js`, `compat.js`, tests | A file with an unknown top-level key, a sheet over 20,000 characters, an `at` that is not a date, or a free-text field is refused; a sheet naming a spell the table lacks gives "missing content, can: refuse / accept without / stand in" and the stand-in removes exactly that spell and lists it in `parked`; a level-3 sheet whose subclass is missing gets the SRD subclass as a marked stand-in; no stand-in is ever silent. |
-| P3 | **Server identity and sealing.** A6 and the signing half of A7: `identity.js`, the key file, `GET /api/server`, `TRUSTED_KEYS`, a `chars` record per table, seals at `joined`, `levelUp`, conclusions and `left`, `reconcile` and `revoked`, the fork check. | server | Opus | `packages/server/src/identity.js` (new), `index.js`, `tables.js`, `packages/server/README.md`, `packages/server/test/` | A level-up at a table appends an entry and a signed block with the server's key id and the day; undoing it appends a `revoked` block, never deletes; the key is read from `DATA_DIR` across a restart and the start-up line prints the key id; the private key is in no table file, export or undo file (a test greps them); the server refuses to sign when its key could not be written. |
+| P3 | **Server identity and sealing.** A6 and the signing half of A7: `identity.js`, the key file, `GET /api/server`, the built-in official public key (the verdict `official`), a `chars` record per table, seals at `joined`, `levelUp`, conclusions and `left`, `reconcile` and `revoked`, the fork check. | server | Opus | `packages/server/src/identity.js` (new), `index.js`, `tables.js`, `packages/server/README.md`, `packages/server/test/` | A level-up at a table appends an entry and a signed block with the server's key id and the day; undoing it appends a `revoked` block, never deletes; the key is read from `DATA_DIR` across a restart and the start-up line prints the key id; the private key is in no table file, export or undo file (a test greps them); the server refuses to sign when its key could not be written. |
 | P4 | **Settings and `admit`.** A4 and A5. | engine | Opus | `engine/dm.js`, `engine/characters.js`, `tests` | `setting characters own` is accepted and refused for a player; `admit` makes a party character, claims it for the member, refuses a second character for the same member, a thirteenth character and a sheet `validate` refuses, and changes nothing when it refuses. |
 | P5 | **The offer, server side.** A8 (offer, offerResult, frame limit) and the review result kept with the pending member. | server | Opus | `tables.js`, `index.js`, `packages/server/README.md`, `packages/server/test/` | A pending member's offer is checked by the server and stored; the DM's `lobby` message gets a summary and the report, never a player's; an offer over 96 KB, a second within ten seconds, or one at a table whose `characters` is `new` is refused; accepting sends `admit` and the player has the character; declining says why; a pending member sees only the report about their own file. |
 | P6 | **My characters, client.** The start-screen list, New portable character, import and export of files, the build screen without a game, Import from Fantasy Grounds with no table. | client | Sonnet | `packages/client/index.html`, `style.css`, `mycharacters.js` (new), `buildsheet.js`, `importfg.js` (an entry point only), `transport.js` (one storage key), `tests/` | At 390 x 844 a player builds a level 12 character with no game, saves it, exports it, imports it on a second "device" (a cleared storage) and the file is the same; its sheet passes `validate`; the file has `born: { level: 12, by: 'self' }`; opening and re-saving it with a changed spell list adds an `edits` entry that names `spells` and no values. |
@@ -694,6 +885,12 @@ checked at 390 x 844 with touch and at 1280 x 800.
 | P8 | **Join with a character and the DM's review.** The lobby choice, the offer, the pending line, the review screen with the report, Accept and Decline, and the table settings. | client | Sonnet | `index.html`, `style.css`, `app.js` (small), `tablecontrols.js`, `reviewchar.js` (new), `transport.js` (message pass-through), `tests/` | A DM and a player in two windows: the player offers a file; the DM sees the summary and the review at both sizes; Accept puts the character in the party owned by that player; Decline tells the player why; the pending player's screen shows no table setting. |
 | P9 | **Send-off.** The `take` message, the send-off screen, `takeaway`, the DM's ticks, the player's confirmation, the file and the `left` block; Leave offers it first. | server, client | Opus (server), Sonnet (client) | `tables.js`, `packages/server/README.md`, `sendoff.js` (new), `app.js` (small), `tests/` | A character that gained a level and a magic item at a table leaves with both under `everything`, with the level only under `level-only`, and with neither under `nothing`; the DM's ticks change that; the file verifies back at the same server as "signed here"; a stand-in subclass is marked in the file. |
 | P10 | **Stretch: a character in two files.** Detecting that the incoming chain forks a block this server sealed, and showing it. Also the DM's "trust this server" tick and the operator list shown in settings. | server, client | Sonnet | `tables.js`, `reviewchar.js` | A file with a block removed and returned to its sealing server is reported "continued here by another copy"; the trust tick adds the key id to the table's list and the next file from that key reads "signed by a server you trust". |
+
+Decision 8 (the official server, monikers, the hash and summary store, reputation,
+the lobby, the adventure setup and forks) has no tasks yet: it needs the owner's
+decision to run a service and a spec of its own for the server side. A1 to A9
+and P1 to P10 are built so that it can be added later (the `official` verdict,
+`dm` and `fork` fields, `cid` uniqueness) without redoing them.
 
 The first four can run in parallel after P1 and P2 are agreed; P5 needs P3 and
 P4; P8 needs P5 and P7; P9 needs P3; P6 needs only P1 for the file shape and
@@ -719,7 +916,9 @@ Each is a thing a reviewer of the pull requests above must check.
 4. **The private key never leaves `DATA_DIR/server-key.json`.** Not in a
    table file, an export, the undo file, a log line, an error message or the
    `/api/server` response. Written with mode 0600. A test greps for it.
-5. **`playerView` must not carry the record.** The record is not in `state`, so
+5. **`playerView` must not carry the record.** (The public summary of
+   Decision 8 is not the record: it is served by the official server's lobby,
+   holds only the fields listed there, and is never put in `state`.) The record is not in `state`, so
    it is not in `playerView`; a test builds a table with records for three
    characters and asserts that no player's view and no player's event contains
    `cid`, a block, a hash or an `entries` key. A player is sent their own
@@ -753,14 +952,23 @@ Each is a thing a reviewer of the pull requests above must check.
 13. **A gap, named.** There is no deletion path for a table or a member's
     record today (`IDLE_MS` only stops counting a table against `MAX_TABLES`),
     so records stay with the table file. The README of the server states it.
-14. **The public server's key identity** matters only to people who trust it.
-    A leaked key lets anyone forge "signed by this server" files; the operator's
-    remedy is a new key, after which old files read as unknown. This is stated
-    in the operator notes, not hidden.
+14. **Key identity.** For an unofficial server the key matters only to people
+    who trust it: a leaked key lets anyone forge "signed by this server" files;
+    the operator's remedy is a new key, after which old files read as unknown.
+    For the **official** key a leak lets anyone forge official files; the
+    project's remedy is a new key built into a new release, stated in the
+    operator notes, not hidden. A modified server cannot make its own blocks
+    official: a test presents blocks signed by another key claiming to be the
+    official one and expects `signed-unknown`.
+15. **Scores are personal data** (Decision 8): reputation, reliability and any
+    engagement score need consent, visibility, contest and deletion before they
+    are collected. Anonymous statistics must be non-attributable (a coarse
+    bucket, a minimum count, hour-rounded UTC start) and their opt-out must change
+    nothing about a player's reputation.
 
 ## Risks
 
-- **People will read "signed" as "honest".** The whole design bends to avoid it:
+- **People will read "official" and "signed" as "honest".** The whole design bends to avoid it:
   grades, the unknown-signer rule, the wording test. If playtests show the
   words still mislead, the meter loses its tick marks and keeps only the
   words.
@@ -779,37 +987,50 @@ Each is a thing a reviewer of the pull requests above must check.
 
 ## Questions for the owner
 
-Only those whose answer changes the design. Each has a default, and work
-proceeds on the default.
+Questions 1, 4, 5, 6 (in part), 7, 8, 9, 10 and 11 were answered or overtaken by
+the owner's decisions in #244; their answers are in "What the owner has settled"
+and Decision 8, and are recorded here so nobody asks again. Each open question
+has a default, and work proceeds on the default.
 
-1. **Does the project publish a list of servers it vouches for?** For example
-   the public one, so that a character signed there reads as "signed by a
-   server you trust" on every self-hosted table. *Default: no list in the repo.
-   Each server trusts itself and whatever its operator puts in `TRUSTED_KEYS`;
-   a DM can add keys for one table.*
+**Answered**
+
+1. *A list of servers the project vouches for?* **No list; one official server
+   whose key is built into the game, and no way to grant the designation to
+   another.** Other servers are unofficial; a DM may trust a key for one table,
+   which never makes it official.
+4. *What leaves.* **Everything, with the DM's sign-off at send-off.**
+5. *The DM's name in the history.* **The DM's moniker, always.**
+7. *What an unapproved or refused player is told.* **About their own character:
+   the compatibility report, and accepted, refused or accepted with changes, plus
+   an optional short DM note.**
+8. *Accounts.* **A moniker on the official server, not a server-held library:
+   the official server keeps a hash and a small summary; backups may be a paid
+   upgrade.**
+9. *Ready-made heroes and imports.* **Yes; they become travelling characters and
+   their history starts with one self-reported line.**
+11. *A signed day.* **Date only in the history; anonymous statistics use UTC
+    timestamps.**
+
+**Still open**
+
 2. **Default table policy.** *Default: `characters: 'new'`, today's behaviour;
    a DM turns own characters on.*
-3. **Level limits for own characters.** Should a DM be able to say "own
-   characters only from level 1" or "at most level 5" as a setting, rather than
-   by reading the meter? *Default: no setting in this version; the DM refuses in
-   the review.*
-4. **What leaves by default.** *Default: `takeaway: everything`, with the DM's
-   ticks at send-off.* The alternative is `level-only`, so loot never travels.
-5. **The DM's name in the history.** The owner asked for "which DM". *Default:
-   the record names the table and the server, not the DM, unless the DM ticks
-   "sign my name on characters" for the table.*
-6. **Who sees the meter.** *Default: the owner and the DM. Other players of the
-   table are not shown it.* Say if the whole table should see everyone's.
-7. **What an unapproved player is told.** *Default: only what concerns their
-   own file; nothing of the table's settings or content until approved.*
-8. **Accounts.** A server-held library of characters needs accounts, which do
-   not exist. *Default: no; the file and the device copy are the character.*
-   Say if accounts are planned, since they would change Decision 1.
-9. **Pregenerated characters and Fantasy Grounds imports on the start screen.**
-   Both become portable with `born.by: 'self'` and no signature. *Default:
-   yes; they are marked as such by the meter.*
-10. **One character at two tables.** A copy of a file can be played at two
-    tables at the same time. *Default: allowed. A server flags a fork only on
-    its own blocks and says it neutrally; nothing refuses it.*
-11. **A signed day.** Blocks carry the day, not the time. *Default: day only,
-    for privacy.* Say if the time of day matters.
+3. **Level limits for own characters.** Now answered in part: the DM sets the
+   adventure's level and a higher character is forked. *Default for what is left:
+   an unset level means no limit and the DM refuses in the review; a character
+   below the level may be raised at the table (the lead's assumption).*
+6. **Who sees the block-by-block details.** The meter and grade are public (the
+   owner's decision). *Default: Details (each day, table, DM) are shown to the
+   owner and the DM only.* Say if they should be public too.
+10. **Fork id rule.** *Default: the original keeps its id, the fork gets the new
+    one; on the official server an id is in one adventure at a time; the first of
+    two diverged histories seen keeps the id.* Awaiting the owner's
+    confirmation. On unofficial servers a copy at two tables is allowed and
+    flagged neutrally.
+12. **Operator trust lists.** *Default: none built; only the DM's per-table trust
+    tick.* Say if a self-hosting operator should be able to list keys for all
+    their tables (it would not make anything official).
+13. **The public summary's contents.** *Default: id, moniker, name, class, level
+    and the meter's figures.* Say if more or less may be public.
+14. **Raising a lower-level character at the table.** *Default: allowed,
+    recorded as raised by the DM (`basis: 'dm'`).*
