@@ -473,3 +473,62 @@ test("picking a pile to nothing: the last gear event keeps its pile and the pile
   const later = viewEvents(s.timeline, s, SAM).filter((e) => e.type === "object" && e.object === pile.id);
   assert.equal(later.length, 2, "from the record too: dropped and gone");
 });
+
+// Review of #291, third round: revealing (or removing) a hidden dropper moves everything from its record onto the
+// cell's open pile, past the 40 a drop may make: nothing is lost, and the hidden drop was never refused.
+const things = (s) => s.map.objects.filter((o) => o.def === "pile").reduce((n, o) => n + o.contents.length, 0);
+for (const grid of ["hex", "square"]) for (const rule of SIGHT) for (const [open, hidden] of [[40, 5], [40, 40]]) {
+  test(`merging ${open} seen and ${hidden} dropped unseen keeps all ${open + hidden} (${grid}, ${rule})`, () => {
+    for (const how of ["reveal", "remove"]) {
+      const { s, g, at } = place(grid, rule);
+      s.entities.fighter.pos = { ...at[2], z: 0 };
+      s.entities.fighter.gear.push(...Array.from({ length: open }, (_, i) => `Coin ${i}`));
+      for (let i = 0; i < open; i++) ok(apply(s, { type: "drop", actor: "fighter", item: `Coin ${i}` }, PAT));
+      s.entities.fighter.pos = { ...at[0], z: 0 };
+      ok(apply(s, { type: "place", actor: g.id, to: at[2] }, DM));
+      g.gear.push(...Array.from({ length: hidden }, (_, i) => `Pebble ${i}`));
+      for (let i = 0; i < hidden; i++) ok(apply(s, { type: "drop", actor: g.id, item: `Pebble ${i}` }, DM));
+      assert.equal(things(s), open + hidden);
+      const dm = pickUpsFor(s, g, { dm: true });
+      assert.ok(dm.some((p) => p.unseen && p.items.length === hidden), "the DM is offered the hidden record");
+      assert.ok(!pickUpsFor(s, g).some((p) => p.unseen), "and players' list never holds it");
+      if (how === "reveal") ok(apply(s, { type: "reveal", actor: g.id, hidden: false }, DM));
+      else ok(apply(s, { type: "remove", actor: g.id }, DM));
+      assert.equal(things(s), open + hidden, `${how}: every thing is still there`);
+      const piles = s.map.objects.filter((o) => o.def === "pile");
+      assert.equal(piles.length, 1, "one pile in the cell");
+      assert.equal(new Set(piles[0].contents.map((x) => x.id)).size, open + hidden, "each with its own id");
+      const sent = view(s, PAT).map.objects.find((o) => o.id === piles[0].id);
+      assert.equal(sent.contents.length, open + hidden, "players are sent all of it");
+      // Past the cap: nothing more is dropped there, everything can be picked up.
+      s.entities.fighter.pos = { ...at[2], z: 0 };
+      s.entities.fighter.gear.push("Rope");
+      no(apply(s, { type: "drop", actor: "fighter", item: "Rope" }, PAT), /40 things lie there already/);
+      const last = piles[0].contents.at(-1).id;
+      ok(apply(s, { type: "pickUp", actor: "fighter", object: piles[0].id, item: last }, PAT));
+      assert.equal(things(s), open + hidden - 1);
+    }
+  });
+}
+
+for (const grid of ["hex", "square"]) for (const rule of SIGHT) {
+  test(`a drop onto a cell that holds two known piles goes onto the first; a revealed drop joins it; nothing lost (${grid}, ${rule})`, () => {
+    const { s, g, at } = place(grid, rule);
+    const cell = { level: "ground", at: { q: at[2].q, r: at[2].r }, def: "pile", state: "lying" };
+    ok(apply(s, { type: "mapEdit", ops: [{ op: "object", object: { ...cell, id: "laid-a", contents: [{ id: "c1", name: "Comb" }] } },
+      { op: "object", object: { ...cell, id: "laid-b", contents: [{ id: "c1", name: "Brush" }] } }] }, DM));
+    s.entities.fighter.pos = { ...at[2], z: 0 };
+    s.entities.fighter.gear.push("Rope");
+    ok(apply(s, { type: "drop", actor: "fighter", item: "Rope" }, PAT));
+    assert.deepEqual(s.map.objects.find((o) => o.id === "laid-a").contents.map((x) => x.name), ["Comb", "Rope"]);
+    s.entities.fighter.pos = { ...at[0], z: 0 };
+    ok(apply(s, { type: "place", actor: g.id, to: at[2] }, DM));
+    g.gear.push("Bone dice");
+    ok(apply(s, { type: "drop", actor: g.id, item: "Bone dice" }, DM));
+    assert.equal(things(s), 4);
+    ok(apply(s, { type: "reveal", actor: g.id, hidden: false }, DM));
+    assert.equal(things(s), 4, "conserved");
+    assert.deepEqual(s.map.objects.find((o) => o.id === "laid-a").contents.map((x) => x.name), ["Comb", "Rope", "Bone dice"]);
+    assert.deepEqual(s.map.objects.find((o) => o.id === "laid-b").contents.map((x) => x.name), ["Brush"]);
+  });
+}

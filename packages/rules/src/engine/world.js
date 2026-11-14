@@ -405,7 +405,7 @@ const wellFormed = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && O
 export function pileContents(o) {
   if (!isPile(o) || !Array.isArray(o.contents)) return [];
   const seen = new Set();
-  return o.contents.filter((x) => wellFormed(x) && !seen.has(x.id) && seen.add(x.id)).slice(0, PILE_MAX);
+  return o.contents.filter((x) => wellFormed(x) && !seen.has(x.id) && seen.add(x.id));
 }
 // What a creature the party does not know of drops goes onto a pile of its own, marked `by` (its id), beside any pile
 // the party sees in that cell (review of #291): so a pile the party sees, its ids, its room and what happens to it
@@ -424,8 +424,9 @@ export function seePiles(s) {
     const open = pileAt(s, o.level, o.at);
     if (!open) { delete o.by; o.id = pileId(s, o.level, o.at); continue; }
     if (!Array.isArray(open.contents)) open.contents = [];
+    // Everything moves: the merge may take the open pile past PILE_MAX (which only limits a drop onto it), so
+    // nothing is lost and the hidden drop was never refused for what the party could not see (review of #291).
     for (const x of Array.isArray(o.contents) ? o.contents : []) {
-      if (open.contents.length >= PILE_MAX) break;
       let n = 1;
       while (open.contents.some((y) => y?.id === `c${n}`)) n++;
       open.contents.push({ ...x, id: `c${n}` });

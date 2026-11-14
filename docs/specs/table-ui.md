@@ -1463,6 +1463,9 @@ What was settled while building, where it differs from Decision 5, and what was 
   `objectOf` answers "No such object."). When the party knows of the dropper, or it is gone, `seePiles` (from
   `watch`) merges it into the cell's open pile (new `c` ids) or makes it that pile (its id becomes the cell's).
   Pile ids come from the cell (`pile-ground-3_-1`; a marked one `...-h1`), so they count nothing players can't see.
+  Third round: the merge moves everything, past 40 if need be (40 only limits a drop onto a pile), so no thing is
+  lost on `reveal` or `remove`; a concealed dropper that dies keeps its record marked until revealed or removed.
+  `pickUpsFor(s, e, { dm: true })` lists every pile in reach for the DM's screen, the marked ones with `unseen: true`.
   Under los and light a hiding creature's drop seen by the party's own eyes stays marked too: the mark goes with
   the dropper, not the cell (it never leaks; the cost is a pile shown a little late). (2) `pickUp` is refused
   through a wall, as `pass` is. (3) `drop` and `pickUp` events carry `seen` (not sent) when the party saw the
@@ -1479,7 +1482,7 @@ What was settled while building, where it differs from Decision 5, and what was 
   `time` says "free" or "uses your action". Send `{ type: 'pass', actor: e.id, item, to }`, `item` the sheet key for a
   magic item, else the gear string. An item with `equipped` has no Give or Drop: show "Take it off first".
 - **Drop** on the same rows: `{ type: 'drop', actor, item }`; reason from `interactionOf(S, e).why`.
-- **Pick up**: the Move tab's objects in reach (or the Items tab) from `pickUpsFor(S, e)` (walls already counted): one row per thing,
+- **Pick up**: the Move tab's objects in reach (or the Items tab) from `pickUpsFor(S, e)` (walls already counted; the DM's screen passes `{ dm: true }` to see piles dropped unseen, `unseen: true`): one row per thing,
   `{ type: 'pickUp', actor, object, item: thing.id }`, and outside a fight "Take all" without `item`.
 - **The map** draws a pile (`def: 'pile'`, id `pile-<level>-<q>_<r>`) as a small heap in its cell (the DM's view may
   hold a second, marked `by`, in the same cell: draw them as one heap and list both); an `object` event with

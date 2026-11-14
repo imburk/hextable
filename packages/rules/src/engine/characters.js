@@ -319,11 +319,15 @@ export function passTargets(s, e) {
 }
 // The piles in reach with something in them, as `usesFor` finds objects (a player's client passes its own view, which
 // holds only the piles it may know of): [{ object, name, items: [{ id, name, pack? }], why, time }].
-export function pickUpsFor(s, e) {
+// With `dm: true` (the DM's screen, on the whole state) every pile in reach, those players are not shown and those
+// dropped unseen (`unseen: true`) too.
+export function pickUpsFor(s, e, { dm = false } = {}) {
   if (!e) return [];
   const { why, time } = interactionOf(s, e);
-  return s.map.objects.filter((o) => isPile(o) && objectShown(s.map, o) && nearObject(s, e, o) && openContents(o).length).map((o) => ({
-    object: o.id, name: objectName(o), items: openContents(o).map((x) => ({ id: x.id, name: contentName(x), ...(x.item !== undefined ? { pack: x.item } : {}) })), why, time,
+  const list = (o) => (dm ? pileContents(o) : openContents(o));
+  return s.map.objects.filter((o) => isPile(o) && (dm || objectShown(s.map, o)) && nearObject(s, e, o) && list(o).length).map((o) => ({
+    object: o.id, name: objectName(o), items: list(o).map((x) => ({ id: x.id, name: contentName(x), ...(x.item !== undefined ? { pack: x.item } : {}) })), why, time,
+    ...(o.by !== undefined ? { unseen: true } : {}),
   }));
 }
 

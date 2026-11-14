@@ -630,7 +630,10 @@ Where the build settled a detail the design left open, or changed it.
   the party sees: players are not sent it and can't name it, and a party drop there is exactly a drop onto a bare
   cell (ids, `placed`, the 40-thing room, what is gone). When the party knows of that creature or it is gone from
   the map (`seePiles`, run after every action from `watch`) the pile joins the cell's open pile, or becomes it.
-  The DM may see two pile records in one cell. A thing in a cell is out of reach behind a wall or shut door (`nearObject` asks `unblocked`,
+  The DM may see two pile records in one cell. The 40-thing limit holds a drop only: a merge moves everything,
+  so a pile can hold more after one (nothing is lost and the hidden drop was never refused for what the party
+  could not see), and nothing more is dropped onto it until it is under 40 again. A concealed dropper that dies
+  keeps its record marked until the DM reveals or removes it. A thing in a cell is out of reach behind a wall or shut door (`nearObject` asks `unblocked`,
   as `pass` does; review of #291); this holds for every thing in a cell, levers and chests too.
 
 ## Sources
