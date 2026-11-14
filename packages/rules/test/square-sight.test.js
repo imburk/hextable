@@ -791,7 +791,7 @@ test("every caller of objectSegment and objectHexes in the rules passes the map'
   const { readdirSync, readFileSync } = await import("node:fs");
   const roots = [new URL("../src/", import.meta.url), new URL("../src/engine/", import.meta.url), new URL("../../client/", import.meta.url)];
   // Lines in files other lanes hold now, listed for the lead (docs/DEBT.md T22 (1)).
-  const later = { "three-build.js": 1, "render-three.js": 1, "editor.js": 3 };
+  const later = { "editor.js": 3 };          // the Three.js lines were fixed by S9b (#266)
   const args = (src, open) => { let depth = 0, n = 0, any = false; for (let i = open; i < src.length; i++) { const c = src[i]; if ("([{".includes(c)) { depth++; continue; } if (")]}".includes(c)) { depth--; if (depth === 0) return any ? n + 1 : 0; continue; } if (depth === 1 && c === ",") n++; else if (depth === 1 && !/\s/.test(c)) any = true; } return -1; };
   let calls = 0;
   for (const root of roots) for (const f of readdirSync(root).filter((x) => x.endsWith(".js"))) {
