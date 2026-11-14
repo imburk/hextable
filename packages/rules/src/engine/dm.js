@@ -268,7 +268,9 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // range are measured. Absent means the first value. What each means is SETTING_TEXT, below.
   diagonals: DIAGONALS, squareRange: SQUARE_RANGES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
-  conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'] };
+  conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
+  // Square maps only: how cover is judged (sight.js SQUARE_COVERS, words in SQUARE_COVER_TEXT); absent means the first.
+  squareCover: ['obstacle', 'corners'] };
 // What the square-map settings mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   diagonals: {

@@ -207,9 +207,12 @@ export function viewHandouts(state, viewer) {
 // Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
 // those hexes, the objects that touch them, and the regions already revealed. Nothing else: an
 // unrevealed room is simply absent. Built once and kept until the map or what is revealed changes.
-const REACH = HEX.cornerReach + 0.02;             // a hex's corner, in feet from its centre (by the map's grid in S8)
-// The stretches of a wall that lie within REACH of any of these hex centres.
-export function clipWall(w, centres) {
+// A cell's corner, in feet from its centre, and a hair more: `G.cornerReach` of the map's grid
+// (5/√3 on hexes, 5/√2 on squares; docs/specs/square-grid.md, E7).
+const reachOf = (G) => G.cornerReach + 0.02;
+// The stretches of a wall that lie within `reach` of any of these cell centres.
+export function clipWall(w, centres, reach = reachOf(HEX)) {
+  const REACH = reach;
   const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
   for (const [cx, cy] of centres) {
     const fx = ax - cx, fy = ay - cy;
@@ -253,7 +256,7 @@ function shownMap(state) {
     // that nothing about a wall's name or place in the list says which one is not a wall.
     walls: [...map.walls, ...map.objects.filter((o) => objectSegment(o, G) && hiddenNow(o))
       .map((o) => ({ id: o.id, level: o.level, kind: 'wall', a: objectSegment(o, G)[0], b: objectSegment(o, G)[1] }))]
-      .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : []))
+      .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level), reachOf(G)) : []))
       .sort((p, q) => p.a[0] - q.a[0] || p.a[1] - q.a[1] || p.b[0] - q.b[0] || p.b[1] - q.b[1] || (p.kind < q.kind ? -1 : p.kind > q.kind ? 1 : 0))
       .map((w, i) => ({ ...w, id: `w${i}` })),
     // Objects in a hidden state are not sent at all. Of the rest, only the fields named here (an
