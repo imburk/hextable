@@ -1,7 +1,7 @@
 // Attacks and a creature's turn (engine.js): attack, act (a monster's actions), dodge, reaction
 // instructions, endTurn; and the attacks a turn allows (Multiattack, Extra Attack).
 import { actionProfile } from '../effects.js';
-import { turnEnded } from '../durations.js';
+import { effectsOf, turnEnded } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { turnInZones } from '../zones.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
@@ -9,9 +9,11 @@ import { able, control, current, ent, fail, featOf, ft, hostile, inFight, living
 import { cure, rollMode } from './rolls.js';
 import { aimAction, showPlace, unhide } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { coverOf } from '../sight.js';
+import { canSee, coverOf } from '../sight.js';
 import { conditionName } from '../modifiers.js';
-import { advanceTurn, checkEnd, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { unknown } from '../vision.js';
+import { roll } from '../rng.js';
 
 function checkRange(s, e, t, atk) {
   const d = apart(s, e, t);
@@ -119,6 +121,24 @@ function cunningFor(s, e, t, atk, list) {
   return chosen;
 }
 
+// Superior Hunter's Prey (`markSpread: { spell, range }`): `a.prey` names another creature, seen and within
+// `range` feet of the target, that takes the mark's extra damage too if this attack damages the target.
+// The target must be marked by this creature's `spell` now (a modifier it put on its caster against the
+// target), once a turn. Returns { o, f, mod } or refuses.
+function preyFor(s, e, t, id) {
+  const f = (e.feats ?? []).find((x) => x.markSpread) || fail(`${e.name} can't spread a mark's damage.`);
+  const sp = f.markSpread.spell;
+  const part = effectsOf(s).filter((fx) => fx.source === e.id && fx.spell === sp).flatMap((fx) => fx.parts).find((p) => !p.ended && p.target === e.id && p.against === t.id && p.modifier?.on === 'damage.dealt');
+  part || fail(`${f.name} works on a creature ${e.name} has marked; ${t.name} is not.`);
+  !s.encounter.flags[`prey:${e.id}`] || fail(`${e.name} has already used ${f.name} this turn.`);
+  const o = typeof id === 'string' ? s.entities[id] : null;
+  (o && !o.dead && o.id !== t.id && o.id !== e.id && !unknown(s, o)) || fail(`Name another creature for ${f.name}.`);
+  canSee(s, e, o) !== 'no' || fail(`${e.name} can't see ${o.name}.`);
+  apart(s, t, o) * FT <= f.markSpread.range || fail(`${o.name} is more than ${f.markSpread.range} ft from ${t.name}.`);
+  inFight(s, o.id) || fail(`${o.name} is outside the battle.`);
+  return { o, f, mod: part.modifier };
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -127,7 +147,7 @@ export const handlers = {
     const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
-      (a.brutal === undefined && a.cunning === undefined) || fail(`Brutal Strike and Cunning Strike are made with a weapon or an Unarmed Strike.`);
+      (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
       return takeAction(s, e, def, { target: a.target }, ev);
@@ -150,6 +170,7 @@ export const handlers = {
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
     const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
+    const prey = a.prey === undefined ? null : preyFor(s, e, t, a.prey);
     if (flurry) { if (--b.bonusAttacks.left <= 0) delete b.bonusAttacks; }
     else if (bonusTime) b.bonus--;
     else if (pooled) fromPool(b, atk.id, true);
@@ -159,7 +180,15 @@ export const handlers = {
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
     }
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
+    const from = ev.length;
     resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
+    // Superior Hunter's Prey: when the attack damaged the marked target, the mark's extra damage to the other one.
+    if (prey && ev.slice(from).some((x) => x.type === 'damage' && x.target === t.id && x.amount > 0) && !prey.o.dead) {
+      s.encounter.flags[`prey:${e.id}`] = true;
+      const r = roll(s, prey.mod.value), type = prey.mod.types?.[0] ?? 'force';
+      ev.push({ type: 'note', id: e.id, text: `${prey.f.name}: ${prey.mod.value} ${type} to ${prey.o.name}` });
+      damage(s, prey.o, [{ amount: r.total, type, dice: r.dice, bonus: r.bonus, by: e.id }], null, ev);
+    }
     checkEnd(s, ev);
   },
 
