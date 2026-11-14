@@ -13,6 +13,9 @@ async function foeTurn(page, hp) {
     if (h.state.encounter) h.act({ type: 'endEncounter' });
     const alive = (e) => e.hp > 0 && !e.dead;
     const foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden && (e.attacks?.length || e.actions?.length));
+    // The whole party is made well first (setHp brings back the dead too): this pass is about beats, and a run of hits on earlier steps
+    // must not leave the party fallen, which puts a card over the map and ends the fight when the strike lands.
+    for (const e of Object.values(h.state.entities)) if (e.kind === 'pc' && (e.dead || e.hp < e.maxHp)) h.act({ type: 'setHp', actor: e.id, hp: e.maxHp });
     const pc = Object.values(h.state.entities).find((e) => e.kind === 'pc' && alive(e));
     h.act({ type: 'setHp', actor: pc.id, hp: hp0 ?? pc.maxHp });
     for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
