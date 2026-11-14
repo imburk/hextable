@@ -605,7 +605,7 @@ map.
   root), used by `gap` and `apartAt`; `apartAt` now takes the map's grid when none is given.
 - **The `G` default** is not removed from `shapeOf`, `footprint` and `overlapAt`: their callers
   outside S6's files (sight, zones, casting, features, characters, sheets, the renderers) do not
-  pass a grid yet; `docs/DEBT.md` T20 lists them. Every caller in S6's files passes it.
+  pass a grid yet; `docs/DEBT.md` T21 lists them. Every caller in S6's files passes it.
 - **E8** ends every terrain effect and every zone that does not follow a creature on any map
   change, hex maps included (the one deliberate change on hexes). **`loadMap`** runs `migrateMap`
   on the map it is sent before linting it.

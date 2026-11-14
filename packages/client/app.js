@@ -15,6 +15,8 @@ import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './render.js';
 import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker } from './tracker.js';
+import { mountDot } from './linkdot.js';
+import { seenState } from './linkquality.js';
 import { initActionPanel, spellWhy } from './actionpanel.js';
 import { initDrawer } from './drawer.js';
 import { initSettings } from './settings.js';
@@ -75,6 +77,13 @@ const TL = createTimeline({
   onIdle: () => { R.settle(); idled(); },        // whatever the renderer is still easing (a door, a fall) is brought to its end state
 });
 setInterval(() => TL.tick(), 33);
+// A player who goes quiet becomes lost in the DM's tracker with no message to say so (linkquality.js, seenState): look now and then.
+let linkKey = '';
+setInterval(() => {
+  if (!S || !T || T.solo || !isDM()) return;
+  const key = Object.values(S.entities).map((e) => linkOf(e)?.state ?? '').join();
+  if (key !== linkKey) { linkKey = key; tracker.render(); }
+}, 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) TL.skip(); });      // a tab that was hidden shows everything at once on its return
 // A tap on a control or the map, while beats play in `wait`, skips them instead of acting.
 const skipping = () => TL.pace === 'wait' && TL.busy() && TL.skip();
@@ -756,7 +765,14 @@ $('hint-go').onclick = () => {
 };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
-const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, act, toast,
+// The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
+const DOT = mountDot({ transport: () => T, parent: $('tools'), before: $('btn-undo') });
+const linkOf = (e) => {
+  if (!e.owner || T.solo) return null;
+  const m = (T.lobby?.members ?? []).find((x) => x.id === e.owner);
+  return { ...seenState(T.links?.get(e.owner), m?.online, Date.now(), T.linkCfg), who: m?.name };
+};
+const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, act, toast, link: linkOf,
   pick: (id) => { select(id); R.focus(id); refresh(); if (!D.wide) D.close(); },      // on a phone the map is what was asked for
   openSheet: (id) => { select(id); D.open('sheet'); refresh(); } });
 // The drawer holds every panel (drawer.js); what it shows is rendered here once its tab is the one open.
@@ -891,7 +907,7 @@ const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skip
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- the splash ----------
 // The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to
@@ -921,6 +937,9 @@ function start(transport, map = null) {
     CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; lobbyBusy(false); showLobby(msg); } else toast(msg); };
   T.on.lobby = () => S && refresh();
+  T.on.link = () => DOT.render();
+  T.on.links = () => { if (S) { tracker.render(); DOT.render(); } };
+  DOT.render();
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };
   T.on.history = (msg) => {
     if (!S) return;
