@@ -1,0 +1,38 @@
+/* The action panel (actionpanel.js, docs/specs/table-ui.md Decision 6). It lives in the card of #dock; colour, type and radius come from the theme tokens only. */
+#c-res button.pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; min-height: 32px; font: inherit; font-size: 12px; color: inherit; background: transparent; }
+#c-res button.pill[aria-expanded="true"] { border-color: var(--accent); }
+#ap-how { border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--panel-2); }
+#ap-how p { margin: 4px 0 0; color: var(--muted); } #ap-how .row { margin: 8px 0 0; } #ap-how button { min-height: 44px; }
+
+#ap-body { min-height: 0; }
+#ap-explore, #ap-reactions, #ap-down { max-height: 112px; overflow-y: auto; overscroll-behavior: contain; }
+#card[data-raised] :is(#ap-explore, #ap-reactions, #ap-down) { max-height: max(112px, calc(55vh - 200px)); }
+#card[data-collapsed] #ap-body { display: none; }
+.ap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ap-list { display: grid; gap: 6px; margin-top: 6px; }
+.ap-row { text-align: left; display: grid; align-content: center; gap: 1px; min-height: 48px; padding: 6px 10px; min-width: 0; }
+.ap-row .ap-t { font-weight: 700; } .ap-row small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.ap-row small.ap-why { color: var(--ink); font-size: 12px; }
+.ap-row.armed { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); } .ap-row.armed small { color: inherit; }
+.ap-more { margin-top: 6px; } .ap-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
+.ap-q { margin: 0 0 6px; font-weight: 700; color: var(--accent); } .ap-why-line { margin: 0 0 6px; }
+#ap-reactions .rx { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; } #ap-reactions .rx select { min-height: 44px; }
+#ap-reactions small { display: block; color: var(--muted); }
+
+#ap-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+#ap-tabs button { flex: 1 0 auto; min-width: 64px; min-height: 48px; padding: 4px 10px; }
+#ap-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#ap-tabs button.off { opacity: .5; }
+#ap-tabs button#ap-grip { flex: none; background: transparent; }
+#ap-tabs button.pulse { border-color: var(--accent); animation: ap-pulse .9s ease-in-out infinite alternate; }
+@keyframes ap-pulse { to { background: var(--accent); color: var(--accent-ink); } }
+@media (prefers-reduced-motion: reduce) { #ap-tabs button.pulse { animation: none; background: var(--accent); color: var(--accent-ink); } }
+
+@media (min-width: 900px) {
+  #ap-explore .ap-list { grid-template-columns: 1fr 1fr; }
+  #card[data-raised] :is(#ap-explore, #ap-reactions, #ap-down) { max-height: max(112px, calc(40vh - 150px)); }
+}
+
+/* The card is a grid; its rows must not grow to the width of the bar of buttons, which scrolls sideways inside it. */
+#card { grid-template-columns: minmax(0, 1fr); }
+#ap-body, #ap-all { min-width: 0; }

@@ -15,6 +15,7 @@ import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './render.js';
 import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker } from './tracker.js';
+import { initActionPanel, nearestAlly, spellWhy } from './actionpanel.js';
 import { initDrawer } from './drawer.js';
 import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
@@ -328,7 +329,7 @@ function onUpdate(state, events, fresh) {
   S = state;
   TL.setPace(pace());
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); D.reset();
+    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); DF.fresh(); CC.fresh(); D.reset();
     if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
@@ -336,6 +337,7 @@ function onUpdate(state, events, fresh) {
   if (first && pendingMap && isDM()) { act(pendingMap); pendingMap = null; }      // the lobby's chosen map, once the new table has its first state
   QE.events(events);
   SC.events(events);
+  AP.updated(events);
   for (const ev of events) if (ev.type === 'chronicle') chron.push({ t: S.clock, ...ev });
   if (!S.entities[selId]) {
     const own = Object.values(S.entities).find((e) => e.kind === 'pc' && (isDM() ? true : e.owner === T.you.userId));
@@ -369,12 +371,6 @@ function idled() {
   }
 }
 
-// The nearest other living party member: whom Follow picks if nobody is tapped.
-function nearestAlly(e) {
-  return Object.values(S.entities).filter((x) => x.id !== e.id && x.side === 'party' && !x.dead)
-    .sort((a, b) => H.dist(a.pos, e.pos) - H.dist(b.pos, e.pos))[0] ?? null;
-}
-
 // ---------- rendering the UI ----------
 function button(label, sub, cls, why, onClick) {
   const b = document.createElement('button');
@@ -398,6 +394,12 @@ function actionButtons(e, bar) {
     const go = () => (p.aim === 'multi' || p.aim === 'self' || p.aim === 'none' ? act({ type: 'act', actor: e.id, action: def.id }) : setMode(armed ? MOVE : { kind: 'action', id: def.id, area: p.aim === 'area', aim: null }));
     bar.append(button(def.name, sub, armed ? 'armed' : '', why, go));
   }
+}
+// Cast a spell that has nothing to aim on the spot, or arm it (or put it down again if it is armed).
+function startSpell(e, id, armed) {
+  const sp = SPELLS[id];
+  if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) });
+  else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
 }
 // A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
 const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
@@ -439,6 +441,10 @@ function actionAim(e, hl) {
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
+function sizeDock() {
+  R.inset = $('dock').offsetHeight * 0.85;
+  document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray and the drawer sit above the dock
+}
 function refresh() {
   if (!S) return;
   const enc = S.encounter, cur = current(S), e = S.entities[selId];
@@ -471,37 +477,13 @@ function refresh() {
   }
 
   // selected creature card
-  $('card').hidden = !e;
   const hl = { selected: selId, turn: enc ? cur : null };
   let hint = '', go = false;
+  AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
   if (e) {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
-    const my = mine(e), full = !!e.abil, showNumbers = full && (my || e.side === 'party');
-    $('c-name').textContent = e.name;
-    $('c-sub').textContent = e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
-    $('c-hp').querySelector('i').style.width = `${hpFraction(e) * 100}%`;
-    const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
-    $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
-    $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
-    $('btn-sheet').hidden = !showNumbers;
-    $('btn-end').hidden = !(my && enc && cur === e.id);
-    const myTurn = enc && cur === e.id && up(e), b = enc?.budget;
-    const pip = (label, have) => `<span class="${have ? 'have' : 'spent'}">${label}</span>`;
-    const dying = !e.dead && e.hp <= 0 && full && (e.cond.stable ? 'Stable' : `Dying ${e.death.s}✓ ${e.death.f}✗`);
-    const named = Object.keys(e.cond).filter((c) => e.cond[c] && c !== 'stable').map((c) => conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : ''));
-    const conds = [e.dead && 'Dead', formOf(e) && `<b class="form">${esc(formName(e))} form</b>`, dying, e.hidden && 'Hidden from players', ...named].filter(Boolean);
-    // Lasting effects this creature is under or is keeping up. Whoever controls the source can end one.
-    const lasting = (S.effects || []).filter((fx) => fx.source === e.id || fx.parts.some((p) => p.target === e.id && !p.ended)).map((fx) => {
-      const left = !fx.until ? '' : fx.until.clock !== undefined ? ` · until ${clockText(fx.until.clock)}` : enc ? ` · ${Math.max(0, fx.until.round - enc.round)} rounds` : '';
-      const label = `${esc(fx.name)}${fx.conc ? ' (C)' : ''}${left}`;
-      return mine(S.entities[fx.source]) ? `<button type="button" class="fx" data-fx="${esc(fx.id)}" title="End ${esc(fx.name)}">${label} ✕</button>` : `<span class="fx">${label}</span>`;
-    }).join('');
-    $('c-res').innerHTML =
-      (myTurn && full ? pip('Action', b.action > 0) + (b.attacks ? pip(`Attacks left ${attacksLeft(b)}`, true) : '') + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= FT) : '') +
-      (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
-      Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
-      conds.map((c) => `<span>${c}</span>`).join('') + lasting;
-
+    const my = mine(e), full = !!e.abil;
+    const myTurn = enc && cur === e.id && up(e);
     const bar = $('actions'); bar.textContent = '';
     bar.classList.remove('many');
     if (bar.dataset.for !== e.id) { bar.scrollLeft = 0; bar.dataset.for = e.id; }        // another creature starts at the left
@@ -516,11 +498,10 @@ function refresh() {
         }
         for (const id of e.spells) {
           const sp = SPELLS[id], armed = mode.kind === 'spell' && mode.id === id;
-          const why = blocked(S, e, sp.time) || (sp.level > 0 && !(e.slots[sp.level] > 0) && `${e.name} has no level ${sp.level} spell slots left.`) ||
-            (sp.level > 0 && enc?.flags.slot && 'Only one spell slot can be spent per turn.') || '';
+          const why = spellWhy(S, e, sp);
           const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
           // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
-          const pick = () => (sp.aim === 'self' || sp.aim === 'none' ? act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) }) : setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }));
+          const pick = () => startSpell(e, id, armed);
           bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
             pick));
         }
@@ -543,7 +524,7 @@ function refresh() {
           const leader = e.follow && S.entities[e.follow];
           if (leader) bar.append(button('Stop following', `Following ${leader.name}`, '', '', () => act({ type: 'follow', actor: e.id, leader: null })));
           else {
-            const armed = mode.kind === 'follow', near = nearestAlly(e);
+            const armed = mode.kind === 'follow', near = nearestAlly(S, e);
             bar.append(button(armed ? 'Follow nearest' : 'Follow', armed ? (near ? `${near.name} · or tap someone` : 'Tap a party member') : 'Walk behind someone', armed ? 'armed' : '', near ? '' : 'Nobody else in the party to follow.',
               () => (armed ? (setMode(MOVE), act({ type: 'follow', actor: e.id, leader: near.id })) : setMode({ kind: 'follow' }))));
           }
@@ -611,8 +592,7 @@ function refresh() {
   showPick();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   R.setHighlights(ED.on ? ED.marks() : hl);
-  R.inset = $('dock').offsetHeight * 0.85;
-  document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray sits above the dock
+  sizeDock();
   ED.sync();
 
   if (!$('log').hidden) renderLog();
@@ -859,7 +839,6 @@ $('dm-place').onclick = () => { if (!selId) return toast('Select a creature firs
 const SR = initShortRest({ host: $('dm-rest-all'), act, getState: () => S });
 $('dm-rest').onclick = () => act({ type: 'rest' });
 $('dm-rest-all').onclick = () => act({ type: 'rest', ids: Object.values(S.entities).filter((e) => !e.dead).map((e) => e.id) });
-$('c-res').onclick = (ev) => { const b = ev.target.closest('[data-fx]'); if (b) act({ type: 'endEffect', effect: b.dataset.fx }); };
 // Conditions: pick one, then put it on the selected creature or take it off.
 $('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
 $('dm-cond-set').onclick = () => {
@@ -963,6 +942,12 @@ function syncCards() {
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
+
+// The action panel (actionpanel.js): the card's head and status, and the tabs. The bar of today's buttons is still built above and sits in its "All" tab.
+const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
+  castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
+  budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }) });
+new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
 window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };

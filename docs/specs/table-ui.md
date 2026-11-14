@@ -1192,3 +1192,39 @@ What was settled while building, where it differs from the text above, and what 
 - **Left out.** Who would pass a threshold before publishing (the engine does not say), a defeat entry in the Log, the foe names without their numbers when the
   pack names are numbered by the engine ("Wolf 1" is counted as "Wolf" for display only). See DEBT T13.
 - **Smoke.** `SMOKE_ONLY=defeat` (solo, both sizes) and `SMOKE_ONLY=rewards` (a DM and a phone player) are new.
+
+### T3: the action panel shell (PR for #231)
+
+What was settled while building, where it differs from the text above, and what was left.
+
+- **Files.** `actionpanel.js` (the panel; its top half is pure and has no page in it), `actionpanel.css`, `index.html` (the card's new elements and one
+  Settings select), small changes to `app.js` (the card's head and status moved out, `startSpell` and `sizeDock` pulled out of the bar code, `AP.render`
+  called from `refresh`), `reactionsheet.js` (`reactionsHtml(S, e, { panel })`: ids prefixed `ap-` so the sheet keeps its own, no heading). `features.js` was not
+  touched: nothing needed exporting. `packages/client/test/actionpanel.test.js` is run by `npm test` (it matches `packages/*/test/*.test.js`).
+- **Pure parts.** `panelContext(S, e, { mine, dm })` returns the spec's table (situation, every tab, default) with a `built` flag; `visibleTabs` is the built ones plus
+  All; `defaultTab` applies the preference and "Reactions if available, else the last tab used"; `rankExplore(S, e, { dm, mode, found })` returns the ordered rows;
+  `howItEnds` and `statusHtml` are the status line. Nothing in them computes a rule: they call `usesFor`, `blocked`, `hideProblem`, `reactionsOf`, `canReact`, `lightAt`.
+- **Tabs drawn today.** Explore (not in a fight), Reactions (another's turn), Down (one tab, from the death-save count), and **All**, which holds `#actions`
+  exactly as `refresh()` builds it (same ids, same buttons, same toasts). The strip of tabs is hidden when there is only one (on your own turn in a fight: All
+  alone, so the card is as it was). The tabs the spec lists and T4a/T4b will fill are in `panelContext` already; the shell draws only those with rows.
+- **Explore order.** Objects in reach (doable first), then Follow or Stop following (and Lead the party for the DM only), then healing shortcuts when under half and the
+  DM's rests (the rests come up here when a party member is under half or has used slots, else at the end), Search, Light a torch, Hide, rituals, Check. Search:
+  with `passiveFind` `off` it is in the top four; with a `noticed` or `triggered` event in the last two updates it is moved up to at most the fourth place; otherwise it
+  sits after the rows above. The first four rows are large buttons in a two-by-two grid, the rest under More. A greyed row writes its reason under its name
+  and sets `aria-disabled`; a tap on it also shows the toast, as the bar does.
+- **Healing shortcuts** jump to the matching button of the All tab (Spells and Features tabs do not exist yet) and focus it. **Light a torch** sends `setLight` for the DM and is
+  greyed "Only the DM hands out light." for a player (E16 not built). **Rituals** are cast as ordinary spells (E15 not built).
+- **Status line.** Conditions, the form, Dying and lasting effects are buttons (`data-how`); a tap opens a small card (`#ap-how`) with how it ends, as the spec's table says, and
+  **End it** for an effect whose source you control (all such effects, not only Concentration, because the old `✕` pill ended any of them). The old `✕` pill is gone.
+- **Reactions.** Greyed (aria-disabled, class `off`) with the reason shown in the pane when there are no reactions, the Reaction is spent or the creature cannot react; with a
+  question for this creature (`S.prompt.reactor`, or `S.pending.ask.reactor` for the DM) the tab is chosen, pulses (steady fill under reduced motion), is announced to
+  screen readers, and the pane says "A question is waiting." `#rp` is untouched.
+- **Heights.** Compact: the open pane is at most 112 px (two and a half rows of Explore). **More room** (a button at the end of the tab strip, or a drag of 30 px or more on the head)
+  raises it to about 55 % of the screen on a phone and 40 % on a desktop; the choice is kept until it is toggled. When something is armed (any `mode` but move) the rows step aside on a phone (up to 600 px) and the card is the head, the status and the tabs; the desktop keeps them. Explore's rows run in two columns from 900 px.
+- **Keyboard.** `1` to `6` choose a tab when no field has focus; arrow keys move along the tab strip.
+- **Preference `hextable.panelTab`.** `auto` (default), `remember` (the last tab used in each situation, kept in `hextable.panelLast`) and, until T4a, `all` (no tab strip, no collapsing:
+  today's card). It is a select in the Settings tab ("Actions, on this device"). `hextable.panelLast` is written only under `remember`.
+- **Smoke.** `SMOKE_ONLY=actionpanel` is new. Because the other passes tap `#actions` buttons while exploring, `open()` in `scripts/smoke/lib.mjs` sets `hextable.panelTab` to `all` for
+  them (one line, outside the T3 file list; the alternative was editing every tap). The new pass does not use `open()`.
+- **Not verified.** A real finger's drag on the head, a screen reader, the three themes beyond Classic, a real asked reaction with the new tab (the smoke sets a pending record in the page;
+  `SMOKE_ONLY=prompt` covers the real one with the old bar).

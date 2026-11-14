@@ -44,6 +44,7 @@ const REGISTRY = {
   maps: ['maps'],
   pinch: ['pinch'],
   newgame: ['newgame'],
+  actionpanel: ['actionpanel'],
 };
 
 const only = process.env.SMOKE_ONLY;
