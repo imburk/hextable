@@ -11,7 +11,7 @@ import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { createGovernor, shadowLevels } from './governor.js';
-import { hpFraction, lightAt, zoneHexes } from './render.js';
+import { arenaFlashCells, hpFraction, lightAt, zoneHexes } from './render.js';
 import { Builder, UNIT, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, makeBlob, makePawn, makeVeil, model, sightSig, spot, stand, surfY, swingDoor, tileSig } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
@@ -178,6 +178,8 @@ export class ThreeRenderer {
     this.terrain = new Piece(this, { recv: true }); this.wallMesh = new Piece(this, { cast: true }); this.doorMesh = new Piece(this, { cast: true });
     this.grid = new Piece(this, o(10, { offset: true })); this.shadows = new Piece(this, o(11, { offset: true })); this.overlay = new Piece(this, o(13));
     this.edge = new Piece(this, o(14)); this.edgeId = null; this.edgeBase = 0; this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.anim = 0;
+    this.flash = new Piece(this, { flat: true, lit: 0, blend: true, order: 15 }); this.flashAt = null;       // a refused move lights the border cells nearest it (the page event `hextable-arena-flash`, from app.js)
+    this.onFlash = (ev) => this.#flashEdge(ev.detail); window.addEventListener('hextable-arena-flash', this.onFlash);
     this.actors = new Map();
     this.floorData = []; this.cutSig = ''; this.cutYaw = null; this.wallsDirty = false;
     this.doors = new Map(); this.doorInfo = new Map(); this.seenRegions = null; this.veils = new Map(); this.ghosts = []; this.fell = new Set(); this.now = clock();
@@ -300,6 +302,11 @@ export class ThreeRenderer {
     this.ghosts.push({ piece, src: a, x: a.x, y: a.y, z: a.z, yaw: a.yaw, tiltNow: a.tiltNow ?? 0, k: a.k ?? 1, ...g });
   }
 
+  #flashEdge(hex) {
+    const st = this.state, cols = st ? arenaFlashCells(st.map, st.encounter, hex, this.ceiling) : [];
+    if (!cols.length) return;
+    this.flash.set(buildEdge({ map: st.map, enc: st.encounter, theme: this.theme, ceiling: this.ceiling, only: new Set(cols), tall: 1.1 }).b); this.flashAt = this.now;
+  }
   #syncEdge(events, snap, now) {
     const enc = this.state.encounter, eid = enc ? enc.id ?? 0 : null;
     if (eid !== this.edgeId) {
@@ -407,12 +414,12 @@ export class ThreeRenderer {
   }
   dispose() {
     if (this.dead) return;
-    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.(); window.removeEventListener('hextable-shadows', this.onShadows); this.#shadowFree();
+    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.(); window.removeEventListener('hextable-shadows', this.onShadows); window.removeEventListener('hextable-arena-flash', this.onFlash); this.#shadowFree();
     for (const a of this.actors.values()) { a.el.remove(); a.piece.free(); a.blob.free(); a.dying?.piece.free(); }
     for (const g of this.ghosts) this.#dropGhost(g);
     for (const v of this.veils.values()) v.piece.free();
     for (const f of this.floaters) f.el.remove();
-    for (const p of [this.terrain, this.wallMesh, this.grid, this.overlay, this.shadows, this.edge, this.doorMesh, this.blobGeom, this.sinkFx?.piece]) p?.free();
+    for (const p of [this.terrain, this.wallMesh, this.grid, this.overlay, this.shadows, this.edge, this.flash, this.doorMesh, this.blobGeom, this.sinkFx?.piece]) p?.free();
     this.#clearPictures();
     for (const r of this.images.values()) r.tex?.dispose();
     this.actors.clear(); this.floaters = []; this.state = null;
@@ -656,6 +663,11 @@ export class ThreeRenderer {
       const age = fx.phase === 'on' ? 9 : this.now - fx.t0, k = Math.min(1, age / SECS.rise), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), burst = Math.max(0, 1 - age / 1.6) * 0.8, rise = smooth(k);
       this.edge.show(true); this.edge.place(edgeM(rise, this.edgeBase)); this.edge.tint(1 + burst, 1 + burst, 1 + burst, k * k * pulse);
     } else this.edge.show(false);
+    if (this.flashAt !== null) {                                                  // the flash of a refused move: two quick pulses over 1.1 s
+      const age = this.now - this.flashAt;
+      if (age > 1.1 || !enc) { this.flashAt = null; this.flash.show(false); }
+      else { this.flash.show(true); this.flash.place(ident); this.flash.tint(1.5, 1.5, 1.5, Math.sqrt(1 - age / 1.1) * (0.8 + 0.2 * Math.cos(age * 11))); }
+    }
     if (sk) {
       const p = sk.phase === 'hold' ? 0 : Math.min(1, (this.now - sk.t0) / SECS.sink), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), sink = 1 - smooth(p);
       sk.piece.place(edgeM(Math.max(0.001, sink), sk.base)); sk.piece.tint(1, 1, 1, (1 - p * p) * pulse);

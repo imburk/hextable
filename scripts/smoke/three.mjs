@@ -2,7 +2,7 @@
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
-import { sleep, scenario, wait, open, playSolo, closePanels } from './lib.mjs';
+import { sleep, scenario, wait, open, playSolo, closePanels, tapAt } from './lib.mjs';
 
 // ---------- vendored Three.js (R10) ----------
 // A normal page load fetches nothing under vendor/. Then, in the page, the vendored module is imported (gzipped by the
@@ -106,8 +106,91 @@ async function threeShadows(browser, url, label, opts) {
 }
 
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=three.
+// ---------- the edge of a fight (#305) ----------
+// Both renderers, hexes and squares, a computer and a phone with touch. Before a fight there is no edge; when it starts the default look dims
+// everything outside the arena and draws no glowing edge; a move out of it is refused with the rule in words and the border cells nearest the
+// tap flash (in either look); the Settings control (stored per device) brings the glowing edge back; when the fight ends the edge is gone.
+// Screenshots go to SMOKE_SHOTS.
+export async function arenaEdge(browser, url, label, { three, grid, ...opts }) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, tag = `${three ? 'three' : 'gl'}-${grid}-${touch ? 'phone' : 'desk'}`, shots = process.env.SMOKE_SHOTS, ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage(); run.watch(page);
+      const R = (fn, arg) => page.evaluate(`((a) => { const R = window.hextable.R.inner ?? window.hextable.R; return (${fn})(R, a); })(${JSON.stringify(arg ?? null)})`);
+      const act = async (a) => { await page.evaluate((x) => window.hextable.act(x), a); await sleep(350); await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000); };
+      const shot = async (n) => { if (shots) await page.screenshot({ path: join(shots, `arena-edge-${tag}-${n}.png`) }); };
+      await run.do('open a solo game and wait for the renderer', async () => {
+        await open(page, `${url}${three ? '?renderer=three' : ''}`, { grid }); await playSolo(page);
+        if (three) await wait(page, () => window.hextable.R.kind === 'three', null, 30000);
+        await act({ type: 'setting', key: 'autoEngage', value: false });
+        if (grid === 'square') { await act({ type: 'loadMap', map: squareRoom() }); await wait(page, () => window.hextable.state.map.id === 'square-room'); }
+        await sleep(800); await shot('1-before');
+        if (await R((r) => r.edge.n) !== 0) throw new Error('an edge is drawn with no fight');
+      });
+      await run.do('Settings has the control, set to the dimmed look by default', async () => {
+        const v = await page.evaluate(() => document.getElementById('set-arena-edge')?.value);
+        if (v !== 'dim') throw new Error(`the control reads ${v}`);
+      });
+      await run.do('a fight starts: no glowing edge in the default look', async () => {
+        const S = await page.evaluate(() => window.hextable.state), party = Object.values(S.entities).filter((e) => e.side === 'party');
+        let c = party[0].pos;
+        if (grid === 'square') {
+          let i = 0; for (const p of party) await act({ type: 'place', actor: p.id, to: { q: 5 + i++, r: 7, z: 0 } });
+          await act({ type: 'spawn', monster: 'goblin-warrior', at: { q: 10, r: 8 } }); c = { q: 7, r: 7 };
+        }
+        await act({ type: 'startEncounter', center: { q: c.q, r: c.r }, radius: 3 });
+        await wait(page, () => window.hextable.state.encounter, null, 8000);
+        await sleep(2500); await shot('2-fight-dim');
+        const n = await R((r) => r.edge.n);
+        if (n !== 0) throw new Error(`the default look draws an edge (${n} vertices)`);
+      });
+      await run.do('a move out of the arena is refused with the rule in words, and the nearest border cells flash', async () => {
+        await wait(page, () => { const S = window.hextable.state, id = S.encounter?.order[S.encounter.turn]?.id; return S.entities[id]?.side === 'party'; }, null, 60000);
+        await sleep(1200);
+        const t = await page.evaluate(() => {
+          const H = window.hextable, S = H.state, ent = S.entities[S.encounter.order[S.encounter.turn].id], lv = S.map.levels[0]; let best = null;
+          for (let dq = -9; dq <= 9; dq++) for (let dr = -9; dr <= 9; dr++) {
+            const q = ent.pos.q + dq, r = ent.pos.r + dr, k = `${q},${r}`; if (!lv.tiles[k] || S.encounter.arena[k]) continue;
+            const p = H.R.screenOf({ q, r, z: ent.pos.z ?? 0 }); if (!p || p.x < 20 || p.y < 70 || p.x > innerWidth - 80 || p.y > innerHeight - 20 || document.elementFromPoint(p.x, p.y)?.id !== 'gl') continue;
+            const d = Math.hypot(dq, dr); if (!best || d < best.d) best = { d, p, id: ent.id };
+          }
+          if (best) H.select(best.id);
+          return best && { x: best.p.x, y: best.p.y };
+        });
+        if (!t) throw new Error('no hex outside the arena is on screen to tap');
+        await sleep(300); await tapAt(page, touch, t.x, t.y);
+        await wait(page, () => /arena is locked/i.test(document.getElementById('toast').textContent) && !document.getElementById('toast').hidden, null, 5000);
+        const txt = await page.evaluate(() => document.getElementById('toast').textContent);
+        if (!/until the fight ends/.test(txt) || !/lit area/.test(txt)) throw new Error(`the toast says: ${txt}`);
+        const f = await R((r) => ({ n: r.flash.n, at: r.flashAt }));
+        if (!(f.n > 0) || f.at === null) throw new Error(`no flash: ${JSON.stringify(f)}`);
+        await page.evaluate(() => { const R = window.hextable.R.inner ?? window.hextable.R; window.__pin = setInterval(() => { if (R.flashAt !== null) R.flashAt = R.now - 0.12; }, 16); });
+        await sleep(400); await shot('3-refused-flash'); await page.evaluate(() => clearInterval(window.__pin));
+        await wait(page, () => (window.hextable.R.inner ?? window.hextable.R).flashAt === null, null, 5000);       // and it goes out by itself
+      });
+      await run.do('the Settings control, stored, brings the glowing edge back and the other choice takes it away', async () => {
+        const set = async (v) => { await page.evaluate((x) => { const e = document.getElementById('set-arena-edge'); e.value = x; e.dispatchEvent(new Event('change')); }, v); await sleep(600); };
+        await set('edge'); await wait(page, () => (window.hextable.R.inner ?? window.hextable.R).edge.n > 0, null, 5000); await sleep(1500); await shot('4-fight-edge');
+        const stored = await page.evaluate(() => localStorage.getItem('hextable.arenaEdge'));
+        if (stored !== '"edge"') throw new Error(`stored: ${stored}`);
+        await set('dim'); if (await R((r) => r.edge.n) !== 0) throw new Error('the edge is still drawn after choosing the dimmed look');
+      });
+      await run.do('the fight ends: the lighting returns and no edge is left', async () => {
+        await act({ type: 'endEncounter' }); await wait(page, () => !window.hextable.state.encounter, null, 8000); await sleep(2500); await shot('5-after');
+        if (await R((r) => r.edge.n) !== 0) throw new Error('an edge is drawn after the fight');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await threePass(browser, url, 'three: the vendored library at 1280x800', { viewport: { width: 1280, height: 800 } });
   await threeShadows(browser, url, 'three: real shadows at 1280x800', { viewport: { width: 1280, height: 800 } });
   await threeShadows(browser, url, 'three: real shadows at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const D = { viewport: { width: 1280, height: 800 } }, P = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
+  // The default renderer's runs are in square.mjs (squares) and interface.mjs (hexes).
+  await arenaEdge(browser, url, 'arena edge: Three.js renderer, hexes, 1280x800', { ...D, three: true, grid: 'hex' });
+  await arenaEdge(browser, url, 'arena edge: Three.js renderer, hexes, 390x844 with touch', { ...P, three: true, grid: 'hex' });
+  await arenaEdge(browser, url, 'arena edge: Three.js renderer, squares, 1280x800', { ...D, three: true, grid: 'square' });
+  await arenaEdge(browser, url, 'arena edge: Three.js renderer, squares, 390x844 with touch', { ...P, three: true, grid: 'square' });
 }

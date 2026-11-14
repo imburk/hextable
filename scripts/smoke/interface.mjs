@@ -25,6 +25,11 @@ async function interfacePass(browser, url, label, opts, how) {
         const s = await page.evaluate(() => JSON.stringify(window.hextable.R.stats()));
         if (!/"drawCalls":0/.test(s)) throw new Error(`stats of the empty renderer: ${s}`);
       });
+      await run.do('the edge-of-a-fight control is in Settings and the empty renderer takes the flash event without error (#305)', async () => {
+        await page.evaluate(() => { const e = document.getElementById('set-arena-edge'); e.value = 'edge'; e.dispatchEvent(new Event('change')); window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: { q: 0, r: 0 } })); });
+        const v = await page.evaluate(() => [localStorage.getItem('hextable.arenaEdge'), document.getElementById('set-arena-edge').value]);
+        if (v[0] !== '"edge"' || v[1] !== 'edge') throw new Error(`the control left ${JSON.stringify(v)}`);
+      });
       await run.do('a character moves by action and the game answers', async () => {
         const from = await state(page, (S) => S.entities.fighter.pos);
         for (const d of [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]) {
