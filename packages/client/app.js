@@ -861,7 +861,7 @@ function reallyLeave() {
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
-const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.(); });
+const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid() }); });
 $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
 for (const [id, m] of Object.entries(MONSTERS)) {
@@ -971,11 +971,11 @@ function showLobby(msg = '') {
 }
 $('lobby-rejoin').onclick = () => { const sess = savedSession(); if (!sess) return showLobby(); $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', ...sess })); };
 $('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { forgetSession(); showLobby('Table forgotten.'); });
-$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { forgetSolo(); $('lobby').hidden = true; start(localTransport(), TC.lobbyChoice()); });
+$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { forgetSolo(); $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice()); });
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
-$('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName() }), TC.lobbyChoice());
+$('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName(), grid: TC.lobbyGrid() }), TC.lobbyChoice());
 $('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) start(serverTransport({ t: 'join', code, name: lobbyName() })); else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
-$('lobby-solo').onclick = () => { $('lobby').hidden = true; start(localTransport(), TC.lobbyChoice()); };
+$('lobby-solo').onclick = () => { $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice()); };
 $('lobby-card').onsubmit = (ev) => ev.preventDefault();
 
 (async () => {

@@ -220,6 +220,10 @@
     <p>Roam free. When a fight starts, the hexes lock and turns begin.</p>
     <label for="lobby-name">Your name</label><input id="lobby-name" maxlength="24" placeholder="Name">
     <label for="lobby-map">Starting map (when you host or play solo)</label><select id="lobby-map"></select>
+    <div id="lobby-grid" role="radiogroup" aria-label="Which grid to play the valley on">
+      <label><input type="radio" name="lobby-grid" value="square"><span>Valley on squares</span></label>
+      <label><input type="radio" name="lobby-grid" value="hex" checked><span>Valley on hexes</span></label>
+    </div>
     <div class="row"><button type="button" id="lobby-host">Host a table</button></div>
     <label for="lobby-code">Table code</label>
     <div class="row"><input id="lobby-code" maxlength="6" placeholder="ABC123"><button type="button" id="lobby-join">Join</button></div>

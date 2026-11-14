@@ -7,7 +7,10 @@ party of five. No monsters are placed: they are blank stages. The layouts are ou
 To use one, three places offer the same list:
 
 - **The lobby**: "Starting map" above Host a table. The table (or the solo game) starts on the valley as before, then
-  loads the chosen map as its first act.
+  loads the chosen map as its first act. While the starting map is the starter valley, two buttons under it ask which
+  grid to play it on, **Valley on squares** or **Valley on hexes** (squares first; one tap; the device remembers the last
+  one, and a first visit has hexes picked). The question is not asked for a stock map, which brings its own grid.
+  See "The valley on squares" below.
 - **The DM panel**: Map > "Start on a stock map". The first tap on **Start on this map** only asks (it names the map and says
   the party moves and creatures here stay behind); the second tap, within five seconds, loads it. Changing the choice cancels
   the question. It is off during a fight.
@@ -87,7 +90,7 @@ way: put its document in `export default` in a new file and list it in `index.js
 
 # Maps on squares: drawing and tracing
 
-A map is drawn on one grid, squares or hexes, and keeps it. The five stock maps above are on hexes. Battle maps
+A map is drawn on one grid, squares or hexes, and keeps it. Of the stock maps above, five are on hexes and `undercroft` is on squares. Battle maps
 drawn on 5-ft squares (most of the ones published) are played on squares, and the editor works on them the same
 way it works on hexes.
 
@@ -137,3 +140,16 @@ button that changes it: to change grid, start a new map. Loading a stock map or 
 
 What it cannot do yet is in `docs/DEBT.md` (T24): the Universal VTT import still makes hexes, and using a door on a square
 map is blocked by an engine bug (the DM can still open it from the DM panel).
+
+## The valley on squares
+
+The starter valley comes in two forms, chosen when a new solo game or a new table starts (the lobby's **Valley on squares** /
+**Valley on hexes**, or `newGame(seed, { grid: 'square' })` in the rules, or `{ t: 'host', grid: 'square' }` to the table server,
+which builds the state itself from that one word). `newGame(seed)` with no option is the hex valley, unchanged, and every seeded test
+fight is on it.
+
+The square valley is the same place, made from the hex valley of the same seed (`scenario.js`, `squareValley`): each square takes the
+terrain (and the looks) of the hex under its centre, so the pond, the woods, the rocks and the ruin lie where they did; each creature
+stands on the square that holds its hex's centre (heroes and foes are the same, with the same numbers, dice, clock and chronicle), so
+the first fight is laid out alike. It is a separate map document (`valley-squares`), 27 or so squares across. Its tests are in
+`packages/rules/test/valley-squares.test.js`.

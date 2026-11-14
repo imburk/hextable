@@ -235,7 +235,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         if (activeCount() >= MAX_TABLES) return error("This server is full. Try again later.", true);
         let code = makeCode();
         while (tables.has(code)) code = makeCode();
-        const t = { code, state: newGame(seed()), members: [], active: now() };
+        // The host may ask for the valley on squares (`grid: "square"`); anything else is the hex valley. The state is built
+        // here from that one word, never taken from the client.
+        const t = { code, state: newGame(seed(), msg.grid === "square" ? { grid: "square" } : undefined), members: [], active: now() };
         rekey(t.state);
         const m = { id: makeId(), token: makeToken(), name: cleanName(msg.name), role: "dm", approved: true };
         t.members.push(m);
