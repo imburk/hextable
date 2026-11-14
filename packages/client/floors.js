@@ -42,17 +42,19 @@ const pkey = (p) => `${Math.round(p[0] / TOL)},${Math.round(p[1] / TOL)}`;
 export const polyArea = (p) => p.reduce((s, a, i) => s + cross2(a, p[(i + 1) % p.length]), 0) / 2;
 const centroid = (p) => [p.reduce((s, a) => s + a[0], 0) / p.length, p.reduce((s, a) => s + a[1], 0) / p.length];
 
-// A cell as a polygon in map feet. Kept as floors' own working, not `G.corners`: the interface writes its angles as (π/180)(30 + 60i)
+// A cell as a polygon in map feet. Hexes keep floors' own working, not `G.corners`: the interface writes its angles as (π/180)(30 + 60i)
 // (as sight.js does), these as π/6 + kπ/3, which differ in the last bit for about one coordinate in ten (up to 1.4e-14 feet). The
-// floors are clipped against those corners and against each other's, so the working stays as it was until a row that changes it on
-// purpose (S9a, which gives the grid a corner list that floors can use). Hexes only, as the six in the loop say.
+// floors are clipped against those corners and against each other's, so a hex map is cut exactly as it was (the pixel run of S9a
+// holds). A square's corners are ±2.5 feet from its centre, exact in floating point, so squares take `G.corners` as it is.
 export function hexPoly(h, G = HEX) {
+  if (G.kind !== 'hex') return G.corners(h);
   const [cx, cy] = G.center(h);
   return [0, 1, 2, 3, 4, 5].map((k) => { const a = Math.PI / 6 + (k * Math.PI) / 3; return [cx + HEX_RADIUS * Math.cos(a), cy + HEX_RADIUS * Math.sin(a)]; });
 }
-// The cell a point in map feet is in. Not `G.cell`: that is fromWorld(x, y, 5/√3), a different float path from this one (x·UNIT, y·UNIT),
-// and the two disagree on about 1 point in 170 near cell edges, where floors asks (cut lines run along hex sides). Kept as it was.
-export const hexAt = (x, y, G = HEX) => G.fromWorld(x * UNIT, y * UNIT);
+// The cell a point in map feet is in. For hexes not `G.cell`: that is fromWorld(x, y, 5/√3), a different float path from this one
+// (x·UNIT, y·UNIT), and the two disagree on about 1 point in 170 near cell edges, where floors asks (cut lines run along hex sides).
+// Kept as it was. A square is `G.cell`: round(x / 5), round(y / 5).
+export const hexAt = (x, y, G = HEX) => (G.kind === 'hex' ? G.fromWorld(x * UNIT, y * UNIT) : G.cell(x, y));
 
 const tidy = (poly) => {                            // drop repeated points
   const out = [];
@@ -90,7 +92,7 @@ export function clipConvex(subject, clip) {
 function cutLines(map, levelId) {
   const segs = [];
   for (const w of map.walls) if (w.level === levelId && WALL_KINDS[w.kind]?.move) segs.push([w.a, w.b]);
-  for (const o of map.objects) if (o.level === levelId) { const s = objectSegment(o); if (s) segs.push([s[0], s[1]]); }
+  for (const o of map.objects) if (o.level === levelId) { const s = objectSegment(o, gridOf(map)); if (s) segs.push([s[0], s[1]]); }
   let changed = true;
   while (changed && segs.length > 1) {
     changed = false;
@@ -362,7 +364,7 @@ function faces(map, level, patches) {
     return { key, id, kind, a, b, mid, n, floor: { left: floorAt([mid[0] + n[0] * off, mid[1] + n[1] * off]), right: floorAt([mid[0] - n[0] * off, mid[1] - n[1] * off]) } };
   };
   const out = map.walls.filter((w) => w.level === level.id && WALL_KINDS[w.kind]).map((w) => one(`w:${w.id}`, w.id, w.kind, w.a, w.b));
-  for (const o of map.objects) if (o.level === level.id) { const s = objectSegment(o); if (s) out.push({ ...one(`o:${o.id}`, o.id, 'door', s[0], s[1]), object: true }); }     // a door or a portcullis lies in a wall and is lowered with it
+  for (const o of map.objects) if (o.level === level.id) { const s = objectSegment(o, G); if (s) out.push({ ...one(`o:${o.id}`, o.id, 'door', s[0], s[1]), object: true }); }     // a door or a portcullis lies in a wall and is lowered with it
   return out;
 }
 // Which wall faces to lower, seen from a camera that is `toCam` away from what it follows (a unit vector on the
@@ -505,6 +507,6 @@ export function caveOf(map, fl) {
 function sideOf(h, a, b, G) {
   const c = G.center(h), m = [(a[0] + b[0]) / 2 - c[0], (a[1] + b[1]) / 2 - c[1]];
   let best = 0, bd = -Infinity;
-  G.neighbors(h).forEach((n, i) => { const cn = G.center(n), d = dot2([cn[0] - c[0], cn[1] - c[1]], m); if (d > bd) { bd = d; best = i; } });
+  G.neighbors(h).slice(0, G.EDGES).forEach((n, i) => { const cn = G.center(n), d = dot2([cn[0] - c[0], cn[1] - c[1]], m); if (d > bd) { bd = d; best = i; } });      // across a side: not the diagonal squares, which tie with a side's middle
   return best;
 }
