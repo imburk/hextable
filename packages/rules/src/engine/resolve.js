@@ -16,7 +16,7 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, isPile, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { tryLand } from './sheets.js';
 
@@ -754,7 +754,13 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
 // wearing or carrying"): its gear by name, and any magic items on a sheet, go onto the pile in its cell
 // (or a new one), past PILE_MAX if need be, so nothing is lost and nothing is made twice. With nothing
 // at all under it, the DM is told what it carried.
-function leaveGear(s, e, ev) {
+// One the party did not know of leaves them as `drop` does for such a creature: on a pile of its own, marked
+// `by` it (world.js, pileOpen), and `left`, since it is gone and the party can never come to know of it:
+// `seePiles` keeps such a pile the DM's (they open it, with the map editor, when the party finds it), and so
+// every pile it dropped unseen before. Players are told nothing: their view is as if it had simply died
+// unseen with nothing on it (review of #313, M1).
+function leaveGear(s, e, ev, unseen) {
+  if (unseen) for (const o of s.map.objects) if (isPile(o) && o.by === e.id) o.left = true;
   const items = [...(Array.isArray(e.gear) ? e.gear : []).map((g) => ({ name: String(g) })),
     ...(Array.isArray(e.sheet?.items) ? e.sheet.items : []).filter((x) => x && typeof x === 'object').map(({ id: _k, equipped: _q, attuned: _a, ...spec }) => spec)];
   if (!items.length) return;
@@ -763,10 +769,11 @@ function leaveGear(s, e, ev) {
     ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name} vanished with nothing under it. What it carried is the DM's to place: ${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}.` });
     return;
   }
-  let o = pileAt(s, sf.level.id, e.pos);
+  const by = unseen ? e.id : null;
+  let o = pileAt(s, sf.level.id, e.pos, by);
   const placed = !o;
   if (!o) {
-    o = { id: pileId(s, sf.level.id, e.pos), def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [] };
+    o = { id: pileId(s, sf.level.id, e.pos, by), def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [], ...(by ? { by, left: true } : {}) };
     s.map.objects.push(o);
   }
   if (!Array.isArray(o.contents)) o.contents = [];
@@ -775,7 +782,10 @@ function leaveGear(s, e, ev) {
     while (o.contents.some((y) => y?.id === `c${n}`)) n++;
     o.contents.push({ id: `c${n}`, ...x });
   }
+  // Seen by the party, `seen` lets the line reach them though the creature is gone (view.js, `object`).
   ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(placed ? { placed: true } : {}) });
+  if (unseen) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true,
+    text: `${e.name} vanished where the party could not see it. What it carried (${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}) lies in ${o.id}, which only you see: when the party finds it, open it to them with the map editor (the pile without \`by\`).` });
 }
 
 // A bonded creature leaves the map: `why` is 'hp0' (it dropped to 0 Hit Points and its bond says it
@@ -787,16 +797,31 @@ function leaveGear(s, e, ev) {
 // `party` when it was the party's, since view.js can no longer look it up (hidden-information.md).
 export function vanish(s, e, why, ev) {
   const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
+  // A part on it, or one that was to end with a turn of its (`ends.who`: "until the end of its next turn"),
+  // ends: that turn will not come (review of #313, L7).
+  const its = (p) => !p.ended && (p.target === e.id || p.ends?.who === e.id);
   for (const fx of [...effectsOf(s)]) {
     if (fx.source === e.id) { endEffect(s, ev, fx, `${name} vanished`); continue; }
-    const on = fx.parts.filter((p) => p.target === e.id && !p.ended);
+    const on = fx.parts.filter(its);
     if (!on.length) continue;
-    if (fx.parts.every((p) => p.ended || p.target === e.id)) endEffect(s, ev, fx, `${name} vanished`);
+    if (fx.parts.every((p) => p.ended || its(p))) endEffect(s, ev, fx, `${name} vanished`);
     else useUp(s, ev, on);
+  }
+  // A condition it put on another with no lasting effect behind it: a grapple ends, since there is nobody
+  // left to hold on (SRD Grappled); any other loses the name of a creature that is no longer there, and
+  // the DM is told it is theirs to end (review of #313, L3).
+  for (const x of Object.values(s.entities)) {
+    if (x.id === e.id || !x.cond) continue;
+    for (const [c, v] of Object.entries(x.cond)) {
+      if (v?.source !== e.id || v.effect !== undefined) continue;
+      if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
+      delete v.source;
+      ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has vanished. Whether that ends is the DM's.` });
+    }
   }
   for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
   if (e.follow) unfollow(s, e, ev);
-  leaveGear(s, e, ev);
+  leaveGear(s, e, ev, !seen);
   const enc = s.encounter;
   let theirs = false;
   if (enc) {
@@ -808,6 +833,9 @@ export function vanish(s, e, why, ev) {
       if (enc.moved) { delete enc.moved[e.id]; if (!Object.keys(enc.moved).length) delete enc.moved; }
       if (enc.held) delete enc.held[e.id];
     }
+    // Flags that name it (`hit:<id>:<target>`, `attacked:<id>`) go with it: once it is gone nothing can tell
+    // whether players may know of it (view.js filters flags by the creatures there are; review of #313, L2).
+    for (const k of Object.keys(enc.flags ?? {})) if (k.split(':').includes(e.id)) delete enc.flags[k];
   }
   delete s.entities[e.id];
   ev.push({ type: 'vanished', id: e.id, name, why, ...(seen ? { seen: true } : {}), ...(party ? { party: true } : {}) });

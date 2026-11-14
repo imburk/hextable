@@ -44,7 +44,9 @@ export const WHILE_WAITING = new Set(['react', 'say', 'note', 'claim', 'release'
 
 // What a creature makes an Opportunity Attack with: its first melee attack action, or for a
 // creature with flat attack records, its first melee attack.
+// A companion that can't attack (`bond.noAttack`, a familiar) has none, so nobody walking away from it is threatened.
 export function opportunityAttack(o) {
+  if (o.bond?.noAttack) return null;
   if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
   return (o.attacks ?? []).find((a) => a.type === 'melee') ?? null;
 }
@@ -64,7 +66,7 @@ export function reactionsOf(e) {
   const out = [];
   // A companion that can't attack (a familiar) makes no Opportunity Attack and no attack as a Reaction.
   const strikes = !e.bond?.noAttack;
-  if (strikes && opportunityAttack(e)) out.push({ id: OPPORTUNITY, name: 'Opportunity Attack', kind: 'attack', on: 'leave', options: ['always', 'never', 'ask'], dflt: 'always' });
+  if (opportunityAttack(e)) out.push({ id: OPPORTUNITY, name: 'Opportunity Attack', kind: 'attack', on: 'leave', options: ['always', 'never', 'ask'], dflt: 'always' });
   for (const id of e.spells ?? []) {
     const sp = SPELLS[id], r = sp?.def.reaction;
     if (!r) continue;

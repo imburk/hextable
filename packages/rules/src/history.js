@@ -297,7 +297,9 @@ export function describeStep(action, events, before, after) {
   function finish(label) {
   const a = action;
   const named = ['actor', 'target', 'entity', ...(a.type === 'pass' || a.type === 'bond' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`, `bond` the master
-  const known = named.every((id) => classify(after, id) !== 'hidden');
+  // A companion that vanished in this step where the party could see it is one players knew of (view.js, viewEvents).
+  const gone = new Set(events.filter((e) => e.type === 'vanished' && e.seen === true).map((e) => e.id));
+  const known = named.every((id) => gone.has(id) || classify(after, id) !== 'hidden');
   const heard = viewEvents(events, after, { role: 'player' }).length > 0;
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
   // An action that stopped to ask about a reaction did nothing yet: players are told nothing of it.

@@ -278,6 +278,8 @@ function castSpell(s, a, ctx, ev, item) {
       if (fc.dark) lightAt(s, e.pos) !== 'bright' || fail(`${via.name} works only while ${e.name} is in Dim Light or Darkness.`);
     } else if (!item) (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     else sp || fail(`${item.name} casts a spell the engine does not know.`);
+    // A companion that can't attack (a familiar) makes no attack roll by a spell either (review of #313, M3).
+    if (e.bond?.noAttack) { let roll = false; walkSteps(sp.def.effects ?? [], (st) => { if ('attack' in st) roll = true; }); !roll || fail(`${e.name} can't attack, and ${sp.name} makes an attack roll.`); }
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (sp.time === 'reaction') fail(sp.def.reaction

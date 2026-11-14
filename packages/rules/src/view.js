@@ -394,7 +394,13 @@ export function viewEvents(events, state, viewer) {
   // A record entry names the creatures the party did not know of when it happened (`unseen`, from
   // apply()): they stay unknown in it, whatever is known of them now. `unseen` itself is never sent.
   let was = null;
-  const cls = (id) => (was?.includes(id) ? 'hidden' : classify(state, id));
+  // A companion that vanished in these events is gone from the state, but what happened to it on the way (the
+  // damage, its death, what it left) is told as it would have been had it stayed: the party's own as Open, one
+  // the party could see as Seen (the engine marks `vanished` with `party` and `seen` just before it goes), any
+  // other not at all (review of #313, M2).
+  const gone = new Map();
+  for (const e of events) if (e?.type === 'vanished' && e.seen === true && !Object.hasOwn(state.entities, e.id)) gone.set(e.id, e.party === true ? 'open' : 'seen');
+  const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
   // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
   // P26: an area reaching into a region not yet revealed does not show its cells there).
@@ -441,7 +447,12 @@ export function viewEvents(events, state, viewer) {
       case 'damage':
       case 'heal': {
         const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']), ...facesFor(ev) };
-        if (cls(ev.target) === 'seen') { const t = state.entities[ev.target]; e.hp = ev.hp > 0 ? 1 : 0; e.health = healthOf(t); }
+        if (cls(ev.target) === 'seen') {
+          const t = state.entities[ev.target];
+          e.hp = ev.hp > 0 ? 1 : 0;
+          // One that has since vanished: only that it went down, never how near it was to half its Hit Points.
+          if (t) e.health = healthOf(t); else if (!(ev.hp > 0)) e.health = events.some((x) => x?.type === 'died' && x.id === ev.target) ? 'dead' : 'down';
+        }
         out.push(e);
         break;
       }

@@ -564,3 +564,24 @@ What was settled while building it, where the decisions above left room:
   `why` only when it was the party's (`party`). `bonded` goes only when both creatures are the party's;
   `unbonded` and `companion` only for a party creature (and `from` only when that is the party's).
 - **State version 23**, with a migration that changes nothing.
+
+Settled in the review of #313:
+
+- **"Can't attack" means no attack roll.** A `noAttack` creature is refused `attack`, any `act` with an
+  attack step or a Multiattack, and any spell with an attack roll; it has no Opportunity Attack
+  (`opportunityAttack` gives none, so nobody walking away from it is threatened) and no trait reaction
+  that attacks. An action or spell with a save and no attack roll (a breath) is allowed.
+- **Gear of a companion the party could not see.** It goes onto a pile marked `by` it and `left`
+  (`world.js`, `seePiles` keeps a `left` pile marked), as `drop` does for such a creature, and so does any
+  pile it dropped unseen before. Players are never sent it; the DM is told (`manual`) and opens it with the
+  map editor when the party finds it. A vanishing with or without gear then looks to players exactly like
+  an unseen creature's death.
+- **What players are told of a companion that vanished.** In the events of that action it is classed as it
+  was just before it went (the party's: Open; one they could see: Seen), so the damage, its death and what
+  it left reach them as for any creature, and the undo label is shown. A Seen one's `health` is only `dead`
+  or `down`.
+- **What it leaves behind in others.** Encounter flags naming it go. A condition it put on another with no
+  lasting effect: Grappled ends (nobody holds on), any other loses its `source` and the DM is told. A part
+  of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
+- **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
+  may tick it.

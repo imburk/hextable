@@ -419,6 +419,9 @@ export const openContents = (o) => (pileOpen(o) ? pileContents(o) : []);
 export function seePiles(s) {
   for (const o of [...s.map.objects]) {
     if (!isPile(o) || o.by === undefined) continue;
+    // Left by a companion that vanished unseen (resolve.js, vanish): the party can never come to know of
+    // it, so the pile is the DM's to open (with the map editor) when the party finds it.
+    if (o.left === true) continue;
     const e = Object.hasOwn(s.entities, o.by) ? s.entities[o.by] : null;
     if (e && unknown(s, e)) continue;
     if (s.map.seen?.objects) delete s.map.seen.objects[o.id];

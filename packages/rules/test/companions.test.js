@@ -361,3 +361,118 @@ test("nothing in the rules reads `.owner` to decide control, but ownerOf", () =>
     assert.equal(n, KNOWN[f] ?? 0, `${f} reads .owner ${n} times`);
   }
 });
+
+// ---------- review of #313 ----------
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+  test(`walking away from a creature that can't attack sets off nothing, in both directions${on} (B1)`, () => {
+    for (const party of [true, false]) {
+      const { s, wolf } = table(grid);
+      const mage = ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Gob Mage", at: spot(s, s.entities.m1.pos) }, DM)).events[0].id;
+      bond(s, wolf, party ? "fighter" : mage, { kind: "familiar", noAttack: true });
+      // A creature of the other side right beside it, a fight on, and that creature walks off.
+      const other = ok(apply(s, { type: "spawn", monster: party ? "goblin-warrior" : "wolf", name: "Walker", at: spot(s, s.entities[wolf].pos, 0, 1) }, DM)).events[0].id;
+      if (!party) { s.entities[other].side = "party"; }
+      ok(apply(s, { type: "startEncounter", center: s.entities[wolf].pos, radius: 5 }, DM));
+      for (let i = 0; i < 30 && current(s) !== other; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+      assert.equal(current(s), other);
+      const G = gridOf(s.map), from = s.entities[wolf].pos;
+      const to = G.range(s.entities[other].pos, 3).find((h) => G.dist(h, from) >= 3 && apply(structuredClone(s), { type: "move", actor: other, to: h }, DM).ok);
+      assert.ok(to, "somewhere to walk to");
+      const r = ok(apply(s, { type: "move", actor: other, to }, DM));
+      assert.ok(!r.events.some((e) => e.type === "attack" || e.type === "reaction"), "no Opportunity Attack");
+      assert.equal(s.entities[other].pos.q, to.q);
+    }
+  });
+}
+
+test("a companion the party could not see leaves its gear on a pile players are never sent; with or without gear, their view is an unseen death's (M1)", () => {
+  const run = (bonded, gear) => {
+    const { s, wolf } = table();
+    const mage = s.entities.m1.id;
+    if (bonded) bond(s, wolf, mage, { kind: "familiar" });
+    else s.entities[wolf].hp = 1;
+    s.entities[wolf].gear = gear ? ["Ring of Secret Name"] : [];
+    ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
+    const before = json(view(s, U1)), r = ok(apply(s, { type: "harm", actor: wolf, amount: 9999 }, DM));
+    return { s, wolf, r, before, after: json(view(s, U1)), events: json(viewEvents(r.events, s, U1)), tl: json(viewEvents(s.timeline, s, U1)) };
+  };
+  const withGear = run(true, true), bare = run(true, false), plain = run(false, false);
+  assert.equal(withGear.after, withGear.before, "nothing in the player's view changed");
+  assert.ok(!withGear.after.includes("Secret Name") && !withGear.tl.includes("Secret Name"));
+  assert.equal(withGear.events, "[]");
+  // The gear is kept, marked, and stays the DM's after the pass that opens piles.
+  const pile = withGear.s.map.objects.find((o) => o.def === "pile" && o.by === withGear.wolf);
+  assert.equal(pile.left, true);
+  assert.deepEqual(pile.contents.map((x) => x.name), ["Ring of Secret Name"]);
+  ok(apply(withGear.s, { type: "advanceTime", minutes: 1 }, DM));
+  assert.ok(withGear.s.map.objects.includes(pile) && pile.by === withGear.wolf, "still marked after another action");
+  assert.ok(withGear.r.events.some((e) => e.type === "manual" && e.partial && /only you see/.test(e.text)), "the DM is told where it is");
+  // A gearless vanish and an unbonded unseen kill look the same to players: events, view, record.
+  assert.equal(bare.events, plain.events);
+  assert.equal(bare.after, plain.after);
+  assert.equal(bare.tl, plain.tl);
+});
+
+test("players are told what befell their own companion before it vanished, and the undo label is theirs (M2)", () => {
+  const { s, wolf } = table();
+  bond(s, wolf, "fighter", { kind: "familiar" });
+  s.entities[wolf].gear = ["bell"];
+  const before = mark(s), r = ok(apply(s, { type: "harm", actor: wolf, amount: 50 }, DM));
+  const seen = viewEvents(r.events, s, U2).map((e) => e.type);
+  assert.deepEqual(seen, ["damage", "died", "object", "vanished"]);
+  const label = describeStep({ type: "harm", actor: wolf, amount: 50 }, r.events, before, s);
+  assert.equal(label.shown, "Greyjaw took damage");
+  // A foe's seen familiar: the hit and its death as for any foe they see, without numbers they would not get.
+  const t = table();
+  bond(t.s, t.wolf, t.s.entities.m1.id, { kind: "familiar" });
+  const f = viewEvents(ok(apply(t.s, { type: "harm", actor: t.wolf, amount: 50 }, DM)).events, t.s, U1);
+  assert.deepEqual(f.map((e) => e.type), ["damage", "died", "vanished"]);
+  assert.equal(f[0].hp, 0);
+  assert.equal(f[0].health, "dead");
+});
+
+test("a creature that can't attack can't cast a spell with an attack roll either, and nothing changes (M3)", () => {
+  const { s, wolf } = table();
+  bond(s, wolf, "wizard", { kind: "familiar", noAttack: true });
+  Object.assign(s.entities[wolf], { spells: ["fire-bolt", "light"], castAbil: "int" });
+  refused(s, { type: "cast", actor: wolf, spell: "fire-bolt", target: "m1" }, DM, /can't attack, and Fire Bolt makes an attack roll/);
+});
+
+test("flags naming a vanished creature go with it (L2); a grapple it held ends and other conditions lose its name (L3)", () => {
+  const { s, wolf } = table();
+  bond(s, wolf, s.entities.m1.id, { kind: "familiar" });
+  ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 6 }, DM));
+  s.encounter.flags[`hit:${wolf}:fighter`] = true;
+  s.encounter.flags[`attacked:${wolf}`] = true;
+  s.entities.fighter.cond.grappled = { source: wolf };
+  s.entities.fighter.cond.frightened = { source: wolf };
+  const r = ok(apply(s, { type: "harm", actor: wolf, amount: 999 }, DM));
+  assert.ok(!Object.keys(s.encounter?.flags ?? {}).some((k) => k.includes(wolf)));
+  assert.equal(s.entities.fighter.cond.grappled, undefined);
+  assert.deepEqual(s.entities.fighter.cond.frightened, {});
+  assert.ok(r.events.some((e) => e.type === "condEnd" && e.cond === "grappled"));
+  assert.ok(!json(s.entities).includes(wolf));
+});
+
+test("a foe's companion gives no XP unless the DM ticks it (L5)", () => {
+  const { s, wolf } = table();
+  bond(s, wolf, s.entities.m1.id, { kind: "undead" });
+  ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 6 }, DM));
+  for (const e of Object.values(s.entities)) if (e.side === "foe" && s.encounter) ok(apply(s, { type: "harm", actor: e.id, amount: 999 }, DM));
+  const foes = s.conclusion.foes;
+  assert.equal(foes.find((f) => f.id === wolf).counts, false);
+  assert.ok(foes.filter((f) => f.id !== wolf).every((f) => f.counts));
+});
+
+test("a part that was to end with the vanished creature's turn ends with it (L7)", () => {
+  const { s, wolf } = table();
+  bond(s, wolf, "cleric", { kind: "familiar" });
+  s.effects = [{ id: "fx77", name: "Mark", spell: null, source: "cleric", conc: false, lasts: "special", until: null,
+    parts: [{ target: "fighter", cond: "frightened", ends: { on: "turnEnd", who: wolf } }, { target: "rogue", cond: "prone" }] }];
+  ok(apply(s, { type: "harm", actor: wolf, amount: 999 }, DM));
+  const fx = s.effects.find((x) => x.id === "fx77");
+  assert.ok(fx.parts[0].ended);
+  assert.ok(!fx.parts[1].ended, "the rest goes on");
+});
