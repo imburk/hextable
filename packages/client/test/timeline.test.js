@@ -26,6 +26,20 @@ test('durations follow the spec table', () => {
   assert.equal(durationOf({ type: 'time' }), 0);
 });
 
+test('a target is next to the attacker by the map\'s grid: a square diagonal is one step, a hex diagonal two', () => {
+  const diag = { entities: { g: { ...ent('g', 0), pos: { q: 0, r: 0, z: 0 } }, h: { ...ent('h', 0), pos: { q: 1, r: 1, z: 0 } } } };
+  const attack = { type: 'attack', actor: 'g', target: 'h' };
+  assert.equal(durationOf(attack, diag), 0.8, 'hexes by default: (1,1) is two hexes away');
+  const squares = { dist: (a, b) => Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r)) };
+  assert.equal(durationOf(attack, diag, squares), 0.6);
+  assert.equal(planBeats([attack], diag, squares).total, 0.6);
+  let t = 0; const seen = [];
+  const tl = createTimeline({ clock: () => t, gridOf: (st) => (st.map?.grid === 'square' ? squares : { dist: () => 5 }), onBeat: () => {}, onShow: (s) => seen.push(s) });
+  tl.push({ ...diag, map: { grid: 'square' } }, [attack]);
+  t += 0.7; tl.tick();
+  assert.equal(tl.busy(), false, 'a square map plays the attack as melee, in 0.6 s');
+});
+
 test('an attack, its damage and the fall are one beat, in order', () => {
   const p = planBeats(hit(), world(ent('g', 0), ent('h', 1)));
   assert.deepEqual(p.items.map((i) => [i.ev.type, i.at]), [['attack', 0], ['damage', 0.6], ['down', 0.6], ['died', 0.6]]);

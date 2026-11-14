@@ -13,6 +13,9 @@ async function foeTurn(page, hp) {
     if (h.state.encounter) h.act({ type: 'endEncounter' });
     const alive = (e) => e.hp > 0 && !e.dead;
     const foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden && (e.attacks?.length || e.actions?.length));
+    // The whole party is made well first (setHp brings back the dead too): this pass is about beats, and a run of hits on earlier steps
+    // must not leave the party fallen, which puts a card over the map and ends the fight when the strike lands.
+    for (const e of Object.values(h.state.entities)) if (e.kind === 'pc' && (e.dead || e.hp < e.maxHp)) h.act({ type: 'setHp', actor: e.id, hp: e.maxHp });
     const pc = Object.values(h.state.entities).find((e) => e.kind === 'pc' && alive(e));
     h.act({ type: 'setHp', actor: pc.id, hp: hp0 ?? pc.maxHp });
     for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
@@ -64,10 +67,13 @@ async function pacing(browser, url, label, opts) {
         await page.evaluate(() => { window.hextable.dice.show = 'off'; });        // the dice are not what this pass is about
         if ((await page.evaluate(() => window.hextable.pace())) !== 'wait') throw new Error('the pace is not wait');
         await openTab(page, 'log');
+        // On a phone the drawer is a modal that covers the map and takes Escape (it closes first). The log was only looked at: put the
+        // drawer away, or the steps below tap a scrim instead of the map and press Escape at the drawer (the cause of "Escape did not skip").
+        await closeMenu(page);
       });
       let ids;
       await run.do('a goblin hits: attack, damage and the fall play in order before the controls wake', async () => {
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 40; i++) {
           ids = await foeTurn(page, 1);
           await setPace(page, 'wait');
           const r = await strikeAndWatch(page, ids);
@@ -84,25 +90,52 @@ async function pacing(browser, url, label, opts) {
           if (r.still.busy || r.still.waiting) throw new Error('the controls did not wake');
           return;
         }
-        throw new Error('the goblin missed twelve times');
+        throw new Error('the goblin missed forty times');
       });
       await run.do('a tap on the map skips the beats and does not act', async () => {
         ids = await foeTurn(page, null);
         await setPace(page, 'wait');
         await page.evaluate(strike, [ids.pc, ids.foe]);
         if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
-        const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn]));
+        const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
         const pt = await page.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.kind === 'pc'); const p = h.R.screenOf({ q: e.pos.q + 2, r: e.pos.r, z: e.pos.z }); return p; });
         await sleep(60);
-        const canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : { x: opts.viewport.width / 2, y: 120 };
+        // The point must be bare map and clear of every creature (a tap on one selects it, and a DM's tap on a foe can attack). The old
+        // fallback (the middle, 120 px down) lands on the turn-order strip on a phone, and a tap there opens the drawer.
+        let canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : null;
+        canvasPt ??= await page.evaluate(() => {
+          const h = window.hextable, at = Object.values(h.state.entities).map((e) => h.R.screenOf(e.pos)).filter(Boolean);
+          // Bare map with room round it: the corner chips and the turn strip sit at the edges, and a tap on their rim opens the drawer.
+          const bare = (x, y) => [[0, 0], [24, 0], [-24, 0], [0, 24], [0, -24]].every(([dx, dy]) => document.elementFromPoint(x + dx, y + dy)?.id === 'gl');
+          for (let y = 150; y < innerHeight - 20; y += 30) for (let x = 40; x < innerWidth - 40; x += 30) {
+            if (bare(x, y) && at.every((p) => Math.hypot(p.x - x, p.y - y) > 80)) return { x, y };
+          }
+          return null;
+        });
+        if (!canvasPt) throw new Error('no bare map to tap');
         // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
-        for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
-        if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
-        if (before !== (await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn])))) throw new Error('the tap acted as well as skipped');
+        // A card can come up over the map when the beats end (the party fallen, the rewards): a tap made again would land on its buttons, so
+        // a repeat is made only while the point is still bare map.
+        for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())) && (k === 0 || await onCanvas(page, canvasPt.x, canvasPt.y)); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
+        if (await page.evaluate(() => window.hextable.timeline.busy())) {
+          const d = await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return { at: `${e?.tagName}#${e?.id}.${e?.className}`, body: document.body.className, active: document.activeElement?.id, hp: Object.values(window.hextable.state.entities).filter((q) => q.kind === 'pc').map((q) => q.hp).join('/'), enc: !!window.hextable.state.encounter }; }, [canvasPt.x, canvasPt.y]);
+          throw new Error(`the tap did not skip (tapped ${Math.round(canvasPt.x)},${Math.round(canvasPt.y)}): ${JSON.stringify(d)}`);
+        }
+        const after = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
+        if (before !== after) {
+          // Say what changed, so a failure on a machine we cannot look at names it.
+          const [b, a] = [JSON.parse(before), JSON.parse(after)], changed = [];
+          for (const id of new Set([...Object.keys(b[0]), ...Object.keys(a[0])])) for (const k of new Set([...Object.keys(b[0][id] ?? {}), ...Object.keys(a[0][id] ?? {})])) if (JSON.stringify(b[0][id]?.[k]) !== JSON.stringify(a[0][id]?.[k])) changed.push(`${id}.${k}: ${JSON.stringify(b[0][id]?.[k])} -> ${JSON.stringify(a[0][id]?.[k])}`);
+          if (b[1] !== a[1]) changed.push(`turn ${b[1]} -> ${a[1]}`);
+          throw new Error(`the tap acted as well as skipped: ${changed.join('; ').slice(0, 600)}`);
+        }
         if (await shown(page, '#pace-wait')) throw new Error('"…" is still showing');
       });
       await run.do('Escape skips too, and a button tap skips without acting', async () => {
         await calm(page);
+        // A tap on a character can open its sheet, and on a phone the drawer is a modal that takes Escape and closes first (as it
+        // should: drawer.js). This step is about Escape with nothing open over the map, so the drawer is put away first.
+        await closeMenu(page);
         await page.evaluate(([pc, foe]) => window.hextable.act({ type: 'endTurn', actor: window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id }), [ids.pc, ids.foe]);
         if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
         await page.keyboard.press('Escape');

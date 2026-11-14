@@ -206,7 +206,7 @@ export const handlers = {
     }
     if (!node || !node.canStop) {
       if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");
-      if (node) fail('That hex is occupied.');
+      if (node) fail(`That ${gridOf(s.map).word.one} is occupied.`);
       fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft of movement left.` : "Can't get there.");
     }
     // Moved on its own, it walks on its own: it no longer follows anyone.

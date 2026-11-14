@@ -74,7 +74,12 @@ export const shown = (page, sel) => page.evaluate((s) => { const e = document.qu
 export const waitShown = (page, sel, on = true, timeout = 5000) =>
   wait(page, ([s, want]) => { const e = document.querySelector(s); return (!!e && !e.hidden && e.getClientRects().length > 0) === want; }, [sel, on], timeout);
 
-export async function open(page, url) {
+// The lobby starts the valley on squares on a first visit (nothing remembered, `hextable.valleyGrid`). Every pass that starts from the
+// lobby and expects the hex valley is served here, in one place: before the page loads, a device with no remembered choice is given
+// hexes (a choice made by a tap is kept, so a reload does not undo it). `grid: 'square'` remembers squares; `grid: null` leaves the
+// device as a first visit, which is what the pass about the lobby's own default needs.
+export async function open(page, url, { grid = 'hex' } = {}) {
+  if (grid) await page.context().addInitScript(([k, g]) => { try { if (localStorage.getItem(k) === null) localStorage.setItem(k, g); } catch { /* storage unavailable */ } }, ['hextable.valleyGrid', grid]);
   await page.goto(url);
   await waitShown(page, '#lobby');
 }

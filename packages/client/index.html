@@ -114,7 +114,7 @@
     <div class="row"><button type="button" id="dm-rewards-open">Settle the rewards</button></div>
   </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
-  <section><h3>Map</h3><div class="row"><button type="button" id="dm-edit">Edit map</button></div>
+  <section><h3>Map</h3><p class="note" id="dm-map-grid"></p><div class="row"><button type="button" id="dm-edit">Edit map</button></div>
     <label class="assign">Start on a stock map <select id="dm-stock"></select></label>
     <p class="note" id="dm-stock-text"></p>
     <div class="row"><button type="button" id="dm-stock-go">Start on this map</button></div>
@@ -136,6 +136,10 @@
     <label class="assign">Cover from walls and objects <select id="dm-cover"><option value="on">On</option><option value="off">Off</option></select></label>
     <label class="check"><input type="checkbox" id="dm-creature-cover" checked> Creatures give cover to those behind them</label>
     <label class="check"><input type="checkbox" id="dm-climb" checked> Creatures can climb faces too high to step up</label>
+  </section>
+  <section id="dm-square" hidden><h3>Table rules on squares</h3>
+    <p class="note">This map is on squares. The SRD gives no one way to count a diagonal, a range or the squares of an area, so these are the table's to choose. They change nothing on a hex map.</p>
+    <div id="dm-square-rules"></div>
   </section>
   <section><h3>Sight and light</h3>
     <label class="assign">What players are sent <select id="dm-sight"><option value="rooms">Rooms: everything in a revealed room</option><option value="los">Line of sight: only what the party can see</option><option value="light">Light: line of sight, light and senses</option></select></label>
@@ -181,7 +185,7 @@
     <section id="settings" class="tabpanel" role="tabpanel" aria-labelledby="tab-settings" hidden>
       <section><h3>Look</h3>
         <label class="assign">Theme <select id="set-theme"></select></label>
-        <label class="assign">Floors <select id="set-floors"><option value="rooms">Rooms, with a faint grid</option><option value="hex">Each hex on its own</option></select></label>
+        <label class="assign">Floors <select id="set-floors"><option value="rooms">Rooms, with a faint grid</option><option value="hex" id="set-floors-each">Each hex on its own</option></select></label>
         <label class="check"><input type="checkbox" id="set-cutaway"> Cut walls down where they hide a room</label>
         <label class="check"><input type="checkbox" id="set-caves"> Draw caves with a ragged edge</label>
         <p class="note" id="set-look-note" hidden></p>
@@ -217,12 +221,13 @@
 <div id="lobby" hidden>
   <form id="lobby-card" autocomplete="off">
     <h1>Hextable</h1>
-    <p>Roam free. When a fight starts, the hexes lock and turns begin.</p>
+    <p>Roam free. When a fight starts, the arena locks and turns begin. Play on hexes or on squares.</p>
     <label for="lobby-name">Your name</label><input id="lobby-name" maxlength="24" placeholder="Name">
     <label for="lobby-map">Starting map (when you host or play solo)</label><select id="lobby-map"></select>
+    <p class="note" id="lobby-map-grid" hidden></p>
     <div id="lobby-grid" role="radiogroup" aria-label="Which grid to play the valley on">
-      <label><input type="radio" name="lobby-grid" value="square"><span>Valley on squares</span></label>
-      <label><input type="radio" name="lobby-grid" value="hex" checked><span>Valley on hexes</span></label>
+      <label><input type="radio" name="lobby-grid" value="square" checked><span>Valley on squares</span></label>
+      <label><input type="radio" name="lobby-grid" value="hex"><span>Valley on hexes</span></label>
     </div>
     <div class="row"><button type="button" id="lobby-host">Host a table</button></div>
     <label for="lobby-code">Table code</label>

@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
@@ -239,4 +239,18 @@ test('Features: a chooser feature has a row that opens its card, with its pool a
   assert.ok(loh, ids(rows).join());
   assert.equal(loh.kind, 'chooser'); assert.equal(loh.feature, 'lay-on-hands'); assert.equal(loh.pips.unit, 'HP'); assert.equal(loh.pips.left, loh.pips.max);
   for (const r of rows) if (r.kind === 'none') assert.ok(r.sub, `${r.id} says why it has no button`);
+});
+
+test('movement left is shown in whole feet, rounded down, on a square map only; the pills and the Move tab agree', () => {
+  const sq = { map: { grid: 'square' } }, hx = { map: { grid: 'hex' } };
+  assert.equal(feetShown(sq, 30), 30);
+  assert.equal(feetShown(sq, 30 - 5 * Math.SQRT2), 22);          // one diagonal step spent: 22.93 ft left shows as 22
+  assert.equal(feetShown(sq, 9.999999999), 10, 'a float that fell a hair short of a whole foot is that foot');
+  assert.equal(feetShown(sq, 0.4), 0);
+  assert.equal(feetShown(hx, 22.93), 22.93, 'hex maps show the number as it is');
+  assert.equal(feetShown({}, 12.5), 12.5);
+  const s = newGame(7, { grid: 'square' }), e = inFightAs(s, 'fighter');
+  s.encounter.budget.move = 30 - 5 * Math.SQRT2;
+  assert.equal(moveBudget(s, e).left, 22);
+  assert.match(statusHtml(s, e, { mine: true, full: true, budget: { ...s.encounter.budget, attacksLeft: 0 } }), /Move 22 ft/);
 });

@@ -1,7 +1,7 @@
 # Spec: square grid
 
 Status: agreed. Issue #240; the owner's answers of 14 November are recorded under "The owner's
-answers" below and in the decisions they change. Built so far: S0 to S7.
+answers" below and in the decisions they change. Built so far: S0 to S14 (S13e, S13c and S14 in #274; see the build notes).
 
 The owner asked on 13 November: "can we pivot to squares?" He brought four
 published battle maps, all drawn on a square grid. `maps-and-objects.md`
@@ -585,9 +585,9 @@ map.
 | S10 | **The editor on squares.** Grid choice for a new map; brush, walls snapping to square sides and corners, doors on sides, stairs in 8 directions, Fill floor by `G.cellsIn`; Align to the picture's grid. | editor | Sonnet | `editor.js`, `index.html`, `style.css`, `scripts/smoke/maps.mjs` | on a tablet-sized screen a DM makes a square map from a generated square-grid test picture: after Align the picture's lines lie on the square edges within one screen pixel at default zoom; Fill floor and a traced door give a room the party can walk into; the hex editor works as before |
 | S11 | **UVTT import onto squares.** Decision 9; `grid: 'square'` the default, hex an option; the editor's import dialog offers both. | engine (importer) | Sonnet, engine review | `import-uvtt.js`, `packages/rules/test/import-uvtt.test.js` (new tests only), `editor.js` (the dialog only) | `fixtures/room.dd2vtt` imports as `map_size.x` by `map_size.y` squares; every wall end lies on a square corner or side; nobody walks through an imported wall and the open door lets them out (as the hex test does); the hex import still gives today's result |
 | S12 | **A square stock map.** A square builder in `gen-maps.mjs` and one map (question 6); `docs/maps.md` says how to draw on squares. | content | Sonnet | `scripts/gen-maps.mjs`, `content/maps/<new>.js`, `content/maps/index.js`, `docs/maps.md`, `packages/rules/test/stock-maps.test.js` (new tests only) | the stock-map tests (lint, plain data, size for a phone, every room reachable through its doors) pass for it |
-| S13e | **Words in the engine.** E9: messages that say "hex" use `G.word`. | engine | Sonnet | the engine files holding the 64 strings (appendix), new tests | on a square map no message names a hex; on a hex map every message is unchanged (existing tests pin many) |
-| S13c | **Words and choices in the client.** The lobby and DM panel show each map's grid; the 41 client strings by grid; About says the table plays both. | client | Sonnet | `app.js`, `index.html`, `about.js`, `tablecontrols.js`, `editor.js` (strings only) | at both sizes, a square map's screens say squares; smoke `base`, `drawer`, `maps` pass |
-| S14 | **Saved tables on a square map.** A server test: host a table, load `square-room`, move, restart the server, reload, export, import. | server | Sonnet | `packages/server/test/square.test.js` (new) | the table comes back on the same squares with `grid: 'square'`; a player's view of it holds no wall piece the S8 rule would not send |
+| S13e | **(Built, #274.)** Words in the engine.** E9: messages that say "hex" use `G.word`. | engine | Sonnet | the engine files holding the 64 strings (appendix), new tests | on a square map no message names a hex; on a hex map every message is unchanged (existing tests pin many) |
+| S13c | **(Built, #274.)** Words and choices in the client.** The lobby and DM panel show each map's grid; the 41 client strings by grid; About says the table plays both. | client | Sonnet | `app.js`, `index.html`, `about.js`, `tablecontrols.js`, `editor.js` (strings only) | at both sizes, a square map's screens say squares; smoke `base`, `drawer`, `maps` pass |
+| S14 | **(Built, #274.)** Saved tables on a square map.** A server test: host a table, load `square-room`, move, restart the server, reload, export, import. | server | Sonnet | `packages/server/test/square.test.js` (new) | the table comes back on the same squares with `grid: 'square'`; a player's view of it holds no wall piece the S8 rule would not send |
 
 ### What can run side by side
 
@@ -811,6 +811,23 @@ map.
   Large one, `round` 28, 56, 84, 160; from a Huge one 36, 68, 100, 184. Cones of 15/30/60/90 ft
   (along a side / diagonal): 7/6, 24/20, 84/72, 180/168. Lines 5 ft wide of 15/30/60/100 ft:
   3/2, 6/4, 12/8, 20/14; 10 ft wide of 60/90 ft: 24/24, 36/37. Cubes: n by n squares, always.
+
+### Build notes: S13e, S13c, S14 (#274)
+
+- **S13e.** The engine messages that named the grid now use `G.word`: "That hex is occupied" (spawn, place, move), the map linter's
+  sentences, the map edit messages and the `squareCover: corners` text. On a hex map every message is byte for byte what it was
+  (`square-words.test.js` pins them). The appendix's count of 64 had fallen to 22 by then (earlier rows had already turned the rest
+  into code). What is left are the importer's own notes on a hex import (they speak of hexes because that is what it makes), the
+  object texts in `content/srd52/objects.js` ("fills its hex") and the content linter's sentences, which are content and tooling.
+- **S13c.** The lobby says "the arena locks" and names the grid of a chosen stock map; the DM panel's Map section names the grid in
+  play; About says the table plays on hexes or squares; `app.js` hints and the Floors choice go through `gridWords`
+  (`tablecontrols.js`); the editor already said it (S10). The DM panel has "Table rules on squares": `diagonals`, `squareRange`,
+  `areaFill` and `squareCover`, each with the words of the chosen value from `SETTING_TEXT`, shown on a square map only (all four
+  mean something there; on a hex map the section is hidden). `engine.js` re-exports `SETTING_TEXT`. The client strings that said hex:
+  4 in `app.js`, 3 in `index.html`, about 25 in `editor.js` (already through its `say`); the appendix's 41 was before S9 and S10.
+- **S14.** `packages/server/test/square.test.js`. The server has no upload, so "import" is the table loaded from the exported file, as
+  the server does after an upgrade.
+- **Movement left** is shown rounded down on square maps (`feetShown`, as the engine's own messages say it); the engine keeps the fractions.
 
 ## Out of scope
 

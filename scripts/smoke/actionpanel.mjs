@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open } from './lib.mjs';
 
 // ---------- the action panel (docs/specs/table-ui.md, Decision 6, task T3) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch: Explore first with the ranking and the DM's rests, the Features tab
@@ -6,7 +6,7 @@ import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, op
 // a fight (Reactions on another's turn, the question waiting, nothing covering the chips or the initiative strip). Then a table: a DM
 // and a phone player, who gets no "Lead the party", sees Reactions on another's turn and no tab strip on its own.
 // The tabs' own rows (Attacks, Bonus, Move, Features) are driven by SMOKE_ONLY=paneltabs.
-const go = async (page, url) => { await page.goto(url); await waitShown(page, '#lobby'); };
+const go = (page, url) => open(page, url);
 const tabOf = (page) => page.evaluate(() => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab ?? null);
 const rows = (page) => page.$$eval('#ap-explore [data-row]', (b) => b.map((x) => x.dataset.row));
 const pick = async (page, name) => { await page.click(`#party button:has-text("${name}")`); await wait(page, () => !document.querySelector('#card').hidden); };
