@@ -9,11 +9,13 @@
 // It shows only what the view gives; a creature's controller and the DM see these controls.
 import { CONTENT, SPELLS } from './shared/content/index.js';
 import { targetCount } from './shared/effects.js';
-import { blocked } from './shared/engine.js';
+import { blocked, current, FT } from './shared/engine.js';
+import { gridOf } from './shared/grid.js';
 import { conditionName } from './shared/modifiers.js';
 
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'No action' };
 export const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
+const signedN = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const nice = (id) => String(id).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 function h(tag, attrs = {}, ...kids) {
@@ -32,11 +34,13 @@ function h(tag, attrs = {}, ...kids) {
 // ---------- what a feature needs, by what its record says ----------
 export const formOf = (e) => (typeof e.form === 'string' ? e.form : e.form?.block) ?? null;
 export const formName = (e) => { const id = formOf(e); return id ? CONTENT.monsters[id]?.name ?? nice(id) : ''; };
-// Which chooser a feature has: 'modes', 'form', 'pool', 'exchange', 'free' (casts through it), or null.
+// Which chooser a feature has: 'modes', 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it), or null.
+const manyTargets = (f) => typeof f.action?.target?.creature?.count === 'number' && f.action.target.creature.count > 1;
 export function kindOf(f) {
   if (f.action?.modes?.length) return 'modes';
   if (f.action?.form) return 'form';
   if (f.action?.pool) return 'pool';
+  if (manyTargets(f) && !f.action.gain) return 'targets';
   if (f.exchange) return 'exchange';
   if (f.freeCast) return 'free';
   return null;
@@ -57,6 +61,14 @@ export function chooserButtons(st, e) {
     let label = f.name, sub = '', why = '', cls = a && (a.time === 'bonus' || a.time === 'free') ? 'bonus' : '';
     if (kind === 'modes') sub = [TIME[a.time], left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · ');
     else if (kind === 'pool') sub = [TIME[a.time], `${left} HP left`].join(' · ');
+    else if (kind === 'targets') {
+      const p = payFor(e, f);
+      sub = [TIME[a.time], p.own ? `${left} left` : '', p.rage ? `paid from ${nice(a.orCost.resource)} (${p.have} left)` : ''].filter(Boolean).join(' · ');
+      if (time) why = blocked(st, e, time) || '';
+      if (!why && f.uses && !p.ok) why = `${e.name} has no uses of ${f.name} left.`;
+      out.push({ label, sub, cls, why, feature: f.id, kind, time: a.time, f });
+      continue;
+    }
     else if (kind === 'exchange') { sub = `${left} of ${f.uses.max} points`; cls = ''; }
     else if (kind === 'free') sub = `Cast free · ${left} left`;
     else if (kind === 'form') {
@@ -69,6 +81,53 @@ export function chooserButtons(st, e) {
   }
   return out;
 }
+// What pays for a use of a feature: its own uses, or, with none left, the pool its `orCost` names (Intimidating Presence: a use of Rage).
+export function payFor(e, f) {
+  const a = f.action ?? {}, n = a.cost?.n ?? 1, own = !!f.uses, left = own ? e.uses?.[f.id] ?? 0 : null;
+  const rage = !!a.orCost && own && left < n && (e.uses?.[a.orCost.resource] ?? 0) >= a.orCost.n;
+  return { own, rage, have: a.orCost ? e.uses?.[a.orCost.resource] ?? 0 : 0, ok: !own || left >= n || rage };
+}
+
+// ---------- Brutal Strike and Cunning Strike: what an attack may carry (#230) ----------
+// `attack.brutal` and `attack.cunning` are chosen with the attack, from the options the record lists. These helpers only read the record and the turn's flags, to grey a
+// choice out with the engine's own words; the engine checks again (Disadvantage on the roll, the target's size, the Large-or-smaller kit) and a refusal is shown as it is.
+const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+export function brutalOf(e) {
+  const fs = (e.feats ?? []).filter((f) => f.brutal), base = fs.find((f) => f.brutal.dice);
+  return base ? { base, options: fs.flatMap((f) => f.brutal.options ?? []) } : null;
+}
+export function cunningOf(e) {
+  const fs = (e.feats ?? []).filter((f) => f.cunning), options = fs.flatMap((f) => f.cunning.options ?? []);
+  return options.length ? { name: fs.find((f) => f.cunning.options)?.name ?? 'Cunning Strike', options, max: Math.max(1, ...fs.map((f) => f.cunning.max ?? 1)) } : null;
+}
+export const sneakDice = (e) => Number(/^(\d+)d\d+$/.exec(e.features?.sneak ?? '')?.[1] ?? 0);
+export const NEEDS = { 'poisoners-kit': "a Poisoner's Kit" };
+// What one option asks for, in words (the target's size is only known once a target is tapped; the engine checks it).
+export const optionNeeds = (o) => [o.needs ? `Needs ${NEEDS[o.needs] ?? nice(o.needs).toLowerCase()}` : '', o.size ? `Works on a creature of ${nice(o.size)} size or smaller` : '', o.keepHidden ? 'Made while hidden' : ''].filter(Boolean);
+// Why an option of Cunning Strike cannot be taken now ('' if it can): the engine's words for the gear and for hiding.
+export function optionWhy(e, o) {
+  if (o.needs && !(e.gear ?? []).some((g) => slug(g) === o.needs)) return `${o.name} needs ${NEEDS[o.needs] ?? o.needs} on ${e.name}'s person.`;
+  if (o.keepHidden && !e.hiding) return `${o.name} is for an attack made while hidden.`;
+  return '';
+}
+// The choices attack `a` offers: { brutal: { name, dice, options, why } | null, cunning: { name, options, max, dice, why } | null }, or null for neither. `why` is '' when the choice can be made now.
+export function strikeChoices(st, e, a) {
+  if (!e?.abil || !a || a.spell) return null;
+  const enc = st.encounter, flags = enc?.flags ?? {}, mine = !!enc && current(st) === e.id;
+  const B = brutalOf(e), C = cunningOf(e), out = { brutal: null, cunning: null };
+  if (B && a.abil === 'str') {
+    const after = B.base.brutal.after, need = (e.feats ?? []).find((f) => f.id === after)?.name ?? after, name = B.base.name;
+    out.brutal = { name, dice: B.base.brutal.dice, options: B.options,
+      why: !mine ? `${name} is used on ${e.name}'s turn.` : !flags[`${after}:${e.id}`] ? `${name} needs ${need} this turn.` : flags[`brutal:${e.id}`] ? `${e.name} has already used ${name} this turn.` : '' };
+  }
+  if (C && (a.finesse || a.type === 'ranged')) {
+    const dice = sneakDice(e);
+    out.cunning = { name: C.name, options: C.options, max: C.max, dice,
+      why: !dice ? `${e.name} has no Sneak Attack.` : dice < 2 ? `${e.name}'s Sneak Attack is one die: none is left to spend.` : flags[`sneak:${e.id}`] ? `${e.name} has already dealt Sneak Attack this turn.` : '' };
+  }
+  return out.brutal || out.cunning ? out : null;
+}
+
 export const metamagicKnown = (e) => (e.feats ?? []).filter((f) => f.metamagic);
 
 // Forms the feature offers: pack Beasts within its limits (`action.form`: types, maxCr, fly). The engine checks again.
@@ -86,7 +145,7 @@ export function freeSpells(f) {
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
 
-export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
+export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, castSpell }) {
   const S = () => state();
   const root = h('div', { id: 'cp', hidden: true });
   document.body.append(root);
@@ -218,6 +277,80 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
     };
   }
 
+  // ---------- Intimidating Presence: a list of creatures ----------
+  function targetsPanel(e, f) {
+    const a = f.action, far = a.target.creature.range[1], most = a.target.creature.count, p = payFor(e, f), G = gridOf(S().map);
+    const st = mem(`${e.id}:${f.id}`, () => ({ picked: [] }));
+    const all = creatures(e).filter((x) => x.id !== e.id).map((x) => ({ x, d: Math.round(G.dist(e.pos, x.pos) * FT) })).sort((m, n) => (m.x.side === e.side) - (n.x.side === e.side) || m.d - n.d);
+    const reach = (m) => m.d <= far;
+    st.picked = st.picked.filter((id) => all.some((m) => m.x.id === id && reach(m)));
+    const draw = () => show(targetsPanel(e, f));
+    const foes = all.filter((m) => m.x.side !== e.side && reach(m)).slice(0, most).map((m) => m.x.id);
+    const rows = all.map((m) => {
+      const on = st.picked.includes(m.x.id), off = !reach(m) || (!on && st.picked.length >= most);
+      return h('label', { class: `cp-check cp-opt${off ? ' off' : ''}`, 'data-target': m.x.id },
+        h('input', { type: 'checkbox', 'data-pick': m.x.id, checked: on, disabled: off && !on, onchange: (ev) => { st.picked = ev.target.checked ? [...st.picked, m.x.id] : st.picked.filter((i) => i !== m.x.id); draw(); } }),
+        h('span', {}, h('b', { text: m.x.side === e.side ? `${m.x.name} (ally)` : m.x.name }), ` · ${m.d} ft`, h('small', { text: !reach(m) ? `Beyond ${far} ft.` : '' })));
+    });
+    return {
+      key: `${e.id}:${f.id}`, title: f.name,
+      note: `${TIME[a.time]}. ${p.own ? `${usesLeft(e, f)} left` : ''}${p.rage ? `; with none left, a use of ${nice(a.orCost.resource)} pays for it (${p.have} left)` : ''}. Creatures of your choice within ${far} feet, up to ${most}. ${f.text}`,
+      body: [h('div', { class: 'cp-row cp-quick' }, h('button', { type: 'button', id: 'cp-foes', text: 'All foes in range', onclick: () => { st.picked = foes; draw(); } }), h('button', { type: 'button', id: 'cp-none', text: 'None', onclick: () => { st.picked = []; draw(); } })),
+        h('div', { class: 'cp-f', role: 'group', 'aria-label': 'Targets' }, ...(rows.length ? rows : [h('p', { class: 'cp-note', text: 'Nobody else is here.' })]))],
+      buttons: [{ label: st.picked.length ? `Use ${f.name} on ${st.picked.length}` : `Use ${f.name}`, primary: true, id: 'cp-use', send: () => (st.picked.length ? { type: 'feature', actor: e.id, feature: f.id, targets: [...st.picked] } : (show(targetsPanel(e, f), 'Choose at least one creature.'), null)) }],
+      reopen: () => targetsPanel(e, f),
+    };
+  }
+
+  // ---------- Brutal Strike and Cunning Strike: chosen with an attack ----------
+  const attackExtra = (st) => ({ ...(st.brutal ? { brutal: st.brutal } : {}), ...(st.cunning.length ? { cunning: [...st.cunning] } : {}) });
+  function strikePanel(e, a) {
+    const ch = strikeChoices(S(), e, a) ?? { brutal: null, cunning: null }, key = `${e.id}:strike:${a.id}`;
+    const st = mem(key, () => ({ brutal: null, cunning: [] }));
+    if (!ch.brutal || ch.brutal.why || !ch.brutal.options.some((o) => o.id === st.brutal)) st.brutal = null;
+    if (!ch.cunning || ch.cunning.why) st.cunning = [];
+    else st.cunning = st.cunning.filter((id) => ch.cunning.options.some((o) => o.id === id && !optionWhy(e, o)));
+    const draw = () => show(strikePanel(e, a));
+    const body = [];
+    if (ch.brutal) {
+      const b = ch.brutal;
+      body.push(h('div', { class: 'cp-f', 'data-part': 'brutal' }, h('span', { text: `${b.name}: give up Advantage from Reckless Attack for ${b.dice} more damage and one effect` }),
+        b.why ? h('p', { class: 'cp-note cp-why', text: b.why }) : null,
+        h('div', { class: 'cp-levels', role: 'group', 'aria-label': b.name }, ...b.options.map((o) => h('button', { type: 'button', 'data-brutal': o.id, 'aria-pressed': st.brutal === o.id, disabled: !!b.why, text: o.name,
+          onclick: () => { st.brutal = st.brutal === o.id ? null : o.id; draw(); } })))));
+    }
+    if (ch.cunning) {
+      const c = ch.cunning, cost = (ids) => ids.reduce((n, id) => n + (c.options.find((o) => o.id === id)?.cost ?? 0), 0), spent = cost(st.cunning);
+      body.push(h('div', { class: 'cp-f', 'data-part': 'cunning' }, h('span', { text: `${c.name}: give up Sneak Attack dice (${e.features.sneak}) for an effect; at least one die stays` }),
+        c.why ? h('p', { class: 'cp-note cp-why', text: c.why }) : h('p', { class: 'cp-note', 'data-dice': `${spent}`, text: `${spent} of ${c.dice} dice spent; ${c.max === 1 ? 'one effect' : `up to ${c.max} effects`} an attack.` }),
+        ...c.options.map((o) => {
+          const on = st.cunning.includes(o.id), gear = optionWhy(e, o), left = c.dice - spent - o.cost;
+          const why = c.why || gear || (!on && st.cunning.length >= c.max ? `Only ${c.max === 1 ? 'one effect' : `${c.max} effects`} an attack.` : !on && left < 1 ? `Costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}; one must stay to deal Sneak Attack.` : '');
+          return h('label', { class: `cp-check cp-opt${why && !on ? ' off' : ''}`, 'data-cunning': o.id },
+            h('input', { type: 'checkbox', checked: on, disabled: !!why && !on, onchange: (ev) => { st.cunning = ev.target.checked ? [...st.cunning, o.id] : st.cunning.filter((i) => i !== o.id); draw(); } }),
+            h('span', {}, h('b', { text: o.name }), ` · costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}`, h('small', { text: why || optionNeeds(o).join('. ') || '' }), why && optionNeeds(o).length ? h('small', { text: optionNeeds(o).join('. ') }) : null));
+        })));
+    }
+    const names = [st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
+    return {
+      key, title: `${a.name}: strike options`, note: `${signedN(a.bonus)} to hit, ${a.damage} ${a.dtype}. Pick what goes with this attack, then tap the target. Nothing picked is a plain attack.`, body,
+      buttons: [{ label: names.length ? `Choose target (${names.join(' + ')})` : 'Choose target', primary: true, id: 'cp-use', run: () => { close(); armAttack({ id: a.id, ...(names.length ? { label: names.join(' + '), extra: attackExtra(st) } : {}) }); } }],
+      reopen: () => strikePanel(e, a),
+    };
+  }
+
+  // ---------- Self-Restoration: which condition ends with the turn ----------
+  const curable = (e) => { const sc = (e.feats ?? []).find((f) => f.selfCure); return sc ? { name: sc.name, list: sc.selfCure.conditions.filter((c) => e.cond?.[c]) } : null; };
+  function curePanel(e) {
+    const { name, list } = curable(e);
+    return {
+      key: `${e.id}:cure`, title: name, note: `${e.name} has more than one of the conditions ${name} ends. Choose the one that ends with this turn.`,
+      body: [h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Condition to end' }, ...list.map((c) => h('button', { type: 'button', 'data-cure': c, text: `End ${conditionName(c)}`, onclick: () => go(null, { send: { type: 'endTurn', actor: e.id, cure: c } }) })))],
+      buttons: [{ label: 'End turn, DM chooses', id: 'cp-dm', send: { type: 'endTurn', actor: e.id } }],
+      reopen: () => curePanel(e),
+    };
+  }
+
   // ---------- Metamagic ----------
   // Which options could apply to a spell, from the spell's own data. Only for greying a choice out; the engine
   // refuses what does not apply, and says why.
@@ -314,7 +447,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
   const chosenFor = (e, spellId) => (pend && pend.actor === e.id && pend.spell === spellId ? pend : null);
 
   // ---------- the buttons of the action bar ----------
-  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, exchange: exchangePanel, free: freePanel })[kindOf(f)](e, f);
+  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel })[kindOf(f)](e, f);
   function buttons(e) {
     const out = chooserButtons(S(), e).map(({ label, sub, cls, why, feature, f }) => ({ label, sub, cls, why, feature, onClick: () => show(panelOf(e, f)) }));
     if (metamagicKnown(e).length && spellsToCast(e).length) {
@@ -345,6 +478,10 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
 
   return {
     buttons, decorate, bindSheet,
+    // Opens the strike options of an attack (the Attacks tab's Brutal Strike and Cunning Strike rows).
+    openAttack(e, id) { const a = (e.attacks ?? []).find((x) => x.id === id); if (a && strikeChoices(S(), e, a)) show(strikePanel(e, a)); },
+    // Self-Restoration: at the end of a turn with more than one of its conditions, ask which ends. Returns true if it asked (the turn is not ended yet).
+    askCure(e) { const c = e && e.abil && mine(e) && curable(e); if (!c || c.list.length < 2) return false; show(curePanel(e)); return true; },
     // Opens the chooser of a feature (the panel's Features row, and the sheet's Use button).
     openFeature(e, id) { const f = (e.feats ?? []).find((x) => x.id === id); if (f && needsChoice(f)) show(panelOf(e, f)); }, sheetBanner, pickable, chosenFor,
     // A spell armed with Metamagic that needs more targets (Twinned): the most it may take now.

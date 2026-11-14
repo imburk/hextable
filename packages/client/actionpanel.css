@@ -76,3 +76,8 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 .ap-pick span { font-size: 13px; color: var(--muted); }
 .ap-pick button { min-height: 44px; padding: 4px 12px; }
 @media (min-width: 900px) { .ap-pick { grid-column: 1 / -1; } }
+
+/* The standing instructions that are not Reactions (#230): their own group under the Reactions. */
+#ap-reactions .rx-group, #sheet-reactions .rx-group { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.rx-head { margin: 4px 0 2px; font-size: 14px; color: var(--muted); }
+.rx-group .note { margin: 0 0 6px; }
