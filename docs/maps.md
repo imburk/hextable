@@ -138,8 +138,30 @@ button that changes it: to change grid, start a new map. Loading a stock map or 
 6. **Trace** > **Edit**: tap a wall or door to pick it, then **Delete**, or drag a red end to move it.
 7. **Done**, then play. Everything the editor does is an ordinary map edit checked by the game; **Undo** works throughout.
 
-What it cannot do yet is in `docs/DEBT.md` (T24): the Universal VTT import still makes hexes, and using a door on a square
-map is blocked by an engine bug (the DM can still open it from the DM panel).
+### Importing a Universal VTT file
+
+Map file > **Import Universal VTT** reads a `.dd2vtt`, `.df2vtt` or `.uvtt` file (the picture, walls, doors and lights a
+mapping tool exports). The dialog shows what was read before anything changes, with **Squares** chosen and **Hexes** as the
+other choice (the notes change with the choice). Nothing is replaced until **Load this map**.
+
+- **On squares** the file is laid on the grid it was drawn on: a map of the file's `map_size` in squares, the picture at the
+  file's size and corner, so the picture's squares and the map's squares coincide and there is nothing to align. A grid line of
+  the file becomes the side of a square, so walls and the picture sit half a square north and west of where a map in feet would put
+  them; they move together. Line of sight becomes walls, `objects_line_of_sight` becomes low walls (rails), every square on the
+  picture gets a stone floor. A portal that is exactly one square side becomes a door on that side (`edge`), as one traced in the
+  editor does; any other portal (wider, or on a slant) is a door on its own line. Closed and open are kept.
+- **Lights** become a lit brazier in the square each light stands in (one to a square): the map has no free-standing light, so the
+  file's range, colour and shadow settings are left out. So are the file's ambient light and the rotation of each door. Every door
+  is a plain wooden door, every square plain stone.
+- **On hexes** the walls and doors are copied in feet and may cut a hex at an angle (see the notes the dialog gives); lights are not read.
+- If the picture's size in pixels does not match `map_size` at its pixels a square, or the origin is not a whole number of squares,
+  the notes say so and **Align to the picture's grid** puts it right.
+- A file is refused with a plain message, and nothing changes, if it is over 64 million characters, is not valid, has a side over
+  20000 squares, or more than 50000 wall lines, 200000 wall points, 20000 doors or 20000 lights; whatever of it the map can hold
+  is limited as for any map (5000 walls after straight runs are joined, 2000 doors and things, 20000 squares).
+
+What it cannot do yet is in `docs/DEBT.md` (T24): using a door on a square map is blocked by an engine bug (the DM can still
+open it from the DM panel).
 
 ## The valley on squares
 

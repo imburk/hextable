@@ -495,10 +495,19 @@ choice below (S7 build notes give the counts).
   (`G.cellsIn`). Stairs run along any of the 8 directions.
 - **UVTT import** (`import-uvtt.js`): its files are square-grid, measured in
   squares with a `pixels_per_grid`. On a square map the import becomes
-  exact: one tile per square of `map_size`, walls and doors copied as they
-  are (they already lie on square edges), a portal's `at` the square nearest
-  its middle, and no "hexes and squares never line up" note. The hex import
-  stays as an option.
+  exact: one tile per square of `map_size`, walls and doors copied in
+  squares, a portal's `at` the square nearest its middle, and no "hexes and
+  squares never line up" note. The hex import stays as an option
+  (`importUvtt(json, { grid: 'hex' })`); with no option the importer gives
+  squares. **Build note (S11):** a file's grid lines are whole squares, but a
+  map square is centred on a multiple of 5 ft, so its sides are at 2.5 + 5k.
+  Copying the file's points "as they are" would run every wall through the
+  middle of squares. The importer therefore moves every point, and the
+  picture's corner, half a square (2.5 ft) north and west: walls, doors and
+  picture keep their places against each other and lie on square sides. A
+  portal exactly one side long becomes an `edge` door; others keep a `seg`.
+  Lights become a lit brazier in the square they stand in (the map has no
+  free-standing light).
 
 ## The geometry interface
 
