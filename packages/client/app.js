@@ -1,7 +1,7 @@
 // The table UI: selection, action bar, character sheet, log, DM tools, lobby.
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
-import * as H from './shared/hex.js';
+import { key as cellKey, col as cellCol } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
@@ -421,7 +421,7 @@ function actionAim(e, hl) {
     return { hint: hl.targets.length ? `${def.name}: tap a target${coverHint(e, hl.targets)}` : `${def.name}: nobody in reach (${p.far} ft)`, go: false };
   }
   const aimed = !!mode.aim || p.area.shape === 'emanation';
-  hl.area = aimed ? areaHexes(S, e, { area: p.area }, mode.aim).map(H.key) : [];
+  hl.area = aimed ? areaHexes(S, e, { area: p.area }, mode.aim).map(cellKey) : [];
   const caught = aimed ? areaTargets(S, e, def, mode.aim) ?? [] : [];
   const how = aimHow(p.area, p.range);
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
@@ -500,8 +500,8 @@ function refresh() {
         if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
-          hl.area = hexes.map(H.key);
-          const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(H.col(x.pos)));
+          hl.area = hexes.map(cellKey);
+          const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(cellCol(x.pos)));
           const how = aimHow(sp.area, sp.range);
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
           if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, targetCount(sp.def, e.level)).map((x) => x.id);
@@ -738,7 +738,7 @@ R.onTap = ({ hex, id }) => {
     act({ type: 'move', actor: e.id, to: hex });
   }
 };
-R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && H.key(hex) !== (mode.aim && H.key(mode.aim))) { mode.aim = hex; refresh(); } };
+R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
 $('btn-end').onclick = () => act({ type: 'endTurn', actor: selId });
