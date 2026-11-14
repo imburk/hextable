@@ -73,7 +73,8 @@ function viewEncounter(state) {
   let slot = -1;                                    // where an unseen turn shows: after the last seen creature before it
   enc.order.forEach((o, i) => {
     const c = classify(state, o.id);
-    if (c === 'open') order.push({ id: o.id, init: o.init, dex: o.dex });
+    // `after` (a companion's turn straight after its master's, companions.md Decision 3) only where both are the party's.
+    if (c === 'open') order.push({ id: o.id, init: o.init, dex: o.dex, ...(typeof o.after === 'string' && classify(state, o.after) === 'open' ? { after: o.after } : {}) });
     else if (c === 'seen') order.push({ id: o.id });
     if (i < enc.turn && c !== 'hidden') slot = order.length;
   });
@@ -408,6 +409,8 @@ export function viewEvents(events, state, viewer) {
     return g?.name ? [g.name] : [];
   };
   const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
+  // A copy of an order entry or a `joined` of one of theirs, with `after` only where its master is theirs too.
+  const afterOpen = (o) => { const { after, ...rest } = o; return { ...rest, ...(typeof after === 'string' && cls(after) === 'open' ? { after } : {}) }; };
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
   // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
   // P26: an area reaching into a region not yet revealed does not show its cells there).
@@ -484,13 +487,13 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'encounterStart':
         out.push({ type: ev.type, ...(ev.fight !== undefined && { fight: ev.fight, where: ev.where }), center: ev.center, radius: ev.radius,
-          order: ev.order.filter((o) => cls(o.id) !== 'hidden').map((o) => (cls(o.id) === 'open' ? { ...o } : { id: o.id })) });
+          order: ev.order.filter((o) => cls(o.id) !== 'hidden').map((o) => (cls(o.id) === 'open' ? afterOpen(o) : { id: o.id })) });
         break;
       case 'formation':                                // how the party walks: only ever party members' places, and only theirs are sent
         out.push({ ...pick(ev, ['type', 'id', 'shape']), ...(ev.slots ? { slots: Object.fromEntries(Object.entries(ev.slots).filter(([id]) => cls(id) === 'open').map(([id, v]) => [id, { ...v }])) } : {}) });
         break;
       case 'joined':
-        out.push(cls(ev.id) === 'open' ? { ...ev } : { type: ev.type, id: ev.id });
+        out.push(cls(ev.id) === 'open' ? afterOpen(ev) : { type: ev.type, id: ev.id });
         break;
       case 'cond':
       case 'condEnd':                                  // gaining or losing a condition, if it is one you could see
@@ -502,10 +505,12 @@ export function viewEvents(events, state, viewer) {
         // Whose it was and why it ended (`why` names its caster: "Imp went down") only where they know of its caster.
         // Whose it was only where they know of its caster; why it ended, unless the words name a caster they do not
         // know of ("Imp went down"): then only that it ended (rounds 2 and 3 of the review of #313).
+        // The same for a creature it was on that they do not know of ("Zorblax left"; review of #313, round 4, L1).
         const unknownCaster = typeof ev.source === 'string' && cls(ev.source) === 'hidden';
+        const unknownIds = [...(unknownCaster ? [ev.source] : []), ...(ev.targets || []).filter((id) => typeof id === 'string' && cls(id) === 'hidden')];
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
-          const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source', 'why'])]), targets };
-          if (unknownCaster && ev.why !== undefined) e.why = namesOf(ev.source).some((n) => n && String(ev.why).includes(n)) || !namesOf(ev.source).length ? 'it ended' : ev.why;
+          const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
+          if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
           out.push(e);
         }
         break;

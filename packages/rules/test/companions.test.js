@@ -227,7 +227,7 @@ test("the DM's bond: what it refuses changes nothing, and players can't bond at 
   refused(s, { type: "bond", actor: wolf, to: wolf }, DM, /its own companion/);
   refused(s, { type: "bond", actor: "rogue", to: "fighter" }, DM, /player's character/);
   refused(s, { type: "bond", actor: wolf, to: "fighter", kind: "dragon" }, DM, /kind can be/);
-  refused(s, { type: "bond", actor: wolf, to: "fighter", turn: "after" }, DM, /not built yet/);
+  refused(s, { type: "bond", actor: wolf, to: "fighter", turn: "none" }, DM, /not built yet/);
   refused(s, { type: "bond", actor: wolf, to: "fighter", orders: "command" }, DM, /not built yet/);
   refused(s, { type: "bond", actor: wolf, to: "fighter", at0: "explodes" }, DM, /vanish, dies/);
   refused(s, { type: "bond", actor: wolf, to: null }, DM, /no one's companion/);
