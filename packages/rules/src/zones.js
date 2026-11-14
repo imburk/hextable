@@ -15,7 +15,7 @@
 // from inside itself. Design: docs/specs/rules-expansion.md, build notes.
 import { gridOf, col, boxOf, squareAround } from './grid.js';
 import { begin, run } from './effects.js';
-import { effectsOf, turnKey } from './durations.js';
+import { effectsOf, thisTurn, turnKey } from './durations.js';
 import { FT, footprint, gap, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
@@ -87,7 +87,7 @@ export function turnInZones(s, ev, kit, e, when) {
 // One zone goes off on one creature, at most once a turn if it says so. Returns whether it did.
 function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
   const z = fx.zone, now = turnKey(s);
-  if (z.once === 'turn' && now !== null && z.last[t.id] === now) return false;
+  if (z.once === 'turn' && now !== null && thisTurn(s, z.last[t.id])) return false;
   if (now !== null) z.last[t.id] = now;
   if (s.stack?.length) { (s.zoneQueue ??= []).push({ fx: fx.id, id: t.id, why }); return true; }
   pre();

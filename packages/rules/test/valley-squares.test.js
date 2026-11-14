@@ -27,13 +27,15 @@ const MAIN = {
   987654321: "49f08ecd5defefa977060d903bd1d78f9d9b481a770d36a14ceb7e58f5720519",
 };
 
+// The digests were taken at state version 21; the version has moved since (22, #300) and nothing else.
+const asMain = (s) => ({ ...s, version: 21 });
 test("the default valley is the hex valley, byte for byte what main made, for several seeds", () => {
   for (const [seed, digest] of Object.entries(MAIN)) {
-    assert.equal(sha(newGame(Number(seed))), digest, `seed ${seed}`);
-    assert.equal(sha(newGame(Number(seed), {})), digest, `seed ${seed} with empty options`);
-    assert.equal(sha(newGame(Number(seed), { grid: "hex" })), digest, `seed ${seed} asked for hexes`);
+    assert.equal(sha(asMain(newGame(Number(seed)))), digest, `seed ${seed}`);
+    assert.equal(sha(asMain(newGame(Number(seed), {}))), digest, `seed ${seed} with empty options`);
+    assert.equal(sha(asMain(newGame(Number(seed), { grid: "hex" }))), digest, `seed ${seed} asked for hexes`);
   }
-  assert.equal(sha(newGame()), MAIN[7], "the default seed");
+  assert.equal(sha(asMain(newGame())), MAIN[7], "the default seed");
   assert.equal(newGame(7).map.grid, "hex");
 });
 

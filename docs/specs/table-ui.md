@@ -960,7 +960,7 @@ in the next section.
 | E17 | Items between creatures: `pass { actor, item, to }` (a party member within 5 ft), `drop { actor, item }`, `pickUp { actor, object }`, and a map object kind `pile` with `contents` (a content addition and an amendment to `maps-and-objects.md`). One `gear` event per side with `why` and `with`. | actions, content | controller, DM | `gear` | `gear` for open creatures; `object` for a pile in view | 18 or later | 6g (after 6) |
 | E18 | Items that do things (potions, scrolls, wands with charges): an `items` content kind reusing the effect steps, and an `item` action. | content, action | controller, DM | — | — | later | not scheduled |
 | E19 | The monster AI may attack a creature at 0 Hit Points (SRD: within 5 ft, a critical hit that adds failures). Only if the owner says so (question 1). | AI | engine | — | — | no | after 5 |
-| E20 | Stepping away (#300, the owner's first comment on #246): `stepAway { actor, how? }`, `stepBack { actor }`, settings `away` and `breaks`. Built; see the build notes, "E20: stepping away". | actions, settings | controller (as `breaks` allows), DM | everything | their party's `away` field and events only | no (absent fields) | the tracker control, the break button |
+| E20 | Stepping away (#300, the owner's first comment on #246): `stepAway { actor, how? }`, `stepBack { actor }`, settings `away` and `breaks`. Built; see the build notes, "E20: stepping away". | actions, settings | controller (as `breaks` allows), DM | everything | their party's `away` field and events only | 22 (turn stamps) | the tracker control, the break button |
 
 Nothing in E1 to E20 lets a client send what the engine should compute: the
 client sends `conclusion`, `pass`, `rewind` and the existing actions, and
@@ -1546,7 +1546,8 @@ same choices; a stand-in may play the character until the player is back. The SR
   creature aside. A player may `stepBack` only a `player` one; the DM, any. In the encounter,
   `moved = { [id]: { n, keep, round, after?, turn? } }` (who was moved where; `turn` is the budget and flags of a turn
   set aside part-way through) and `held = { [id]: round }`. All absent when unused, so no state version bump and no
-  migration: an old table plays as before, and its settings read as the first value of each rule.
+  migration for these: an old table plays as before, and its settings read as the first value of each rule (the
+  version moved to 22 for turn stamps, below).
 - **Actions.** `stepAway { actor, how? }`: the creature's controller or the DM. `how` is the DM's only (one of
   `AWAY`); without it the table rule `away` applies. Sent again by the DM with another `how` it changes it.
   `stepBack { actor }`: the DM, or the controller when the break is theirs (`by: 'player'`; "The DM set Pip aside;
@@ -1573,7 +1574,13 @@ same choices; a stand-in may play the character until the player is back. The SR
   the one going on; a creature joining the fight already re-sorted the order mid-turn), so it is now the fight, the
   round and whose turn it is: a creature has one turn a round (stepping away moves a turn at most once a round, and a
   held turn is one never begun). A part made in a saved game during the turn going on, under the old name, may end one
-  turn early once after the update. Nothing else keeps a place in the order: the budget and flags of a turn set aside
+  turn early once after the update, so (second review round) the state version is 22: `migrate.js` names the old
+  stamps of the fight going on (`born`, `zone.last`) by the creature at that place in the order (`restamp`,
+  durations.js). An old stamp that comes back unmigrated (an undo step or a pin from before) is still read as the
+  turn at that place (`thisTurn`; no creature's id is only digits), and `settleOrder` names it by creature before
+  a place moves. The server already drops a saved undo history when a table's version changes on loading, and solo
+  drops pins of another version. Left: a creature joining the fight re-sorts the order (world.js) without renaming an
+  unmigrated old stamp first. Nothing else keeps a place in the order: the budget and flags of a turn set aside
   go with it, a waiting reaction stops any stepping away, and the engine has no readied actions.
 - **`hold` skips the turn entirely.** A held turn that is passed over is no turn: nothing at the start or the end of
   its turn happens (a save to end a condition at the end of its turn, a zone's damage at the start, effects that end
@@ -1585,6 +1592,10 @@ same choices; a stand-in may play the character until the player is back. The SR
   lap of turns played for creatures set aside (everyone away), the next turn starts as an ordinary one and waits for the
   DM: no endless loop, no stalemate. Death saves are rolled as always. A creature joining the fight sorts the order by
   initiative (`joinEncounter`, world.js, not touched); `settleOrder` puts the moved ones back when the turn next passes.
+- **Turn stamps are not sent (second review round).** A stamp now holds a creature's id, so `viewEffects` drops
+  `born` from every part sent. While at it: inside a party creature's record and the parts sent, a mention of a
+  creature the party does not know of becomes `'someone'` as a value and is dropped as a key (`scrub` in view.js;
+  a condition's `source`, a part's `against` or `except`). Players learn that something did it, not who.
 - **Hidden information.** Players are told of a party creature's stepping away: its `away` field (in its open
   record), and events `away`, `back`, `awayTurn` (`how`: `dodge`, `hold`, `standIn`, `resumed`) and `turnMoved`
   (`to: 'end' | 'next'`). Of a creature not of the party nothing: `seenRecord` and `viewEncounter` are allow lists,

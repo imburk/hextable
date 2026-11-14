@@ -9,7 +9,8 @@ import { apply, AWAY, awayHow, current, moveOptions, SETTING_TEXT, SETTINGS } fr
 import * as H from "../src/hex.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
-import { view, viewEvents } from "../src/view.js";
+import { classify, view, viewEvents } from "../src/view.js";
+import { migrate, VERSION } from "../src/migrate.js";
 import { startEffect, turnKey } from "../src/durations.js";
 import { turnInZones } from "../src/zones.js";
 import { KIT } from "../src/engine/resolve.js";
@@ -392,3 +393,111 @@ for (const grid of ["hex", "square"]) {
     assert.equal(ev.filter((e) => e.type === "zone").length, 2, "the held creature's turn is another turn");
   });
 }
+
+// ---- review of #306, second round: turn stamps are never sent, and stamps from before version 22 ----
+
+test("players are sent no turn stamp and no id of a creature they do not know of, under rooms, los and light", () => {
+  for (const sight of ["rooms", "los", "light"]) for (const how of ["hidden", "hiding"]) {
+    const s = fight({}, { sight });
+    const g = s.entities.m1;
+    until(s, "m1");
+    if (how === "hidden") g.hidden = true; else g.hiding = true;
+    assert.equal(classify(s, "m1"), "hidden", `${sight} ${how}`);
+    // In its turn it marks the wizard: a part stamped with this turn, a modifier against it, a condition from it.
+    const fx = startEffect(s, { name: "Mark", source: "m1", duration: "1 minute" });
+    fx.parts.push({ target: "wizard", modifier: { on: "attack.received", op: "advantage" }, against: "m1", ends: { on: "turnEnd", of: "source" }, born: turnKey(s) });
+    s.entities.wizard.cond.frightened = { source: "m1", effect: fx.id };
+    const v = view(s, PAT), text = JSON.stringify({ ...v, map: null });
+    assert.ok(!text.includes('"m1"'), `${sight} ${how}: ${text.match(/.{60}"m1".{20}/)?.[0]}`);
+    assert.ok(!text.includes("born"), `${sight} ${how}`);
+    assert.equal(v.entities.wizard.cond.frightened.source, "someone");
+    assert.equal(v.effects.find((x) => x.id === fx.id).parts[0].against, "someone");
+    const ev = skip(s);
+    assert.ok(!JSON.stringify(viewEvents(ev, s, PAT)).includes('"m1"'), `${sight} ${how}: events`);
+  }
+  // A creature they know of is named as before.
+  const s = fight();
+  const fx = startEffect(s, { name: "Mark", source: "m1", duration: "1 minute" });
+  fx.parts.push({ target: "wizard", modifier: { on: "attack.received", op: "advantage" }, against: "m1", born: turnKey(s) });
+  assert.equal(view(s, PAT).effects.find((x) => x.id === fx.id).parts[0].against, "m1");
+});
+
+// A fight saved at version 21: the cleric's turn (place 7 in the order) is going on; a part made in it lasts
+// to the end of the cleric's next turn, and a zone has worked on the rogue in it. Stamps name the place.
+function oldTable() {
+  const s = fight();
+  until(s, "cleric");
+  const enc = s.encounter, old = `${enc.id}:${enc.round}:${enc.turn}`;
+  assert.equal(enc.turn, 7);
+  const fx = startEffect(s, { name: "Bolt", source: "cleric", duration: "1 minute" });
+  fx.parts.push({ target: "m2", cond: "blinded", ends: { on: "turnEnd", of: "source" }, born: old });
+  s.entities.m2.cond.blinded = {};
+  const z = startEffect(s, { name: "Zone", source: "cleric", duration: "1 minute" });
+  z.zone = { area: { shape: "emanation", size: 300 }, on: ["turnEnd"], once: "turn", follows: "cleric", spare: [], steps: [], src: {}, last: { rogue: old, m1: `${enc.id}:${enc.round}:0` } };
+  s.version = 21;
+  return { s: JSON.parse(JSON.stringify(s)), old, fx: fx.id, z: z.id };
+}
+const partOf = (s, id) => s.effects.find((x) => x.id === id)?.parts[0];
+const over = (s, id) => !partOf(s, id) || partOf(s, id).ended;
+
+test("version 22: a table saved before has its turn stamps named by creature, and plays through the round", () => {
+  const { s, fx, z } = oldTable();
+  migrate(s);
+  assert.equal(s.version, VERSION); assert.equal(VERSION, 22);
+  const enc = s.encounter;
+  assert.equal(partOf(s, fx).born, `${enc.id}:1:cleric`);
+  assert.deepEqual(s.effects.find((x) => x.id === z).zone.last, { rogue: `${enc.id}:1:cleric`, m1: `${enc.id}:1:m6` });
+  migrate(s);
+  assert.equal(partOf(s, fx).born, `${enc.id}:1:cleric`, "safe to run again");
+  const ev = [];
+  turnInZones(s, ev, KIT, s.entities.rogue, "turnEnd");
+  assert.equal(ev.length, 0, "the zone has worked on the rogue this turn already");
+  skip(s);
+  assert.ok(!over(s, fx), "not ended by the end of the turn it was made in");
+  until(s, "cleric");
+  assert.equal(enc.round, 2);
+  skip(s);
+  assert.ok(over(s, fx), "ended at the end of the cleric's next turn");
+  // And the table goes on playing, monsters and all.
+  for (let i = 0; i < 60 && s.encounter; i++) {
+    const id = current(s), a = s.entities[id].side === "party" ? null : aiStep(s, id);
+    if (!a || !apply(s, a, DM).ok) apply(s, { type: "endTurn", actor: current(s) }, DM);
+  }
+});
+
+test("a stamp in the old form that comes back unmigrated (an undo step, a copy kept from before) still works", () => {
+  const { s, fx, z } = oldTable();
+  s.version = VERSION;                                       // as if an undo had put back a part of the state from before
+  const ev = [];
+  turnInZones(s, ev, KIT, s.entities.rogue, "turnEnd");
+  assert.equal(ev.length, 0, "once a turn, by the old stamp");
+  skip(s);
+  assert.ok(!over(s, fx));
+  until(s, "cleric");
+  skip(s);
+  assert.ok(over(s, fx));
+  assert.ok(s.effects.find((x) => x.id === z));
+});
+
+test("undo across the update is exact: a step taken on an old-form stamp undoes to it byte for byte, and plays the same again", () => {
+  const { s, fx } = oldTable();
+  s.version = VERSION;
+  const h = createHistory(), start = JSON.stringify(s);
+  const act = (a) => { const b = mark(s); const r = ok(apply(s, a, DM)); h.record(b, s, describeStep(a, r.events, b, s)); };
+  act({ type: "stepAway", actor: "cleric", how: "end" });
+  act({ type: "stepBack", actor: "cleric" });
+  for (let i = 0; i < 4; i++) act({ type: "endTurn", actor: current(s) });
+  const end = JSON.stringify(s);
+  while (h.undo(s));
+  assert.equal(JSON.stringify(s), start);
+  assert.equal(partOf(s, fx).born.split(":")[2], "7", "the old stamp is back as it was");
+  while (h.redo(s));
+  assert.equal(JSON.stringify(s), end);
+  // The cleric's turn, resumed at the end of round 1, ended within those steps: it was the turn the part was
+  // made in, so the part lasted past it (the old stamp was named by creature before the place moved).
+  assert.equal(s.encounter.round, 2);
+  assert.ok(!over(s, fx), "the old stamp is read as the cleric's turn wherever its place went");
+  until(s, "cleric");
+  skip(s);
+  assert.ok(over(s, fx), "and it ends at the end of the next one");
+});

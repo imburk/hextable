@@ -6,7 +6,7 @@ import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
@@ -285,6 +285,12 @@ export function heldBack(s, e, ev) {
 export function settleOrder(s) {
   const enc = s.encounter, moved = enc?.moved;
   if (!moved) return;
+  // A stamp from before state version 22 names a place in the order (durations.js, thisTurn): name it by
+  // its creature before the places move, so it still means that creature's turn after.
+  for (const fx of effectsOf(s)) {
+    for (const p of fx.parts) if (p.born !== undefined) p.born = restamp(enc, p.born);
+    if (fx.zone?.last) for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(enc, fx.zone.last[k]);
+  }
   const cur = enc.turn >= 0 ? current(s) : null;
   for (const id of Object.keys(moved)) if (!enc.order.some((o) => o.id === id)) delete moved[id];
   const rest = enc.order.filter((o) => !moved[o.id]);
