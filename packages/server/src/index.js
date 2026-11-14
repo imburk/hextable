@@ -157,6 +157,30 @@ for (const code of assets.codes()) if (!tables.get(code)) assets.removeTable(cod
 const live = new Map();
 const seatKey = (code, token) => `${code} ${token}`;
 const online = (code, token) => typeof token === "string" && live.has(seatKey(code, token));
+// Connection quality (issue #246). Each connection can ping the server ({t:"ping",n} -> {t:"pong",n}) to measure its round trip, and a
+// seated member reports how their own connection is doing ({t:"link",state,rtt?}). Neither goes near the table: no game state, no
+// undo history, no save, no action. The reports are kept here, per table, and relayed by role: a player's goes to the DM (and back to the
+// player who sent it), the DM's goes to every player let in. A player is never sent another player's.
+const LINK_STATES = new Set(["good", "shaky", "lost"]);
+const LINK_MIN_MS = 2000;                   // a connection's reports closer together than this are dropped (the client sends one every 3 s at most)
+const peers = new Map();                    // table code -> Set of this server's connections to it: { send, role, userId, approved, report, at }
+const linkTo = (peer) => [...(peers.get(peer.code) ?? [])].filter((p) => p === peer || (p.approved && p.role !== peer.role && (peer.role === "dm" || p.role === "dm")));
+function relayLink(peer, msg) {
+  if (!peer.approved || !LINK_STATES.has(msg.state)) return;
+  const t = Date.now();
+  if (t - peer.at < LINK_MIN_MS) return;
+  peer.at = t;
+  const rtt = Number.isFinite(msg.rtt) && msg.rtt >= 0 && msg.rtt <= 60_000 ? Math.round(msg.rtt) : undefined;
+  peer.report = { t: "link", from: peer.userId, state: msg.state, ...(rtt !== undefined && { rtt }) };
+  const text = JSON.stringify(peer.report);
+  for (const p of linkTo(peer)) p.send(text);
+}
+// A connection that has just been let in is told what the other side last reported (the DM: each player's; a player: the DM's).
+function catchUp(peer) {
+  const last = new Map();
+  for (const p of linkTo(peer)) if (p !== peer && p.report && (!last.has(p.userId) || p.at > last.get(p.userId).at)) last.set(p.userId, p);
+  for (const p of last.values()) peer.send(JSON.stringify(p.report));
+}
 const sit = (key, by) => { const n = (live.get(key) ?? 0) + by; if (n > 0) live.set(key, n); else live.delete(key); };
 
 // ---------- http ----------
@@ -208,6 +232,7 @@ server.on("upgrade", (req, socket) => {
   }
   const bucket = limits.messageBucket();
   let seat = null;                                         // this connection's seat, for `online`
+  const peer = { send: (text) => ws.send(text), code: null, role: null, userId: null, approved: false, report: null, at: 0 };
   const session = tables.connect({
     send(msg) {
       if (msg.t === "welcome") {
@@ -216,6 +241,13 @@ server.on("upgrade", (req, socket) => {
       }
       if (msg.t === "welcome" && msg.role === "dm") ws.maxPayload = DM_FRAME_MAX;
       ws.send(JSON.stringify(msg));
+      if (msg.t === "welcome") {
+        if (peer.code && peer.code !== msg.code) peers.get(peer.code)?.delete(peer);
+        Object.assign(peer, { code: msg.code, role: msg.role, userId: msg.userId, approved: !!msg.approved });
+        if (!peers.has(msg.code)) peers.set(msg.code, new Set());
+        peers.get(msg.code).add(peer);
+        if (peer.approved) catchUp(peer);
+      }
     },
   });
   ws.onmessage = (text) => {
@@ -226,13 +258,18 @@ server.on("upgrade", (req, socket) => {
     }
     let msg;
     try { msg = JSON.parse(text); } catch { return; }
+    // A ping costs one bucket token like any message (taken above), so a flood of pings is limited and closed like any other flood.
+    // It is not exempt: a free message type would be a free way to keep a connection busy. At one every few seconds it costs a
+    // legitimate client nothing.
+    if (msg?.t === "ping") { ws.send(JSON.stringify({ t: "pong", n: Number.isSafeInteger(msg.n) ? msg.n : 0 })); return; }
+    if (msg?.t === "link") { relayLink(peer, msg); return; }
     if ((msg?.t === "host" && !limits.allowHost(addr)) || (msg?.t === "join" && !limits.allowJoin(addr))) {
       ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
       return;
     }
     session.receive(msg);
   };
-  ws.onclose = () => { release(); if (seat) { sit(seat, -1); seat = null; } session.disconnect(); };
+  ws.onclose = () => { release(); if (peer.code) { const set = peers.get(peer.code); set?.delete(peer); if (set && !set.size) peers.delete(peer.code); } if (seat) { sit(seat, -1); seat = null; } session.disconnect(); };
 });
 
 server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${server.address().port} (${tables.size()} saved tables)`));

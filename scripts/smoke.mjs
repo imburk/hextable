@@ -46,6 +46,7 @@ const REGISTRY = {
   newgame: ['newgame'],
   actionpanel: ['actionpanel'],
   paneltabs: ['paneltabs'],
+  link: ['link'],
 };
 
 const only = process.env.SMOKE_ONLY;

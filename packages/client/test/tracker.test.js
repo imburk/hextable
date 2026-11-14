@@ -114,3 +114,13 @@ test('conditions and concentration show as the view sends them, and outside a fi
   ok(apply(s, { type: 'condition', actor: 'fighter', condition: 'prone' }, DM));
   assert.match(text(rowHTML(s, { e: s.entities.fighter }, { mine: () => true })), /Prone/);
 });
+
+test("the DM's rows carry each player's connection dot (issue #246); a player's rows carry none", () => {
+  const { s } = fight(), S = view(s, DM), item = trackerRows(S, { dm: true }).find((r) => r.e?.id === 'fighter');
+  const link = (e) => (e.id === 'fighter' ? { state: 'lost', text: 'Reconnecting, attempt 3', who: 'Pat' } : null);
+  const dm = rowHTML(S, item, { dm: true, link });
+  assert.match(dm, /aria-label="Pat: Connection lost\. Reconnecting, attempt 3"/);
+  assert.match(dm, /ld-word[^>]*>Lost/);
+  assert.doesNotMatch(rowHTML(S, item, { dm: false, link }), /class="ld /);
+  assert.doesNotMatch(rowHTML(S, trackerRows(S, { dm: true }).find((r) => r.e && r.e.id !== 'fighter'), { dm: true, link }), /class="ld /);
+});

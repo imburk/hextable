@@ -68,6 +68,26 @@ name the player joined by (and drops it from the DM's), and refuses a member's l
 `MAX_SAYS_PER_MINUTE` (30) in a rolling minute, counting refused lines; the DM is counted apart
 from each player. Everything else, including who may speak as whom, is the engine's.
 
+### Connection quality (#246)
+
+Two small messages for the connection dot. Neither reaches the rules engine: they change no game state, add nothing to the
+undo history or the record, make no save, and are not actions.
+
+| Message | Who | Answer |
+|---|---|---|
+| `{t:"ping", n}` | any connection, seated or not | `{t:"pong", n}` at once; `n` is echoed if it is a whole number, else `0`. The client times the round trip itself. |
+| `{t:"link", state, rtt?}` | a member let in: `state` is `good`, `shaky` or `lost`, `rtt` the client's average reply time in milliseconds (0 to 60000, else left out) | no reply. Relayed as `{t:"link", from: userId, state, rtt?}` |
+
+Who is sent what: a player's report goes to the DM and back to that player; the DM's goes to every player let in and back to the
+DM. A player is never sent another player's, and someone waiting to be let in sends and is sent nothing. A connection that is
+let in is sent what the other side last reported (the DM: each player's; a player: the DM's). Reports are kept in memory only.
+
+Limits: a `ping` and a `link` each take a token from the connection's message bucket like any message, so a flood of pings is
+refused and closes the connection exactly as any other flood does (a free message type would be a free way to keep a connection
+busy; a client that pings every few seconds never notices the cost). A `link` closer than 2 seconds to the connection's last one
+is dropped without an answer. The client sends one at most every 3 seconds when the state changes and every 15 seconds
+otherwise; the DM's screen counts a player not heard from for 40 seconds as lost.
+
 ### Reactions
 
 Standing instructions for a creature's reactions are an ordinary action (rules
@@ -208,12 +228,12 @@ answer repeats `types`).
 Client to server: `{t:"host",name}`, `{t:"join",code,name}`,
 `{t:"resume",code,token}`, `{t:"act",action}`, `{t:"approve",userId,ok}`,
 `{t:"leave"}`, `{t:"history",types?,since?,limit?}`, `{t:"history",fight}`, `{t:"sync"}`, `{t:"export"}` (DM only),
-`{t:"undo"}`, `{t:"redo"}` and `{t:"rewind",to:"fight"|"rest"}` (DM only).
+`{t:"undo"}`, `{t:"redo"}` and `{t:"rewind",to:"fight"|"rest"}` (DM only), `{t:"ping",n}` and `{t:"link",state,rtt?}` (see Connection quality).
 
 Server to client: `{t:"welcome",role,userId,name,code,token,approved}`,
 `{t:"update",seq,events,state}` or `{t:"update",seq,events,patch}`, `{t:"lobby",members,pending}`,
 `{t:"error",error,expired?}`, `{t:"history",entries,recent?,types?}`, `{t:"history",fight,entries,cut}`, `{t:"export",table}`,
-`{t:"undoable",undo,redo,pins:{fight,rest}}` (DM only).
+`{t:"undoable",undo,redo,pins:{fight,rest}}` (DM only), `{t:"pong",n}`, `{t:"link",from,state,rtt?}`.
 
 An update's `state` is the receiver's view of the game and never includes the
 timeline. The first update a connection gets carries the whole view; later
