@@ -1517,6 +1517,20 @@ What was settled while building, where it differs from Decision 5, and what was 
 - **Log** (`logview.js` already reads `why`/`with`): "Brenna gave Tavin Rope", "Brenna dropped Rope",
   "Tavin picked up the Wand of Magic Missiles"; `unattuned` adds "(no longer attuned)".
 
+### The caster classes at levels 7 to 15 (#302, DEBT C16, C10, C13)
+
+The client side of what #232/#234 made the engine take. Built in `classes.js` (chooser panels), `buildsheet.js` and the DM's Short Rest; no engine change. Each feature is a row of the Features tab (`chooserButtons`) that opens a card; the card arms the cast or attack and the choice rides along (`setPending` / `armAttack` / `arm`), as Metamagic does.
+
+- **Evoker** (`kindOf` 'evoker', one card for Empowered Evocation and Overchannel): the spell (only those a feature applies to), the slot level (the first slot choice anywhere; sent as `slot` only above the spell's level, or with Overchannel), Empowered Evocation as "let the engine decide" (nothing sent), "do not add" (`empower: false`) or the damage roll or ray from 0 (`empower: n`; a spell of several rolls or rays starts on roll 1), and Overchannel (`overchannel: true`, off for a cantrip or a slot over the feature's maximum). The cost is read from `uses.overchannel`: free first, then `n + 1` dice a slot level.
+- **Repelling Blast** ('repel'): 5 ft steps up to the feature's feet, or none; arms the cantrip with `repel`.
+- **Free casts** ('free', existing card, fixed): `atWill` says "as often as you like" and has no count; `self` sends the cast at once aimed at the caster; `dark` and `sureSave` are in the note. Mystic Arcanum, Contact Patron, Favored Enemy and Gift of the Depths use the same card (`via`).
+- **Superior Hunter's Prey** ('prey', a Features row, since the Attacks tab's strike row is Brutal or Cunning only): greyed with the engine's words until it is the ranger's turn in a fight, with a creature marked (`markedBy`: the view's lasting effect of Hunter's Mark with a part against it) and the once a turn flag clear. Choose the weapon attack and the second creature (within 30 ft of a marked one: `preyCandidates`), then tap the marked creature; sent as `attack { prey }`.
+- **Hurl Through Hell** ('hurl'): with a use left it arms the feature; with it spent the card offers the Pact Magic slot levels (`slot`). Then tap the creature.
+- **Short Rest** (`recoverOf`, `recoverLevels`): a fieldset for each member with Arcane Recovery or Natural Recovery and a use left: steppers per spent slot level (up to the feature's `max`, a combined level of half the level rounded up); `decorate` adds `recover` to the `shortRest` action. features.js draws the box; app.js calls `CLS.restRows` after it (one line).
+- **Build screen**: the invocation list counts "n of m chosen" (`pickLimit`, checked in a browser at level 5 and 15), greys an option whose `requires` is unmet and says why (`optionWhy`); a **Feats** section from `featChoices` (a select for each place; ability points as `featPoints`; Skilled's skills; Magic Initiate's list, ability and spells). `sheet.feats` is kept through edit and level-up, and so are `items` and `attuning` (they were dropped before).
+- **A refusal** from the engine reopens the card it came from with the choice kept (`pend.reopen`); a refusal of some other action no longer does (the DM's spawn used to reopen the last card).
+- **Left out.** Feat tools (Skilled's tools are not offered), Species feat checks, the Prey spread from a spell's damage (the DM's). No `dtype` on the Superior Hunter's Defense prompt (reactionprompt.js is not in this lane). Hurl Through Hell's slot path and Superior Hunter's Prey's spread are unit-tested against the engine, not driven to success in the browser (a hit cannot be forced).
+
 ### Items between creatures in the Items tab (PR for #301)
 
 What was settled while building, and what was left. The engine side is E17 (#290, "For the client job").
@@ -1736,3 +1750,31 @@ following, which stays as it was.
   stand", or "Places behind Pip were changed" with slots. A follower dropped stays the existing "couldn't keep up".
 - **Moves.** Nothing new to draw: followers' `moved` events come as before (in the order they walk).
 
+
+### E22: formations, client (PR for #304)
+
+The popup of "For the client job" above, built. Files: `packages/client/formation.js` (pure helpers, then the popup), `formation.css`, `app.js`
+(wiring, `describe`, the DM's marching order), `actionpanel.js` (two Explore rows). Test: `packages/client/test/formation.test.js`; smoke pass
+`SMOKE_ONLY=formation` (hexes and squares, 1280x800 and 390x844 with touch).
+
+- **Rows.** `lead` (Lead the party) is offered to whoever controls the selected party creature outside a fight, not only the DM: the panel is only ever
+  drawn for a creature the viewer controls, so the "not theirs" reason only appears in the DM's marching-order list (`formationWhy`). `formation`
+  (Formation...) appears while someone follows the creature. Greyed with the spec's reasons: a fight, alone, "isn't leading anyone".
+- **Flow.** Lead sends `partyFollow { leader }` and sets `pendingLead`; the popup opens from `refresh()` once the table (solo or server) shows followers.
+  A refusal clears it (`T.on.error`). Preset buttons change the draft only; OK sends `formation { shape }` for a preset picked, or
+  `formation { slots }` (every follower's place) after a hand edit, or nothing when nothing changed ("Done"). Cancel and Escape and a tap outside send
+  nothing; Lead has already captured the party as it stands, so Cancel keeps it. The preset shown as chosen is `formation.shape`; a `custom` shape
+  shows none chosen.
+- **Who is offered.** `followersOf`: party, alive, not hidden, `follow === leader`, in marching order: the engine's own list for a slot. A token appears only
+  for those. The leader is a fixed token at the front, and no cell ahead of it or on it can be dropped on. Presets are drawn from `presetSlots`, held and
+  custom from `formation.slots` (a follower with none is shown in the first free place at the back), the column single file.
+  "Keep as they stand" when the leader keeps no held shape yet cannot be drawn by the client (the capture is the engine's): the popup says the party stays as it
+  stands, and OK sends `shape: 'held'` for it.
+- **Board.** One grid of the grid's kind: hexagons or rounded squares, rows behind the leader (4 to 12), columns each side (3 to 12). Tokens are drawn
+  at their true place, so a held place at a half step sits between cells; a drop lands on a whole cell (half steps are not offered by hand). Drag by pointer
+  (mouse or touch; `touch-action: none` on a token), or tap a token and then a cell. A token dropped on another's cell swaps with it. Wide: a card;
+  at 600 px or less: a bottom sheet with 44 px+ targets.
+- **Ghosts.** While the popup is open the places are added to the renderer's `hl.move` (the highlight both renderers already draw), by the cell nearest each
+  place in the leader's frame (`formation.face`). Before the leader has walked there is no `face` and so no ghosts. They are the move colour, not fainter.
+- **Log.** `describe` reads the `formation` event as "The party walks behind Pip two abreast..." or "Places behind Pip were changed."
+- **Not done.** No `index.html` change was allowed, so the popup builds its own element and injects its stylesheet link. No half steps by hand.

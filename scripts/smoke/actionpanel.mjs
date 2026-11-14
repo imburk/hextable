@@ -177,11 +177,12 @@ async function table(browser, url) {
         await phone.locator('#party button:has-text("Play as")').first().tap();
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.owner));
       });
-      await run.do('the player\'s Explore has Follow and Search, no Lead the party and no rests', async () => {
+      await run.do('the player\'s Explore has Follow and Search, Lead the party (formations, #304) and no rests', async () => {
         await waitTab(phone, 'explore');
         const r = await rows(phone);
         if (!r.includes('follow') || !r.includes('search')) throw new Error(`rows ${r}`);
-        for (const no of ['lead', 'shortRest', 'longRest']) if (r.includes(no)) throw new Error(`a player is offered ${no}`);
+        if (!r.includes('lead')) throw new Error(`a player is not offered lead: ${r}`);
+        for (const no of ['shortRest', 'longRest']) if (r.includes(no)) throw new Error(`a player is offered ${no}`);
         await clear(phone, true, false);
         await host.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.owner); h.select(e.id); });
         await pick(host, (await host.evaluate(() => Object.values(window.hextable.state.entities).find((x) => x.owner).name)));
