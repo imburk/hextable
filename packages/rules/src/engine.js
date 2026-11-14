@@ -32,6 +32,7 @@ export { actionSpent, attacksLeft, fromPool } from './engine/attacks.js';
 export { teleportSpot } from './engine/casting.js';
 export { HIDE_DC, hideProblem, itemUsesFor, scrollStats, usesFor } from './engine/features.js';
 export { SETTINGS, SETTING_TEXT } from './engine/dm.js';
+export { DAWN, dawnsBetween } from './engine/rests.js';
 
 export { FT };                       // feet per hex
 export { opportunityAttack };

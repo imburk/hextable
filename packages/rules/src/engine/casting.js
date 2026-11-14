@@ -71,8 +71,9 @@ function blockSpell(s, caster, spellId, targets, ev) {
 // `e` is casting `sp`. Anyone who would counter it (Counterspell) gets the chance, in the order
 // the table lists them, until one does. Returns the id of the creature that countered it, or null.
 // Only a spell with Verbal, Somatic or Material components can be seen being cast (SRD).
-function counterWindow(s, e, sp, ev) {
-  if (!(sp.def.components ?? []).some((c) => ['v', 's', 'm'].includes(c))) return null;
+// `comps` is the components this casting has: a spell's own, or fewer from an item (castSpell, below).
+function counterWindow(s, e, sp, ev, comps = sp.def.components ?? []) {
+  if (!comps.some((c) => ['v', 's', 'm'].includes(c))) return null;
   for (const o of living(s)) {
     const src = reactAgainst(s, o, e, 'cast', ev, `${e.name} is casting a spell.`);
     if (src?.countered) return o.id;
@@ -223,12 +224,41 @@ function evokerFor(e, sp, a, slot, via, targets) {
   return out;
 }
 
+// ---------- casting a spell from a magic item (DEBT C14, #284) ----------
+// The `use` action with `item` (features.js) casts an item's spell through castSpell, below, with
+// `item` = { name, level, dc, attack, healMod, comps, self?, spend(e), check?(e), done?(e) }.
+// SRD "Spells Cast from Items": at the lowest spell and caster level (so a cantrip at caster level 1,
+// and `level` the level the item gives, raised by extra charges where it says so), no spell slot (so it is
+// not the one slot spell of the turn), no components unless the item says otherwise (`comps`: none for a
+// wand or staff, so nobody can see it being cast and Counterspell has no moment; a Spell Scroll keeps its
+// Verbal and Somatic ones, which can be countered and give a hiding reader away), its own casting time,
+// range and duration, Concentration if the spell needs it. `dc` and `attack` are the item's or the user's
+// own (worked out in features.js). Metamagic and the Evoker's and Warlock's additions are for spells their
+// own class casts, so are refused with an item. `spend` pays the item (charges, the `item` event) once the
+// spell is checked; a scroll's `check` (a spell above the reader's level) may make it fade, and `done`
+// takes a consumed scroll away once the spell is cast or has faded; a countered one is kept (the casting
+// was interrupted: SRD "Spell Scroll").
+export const castFromItem = (s, a, ctx, ev, item) => castSpell(s, a, ctx, ev, item);
+
 export const handlers = {
 
   // { type: 'cast', actor, spell, target? | hex?, slot? }
-  cast(s, a, ctx, ev) {
+  cast(s, a, ctx, ev) { castSpell(s, a, ctx, ev, null); },
+  // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
+  endEffect(s, a, ctx, ev) {
+    const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
+    const src = s.entities[fx.source], own = !!src?.owner && src.owner === ctx.userId;
+    // To a player, an effect of a creature they do not know of, on nobody they know of, is nothing.
+    if (ctx.role !== 'dm' && !own && (!src || unknown(s, src)) && !fx.parts.some((p) => s.entities[p.target] && !unknown(s, s.entities[p.target]))) fail('No such effect.');
+    ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
+    endEffect(s, ev, fx, own || !src ? `${src?.name ?? 'its caster'} ended it` : 'the DM ended it');
+  },
+};
+
+function castSpell(s, a, ctx, ev, item) {
     const e = ent(s, a.actor); control(e, ctx);
     const sp = SPELLS[a.spell];
+    if (item) for (const k of ['via', 'slot', 'metamagic', 'empower', 'overchannel', 'repel', 'ritual']) a[k] === undefined || fail(`"${k}" is not for a spell cast from ${item.name}.`);
     // Cast through a feature (`a.via`, a feature with `freeCast`: Divine Intervention): any spell
     // of its list up to its level, prepared or not, with no slot, as part of the feature's action,
     // for one of its uses. A feature that names its spells (`freeCast.spells`: Magic Initiate's level 1
@@ -246,7 +276,8 @@ export const handlers = {
       a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
       if (fc.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${via.name} casts ${sp.name} on ${e.name} only.`);
       if (fc.dark) lightAt(s, e.pos) !== 'bright' || fail(`${via.name} works only while ${e.name} is in Dim Light or Darkness.`);
-    } else (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
+    } else if (!item) (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
+    else sp || fail(`${item.name} casts a spell the engine does not know.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (sp.time === 'reaction') fail(sp.def.reaction
@@ -269,12 +300,14 @@ export const handlers = {
       (Array.isArray(a.spare) && a.spare.length <= 100 && a.spare.every((id) => typeof id === 'string' && s.entities[id])) || fail('Name the creatures it spares.');
     }
     // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
-    const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
+    const slot = item ? item.level : sp.level > 0 ? (a.slot ?? sp.level) : 0;
+    const casterLevel = item ? 1 : e.level;           // an item casts at the lowest caster level
+    if (item?.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${sp.name} from ${item.name} targets ${e.name} only.`);
     const mm = metamagicFor(s, e, sp, a, slot);
     // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
     const spear = (e.feats ?? []).reduce((n, f) => n + (f.spellRange?.spell === a.spell ? f.spellRange.add : 0), 0);
     const range = typeof (mm.range ?? sp.range) === 'number' && spear ? (mm.range ?? sp.range) + spear : mm.range ?? sp.range;
-    const most = targetCount(sp.def, e.level, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
+    const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
       ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
@@ -288,18 +321,18 @@ export const handlers = {
     // With no `hex` the engine has nowhere to take the caster and the DM moves it.
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
     const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
-    const evo = evokerFor(e, sp, a, slot, via, targets);
+    const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);
     const repel = repelFor(e, sp, a);
 
     // What it costs.
-    if (sp.level > 0 && !via) {
+    if (sp.level > 0 && !via && !item) {
       (Number.isInteger(slot) && slot >= sp.level && slot <= 9) || fail(`${sp.name} needs a spell slot of level ${sp.level} or higher.`);
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
     if (!s.encounter && sp.harmful && aimed) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
-    const slotted = sp.level > 0 && !via;
+    const slotted = sp.level > 0 && !via && !item;
     if (mm.has.quickened) time = 'bonus';
     if (s.encounter) {
       need(s, e, time);
@@ -317,27 +350,35 @@ export const handlers = {
     if (mm.cost) e.uses[mm.pool] -= mm.cost;
     if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
     if (mm.list.length) ev.push({ type: 'std', id: e.id, action: `Metamagic: ${mm.names.join(', ')}` });
-    if (sp.def.components?.includes('v') && !mm.has.subtle) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
+    // From an item: its charges and its event now; a scroll of a spell above its reader's level may fade.
+    const comps = item ? item.comps : sp.def.components ?? [];
+    if (item) {
+      item.spend(e);
+      if (item.check && !item.check(e)) { item.done?.(e); return checkEnd(s, ev); }
+    }
+    if (comps.includes('v') && !mm.has.subtle) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
     showPlace(s, e, ev);
     // Someone who sees it being cast may counter it (Counterspell). Then it dissipates with no
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
     // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
-    const counteredBy = mm.has.subtle && !sp.def.costly ? null : counterWindow(s, e, sp, ev);
+    const counteredBy = mm.has.subtle && !sp.def.costly ? null : counterWindow(s, e, sp, ev, comps);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
       return checkEnd(s, ev);
     }
+    item?.done?.(e);                                    // a scroll crumbles once its spell is cast
     for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
 
     // What it does: run its effect steps.
-    const st = spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
+    const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
+    const healMod = item ? item.healMod : mod(e.abil[castAbilOf(e, sp.id)] ?? 10);
     if (pick) chooseIn(steps, pick.of, a.choice);
     // Repelling Blast: a hit with the spell's attack pushes a Large or smaller target so many feet away.
     if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
-    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}) });
+    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}), ...(item ? { item: item.name } : {}) });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
@@ -357,7 +398,7 @@ export const handlers = {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10) }, last: {} };
+        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
@@ -385,7 +426,7 @@ export const handlers = {
     }
     begin(s, {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}),
+      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
         spell: sp.id, ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}) },
@@ -410,19 +451,9 @@ export const handlers = {
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
     if (sp.def.tier !== 'auto' && !toldAlready) note(sp.def.text);
-    if (unscaled) note(`Cast with a level ${slot} slot. The engine could not add ${unscaled}; the DM does.`);
+    if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
     if (fx?.bound) settle(s, ev, fx, targets);
     else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
     checkEnd(s, ev);
-  },
-  // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
-  endEffect(s, a, ctx, ev) {
-    const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
-    const src = s.entities[fx.source], own = !!src?.owner && src.owner === ctx.userId;
-    // To a player, an effect of a creature they do not know of, on nobody they know of, is nothing.
-    if (ctx.role !== 'dm' && !own && (!src || unknown(s, src)) && !fx.parts.some((p) => s.entities[p.target] && !unknown(s, s.entities[p.target]))) fail('No such effect.');
-    ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
-    endEffect(s, ev, fx, own || !src ? `${src?.name ?? 'its caster'} ended it` : 'the DM ended it');
-  },
-};
+}
 

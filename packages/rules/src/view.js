@@ -413,7 +413,7 @@ export function viewEvents(events, state, viewer) {
           ...(ev.amount !== undefined && cls(ev.id) === 'open' ? { amount: ev.amount, ...facesFor(ev) } : {}) });
         break;
       case 'cast':
-        out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name', 'slot', 'reaction']),
+        out.push({ ...pick(ev, ['type', 'actor', 'spell', 'name', 'slot', 'reaction', 'item']),
           hexes: hexesOf(ev.hexes),
           targets: (ev.targets || []).filter((id) => cls(id) !== 'hidden') });
         break;
@@ -503,8 +503,11 @@ export function viewEvents(events, state, viewer) {
         if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why', 'key', 'pack', 'nameOnly']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}) });
         break;
       case 'item':                                     // a magic item used (E18): all of it for one of theirs; for another they see, what it used, never its charges
-        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'pack', 'use', 'target', 'charges', 'max', 'consumed']));
-        else out.push(pick(ev, ['type', 'id', 'item', 'use', 'target', 'consumed']));
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'pack', 'use', 'level', 'target', 'charges', 'max', 'consumed']));
+        else out.push(pick(ev, ['type', 'id', 'item', 'use', 'level', 'target', 'consumed']));
+        break;
+      case 'recharged':                                // an item's charges back at dawn (#284): a party creature's only
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'pack', 'gained', 'charges', 'max', 'dice', 'rolls']));
         break;
       case 'equip':                                    // a magic item put on or taken off, attuning chosen, an Attunement made or ended:
       case 'attuning':                                 // a party creature's, whose sheet the party is sent; never another's
