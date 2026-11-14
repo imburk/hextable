@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="./conclusion.css">
 <link rel="stylesheet" href="./actionpanel.css">
 <link rel="stylesheet" href="./linkdot.css">
+<link rel="stylesheet" href="./mycharacters.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -236,6 +237,15 @@
       <p id="lobby-table"></p>
       <div class="row"><button type="button" id="lobby-rejoin">Rejoin</button><button type="button" id="lobby-forget" class="quiet">Forget</button></div>
     </div>
+    <details id="lobby-party">
+      <summary id="lobby-party-sum">Solo party</summary>
+      <p class="note">Who plays in a new solo game. A table you host starts with the usual four.</p>
+      <label class="party-count" for="lobby-party-count">How many characters</label><select id="lobby-party-count"></select>
+      <div id="lobby-slots"></div>
+      <p class="note" id="lobby-party-msg" role="status" hidden></p>
+      <p class="note" id="lobby-party-store" role="status" hidden></p>
+      <div class="row"><button type="button" id="lobby-mychars" class="quiet">My characters</button></div>
+    </details>
     <div class="row"><button type="button" id="lobby-solo" class="quiet">Play solo on this device</button><button type="button" id="lobby-new" class="quiet leave" hidden>New game</button></div>
     <p id="lobby-msg" role="status"></p>
     <div class="row"><button type="button" id="lobby-about" class="quiet">About Hextable</button></div>
