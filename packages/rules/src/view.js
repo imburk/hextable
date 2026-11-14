@@ -399,7 +399,14 @@ export function viewEvents(events, state, viewer) {
   // the party could see as Seen (the engine marks `vanished` with `party` and `seen` just before it goes), any
   // other not at all (review of #313, M2).
   const gone = new Map();
-  for (const e of events) if (e?.type === 'vanished' && e.seen === true && !Object.hasOwn(state.entities, e.id)) gone.set(e.id, e.party === true ? 'open' : 'seen');
+  for (const e of events) if ((e?.type === 'vanished' || e?.type === 'removed') && e.seen === true && !Object.hasOwn(state.entities, e.id)) gone.set(e.id, e.party === true ? 'open' : 'seen');
+  // The names a creature goes by, to tell whether words name it: from the state, or from the event that took it away.
+  const namesOf = (id) => {
+    const x = Object.hasOwn(state.entities, id) ? state.entities[id] : null;
+    if (x) return [x.name, seenName(x)];
+    const g = events.find((e) => (e?.type === 'vanished' || e?.type === 'removed') && e.id === id);
+    return g?.name ? [g.name] : [];
+  };
   const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
   // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
@@ -493,7 +500,14 @@ export function viewEvents(events, state, viewer) {
       case 'effectEnd': {                              // a lasting effect that involves one of ours
         const targets = (ev.targets || []).filter((id) => cls(id) !== 'hidden');
         // Whose it was and why it ended (`why` names its caster: "Imp went down") only where they know of its caster.
-        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) out.push({ ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(typeof ev.source === 'string' && cls(ev.source) === 'hidden' ? [] : ['source', 'why'])]), targets });
+        // Whose it was only where they know of its caster; why it ended, unless the words name a caster they do not
+        // know of ("Imp went down"): then only that it ended (rounds 2 and 3 of the review of #313).
+        const unknownCaster = typeof ev.source === 'string' && cls(ev.source) === 'hidden';
+        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
+          const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source', 'why'])]), targets };
+          if (unknownCaster && ev.why !== undefined) e.why = namesOf(ev.source).some((n) => n && String(ev.why).includes(n)) || !namesOf(ev.source).length ? 'it ended' : ev.why;
+          out.push(e);
+        }
         break;
       }
       case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known

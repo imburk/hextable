@@ -504,7 +504,12 @@ for (const grid of [null, "square"]) {
     assert.deepEqual(A.view, B.view);
     assert.equal(A.tl, B.tl);
     assert.ok(A.s.entities.fighter.cond.grappled, "the grapple is left for the DM");
-    assert.ok(A.r.events.some((e) => e.type === "manual" && e.partial && /left as it was/.test(e.text) && /Blindness/.test(e.text) && /Grappled/.test(e.text)), "the DM is told what is left");
+    assert.ok(A.r.events.some((e) => e.type === "manual" && e.partial && /goes on as after a death/.test(e.text) && /Blindness/.test(e.text) && /Grappled/.test(e.text)), "the DM is told what is left");
+    // The DM's own record keeps who did it, and the husk is dead and hidden for good.
+    assert.equal(A.s.entities.fighter.cond.frightened.source, B.s.entities.fighter.cond.frightened.source);
+    const husk = A.s.entities[A.s.timeline.find((e) => e.type === "vanished").id];
+    assert.ok(husk.dead && husk.hidden && husk.vanished === "hp0");
+    refused(A.s, { type: "reveal", actor: husk.id, hidden: false }, DM, /has vanished/);
     assert.ok(!json(A.view).includes(A.s.timeline.find((e) => e.type === "vanished").id), "no id of it reaches a player");
   });
 }
@@ -513,9 +518,55 @@ test("the end of a lasting effect whose caster players do not know of names neit
   const { s, wolf } = table();
   ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
   const ev = [{ type: "effectEnd", fx: "fx9", name: "Blindness", source: wolf, targets: ["fighter"], why: "Greyjaw went down", conc: true }];
-  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", fx: "fx9", name: "Blindness", conc: true, targets: ["fighter"] }]);
+  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", fx: "fx9", name: "Blindness", conc: true, targets: ["fighter"], why: "it ended" }]);
+  // Words that name nobody are kept.
+  assert.equal(viewEvents([{ ...ev[0], why: "its time ran out" }], s, U1)[0].why, "its time ran out");
   const mine = [{ ...ev[0], source: "cleric", why: "Odessa ended it" }];
   assert.equal(viewEvents(mine, s, U1)[0].why, "Odessa ended it");
   const thing = [{ ...ev[0], source: null, why: "the fight ended" }];
   assert.equal(viewEvents(thing, s, U1)[0].why, "the fight ended", "an effect of no creature keeps its words");
 });
+
+test("a caster the party could see, removed by the DM: the end of its spell is told with its name and why (review round 3, L-a)", async () => {
+  const { startEffect } = await import("../src/durations.js");
+  const { s, wolf } = table();
+  const fx = startEffect(s, { name: "Blindness", spell: null, source: wolf, conc: true, duration: "1 minute" });
+  fx.parts.push({ target: "fighter", cond: "blinded" }); s.entities.fighter.cond.blinded = { source: wolf, effect: fx.id };
+  const r = ok(apply(s, { type: "remove", actor: wolf }, DM));
+  const end = viewEvents(r.events, s, U1).find((e) => e.type === "effectEnd");
+  assert.equal(end.source, wolf);
+  assert.equal(end.why, "Greyjaw left");
+});
+
+for (const grid of [null, "square"]) {
+  test(`a zone left by a companion the party could not see goes on working as one left by an unseen death${grid ? " (squares)" : " (hexes)"} (review round 3, N2)`, () => {
+    const turnOf = (s, id) => { for (let i = 0; i < 40 && current(s) !== id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); };
+    const run = (bonded) => {
+      const { s, wolf } = table(grid);
+      const m = ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Gob Mage", at: spot(s, s.entities.fighter.pos, 1, 3) }, DM)).events[0].id;
+      if (bonded) bond(s, wolf, m, { kind: "familiar" });
+      Object.assign(s.entities[wolf], { spells: ["grease"], castAbil: "int", abil: { ...s.entities[wolf].abil, int: 30 }, slots: { 1: 3 }, slotsMax: { 1: 3 }, gear: ["bell"] });
+      const f = s.entities.fighter.pos;
+      ok(apply(s, { type: "startEncounter", center: f, radius: 8 }, DM)); turnOf(s, wolf);
+      ok(apply(s, { type: "cast", actor: wolf, spell: "grease", hex: f }, DM));
+      ok(apply(s, { type: "endEncounter" }, DM));
+      if (!s.entities[wolf].hidden) ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
+      const items = () => s.map.objects.reduce((n, o) => n + (o.contents?.length ?? 0), 0) + Object.values(s.entities).reduce((n, e) => n + (e.gear?.length ?? 0), 0);
+      const had = items();
+      const h = createHistory(), before = mark(s), kill = ok(apply(s, { type: "harm", actor: wolf, amount: 9999 }, DM));
+      h.record(before, s, describeStep({ type: "harm", actor: wolf, amount: 9999 }, kill.events, before, s));
+      assert.equal(items(), had, "nothing carried is lost or doubled");
+      const after = json(s); h.undo(s); h.redo(s); assert.equal(json(s), after, "undo and redo are exact");
+      const raw = [], seen = [];
+      ok(apply(s, { type: "startEncounter", center: f, radius: 8 }, DM));
+      for (let i = 0; i < 8 && s.encounter; i++) { const r = ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); raw.push(...r.events); seen.push(json(viewEvents(r.events, s, U1))); }
+      return { s, raw: raw.map((e) => e.type + (e.id ? `:${e.id}` : "")), seen, view: json(view(s, U1)), state: json(s) };
+    };
+    const A = run(true), B = run(false);
+    assert.ok(B.raw.some((x) => x.startsWith("save:")), "the unbonded zone works");
+    assert.deepEqual(A.raw, B.raw, "the bonded one does just the same");
+    assert.deepEqual(A.seen, B.seen);
+    assert.equal(A.view, B.view);
+    assert.equal(run(true).state, A.state, "it replays the same");
+  });
+}

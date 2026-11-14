@@ -812,36 +812,6 @@ function settleSeen(s, e, ev) {
     }
   }
 }
-// One the party could not see: clearing what it did would show them that it is gone, which an unseen
-// creature's death never does (re-review of #313, N1). So its lasting effects, a part of another's that is on
-// it or ends with its turn, and what it put on others stay exactly as they would after an unseen death, and
-// the DM is told what is left, to clear by hand. Only one change: in the party's own records (sent to players
-// whole) a mention of it becomes 'someone' and a key that is its id goes, which is what view.js already sends
-// for a creature they do not know of (`scrub`), so that their view stays as it was and no id is left that
-// view.js could no longer tell was hidden.
-function settleUnseen(s, e, ev) {
-  const left = [];
-  for (const fx of effectsOf(s)) {
-    if (fx.source === e.id) left.push(`${fx.name} (its own)`);
-    else if (fx.parts.some((p) => !p.ended && (p.target === e.id || p.ends?.who === e.id))) left.push(`${fx.name} (a part on it, or ending with its turn)`);
-  }
-  const named = (x, out) => {
-    if (!x || typeof x !== 'object') return;
-    for (const k of Object.keys(x)) {
-      if (!Array.isArray(x) && k === e.id) { delete x[k]; out.n++; continue; }
-      if (x[k] === e.id) { x[k] = 'someone'; out.n++; } else named(x[k], out);
-    }
-  };
-  for (const x of Object.values(s.entities)) {
-    if (x.id === e.id || x.side !== 'party') continue;
-    for (const [c, v] of Object.entries(x.cond ?? {})) if (v?.source === e.id) left.push(`${x.name} is ${conditionName(c)} from it`);
-    const out = { n: 0 };
-    named(x, out);
-  }
-  if (left.length) ev.push({ type: 'manual', actor: null, name: e.name, partial: true,
-    text: `${e.name} vanished where the party could not see it. So that the party learns nothing, what it did is left as it was: ${left.join('; ')}. End what should end (endEffect, condition) when the party could know.` });
-}
-
 // A bonded creature leaves the map: `why` is 'hp0' (it dropped to 0 Hit Points and its bond says it
 // vanishes), 'master' (its master died), 'leash' (it ended too far from its master), 'dismissed', and
 // in later stages 'ended', 'rest', 'replaced'. What it was concentrating on and its own lasting effects
@@ -851,10 +821,11 @@ function settleUnseen(s, e, ev) {
 // `party` when it was the party's, since view.js can no longer look it up (hidden-information.md).
 export function vanish(s, e, why, ev) {
   const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
-  if (seen) settleSeen(s, e, ev); else settleUnseen(s, e, ev);
+  if (!seen) return vanishUnseen(s, e, why, ev);
+  settleSeen(s, e, ev);
   for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
   if (e.follow) unfollow(s, e, ev);
-  leaveGear(s, e, ev, !seen);
+  leaveGear(s, e, ev, false);
   const enc = s.encounter;
   let theirs = false;
   if (enc) {
@@ -871,7 +842,7 @@ export function vanish(s, e, why, ev) {
     for (const k of Object.keys(enc.flags ?? {})) if (k.split(':').includes(e.id)) delete enc.flags[k];
   }
   delete s.entities[e.id];
-  ev.push({ type: 'vanished', id: e.id, name, why, ...(seen ? { seen: true } : {}), ...(party ? { party: true } : {}) });
+  ev.push({ type: 'vanished', id: e.id, name, why, seen: true, ...(party ? { party: true } : {}) });
   if (why === 'hp0' && e.bond?.kind === 'object')
     ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} reverts to the object it was. The damage that took it past 0 carries over to that object: the DM's to apply.` });
   if (!s.encounter) return;
@@ -879,12 +850,41 @@ export function vanish(s, e, why, ev) {
   if (s.encounter && theirs) advanceTurn(s, ev);
 }
 
+// A companion the party could not see (round 3 of the review of #313, N2). Taking its record away would
+// change what it did as an unseen creature's death never does: a zone it left would lose its caster and stop
+// working, conditions and effects would point at nothing, its turn would pass at once. So it stays in the
+// state as what such a death leaves: dead, at 0 Hit Points, hidden by the DM's switch for good (`vanished`
+// marks it: `reveal` refuses it, settleBonds passes it by), in the fight order as the dead are (skipped, and
+// its turn, if it is going on, waits for the DM as a dead creature's does). Only what it carried leaves it,
+// onto a pile players are not sent (leaveGear). Everything it did goes on as after any death; the DM is told
+// what is left, to end by hand, and may `remove` the record when nothing of it is needed.
+function vanishUnseen(s, e, why, ev) {
+  const name = e.name, left = [];
+  leaveGear(s, e, ev, true);
+  e.gear = [];
+  if (Array.isArray(e.sheet?.items)) { e.sheet.items = []; delete e.sheet.attuning; }
+  if (!e.dead) { e.hp = 0; e.dead = true; concentrationLost(s, ev, e, `${name} vanished`); }      // gone, not killed: no `died`
+  e.hidden = true;
+  e.vanished = why;
+  for (const fx of effectsOf(s)) {
+    if (fx.source === e.id) left.push(`${fx.name} (its own)`);
+    else if (fx.parts.some((p) => !p.ended && (p.target === e.id || p.ends?.who === e.id))) left.push(`${fx.name} (a part on it, or ending with its turn)`);
+  }
+  for (const x of Object.values(s.entities)) for (const [c, v] of Object.entries(x.cond ?? {})) if (x.id !== e.id && v?.source === e.id) left.push(`${x.name} is ${conditionName(c)} from it`);
+  ev.push({ type: 'vanished', id: e.id, name, why });
+  ev.push({ type: 'manual', actor: null, name, partial: true,
+    text: `${name} vanished where the party could not see it. So that the party learns nothing it could not, its record stays, dead and hidden, and what it did goes on as after a death${left.length ? `: ${left.join('; ')}` : ''}. End what should end (endEffect, condition) when the party could know, and remove ${name} when nothing of it is needed.` });
+  if (why === 'hp0' && e.bond?.kind === 'object')
+    ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} reverts to the object it was. The damage that took it past 0 carries over to that object: the DM's to apply.` });
+  checkEnd(s, ev);
+}
+
 // After every action (engine.js, apply): a companion at 0 Hit Points whose bond says it vanishes, one
 // whose bond ends when its master dies and whose master is dead, and one farther than its leash from
 // its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
 export function settleBonds(s, ev) {
   for (const e of Object.values(s.entities).filter((x) => x.bond)) {
-    if (!Object.hasOwn(s.entities, e.id)) continue;
+    if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
     const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
     if ((e.dead || e.hp <= 0) && b.at0 === 'vanish') vanish(s, e, 'hp0', ev);
     else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);

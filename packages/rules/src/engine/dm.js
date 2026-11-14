@@ -9,7 +9,7 @@ import { LIGHTS } from '../content/lights.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
-import { SIGHT_RULES } from '../vision.js';
+import { SIGHT_RULES, unknown } from '../vision.js';
 import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
@@ -184,7 +184,8 @@ export const handlers = {
     for (const fx of [...effectsOf(s)]) if (fx.source === e.id || fx.parts.some((p) => p.target === e.id)) endEffect(s, ev, fx, `${e.name} left`);
     // Its companions stay, freed: on their side, the DM's.
     for (const x of Object.values(s.entities)) if (x.bond?.to === e.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: e.id }); }
-    ev.push({ type: 'removed', id: e.id, name: e.name });
+    // Whether the party knew of it, for view.js, which can no longer look it up (as `vanished`; review of #313).
+    ev.push({ type: 'removed', id: e.id, name: e.name, ...(!unknown(s, e) ? { seen: true } : {}), ...(e.side === 'party' ? { party: true } : {}) });
     for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
     delete s.entities[e.id];
   },
@@ -251,6 +252,8 @@ export const handlers = {
   reveal(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can hide or reveal creatures.');
     const e = ent(s, a.actor);
+    // What a companion that vanished unseen left (resolve.js, vanishUnseen) is not a creature to show: it is gone.
+    !e.vanished || a.hidden || fail(`${e.name} has vanished; there is nothing of it to reveal. Remove it when nothing of it is needed.`);
     if (a.hidden) {
       e.side !== 'party' || fail("A party member can't be hidden from the party.");
       !e.hidden || fail(`${e.name} is already hidden.`);

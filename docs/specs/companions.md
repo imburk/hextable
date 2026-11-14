@@ -580,14 +580,16 @@ Settled in the review of #313:
   was just before it went (the party's: Open; one they could see: Seen), so the damage, its death and what
   it left reach them as for any creature, and the undo label is shown. A Seen one's `health` is only `dead`
   or `down`.
-- **What it leaves behind in others, unseen** (re-review of #313, N1). For a companion the party could not
-  see, nothing it did to anyone is cleared: its lasting effects, parts of others' on it or ending with its
-  turn, and conditions it put on others (a grapple too) stay as they would after an unseen death, and the DM
-  is told what is left (`manual`), to end by hand. In the party's own records a mention of it becomes
-  `someone` (what `view.js` sends for a creature they do not know of), so their view does not change. With
-  that, an unseen companion's vanishing is the same to players as an unseen creature's death: events, view
-  and record. What follows applies to one the party could see.
-- **What it leaves behind in others, seen.** Encounter flags naming it go (also unseen). A condition it put on another with no
+- **A companion the party could not see** (rounds 2 and 3 of the review of #313, N1 and N2) is not taken out
+  of the state: it stays as what an unseen creature's death leaves, dead, at 0 Hit Points, hidden by the DM's
+  switch for good and marked `vanished` (`reveal` refuses it; `settleBonds` passes it by), in the fight order
+  as the dead are (its turn, if going on, waits for the DM). Only what it carried leaves it, onto the `left`
+  pile. Everything it did (zones, lasting effects, conditions, grapples, parts that end with its turn, flags)
+  goes on exactly as after a death, so players are told and shown exactly what an unseen death gives them;
+  the DM is told what is left, ends it by hand, and may `remove` the record. It gives no `died` event when it
+  vanished alive (leash, master). One difference stays, and is right: a creature merely out of sight that
+  vanished is not found as a corpse later, as one that died would be.
+- **What it leaves behind in others, seen.** Encounter flags naming it go. A condition it put on another with no
   lasting effect: Grappled ends (nobody holds on), any other loses its `source` and the DM is told. A part
   of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
 - **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
