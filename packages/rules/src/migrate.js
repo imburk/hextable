@@ -12,7 +12,7 @@ import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
 
-export const VERSION = 20;
+export const VERSION = 21;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -104,6 +104,10 @@ export function migrate(state) {
     if (!sh || typeof sh !== 'object' || sh.attuning === undefined) continue;
     if (!(Array.isArray(sh.items) && sh.items.some((x) => x?.id === sh.attuning?.item))) delete sh.attuning;
   }
+  // Version 21: map format 2 (docs/specs/square-grid.md, Decisions 3 and 4). The map says its grid:
+  // `migrateMap` above (run on every load since version 3) gives a format 1 map `grid: 'hex'` and
+  // renames `hexFeet` to `cellFeet`. Nothing else changes: every position, key, region, arena and
+  // area is a hex one already, and plays as it did.
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

@@ -248,7 +248,7 @@ function shownMap(state) {
   const has = (levelId, h) => !!levels.find((l) => l.id === levelId)?.tiles[col(h)];
   const hiddenNow = (o) => { const st = stateOf(o) ?? o.state; return !!stateDef(o, st)?.hidden && ['move', 'sight'].every((w) => stateDef(o, st).blocks.includes(w)); };
   const doc = {
-    format: map.format, id: map.id, name: map.name, hexFeet: map.hexFeet, levels,
+    format: map.format, id: map.id, name: map.name, grid: map.grid, cellFeet: map.cellFeet, levels,
     // An undiscovered door is sent as the wall it passes for. Walls are sorted and renumbered so
     // that nothing about a wall's name or place in the list says which one is not a wall.
     walls: [...map.walls, ...map.objects.filter((o) => objectSegment(o, G) && hiddenNow(o))

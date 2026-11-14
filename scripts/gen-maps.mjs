@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as H from '../packages/rules/src/hex.js';
 import { edgeSegment } from '../packages/rules/src/walls.js';
-import { lintMap } from '../packages/rules/src/map.js';
+import { MAP_FORMAT, lintMap } from '../packages/rules/src/map.js';
 import { CONTENT } from '../packages/rules/src/content/index.js';
 
 const OUT = fileURLToPath(new URL('../packages/rules/src/content/maps/', import.meta.url));
@@ -190,7 +190,7 @@ function finish(b) {
     objects.push({ id: `o${++n}`, def: t.def, level: t.level, at: T(t.h), state: t.state ?? CONTENT.objects[t.def].initial, ...(t.name ? { name: t.name } : {}), ...(t.key ? { key: t.key } : {}), ...(t.dc ? { dc: t.dc } : {}), ...(t.links ? { links: t.links } : {}) });
   }
   // A door's state defaults to what its definition starts in; write it out so the file says so.
-  const doc = { format: 1, id: b.id, name: b.name, hexFeet: 5, levels, walls: wallsOf(b, T), objects, regions, starts: b.starts.map((h) => T(h)) };
+  const doc = { format: MAP_FORMAT, id: b.id, name: b.name, grid: 'hex', cellFeet: 5, levels, walls: wallsOf(b, T), objects, regions, starts: b.starts.map((h) => T(h)) };
   return doc;
 }
 
