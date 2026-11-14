@@ -12,12 +12,15 @@ import { gridOf, HEX, SQUARE, col, parse } from "../src/grid.js";
 import * as H from "../src/hex.js";
 import { lintMap, newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
-import { canSee, coverOf, inView, inViewOf, lightAt, sightline, SQUARE_COVERS, SQUARE_COVER_TEXT } from "../src/sight.js";
+import { canSee, coverOf, inView, inViewOf, lightAt, sightline, SQUARE_COVERS } from "../src/sight.js";
+import { SETTING_TEXT } from "../src/engine/dm.js";
 import { concealed, footprint } from "../src/space.js";
 import { clipWall, view, viewEvents } from "../src/view.js";
 import { partyView, seesPlace, tilesInSight, unknown } from "../src/vision.js";
 import { distToSegment, objectHexes } from "../src/walls.js";
 import { squareRoom } from "./fixtures/square-room.js";
+import { findable } from "../src/engine/world.js";
+import { usesFor } from "../src/engine/features.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" }, KIM = { role: "player", userId: "kim" }, LEE = { role: "player", userId: "lee" };
@@ -53,7 +56,8 @@ const pillarOfWalls = (q, r) => (m) => {
 test("the table rule squareCover: obstacle (the default) or corners, with words for each; it only means anything on squares", () => {
   assert.deepEqual(SETTINGS.squareCover, ["obstacle", "corners"]);
   assert.deepEqual(SQUARE_COVERS, SETTINGS.squareCover);
-  assert.deepEqual(Object.keys(SQUARE_COVER_TEXT), SETTINGS.squareCover);
+  assert.deepEqual(Object.keys(SETTING_TEXT.squareCover), SETTINGS.squareCover);
+  for (const t of Object.values(SETTING_TEXT.squareCover)) assert.ok(t.length > 40 && /table rule/i.test(t), t);
   const s = room();
   assert.equal(s.settings.squareCover, undefined, "absent means the owner's rule");
   assert.equal(apply(s, { type: "setting", key: "squareCover", value: "maybe" }, DM).error, "That setting can be: obstacle, corners.");
@@ -685,6 +689,123 @@ test("hidden creatures on squares: one Hidden behind the window's Three-Quarters
   assert.ok(g.hiding, "Three-Quarters Cover lets it hide");
   assert.equal(unknown(s, g), true);
   assert.equal(JSON.stringify(view(s, PAT)).includes(g.name), false);
+});
+
+// ---------- doors on squares (review of #262: the door calls that skipped the grid) ----------
+// Doors on each side of a square in the open room (a door stands alone; it needs no wall to be used).
+const DOORS = [["dE", 5, 5, 0], ["dN", 9, 5, 1], ["dW", 5, 9, 2], ["dS", 9, 9, 3]];
+const withDoors = (m) => { for (const [id, q, r, edge] of DOORS) m.objects.push({ id, def: "door-wooden", level: "ground", at: { q, r }, edge, state: "closed" }); };
+test("doors on squares: a door on any side is used from its two squares or one next to them, and from nowhere else", () => {
+  for (const squareRange of ["real", "srd"]) for (const [id, q, r, edge] of DOORS) {
+    const s = room({ edit: withDoors });
+    if (squareRange === "srd") ok(apply(s, { type: "setting", key: "squareRange", value: "srd" }, DM));
+    const o = s.map.objects.find((x) => x.id === id), cells = objectHexes(o, SQUARE);
+    assert.deepEqual(cells.map(col), [col({ q, r }), col({ q: q + SQUARE.DIRS[edge][0], r: r + SQUARE.DIRS[edge][1] })]);
+    const want = new Set(cells.flatMap((c) => [c, ...SQUARE.neighbors(c)]).map(col));
+    for (let x = q - 3; x <= q + 3; x++) for (let y = r - 3; y <= r + 3; y++) {
+      if (x < 0 || y < 0 || x > 14 || y > 14 || s.map.objects.some((b) => b.id !== id && col(b.at) === `${x},${y}`)) continue;
+      const c = structuredClone(s);
+      c.entities.fighter.pos = at(x, y);
+      const res = apply(c, { type: "use", actor: "fighter", object: id, verb: "open" }, PAT);
+      assert.equal(res.ok, want.has(`${x},${y}`), `${squareRange}: door ${id} (edge ${edge}) used from ${x},${y}: ${res.error ?? "accepted"}`);
+      if (res.ok) assert.equal(c.map.objects.find((b) => b.id === id).state, "open");
+      else { assert.equal(res.error, "Brenna is too far from the wooden door."); assert.equal(c.map.objects.find((b) => b.id === id).state, "closed"); }
+      // The DM acting for the creature is held to the same reach; usesFor offers it where the use is allowed.
+      assert.equal(apply(structuredClone(c), { type: "use", actor: "fighter", object: id, verb: res.ok ? "close" : "open" }, DM).ok, want.has(`${x},${y}`));
+      if (!res.ok) assert.equal(usesFor(c, c.entities.fighter).some((u) => u.object === id), false);
+    }
+    // From the door's own square the use is offered.
+    const c = structuredClone(s);
+    c.entities.fighter.pos = at(q, r);
+    assert.ok(usesFor(c, c.entities.fighter).some((u) => u.object === id && u.verb === "open"));
+  }
+  // A Large user: from any of its squares.
+  const L = room({ edit: withDoors });
+  L.entities.fighter.pos = at(3, 4);
+  ok(apply(L, { type: "setSize", actor: "fighter", size: "large" }, DM));                // 3..4 by 4..5: its anchor is 2 squares from the door, its square 4,5 next to 5,5
+  ok(apply(L, { type: "use", actor: "fighter", object: "dE", verb: "open" }, PAT));
+});
+
+test("doors on squares: Search finds a secret door on any side, measured to the nearer of its squares", () => {
+  for (const [, q, r, edge] of DOORS) {
+    const s = room({ edit: (m) => { m.objects.push({ id: "sd", def: "secret-door", level: "ground", at: { q, r }, edge, state: "secret" }); } });
+    const f = s.entities.fighter, o = s.map.objects.find((x) => x.id === "sd"), cells = objectHexes(o, SQUARE);
+    // 15 ft (SRD Search here is the engine's SEARCH_FEET) from the farther square only: findable; one square beyond both: not.
+    const [a, b] = cells, dir = [b.q - a.q, b.r - a.r];
+    f.pos = at(b.q + dir[0] * 3, b.r + dir[1] * 3);
+    assert.equal(findable(s, f, o, 15), true, `edge ${edge}: 15 ft from ${col(b)}`);
+    f.pos = at(b.q + dir[0] * 4, b.r + dir[1] * 4);
+    assert.equal(findable(s, f, o, 15), false, `edge ${edge}: 20 ft`);
+    f.pos = at(a.q - dir[0] * 3, a.r - dir[1] * 3);
+    assert.equal(findable(s, f, o, 15), true, `edge ${edge}: 15 ft from ${col(a)} on the other side`);
+  }
+});
+
+// A thing in a room the party has not been shown is, to a player, a thing that does not exist: the
+// same answer, word for word, and nothing changes. A door, a lever and a chest, on both grids, under
+// the rooms and los rules.
+function unshownThings(grid) {
+  let map;
+  if (grid === "square") {
+    // The 10-ft corridor east of the room (rows 3 and 4, columns 15 to 22), a region not yet seen.
+    // Its door on the south side of 15,3 (edge 3): by hex numbering that edge would be the west one,
+    // onto 14,3 in the room, which the party is shown.
+    map = squareRoom();
+    const cells = []; for (let q = 15; q <= 22; q++) cells.push(`${q},3`, `${q},4`);
+    map.regions.push({ id: "corridor", name: "Corridor", level: "ground", hexes: cells });
+    map.walls.push({ id: "shut", level: "ground", a: [72.5, 12.5], b: [72.5, 22.5], kind: "wall" });
+    map.objects.push({ id: "t-door", def: "door-wooden", level: "ground", at: { q: 15, r: 3 }, edge: 3, state: "closed" },
+      { id: "t-lever", def: "lever", level: "ground", at: { q: 20, r: 3 }, state: "up" }, { id: "t-chest", def: "chest", level: "ground", at: { q: 21, r: 4 }, state: "closed" });
+  } else {
+    const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "stone" }]));
+    const x = HEX.center({ q: 2, r: 0 })[0] + 2.5;
+    map = newMap({ id: "h", name: "Hex", starts: [{ q: -5, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }],
+      walls: [{ id: "w", level: "ground", a: [x, -100], b: [x, 100], kind: "wall" }],
+      objects: [{ id: "t-door", def: "door-wooden", level: "ground", at: { q: 4, r: 0 }, edge: 0, state: "closed" },
+        { id: "t-lever", def: "lever", level: "ground", at: { q: 4, r: -2 }, state: "up" }, { id: "t-chest", def: "chest", level: "ground", at: { q: 3, r: 2 }, state: "closed" }],
+      regions: [{ id: "east", name: "East", level: "ground", hexes: Object.keys(tiles).filter((k) => HEX.center(H.parse(k))[0] > x) }] });
+  }
+  return map;
+}
+test("doors and things on either grid: one in a room the party has not been shown answers as an id that does not exist", () => {
+  for (const grid of ["square", "hex"]) for (const rule of ["rooms", "los"]) {
+    const s = newGame(5);
+    ok(apply(s, { type: "loadMap", map: unshownThings(grid) }, DM));
+    ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+    ok(apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, PAT));
+    const start = grid === "square" ? [[12, 3], [0, 3], [1, 3], [2, 3]] : [[1, 0], [-4, 1], [-4, 0], [-3, -1]];
+    ["fighter", "rogue", "cleric", "wizard"].forEach((id, i) => { s.entities[id].pos = at(...start[i]); });
+    if (rule !== "rooms") ok(apply(s, { type: "setting", key: "sight", value: rule }, DM));
+    assert.equal(s.map.regions.at(-1).revealed, undefined, `${grid}, ${rule}: the room is not shown`);
+    for (const [id, verb] of [["t-door", "open"], ["t-lever", "pull"], ["t-chest", "open"]]) {
+      const before = JSON.stringify(s);
+      const real = apply(s, { type: "use", actor: "fighter", object: id, verb }, PAT), none = apply(s, { type: "use", actor: "fighter", object: "t-nothing", verb }, PAT);
+      assert.deepEqual(real, none, `${grid}, ${rule}: ${id}`);
+      assert.equal(real.error, "No such object.");
+      assert.equal(JSON.stringify(s), before);
+    }
+  }
+});
+
+test("every caller of objectSegment and objectHexes in the rules passes the map's grid (the client's, but for lines listed for their lanes)", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const roots = [new URL("../src/", import.meta.url), new URL("../src/engine/", import.meta.url), new URL("../../client/", import.meta.url)];
+  // Lines in files other lanes hold now, listed for the lead (docs/DEBT.md T22 (1)).
+  const later = { "three-build.js": 1, "render-three.js": 1, "editor.js": 3 };
+  const args = (src, open) => { let depth = 0, n = 0, any = false; for (let i = open; i < src.length; i++) { const c = src[i]; if ("([{".includes(c)) { depth++; continue; } if (")]}".includes(c)) { depth--; if (depth === 0) return any ? n + 1 : 0; continue; } if (depth === 1 && c === ",") n++; else if (depth === 1 && !/\s/.test(c)) any = true; } return -1; };
+  let calls = 0;
+  for (const root of roots) for (const f of readdirSync(root).filter((x) => x.endsWith(".js"))) {
+    if (f === "walls.js" && root.href.endsWith("/src/")) continue;          // where they are defined
+    const src = readFileSync(new URL(f, root), "utf8");
+    let short = 0;
+    for (const name of ["objectSegment", "objectHexes"]) for (const m of src.matchAll(new RegExp(`(?<![\\w.$])${name}\\(`, "g"))) {
+      if (src.slice(Math.max(0, m.index - 20), m.index).match(/(function|const)\s+$/)) continue;
+      calls++;
+      if (args(src, m.index + name.length) !== 2) short++;
+    }
+    assert.equal(short, later[f] ?? 0, `${f}: ${short} calls without the grid`);
+  }
+  assert.ok(calls > 20, `${calls} calls`);
 });
 
 // ---------- the long random game on a square map ----------

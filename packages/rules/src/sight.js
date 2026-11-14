@@ -89,13 +89,10 @@ export function inViewOf(map, a, b) {
 export const COVER = { none: 0, half: 2, threeQuarters: 5 };
 // How cover is judged on a square map: the table rule `squareCover` (docs/specs/square-grid.md,
 // Decision 7). 'obstacle' (the default, the owner's rule) judges what stands in the way and where;
-// 'corners' counts the target's four corners in view, as hexes count six. Hex maps ignore it.
+// 'corners' counts the target's four corners in view, as hexes count six. Hex maps ignore it. The
+// words a DM reads are `SETTING_TEXT.squareCover` in engine/dm.js.
 export const SQUARE_COVERS = ['obstacle', 'corners'];
 export const squareCover = (s) => (SQUARE_COVERS.includes(s.settings?.squareCover) ? s.settings.squareCover : 'obstacle');
-export const SQUARE_COVER_TEXT = {
-  obstacle: 'Cover by what is in the way (the default): the line to the middle of the target and the lines to its corners. All clear: no cover. The middle clear but a corner hidden, or a creature on the line: Half. The middle behind something solid but part of the target showing round it: Three-Quarters. Everything behind a window, a rail, a grille or a thing like a statue: Three-Quarters. Everything behind a wall or a shut door: Total. A table rule; the SRD does not say how to judge cover on a grid.',
-  corners: 'Cover by the corners of the target\'s square in view: all four, none; two or three, Half; one, Three-Quarters; none and the middle hidden, Total. A table rule.',
-};
 // The cover a target has from an attacker, or from a point an effect starts at: 'none', 'half',
 // 'threeQuarters' or 'total'. For big creatures the most exposed pairing of their hexes counts.
 // `from` is a creature or a position; `others` are creatures that might stand in the way.

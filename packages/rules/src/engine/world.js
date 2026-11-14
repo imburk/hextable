@@ -319,7 +319,7 @@ export function showPlace(s, e, ev) {
 
 // ---------- objects ----------
 // May players know about this object? It must touch a hex they have been shown.
-export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[col(h)] && shown(map, o.level, h));
+export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o, gridOf(map)).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[col(h)] && shown(map, o.level, h));
 export const objectOf = (s, id, ctx = null) => {
   const o = s.map.objects.find((x) => x.id === id);
   return (o && (!ctx || ctx.role === 'dm' || (sightRule(s) === 'rooms' ? objectShown(s.map, o) : objectKnown(s, o))) && o) || fail('No such object.');
@@ -338,7 +338,7 @@ export function setObject(s, o, state, ev, by = null, verb = null) {
     }
   }
   for (const [x, st] of plan) {
-    if (objectSegment(x) || !objectDef(x).states[st].blocks.includes('move')) continue;
+    if (objectSegment(x, gridOf(s.map)) || !objectDef(x).states[st].blocks.includes('move')) continue;
     !living(s).some((c) => col(c.pos) === col(x.at) && c.pos.z === objectZ(s, x)) || fail(`Someone is standing where the ${objectName(x).toLowerCase()} would be.`);
   }
   plan.forEach(([x, st], i) => {
@@ -432,7 +432,7 @@ export function findable(s, e, o, feet) {
   const def = objectDef(o);
   if (!def.states[o.state].hidden || !def.find || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) return false;
   const level = s.map.levels.find((l) => l.id === o.level), G = gridOf(s.map);
-  const near = objectHexes(o).filter((h) => level.tiles[col(h)] && shown(s.map, o.level, h)).sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos))[0];
+  const near = objectHexes(o, G).filter((h) => level.tiles[col(h)] && shown(s.map, o.level, h)).sort((x, y) => measure(s, G)(x, e.pos) - measure(s, G)(y, e.pos))[0];
   return !!near && measure(s, G)(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) });
 }
 export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
