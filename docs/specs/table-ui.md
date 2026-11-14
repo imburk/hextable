@@ -1389,3 +1389,62 @@ What was settled while building, where it differs from Decision 5, and what was 
 - **Gear lines.** `describe` says `pass`, `drop` and `pickup` (`why`, `with`) as the spec's table has them; the engine does not send those yet (T6g), so today only the DM's gift and loot appear.
 - **Left out.** Numbering of fights counts the fights this device holds (it is stable once the summaries have come); a log that holds more than 2500 entries drops its oldest blocks; the whole list is drawn again on
   every entry while the Log tab is open (fine at this size, a windowed list if it is not); no defeat entry (see DEBT T13 (5)).
+
+### E17: items between creatures, engine (PR for #290)
+
+- **Actions** (engine/characters.js). `pass { actor, item, to }`, `drop { actor, item }`, `pickUp { actor, object, item? }`,
+  by the actor's controller or the DM. `item` is what `give` takes: a magic item's key on a built character's sheet
+  (`"i1"`), else a name in `gear` (any case). `pickUp`'s `item` is the id of one thing on the pile (`contents[].id`);
+  without it everything on the pile, which in a fight is refused for more than one thing.
+- **Who and where.** `pass`: the taker is on the actor's side (`!hostile`: a party member for a player's character),
+  not dead, up and not Incapacitated, within 5 ft by `apart` (the map's grid, both grids, height by the `vertical`
+  rule), with no wall between (`walled`). `to` naming a creature the party does not know of gets "No such creature.",
+  as an id that is nothing (dispatch does not walk `to`, so the handler does; the hidden-ids test walks it). `drop`:
+  onto the pile in the creature's cell on the surface under it (in the air: the surface below), or a new pile there.
+  `pickUp`: a pile within reach as for using an object (`nearObject`, moved from features.js to world.js so that
+  characters.js need not import a handler module).
+- **In a fight** (SRD "Interacting with Things"): on the creature's own turn; the first object interaction of the
+  turn is free (`flags.interact`, shared with `use` on objects), any more takes the Utilize action, then nothing.
+  Fast Hands (a Bonus Action Utilize) is not offered. Outside a fight they cost nothing.
+- **What is refused as in use.** A magic item `equipped` (worn or held): "take it off first", and taking off is
+  `equip`, outside a fight (so a held magic weapon is not dropped in a fight; DEBT C14 "equipping in a fight").
+- **Attunement.** By the SRD an Attunement lasts until the item has been 100 ft away for 24 hours or another
+  attunes; the engine keeps Attunement on the sheet's entry, so it ends when the item leaves the sheet. The giver's
+  `gear` event says so (`unattuned: true`); an `attuning` (the next Short Rest's) that named it is cleared with an
+  `attuning { cleared: true }` event. The taker holds it unattuned.
+- **What moves.** A magic item to a built character lands on its sheet (carried, a new key, its `charges`, `base`,
+  `type`, `spell` kept); to a creature with no sheet, its name in `gear` (`nameOnly`, as `give`). Names go to `gear`
+  (at most 60, `GEAR_MAX`). A sheet that can't take it (60 items) refuses the whole action and both creatures stay
+  as they were. A name that is the creature's lit light (a `setLight` torch or lamp, and the only gear of that name)
+  carries the light: passed, the light goes to the taker (refused if it has one); dropped, the light goes out on the
+  creature and the DM gets a `manual` (partial) that it burns on where it fell.
+- **Events.** `gear { id, item, pack?, key?, why: 'pass' | 'drop' | 'pickup', with? | object?, taken?, unattuned?,
+  nameOnly? }`, one per side for `pass` (giver first, `taken`, then the taker with its new `key`), one for `drop`
+  (`taken`, `object`), one per thing for `pickUp` (`object`). Then `object { object, name, state, stateName, actor,
+  verb: 'drop' | 'pickup', placed? | gone? }` for the pile. Players: `gear` for their own (party) creatures, `with`
+  if they know the other, `object` only if they are sent the pile, `unattuned` (view.js); `object` as any object
+  event, if they see the pile (a pile emptied is gone, so its last event does not reach them).
+- **Piles** (`maps-and-objects.md`, build notes, "Piles"): seen where in view, with `contents` only while in view.
+- **History labels.** "X handed something to Y", "X dropped something", "X picked something up": never the item,
+  since a label goes to players who may not be sent the gear event. `pass` counts `to` among the creatures a player
+  must know of for the step to be shown.
+- **Helpers for the client** (engine.js): `passTargets(s, e)` → `[{ id, name, why, time }]` (creatures on its side
+  within 5 ft), `pickUpsFor(s, e)` → `[{ object, name, items: [{ id, name, pack? }], why, time }]`, `interactionOf(s, e)`
+  → `{ why, time: null | 'free' | 'action' }`; `pileContents`, `contentName`, `isPile`.
+- **State.** No new state version: piles are map objects, `contents` a field on them; older tables have none.
+- **Left out.** `map.js` does not lint `contents`; a pile remembered under los/light leaves the view when emptied
+  unseen (players learn it was taken); Fast Hands; dropping a held weapon in a fight; Attunement kept at a distance;
+  the light of a dropped torch; a creature carrying a pile's contents by weight (encumbrance).
+
+#### For the client job (Items tab: Give..., Drop, Pick up)
+
+- **Give...** on a gear row or a magic item row: list `passTargets(S, e)`; a row with `why` is greyed with that text;
+  `time` says "free" or "uses your action". Send `{ type: 'pass', actor: e.id, item, to }`, `item` the sheet key for a
+  magic item, else the gear string. An item with `equipped` has no Give or Drop: show "Take it off first".
+- **Drop** on the same rows: `{ type: 'drop', actor, item }`; reason from `interactionOf(S, e).why`.
+- **Pick up**: the Move tab's objects in reach (or the Items tab) from `pickUpsFor(S, e)`: one row per thing,
+  `{ type: 'pickUp', actor, object, item: thing.id }`, and outside a fight "Take all" without `item`.
+- **The map** draws a pile (`def: 'pile'`) as a small heap in its cell; its card lists `contents` names
+  (`contentName`, or `name` / the item's name) when sent, "you can't see what is there now" when not.
+- **Log** (`logview.js` already reads `why`/`with`): "Brenna gave Tavin Rope", "Brenna dropped Rope",
+  "Tavin picked up the Wand of Magic Missiles"; `unattuned` adds "(no longer attuned)".
