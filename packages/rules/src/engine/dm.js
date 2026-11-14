@@ -13,11 +13,11 @@ import { SIGHT_RULES } from '../vision.js';
 import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
-import { ARENA_RADIUS, ent, fail, inFight, living, up } from './shared.js';
+import { ARENA_RADIUS, control, current, ent, fail, inFight, living, up } from './shared.js';
 import { airspace, AREA_FILLS, DIAGONALS, fitsOn, joinEncounter, lookAround, objectName, objectOf, reveal, revealRegion, setObject, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
-import { checkEnd, damage, endEncounter, startEncounter } from './resolve.js';
+import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
 export const handlers = {
 
@@ -39,6 +39,54 @@ export const handlers = {
     ctx.role === 'dm' || e.owner === ctx.userId || fail(`${e.name} isn't yours to give up.`);
     e.owner = null; e.ownerName = null;
     ev.push({ type: 'released', id: e.id });
+  },
+
+  // ----- stepping away (resolve.js, AWAY; docs/specs/table-ui.md, E19) -----
+  // { type: 'stepAway', actor, how? }: set a creature aside in the turn order while its player is
+  // away. Its player may (the "need a break" button), as the table rule `breaks` allows: at once
+  // (`on`), as a request the DM then grants by sending this action (`ask`), or not at all (`off`).
+  // The DM may set anyone aside, and choose `how` (one of AWAY); else the table rule `away` says.
+  // Sent again by the DM it changes `how`. Nothing is done on a connection's state: only a person sends this.
+  stepAway(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    const dm = ctx.role === 'dm', breaks = s.settings.breaks ?? 'on';
+    if (!dm) {
+      a.how === undefined || fail('Only the DM chooses what is done with the turns of someone set aside.');
+      breaks !== 'off' || fail('At this table only the DM sets a character aside.');
+    }
+    !e.dead || fail(`${e.name} is dead.`);
+    const how = a.how ?? s.settings.away ?? AWAY[0];
+    AWAY.includes(how) || fail(`That can be: ${AWAY.join(', ')}.`);
+    if (!dm && breaks === 'ask') {
+      !e.away || fail(e.away.asked ? `${e.name} has already asked to step away.` : `${e.name} is already set aside.`);
+      e.away = { asked: true, by: 'player' };
+      ev.push({ type: 'away', id: e.id, by: 'player', asked: true });
+      return;
+    }
+    (!e.away || e.away.asked || (dm && a.how !== undefined && e.away.how !== how)) || fail(`${e.name} is already set aside.`);
+    e.away = { how, by: dm ? 'dm' : 'player' };
+    ev.push({ type: 'away', id: e.id, how, by: e.away.by });
+    // Set aside on its own turn: the rest of the turn goes as the rule says. A stand-in plays on.
+    const enc = s.encounter;
+    if (!enc || current(s) !== e.id || how === 'standIn') return;
+    if ((how === 'end' || how === 'endKeep') && presentAfter(s, enc.turn)) {
+      const i = enc.turn;
+      moveToEnd(s, e.id, how === 'endKeep', { budget: enc.budget, flags: enc.flags }, ev);   // the turn goes on where it stopped, at the end
+      enc.turn = i - 1;                                                  // the creature after it is next
+      advanceTurn(s, ev);
+      return;
+    }
+    if (how === 'hold' ? finishTurn(s, e, ev) : awayTurn(s, e, ev)) advanceTurn(s, ev);   // a turn under way is not held: it ends
+  },
+  // { type: 'stepBack', actor }: the creature is back (or its request to step away is taken back). By
+  // its player or the DM. A turn held this round is taken after the one going on.
+  stepBack(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    e.away || fail(`${e.name} is not set aside.`);
+    const was = e.away;
+    delete e.away;
+    ev.push({ type: 'back', id: e.id, ...(was.asked ? { asked: true } : {}) });
+    if (!was.asked) heldBack(s, e, ev);
   },
 
   // ----- DM only -----
@@ -272,9 +320,24 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
   // Square maps only: how cover is judged (sight.js); absent means the first. Words in SETTING_TEXT.
-  squareCover: SQUARE_COVERS };
-// What the square-map settings mean, in words a DM reads beside the choice.
+  squareCover: SQUARE_COVERS,
+  // Stepping away (resolve.js, AWAY): what becomes of the turns of a creature set aside, and what a
+  // player's "need a break" does. Absent means the first. Words in SETTING_TEXT.
+  away: AWAY, breaks: ['on', 'ask', 'off'] };
+// What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  away: {
+    dodge: 'A creature set aside takes the Dodge action on its turn and stays where it is (the default). Set aside on its own turn, it takes the Dodge action if it still has its action, and its turn ends. A table rule; the SRD has no rule for a player who steps away.',
+    end: 'A creature set aside has its turn moved to the end of the round, and gets its place back next round. Back by then, it plays that turn; still away, it takes the Dodge action and stays where it is. Set aside part-way through its own turn, the rest of that turn waits at the end of the round. A table rule; the SRD has no rule for delaying a turn.',
+    endKeep: 'As moving to the end of the round, but the creature keeps its new place at the end in the rounds after. A table rule.',
+    hold: 'A creature set aside has its turns passed over, untaken. Back within the round, it takes that round\'s turn after the turn going on; a turn passed in an earlier round is gone. Set aside on its own turn, that turn ends. A turn passed over is not a turn: nothing that ends at the start or end of its turn ends. A table rule.',
+    standIn: 'A stand-in plays a creature set aside: its turns start as usual and the DM\'s screen plays them with the monster AI, as it plays monsters, which may move it into harm. A table rule.',
+  },
+  breaks: {
+    on: 'A player may step their own character aside ("need a break") at once, under the rule above; the table is told, and the DM may change what is done with its turns.',
+    ask: 'A player\'s "need a break" asks the DM, who steps the character aside; the table is told it was asked.',
+    off: 'Only the DM sets a character aside.',
+  },
   diagonals: {
     real: 'Diagonals are measured for real (the default): a step to a side costs 5 ft, a diagonal step about 7 ft (5 x 1.41), doubled by Difficult Terrain as any step is. A creature with any movement left may still enter one more square on the flat (not up or down: climbing, stairs, a ladder or flying up is paid in full); that step uses up the rest. Forced movement counts diagonals the same way, with no extra square. A table rule, not the SRD count.',
     srd: 'Every diagonal costs 5 ft, the same as a step to a side, as the SRD counts squares.',

@@ -273,6 +273,13 @@ export function describeStep(action, events, before, after) {
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;
+    // Stepping away (E19). Players are told of a party creature's; of another's only that the order changed.
+    case 'stepAway': case 'stepBack': {
+      const back = a.type === 'stepBack', asked = ev('away')?.asked || ev('back')?.asked;
+      const text = back ? (asked ? `${who} took back asking to step away` : `${who} came back`) : asked ? `${who} asked to step away` : `${who} stepped away`;
+      label = classify(after, a.actor) === 'open' ? text : { label: `${who} was ${back ? 'brought back' : 'set aside'}`, shown: 'The turn order was changed' };
+      break;
+    }
     // Items between creatures (E17): never what was handed over; the gear events say that to those who may know.
     case 'pass': label = `${who} handed something to ${name(a.to)}`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;

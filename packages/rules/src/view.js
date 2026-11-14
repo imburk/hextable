@@ -527,6 +527,14 @@ export function viewEvents(events, state, viewer) {
       case 'attuned':
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'on', 'end', 'cleared', 'failed']));
         break;
+      // Stepping away (E19): a party creature's only, as the table is told of its own. Of another creature
+      // set aside by the DM nothing is said: players see its place in the order and what it does, as for any creature.
+      case 'away':
+      case 'back':
+      case 'awayTurn':
+      case 'turnMoved':
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'how', 'by', 'asked', 'to', 'keep', 'round']));
+        break;
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
         break;
