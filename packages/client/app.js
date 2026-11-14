@@ -32,6 +32,7 @@ import { initReactionPrompt } from './reactionprompt.js';
 import { initClasses, formOf, formName } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
+import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
 import { initTableControls, importLine, gridWords } from './tablecontrols.js';
 import { initDefeat } from './defeat.js';
@@ -48,7 +49,6 @@ const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
 
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null, aiSent = null;
 let themeId = THEMES[prefs.get('hextable.theme')] ? prefs.get('hextable.theme') : 'classic';
-const log = [];
 let seeded = false;      // whether the log has been given the table's recent history yet
 let chron = [];          // the DM's chronicle when playing online; solo reads it from the local state
 
@@ -222,7 +222,12 @@ function coverHint(e, ids) {
 const COVER_NAME = { half: 'half cover', threeQuarters: 'three-quarters cover' };
 const behind = (c) => (COVER_NAME[c] ? ` behind ${COVER_NAME[c]}` : '');
 
+// The log's line for an event: [text, class, kind], kind being what the log filters by (logview.js). null when the event says nothing.
 function describe(ev) {
+  const d = words(ev);
+  return d ? [d[0], d[1] || '', kindOf(ev)] : null;
+}
+function words(ev) {
   const n = name;
   switch (ev.type) {
     case 'encounterStart': return ['Roll initiative! ' + ev.order.map((o) => (o.init === undefined ? n(o.id) : `${n(o.id)} ${o.init}`)).join(', '), 'head'];
@@ -280,7 +285,13 @@ function describe(ev) {
     case 'size': return [`${n(ev.id)} is now ${ev.size[0].toUpperCase()}${ev.size.slice(1)}.`];
     case 'speed': return [ev.feet ? `${n(ev.id)} now has a ${ev.mode === 'walk' ? '' : `${ev.mode[0].toUpperCase()}${ev.mode.slice(1)} `}Speed of ${ev.feet} ft.` : `${n(ev.id)} no longer has a ${ev.mode} speed.`];
     case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
-    case 'gear': return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
+    case 'gear': {
+      const other = ev.with !== undefined && S.entities[ev.with] ? n(ev.with) : null;      // who it went to or came from, if the viewer was told
+      if (ev.why === 'pass' && other) return [ev.taken ? `${n(ev.id)} hands ${ev.item} to ${other}.` : `${n(ev.id)} receives ${ev.item} from ${other}.`];
+      if (ev.why === 'drop') return [`${n(ev.id)} drops ${ev.item}.`];
+      if (ev.why === 'pickup') return [`${n(ev.id)} picks up ${ev.item}.`];
+      return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
+    }
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];
     case 'hid': return [`${n(ev.id)} is hidden.`];
@@ -326,9 +337,7 @@ function floatOf(ev) {
 function beat(ev, ctx) {
   if (!S) return;
   played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
-  const d = describe(ev); if (d) log.push(ev.dice?.length ? [d[0], d[1], ev.dice] : d);
-  if (log.length > 300) log.splice(0, log.length - 300);
-  if (!$('log').hidden) renderLog();
+  LV.add(ev, describe(ev), S.clock);
   const f = floatOf(ev);
   if (f) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
@@ -345,10 +354,11 @@ function onUpdate(state, events, fresh) {
   S = state;
   TL.setPace(pace());
   if (first) {
-    log.length = 0; selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); DF.fresh(); CC.fresh(); D.reset();
+    LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); DF.fresh(); CC.fresh(); D.reset();
     if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
+    if (T.solo) { seeded = true; LV.seed(recall(S, { limit: Infinity }).map((e) => [e, describe(e)])); }      // the whole timeline is here: a reload rebuilds the groups
   }
   if (first && pendingMap && isDM()) { act(pendingMap); pendingMap = null; }      // the lobby's chosen map, once the new table has its first state
   QE.events(events);
@@ -543,12 +553,14 @@ function refresh() {
   if (!$('about').hidden) renderAbout();
 }
 
-function renderLog() {
-  // A roll's line ends with small glyphs of the faces this viewer was sent.
-  const glyphs = (dice) => ` <span class="dgs">${dice.slice(0, MAX_DICE).map((d) => `<span class="dg${d.drop ? ' drop' : ''}${d.neg ? ' neg' : ''}" data-s="${d.sides}" title="d${d.sides}">${d.value}</span>`).join('')}</span>`;
-  $('log-list').innerHTML = log.slice(-120).map(([t, c, dice]) => `<li class="${c || ''}">${esc(t)}${dice ? glyphs(dice) : ''}</li>`).join('');
-  $('log-list').lastElementChild?.scrollIntoView({ block: 'end' });
-}
+// The log by combat (logview.js). A roll's line ends with small glyphs of the faces this viewer was sent.
+const glyphs = (dice) => ` <span class="dgs">${dice.slice(0, MAX_DICE).map((d) => `<span class="dg${d.drop ? ' drop' : ''}${d.neg ? ' neg' : ''}" data-s="${d.sides}" title="d${d.sides}">${d.value}</span>`).join('')}</span>`;
+const LV = initLogView({
+  root: $('log'), list: $('log-list'), prefs, isDM: () => isDM(), nameOf: (id) => S?.entities[id]?.name ?? 'Someone', clockText,
+  line: (e, inFight) => `<li class="lg-line ${esc(e.cls)}" data-kind="${inFight && (e.kind === 'explore' || e.kind === 'combat') ? 'combat' : e.kind}">${esc(e.text)}${e.dice ? glyphs(e.dice) : ''}</li>`,
+  ask: (fight) => T.history({ fight }),
+});
+function renderLog() { LV.render(); }
 
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
@@ -931,8 +943,14 @@ function start(transport, map = null) {
     if (msg.recent) {             // what happened before we sat down, so the log has some context
       if (seeded) return;         // a reconnect sends it again; the log already has it
       seeded = true;
-      const lines = msg.entries.map(describe).filter(Boolean);
-      log.unshift(...lines);
+      LV.seed(msg.entries.map((e) => [e, describe(e)]), true);
+      T.history({ types: ['encounterStart', 'encounterEnd', 'conclusion'], limit: 200 });      // older fights, one collapsed entry each
+    } else if (msg.fight !== undefined) {
+      LV.record(msg.fight, msg.entries.map((e) => [e, describe(e)]), msg.cut);      // one fight's blow-by-blow, asked for when it was opened
+      return;
+    } else if (msg.types?.includes('encounterEnd')) {
+      LV.merge(msg.entries.map((e) => [e, describe(e)]));
+      return;
     } else {
       // An answer says which types it was asked for (older servers do not: those are chronicle requests).
       if (!msg.types || msg.types.includes('chronicle')) chron = msg.entries.filter((e) => e.type === 'chronicle');

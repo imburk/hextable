@@ -40,6 +40,7 @@ const REGISTRY = {
   drawer: ['drawer'],
   defeat: ['defeat'],
   rewards: ['rewards'],
+  log: ['log'],
   'three-parity': ['three-parity'],
   maps: ['maps'],
   pinch: ['pinch'],

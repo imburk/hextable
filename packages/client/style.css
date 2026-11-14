@@ -85,8 +85,22 @@ body.fight #status { border-color: var(--accent); }
 .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--panel); border-left: 1px solid var(--line); padding: max(14px, env(safe-area-inset-top)) 16px 24px; overflow-y: auto; z-index: 5; backdrop-filter: blur(6px); }
 .panel .close { float: right; } .panel section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
 #log-list, #chron-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; }
-#log-list li { padding: 3px 0 3px 10px; border-left: 3px solid var(--line); } #log-list li.head { border-left-color: var(--accent); font-weight: 700; margin-top: 6px; }
+#log-list li:where(.lg-line) { padding: 3px 0 3px 10px; border-left: 3px solid var(--line); } #log-list li.head { border-left-color: var(--accent); font-weight: 700; margin-top: 6px; }
 #log-list li.bad { border-left-color: var(--bad); } #log-list li.good { border-left-color: var(--good); }
+/* the log by combat (logview.js): chips, then fights and exploring runs as <details> */
+.lg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.lg-chip { border: 1px solid var(--line); border-radius: 20px; padding: 6px 12px; min-height: 36px; font-size: 13px; }
+.lg-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--bg, #fff); }
+.lg-group { border: 1px solid var(--line); border-radius: var(--radius); padding: 0; }
+.lg-group > details > summary { cursor: pointer; padding: 8px 10px; min-height: 40px; display: grid; gap: 2px; list-style: none; }
+.lg-group > details > summary::-webkit-details-marker { display: none; }
+.lg-title { font-weight: 700; } .lg-title::before { content: "\25B8  "; } details[open] > summary > .lg-title::before { content: "\25BE  "; }
+.lg-sub { color: var(--muted); font-size: 13px; }
+.lg-fight { border-left: 4px solid var(--accent); }
+.lg-rounds, .lg-lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.lg-rounds { padding: 0 8px 8px; gap: 8px; }
+.lg-h { margin: 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.lg-note { margin: 0; color: var(--muted); font-size: 13px; }
 #chron-list li { padding: 4px 0; border-bottom: 1px dashed var(--line); } #chron-list time { color: var(--muted); font-size: 12px; display: block; font-variant-numeric: tabular-nums; }
 .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center; margin: 10px 0; }
 .stats div { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 0; } .stats b { display: block; font-size: 18px; } .stats small { color: var(--muted); font-size: 11px; text-transform: uppercase; }
