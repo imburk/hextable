@@ -137,3 +137,9 @@ test('every kind is one of the five, and html escapes what it draws', () => {
   const h = L.html(L.view(m, {}), { isOpen: () => true });
   assert.ok(h.includes('&lt;b&gt;') && !h.includes('<b>x'));
 });
+
+test('a pile dropped on or taken from is loot, as the gear event is; other object events are not', () => {
+  assert.equal(L.kindOf({ type: 'object', verb: 'drop' }), 'loot');
+  assert.equal(L.kindOf({ type: 'object', verb: 'pickup', gone: true }), 'loot');
+  assert.equal(L.kindOf({ type: 'object', object: 'door-1' }), 'explore');
+});
