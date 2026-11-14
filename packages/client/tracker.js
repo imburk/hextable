@@ -7,6 +7,7 @@ import { inFight, clockText, FT } from './shared/engine.js';
 import { under } from './shared/space.js';
 import { conditionName } from './shared/modifiers.js';
 import { hpFraction } from './render.js';
+import { rowDotHTML } from './linkdot.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const WORD = { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' };
@@ -29,7 +30,7 @@ export function turnLine(S) {
 }
 
 // One row. `opts`: { dm, mine(e), ticked: Set } . The same function draws every viewer's row; what differs is what the state holds.
-export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new Set() } = {}) {
+export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new Set(), link = () => null } = {}) {
   if (item.unseen) return `<li class="tr-ghost${item.now ? ' now' : ''}" data-side="unseen"${item.now ? ' aria-current="step"' : ''}><span class="tr-init"></span><span class="tr-main"><span class="tr-name">Something moves unseen</span></span></li>`;
   const { e, now, init } = item, enc = S.encounter;
   const full = !!e.abil && typeof e.maxHp === 'number', numbers = full && (mine(e) || e.side === 'party');
@@ -57,12 +58,13 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
   return `<li data-id="${esc(e.id)}" data-side="${esc(e.side)}" class="${now ? 'now' : ''} ${out ? 'out' : ''}"${now ? ' aria-current="step"' : ''}>
       ${dm && typeof e.maxHp === 'number' ? `<input type="checkbox" class="tr-tick" aria-label="Select ${esc(e.name)}" ${ticked.has(e.id) ? 'checked' : ''}>` : '<span class="tr-nobox"></span>'}
       <span class="tr-init">${init !== undefined ? init : ''}</span>
-      <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(e.name)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}</span>
+      <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(e.name)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>
         <span class="tr-hp"><span class="bar"><i style="width:${hpFraction(e) * 100}%"></i></span><span>${esc(hp)}</span></span>
         ${tags.length || conds.length || fx.length ? `<span class="tr-tags">${[...tags, ...conds, ...fx].map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}</button>${ctl ? `<span class="tr-ctl">${ctl}</span>` : ''}</li>`;
 }
 
-// ctx: { root, state(), isDM(), mine(e), act(a), pick(id), openSheet(id), toast(msg) }
+// ctx: { root, state(), isDM(), mine(e), act(a), pick(id), openSheet(id), toast(msg), link(e) } where link(e) is the connection state of the
+// player who plays e, { state, text } (the DM's tracker only; see linkdot.js), or null.
 export function createTracker(ctx) {
   const { root } = ctx;
   const ticked = new Set();
@@ -93,7 +95,7 @@ export function createTracker(ctx) {
     q('tr-turn').textContent = turnLine(S);
     q('tr-dm').hidden = !dm; q('tr-edit').hidden = !dm;      // the button shows on a phone only (style.css)
     for (const id of [...ticked]) if (!S.entities[id]) ticked.delete(id);
-    const keep = list.scrollTop, opts = { dm, mine: ctx.mine, ticked };
+    const keep = list.scrollTop, opts = { dm, mine: ctx.mine, ticked, link: ctx.link };
     list.innerHTML = rs.map((r) => rowHTML(S, r, opts)).join('') || '<li class="tr-empty">Nobody yet.</li>';
     list.scrollTop = keep;
     const key = `${enc ? 'f' : 'x'}${enc?.turn}${enc?.round}`;

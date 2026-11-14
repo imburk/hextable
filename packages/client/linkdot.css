@@ -1,0 +1,16 @@
+/* The connection dot (linkdot.js): in the top bar at a multiplayer table, and beside a player's name in the DM's tracker. */
+.ld { display: inline-flex; vertical-align: middle; flex: none; }
+.ld svg { display: block; stroke: #0007; stroke-width: 1; stroke-linejoin: round; }  /* an edge, so the shape reads on the gold of the turn's row too */
+.ld-good svg { fill: var(--good); }
+.ld-shaky svg { fill: #e0a93a; }
+.ld-lost svg { fill: var(--bad); } .ld-lost svg .x { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+.ld-word { font-size: 12px; font-weight: 700; margin-left: 4px; }
+#link-dot { min-width: 44px; min-height: 44px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--panel); }
+#link-dot[data-state="good"] .ld-word { display: none; }
+#link-dot[data-state="shaky"] .ld-word { display: inline; }
+@media (max-width: 480px) { #link-dot { padding: 0 8px; } #link-dot .ld-word { display: none !important; } }   /* the shape and the note carry it on a phone: the round card keeps its room */
+#link-note { position: fixed; z-index: 7; display: grid; gap: 4px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; box-shadow: 0 4px 20px #0006; font-size: 14px; }
+#link-note b { display: flex; gap: 6px; align-items: center; }
+#link-note .ld-dm { color: var(--muted); font-size: 13px; }
+.tr-link { display: inline-flex; align-items: center; margin-left: 6px; }
+.tr-link .ld-word { margin-left: 3px; font-weight: 600; }
