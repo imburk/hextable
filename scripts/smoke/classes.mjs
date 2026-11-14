@@ -108,7 +108,7 @@ async function classes(browser, url, label, opts) {
         await panelTab(page, 'features');
         if (!/Boar/.test(await page.$eval('#ap-features', (x) => x.textContent))) throw new Error('the Features tab does not say the druid is a boar');
         if (!/Boar/.test(await page.$eval('#c-res', (x) => x.textContent))) throw new Error('the status line does not say the druid is a boar');
-        if (!(await state(page, (S, i) => S.entities[i].attacks.some((a) => /Gore|Tusk/i.test(a.name)), ids.Dru))) throw new Error('the creature has no attack of the form');       // Attacks is a fight tab; the fight smoke below lists them
+        if (!(await state(page, (S, i) => (S.entities[i].actions ?? S.entities[i].attacks ?? []).some((a) => /Gore|Tusk/i.test(a.name)), ids.Dru))) throw new Error('the creature has no attack of the form');       // Attacks is a fight tab; the fight smoke below lists them
         await feat('Wild Shape');
         if (!/Boar/.test(await page.$eval('#cp-form-now', (x) => x.textContent))) throw new Error('the panel does not say which form');
         await page.selectOption('#cp-form', 'panther'); await tap(page, '#cp-use');
