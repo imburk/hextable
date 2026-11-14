@@ -11,7 +11,9 @@ export const UNIT = Math.sqrt(3) / 5;                       // drawing units per
 export const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
 const FT = UNIT, FULL = 10 * FT, SILL = 3 * FT, WINDOW_TOP = 7 * FT, DOOR_TALL = 7 * FT, SLAB = 0.35;
 export const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };
-export const girth = (e) => GIRTH[e?.size] ?? 1;
+// On squares a Large creature fills 2 by 2 squares, Huge 3 by 3, Gargantuan 4 by 4 (SRD), so its base is drawn wider to fill them (as render.js does).
+const GIRTH_SQUARE = { ...GIRTH, large: 2, huge: 3, gargantuan: 4 };
+export const girth = (e, G = HEX) => (G.kind === 'square' ? GIRTH_SQUARE : GIRTH)[e?.size] ?? 1;
 
 const ZONE_TINT = { acid: [0.55, 0.85, 0.2], cold: [0.45, 0.78, 0.95], fire: [0.98, 0.45, 0.12], force: [0.75, 0.55, 0.95], lightning: [0.4, 0.55, 1], necrotic: [0.45, 0.3, 0.55],
   poison: [0.45, 0.75, 0.3], psychic: [0.9, 0.45, 0.8], radiant: [1, 0.9, 0.5], thunder: [0.65, 0.7, 0.85], bludgeoning: [0.7, 0.6, 0.5], piercing: [0.7, 0.6, 0.5], slashing: [0.7, 0.6, 0.5], neutral: [0.7, 0.75, 0.85] };
@@ -125,11 +127,11 @@ export function spot(map, e, pos) {
 }
 
 // The pawn of a creature: one lathe profile per theme, coloured by side and character.
-export function makePawn(e, th) {
-  const b = new Builder(), p = th.pawn, base = [...(th.sides[e.side] || th.sides.foe), 1];
+export function makePawn(e, th, G = HEX) {
+  const b = new Builder(G), p = th.pawn, base = [...(th.sides[e.side] || th.sides.foe), 1];
   let body = e.look?.color ? [...hexToRgb(e.look.color), 1] : [...th.foeBody, 1];
   if (e.dead) body = [0.4, 0.4, 0.4, 1];
-  const k = girth(e);
+  const k = girth(e, G);
   b.lathe(0, 0, 0, p.profile.map(([r, y]) => [r * k, y * k]), p.sides, p.sides === 4 ? Math.PI / 4 : 0, (seg) => (seg < 2 ? base : body));
   return b;
 }
@@ -190,7 +192,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
       b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
       b.flatHex(w.x, w.z, y, 0.86, 1, rim);
       const top = b.cellRing(w.x, w.z, 1, y), bot = b.cellRing(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB);
-      for (let i = 0; i < 6; i++) { const n = (i + 1) % 6; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
+      for (let i = 0; i < top.length; i++) { const n = (i + 1) % top.length; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
     }
     if (t.t === 'forest') {
       const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
@@ -301,7 +303,7 @@ export function buildWalls({ map, theme: th, ceiling, floorData, cut: cutIn, doo
   for (const w of map.walls) if (!hid(w.level)) run(w.kind, w.level, `w:${w.id}`, w.a, w.b);
   for (const o of map.objects) {
     if (hid(o.level)) continue;
-    const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;
+    const seg = objectSegment(o, G), unseen = !!objectDef(o)?.states[o.state]?.hidden;
     if (!seg) {
       const lv = map.levels.find((l) => l.id === o.level), w = G.toWorld(o.at), y = stand(map, { q: o.at.q, r: o.at.r, z: (lv?.z ?? 0) + (lv?.tiles[cellCol(o.at)]?.h ?? 0) }).y + 0.02;
       const trap = !!objectDef(o)?.triggers?.some((t) => t.effects), c = trap ? [0.75, 0.2, 0.18] : [0.8, 0.68, 0.3];

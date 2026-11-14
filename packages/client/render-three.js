@@ -161,11 +161,11 @@ export class ThreeRenderer {
       }
       a.unseen = !!e.hidden;
       if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
-      const key = `${e.dead}|${e.side}|${e.size}`; a.k = girth(e);
+      const key = `${e.dead}|${e.side}|${e.size}|${this.G.kind}`; a.k = girth(e, this.G);
       if (key !== a.key) {
         const dies = !calm && a.key !== '' && e.dead && a.wasDead === false;
-        if (dies) { const gp = new Piece(this, { order: 5 }).set(makePawn({ ...e, dead: false }, this.theme)); a.dying?.piece.free(); a.dying = { piece: gp, t0: now, dur: SECS.fall }; }
-        a.key = key; a.piece.set(makePawn(e, this.theme));
+        if (dies) { const gp = new Piece(this, { order: 5 }).set(makePawn({ ...e, dead: false }, this.theme, this.G)); a.dying?.piece.free(); a.dying = { piece: gp, t0: now, dur: SECS.fall }; }
+        a.key = key; a.piece.set(makePawn(e, this.theme, this.G));
       }
       a.wasDead = !!e.dead;
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
@@ -196,7 +196,7 @@ export class ThreeRenderer {
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {
-      const a = this.actors.get(e.id), w = this.#stand(e.pos);
+      const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);      // as render.js: on hexes a big creature is put at its own hex here, on squares at the middle of its squares
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
       const yy = spot(state.map, e, e.pos).y;
       if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
@@ -232,7 +232,7 @@ export class ThreeRenderer {
   #syncDoors(events, snap, now) {
     const map = this.state.map, live = new Set();
     for (const o of map.objects) {
-      if (!objectSegment(o)) continue;
+      if (!objectSegment(o, this.G)) continue;
       live.add(o.id);
       const goal = objectBlocks(o, 'move') ? 0 : 1;
       let d = this.doors.get(o.id);
