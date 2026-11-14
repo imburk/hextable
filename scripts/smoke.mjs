@@ -45,6 +45,7 @@ const REGISTRY = {
   pinch: ['pinch'],
   newgame: ['newgame'],
   actionpanel: ['actionpanel'],
+  paneltabs: ['paneltabs'],
 };
 
 const only = process.env.SMOKE_ONLY;
