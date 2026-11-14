@@ -1133,8 +1133,9 @@ function lintFeatDef(e, say) {
 // ---------- magic items (content/srd52/magic-items.js) ----------
 // A magic item (SRD "Magic Items"): what it is, whether it needs Attunement and from whom, where it must
 // be worn or held for its magic, the mundane item it is made from, its bonus, and what it grants while
-// active (worn or held, and attuned if it needs it). `activate` describes a use for a later action (E18);
-// nothing runs it yet. Design: docs/specs/rules-expansion.md, "Magic items" amendment.
+// active (worn or held, and attuned if it needs it). `activate` describes its uses, run by the `use` action with
+// `item` (engine/features.js, E18): effect steps on the effect runner; a spell cast from it goes to the DM.
+// Design: docs/specs/rules-expansion.md, "Magic items" amendment.
 export const ITEM_CATEGORIES = ['armor', 'potion', 'ring', 'rod', 'scroll', 'staff', 'wand', 'weapon', 'wondrous'];
 export const RARITIES = ['common', 'uncommon', 'rare', 'very-rare', 'legendary', 'artifact', 'varies'];
 // Where an item is worn or held. The SRD lets a creature wear one of each of the first six at a time ("Multiple
@@ -1188,7 +1189,9 @@ function lintItem(e, say, ctx = {}) {
       if (u.name !== undefined && !isText(u.name)) us('name is text');
     }
   }
-  const gives = e.grants || e.bonus || e.base || e.wear === 'shield';
+  // A use whose steps the engine runs (a potion's healing) is something it applies; a spell cast from an item is not, yet.
+  const runs = (e.activate ?? []).some((u) => Array.isArray(u?.effects) && u.effects.some((st) => st && !('manual' in st)));
+  const gives = e.grants || e.bonus || e.base || e.wear === 'shield' || runs;
   if (e.tier === 'auto' && !gives) say('marked auto but gives nothing the engine applies');
   if (e.tier === 'manual' && (e.grants || e.bonus)) say('marked manual but gives something');
   if (findFunction(e)) say('content is data only');

@@ -1,8 +1,8 @@
 // Class features and ability checks (engine.js): secondWind, feature (with Font of Magic and
-// Wild Shape), use (objects), check, search and hide, and watching for hidden creatures.
+// Wild Shape), use (objects, and magic items: E18), check, search and hide, and watching for hidden creatures.
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
-import { CONTENT, MONSTER_ACTIONS, MONSTERS } from '../content/index.js';
+import { CONTENT, MONSTER_ACTIONS, MONSTERS, SPELLS } from '../content/index.js';
 import { ABILITIES, SKILLS } from '../content/schema.js';
 import { begin, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
@@ -11,11 +11,13 @@ import { apart, footprint, FT, ground, measure, overlapAt, STEP_MAX } from '../s
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
-import { able, actTime, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
+import { able, actTime, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, objectName, objectOf, objectShown, SEARCH_FEET, setObject, unhide } from './world.js';
 import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, objectEffects, resolve } from './resolve.js';
+import { classesOf, itemActive, itemName } from '../derive.js';
+import { resheet } from './sheets.js';
 
 // Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
 // Everything by the map's grid (review of #262). On squares, a door on a square's side is in reach
@@ -321,7 +323,9 @@ export const handlers = {
   },
 
   // Do something with an object in reach: open a door, pull a lever. { type: 'use', actor, object, verb }
+  // With `item` instead of `object`, use a magic item the creature has (useItem, below).
   use(s, a, ctx, ev) {
+    if (a.item !== undefined) return useItem(s, a, ctx, ev);
     const e = ent(s, a.actor); control(e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
@@ -470,3 +474,162 @@ function shapeShift(s, e, f, act, a, ev) {
   if (F.tempHp) tempHp(s, e, F.tempHp, ev);
 }
 
+
+// ---------- using a magic item (docs/specs/table-ui.md, E18; DEBT C14) ----------
+// { type: 'use', actor, item: key on the sheet ("i3"), which?: the use (0 for the first of the item's `activate`),
+//   target? } By its controller or the DM. The item must be worn or held where its magic works, and attuned if
+// it needs it (SRD "Attunement"). A use takes its `time` in a fight, on the creature's own turn (an `action` use
+// is a Magic action: SRD "Activating a Magic Item"); spends `cost` charges (an item's charges are its sheet entry's
+// `charges`, full when not set); and a `consumed` item is gone once used (SRD "Consumable Items").
+// What it does:
+//   effects   run on the effect runner, as a feature's steps are. A potion works on its drinker: the user, or
+//             `target`, a creature within 5 feet it is administered to (SRD "Potions": a Bonus Action either way).
+//   spell     a spell cast from the item. The SRD's rules for that ("Spells Cast from Items": no slot, no
+//             components, its lowest level, the user's own spellcasting ability unless the item gives a DC, +0 and
+//             the Proficiency Bonus for a user with none) differ from `cast` in components (no Counterspell
+//             window, a Verbal component does not give a hider away), and casting.js has no way in for them yet,
+//             so the engine spends what it costs and hands the spell to the DM with its numbers (`manual`).
+//   A Spell Scroll (an item with variant "spell") is read at its spell's casting time, by a creature whose class
+//   spell list has the spell (otherwise it is unintelligible: refused); a spell above the level it can cast takes an
+//   ability check with its spellcasting ability against DC 10 + the spell's level, and on a failure the spell
+//   is lost with the scroll (SRD "Spell Scroll"). Its save DC and attack bonus come from the spell's level.
+// Events: `item { id, key, item, pack, use, target?, charges?, max?, consumed? }`, a `gear` with `why: 'used'`
+// and `taken` for a consumed item, then the effects' own events, or a `manual` with the spell.
+const SCROLL_STATS = [[2, 13, 5], [4, 15, 7], [6, 17, 9], [8, 18, 10], [9, 19, 11]];      // SRD Spell Scroll: up to this level, save DC, attack bonus
+export const scrollStats = (level) => { const [, dc, attack] = SCROLL_STATS.find(([n]) => level <= n); return { dc, attack }; };
+const POTION_REACH = 5;                                                                     // administered to a creature within reach
+// What an item asks of whoever holds it to work, as words: "held", "worn".
+const wornWord = (def) => (def.wear === 'weapon' || def.wear === 'shield' ? 'held' : 'worn');
+// The highest level of spell the creature can cast with its own slots (0: cantrips at most).
+const castLevel = (e) => Math.max(0, ...Object.entries(e.slotsMax ?? {}).filter(([, n]) => n > 0).map(([l]) => Number(l)));
+// The default name of a use, for the client and the log.
+function useLabel(def, u, x) {
+  if (u.name) return u.name;
+  if (def.variant === 'spell') return `Read: ${CONTENT.spells[x.spell]?.name ?? 'the spell'}`;
+  if (u.spell) return `Cast ${CONTENT.spells[u.spell]?.name ?? u.spell}`;
+  return def.category === 'potion' ? 'Drink' : 'Use';
+}
+
+// Checks one use of an item, changing nothing. Returns what using it takes, or refuses.
+function planItem(s, e, a) {
+  e.sheet || fail(`${e.name} was typed in by hand, so holds pack items by name only. Build a sheet for them first.`);
+  a.object === undefined || fail('Use an object or an item, not both.');
+  const x = typeof a.item === 'string' && Array.isArray(e.sheet.items) ? e.sheet.items.find((y) => y?.id === a.item) : null;
+  x || fail(`${e.name} has no such item.`);
+  const def = CONTENT.items[x.item] || fail(`${e.name} has no such item.`), name = itemName(def, x);
+  (def.activate ?? []).length || fail(`${name} has nothing to use; its magic works while it is ${wornWord(def)}.`);
+  const which = a.which ?? 0;
+  (Number.isInteger(which) && which >= 0 && which < def.activate.length) || fail(`${name} has ${def.activate.length === 1 ? 'one use' : `uses 0 to ${def.activate.length - 1}`}.`);
+  const u = def.activate[which], label = useLabel(def, u, x);
+  up(e) || fail(`${e.name} is down.`);
+  able(e);
+  itemActive({ x, def }) || fail(def.wear !== 'carried' && x.equipped !== true ? `${name} must be ${wornWord(def)} to be used.` : `${e.name} must be attuned to ${name} to use it.`);
+  // A Spell Scroll: the spell on it, and its casting time.
+  let spell = null, time = u.time;
+  if (def.variant === 'spell') {
+    const sp = SPELLS[x.spell] || fail(`${name} holds no spell the engine knows.`);
+    classesOf(e.sheet).some((k) => k.c?.casting && (sp.def.classes ?? []).includes(k.c.id)) || fail(`${sp.name} is not on ${e.name}'s spell list, so the scroll is unintelligible to them.`);
+    sp.time !== 'reaction' || fail(`${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+    (sp.turn || !s.encounter) || fail(`${sp.name} takes longer than a turn to cast, so it can't be read during a fight.`);
+    spell = sp; time = sp.time;
+  } else if (u.spell) {
+    spell = SPELLS[u.spell] || fail(`${name} casts a spell the engine does not know.`);
+    spell.time !== 'reaction' || fail(`${spell.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
+  }
+  time !== 'reaction' || fail(`${label} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
+  // Charges.
+  const max = def.charges?.max, have = def.charges ? x.charges ?? max : null, cost = u.cost ?? 0;
+  if (cost) have >= cost || fail(`${name} has ${have} charge${have === 1 ? '' : 's'} left; ${label} takes ${cost}.`);
+  // Who it works on: a potion on its drinker; anything else on its user (or as its steps say, through the DM).
+  let target = e;
+  if (a.target !== undefined && a.target !== e.id) {
+    def.category === 'potion' || fail(`${label} works on ${e.name}; it is not given to another.`);
+    target = ent(s, a.target);
+    !target.dead || fail(`${target.name} is dead.`);
+    apart(s, e, target) * FT <= POTION_REACH || fail(`${target.name} is out of reach.`);
+    walled(s, e, target);
+  }
+  // In a fight: on its own turn, for the time it takes. An action use is a Magic action, which the extra
+  // action from Action Surge can't be (as for casting a spell).
+  const enc = s.encounter, fighting = !!enc && inFight(s, e.id), spend = time === 'free' ? null : time;
+  if (fighting) {
+    need(s, e, spend);
+    if (spend === 'action' && enc.flags[`surge:${e.id}`] && enc.flags[`magic:${e.id}`]) fail('The extra action from Action Surge can\'t be used for a Magic action.');
+    if (target !== e) inFight(s, target.id) || fail(`${target.name} is outside the battle.`);
+  }
+  return { x, def, u, which, name, label, spell, time: spend, fighting, have, max, cost, target };
+}
+
+// What a creature could do with its items right now, for the client's Items tab: one row a use, with `why` it
+// can't ('' if it can). [{ key, item, pack, which, label, time, cost, charges, max, consumed, spell, reach, why }]
+export function itemUsesFor(s, e) {
+  const out = [];
+  if (!e?.sheet || !Array.isArray(e.sheet.items)) return out;
+  for (const x of e.sheet.items) {
+    const def = CONTENT.items[x?.item];
+    if (!def?.activate) continue;
+    def.activate.forEach((u, which) => {
+      let why = '';
+      try { planItem(s, e, { item: x.id, which }); } catch (err) { if (!(err instanceof RuleError)) throw err; why = err.message; }
+      const sp = def.variant === 'spell' ? SPELLS[x.spell] : u.spell ? SPELLS[u.spell] : null;
+      out.push({ key: x.id, item: itemName(def, x), pack: def.id, which, label: useLabel(def, u, x), time: def.variant === 'spell' && sp ? sp.time : u.time,
+        cost: u.cost ?? 0, ...(def.charges ? { charges: x.charges ?? def.charges.max, max: def.charges.max } : {}), ...(u.consumed ? { consumed: true } : {}),
+        ...(sp ? { spell: sp.id } : {}), reach: def.category === 'potion' ? POTION_REACH : 0, why });
+    });
+  }
+  return out;
+}
+
+function useItem(s, a, ctx, ev) {
+  const e0 = ent(s, a.actor); control(e0, ctx);
+  const p = planItem(s, e0, a), { def, u, name, label, spell } = p;
+  // A consumed item that gives its holder something (none in the pack does today) is taken off the sheet by
+  // making the character again, checked before anything is spent; any other is simply taken off.
+  const remakes = u.consumed && !!(def.grants || def.bonus || def.base || def.wear === 'shield');
+  const takeOut = () => {
+    const sheet = structuredClone(s.entities[e0.id].sheet);
+    sheet.items = sheet.items.filter((y) => y.id !== p.x.id);
+    if (sheet.attuning?.item === p.x.id) delete sheet.attuning;
+    if (!sheet.items.length) delete sheet.items;
+    if (remakes) resheet(s, s.entities[e0.id], sheet, ev); else s.entities[e0.id].sheet = sheet;
+  };
+  if (remakes) takeOut();
+  const e = s.entities[e0.id], target = p.target === e0 ? e : p.target;
+
+  // Paid for: from here it happens.
+  if (p.fighting && p.time) { s.encounter.budget[p.time]--; if (p.time === 'action') s.encounter.flags[`magic:${e.id}`] = true; }
+  let left;
+  if (p.cost) { const x = e.sheet.items.find((y) => y.id === p.x.id); x.charges = left = p.have - p.cost; }
+  ev.push({ type: 'item', id: e.id, key: p.x.id, item: name, pack: def.id, use: label, ...(target !== e ? { target: target.id } : {}),
+    ...(left !== undefined ? { charges: left, max: p.max } : {}), ...(u.consumed ? { consumed: true } : {}) });
+  if (left === 0) ev.push({ type: 'manual', actor: e.id, name, partial: true, text: `${name} has no charges left. What spending the last one does, if anything, is in its description (often a d20 roll that can destroy it): the DM settles it.` });
+  if (u.consumed) {
+    if (!remakes) takeOut();
+    ev.push({ type: 'gear', id: e.id, item: name, key: p.x.id, pack: def.id, why: 'used', taken: true });
+  }
+
+  // A Spell Scroll of a spell above what its reader can cast: the check first.
+  if (spell && def.variant === 'spell' && spell.level > castLevel(e)) {
+    const ability = classesOf(e.sheet).filter((k) => k.c?.casting && (spell.def.classes ?? []).includes(k.c.id)).map((k) => k.c.casting.ability)
+      .sort((m, n) => mod(e.abil[n] ?? 10) - mod(e.abil[m] ?? 10))[0];
+    const dc = 10 + spell.level, r = abilityCheck(s, e, { ability });
+    ev.push({ type: 'check', id: e.id, ability, ...r, dc, success: r.total >= dc, what: `${name}: casting a level ${spell.level} spell` });
+    if (r.total < dc) return ev.push({ type: 'std', id: e.id, action: `${name}: the spell fades from the scroll` });
+  }
+  if (spell) {
+    // Cast from the item, by the DM (see above): its level, DC and attack bonus.
+    const scroll = def.variant === 'spell', level = scroll ? spell.level : u.level ?? spell.level;
+    const own = e.castAbil ? spellStats(e, s, spell.id) : { dc: 8 + (e.prof ?? 0), attack: e.prof ?? 0 };
+    const st = scroll ? scrollStats(spell.level) : { dc: u.dc ?? own.dc, attack: own.attack };
+    const sign = (n) => (n >= 0 ? `+${n}` : `${n}`);
+    return ev.push({ type: 'manual', actor: e.id, name,
+      text: `${e.name} casts ${spell.name}${level > 0 ? ` (level ${level})` : ''} from ${name}: no spell slot, ${scroll ? 'no Material components' : 'no components'}; spell save DC ${st.dc}, spell attack ${sign(st.attack)}.${spell.def.concentration ? ' It needs Concentration.' : ''} The engine does not cast a spell from an item yet: the DM applies ${spell.name}.` });
+  }
+  // Its effect steps, on the runner.
+  const steps = structuredClone(u.effects);
+  const fx = boundEffect(s, name, e.id, steps);
+  begin(s, { steps, actor: e.id, targets: [target.id], src: { name, healMod: 0, ...(fx ? { fx: fx.id } : {}) } });
+  resolve(s, ev);
+  if (fx?.bound) settle(s, ev, fx, [target]);
+  checkEnd(s, ev);
+}
