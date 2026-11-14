@@ -3,11 +3,12 @@
 // a fight starts, passes from turn to turn and ends.
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
-import { SPELLS, TILES } from '../content/index.js';
+import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
-import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
+import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
+import { unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
@@ -15,7 +16,7 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, isPile, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { tryLand } from './sheets.js';
 
@@ -745,6 +746,150 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   });
   resolve(s, ev);
   if (fx) settle(s, ev, fx, targets ?? []);
+}
+
+// ---------- companions leaving the map (docs/specs/companions.md, Decision 4) ----------
+
+// What a bonded creature carried stays where it was (SRD Find Familiar: "leaves behind anything it was
+// wearing or carrying"): its gear by name, and any magic items on a sheet, go onto the pile in its cell
+// (or a new one), past PILE_MAX if need be, so nothing is lost and nothing is made twice. With nothing
+// at all under it, the DM is told what it carried.
+// One the party did not know of leaves them as `drop` does for such a creature: on a pile of its own, marked
+// `by` it (world.js, pileOpen), and `left`, since it is gone and the party can never come to know of it:
+// `seePiles` keeps such a pile the DM's (they open it, with the map editor, when the party finds it), and so
+// every pile it dropped unseen before. Players are told nothing: their view is as if it had simply died
+// unseen with nothing on it (review of #313, M1).
+function leaveGear(s, e, ev, unseen) {
+  if (unseen) for (const o of s.map.objects) if (isPile(o) && o.by === e.id) o.left = true;
+  const items = [...(Array.isArray(e.gear) ? e.gear : []).map((g) => ({ name: String(g) })),
+    ...(Array.isArray(e.sheet?.items) ? e.sheet.items : []).filter((x) => x && typeof x === 'object').map(({ id: _k, equipped: _q, attuned: _a, ...spec }) => spec)];
+  if (!items.length) return;
+  const sf = under(s.map, e.pos);
+  if (!sf) {
+    ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name} vanished with nothing under it. What it carried is the DM's to place: ${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}.` });
+    return;
+  }
+  const by = unseen ? e.id : null;
+  let o = pileAt(s, sf.level.id, e.pos, by);
+  const placed = !o;
+  if (!o) {
+    o = { id: pileId(s, sf.level.id, e.pos, by), def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [], ...(by ? { by, left: true } : {}) };
+    s.map.objects.push(o);
+  }
+  if (!Array.isArray(o.contents)) o.contents = [];
+  for (const x of items) {
+    let n = 1;
+    while (o.contents.some((y) => y?.id === `c${n}`)) n++;
+    o.contents.push({ id: `c${n}`, ...x });
+  }
+  // Seen by the party, `seen` lets the line reach them though the creature is gone (view.js, `object`).
+  ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(placed ? { placed: true } : {}) });
+  if (unseen) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true,
+    text: `${e.name} vanished where the party could not see it. What it carried (${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}) lies in ${o.id}, which only you see: when the party finds it, open it to them with the map editor: the pile without \`by\` or \`left\`, and with the id of the cell's own pile (\`pile-<level>-<q>_<r>\`, no \`-h\`), or onto that pile if there is one.` });
+}
+
+// What a companion the party could see leaves undone ends with it. A part on it, or one that was to end with
+// a turn of its (`ends.who`: "until the end of its next turn"), ends: that turn will not come (review of #313,
+// L7). A condition it put on another with no lasting effect behind it: a grapple ends, since there is nobody
+// left to hold on (SRD Grappled); any other loses the name of a creature that is no longer there, and the DM
+// is told it is theirs to end (L3).
+function settleSeen(s, e, ev) {
+  const name = e.name, its = (p) => !p.ended && (p.target === e.id || p.ends?.who === e.id);
+  for (const fx of [...effectsOf(s)]) {
+    if (fx.source === e.id) { endEffect(s, ev, fx, `${name} vanished`); continue; }
+    const on = fx.parts.filter(its);
+    if (!on.length) continue;
+    if (fx.parts.every((p) => p.ended || its(p))) endEffect(s, ev, fx, `${name} vanished`);
+    else useUp(s, ev, on);
+  }
+  for (const x of Object.values(s.entities)) {
+    if (x.id === e.id || !x.cond) continue;
+    for (const [c, v] of Object.entries(x.cond)) {
+      if (v?.source !== e.id || v.effect !== undefined) continue;
+      if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
+      delete v.source;
+      ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has vanished. Whether that ends is the DM's.` });
+    }
+  }
+}
+// A bonded creature leaves the map: `why` is 'hp0' (it dropped to 0 Hit Points and its bond says it
+// vanishes), 'master' (its master died), 'leash' (it ended too far from its master), 'dismissed', and
+// in later stages 'ended', 'rest', 'replaced'. What it was concentrating on and its own lasting effects
+// end; a part of another's effect that was on it ends (the effect too, if nothing else was left of it);
+// it leaves the fight order (its own turn, if it is going on, passes); what it carried stays behind; the
+// record goes. `vanished { id, name, why }` carries `seen` when the party knew of it just before and
+// `party` when it was the party's, since view.js can no longer look it up (hidden-information.md).
+export function vanish(s, e, why, ev) {
+  const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
+  if (!seen) return vanishUnseen(s, e, why, ev);
+  settleSeen(s, e, ev);
+  for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
+  if (e.follow) unfollow(s, e, ev);
+  leaveGear(s, e, ev, false);
+  const enc = s.encounter;
+  let theirs = false;
+  if (enc) {
+    const i = enc.order.findIndex((o) => o.id === e.id);
+    if (i >= 0) {
+      theirs = i === enc.turn;
+      enc.order.splice(i, 1);
+      if (i <= enc.turn) enc.turn--;                  // its own turn: the one before stands, and the turn passes below
+      if (enc.moved) { delete enc.moved[e.id]; if (!Object.keys(enc.moved).length) delete enc.moved; }
+      if (enc.held) delete enc.held[e.id];
+    }
+    // Flags that name it (`hit:<id>:<target>`, `attacked:<id>`) go with it: once it is gone nothing can tell
+    // whether players may know of it (view.js filters flags by the creatures there are; review of #313, L2).
+    for (const k of Object.keys(enc.flags ?? {})) if (k.split(':').includes(e.id)) delete enc.flags[k];
+  }
+  delete s.entities[e.id];
+  ev.push({ type: 'vanished', id: e.id, name, why, seen: true, ...(party ? { party: true } : {}) });
+  if (why === 'hp0' && e.bond?.kind === 'object')
+    ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} reverts to the object it was. The damage that took it past 0 carries over to that object: the DM's to apply.` });
+  if (!s.encounter) return;
+  checkEnd(s, ev);
+  if (s.encounter && theirs) advanceTurn(s, ev);
+}
+
+// A companion the party could not see (round 3 of the review of #313, N2). Taking its record away would
+// change what it did as an unseen creature's death never does: a zone it left would lose its caster and stop
+// working, conditions and effects would point at nothing, its turn would pass at once. So it stays in the
+// state as what such a death leaves: dead, at 0 Hit Points, hidden by the DM's switch for good (`vanished`
+// marks it: `reveal` refuses it, settleBonds passes it by), in the fight order as the dead are (skipped, and
+// its turn, if it is going on, waits for the DM as a dead creature's does). Only what it carried leaves it,
+// onto a pile players are not sent (leaveGear). Everything it did goes on as after any death; the DM is told
+// what is left, to end by hand, and may `remove` the record when nothing of it is needed.
+function vanishUnseen(s, e, why, ev) {
+  const name = e.name, left = [];
+  leaveGear(s, e, ev, true);
+  e.gear = [];
+  if (Array.isArray(e.sheet?.items)) { e.sheet.items = []; delete e.sheet.attuning; }
+  if (!e.dead) { e.hp = 0; e.dead = true; concentrationLost(s, ev, e, `${name} vanished`); }      // gone, not killed: no `died`
+  e.hidden = true;
+  e.vanished = why;
+  for (const fx of effectsOf(s)) {
+    if (fx.source === e.id) left.push(`${fx.name} (its own)`);
+    else if (fx.parts.some((p) => !p.ended && (p.target === e.id || p.ends?.who === e.id))) left.push(`${fx.name} (a part on it, or ending with its turn)`);
+  }
+  for (const x of Object.values(s.entities)) for (const [c, v] of Object.entries(x.cond ?? {})) if (x.id !== e.id && v?.source === e.id) left.push(`${x.name} is ${conditionName(c)} from it`);
+  ev.push({ type: 'vanished', id: e.id, name, why });
+  ev.push({ type: 'manual', actor: null, name, partial: true,
+    text: `${name} vanished where the party could not see it. So that the party learns nothing it could not, its record stays, dead and hidden, and what it did goes on as after a death${left.length ? `: ${left.join('; ')}` : ''}. End what should end (endEffect, condition) when the party could know, and remove ${name} when nothing of it is needed.` });
+  if (why === 'hp0' && e.bond?.kind === 'object')
+    ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} reverts to the object it was. The damage that took it past 0 carries over to that object: the DM's to apply.` });
+  checkEnd(s, ev);
+}
+
+// After every action (engine.js, apply): a companion at 0 Hit Points whose bond says it vanishes, one
+// whose bond ends when its master dies and whose master is dead, and one farther than its leash from
+// its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
+export function settleBonds(s, ev) {
+  for (const e of Object.values(s.entities).filter((x) => x.bond)) {
+    if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
+    const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
+    if ((e.dead || e.hp <= 0) && b.at0 === 'vanish') vanish(s, e, 'hp0', ev);
+    else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);
+    else if (m && !e.dead && Number.isFinite(b.leash) && apart(s, e, m) * FT > b.leash) vanish(s, e, 'leash', ev);
+  }
 }
 
 // ---------- actions ----------

@@ -1,6 +1,6 @@
 // Attacks and a creature's turn (engine.js): attack, act (a monster's actions), dodge, reaction
 // instructions, endTurn; and the attacks a turn allows (Multiattack, Extra Attack).
-import { actionProfile } from '../effects.js';
+import { actionProfile, stepKind, walk } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
@@ -138,12 +138,21 @@ function preyFor(s, e, t, id) {
   return { o, f, mod: part.modifier };
 }
 
+// An action that makes an attack roll, or a Multiattack: what a creature that can't attack can't use.
+function isAttack(def) {
+  if (def.multiattack) return true;
+  let hit = false;
+  walk(def.effects ?? [], (st) => { if (stepKind(st) === 'attack') hit = true; });
+  return hit;
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
   // monster) attacks with the action of that id; others with their flat attack records.
   attack(s, a, ctx, ev) {
-    const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
+    const e = ent(s, a.actor), t = ent(s, a.target); control(s, e, ctx);
+    !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
@@ -194,8 +203,9 @@ export const handlers = {
   // { type: 'act', actor, action, target? | hex? }: a creature uses one of its actions (a
   // monster's Bite, Fire Breath or Multiattack). Its effect steps run like a spell's.
   act(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (!def.multiattack) return takeAction(s, e, def, a, ev);
@@ -210,7 +220,7 @@ export const handlers = {
     ev.push({ type: 'std', id: e.id, action: def.name });
   },
   dodge(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dodge only matters in a fight.');
     need(s, e, 'action');
     s.encounter.budget.action--; e.cond.dodging = {};
@@ -220,7 +230,7 @@ export const handlers = {
   // creature's reactions (reactions.js), set by whoever controls it at any time, even off its turn.
   // Private to its controller and the DM: the event is the DM's alone (view.js).
   reactions(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     const bad = checkInstructions(e, a.set);
     if (bad) fail(bad);
     const mine = reactionsOf(e), out = { ...(e.reactions ?? {}) };
@@ -229,7 +239,7 @@ export const handlers = {
     ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
   },
   endTurn(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
     // Self-Restoration (`selfCure`): its player picks which of the conditions it has ends (`cure`).
     // With only one there is nothing to pick; with several and no pick, the DM is told.

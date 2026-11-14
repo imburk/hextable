@@ -527,3 +527,70 @@ Each has a default; work proceeds on the default.
 6. **XP for a foe's summons.** *Default: a creature with a bond does not count toward a fight's XP*
    (`counts: false` in the conclusion; the DM can tick it). The summon blocks give XP 0 already.
 7. **The cap.** *Default: 20 bonded creatures per master.*
+
+## Build notes
+
+### C1, the bond (#311)
+
+What was settled while building it, where the decisions above left room:
+
+- **Sides.** The DM's `bond` gives the creature its master's side (a spawned wolf is a foe until it is
+  bonded to a party character); "bonding across sides is refused" is read as: refused for a creature
+  that is in a fight going on ("a creature in the fight can't change sides"). Bonding a creature the DM
+  hid (`hidden`) to a party master is refused: a party member is never hidden. A creature that turns
+  party is looked around with (`lookAround`), as a placed party member is.
+- **What the DM's bond accepts.** `kind` (default `pet`), `turn`, `orders`, and two more than Decision 1
+  names: `at0` (default by kind: familiar, steed, summon, servant and object vanish; undead and pets die)
+  and `noAttack` (a DM-made familiar of the SRD can't attack, but the Vampire Familiar can, so it is the
+  DM's to say). `turn` other than `own` and `orders: 'command'` are refused until C2 and C5 run them, so
+  the engine never keeps a choice it would not play. `fx`, `source`, `ends` and `leash` come only from
+  spells (C2, C3); C1 honours them where they are set (`masterDies`, `leash`) and its tests set them by hand.
+- **No chains.** A companion has no companions, and a creature with companions can't become one, so
+  `ownerOf` looks one step up only. A creature with an `owner` (or a `pc`) can't be bonded, and a bonded
+  creature can't be claimed, by a player or the DM: a companion's player is always its master's.
+- **Removing a master** (the DM's `remove`) frees its companions (`unbonded`); they stay.
+- **When it vanishes.** `vanish` is run by `settleBonds`, a pass after every action (engine.js, beside
+  gravity), not inside `damage`: every way a creature reaches 0 (damage, `setHp`, a fall, a kill) is
+  caught in one place. So a familiar at 0 shows `died` and then `vanished` in the same action.
+  `dismissed` has no action yet (C5's `dismiss`); `vanish` takes it.
+- **What it leaves.** Its gear by name, and magic items on a sheet if it has one, go onto the pile in its
+  cell (E17), past `PILE_MAX` if need be, so nothing is lost or made twice. With nothing under it the DM
+  is told what it carried (`manual`). An Animated Object at 0 also tells the DM it reverts (Decision 4).
+- **Lasting effects.** Those it is the source of end; another creature's effect loses only the part on it
+  (Bless goes on for the others), and ends if nothing else was left of it.
+- **The fight order.** It leaves the order; if it was its own turn, the turn passes to the next creature.
+- **What players are sent.** `vanished` is told to players only when the engine marks it `seen` (the
+  party knew of it just before: it is no longer in the state for `view.js` to classify), with `name` and
+  `why` only when it was the party's (`party`). `bonded` goes only when both creatures are the party's;
+  `unbonded` and `companion` only for a party creature (and `from` only when that is the party's).
+- **State version 23**, with a migration that changes nothing.
+
+Settled in the review of #313:
+
+- **"Can't attack" means no attack roll.** A `noAttack` creature is refused `attack`, any `act` with an
+  attack step or a Multiattack, and any spell with an attack roll; it has no Opportunity Attack
+  (`opportunityAttack` gives none, so nobody walking away from it is threatened) and no trait reaction
+  that attacks. An action or spell with a save and no attack roll (a breath) is allowed.
+- **Gear of a companion the party could not see.** It goes onto a pile marked `by` it and `left`
+  (`world.js`, `seePiles` keeps a `left` pile marked), as `drop` does for such a creature, and so does any
+  pile it dropped unseen before. Players are never sent it; the DM is told (`manual`) and opens it with the
+  map editor when the party finds it. A vanishing with or without gear then looks to players exactly like
+  an unseen creature's death.
+- **What players are told of a companion that vanished.** In the events of that action it is classed as it
+  was just before it went (the party's: Open; one they could see: Seen), so the damage, its death and what
+  it left reach them as for any creature, and the undo label is shown. A Seen one's `health` is only `dead`
+  or `down`.
+- **A companion the party could not see** (rounds 2 and 3 of the review of #313, N1 and N2) is not taken out
+  of the state: it stays as what an unseen creature's death leaves, dead, at 0 Hit Points, hidden by the DM's
+  switch for good and marked `vanished` (`reveal` refuses it; `settleBonds` passes it by), in the fight order
+  as the dead are (its turn, if going on, waits for the DM). Only what it carried leaves it, onto the `left`
+  pile. Everything it did (zones, lasting effects, conditions, grapples, parts that end with its turn, flags)
+  goes on exactly as after a death, so players are told and shown exactly what an unseen death gives them;
+  the DM is told what is left, ends it by hand, and may `remove` the record. It gives no `died` event when it
+  vanished alive (leash, master). One difference stays, and is right: a creature merely out of sight that
+  vanished is not found as a corpse later, as one that died would be.
+- **What it leaves behind in others, seen.** Encounter flags naming it go. A condition it put on another with no
+  lasting effect: Grappled ends (nobody holds on), any other loses its `source` and the DM is told. A part
+  of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
+- **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
+  may tick it.

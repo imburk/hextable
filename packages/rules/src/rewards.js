@@ -44,7 +44,7 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
   const mode = s.settings.conclusion ?? 'dm';
   if (mode === 'off') return;
   const party = who.filter((e) => e.side === 'party' && e.kind === 'pc').map((e) => e.id);
-  const foes = who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: CONTENT.monsters[e.tpl]?.xp ?? 0, counts: !up(e) }));
+  const foes = who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: CONTENT.monsters[e.tpl]?.xp ?? 0, counts: !up(e) && !e.bond }));     // a companion gives no XP of its own unless the DM ticks it (companions.md, question 6)
   const c = { id: enc.id, fight: enc.id, result, rounds: enc.round, where: enc.where ?? null, foes, party,
     xp: { base: 0, bonus: [], per: {}, fixed: [] }, loot: [], next: 1, published: false };
   share(s, c);

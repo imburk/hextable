@@ -17,7 +17,7 @@ import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
-import { isPile, openContents, pileOpen } from './engine.js';
+import { isPile, openContents, ownerOf, pileOpen } from './engine.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -136,7 +136,7 @@ export function viewPrompt(state, viewer) {
   if (!p) return null;
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
-  if (!t || typeof viewer?.userId !== 'string' || t.owner !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
+  if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
   const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => pick(o, ['reaction', 'name', 'slots', 'ac'])) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
@@ -157,7 +157,7 @@ function perceived(state, p) {
 export function viewReactions(state, viewer) {
   const out = {};
   if (typeof viewer?.userId !== 'string') return out;
-  for (const [id, e] of Object.entries(state.entities)) if (e.owner === viewer.userId && e.reactions) out[id] = structuredClone(e.reactions);
+  for (const [id, e] of Object.entries(state.entities)) if (e.reactions && ownerOf(state, e) === viewer.userId) out[id] = structuredClone(e.reactions);
   return out;
 }
 
@@ -394,7 +394,20 @@ export function viewEvents(events, state, viewer) {
   // A record entry names the creatures the party did not know of when it happened (`unseen`, from
   // apply()): they stay unknown in it, whatever is known of them now. `unseen` itself is never sent.
   let was = null;
-  const cls = (id) => (was?.includes(id) ? 'hidden' : classify(state, id));
+  // A companion that vanished in these events is gone from the state, but what happened to it on the way (the
+  // damage, its death, what it left) is told as it would have been had it stayed: the party's own as Open, one
+  // the party could see as Seen (the engine marks `vanished` with `party` and `seen` just before it goes), any
+  // other not at all (review of #313, M2).
+  const gone = new Map();
+  for (const e of events) if ((e?.type === 'vanished' || e?.type === 'removed') && e.seen === true && !Object.hasOwn(state.entities, e.id)) gone.set(e.id, e.party === true ? 'open' : 'seen');
+  // The names a creature goes by, to tell whether words name it: from the state, or from the event that took it away.
+  const namesOf = (id) => {
+    const x = Object.hasOwn(state.entities, id) ? state.entities[id] : null;
+    if (x) return [x.name, seenName(x)];
+    const g = events.find((e) => (e?.type === 'vanished' || e?.type === 'removed') && e.id === id);
+    return g?.name ? [g.name] : [];
+  };
+  const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
   // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
   // P26: an area reaching into a region not yet revealed does not show its cells there).
@@ -417,6 +430,13 @@ export function viewEvents(events, state, viewer) {
       continue;
     }
     if (ev.type === 'encounterStart' || ev.type === 'encounterEnd') lastTurnHidden = false;
+    // A companion left the map (docs/specs/companions.md, Decision 4). It is gone from the state, so the engine
+    // said on the event whether the party knew of it then (`seen`) and whether it was theirs (`party`): told as
+    // any creature that disappears, and why and what it was called only for one of theirs.
+    if (ev.type === 'vanished') {
+      if (ev.seen === true && !was?.includes(ev.id)) out.push({ type: 'vanished', id: ev.id, ...(ev.party === true ? pick(ev, ['name', 'why']) : {}) });
+      continue;
+    }
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
 
     switch (ev.type) {
@@ -434,7 +454,12 @@ export function viewEvents(events, state, viewer) {
       case 'damage':
       case 'heal': {
         const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']), ...facesFor(ev) };
-        if (cls(ev.target) === 'seen') { const t = state.entities[ev.target]; e.hp = ev.hp > 0 ? 1 : 0; e.health = healthOf(t); }
+        if (cls(ev.target) === 'seen') {
+          const t = state.entities[ev.target];
+          e.hp = ev.hp > 0 ? 1 : 0;
+          // One that has since vanished: only that it went down, never how near it was to half its Hit Points.
+          if (t) e.health = healthOf(t); else if (!(ev.hp > 0)) e.health = events.some((x) => x?.type === 'died' && x.id === ev.target) ? 'dead' : 'down';
+        }
         out.push(e);
         break;
       }
@@ -474,11 +499,30 @@ export function viewEvents(events, state, viewer) {
       case 'effectStart':
       case 'effectEnd': {                              // a lasting effect that involves one of ours
         const targets = (ev.targets || []).filter((id) => cls(id) !== 'hidden');
-        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) out.push({ ...pick(ev, ['type', 'fx', 'name', 'source', 'conc', 'lasts', 'why']), targets });
+        // Whose it was and why it ended (`why` names its caster: "Imp went down") only where they know of its caster.
+        // Whose it was only where they know of its caster; why it ended, unless the words name a caster they do not
+        // know of ("Imp went down"): then only that it ended (rounds 2 and 3 of the review of #313).
+        const unknownCaster = typeof ev.source === 'string' && cls(ev.source) === 'hidden';
+        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
+          const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source', 'why'])]), targets };
+          if (unknownCaster && ev.why !== undefined) e.why = namesOf(ev.source).some((n) => n && String(ev.why).includes(n)) || !namesOf(ev.source).length ? 'it ended' : ev.why;
+          out.push(e);
+        }
         break;
       }
       case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known
         if (cls(ev.id) !== 'hidden') out.push(pick(ev, ['type', 'id', 'form', 'name']));
+        break;
+      // Bonds (docs/specs/companions.md, Decision 10): the party's own only, so players never learn that a
+      // creature not of theirs belongs to another.
+      case 'bonded':
+        if (cls(ev.id) === 'open' && cls(ev.to) === 'open') out.push(pick(ev, ['type', 'id', 'to', 'kind', 'side']));
+        break;
+      case 'unbonded':
+        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id']), ...(ev.from !== undefined && cls(ev.from) === 'open' ? { from: ev.from } : {}) });
+        break;
+      case 'companion':
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'auto']));
         break;
       case 'concentration':
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));

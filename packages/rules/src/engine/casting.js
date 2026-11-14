@@ -9,7 +9,7 @@ import { FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, castAbilOf, control, ent, fail, featOf, ft, hostile, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
+import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
 import { aimArea, creatures, reveal, roomAt, showPlace, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter } from './resolve.js';
@@ -247,7 +247,7 @@ export const handlers = {
   // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
   endEffect(s, a, ctx, ev) {
     const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
-    const src = s.entities[fx.source], own = !!src?.owner && src.owner === ctx.userId;
+    const src = s.entities[fx.source], who = ownerOf(s, src), own = !!who && who === ctx.userId;
     // To a player, an effect of a creature they do not know of, on nobody they know of, is nothing.
     if (ctx.role !== 'dm' && !own && (!src || unknown(s, src)) && !fx.parts.some((p) => s.entities[p.target] && !unknown(s, s.entities[p.target]))) fail('No such effect.');
     ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
@@ -256,7 +256,7 @@ export const handlers = {
 };
 
 function castSpell(s, a, ctx, ev, item) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     const sp = SPELLS[a.spell];
     if (item) for (const k of ['via', 'slot', 'metamagic', 'empower', 'overchannel', 'repel', 'ritual']) a[k] === undefined || fail(`"${k}" is not for a spell cast from ${item.name}.`);
     // Cast through a feature (`a.via`, a feature with `freeCast`: Divine Intervention): any spell
@@ -278,6 +278,8 @@ function castSpell(s, a, ctx, ev, item) {
       if (fc.dark) lightAt(s, e.pos) !== 'bright' || fail(`${via.name} works only while ${e.name} is in Dim Light or Darkness.`);
     } else if (!item) (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     else sp || fail(`${item.name} casts a spell the engine does not know.`);
+    // A companion that can't attack (a familiar) makes no attack roll by a spell either (review of #313, M3).
+    if (e.bond?.noAttack) { let roll = false; walkSteps(sp.def.effects ?? [], (st) => { if ('attack' in st) roll = true; }); !roll || fail(`${e.name} can't attack, and ${sp.name} makes an attack roll.`); }
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (sp.time === 'reaction') fail(sp.def.reaction

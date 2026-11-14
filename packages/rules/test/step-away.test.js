@@ -444,7 +444,7 @@ const over = (s, id) => !partOf(s, id) || partOf(s, id).ended;
 test("version 22: a table saved before has its turn stamps named by creature, and plays through the round", () => {
   const { s, fx, z } = oldTable();
   migrate(s);
-  assert.equal(s.version, VERSION); assert.equal(VERSION, 22);
+  assert.equal(s.version, VERSION); assert.equal(VERSION, 23);
   const enc = s.encounter;
   assert.equal(partOf(s, fx).born, `${enc.id}:1:cleric`);
   assert.deepEqual(s.effects.find((x) => x.id === z).zone.last, { rogue: `${enc.id}:1:cleric`, m1: `${enc.id}:1:m6` });

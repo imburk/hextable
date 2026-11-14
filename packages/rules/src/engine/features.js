@@ -144,7 +144,7 @@ const toolName = (tool) => (tool === 'thieves-tools' ? "Thieves' Tools" : tool.s
 
 export const handlers = {
   secondWind(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     e.uses.secondWind > 0 || fail(`${e.name} has no uses of Second Wind left.`);
     need(s, e, 'bonus');
     e.hp < e.maxHp || fail(`${e.name} is already at full Hit Points.`);
@@ -161,7 +161,7 @@ export const handlers = {
   // goes to the DM, who applies it. Costs: the action or Bonus Action, and a use of its own or of
   // another feature (`cost`).
   feature(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.
@@ -313,7 +313,7 @@ export const handlers = {
   // With `item` instead of `object`, use a magic item the creature has (useItem, below).
   use(s, a, ctx, ev) {
     if (a.item !== undefined) return useItem(s, a, ctx, ev);
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     const o = objectOf(s, a.object, ctx), def = objectDef(o), name = objectName(o), the = `The ${name.toLowerCase()}`;
@@ -343,7 +343,7 @@ export const handlers = {
   // Roll an ability check. { type: 'check', actor, skill | ability, dc? } Only the DM may set a DC,
   // and players are told neither the DC nor whether the roll met it: the DM says what happens.
   check(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     const skill = a.skill === undefined ? null : (Object.hasOwn(SKILLS, a.skill) && a.skill) || fail('Unknown skill.');
     const ability = skill ? SKILLS[skill] : (ABILITIES.includes(a.ability) && a.ability) || fail('Name a skill or an ability.');
@@ -358,7 +358,7 @@ export const handlers = {
   // against every enemy hiding where the searcher could see it but for its hiding (its Stealth total
   // is the DC; in Dim Light the check has Disadvantage). { type: 'search', actor }
   search(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (s.encounter && inFight(s, e.id)) { need(s, e, 'action'); s.encounter.budget.action--; }
@@ -374,7 +374,7 @@ export const handlers = {
   // The Hide action: a DC 15 Dexterity (Stealth) check, taken where no enemy it can see can see it.
   // A creature with Nimble Escape takes it as a Bonus Action. { type: 'hide', actor }
   hide(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     const why = hideProblem(s, e);
@@ -582,7 +582,7 @@ export function itemUsesFor(s, e) {
 }
 
 function useItem(s, a, ctx, ev) {
-  const e0 = ent(s, a.actor); control(e0, ctx);
+  const e0 = ent(s, a.actor); control(s, e0, ctx);
   const p = planItem(s, e0, a), { def, u, name, label, spell } = p;
   if (spell) return itemSpell(s, a, ctx, ev, p);
   // A consumed item that gives its holder something (none in the pack does today) is taken off the sheet by

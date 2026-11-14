@@ -9,7 +9,7 @@ import { LIGHTS } from '../content/lights.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
-import { SIGHT_RULES } from '../vision.js';
+import { SIGHT_RULES, unknown } from '../vision.js';
 import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
@@ -29,6 +29,8 @@ export const handlers = {
       a.user === ctx.userId || fail('You can only claim a character for yourself.');
       !Object.values(s.entities).some((o) => o.owner === ctx.userId) || fail('You already have a character.');
     }
+    // A companion has no player of its own: it goes with its master's (docs/specs/companions.md, Decision 1).
+    !e.bond || fail(`${e.name} goes with ${s.entities[e.bond.to]?.name ?? 'its master'}'s player.`);
     e.owner = a.user || null; e.ownerName = a.userName || null;
     ev.push({ type: 'claimed', id: e.id, userName: e.ownerName });
   },
@@ -48,7 +50,7 @@ export const handlers = {
   // The DM may set anyone aside, and choose `how` (one of AWAY); else the table rule `away` says.
   // Sent again by the DM it changes `how`. Nothing is done on a connection's state: only a person sends this.
   stepAway(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     const dm = ctx.role === 'dm', breaks = s.settings.breaks ?? 'on';
     if (!dm) {
       a.how === undefined || fail('Only the DM chooses what is done with the turns of someone set aside.');
@@ -84,7 +86,7 @@ export const handlers = {
   // the DM, or by its player when the player stepped it aside (a player does not undo the DM's).
   // A turn held this round is taken after the one going on.
   stepBack(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     e.away || fail(`${e.name} is not set aside.`);
     ctx.role === 'dm' || e.away.by === 'player' || fail(`The DM set ${e.name} aside; only the DM can bring them back.`);
     const was = e.away;
@@ -180,7 +182,10 @@ export const handlers = {
     const e = ent(s, a.actor);
     !inFight(s, e.id) || fail(`${e.name} is in the fight. End the fight first.`);
     for (const fx of [...effectsOf(s)]) if (fx.source === e.id || fx.parts.some((p) => p.target === e.id)) endEffect(s, ev, fx, `${e.name} left`);
-    ev.push({ type: 'removed', id: e.id, name: e.name });
+    // Its companions stay, freed: on their side, the DM's.
+    for (const x of Object.values(s.entities)) if (x.bond?.to === e.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: e.id }); }
+    // Whether the party knew of it, for view.js, which can no longer look it up (as `vanished`; review of #313).
+    ev.push({ type: 'removed', id: e.id, name: e.name, ...(!unknown(s, e) ? { seen: true } : {}), ...(e.side === 'party' ? { party: true } : {}) });
     for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
     delete s.entities[e.id];
   },
@@ -247,6 +252,8 @@ export const handlers = {
   reveal(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can hide or reveal creatures.');
     const e = ent(s, a.actor);
+    // What a companion that vanished unseen left (resolve.js, vanishUnseen) is not a creature to show: it is gone.
+    !e.vanished || a.hidden || fail(`${e.name} has vanished; there is nothing of it to reveal. Remove it when nothing of it is needed.`);
     if (a.hidden) {
       e.side !== 'party' || fail("A party member can't be hidden from the party.");
       !e.hidden || fail(`${e.name} is already hidden.`);

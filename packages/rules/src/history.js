@@ -286,6 +286,9 @@ export function describeStep(action, events, before, after) {
     }
     // Items between creatures (E17): never what was handed over; the gear events say that to those who may know.
     case 'pass': label = `${who} handed something to ${name(a.to)}`; break;
+    // Companions (docs/specs/companions.md). Players are told only of the party's own (the events say so).
+    case 'bond': label = a.to === null || a.to === undefined ? `${who} was freed from ${name(ev('unbonded')?.from)}` : `${who} became ${name(a.to)}'s companion`; break;
+    case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
   return label;
@@ -293,8 +296,10 @@ export function describeStep(action, events, before, after) {
 
   function finish(label) {
   const a = action;
-  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`
-  const known = named.every((id) => classify(after, id) !== 'hidden');
+  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' || a.type === 'bond' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`, `bond` the master
+  // A companion that vanished in this step where the party could see it is one players knew of (view.js, viewEvents).
+  const gone = new Set(events.filter((e) => e.type === 'vanished' && e.seen === true).map((e) => e.id));
+  const known = named.every((id) => gone.has(id) || classify(after, id) !== 'hidden');
   const heard = viewEvents(events, after, { role: 'player' }).length > 0;
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
   // An action that stopped to ask about a reaction did nothing yet: players are told nothing of it.

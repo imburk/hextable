@@ -28,7 +28,7 @@ function sameButHeader(was, now) {
   assert.equal(was.map.format, 1);
   assert.equal(was.map.hexFeet, 5);
   assert.equal(now.version, VERSION);
-  assert.equal(VERSION, 22);                          // 21 for map format 2; 22 since, turns named by creature (#300)
+  assert.equal(VERSION, 23);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311)
   assert.deepEqual(Object.keys(now.map).slice(0, 5), HEADER);
   assert.equal(now.map.format, 2);
   assert.equal(now.map.grid, "hex");

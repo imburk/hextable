@@ -164,7 +164,7 @@ export const handlers = {
   // orbit. { type: 'equip', actor, item: key on the sheet, on?: true | false } By its controller or the DM, outside a
   // fight (donning and doffing take longer than a turn here; drawing a weapon in a fight is not built).
   equip(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
     !inFight(s, e.id) || fail(`${e.name} can't change what they wear in the middle of a fight.`);
     const on = a.on ?? true;
@@ -181,7 +181,7 @@ export const handlers = {
   // focused on only that item). { type: 'attune', actor, item: key | null, end?: true } By its controller or the DM,
   // outside a fight; `item: null` changes its mind. It happens at the end of the next shortRest it takes.
   attune(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
     !inFight(s, e.id) || fail(`${e.name} can't attune to an item in the middle of a fight.`);
     const sheet = structuredClone(e.sheet);
@@ -335,7 +335,7 @@ Object.assign(handlers, {
   // Hand an item to a creature on the same side within 5 ft (a party member, for a player's character).
   // { type: 'pass', actor, item, to } By the actor's controller or the DM. The one taking it must be up and able to.
   pass(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     // A creature the party does not know of is, to a player, a creature that is not there (as in dispatch).
     typeof a.to === 'string' || fail('Name who to hand it to.');
     const t = Object.hasOwn(s.entities, a.to) ? s.entities[a.to] : null;
@@ -369,7 +369,7 @@ Object.assign(handlers, {
   // Put an item down where the creature is: onto the pile in its cell, or a new pile there (on the surface under it,
   // if it is in the air). { type: 'drop', actor, item }
   drop(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     const h = holding(e, a.item);
@@ -408,7 +408,7 @@ Object.assign(handlers, {
   // (`contents[].id`); without it, everything there, which in a fight is allowed only for a pile of one thing (each
   // is an object interaction). A pile left empty goes from the map.
   pickUp(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     const o = objectOf(s, a.object, ctx), name = objectName(o).toLowerCase();
