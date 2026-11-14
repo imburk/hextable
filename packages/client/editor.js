@@ -949,7 +949,7 @@ export class Editor {
   // Run the importer on the file already read, on the grid asked for. A file that cannot be read changes nothing: the dialog
   // that was open stays as it was.
   #readUvtt(grid, fresh) {
-    const src = fresh ?? this.uvttSrc;
+    const src = fresh || this.uvttSrc;
     let res;
     try { res = importUvtt(src.text, { grid, name: src.name, id: src.id }); }
     catch (err) {
