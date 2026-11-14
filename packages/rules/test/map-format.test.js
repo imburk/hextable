@@ -25,7 +25,7 @@ const isHexHeader = (map) => {
 
 test("a new map, the valley and every stock map are format 2 hex maps of 5-foot cells", () => {
   assert.equal(MAP_FORMAT, 2);
-  assert.equal(VERSION, 21);
+  assert.equal(VERSION, 22);
   for (const map of [newMap(), newGame(1).map, ...STOCK_MAPS.map((m) => m.map).filter((x) => x.grid === "hex")]) {
     isHexHeader(map);
     assert.deepEqual(lintMap(map), map.id === "map" ? ["It has no tiles."] : [], map.id);
@@ -114,7 +114,7 @@ test("players are sent the grid and the cell size with the rest of the map heade
 function sameButHeader(was, now) {
   assert.equal(was.version, 20);
   assert.deepEqual([was.map.format, was.map.hexFeet, "grid" in was.map], [1, 5, false]);
-  assert.equal(now.version, 21);
+  assert.equal(now.version, VERSION);
   isHexHeader(now.map);
   assert.deepEqual(lintMap(now.map), []);
   const strip = (s) => { const c = structuredClone(s); delete c.version; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
@@ -135,9 +135,9 @@ test("the version 20 tables saved before #224 and #232 migrate to version 21 on 
   }
 });
 
-test("the version 1 table (fixtures/table-v1.json, before maps were documents) comes up to version 21 on hexes and plays", () => {
+test("the version 1 table (fixtures/table-v1.json, before maps were documents) comes up to the current version on hexes and plays", () => {
   const s = migrate(fixture("table-v1.json").state);
-  assert.equal(s.version, 21);
+  assert.equal(s.version, VERSION);
   isHexHeader(s.map);
   assert.deepEqual(lintMap(s.map), []);
   assert.equal(s.map.id, "valley");

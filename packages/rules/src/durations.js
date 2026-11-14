@@ -67,8 +67,30 @@ export function endEffect(s, ev, fx, why) {
 const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended);
 
 // The turn now being taken, as a part records it: a part made in a creature's turn does not end
-// at the end of that same turn ("until the end of its next turn").
-export const turnKey = (s) => (s.encounter ? `${s.encounter.id}:${s.encounter.round}:${s.encounter.turn}` : null);
+// at the end of that same turn ("until the end of its next turn"). Named by the fight, the round and
+// whose turn it is, not by its place in the order: a creature has one turn a round, and its place can
+// move while the turn goes on (stepping away, a creature joining the fight; engine/resolve.js).
+// Before the first turn of a fight (`turn: -1`) it is the place.
+export const turnKey = (s) => (s.encounter ? `${s.encounter.id}:${s.encounter.round}:${s.encounter.order[s.encounter.turn]?.id ?? s.encounter.turn}` : null);
+// Is this stamp the turn now being taken? Before state version 22 a stamp named the place in the order
+// (`fight:round:index`); migrate.js rewrites those, and one that comes back unmigrated (an undo step or
+// a copy kept from before) is still read as the turn at that place. No creature's id is only digits.
+const OLD = /^-?\d+$/;
+export function thisTurn(s, key) {
+  if (typeof key !== 'string' || !s.encounter) return false;
+  if (key === turnKey(s)) return true;
+  const last = key.slice(key.lastIndexOf(':') + 1);
+  return OLD.test(last) && !s.entities[last] && key === `${s.encounter.id}:${s.encounter.round}:${s.encounter.turn}`;
+}
+// A stamp of the fight going on in the old form, named by creature as now: the creature at that place
+// in the order as it stands (migrate.js). Anything else is returned as it is.
+export function restamp(enc, key) {
+  if (!enc || typeof key !== 'string') return key;
+  const m = /^(-?\d+):(-?\d+):(-?\d+)$/.exec(key);
+  if (!m || Number(m[1]) !== enc.id) return key;
+  const id = enc.order?.[Number(m[3])]?.id;
+  return id ? `${m[1]}:${m[2]}:${id}` : key;
+}
 const ownTiming = (p) => !p.ended && (p.ends?.on === 'turnStart' || p.ends?.on === 'turnEnd');
 
 // An effect's time ran out: it ends, except parts that keep their own turn boundary.
@@ -101,7 +123,7 @@ function boundary(s, ev, e, kit, when) {
     if (when === 'turnStart' && fx.until?.enc === enc?.id && fx.source === e.id && enc.round >= fx.until.round) { expire(s, ev, fx); if (!effectsOf(s).includes(fx)) continue; }
     for (const p of fx.parts) {
       if (p.ended || !p.ends) continue;
-      if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && p.born === now)) endPart(s, ev, fx, p);
+      if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && thisTurn(s, p.born))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
         const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
         ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name });

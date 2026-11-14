@@ -28,7 +28,7 @@ function sameButHeader(was, now) {
   assert.equal(was.map.format, 1);
   assert.equal(was.map.hexFeet, 5);
   assert.equal(now.version, VERSION);
-  assert.equal(VERSION, 21);
+  assert.equal(VERSION, 22);                          // 21 for map format 2; 22 since, turns named by creature (#300)
   assert.deepEqual(Object.keys(now.map).slice(0, 5), HEADER);
   assert.equal(now.map.format, 2);
   assert.equal(now.map.grid, "hex");
@@ -56,7 +56,7 @@ function talk(port, messages, done) {
 }
 const stand = (state, id) => { const [k, v] = [...moveOptions(state, state.entities[id])].find(([, o]) => o.canStop); return v.h; };
 
-test("a table file the server saved at version 20 loads from disk as a hex map at version 21 and plays", async () => {
+test("a table file the server saved at version 20 loads from disk as a hex map at the current version and plays", async () => {
   const saved = fixture("v20-table.json"), { code } = saved, dm = saved.members[0];
   const dir = mkdtempSync(join(tmpdir(), "hextable-249-"));
   try {
@@ -66,7 +66,7 @@ test("a table file the server saved at version 20 loads from disk as a hex map a
     const first = await talk(s.port, [{ t: "resume", code, token: dm.token }], (g) => g.some((m) => m.t === "undoable"));
     assert.equal(first.find((m) => m.t === "welcome").role, "dm");
     const sent = first.find((m) => m.t === "update").state;
-    assert.equal(sent.version, 21);
+    assert.equal(sent.version, VERSION);
     assert.deepEqual([sent.map.format, sent.map.grid, sent.map.cellFeet, "hexFeet" in sent.map], [2, "hex", 5, false]);
     // As with every version change, the saved undo history no longer fits and is dropped, once.
     assert.deepEqual(first.find((m) => m.t === "undoable").undo, []);
@@ -83,7 +83,7 @@ test("a table file the server saved at version 20 loads from disk as a hex map a
     assert.ok(!moved.some((m) => m.t === "error"), JSON.stringify(moved.find((m) => m.t === "error")));
     await s.stop();
     const now = file();
-    assert.equal(now.state.version, 21);
+    assert.equal(now.state.version, VERSION);
     assert.equal(now.state.map.grid, "hex");
     assert.deepEqual([now.state.entities.fighter.pos.q, now.state.entities.fighter.pos.r], [to.q, to.r]);
     // Loaded again at the same version, it keeps its undo history this time.
@@ -94,14 +94,14 @@ test("a table file the server saved at version 20 loads from disk as a hex map a
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("an export made at version 20 loads back as a table at version 21, plays, and exports again unchanged", () => {
+test("an export made at version 20 loads back as a table at the current version, plays, and exports again unchanged", () => {
   const exp = fixture("v20-export.json"), dm = { id: "u1", token: "dm-token", name: "Dana", role: "dm", approved: true };
   assert.equal(exp.state.version, 20);
   const load = (state) => createTables({ seed: () => 5, key: () => null, load: () => [{ code: exp.code, state: structuredClone(state), members: [structuredClone(dm)] }] });
   const tables = load(exp.state);
   const state = tables.get(exp.code).state;
   sameButHeader(exp.state, state);
-  // Exported again and loaded again, nothing changes: migrating a version 21 state is a no-op.
+  // Exported again and loaded again, nothing changes: migrating a current state is a no-op.
   const sent = [];
   const conn = tables.connect({ send: (m) => sent.push(JSON.parse(JSON.stringify(m))) });
   conn.receive({ t: "resume", code: exp.code, token: dm.token });

@@ -6,14 +6,14 @@ import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
+import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
 import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
@@ -137,6 +137,8 @@ export function endEncounter(s, ev, result) {
     delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false;
     if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
   }
+  // Stepping away is for a fight: whoever was set aside, or asked to be, is back when it ends.
+  for (const e of Object.values(s.entities)) if (e.away) { delete e.away; ev.push({ type: 'back', id: e.id, why: 'fightOver' }); }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round, fight: s.encounter.id });
   fightOver(s, ev);
   concludeFight(s, ev, result, s.encounter, fighters(s), tryLand);      // XP and loot for a fight won or ended (rewards.js)
@@ -153,32 +155,181 @@ export function checkEnd(s, ev) {
 
 export function advanceTurn(s, ev) {
   const enc = s.encounter;
-  for (let guard = 0; guard < enc.order.length * 2 + 2; guard++) {
+  settleOrder(s);
+  // `idle` counts turns nobody can take (the dead, the down); two laps of them end the fight in a
+  // stalemate. `auto` counts turns the engine settles for creatures set aside (stepping away, below):
+  // after a whole lap of them nobody is present, so the next turn starts as any turn does and waits for the DM.
+  let auto = 0;
+  for (let idle = 0; idle < enc.order.length * 2 + 2;) {
     enc.turn++;
-    if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; roundStarted(s, ev); }
+    if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; newRound(s); roundStarted(s, ev); }
     const e = s.entities[enc.order[enc.turn].id];
-    if (!e || e.dead) continue;
+    if (!e || e.dead) { idle++; continue; }
     if (e.hp <= 0) {
       if (!e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
-      if (e.hp <= 0) continue;
+      if (e.hp <= 0) { idle++; continue; }
     }
-    enc.flags = {};
-    turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
-    turnInZones(s, ev, KIT, e, 'turnStart');                            // a zone it starts its turn in (Web)
-    const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
-    enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
-    e.reactionUsed = false;
-    delete e.cond.dodging;
-    ev.push({ type: 'turn', id: e.id, round: enc.round });
-    recharge(s, e, ev);
-    if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
-      delete e.cond.prone;
-      enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
-      ev.push({ type: 'stood', id: e.id });
-    }
-    return;
+    const how = auto < enc.order.length ? awayHow(s, e) : null, late = enc.moved?.[e.id];
+    if (late?.turn && late.round === enc.round) {                       // a turn set aside part-way through goes on where it stopped
+      enc.budget = late.turn.budget; enc.flags = late.turn.flags;
+      delete late.turn;
+      ev.push({ type: 'turn', id: e.id, round: enc.round });
+      ev.push({ type: 'awayTurn', id: e.id, how: 'resumed', round: enc.round });
+    } else if (how === 'hold') {                                         // its turn passes untaken; it may take it later this round
+      auto++;
+      enc.held = { ...(enc.held ?? {}), [e.id]: enc.round };
+      ev.push({ type: 'awayTurn', id: e.id, how, round: enc.round });
+      continue;
+    } else if ((how === 'end' || how === 'endKeep') && late?.round !== enc.round && presentAfter(s, enc.turn)) {
+      auto++;
+      const i = enc.turn;
+      moveToEnd(s, e.id, how === 'endKeep', null, ev);
+      enc.turn = i - 1;                                                  // the next creature is now where it stood
+      continue;
+    } else beginTurn(s, e, ev);
+    if (!how) return;
+    if (how === 'standIn') { ev.push({ type: 'awayTurn', id: e.id, how, round: enc.round }); return; }
+    // Set aside under `dodge`, or under `end`/`endKeep` with nowhere later to go: it takes the Dodge
+    // action and stays where it is, and its turn ends.
+    auto++;
+    if (!awayTurn(s, e, ev)) return;
   }
   endEncounter(s, ev, 'stalemate');
+}
+
+// The start of a creature's turn: what ends then ends, its budget, its Reaction back, a recharge,
+// standing up from Prone.
+function beginTurn(s, e, ev) {
+  const enc = s.encounter;
+  enc.flags = {};
+  turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
+  turnInZones(s, ev, KIT, e, 'turnStart');                            // a zone it starts its turn in (Web)
+  const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
+  enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
+  e.reactionUsed = false;
+  delete e.cond.dodging;
+  ev.push({ type: 'turn', id: e.id, round: enc.round });
+  recharge(s, e, ev);
+  if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
+    delete e.cond.prone;
+    enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
+    ev.push({ type: 'stood', id: e.id });
+  }
+}
+
+// The end of the current creature's turn, after what its player chose (endTurn, attacks.js, or a
+// turn played for a creature set aside). `pick`: the condition its Self-Restoration ends, if it was
+// given. False if the fight ended.
+export function finishTurn(s, e, ev, pick = undefined) {
+  const sc = (e.feats ?? []).find((f) => f.selfCure), can = sc ? sc.selfCure.conditions.filter((c) => e.cond[c]) : [];
+  delete e.cond.disengaged;
+  // Stealth Attack: still hidden after its attack only if it ends the turn behind Three-Quarters or
+  // Total Cover from every enemy that is up.
+  if (s.encounter.flags[`stealth:${e.id}`] && e.hiding && living(s).some((o) => up(o) && hostile(o, e) && !['threeQuarters', 'total'].includes(coverOf(s, o, e)))) unhide(s, e, ev, 'attack');
+  if (can.length) {
+    const c = pick ?? (can.length === 1 ? can[0] : null);
+    if (c) { ev.push({ type: 'std', id: e.id, action: sc.name }); cure(s, e, [c], ev); }
+    else ev.push({ type: 'manual', actor: e.id, name: sc.name, text: `${e.name} is ${can.map(conditionName).join(' and ')}. ${sc.name} ends one of them at the end of its turn, its player's choice; none was sent, so the DM removes the one the player picks.` });
+  }
+  turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
+  checkEnd(s, ev);
+  if (!s.encounter) return false;
+  turnEnded(s, ev, e, KIT);
+  return !!s.encounter;
+}
+
+// ---------- stepping away (docs/specs/table-ui.md, "E20: stepping away") ----------
+// A table convenience the SRD has no rule for (it has no "delay your turn"): a creature whose player
+// has stepped away (a break, a phone call, a lost connection) is set aside in the turn order, and the
+// table rule `away` says what becomes of its turns while it is (SETTING_TEXT.away, dm.js):
+//   dodge    (the default) it takes the Dodge action on its turn and stays where it is;
+//   end      its turn moves to the end of the round, its place given back next round;
+//   endKeep  the same, and it keeps the place at the end;
+//   hold     its turn passes untaken; back within the round, it takes it after the turn going on;
+//   standIn  a stand-in plays it (the client's monster AI, ai.js; the engine plays nothing itself).
+// A creature moved to the end that is still away there, or that has no one present after it, takes
+// the Dodge action. The engine never sets anyone aside by itself: only the DM or the creature's player.
+export const AWAY = ['dodge', 'end', 'endKeep', 'hold', 'standIn'];
+// What is done with this creature's turns now: one of AWAY, or null if it is present (or has only asked to step away).
+export const awayHow = (s, e) => (e?.away && !e.away.asked ? e.away.how : null);
+
+// Is anyone after this place in the order who will take a turn of their own?
+export function presentAfter(s, i) {
+  return s.encounter.order.slice(i + 1).some((o) => { const x = s.entities[o.id]; return x && up(x) && !awayHow(s, x); });
+}
+
+// Put a creature's turn at the end of this round's order. `turn`: the budget and flags of a turn
+// set aside part-way through, to go on with there.
+export function moveToEnd(s, id, keep, turn, ev) {
+  const enc = s.encounter, moved = (enc.moved ??= {});
+  const n = Math.max(0, ...Object.values(moved).map((m) => m.n ?? 0)) + 1;
+  moved[id] = { n, keep, round: enc.round, ...(turn ? { turn } : {}) };
+  ev.push({ type: 'turnMoved', id, to: 'end', keep, round: enc.round });
+  settleOrder(s);
+}
+
+// Bring a creature whose turn was held this round back in, to take that turn after the one going on.
+export function heldBack(s, e, ev) {
+  const enc = s.encounter, cur = current(s);
+  if (!enc || enc.held?.[e.id] !== enc.round || cur === e.id || !cur) return;
+  delete enc.held[e.id];
+  (enc.moved ??= {})[e.id] = { after: cur, keep: false, round: enc.round };
+  ev.push({ type: 'turnMoved', id: e.id, to: 'next', round: enc.round });
+  settleOrder(s);
+}
+
+// Lay the order out again from who was moved where: everyone else in initiative order as it stands,
+// a creature moved after another just after it, then those moved to the end, first moved first.
+// The turn stays with the creature whose turn it is. A creature joining the fight sorts the whole
+// order by initiative (joinEncounter, world.js); this puts the moved ones back.
+export function settleOrder(s) {
+  const enc = s.encounter, moved = enc?.moved;
+  if (!moved) return;
+  // A stamp from before state version 22 names a place in the order (durations.js, thisTurn): name it by
+  // its creature before the places move, so it still means that creature's turn after.
+  for (const fx of effectsOf(s)) {
+    for (const p of fx.parts) if (p.born !== undefined) p.born = restamp(enc, p.born);
+    if (fx.zone?.last) for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(enc, fx.zone.last[k]);
+  }
+  const cur = enc.turn >= 0 ? current(s) : null;
+  for (const id of Object.keys(moved)) if (!enc.order.some((o) => o.id === id)) delete moved[id];
+  const rest = enc.order.filter((o) => !moved[o.id]);
+  for (const o of enc.order.filter((x) => moved[x.id]?.after)) {
+    const at = rest.findIndex((x) => x.id === moved[o.id].after);
+    rest.splice(at < 0 ? rest.length : at + 1, 0, o);
+  }
+  const ends = enc.order.filter((x) => moved[x.id] && !moved[x.id].after).sort((a, b) => moved[a.id].n - moved[b.id].n);
+  enc.order = [...rest, ...ends];
+  if (cur) enc.turn = enc.order.findIndex((o) => o.id === cur);
+  if (!Object.keys(moved).length) delete enc.moved;
+}
+
+// A new round: turns held last round are gone (a creature has one turn a round), and every place
+// moved for one round only is given back (initiative order, as `initiativeSort` keeps it).
+function newRound(s) {
+  const enc = s.encounter;
+  delete enc.held;
+  if (!enc.moved) return;
+  let back = false;
+  for (const [id, m] of Object.entries(enc.moved)) {
+    delete m.turn;
+    if (!m.keep || m.after) { delete enc.moved[id]; back = true; }
+  }
+  if (back) { initiativeSort(enc.order); enc.turn = 0; }
+  settleOrder(s);
+  enc.turn = 0;
+}
+
+// The turn of a creature set aside, played for it: the Dodge action if it can still take an action,
+// and it stays where it is. Ends the turn. False if the fight ended.
+export function awayTurn(s, e, ev) {
+  const b = s.encounter.budget;
+  if (b.action > 0 && !incapacitated(e)) {
+    b.action--; e.cond.dodging = {};
+    ev.push({ type: 'std', id: e.id, action: 'Dodge' });
+  }
+  ev.push({ type: 'awayTurn', id: e.id, how: 'dodge', round: s.encounter.round });
+  return finishTurn(s, e, ev);
 }
 
 // ---------- damage and attacks ----------
