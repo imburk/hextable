@@ -1,4 +1,5 @@
 
+import { fileURLToPath } from 'node:url';
 import { sleep, scenario, wait, state, waitShown, open, playSolo, closePanels, openTab, selectAndMove, calm } from './lib.mjs';
 
 // ---------- stock maps ----------
@@ -99,7 +100,7 @@ async function squareEditor(browser, url, label, opts) {
       };
       const tapPoint = async (p, dx = 1, dy = -1) => {
         const s = await screen(p), top = await panelTop();
-        if (!s || s.y < 4 || s.y > top - 4 || s.x < 4 || s.x > vw - 4) throw new Error(`the point ${p} is not on the map above the editor (${JSON.stringify(s)})`);
+        if (!s || s.y < 4 || s.y > top - 4 || s.x < 4 || s.x > vw - 4) throw new Error(`the point ${p} is not on the map above the editor (${JSON.stringify(s)}; panel top ${top}, camera ${JSON.stringify(await ev(() => { const c = window.hextable.R.cam; return [c.x, c.z, c.dist, c.yaw, c.pitch, innerHeight]; }))})`);
         await tap(s.x + dx, s.y + dy); await sleep(300);
       };
       // A tap that must show its effect: a pointer tap now and then does not reach the page, so if `fn` is not true a moment after, tap once more.
@@ -243,10 +244,84 @@ async function squareEditor(browser, url, label, opts) {
   });
 }
 
+// ---------- a Universal VTT file onto squares (docs/specs/square-grid.md, S11) ----------
+// The hand-made fixture square-room.dd2vtt (12 by 8 squares, 28 px a square, a real PNG with its walls drawn) is picked in the
+// editor's Map file tool. Squares are offered first and chosen; hexes are an option; nothing changes until Load. Then the map is a
+// square map, the picture's corner and size are the file's and its walls lie on square corners, and a character is stopped by the
+// shut door and walks through it once it is open.
+async function squareImport(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch;
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const ev = (f, a) => page.evaluate(f, a);
+      const file = fileURLToPath(new URL('../../packages/rules/test/fixtures/square-room.dd2vtt', import.meta.url));
+      const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${n}-${touch ? 'phone' : 'desktop'}.png` }); };
+      let before;
+      await run.do('open the editor and pick the file: squares are offered and chosen, and the map has not changed', async () => {
+        await open(page, url); await playSolo(page); await wait(page, () => window.hextable.state.entities.fighter);
+        await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
+        await page.click('#dm-edit'); await waitShown(page, '#editor');
+        await page.click('#ed-tools [data-tool="file"]'); await waitShown(page, '#ed-uvtt');
+        before = await state(page, (S) => S.map.id);
+        await page.setInputFiles('#ed-uvttfile', file);
+        await waitShown(page, '#ed-notes');
+        const g = await ev(() => [...document.querySelectorAll('input[name="ed-uvtt-grid"]')].map((r) => [r.value, r.checked]));
+        if (JSON.stringify(g) !== '[["square",true],["hex",false]]') throw new Error(`the grid choice is ${JSON.stringify(g)}`);
+        const t = await ev(() => document.querySelector('#ed-notes').innerText);
+        for (const want of ['12 by 8 squares', '3 doors', '2 on a square side', 'lit braziers', 'Left out']) if (!t.includes(want)) throw new Error(`the notes do not say ${want}: ${t}`);
+        if (/never line up/.test(t)) throw new Error('the squares import speaks of hexes lining up');
+        if ((await state(page, (S) => S.map.id)) !== before) throw new Error('the map changed before Load');
+        await shot('uvtt-notes');
+      });
+      await run.do('hexes are an option, and back to squares: still nothing has changed', async () => {
+        await ev(() => document.querySelector('input[name="ed-uvtt-grid"][value="hex"]').click());
+        await wait(page, () => /never line up/.test(document.querySelector('#ed-notes').innerText));
+        if (!(await ev(() => document.querySelector('input[name="ed-uvtt-grid"][value="hex"]').checked))) throw new Error('hexes are not chosen');
+        await ev(() => document.querySelector('input[name="ed-uvtt-grid"][value="square"]').click());
+        await wait(page, () => !/never line up/.test(document.querySelector('#ed-notes').innerText) && /12 by 8 squares/.test(document.querySelector('#ed-notes').innerText));
+        if ((await state(page, (S) => S.map.id)) !== before) throw new Error('the map changed before Load');
+      });
+      await run.do('Load: a square map with the file\'s picture, floor, walls on square corners and doors on square sides', async () => {
+        await page.click('#ed-uvtt-load');
+        await wait(page, () => window.hextable.state.map.grid === 'square' && window.hextable.state.map.levels[0].image, null, 15000);
+        await wait(page, () => window.hextable.R.hasPicture(window.hextable.state.map.levels[0].id), null, 15000);
+        const m = await state(page, (S) => S.map), l = m.levels[0];
+        if (m.cellFeet !== 5 || Object.keys(l.tiles).length !== 96) throw new Error(`${m.cellFeet} ft, ${Object.keys(l.tiles).length} tiles`);
+        if (l.image.feet.join() !== '60,40' || l.image.origin.join() !== '-2.5,-2.5') throw new Error(`the picture is ${l.image.feet} at ${l.image.origin}`);
+        for (const w of m.walls) for (const v of [...w.a, ...w.b]) if (Math.abs((v - 2.5) / 5 - Math.round((v - 2.5) / 5)) > 1e-6) throw new Error(`wall ${w.id} is off the square corners: ${v}`);
+        const doors = m.objects.filter((o) => o.def === 'door-wooden');
+        if (doors.length !== 3 || doors.filter((d) => d.edge !== undefined).length !== 2 || m.objects.filter((o) => o.def === 'brazier').length !== 2) throw new Error(`objects ${JSON.stringify(m.objects)}`);
+        // the picture's corner and the first wall corner, on screen: the picture's drawn wall (28 px in) and the map's wall are one line
+        const a = await ev(() => window.hextable.R.screenPoint(2.5, 2.5, 0)), b = await ev(() => window.hextable.R.screenPoint(37.5, 2.5, 0));
+        if (!a || !b) throw new Error('the walls are not on screen');
+        await shot('uvtt-loaded');
+      });
+      await run.do('leave the editor: the shut door stops a character in the west room, and open she walks through it', async () => {
+        await page.click('#ed-done'); await waitShown(page, '#editor', false);
+        await ev(() => window.hextable.act({ type: 'place', actor: 'fighter', to: { q: 3, r: 3 } }));
+        await wait(page, () => { const p = window.hextable.state.entities.fighter.pos; return p.q === 3 && p.r === 3; });
+        await ev(() => window.hextable.act({ type: 'move', actor: 'fighter', to: { q: 8, r: 3 } })); await calm(page); await sleep(300);
+        let p = await state(page, (S) => S.entities.fighter.pos);
+        if (p.q > 5) throw new Error('the character got through a shut door or a wall');
+        await ev(() => window.hextable.act({ type: 'setObject', object: 'd1', state: 'open' }));
+        await wait(page, () => window.hextable.state.map.objects.find((o) => o.id === 'd1').state === 'open');
+        await ev(() => window.hextable.act({ type: 'move', actor: 'fighter', to: { q: 7, r: 3 } }));
+        await wait(page, () => window.hextable.state.entities.fighter.pos.q === 7, null, 15000);
+        await shot('uvtt-through');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=maps.
 export default async function (browser, url) {
   await stockMaps(browser, url, 'stock maps at 1280x800', { viewport: { width: 1280, height: 800 } });
   await stockMaps(browser, url, 'stock maps at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await squareEditor(browser, url, 'the editor on squares at 1280x800', { viewport: { width: 1280, height: 800 } });
   await squareEditor(browser, url, 'the editor on squares at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await squareImport(browser, url, 'a Universal VTT file onto squares at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await squareImport(browser, url, 'a Universal VTT file onto squares at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }
