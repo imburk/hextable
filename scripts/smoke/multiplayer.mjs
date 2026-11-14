@@ -67,6 +67,11 @@ async function multiplayer(browser, url) {
         // The monster attacks the phone's character, its dice thrown for the DM.
         await wait(host, () => window.hextable.waiting === 0, null, 20000);
         await wait(phone, () => window.hextable.waiting === 0, null, 20000);
+        // The phone's attack is a real roll and may kill the foe (a goblin has 10 Hit Points). The step is about the dice the monster
+        // throws on its turn, so the DM sets the foe's Hit Points back to full here, whatever the roll was: a dead creature in the
+        // order is brought back by the same call. What the phone threw is untouched, and nothing here rolls a die.
+        await host.evaluate((f) => { const e = window.hextable.state.entities[f]; if (e.dead || e.hp < e.maxHp) window.hextable.act({ type: 'setHp', actor: f, hp: e.maxHp }); }, foe);
+        await wait(host, () => window.hextable.waiting === 0, null, 20000);
         for (let i = 0; i < 30; i++) {           // on round the order to the foe's turn
           const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter.order[S.encounter.turn].id; });
           if (cur === foe) break;
