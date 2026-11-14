@@ -292,6 +292,8 @@ export class ThreeRenderer {
     const v = new THREE.Vector3((px / this.canvas.clientWidth) * 2 - 1, 1 - (py / this.canvas.clientHeight) * 2, 0.5).unproject(this.camera);
     return norm([v.x - C.eye[0], v.y - C.eye[1], v.z - C.eye[2]]);
   }
+  // The camera's turn about the board and its height above it (radians), read-only: the dice lie in the board's plane as seen from here.
+  cameraAngles() { return { yaw: this.cam.yaw, pitch: this.cam.pitch }; }
   screenAxes() {
     const C = this.C ?? this.#camera(), u = (a) => { const l = Math.hypot(a[0], a[2]) || 1; return [a[0] / l, a[2] / l]; };
     return { right: u(C.r), up: u(C.f) };
