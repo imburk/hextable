@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="./drawer.css">
 <link rel="stylesheet" href="./defeat.css">
 <link rel="stylesheet" href="./conclusion.css">
+<link rel="stylesheet" href="./actionpanel.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -52,7 +53,14 @@
     </div>
     <div id="c-hp"><div class="bar"><i></i></div><span id="c-hp-text"></span><span id="c-ac"></span></div>
     <div id="c-res"></div>
-    <div id="actions"></div>
+    <div id="ap-how" role="status" hidden></div>
+    <div id="ap-body">
+      <div id="ap-explore" role="tabpanel" aria-labelledby="ap-tab-explore" hidden></div>
+      <div id="ap-reactions" role="tabpanel" aria-labelledby="ap-tab-reactions" hidden></div>
+      <div id="ap-down" role="tabpanel" aria-labelledby="ap-tab-down" hidden></div>
+      <div id="ap-all" role="tabpanel" aria-labelledby="ap-tab-all" hidden><div id="actions"></div></div>
+    </div>
+    <div id="ap-tabs" role="tablist" aria-label="Actions" hidden></div>
   </div>
 </footer>
 
@@ -177,6 +185,9 @@
         <label class="assign">Menu opens from the <select id="set-side"><option value="right">Right</option><option value="left">Left</option></select></label>
         <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>
         <p class="note" id="set-pin-note">Wide screens only. The map makes room for it.</p>
+      </section>
+      <section><h3>Actions, on this device</h3>
+        <label class="assign">Action tab <select id="set-paneltab"><option value="auto">Pick the likely one</option><option value="remember">Remember my last one</option><option value="all">Always the full bar (until the new tabs are done)</option></select></label>
       </section>
       <section><h3>Animation and dice, on this device</h3>
         <label class="assign">Dice <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label>
