@@ -390,17 +390,31 @@ export const wizard = {
         "id": "empowered-evocation",
         "name": "Empowered Evocation",
         "level": 10,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "Add your Intelligence modifier to one damage roll of your Wizard Evocation spells. The DM adds it."
+        "text": "When you cast a Wizard spell of the Evocation school, you can add your Intelligence modifier to one of its damage rolls. With one damage roll it is added unless the cast says empower false; a spell with several (two damage types, several rays or darts) takes empower naming the roll, and without it the DM is told to add it to the one you pick.",
+        "grants": {
+          "empowered": {
+            "school": "evocation",
+            "list": "wizard",
+            "ability": "int"
+          }
+        }
       },
       {
         "id": "overchannel",
         "name": "Overchannel",
         "level": 14,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "Deal maximum damage with a level 1 to 5 damaging Wizard spell; later uses before a Long Rest cost 2d12 Necrotic per slot level, rising by 1d12 each time."
+        "text": "When you cast a damaging Wizard spell with a level 1 to 5 spell slot, you can (cast with overchannel) deal its maximum damage on that turn. The first use before a Long Rest costs nothing; each later one deals you 2d12 Necrotic damage per slot level, 1d12 more per level each time, ignoring Resistance and Immunity.",
+        "grants": {
+          "overchannel": {
+            "list": "wizard",
+            "maxSlot": 5,
+            "die": 12
+          }
+        }
       }
     ]
   }

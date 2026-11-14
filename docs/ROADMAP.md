@@ -35,3 +35,5 @@ In this order:
 - Scenes, and import of a table export
 - Persistent world across sessions
 - AI DM and AI characters reading the timeline
+- Portable characters: a character file with a signed history and a level meter, joined to a table by the DM's choice ([spec](specs/portable-characters.md)); its pure parts (jobs P1 and P2) can start any time, the rest after milestone 2
+- Homebrew packs per table, a plain-language reader and a spell builder an AI can drive ([spec](specs/homebrew.md)); the pure parts (jobs B1 to B4) can start any time, the table and client jobs after milestone 2

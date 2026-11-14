@@ -1143,6 +1143,57 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   - *Not built*: Weapon Mastery (so Tactical Master), Heroic Inspiration (so Heroic Warrior), jumping, carrying a
     creature, moves "straight toward" or "immediately after" (Forceful Blow, Withdraw, Fleet Step's timing), food and
     drink, using magic items (Use Magic Device's charges and scrolls): each is a `manual` step or the DM's by the text.
+- **Amendment (levels 7 to 15, #232: Ranger, Warlock, Wizard). No state version change**, for the reason given for #224:
+  what is new in a saved game is optional and read only by new code (`uses["overchannel"]`, a part's `ends.who`, a source's
+  `sure`, `max`, `maxTemp`, `empower` and `spell`, encounter flags `hit:`, `after:`, `prey:`), so a version 20 table loads and
+  plays; its characters keep their old records until made again from their sheets (test: `classes-warlock.test.js`, a version
+  20 table saved before #232). A saved warlock sheet of level 10 or more must then choose Fiendish Resilience and Mystic
+  Arcanum, which are new choices. Each part has a linter rule and a test (`test/classes-ranger.test.js`, `-warlock`, `-wizard`).
+  - *Grants*: `empowered { school, list, ability }` (Empowered Evocation: `cast` takes `empower`, false or which damage roll;
+    with one roll it is added unless false, with several the DM is told unless one is named; a roll shared by an area gets it
+    once); `overchannel { list, maxSlot, die }` (`cast` with `overchannel: true`: a damaging spell of that list with a slot of
+    1 to `maxSlot` deals its dice at their highest, faces marked `max`; from the second use since a Long Rest, counted in
+    `uses[feature id]` and cleared by a Long Rest, `slot × (uses + 1)` of `die` in Necrotic damage to the caster, ignoring
+    Resistance and Immunity: `damage(..., { pierce })`); `afterHit { modifier }` (an attacker that hits it gets that
+    `attack.roll` modifier against it until the end of the current turn: Multiattack Defense); `markSpread { spell, range }`
+    (`attack` with `prey`: once a turn, when the attack damages a creature `spell` marks, the mark's damage to another seen
+    creature within `range` of it: Superior Hunter's Prey); `steadfast { spell }` (damage makes no Concentration save for
+    that spell: Relentless Hunter); `restExhaustion: 'short'` (a Short Rest lowers Exhaustion by 1: Tireless); `spellRange
+    { spell, perLevel }` (that spell's range longer by so much per class level: Eldritch Spear); `repel { spell, feet }`
+    (`cast` with `repel`: each Large or smaller creature the spell's attack hits is pushed that far away, up to `feet`:
+    Repelling Blast). A feature reaction may be `{ on: 'damaged', resist: true }` (Superior Hunter's Defense: Resistance to
+    the damage's type, this instance and the rest of the turn; several types at once go to the DM and spend nothing;
+    always, never or ask).
+  - *freeCast* of named spells may say `atWill` (no uses: the invocations that cast a spell without a slot), `self` (on
+    its caster only), `dark` (only in Dim Light or Darkness: One with Shadows), `sureSave` (the caster succeeds on the
+    spell's saves without rolling, `save` event `sure: true`: Contact Patron), `maxTemp` (Temporary Hit Point dice at their
+    highest: Fiendish Vigor) and `time: 'action'` (cast as a Magic action whatever its casting time: Pact of the Chain).
+  - *Feature actions*: `after: 'hit'` (used on a creature its creature hit with an attack roll this turn, once a turn; the
+    hit sets the flag in `rollToHit`) and `orSlot: true` (with its uses spent, `feature` with `slot` spends a Pact Magic slot
+    of that level instead: Hurl Through Hell).
+  - *Options*: a feature's `pick` may be `{ column }` (Eldritch Invocations by the Invocations column; `pickFor(f, c, level)`
+    in derive.js); an option may have `requires { level?, option?, spell? }` (a class level, another option of the same
+    feature chosen with it, a spell the class knows: invocation prerequisites, checked by `validate`) and `uses` (Gift of the
+    Depths' Water Breathing, each Mystic Arcanum spell).
+  - *Modifiers*: `spell: id` on `damage.dealt` (only that spell's damage: Agonizing Blast; a spell's source carries its id to
+    `dealt` as `spellId`); tags `attack.opportunity` (Escape the Horde; `rollToHit` passes it) and `target.notFiend` (Hurl
+    Through Hell). A `tempHp` step may say `atLeast` (Tireless). A `move` step may say `largest: size` (Repelling Blast; added
+    by the engine, not by content). A part's ending may say `who` (the creature whose turn it ends with: "the current turn").
+  - *Built below level 7 because a feature here needs it*: Favored Enemy's free Hunter's Mark (Ranger 1: three features turn
+    on the mark), Eldritch Invocations (Warlock 1: the invocations gained at 7 to 15 are what it gives).
+  - *Not built*: the pact weapon and the invocations that need it, Devil's Sight, Pact of the Tome, familiars, a second copy
+    of a repeatable invocation for the same cantrip or of Lessons of the First Ones (DEBT C16).
+  - *Review fixes (#234)*: Superior Hunter's Defense answers only damage of a damage type, and not the DM setting Hit
+    Points (`raw`); outside a fight there is no turn, so it resists only the damage that set it off (no lasting part), and its
+    Reaction stays spent until the creature's next turn in a fight, as any Reaction taken outside one. Empowered Evocation is
+    not added unasked when the roll also catches a creature not hostile to the caster (the caster included): the DM is told,
+    and `empower` adds it; nor for an Evocation spell whose damage the engine does not roll as it is cast (a zone's later
+    damage, a manual spell's dice): the DM is told. A sheet change made by an item (`give`, `equip`, `attune`, attuning at a
+    rest) is refused only for a problem the sheet did not already have (`newProblems`, sheets.js), so a warlock saved before
+    #232 without its new choices still takes items; `setSheet` and `levelUp` ask for them. Players' views leave out a part's
+    `ends.who` and a fight's flags that name a creature hidden from the party; a reaction question carries `dtype`. True
+    Strike's Agonizing and Repelling Blast are entered, `manual` (the engine does not resolve True Strike). The build
+    screen reads `pick` through `pickFor`.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

@@ -4,7 +4,7 @@
 // character) or `levelUp`, and the engine checks the sheet again.
 import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
-import { derive, validate, featuresOf, classOf, mod, proficiencyFor } from './shared/derive.js';
+import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor } from './shared/derive.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -25,6 +25,10 @@ function el(tag, props = {}, ...kids) {
   return e;
 }
 const toggle = (list, v, on) => { const i = list.indexOf(v); if (on && i < 0) list.push(v); if (!on && i >= 0) list.splice(i, 1); };
+
+// How many options a feature that picks from a list takes at this level: a number (Metamagic), or by the class
+// table (Eldritch Invocations, `pick: { column }`). `x` is an entry of featuresOf().
+export const pickLimit = (x) => pickFor(x.f, x.cls.c, x.cls.level);
 
 // How a feature's uses read: "3 uses, all back on a Long Rest (1 on a Short Rest)".
 export function usesText(u) {
@@ -139,9 +143,9 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     // A feature that picks several options from a list (Metamagic: up to 2 at level 2, 2 more at 10): ticks, none twice across features.
     const pickList = (x) => {
       const mine = Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id] : [], taken = asks.filter((y) => y !== x && y.f.pick).flatMap((y) => b.choices[y.f.id] ?? []);
-      return el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, el('h4', { text: `${x.f.name}: choose up to ${x.f.pick}` }),
+      return el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, el('h4', { text: `${x.f.name}: choose up to ${pickLimit(x)}` }),
         ...x.f.options.map((o) => {
-          const on = mine.includes(o.id), off = !on && (mine.length >= x.f.pick || taken.includes(o.id));
+          const on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id));
           return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
             onchange: (ev) => { const next = ev.target.checked ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } }),
             el('span', { text: o.name + (taken.includes(o.id) ? ' (chosen above)' : '') }));

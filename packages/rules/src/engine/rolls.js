@@ -85,7 +85,7 @@ export function tempHp(s, t, amount, ev, f = null, r = null) {
 export function rollMode(s, e, t, atk) {
   const d = apart(s, e, t), ranged = atk.type === 'ranged';
   // A built character's attack says which ability it uses (`abil`), for Rage and Reckless Attack.
-  const sit = { attacker: e, target: t, ranged, spell: !!atk.spell, ...(atk.abil ? { str: atk.abil === 'str' } : atk.spell ? { str: false } : {}) };
+  const sit = { attacker: e, target: t, ranged, spell: !!atk.spell, opportunity: !!atk.opportunity, ...(atk.abil ? { str: atk.abil === 'str' } : atk.spell ? { str: false } : {}) };
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
