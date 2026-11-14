@@ -1,7 +1,7 @@
 // The DM's tools and the map (engine.js): claiming characters, starting and ending fights, spawning
 // and placing creatures, regions, objects, map edits and loading, light, conditions and Hit Points,
 // handouts and scenes, and table settings.
-import * as H from '../hex.js';
+import { gridOf, col, key, parse } from '../grid.js';
 import { CONTENT, MONSTERS, TILES } from '../content/index.js';
 import { effectsOf, endEffect } from '../durations.js';
 import { FT, ground, landing, overlapAt, regionAt, STEP_MAX, under } from '../space.js';
@@ -63,7 +63,7 @@ export const handlers = {
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
-    if (s.encounter?.arena[H.col(at)]) joinEncounter(s, s.entities[id], ev);
+    if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
   },
   place(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can place creatures.');
@@ -74,7 +74,7 @@ export const handlers = {
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
-    if (s.encounter?.arena[H.col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+    if (s.encounter?.arena[col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
   },
   // Show a region to the players, or take it back. { type: 'revealRegion', region, revealed: true|false }
   revealRegion(s, a, ctx, ev) {
@@ -157,22 +157,22 @@ export const handlers = {
     problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
     const map = structuredClone(a.map);
     const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
-    const first = map.starts[0] ?? H.parse(Object.keys(map.levels[0].tiles)[0]);
+    const first = map.starts[0] ?? parse(Object.keys(map.levels[0].tiles)[0]);
     const start = landing(map, first, first.z ?? 0);
     const party = Object.values(s.entities).filter((e) => e.side === 'party'), spots = [], taken = new Set();
-    const take = (p) => { spots.push(p); taken.add(H.key(p)); };
+    const take = (p) => { spots.push(p); taken.add(key(p)); };
     // The map's starts in order, each where a creature can stand (walkable ground, nothing solid on
     // it, not taken); then, for anyone left, the spiral out from the first start, as before.
-    const B = barriers(map);
+    const B = barriers(map), G = gridOf(map);
     for (const st of map.starts) {
       if (spots.length >= party.length) break;
       const p = landing(map, st, st.z ?? 0), level = p && ground(map, p)?.level;
-      if (walkable(p) && level && !B.solid(level.id, p) && !taken.has(H.key(p))) take(p);
+      if (walkable(p) && level && !B.solid(level.id, p) && !taken.has(key(p))) take(p);
     }
     for (let n = 0; n < 12 && spots.length < party.length; n++) {
-      for (const h of H.range(start, n)) {
-        const p = H.dist(h, start) === n ? landing(map, h, start.z) : null;
-        if (walkable(p) && Math.abs(p.z - start.z) <= STEP_MAX && spots.length < party.length && !taken.has(H.key(p))) take(p);
+      for (const h of G.range(start, n)) {
+        const p = G.dist(h, start) === n ? landing(map, h, start.z) : null;
+        if (walkable(p) && Math.abs(p.z - start.z) <= STEP_MAX && spots.length < party.length && !taken.has(key(p))) take(p);
       }
     }
     spots.length === party.length || fail("That map has no room for the party at its start.");

@@ -9,14 +9,14 @@
 // the game state later stays private until someone lists it.
 //
 // The engine never reads a view and never produces one. Design: docs/specs/hidden-information.md
-import * as H from './hex.js';
+import { HEX, gridOf, col, parse } from './grid.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
 import { concealed } from './space.js';
 import { memoryOf, partyView, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
-import { barriers, center, objectDef, objectHexes, objectSegment } from './walls.js';
+import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -207,7 +207,7 @@ export function viewHandouts(state, viewer) {
 // Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
 // those hexes, the objects that touch them, and the regions already revealed. Nothing else: an
 // unrevealed room is simply absent. Built once and kept until the map or what is revealed changes.
-const REACH = 5 / Math.sqrt(3) + 0.02;           // a hex's corner, in feet from its centre
+const REACH = HEX.cornerReach + 0.02;             // a hex's corner, in feet from its centre (by the map's grid in S8)
 // The stretches of a wall that lie within REACH of any of these hex centres.
 export function clipWall(w, centres) {
   const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
@@ -238,35 +238,35 @@ function shownMap(state) {
   const had = mapCache.get(map);
   if (had?.sig === sig) return had;
   const stateOf = (o) => (rule === 'rooms' || pv.objects.has(o.id) ? o.state : mem.objects[o.id]);       // undefined: not known
-  const cols = new Set(), levels = [], centres = new Map();
+  const G = gridOf(map), cols = new Set(), levels = [], centres = new Map();
   for (const l of map.levels) {
     const tiles = {}, cs = [];
-    for (const k in l.tiles) { const h = H.parse(k); if (tileSent(state, l.id, h, rule)) { tiles[k] = { ...l.tiles[k] }; cols.add(k); cs.push(center(h)); } }
+    for (const k in l.tiles) { const h = parse(k); if (tileSent(state, l.id, h, rule)) { tiles[k] = { ...l.tiles[k] }; cols.add(k); cs.push(G.center(h)); } }
     // A level with nothing shown is not mentioned, and neither is its background picture.
     if (cs.length) { levels.push({ id: l.id, name: l.name, z: l.z, tiles, ...(l.image && { image: { asset: l.image.asset, feet: [...l.image.feet], origin: [...l.image.origin] } }) }); centres.set(l.id, cs); }
   }
-  const has = (levelId, h) => !!levels.find((l) => l.id === levelId)?.tiles[H.col(h)];
+  const has = (levelId, h) => !!levels.find((l) => l.id === levelId)?.tiles[col(h)];
   const hiddenNow = (o) => { const st = stateOf(o) ?? o.state; return !!stateDef(o, st)?.hidden && ['move', 'sight'].every((w) => stateDef(o, st).blocks.includes(w)); };
   const doc = {
     format: map.format, id: map.id, name: map.name, hexFeet: map.hexFeet, levels,
     // An undiscovered door is sent as the wall it passes for. Walls are sorted and renumbered so
     // that nothing about a wall's name or place in the list says which one is not a wall.
-    walls: [...map.walls, ...map.objects.filter((o) => objectSegment(o) && hiddenNow(o))
-      .map((o) => ({ id: o.id, level: o.level, kind: 'wall', a: objectSegment(o)[0], b: objectSegment(o)[1] }))]
+    walls: [...map.walls, ...map.objects.filter((o) => objectSegment(o, G) && hiddenNow(o))
+      .map((o) => ({ id: o.id, level: o.level, kind: 'wall', a: objectSegment(o, G)[0], b: objectSegment(o, G)[1] }))]
       .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : []))
       .sort((p, q) => p.a[0] - q.a[0] || p.a[1] - q.a[1] || p.b[0] - q.b[0] || p.b[1] - q.b[1] || (p.kind < q.kind ? -1 : p.kind > q.kind ? 1 : 0))
       .map((w, i) => ({ ...w, id: `w${i}` })),
     // Objects in a hidden state are not sent at all. Of the rest, only the fields named here (an
     // allow list, so a field added later is not sent until someone decides it may be): never a DC,
     // never what an object is wired to, and where a ladder or stairs lead only once that place is.
-    objects: map.objects.filter((o) => { const st = stateOf(o); return st !== undefined && !stateDef(o, st)?.hidden && objectHexes(o).some((h) => has(o.level, h)); })
+    objects: map.objects.filter((o) => { const st = stateOf(o); return st !== undefined && !stateDef(o, st)?.hidden && objectHexes(o, G).some((h) => has(o.level, h)); })
       .map((o) => {
         const out = { id: o.id, def: o.def, level: o.level, at: structuredClone(o.at), state: stateOf(o) };
         for (const k of ['edge', 'seg', 'name', 'key']) if (o[k] !== undefined) out[k] = structuredClone(o[k]);
-        if (o.to && levels.some((l) => l.tiles[H.col(o.to)] && (o.to.z === undefined || l.z === o.to.z))) out.to = structuredClone(o.to);
+        if (o.to && levels.some((l) => l.tiles[col(o.to)] && (o.to.z === undefined || l.z === o.to.z))) out.to = structuredClone(o.to);
         return out;
       }),
-    regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: rule === 'light' ? r.hexes.filter((k) => has(r.level, H.parse(k))) : [...r.hexes], revealed: true })),
+    regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: rule === 'light' ? r.hexes.filter((k) => has(r.level, parse(k))) : [...r.hexes], revealed: true })),
     starts: [],
   };
   // What the party sees now: under los the tiles in someone's line of sight, under light those made
@@ -276,13 +276,13 @@ function shownMap(state) {
     const now = {}, light = {}, sources = rule === 'light' ? lightSources(state) : null;
     for (const t of pv.seen.values()) {
       if (!has(t.level, t)) continue;
-      (now[t.level] ??= []).push(H.col(t));
-      if (sources) { const l = lightAt(state, t, sources); if (l !== 'bright') (light[t.level] ??= {})[H.col(t)] = l; }
+      (now[t.level] ??= []).push(col(t));
+      if (sources) { const l = lightAt(state, t, sources); if (l !== 'bright') (light[t.level] ??= {})[col(t)] = l; }
     }
     for (const l of Object.values(now)) l.sort();
     sight = { rule, now, ...(sources ? { light } : {}) };
   }
-  const nowCols = new Set(rule === 'rooms' ? [] : [...pv.seen.values()].filter((t) => has(t.level, t)).map((t) => H.col(t)));
+  const nowCols = new Set(rule === 'rooms' ? [] : [...pv.seen.values()].filter((t) => has(t.level, t)).map((t) => col(t)));
   const out = { sig, doc, cols, live: rule === 'rooms' ? null : pv.objects, sight, nowCols };
   mapCache.set(map, out);
   return out;
@@ -340,7 +340,7 @@ export function viewEvents(events, state, viewer) {
   const cls = (id) => (was?.includes(id) ? 'hidden' : classify(state, id));
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
   // Hexes named by an area, under the los and light rules, only where they are sent.
-  const hexesOf = (hs) => (!hs ? hs : hs.filter((h) => !byRule || sm.cols.has(H.col(h))).map((h) => ({ q: h.q, r: h.r })));
+  const hexesOf = (hs) => (!hs ? hs : hs.filter((h) => !byRule || sm.cols.has(col(h))).map((h) => ({ q: h.q, r: h.r })));
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
   const out = { push(e) { delete e.unseen; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
@@ -457,7 +457,7 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'moved':                                    // under los and light, a creature not theirs is seen only where it is in view
         if (byRule && cls(ev.id) !== 'open') {
-          const path = ev.path.filter((h) => sm.nowCols.has(H.col(h)));
+          const path = ev.path.filter((h) => sm.nowCols.has(col(h)));
           if (path.length) out.push({ ...structuredClone(ev), path });
         } else out.push(structuredClone(ev));
         break;

@@ -1,6 +1,6 @@
 // Casting (engine.js): the cast action, Metamagic, Counterspell and other spells that answer a
 // spell, teleport destinations, and ending a lasting effect.
-import * as H from '../hex.js';
+import { col, key } from '../grid.js';
 import { SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
@@ -31,7 +31,7 @@ export function teleportSpot(s, e, step, hex, name, player = false) {
   (hex && Number.isInteger(hex.q) && Number.isInteger(hex.r)) || fail(`Pick where ${name} takes ${e.name}.`);
   const to = (Number.isFinite(hex.z) ? { q: hex.q, r: hex.r, z: hex.z } : landing(s.map, hex, e.pos.z)) || fail("There's nothing there to stand on.");
   if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${name}.`);
-  H.key(to) !== H.key(e.pos) || fail(`${e.name} is already there.`);
+  key(to) !== key(e.pos) || fail(`${e.name} is already there.`);
   const d = gap(s, e.pos, to);
   d * FT <= step.teleport || fail(`That is ${ft(d)} away. ${name} reaches ${step.teleport} ft.`);
   const why = roomAt(s, e, to);
@@ -356,7 +356,7 @@ export const handlers = {
     if (zoneDef && fx && hexes) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
-        ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) } }),
+        ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
         spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10) }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
@@ -371,7 +371,7 @@ export const handlers = {
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
         ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
       }
-      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(H.col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
+      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
     }
     const before = ev.length;
     const shared = sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps, !!evo.overchannel) : null;

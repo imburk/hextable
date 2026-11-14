@@ -1,13 +1,12 @@
 // Sight: line of sight and cover, worked out on hexes from the centre and the corners, and light.
 // Design: docs/specs/sight.md, decisions 1 to 3.
-import * as H from './hex.js';
+import { gridOf, col } from './grid.js';
 import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
-import { barriers, center, objectDef } from './walls.js';
+import { barriers, objectDef } from './walls.js';
 import { has } from './modifiers.js';
 import { obscuredAt, terrainsOf } from './terrain.js';
 
-const S3 = Math.sqrt(3), CORNER = (FT / S3) * 0.9;        // a little inside the true corner, so a wall on the hex's own edge is not "in front of" it
-const CORNERS = [0, 1, 2, 3, 4, 5].map((i) => { const a = (Math.PI / 180) * (30 + 60 * i); return [CORNER * Math.cos(a), CORNER * Math.sin(a)]; });
+const CORNER = 0.9;                                        // of the way out: a little inside the true corner, so a wall on the hex's own edge is not "in front of" it
 const EYE = FT / 2;                                        // lines run from mid-body to mid-body
 
 // Where two segments cross, as how far along pq (0 to 1), or null. Touching counts.
@@ -34,7 +33,7 @@ function stopped(map, B, p, zp, q, zq, lists) {
 // A floor between two positions: one over the head of the lower, unless the higher simply stands at its own edge.
 function floored(map, a, b) {
   const lo = a.z <= b.z ? a : b, hi = lo === a ? b : a;
-  return hi.z > lo.z && surfaces(map, lo).some((sf) => sf.z > lo.z && sf.z <= hi.z && !(H.col(lo) === H.col(hi) && sf.z === hi.z && !ground(map, hi)));
+  return hi.z > lo.z && surfaces(map, lo).some((sf) => sf.z > lo.z && sf.z <= hi.z && !(col(lo) === col(hi) && sf.z === hi.z && !ground(map, hi)));
 }
 
 const memo = new WeakMap();
@@ -45,7 +44,7 @@ const MEMO_MAX = 200000;                                   // lines kept per map
 // With `what` = 'sight' the lines are stopped by whatever blocks sight alone (a curtain too, a
 // window or a rail not): that is seeing, where 'both' is reaching.
 export function sightline(map, a, b, what = 'both') {
-  const B = barriers(map);
+  const B = barriers(map), G = gridOf(map);
   let had = memo.get(map);
   if (!had || had.sig !== B.sig || had.at.size > MEMO_MAX) memo.set(map, had = { sig: B.sig, at: new Map() });
   const k = `${what}|${a.q},${a.r},${a.z}|${b.q},${b.r},${b.z}`;
@@ -54,11 +53,10 @@ export function sightline(map, a, b, what = 'both') {
   if (floored(map, a, b)) v = { centre: false, corners: 0, low: false };
   else if (a.q === b.q && a.r === b.r) v = { centre: true, corners: 6, low: false };
   else {
-    const p = center(a), c = center(b);
+    const p = G.center(a), c = G.center(b);
     let corners = 0;
     // A corner counts if it is reached and is on the target's own side of any wall that cuts through its hex.
-    for (const [dx, dy] of CORNERS) {
-      const k2 = [c[0] + dx, c[1] + dy];
+    for (const k2 of G.corners(b, CORNER)) {
       if (!stopped(map, B, p, a.z, k2, b.z, [what]) && !stopped(map, B, c, b.z, k2, b.z, [what])) corners++;
     }
     v = { centre: !stopped(map, B, p, a.z, c, b.z, [what]), corners, low: what === 'both' && stopped(map, B, p, a.z, c, b.z, ['low']) };
@@ -92,7 +90,7 @@ export const COVER = { none: 0, half: 2, threeQuarters: 5 };
 // 'threeQuarters' or 'total'. For big creatures the most exposed pairing of their hexes counts.
 // `from` is a creature or a position; `others` are creatures that might stand in the way.
 export function coverOf(s, from, target, others = []) {
-  const map = s.map, rules = s.settings ?? {};
+  const map = s.map, rules = s.settings ?? {}, G = gridOf(map);
   const origins = from.pos ? footprint(from) : [from], parts = footprint(target);
   let best = { corners: -1 };
   for (const o of origins) for (const t of parts) {
@@ -105,12 +103,12 @@ export function coverOf(s, from, target, others = []) {
   if (best.corners <= 2) return 'threeQuarters';
   if (best.corners <= 4 || best.low) return 'half';
   // A creature standing on the line between them gives half cover.
-  if (rules.creatureCover !== 'off' && H.dist(best.o, best.t) > 1) {
-    const p = center(best.o), q = center(best.t), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+  if (rules.creatureCover !== 'off' && G.dist(best.o, best.t) > 1) {
+    const p = G.center(best.o), q = G.center(best.t), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     for (const c of others) {
       if (c === from || c === target || c.dead || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
       for (const f of shapeOf(c).length === 1 ? [c.pos] : footprint(c)) {
-        const m = center(f), t = ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / (len * len);
+        const m = G.center(f), t = ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / (len * len);
         if (t > 0.05 && t < 0.95 && Math.hypot(m[0] - (p[0] + t * (q[0] - p[0])), m[1] - (p[1] + t * (q[1] - p[1]))) < 1.5) return 'half';
       }
     }
@@ -135,7 +133,7 @@ export function lightSources(s) {
   const out = [];
   for (const o of s.map.objects) {
     const l = objectDef(o)?.states[o.state]?.light, level = l && s.map.levels.find((x) => x.id === o.level);
-    if (level) out.push({ pos: { q: o.at.q, r: o.at.r, z: level.z + (level.tiles[H.col(o.at)]?.h ?? 0) }, bright: l.bright, dim: l.dim, object: o.id });
+    if (level) out.push({ pos: { q: o.at.q, r: o.at.r, z: level.z + (level.tiles[col(o.at)]?.h ?? 0) }, bright: l.bright, dim: l.dim, object: o.id });
   }
   for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0)) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
   return out;

@@ -10,7 +10,7 @@
 // senses and conditions count, and places never lit for the party are not sent).
 // The party sees as one: the union of what its members see. Pure: no I/O, and the caches are kept
 // beside the state, never in it. Design: docs/specs/sight.md, decision 6.
-import * as H from './hex.js';
+import { gridOf, col } from './grid.js';
 import { FT, concealed, gap, regionAt, shown } from './space.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { canSee, coverOf, inView, inViewOf, lightAt, lightSources } from './sight.js';
@@ -24,7 +24,7 @@ export const FLOOD_HEXES = 40;
 
 const up = (e) => !e.dead && e.hp > 0;
 const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e));
-const placeOf = (level, h) => { const t = level.tiles[H.col(h)]; return t ? { q: h.q, r: h.r, z: level.z + (t.h ?? 0) } : null; };
+const placeOf = (level, h) => { const t = level.tiles[col(h)]; return t ? { q: h.q, r: h.r, z: level.z + (t.h ?? 0) } : null; };
 
 // ---------- places in sight ----------
 // Every tile some line of sight from `eye` reaches, found by spreading out from it across tiles
@@ -34,7 +34,7 @@ const placeOf = (level, h) => { const t = level.tiles[H.col(h)]; return t ? { q:
 // sliver; it never includes one out of sight.
 const floods = new WeakMap();
 export function tilesInSight(map, eye) {
-  const B = barriers(map);
+  const B = barriers(map), G = gridOf(map);
   let had = floods.get(map);
   if (!had || had.sig !== B.sig || had.at.size > 256) floods.set(map, had = { sig: B.sig, at: new Map() });
   const k = `${eye.q},${eye.r},${eye.z}`;
@@ -48,10 +48,10 @@ export function tilesInSight(map, eye) {
     tried.add(key);
     queue.push({ key, level: level.id, q, r, z: level.z + (t.h ?? 0) });
   };
-  const around = (q, r) => { for (const l of map.levels) { push(l, q, r); for (const n of H.neighbors({ q, r })) push(l, n.q, n.r); } };
+  const around = (q, r) => { for (const l of map.levels) { push(l, q, r); for (const n of G.neighbors({ q, r })) push(l, n.q, n.r); } };
   around(eye.q, eye.r);
   for (let i = 0; i < queue.length; i++) {
-    const n = queue[i], d = H.dist(eye, n);
+    const n = queue[i], d = G.dist(eye, n);
     if (d > FLOOD_HEXES) continue;
     const seen = inView(map, eye, n);
     if (seen) out.set(n.key, { level: n.level, q: n.q, r: n.r, z: n.z });
@@ -95,7 +95,7 @@ export function partyView(s) {
   if (rule === 'rooms') return ROOMS;
   const sig = signature(s, rule), had = views.get(s);
   if (had && had.sig === sig && had.map === s.map) return had.pv;
-  const map = s.map, eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s) : null;
+  const map = s.map, G = gridOf(map), eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s) : null;
   const creatures = new Set();
   for (const c of Object.values(s.entities)) {
     if (c.side === 'party' || concealed(map, c)) continue;
@@ -112,14 +112,14 @@ export function partyView(s) {
   if (rule === 'light') for (const v of eyes) {
     const b = v.senses?.blindsight ?? 0;
     if (!b) continue;
-    for (const h of H.range(v.pos, Math.floor(b / FT))) for (const l of map.levels) {
-      const p = placeOf(l, h), k = `${l.id}|${H.col(h)}`;
+    for (const h of G.range(v.pos, Math.floor(b / FT))) for (const l of map.levels) {
+      const p = placeOf(l, h), k = `${l.id}|${col(h)}`;
       if (p && !seen.has(k) && seesPlace(s, v, p, rule, sources)) seen.set(k, { level: l.id, ...p });
     }
   }
   // A thing is in view when a tile it touches is made out (a door: a tile on either side).
   const objects = new Set();
-  for (const o of map.objects) if (objectHexes(o).some((h) => seen.has(`${o.level}|${H.col(h)}`) && shown(map, o.level, h))) objects.add(o.id);
+  for (const o of map.objects) if (objectHexes(o, G).some((h) => seen.has(`${o.level}|${col(h)}`) && shown(map, o.level, h))) objects.add(o.id);
   const pv = { rule, n: ++serial, creatures, objects, sight, seen };
   views.set(s, { sig, map, pv });
   return pv;
@@ -145,7 +145,7 @@ export function memoryOf(map) {
 // May players be sent this tile? Its region (if any) is revealed and, under the light rule, the party has made it out.
 export function tileSent(s, levelId, h, rule = sightRule(s)) {
   if (!shown(s.map, levelId, h)) return false;
-  return rule !== 'light' || !!memoryOf(s.map).tiles.get(levelId)?.has(H.col(h));
+  return rule !== 'light' || !!memoryOf(s.map).tiles.get(levelId)?.has(col(h));
 }
 export function remember(s) {
   const rule = sightRule(s);
@@ -156,17 +156,17 @@ export function remember(s) {
   const mem = memoryOf(map);
   for (const t of pv.seen.values()) {
     if (!shown(map, t.level, t)) continue;
-    if (mem.tiles.get(t.level)?.has(H.col(t))) continue;
-    (map.seen.tiles[t.level] ??= []).push(H.col(t));
+    if (mem.tiles.get(t.level)?.has(col(t))) continue;
+    (map.seen.tiles[t.level] ??= []).push(col(t));
     if (!mem.tiles.has(t.level)) mem.tiles.set(t.level, new Set());
-    mem.tiles.get(t.level).add(H.col(t));
+    mem.tiles.get(t.level).add(col(t));
   }
   const kept = sets.get(map.seen);
   if (kept) kept.n = Object.values(map.seen.tiles).reduce((a, l) => a + l.length, 0);       // the sets were added to in step
   for (const o of map.objects) {
     if (pv.objects.has(o.id)) { map.seen.objects[o.id] = o.state; continue; }
     // A door is part of the room it stands in: once a tile beside it is sent, it is known as it stands then.
-    if (map.seen.objects[o.id] === undefined && objectSegment(o) && objectHexes(o).some((h) => map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && tileSent(s, o.level, h, rule))) map.seen.objects[o.id] = o.state;
+    if (map.seen.objects[o.id] === undefined && objectSegment(o, gridOf(map)) && objectHexes(o, gridOf(map)).some((h) => map.levels.find((l) => l.id === o.level)?.tiles[col(h)] && tileSent(s, o.level, h, rule))) map.seen.objects[o.id] = o.state;
   }
 }
 // The regions any of these party members has a line of sight into, and the ones they stand in.
@@ -183,5 +183,5 @@ export function regionsInSight(s, who) {
 // in view or as remembered, and not in a hidden state.
 export function objectKnown(s, o) {
   const pv = partyView(s), st = pv.objects.has(o.id) ? o.state : memoryOf(s.map).objects[o.id];
-  return st !== undefined && !objectDef(o)?.states[st]?.hidden && objectHexes(o).some((h) => !!s.map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && tileSent(s, o.level, h));
+  return st !== undefined && !objectDef(o)?.states[st]?.hidden && objectHexes(o, gridOf(s.map)).some((h) => !!s.map.levels.find((l) => l.id === o.level)?.tiles[col(h)] && tileSent(s, o.level, h));
 }
