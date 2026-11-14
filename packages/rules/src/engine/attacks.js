@@ -1,17 +1,16 @@
 // Attacks and a creature's turn (engine.js): attack, act (a monster's actions), dodge, reaction
 // instructions, endTurn; and the attacks a turn allows (Multiattack, Extra Attack).
 import { actionProfile } from '../effects.js';
-import { effectsOf, turnEnded } from '../durations.js';
+import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
-import { turnInZones } from '../zones.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, featOf, ft, hostile, inFight, living, need, up, walled } from './shared.js';
-import { cure, rollMode } from './rolls.js';
-import { aimAction, showPlace, unhide } from './world.js';
+import { able, control, current, ent, fail, featOf, ft, inFight, need, up, walled } from './shared.js';
+import { rollMode } from './rolls.js';
+import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { canSee, coverOf } from '../sight.js';
+import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, finishTurn, resolveAttack, runAction, startEncounter } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -239,20 +238,7 @@ export const handlers = {
       sc || fail(`${e.name} has nothing that ends a condition at the end of its turn.`);
       (typeof a.cure === 'string' && can.includes(a.cure)) || fail(can.length ? `${sc.name} can end ${can.map(conditionName).join(' or ')} on ${e.name} now.` : `${e.name} has none of the conditions ${sc.name} ends.`);
     }
-    delete e.cond.disengaged;
-    // Stealth Attack: still hidden after its attack only if it ends the turn behind Three-Quarters or
-    // Total Cover from every enemy that is up.
-    if (s.encounter.flags[`stealth:${e.id}`] && e.hiding && living(s).some((o) => up(o) && hostile(o, e) && !['threeQuarters', 'total'].includes(coverOf(s, o, e)))) unhide(s, e, ev, 'attack');
-    if (can.length) {
-      const c = a.cure ?? (can.length === 1 ? can[0] : null);
-      if (c) { ev.push({ type: 'std', id: e.id, action: sc.name }); cure(s, e, [c], ev); }
-      else ev.push({ type: 'manual', actor: e.id, name: sc.name, text: `${e.name} is ${can.map(conditionName).join(' and ')}. ${sc.name} ends one of them at the end of its turn, its player's choice; none was sent, so the DM removes the one the player picks.` });
-    }
-    turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
-    checkEnd(s, ev);
-    if (!s.encounter) return;
-    turnEnded(s, ev, e, KIT);
-    if (s.encounter) advanceTurn(s, ev);
+    if (finishTurn(s, e, ev, a.cure)) advanceTurn(s, ev);
   },
 };
 

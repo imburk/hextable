@@ -172,14 +172,30 @@ export function viewScene(state) {
 }
 // What every player is sent, but for the handouts shown to each: the party sees as one, so a table
 // server builds this once per change and gives it to all its players (packages/server/src/tables.js).
+// Inside a record sent whole (a party creature's), every mention of a creature the party does not know
+// of: a value that is its id becomes 'someone', a key that is its id is dropped (a condition's `source`,
+// a mark kept by id). The record says that something did it, never who (review of #306).
+function scrub(x, hidden) {
+  if (!hidden.size || !x || typeof x !== 'object') return x;
+  for (const k of Object.keys(x)) {
+    if (!Array.isArray(x) && hidden.has(k)) { delete x[k]; continue; }
+    const v = x[k];
+    if (typeof v === 'string' && hidden.has(v)) x[k] = 'someone';
+    else if (v && typeof v === 'object') scrub(v, hidden);
+  }
+  return x;
+}
+const hiddenIds = (state) => new Set(Object.keys(state.entities).filter((id) => classify(state, id) === 'hidden'));
+
 export function playerView(state) {
-  const entities = {};
+  const entities = {}, hidden = hiddenIds(state);
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
     if (c === 'open') {
       entities[id] = structuredClone(e);
       delete entities[id].reactions;                     // standing instructions are their controller's and the DM's (viewReactions)
       if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
+      scrub(entities[id], hidden);
     }
     else if (c === 'seen') entities[id] = seenRecord(e);
   }
@@ -322,7 +338,7 @@ function shownMap(state) {
 // it does they see everything on their own characters and, on other creatures, only the
 // conditions they could see by looking.
 function viewEffects(state) {
-  const out = [];
+  const out = [], hidden = hiddenIds(state);
   for (const fx of state.effects ?? []) {
     const src = classify(state, fx.source);
     if (src !== 'open' && !fx.parts.some((p) => classify(state, p.target) === 'open')) continue;
@@ -330,7 +346,15 @@ function viewEffects(state) {
     for (const p of fx.parts) {
       const c = classify(state, p.target);
       // `ends.who` (the creature whose turn the part ends with) is left out when that creature is hidden from the party.
-      if (c === 'open') { const q = structuredClone(p); if (q.ends?.who !== undefined && classify(state, q.ends.who) === 'hidden') delete q.ends.who; parts.push(q); }
+      if (c === 'open') {
+        const q = structuredClone(p);
+        // `born` names the turn it was made in, by whose turn it was (durations.js, turnKey): never sent.
+        delete q.born;
+        if (q.ends?.who !== undefined && classify(state, q.ends.who) === 'hidden') delete q.ends.who;
+        // A modifier that holds against, or not for, a creature they do not know of: that it does, never who.
+        for (const k of ['against', 'except']) if (typeof q[k] === 'string' && classify(state, q[k]) === 'hidden') q[k] = 'someone';
+        parts.push(scrub(q, hidden));
+      }
       else if (c === 'seen' && p.cond && conditionDef(p.cond)?.visible) parts.push({ target: p.target, cond: p.cond, ...(p.ended ? { ended: true } : {}) });
     }
     out.push({ id: fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), conc: fx.conc, lasts: fx.lasts,
@@ -526,6 +550,14 @@ export function viewEvents(events, state, viewer) {
       case 'attuning':                                 // a party creature's, whose sheet the party is sent; never another's
       case 'attuned':
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'on', 'end', 'cleared', 'failed']));
+        break;
+      // Stepping away (E20): a party creature's only, as the table is told of its own. Of another creature
+      // set aside by the DM nothing is said: players see its place in the order and what it does, as for any creature.
+      case 'away':
+      case 'back':
+      case 'awayTurn':
+      case 'turnMoved':
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'how', 'by', 'asked', 'to', 'keep', 'round', 'why']));
         break;
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));

@@ -960,8 +960,9 @@ in the next section.
 | E17 | Items between creatures: `pass { actor, item, to }` (a party member within 5 ft), `drop { actor, item }`, `pickUp { actor, object }`, and a map object kind `pile` with `contents` (a content addition and an amendment to `maps-and-objects.md`). One `gear` event per side with `why` and `with`. | actions, content | controller, DM | `gear` | `gear` for open creatures; `object` for a pile in view | 18 or later | 6g (after 6) |
 | E18 | Items that do things (potions, scrolls, wands with charges): an `items` content kind reusing the effect steps, and an `item` action. | content, action | controller, DM | — | — | later | not scheduled |
 | E19 | The monster AI may attack a creature at 0 Hit Points (SRD: within 5 ft, a critical hit that adds failures). Only if the owner says so (question 1). | AI | engine | — | — | no | after 5 |
+| E20 | Stepping away (#300, the owner's first comment on #246): `stepAway { actor, how? }`, `stepBack { actor }`, settings `away` and `breaks`. Built; see the build notes, "E20: stepping away". | actions, settings | controller (as `breaks` allows), DM | everything | their party's `away` field and events only | 22 (turn stamps) | the tracker control, the break button |
 
-Nothing in E1 to E19 lets a client send what the engine should compute: the
+Nothing in E1 to E20 lets a client send what the engine should compute: the
 client sends `conclusion`, `pass`, `rewind` and the existing actions, and
 reads `state` and events.
 
@@ -1530,3 +1531,103 @@ What was settled while building, and what was left. The engine side is E17 (#290
 - **Log.** `gear`: "Orla gave Pip Rope.", "Pip received Rope from Orla.", "Orla dropped Rope.", "Orla picked up Rope.", with " (no longer attuned)" when `unattuned`. `object` with a `verb` (a pile): "Orla leaves a pile on the ground.", "adds to the pile", "takes something from the pile", "The pile on the ground is gone." (never what is on it); in the log these are Loot and trades, as `gear` is.
 - **Not verified.** A real finger; a screen reader; a player's own table (the smoke is solo as the DM: the player's view filter is covered by a unit test on `view()` only); the DM's marked second pile in a browser; Take all in a browser (unit test only); the themes beyond Classic; a creature that is not the party's holding the chooser.
 - **Left out.** Fast Hands; dropping a held weapon in a fight; a heap drawn in the renderers; picking up from the map by tapping the pile (the Items tab is the way in).
+
+### E20: stepping away, engine (PR for #300)
+
+From the owner's first comment on #246 (13 November): the DM can push someone down the turn order to cover a
+disconnect, a break or a phone call; a player has a "need a break" button that tells the table and offers the DM the
+same choices; a stand-in may play the character until the player is back. The SRD has no rule for any of it (no
+"delay your turn"; a creature takes one turn a round, in initiative order, SRD "Combat"): it is a named table rule.
+
+- **State.** `e.away = { how, by: 'dm' | 'player' }` on the creature, or `{ asked: true, by: 'player' }` for a request
+  not yet granted. Only in a fight ("can be set aside only in a fight"); the end of the fight brings everyone back
+  (a `back` event with `why: 'fightOver'`), a request too, so the next fight starts with nobody aside (review of #306).
+  `by` is `player` for a player's break, also once the DM grants it or changes `how`; `dm` only when the DM set the
+  creature aside. A player may `stepBack` only a `player` one; the DM, any. In the encounter,
+  `moved = { [id]: { n, keep, round, after?, turn? } }` (who was moved where; `turn` is the budget and flags of a turn
+  set aside part-way through) and `held = { [id]: round }`. All absent when unused, so no state version bump and no
+  migration for these: an old table plays as before, and its settings read as the first value of each rule (the
+  version moved to 22 for turn stamps, below).
+- **Actions.** `stepAway { actor, how? }`: the creature's controller or the DM. `how` is the DM's only (one of
+  `AWAY`); without it the table rule `away` applies. Sent again by the DM with another `how` it changes it.
+  `stepBack { actor }`: the DM, or the controller when the break is theirs (`by: 'player'`; "The DM set Pip aside;
+  only the DM can bring them back."); also takes back a request. Both in `engine/dm.js`; the turn-order
+  helpers (`awayHow`, `presentAfter`, `moveToEnd`, `heldBack`, `settleOrder`, `newRound`, `awayTurn`, `finishTurn`) in
+  `engine/resolve.js`. `endTurn` (attacks.js) now ends its turn through `finishTurn`, the same code as before.
+- **`away`, what is done with its turns** (`SETTING_TEXT.away` has the DM's words):
+  `dodge` (default, the brief's: never moves into harm) the turn starts as usual, the Dodge action is taken if the
+  action is there, nothing else, the turn ends; `end` its turn moves to the end of the round when it comes, is played
+  there by its player if back, else Dodge, and the place comes back next round; `endKeep` the same, the place at the
+  end kept; `hold` its turns pass untaken, and back within the round it takes that round's turn right after the turn
+  going on; a turn passed in an earlier round is gone (one turn a round); `standIn` the turn starts as usual and waits,
+  for the DM's screen to play with `aiStep` (ai.js) as it plays monsters.
+- **Set aside on its own turn.** `standIn`: the turn goes on. `end`/`endKeep`: the rest of the turn (its budget and
+  flags) waits at the end of the round and goes on there, without a second start of turn. `dodge`: Dodge if the action
+  is left, then the turn ends. `hold`: the turn ends (a turn already started is not held; `end` is the way to postpone it).
+- **Who may.** The rule `breaks`: `on` (default; the player's press takes effect at once, the owner's "so the rest
+  can keep playing"), `ask` (the press is a request the table sees; the DM grants it by sending `stepAway`), `off`
+  (the DM only). Not built: "auto after N seconds". The engine has no wall clock (it would break replay), and it never
+  acts on a connection's state. A timer, if wanted, belongs to the server, sending the DM's `stepAway` (see below).
+- **Turn names (review of #306).** `turnKey` (durations.js), which names the turn a lasting effect's part was made in
+  ("until the end of its next turn") and a zone's once-a-turn marker, was the fight, the round and the place in the
+  order. A place can now move while a turn goes on (a turn resumed at the end of the round, a held turn put in before
+  the one going on; a creature joining the fight already re-sorted the order mid-turn), so it is now the fight, the
+  round and whose turn it is: a creature has one turn a round (stepping away moves a turn at most once a round, and a
+  held turn is one never begun). A part made in a saved game during the turn going on, under the old name, may end one
+  turn early once after the update, so (second review round) the state version is 22: `migrate.js` names the old
+  stamps of the fight going on (`born`, `zone.last`) by the creature at that place in the order (`restamp`,
+  durations.js). An old stamp that comes back unmigrated (an undo step or a pin from before) is still read as the
+  turn at that place (`thisTurn`; no creature's id is only digits), and `settleOrder` names it by creature before
+  a place moves. The server already drops a saved undo history when a table's version changes on loading, and solo
+  drops pins of another version. Left: a creature joining the fight re-sorts the order (world.js) without renaming an
+  unmigrated old stamp first. Nothing else keeps a place in the order: the budget and flags of a turn set aside
+  go with it, a waiting reaction stops any stepping away, and the engine has no readied actions.
+- **`hold` skips the turn entirely.** A held turn that is passed over is no turn: nothing at the start or the end of
+  its turn happens (a save to end a condition at the end of its turn, a zone's damage at the start, effects that end
+  then, its Reaction coming back). By the SRD every creature takes a turn each round, doing nothing if it likes, so this
+  is a table convenience the SRD does not give: the SRD's own course for a player who is away is closest to `dodge`
+  (the turn is taken, start and end included). That is why `dodge` is the default; `hold` is there because the owner
+  listed it.
+- **Safety.** A creature moved to the end only goes there if someone present is after it, once a round. After a whole
+  lap of turns played for creatures set aside (everyone away), the next turn starts as an ordinary one and waits for the
+  DM: no endless loop, no stalemate. Death saves are rolled as always. A creature joining the fight sorts the order by
+  initiative (`joinEncounter`, world.js, not touched); `settleOrder` puts the moved ones back when the turn next passes.
+- **Turn stamps are not sent (second review round).** A stamp now holds a creature's id, so `viewEffects` drops
+  `born` from every part sent. While at it: inside a party creature's record and the parts sent, a mention of a
+  creature the party does not know of becomes `'someone'` as a value and is dropped as a key (`scrub` in view.js;
+  a condition's `source`, a part's `against` or `except`). Players learn that something did it, not who.
+- **Hidden information.** Players are told of a party creature's stepping away: its `away` field (in its open
+  record), and events `away`, `back`, `awayTurn` (`how`: `dodge`, `hold`, `standIn`, `resumed`) and `turnMoved`
+  (`to: 'end' | 'next'`). Of a creature not of the party nothing: `seenRecord` and `viewEncounter` are allow lists,
+  so `away`, `moved` and `held` are not sent, and those four events are dropped unless the creature is open; players
+  see its place in the order and what it does (a Dodge is a Dodge), as for any creature. A hidden creature's events are
+  dropped as every hidden creature's are. Undo's words: "Pip stepped away / came back / asked to step away"; for a
+  creature not of the party the DM reads "Goblin 2 was set aside" and players at most "The turn order was changed"
+  (null when they saw nothing). Error texts come after `control`, so a player learns nothing of a creature not theirs
+  beyond the usual "isn't yours to control"; a hidden id is "No such creature." (dispatch).
+- **Left for the owner.** (1) Which `away` is the default: `dodge` until he says. (2) The order a seen foe is moved to
+  is visible (it is the order); the ghost slot of a hidden creature moved to the end shows at the end of the round, under
+  `unseenTurns: 'say'`, so a watchful player may notice that something unseen was put back. (3) While a reaction waits
+  (`pending`) nobody can step away (`WHILE_WAITING` in reactions.js, not touched); the DM answers for the player as now.
+
+#### For the client job (tracker, break button, rule controls)
+
+- **The tracker row (DM).** On every row in a fight: "Set aside" (`{ type: 'stepAway', actor }`), with a small choice
+  of how (`SETTINGS.away`, words from `SETTING_TEXT.away`; sends `how`); on a row with `e.away`: a tag "Away (Dodge)"
+  etc. and "Back" (`{ type: 'stepBack', actor }`). A request (`e.away.asked`): "Pip asks to step away" with Grant
+  (`stepAway`) and Decline (`stepBack`). Keep it on the existing Edit fold on a phone.
+- **The hint.** When the DM's screen calls a party member's link `lost` (the `{t:"link"}` report, #257), the row
+  shows "Pip's connection is lost: set them aside?" with the same Set aside button. It only offers; it never sends.
+- **The player's button.** "Need a break" on the card or the drawer for a character they control, in a fight, when
+  `S.settings.breaks !== 'off'`: `{ type: 'stepAway', actor }`; while `e.away` with `by: 'player'`: "I'm back"
+  (`stepBack`; with `by: 'dm'` show "Set aside by the DM" and no button); while
+  `e.away.asked`: "Asked the DM..." with a Cancel (`stepBack`). Never shown in solo unless the DM wants it (solo is the DM).
+- **The stand-in.** In `idled()` (app.js) the DM's screen runs `aiStep` for the current creature when it is an NPC; run it
+  too when `awayHow(S, cur) === 'standIn'` (exported from `engine.js`), with the same `dm-auto` box.
+- **The rules.** Two selects in the DM tab's table rules: `away` and `breaks`, each with its `SETTING_TEXT`.
+- **Log.** `away`: "Pip stepped away" (`by: 'dm'`: "The DM set Pip aside"; `asked`: "Pip asks to step away"); `back`:
+  "Pip is back"; `awayTurn`: "Pip is away: takes the Dodge action" / "...: turn held" / "...: a stand-in plays" /
+  "Pip takes the rest of their turn"; `turnMoved`: "Pip's turn moves to the end of the round" / "Pip takes the held turn next".
+- **The server (not touched here).** Nothing is needed for the actions: they are ordinary actions through `apply()`.
+  If the owner wants "auto after N seconds", `tables.js` would keep a timer per player from the link reports and send
+  `{ type: 'stepAway', actor }` as the DM when it runs out, recorded as any DM action; the engine stays clock-free.
