@@ -658,13 +658,18 @@ map.
   `G.corners(h, 0.9)` for one square). Each line from the attacker finds one of three things:
   - *clear*: nothing that stops movement;
   - *holed*: stopped only by something that can be seen and shot through: a wall kind that blocks
-    movement and not sight (`window`, `rail`), a thing in a state that blocks movement and not sight
-    (a lowered portcullis), or a thing that fills its square (a statue, a crate, a chest: they block
-    movement and not sight, so they are never Total);
+    movement and not sight (`window`, `rail`), or a thing in a state that blocks movement and not
+    sight (a lowered portcullis);
+  - *filled*: stopped only by a thing that fills its square (a chest, a crate, a statue). The map
+    format says nothing of an object's height or width (a thing's definition gives only what it
+    blocks), so none is taken to cover a target fully: such a thing gives **at most Half Cover**
+    (review of #262, M1). A pillar that fills its square is drawn as walls round it, and is solid.
+    Rock tiles stay as on hexes: no cover, no block to sight (DEBT T22);
   - *solid*: stopped by what blocks movement and sight (a `wall`, a shut or locked door, an
     undiscovered secret door), or by a floor between levels.
   A corner on the far side of something solid *inside* the target's own space does not count as
-  seen (as on hexes). Then:
+  seen (as on hexes). Then, with the *filled* lines first read as clear, and again as *holed* but
+  capped at Half, the more protective of the two:
 
   | Centre line | Corner lines | Cover |
   |---|---|---|
@@ -684,7 +689,9 @@ map.
   SRD's Hide asks for Three-Quarters or Total Cover).
 - **Creature cover.** Another creature on the line gives Half: the centre line crosses one of its
   squares (a quarter foot inside), it is not dead, and it stands within 10 ft of the lower end's
-  height. A creature standing on the point an effect starts from covers nobody. It only matters
+  height. A creature standing where the line starts (on the point an effect starts from, or a Tiny
+  one sharing the attacker's square) or where it ends (a Tiny one sharing the target's) covers
+  nobody (review of #262, L1). It only matters
   where the walls give none (the most protective degree applies, SRD 1996-2001). `creatureCover:
   'off'` turns it off as on hexes.
 - **The attacker's point.** A creature attacks from the best of its squares: each square of its
@@ -692,7 +699,8 @@ map.
   An effect's point of origin is one point, the centre of its cell. **Total is the same both ways**:
   if the target, from any of its squares, has a line to the attacker's centre or a corner of its
   space, the cover is Three-Quarters, not Total (a creature that cannot be targeted cannot target
-  back either).
+  back either). An effect's point of origin counts as one square for the way back (review of
+  #262, L3), so Total agrees with whether an area reaches the target (`clear`, either way round).
 - **Effects** are the SRD's (1992-2030): Half +2, Three-Quarters +5 to Armor Class and Dexterity
   saving throws (`COVER`, read where it was: `resolve.js` attack, `rolls.js` save; neither changed);
   Total "can't be targeted directly" (`walled`, "There is a wall between ..."). `cover: 'off'` (what
@@ -711,13 +719,39 @@ map.
   creature cannot step across it. A line may pass *beside* the end of a single wall: a diagonal
   step past that end is refused (SRD 1824-1825, a movement rule), but one sees round it, and the
   target has cover from it. Both are tested.
-- **What players are sent (E7).** Wall pieces within `G.cornerReach + 0.02` ft of a shown cell's
-  centre (5/√2 on squares): the piece beside a shown square is that square's whole side, and a wall
-  beside an unshown square one further is not sent. Hex maps keep 5/√3.
+- **What players are sent (E7).** On squares, a wall piece is the part of the wall inside a shown
+  square and 0.02 ft round it (`SQUARE_CLIP`): the piece beside a shown square is its whole side, a
+  wall beside an unshown square one further is not sent, and a wall running on from a side into an
+  unshown square goes only 0.02 ft in (a circle through the corners went 1.06 ft in: review of
+  #262, L2). Hex maps keep the circle of `G.cornerReach + 0.02` (5/√3).
+- **Every wall piece is sent from its lower end to its higher (x, then y), on both grids** (review
+  of #262, M2). Before, a piece kept the direction it was drawn in and an undiscovered secret door's
+  piece the grid's, so the direction could tell a secret door from a wall. On hexes this changes
+  only pieces of walls drawn right to left (or upward); the stock maps and the valley have none,
+  and their two secret doors already ran forwards.
+- **Area cells under `rooms`** (DEBT P26): a `cast` or `act` event's cells are sent only where the
+  player is sent the tile, under every sight rule (before, under `rooms` they were all sent, so an
+  area reaching into a region not yet revealed showed its cells there). On hexes too.
+- **Doors and things on squares** (review of #262). Every use of `objectSegment` and `objectHexes`
+  passes the map's grid (a source-reading test checks the rules and the client; five client lines
+  in the Three.js files and the editor are listed for their lanes, DEBT T22). A door on a square's
+  side is used from either of its two squares or a square next to one, by `measure` (the
+  `squareRange` rule) from any square of the user's space; a thing from its square or one next to
+  it; a traced door within 5 ft of its line. Search measures to the nearer of a door's squares by
+  `measure`. A thing in a room the party has not been shown answers a player's `use` exactly as an
+  id that does not exist ("No such object.", nothing changes), on both grids.
+- **The words** for `squareCover` are `SETTING_TEXT.squareCover` in `engine/dm.js`, beside the
+  other square settings.
+- **For the owner** (review of #262, L5; not changed): a diagonal neighbour round the tip of a wall
+  end has Three-Quarters Cover (the centre line touches the tip); a big attacker uses its best
+  square, so a Large creature may have a clear shot at a Medium one that has Three-Quarters against
+  it the other way; a rail counts as 10 ft high, so a creature at a rail on the edge of a ledge has
+  Three-Quarters from below. "The DM sets cover by hand" is the table switch `cover: 'off'`, which
+  leaves only Total; there is no per-target override on either grid (L4, DEBT T22).
 - **Not built here:** rock and other impassable tiles still neither block sight nor give cover (as
-  on hexes, `sight.md` S1); a rail is as tall as a wall for every line; a thing filling a square is
-  as tall as a wall for cover; on a Large or bigger target, a part seen through a gap that reaches
-  neither the centre nor an outer corner is Total. `docs/DEBT.md` T22.
+  on hexes, `sight.md` S1); a rail is as tall as a wall for every line; on a Large or bigger target,
+  a part seen through a gap that reaches neither the centre nor an outer corner is Total.
+  `docs/DEBT.md` T22.
 
 ### Build notes: S7 (#258)
 
