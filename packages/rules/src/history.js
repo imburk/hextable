@@ -206,7 +206,8 @@ const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage acti
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
   editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
-  feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', levelUp: 'levelled up', equip: 'put on or took off an item', attune: 'chose an item to attune to' };
+  feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', levelUp: 'levelled up', equip: 'put on or took off an item', attune: 'chose an item to attune to',
+  drop: 'dropped something', pickUp: 'picked something up' };
 
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;
@@ -272,6 +273,8 @@ export function describeStep(action, events, before, after) {
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;
+    // Items between creatures (E17): never what was handed over; the gear events say that to those who may know.
+    case 'pass': label = `${who} handed something to ${name(a.to)}`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
   return label;
@@ -279,7 +282,7 @@ export function describeStep(action, events, before, after) {
 
   function finish(label) {
   const a = action;
-  const named = ['actor', 'target', 'entity'].map((k) => a[k]).filter((id) => typeof id === 'string');
+  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`
   const known = named.every((id) => classify(after, id) !== 'hidden');
   const heard = viewEvents(events, after, { role: 'player' }).length > 0;
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;

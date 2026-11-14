@@ -7,34 +7,19 @@ import { ABILITIES, SKILLS } from '../content/schema.js';
 import { begin, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
-import { apart, footprint, FT, ground, measure, overlapAt, STEP_MAX } from '../space.js';
+import { apart, FT, ground, overlapAt } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
-import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
+import { barriers, objectDef } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
-import { aimAction, findable, findDC, fitsOn, objectName, objectOf, objectShown, SEARCH_FEET, setObject, unhide } from './world.js';
+import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
 import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
 import { castFromItem } from './casting.js';
 
-// Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
-// Everything by the map's grid (review of #262). On squares, a door on a square's side is in reach
-// from either of its two squares or any square next to one, and a thing from its square or next to
-// it, measured by the table rule `squareRange` from any square of the user's space; a traced door
-// (`seg`) within 5 ft of its line, as on hexes. Hex maps as before.
-function nearObject(s, e, o) {
-  const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[col(o.at)]?.h ?? 0);
-  if (!ground(s.map, e.pos) || Math.abs(e.pos.z - z) > STEP_MAX) return false;
-  const G = gridOf(s.map), seg = objectSegment(o, G);
-  if (G.kind === 'square' && !(seg && o.seg)) {
-    const m = measure(s, G), cells = seg ? objectHexes(o, G) : [o.at];
-    return footprint(e, e.pos, G).some((p) => cells.some((h) => m(p, h) <= 1));
-  }
-  return seg ? distToSegment(G.center(e.pos), seg) <= FT + 1e-9 : G.dist(e.pos, o.at) <= 1;     // within 5 ft
-}
 const hasKey = (e, key) => e.gear.some((g) => String(g).toLowerCase() === key.toLowerCase());
 
 // What this creature could do right now with the objects in reach: [{ object, name, verb, label, time, why }].
@@ -84,11 +69,12 @@ export function hideProblem(s, e) {
 }
 // An enemy that can see this creature where it stands, not counting its hiding, with less than Three-Quarters Cover.
 const spotter = (s, e) => living(s).find((o) => up(o) && hostile(o, e) && canSee(s, o, e, { ignoreHiding: true }) !== 'no' && !['threeQuarters', 'total'].includes(coverOf(s, o, e))) ?? null;
-// After every action: an enemy that can see a hiding creature anyway (Blindsight, Truesight) has
+// After every action: piles' unseen marks (seePiles), and an enemy that can see a hiding creature anyway (Blindsight, Truesight) has
 // found it, and with the table rule passiveFind 'all' so has one whose passive Perception meets
 // its DC and that has it in view; Lightly Obscured (Dim Light) costs that 5.
 export function watch(s, ev) {
   initiativeFeatures(s, ev);
+  seePiles(s);                                   // things dropped unseen, once the party knows who dropped them (world.js)
   for (const h of living(s)) {
     if (!h.hiding) continue;
     for (const o of living(s)) {
