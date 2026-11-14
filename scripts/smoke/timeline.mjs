@@ -105,8 +105,10 @@ async function pacing(browser, url, label, opts) {
         let canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : null;
         canvasPt ??= await page.evaluate(() => {
           const h = window.hextable, at = Object.values(h.state.entities).map((e) => h.R.screenOf(e.pos)).filter(Boolean);
-          for (let y = 60; y < innerHeight - 20; y += 30) for (let x = 20; x < innerWidth - 20; x += 30) {
-            if (document.elementFromPoint(x, y)?.id === 'gl' && at.every((p) => Math.hypot(p.x - x, p.y - y) > 80)) return { x, y };
+          // Bare map with room round it: the corner chips and the turn strip sit at the edges, and a tap on their rim opens the drawer.
+          const bare = (x, y) => [[0, 0], [24, 0], [-24, 0], [0, 24], [0, -24]].every(([dx, dy]) => document.elementFromPoint(x + dx, y + dy)?.id === 'gl');
+          for (let y = 150; y < innerHeight - 20; y += 30) for (let x = 40; x < innerWidth - 40; x += 30) {
+            if (bare(x, y) && at.every((p) => Math.hypot(p.x - x, p.y - y) > 80)) return { x, y };
           }
           return null;
         });
