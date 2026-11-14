@@ -395,10 +395,10 @@ export function nearObject(s, e, o) {
 // taken by `pickUp`, laid down by the DM with `mapEdit`. The map document's linter (map.js) does not read
 // `contents`, so what is not well formed is left out here, and so never offered, sent or picked up.
 export const PILE_MAX = 40;
-const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges', 'by'];
+const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges'];
 export const isPile = (o) => objectDef(o)?.kind === 'pile';
 const wellFormed = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).every((k) => CONTENT_KEYS.includes(k)) &&
-  typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) && (x.by === undefined || typeof x.by === 'string') &&
+  typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) &&
   (x.item === undefined ? typeof x.name === 'string' && !!x.name.trim() && x.name.length <= 60 && ['base', 'type', 'spell', 'charges'].every((k) => x[k] === undefined)
     : x.name === undefined && typeof x.item === 'string' && Object.hasOwn(CONTENT.items, x.item) &&
       (x.charges === undefined || (Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= (CONTENT.items[x.item].charges?.max ?? -1))));
@@ -407,36 +407,44 @@ export function pileContents(o) {
   const seen = new Set();
   return o.contents.filter((x) => wellFormed(x) && !seen.has(x.id) && seen.add(x.id)).slice(0, PILE_MAX);
 }
-// `by` on a thing on a pile: the creature that dropped it while the party did not know of it (review of #291). Players
-// are not sent it, or the pile if nothing else lies there, and can't name it, until `seePiles` takes the mark off:
-// when the party knows of that creature, or it is no longer on the map. The DM sees everything.
-export const openContents = (o) => pileContents(o).filter((x) => x.by === undefined);
-// May players know of this pile? Something on it they may be told of, or nothing on it at all (a pile the DM laid
-// down empty); not one whose only contents were dropped unseen.
-export const pileOpen = (o) => !isPile(o) || openContents(o).length > 0 || !pileContents(o).length;
-// After every action (features.js, watch): marks whose creature the party now knows of, or that is gone, come off.
+// What a creature the party does not know of drops goes onto a pile of its own, marked `by` (its id), beside any pile
+// the party sees in that cell (review of #291): so a pile the party sees, its ids, its room and what happens to it
+// never depend on what they can't see. Players are not sent a marked pile and can't name it (`pileOpen`); the DM sees
+// every record. `seePiles` takes the mark off when the party knows of that creature, or it is gone from the map,
+// and then the pile joins the cell's open pile (or becomes it).
+export const pileOpen = (o) => !isPile(o) || o.by === undefined;
+export const openContents = (o) => (pileOpen(o) ? pileContents(o) : []);
+// After every action (features.js, watch).
 export function seePiles(s) {
-  for (const o of s.map.objects) {
-    if (!isPile(o) || !Array.isArray(o.contents)) continue;
-    for (const x of o.contents) {
-      if (!x || typeof x !== 'object' || x.by === undefined) continue;
-      const e = Object.hasOwn(s.entities, x.by) ? s.entities[x.by] : null;
-      if (!e || !unknown(s, e)) delete x.by;
+  for (const o of [...s.map.objects]) {
+    if (!isPile(o) || o.by === undefined) continue;
+    const e = Object.hasOwn(s.entities, o.by) ? s.entities[o.by] : null;
+    if (e && unknown(s, e)) continue;
+    if (s.map.seen?.objects) delete s.map.seen.objects[o.id];
+    const open = pileAt(s, o.level, o.at);
+    if (!open) { delete o.by; o.id = pileId(s, o.level, o.at); continue; }
+    if (!Array.isArray(open.contents)) open.contents = [];
+    for (const x of Array.isArray(o.contents) ? o.contents : []) {
+      if (open.contents.length >= PILE_MAX) break;
+      let n = 1;
+      while (open.contents.some((y) => y?.id === `c${n}`)) n++;
+      open.contents.push({ ...x, id: `c${n}` });
     }
+    s.map.objects.splice(s.map.objects.indexOf(o), 1);
   }
 }
-// The id of a new pile: from where it lies (there is one pile to a cell), so that it says nothing of other piles,
-// as a count would (review of #291).
-export function pileId(s, level, h) {
+// The id of a new pile: from where it lies (there is one open pile to a cell), so that it says nothing of other
+// piles, as a count would (review of #291). A pile dropped unseen gets one apart (`-h1`), never the open one's.
+export function pileId(s, level, h, by = null) {
   const base = `pile-${level}-${h.q}_${h.r}`.replace(/[^A-Za-z0-9_-]/g, '');
-  let id = base, n = 1;
-  while (s.map.objects.some((x) => x.id === id)) id = `${base}-${++n}`;
+  let id = by ? `${base}-h1` : base, n = 1;
+  while (s.map.objects.some((x) => x.id === id)) id = by ? `${base}-h${++n}` : `${base}-${++n}`;
   return id;
 }
 // What a thing on the ground is called: its name, or the magic item's ("Spear +1").
 export const contentName = (x) => (x.item !== undefined ? itemName(CONTENT.items[x.item], x) : x.name.trim());
-// The pile in this cell of this level, if there is one.
-export const pileAt = (s, level, h) => s.map.objects.find((o) => isPile(o) && o.level === level && o.at.q === h.q && o.at.r === h.r) ?? null;
+// The open pile in this cell of this level, or with `by` the one that creature dropped there unseen, if there is one.
+export const pileAt = (s, level, h, by = null) => s.map.objects.find((o) => isPile(o) && o.level === level && o.at.q === h.q && o.at.r === h.r && (o.by ?? null) === by) ?? null;
 
 // Can `e` stand at `to`? Ground or air it fits in, a body that fits, not the hex it is on, and in
 // the arena if it is fighting. '' if so, else why not.

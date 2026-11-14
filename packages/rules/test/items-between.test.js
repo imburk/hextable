@@ -359,12 +359,12 @@ for (const grid of ["hex", "square"]) for (const rule of SIGHT) {
     const before = objects();
     const r = ok(apply(s, { type: "drop", actor: g.id, item: "Bone dice" }, DM));
     const pile = s.map.objects.find((o) => o.def === "pile");
-    assert.equal(pile.contents[0].by, g.id, "marked: dropped unseen");
+    assert.equal(pile.by, g.id, "marked: dropped unseen");
     assert.equal(objects(), before, "players' map is as it was");
     assert.ok(!JSON.stringify(view(s, PAT)).includes("Bone dice"));
     assert.deepEqual(viewEvents(r.events, s, PAT), []);
     // It can't be named by a player: the answer is the one for no object.
-    assert.equal(pile.id, `pile-ground-${at[1].q}_${at[1].r}`, "named from where it lies, not counted");
+    assert.equal(pile.id, `pile-ground-${at[1].q}_${at[1].r}-h1`, "named from where it lies, not counted");
     const nothing = apply(structuredClone(s), { type: "pickUp", actor: "fighter", object: "no-such" }, PAT);
     assert.deepEqual(apply(structuredClone(s), { type: "pickUp", actor: "fighter", object: pile.id }, PAT), nothing);
     // The party's own drop: its id is what it would have been with no hidden pile.
@@ -377,7 +377,8 @@ for (const grid of ["hex", "square"]) for (const rule of SIGHT) {
     assert.deepEqual(view(s, PAT).map.objects.find((o) => o.id === mine.id).contents, [{ id: "c1", name: "Rope" }]);
     // The DM reveals the goblin: the mark comes off and the pile is there for players.
     ok(apply(s, { type: "reveal", actor: g.id, hidden: false }, DM));
-    assert.equal(pile.contents[0].by, undefined);
+    assert.equal(pile.by, undefined);
+    assert.equal(pile.id, `pile-ground-${at[1].q}_${at[1].r}`, "now the cell's open pile");
     assert.deepEqual(view(s, PAT).map.objects.find((o) => o.id === pile.id)?.contents, [{ id: "c1", name: "Bone dice" }]);
     void at;
   });
@@ -397,9 +398,42 @@ test("a hidden creature's drop onto a pile the party sees: the pile stays as it 
   no(apply(structuredClone(s), { type: "pickUp", actor: "fighter", object: pile.id, item: "c2" }, PAT), /not there/);
   const all = ok(apply(s, { type: "pickUp", actor: "fighter", object: pile.id }, PAT));
   assert.deepEqual(gears(all).map((e) => e.item), ["Rope"], "only what they may know of");
-  assert.ok(s.map.objects.includes(pile) && pile.contents.length === 1, "the dice stay, for the DM");
-  assert.ok(!view(s, PAT).map.objects.some((o) => o.id === pile.id), "and the pile is not sent");
+  assert.ok(all.events.some((e) => e.type === "object" && e.gone), "the pile they saw is gone");
+  const dice = s.map.objects.find((o) => o.def === "pile");
+  assert.ok(dice && dice.by === g.id && dice.contents[0].name === "Bone dice", "the dice stay, on a pile of their own, for the DM");
+  assert.ok(!view(s, PAT).map.objects.some((o) => o.def === "pile"), "and no pile is sent");
+  // The goblin is revealed: the dice become the cell's pile.
+  ok(apply(s, { type: "reveal", actor: g.id, hidden: false }, DM));
+  assert.equal(view(s, PAT).map.objects.find((o) => o.def === "pile").id, pile.id);
 });
+
+// Review of #291, second round: a party drop (and the pick-up after it) where a hidden pile lies is, for a player,
+// exactly a drop onto a bare cell: ids, flags, refusals, event order and what the record says.
+for (const grid of ["hex", "square"]) for (const rule of SIGHT) {
+  test(`a drop where a hidden pile lies is, to players, a drop on a bare cell (${grid}, ${rule})`, () => {
+    const runs = [0, 1, 40].map((hidden) => {
+      const { s, g, at } = place(grid, rule);
+      ok(apply(s, { type: "place", actor: g.id, to: at[2] }, DM));
+      g.gear.push(...Array.from({ length: hidden }, (_, i) => `Pebble ${i}`));
+      for (let i = 0; i < hidden; i++) ok(apply(s, { type: "drop", actor: g.id, item: `Pebble ${i}` }, DM));
+      ok(apply(s, { type: "place", actor: g.id, to: at[1] }, DM));
+      assert.equal(s.map.objects.filter((o) => o.def === "pile").length, hidden ? 1 : 0);
+      s.entities.fighter.pos = { ...at[2], z: 0 };
+      s.entities.fighter.gear.push(...Array.from({ length: 41 }, (_, i) => `Coin ${i}`));
+      const out = [];
+      const see = (r) => out.push(r.ok ? viewEvents(r.events, s, PAT) : r, JSON.stringify(view(s, PAT).map.objects), JSON.stringify(view(s, PAT).entities?.fighter?.gear ?? null));
+      for (let i = 0; i < 41; i++) see(apply(s, { type: "drop", actor: "fighter", item: `Coin ${i}` }, PAT));
+      const mine = s.map.objects.find((o) => o.def === "pile" && !o.by);
+      for (let i = 0; i < 40; i++) see(apply(s, { type: "pickUp", actor: "fighter", object: mine?.id ?? "x", item: `c${i + 1}` }, PAT));
+      out.push(JSON.stringify(viewEvents(s.timeline, s, PAT).filter((e) => ["gear", "object"].includes(e.type))));
+      return out;
+    });
+    assert.deepEqual(runs[1], runs[0], "one hidden thing there changes nothing players see");
+    assert.deepEqual(runs[2], runs[0], "nor forty");
+    assert.ok(JSON.stringify(runs[0]).includes('"placed":true') && JSON.stringify(runs[0]).includes('"gone":true'));
+    assert.ok(JSON.stringify(runs[0]).includes("40 things lie there already"), "the open pile's own room");
+  });
+}
 
 test("pickUp through a wall is refused, as pass is: on squares (the stub wall) and on hexes", () => {
   const s = newGame(14);

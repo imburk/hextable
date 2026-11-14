@@ -370,23 +370,24 @@ Object.assign(handlers, {
     able(e);
     const h = holding(e, a.item);
     const sf = under(s.map, e.pos) || fail(`There is nothing under ${e.name} for it to land on.`);
-    const there = pileAt(s, sf.level.id, e.pos);
+    // Dropped by a creature the party does not know of: onto a pile of its own, which players are not told of until
+    // they know who (seePiles); a drop the party may know of never meets it, so nothing about it shows.
+    const unseen = unknown(s, e), by = unseen ? e.id : null;
+    const there = pileAt(s, sf.level.id, e.pos, by);
     !there || (Array.isArray(there.contents) ? there.contents.length : 0) < PILE_MAX || fail(`${PILE_MAX} things lie there already.`);
     const lit = carriesLit(e, h);
     const time = interaction(s, e);
     together(s, ev, [e.id], () => takeOut(s, e.id, h, ev));
     pay(s, time);
-    // Dropped by a creature the party does not know of: players are not told of it until they know who (seePiles).
-    const unseen = unknown(s, e);
     let o = there;
     if (!o) {
-      o = { id: pileId(s, sf.level.id, e.pos), def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [] };
+      o = { id: pileId(s, sf.level.id, e.pos, by), def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [], ...(by ? { by } : {}) };
       s.map.objects.push(o);
     }
     if (!Array.isArray(o.contents)) o.contents = [];
     let n = 1;
     while (o.contents.some((x) => x?.id === `c${n}`)) n++;
-    o.contents.push({ id: `c${n}`, ...(h.spec ? h.spec : { name: h.name }), ...(unseen ? { by: e.id } : {}) });
+    o.contents.push({ id: `c${n}`, ...(h.spec ? h.spec : { name: h.name }) });
     const seen = !unseen && seesPile(s, o);
     ev.push(gearEv(e.id, h, 'drop', { ...(h.key ? { key: h.key } : {}), object: o.id, taken: true, ...(h.attuned ? { unattuned: true } : {}), ...(seen ? { seen: true } : {}) }));
     leaves(s, e, h, ev);
@@ -409,14 +410,14 @@ Object.assign(handlers, {
     const o = objectOf(s, a.object, ctx), name = objectName(o).toLowerCase();
     isPile(o) || fail(`The ${name} is not something to pick up.`);
     nearObject(s, e, o) || fail(`${e.name} is too far from the ${name}.`);
-    const list = ctx.role === 'dm' ? pileContents(o) : openContents(o);        // a player can't name what was dropped unseen
+    const list = pileContents(o);
     list.length || fail('There is nothing there to pick up.');
     let take;
     if (a.item === undefined) {
       (list.length === 1 || !(s.encounter && inFight(s, e.id))) || fail('Name one thing to pick up: in a fight each thing is an object interaction.');
       take = list;
     } else take = [list.find((x) => x.id === a.item) || fail('That is not there.')];
-    const things = take.map((x) => { const { id: _id, by: _by, ...spec } = x; return { id: x.id, name: contentName(x), ...(x.item !== undefined ? { spec, pack: x.item } : {}) }; });
+    const things = take.map((x) => { const { id: _id, ...spec } = x; return { id: x.id, name: contentName(x), ...(x.item !== undefined ? { spec, pack: x.item } : {}) }; });
     roomFor(e, things);
     const time = interaction(s, e);
     const got = together(s, ev, [e.id], () => putIn(s, e.id, things, ev));
