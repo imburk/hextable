@@ -80,18 +80,6 @@ body.fight #status { border-color: var(--accent); }
 #c-res { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
 #c-res span { border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px; } #c-res span.spent { opacity: .4; text-decoration: line-through; }
 #c-res span.have { border-color: var(--accent); }
-#actions { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
-#actions button { flex: none; text-align: left; display: grid; padding: 6px 10px; min-width: 96px; }
-#actions button small { color: var(--muted); font-size: 11px; white-space: nowrap; }
-#actions button.armed { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); } #actions button.armed small { color: inherit; }
-#actions button.bonus { border-style: dashed; }
-#actions button.end { margin-left: auto; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; min-width: 0; align-content: center; }
-#actions { overscroll-behavior-x: contain; }
-/* A creature with many actions (a monster with a Multiattack and four attacks, plus Search, Dash, Disengage, Dodge):
-   on a phone the bar is two rows that scroll sideways together, so about twice as many are in reach and the card
-   grows by one row, not by a screenful. */
-@media (max-width: 600px) { #actions.many { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, auto); grid-auto-columns: max-content; } #actions.many button { min-width: 0; } }
-#actions .wait { color: var(--muted); align-self: center; padding: 8px 0; }
 
 /* panels */
 .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--panel); border-left: 1px solid var(--line); padding: max(14px, env(safe-area-inset-top)) 16px 24px; overflow-y: auto; z-index: 5; backdrop-filter: blur(6px); }
@@ -240,7 +228,7 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 /* The timeline (docs/specs/renderer.md, decision 3): while beats play in `wait`, a quiet "…" and the controls dimmed. A tap skips. */
 #pace-wait { position: absolute; right: 12px; top: -38px; min-width: 44px; min-height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
 #pace-wait[hidden] { display: none; }
-body.playing #actions, body.playing #btn-end { opacity: 0.5; }
+body.playing #btn-end { opacity: 0.5; }
 
 /* The tracker, a tab of the drawer (tracker.js). Rows run top to bottom in initiative order. */
 .tr-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }

@@ -61,7 +61,7 @@ async function tabs(browser, url, label, opts) {
         await waitShown(page, '#ap-attacks', true, 15000);
         const t = await text(page, '#ap-attacks [data-row="atk:longsword"]');
         if (!/Longsword/.test(t) || !/to hit/.test(t) || !/reach 5 ft/.test(t) || !/Action/.test(t)) throw new Error(`the attack row says too little: ${t}`);
-        if (await shown(page, '#actions')) throw new Error('the old bar is showing');
+        if (await shown(page, '#ap-spells')) throw new Error('the Spells tab is showing in front of the Attacks');
         await whole(page, '#ap-attacks');
       });
 
@@ -132,9 +132,54 @@ async function tabs(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'healing-word');
         await waitShown(page, '#hint'); await page.click('#hint-cancel');
         await wait(page, () => window.hextable.mode.kind === 'move' && !document.querySelector('#card').hasAttribute('data-collapsed'));
-        await panelTab(page, 'all');
-        if (!/Sacred Flame/.test(await text(page, '#actions'))) throw new Error('the spell tab does not list her spells');
-        if (!/^Spells$/.test(await text(page, '#ap-tab-all'))) throw new Error('the spell tab is not labelled Spells');
+        await panelTab(page, 'spells');
+        if (!/Sacred Flame/.test(await text(page, '#ap-spells'))) throw new Error('the spell tab does not list her spells');
+        if (!/^Spells$/.test(await text(page, '#ap-tab-spells'))) throw new Error('the spell tab is not labelled Spells');
+        if (await page.$('#ap-tab-all, #ap-all, #actions')) throw new Error('the old tab or bar is still in the page');
+      });
+
+      await run.do('the Spells tab: the slot strip stays whatever the sort, the sort is remembered, the filters combine', async () => {
+        await visit(page, 'spells');
+        const rows = () => page.$$eval('#ap-spells [data-row]', (b) => b.map((x) => x.dataset.row.replace(/^spell:/, '')));
+        const strip = async (why) => {
+          const r = await page.$eval('#ap-spells .ap-slots', (el) => { const q = el.getBoundingClientRect(), p = el.closest("#ap-spells").getBoundingClientRect(); return { txt: el.textContent.replace(/\s+/g, ' ').trim(), inside: q.height > 0 && q.top >= p.top - 1 && q.bottom <= p.bottom + 1 }; });
+          if (!/Level 1/.test(r.txt) || !/2 of 2/.test(r.txt) || !r.inside) throw new Error(`the slot strip (${why}): ${JSON.stringify(r)}`);
+        };
+        await strip('level sort');
+        for (const sort of ['name', 'school', 'time', 'level']) { await page.selectOption('#ap-spells [data-sort]', sort); await wait(page, (v) => document.querySelector('#ap-spells [data-sort]')?.value === v, sort); await strip(`${sort} sort`); }
+        await page.selectOption('#ap-spells [data-sort]', 'name');
+        await wait(page, () => localStorage.getItem('hextable.spellSort') === '"name"');
+        if ((await rows()).join() !== 'cure-wounds,healing-word,sacred-flame,shield-of-faith') throw new Error(`by name: ${await rows()}`);
+        await visit(page, 'move'); await visit(page, 'spells');
+        if ((await page.$eval('#ap-spells [data-sort]', (x) => x.value)) !== 'name') throw new Error('the sort was not kept');
+        await page.selectOption('#ap-spells [data-sort]', 'level');
+        await tap('#ap-spells [data-filters]'); await waitShown(page, '#ap-spells .ap-filters');
+        await tap('#ap-spells [data-f="level:cantrip"]'); await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 1);
+        if ((await rows()).join() !== 'sacred-flame') throw new Error(`Cantrips: ${await rows()}`);
+        await tap('#ap-spells [data-f="level:cantrip"]'); await tap('#ap-spells [data-f="level:prepared"]');
+        await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 3);
+        await tap('#ap-spells [data-f="kind:healing"]');
+        await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 2);
+        if ((await rows()).sort().join() !== 'cure-wounds,healing-word') throw new Error(`Prepared and Healing: ${await rows()}`);
+        await tap('#ap-spells [data-f="cast:Bonus"]'); await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 1);
+        if ((await rows()).join() !== 'healing-word') throw new Error(`Prepared, Healing and Bonus: ${await rows()}`);
+        await tap('#ap-spells [data-f="can"]');
+        await wait(page, () => /Filters \(4\)/.test(document.querySelector('#ap-spells [data-filters]').textContent));
+        await tap('#ap-spells [data-clear]'); await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 4);
+        await tap('#ap-spells [data-filters]'); await wait(page, () => !document.querySelector('#ap-spells .ap-filters'));
+        await whole(page, '#ap-spells');
+      });
+
+      await run.do('a spell armed from the Spells tab collapses the panel on a phone, and Cancel brings it back', async () => {
+        const narrow = await page.evaluate(() => matchMedia('(max-width: 600px)').matches);
+        await visit(page, 'spells');
+        await tap('#ap-spells [data-row="spell:sacred-flame"]');
+        await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'sacred-flame');
+        await wait(page, (n) => document.querySelector('#card').hasAttribute('data-collapsed') === n, narrow);
+        await waitShown(page, '#hint'); await page.click('#hint-cancel');
+        await wait(page, () => window.hextable.mode.kind === 'move' && !document.querySelector('#card').hasAttribute('data-collapsed'));
+        await waitShown(page, '#ap-spells [data-row="spell:sacred-flame"]');
+        await page.screenshot({ path: `/tmp/t4b/spells-${touch ? 'phone' : 'desktop'}.png` });
       });
 
       await run.do('on another\'s turn every Features row is greyed with the reason written on screen', async () => {

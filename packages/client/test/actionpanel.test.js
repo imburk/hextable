@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
@@ -30,14 +30,14 @@ function fight() {
   return s;
 }
 
-test('exploring: Explore first, then Spells, Features, Items; the shell draws Explore, the spell tab (id all) and Features', () => {
+test('exploring: Explore first, then Spells, Features, Items; the shell draws Explore, Spells and Features', () => {
   const s = newGame(7), c = panelContext(s, s.entities.cleric);
   assert.equal(c.situation, 'explore'); assert.equal(c.default, 'explore');
   assert.deepEqual(c.tabs.map((t) => t.id), ['explore', 'spells', 'features', 'items']);
-  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['explore', 'all', 'features']);
+  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['explore', 'spells', 'features']);
   assert.deepEqual(visibleTabs(c, { spells: false, features: false }).map((t) => t.id), ['explore'], 'a tab with nothing in it is not drawn');
   assert.equal(defaultTab(c, visibleTabs(c)), 'explore');
-  assert.equal(defaultTab(c, visibleTabs(c), { pref: 'remember', last: { explore: 'all' } }), 'all');
+  assert.equal(defaultTab(c, visibleTabs(c), { pref: 'remember', last: { explore: 'spells' } }), 'spells');
 });
 
 test('in a fight: on your turn Attacks (Spells with no attack), on another\'s Reactions', () => {
@@ -45,13 +45,13 @@ test('in a fight: on your turn Attacks (Spells with no attack), on another\'s Re
   const mine = panelContext(s, cur, { dm: true });
   assert.equal(mine.situation, 'turn'); assert.deepEqual(mine.tabs.map((t) => t.id), ['attacks', 'spells', 'bonus', 'move', 'features', 'items']);
   assert.equal(mine.default, cur.attacks?.length || cur.actions?.length ? 'attacks' : 'spells');
-  assert.deepEqual(visibleTabs(mine).map((t) => t.id), ['attacks', 'all', 'bonus', 'move', 'features']);
+  assert.deepEqual(visibleTabs(mine).map((t) => t.id), ['attacks', 'spells', 'bonus', 'move', 'features']);
   assert.deepEqual(visibleTabs(mine, { spells: false, attacks: false, features: false }).map((t) => t.id), ['bonus', 'move']);
-  assert.equal(defaultTab(mine, visibleTabs(mine, { attacks: false })), 'all', 'no attack: the spells are the default');
+  assert.equal(defaultTab(mine, visibleTabs(mine, { attacks: false })), 'spells', 'no attack: the spells are the default');
   const waiting = Object.values(s.entities).find((e) => e.kind === 'pc' && e.id !== cur.id && s.encounter.order.some((o) => o.id === e.id));
   const c = panelContext(s, waiting, { dm: true });
   assert.equal(c.situation, 'wait'); assert.deepEqual(c.tabs.map((t) => t.id), ['reactions', 'spells', 'features', 'items']);
-  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['reactions', 'all', 'features']);
+  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['reactions', 'spells', 'features']);
 });
 
 test('Reactions is greyed with a reason when there is none to take, active and pulsing with a question waiting', () => {
@@ -59,7 +59,7 @@ test('Reactions is greyed with a reason when there is none to take, active and p
   pc.reactionUsed = true;
   let r = panelContext(s, pc, { dm: true }).tabs[0];
   assert.equal(r.ok, false); assert.match(r.why, /Reaction used this round/);
-  assert.equal(defaultTab(panelContext(s, pc), visibleTabs(panelContext(s, pc)), { last: { wait: 'all' } }), 'all');     // not available: the last tab used
+  assert.equal(defaultTab(panelContext(s, pc), visibleTabs(panelContext(s, pc)), { last: { wait: 'spells' } }), 'spells');     // not available: the last tab used
   s.prompt = { n: 1, reactor: pc.id, trigger: 'hit', options: [] };
   r = panelContext(s, pc, { dm: false }).tabs[0];
   assert.equal(r.pending, true);
@@ -253,4 +253,78 @@ test('movement left is shown in whole feet, rounded down, on a square map only; 
   s.encounter.budget.move = 30 - 5 * Math.SQRT2;
   assert.equal(moveBudget(s, e).left, 22);
   assert.match(statusHtml(s, e, { mine: true, full: true, budget: { ...s.encounter.budget, attacksLeft: 0 } }), /Move 22 ft/);
+});
+
+// ---------- the Spells tab (T4b) ----------
+const cleric = (s) => s.entities.cleric;
+test('spell rows carry level, cost, range, concentration and kinds; a spell with kinds [] says nothing is known', () => {
+  const s = newGame(7), rows = spellRows(s, cleric(s)), by = Object.fromEntries(rows.map((r) => [r.spell, r]));
+  assert.deepEqual(rows.map((r) => r.spell).sort(), ['cure-wounds', 'healing-word', 'sacred-flame', 'shield-of-faith']);
+  assert.equal(by['sacred-flame'].level, 0); assert.equal(by['healing-word'].cast, 'Bonus'); assert.equal(by['healing-word'].chip, 'Bonus');
+  assert.match(by['sacred-flame'].sub, /Cantrip · 60 ft/); assert.ok(by['shield-of-faith'].conc); assert.match(by['shield-of-faith'].sub, /Concentration/);
+  assert.ok(by['cure-wounds'].kinds.includes('healing'));
+});
+
+test('the slot strip: one entry per level with what is left; Pact slots are one row labelled so', () => {
+  const s = newGame(7), e = cleric(s);
+  assert.deepEqual(slotStrip(e), [{ level: 1, left: 2, max: 2, label: 'Level 1' }]);
+  e.slots[1] = 0; assert.equal(slotStrip(e)[0].left, 0);
+  assert.deepEqual(slotStrip({ slots: { 3: 1 }, slotsMax: { 3: 2 }, pact: true }), [{ level: 3, left: 1, max: 2, label: 'Pact slots, level 3' }]);
+  assert.deepEqual(slotStrip({ spells: [] }), [], 'no slots: no strip');
+});
+
+test('sort: Level groups Cantrips first, Name is one list, School and Casting time group', () => {
+  const s = newGame(7), rows = spellRows(s, cleric(s));
+  assert.deepEqual(sortSpells(rows, 'level').map((g) => g.head), ['Cantrips', 'Level 1']);
+  assert.deepEqual(sortSpells(rows, 'name').map((g) => g.rows.map((r) => r.spell)), [['cure-wounds', 'healing-word', 'sacred-flame', 'shield-of-faith']]);
+  assert.deepEqual(sortSpells(rows, 'school').map((g) => g.head), ['Abjuration', 'Evocation']);
+  assert.deepEqual(sortSpells(rows, 'time').map((g) => g.head), ['Action', 'Bonus']);
+  assert.deepEqual(sortSpells([], 'name'), []);
+});
+
+test('filters combine: any one chip of a kind, every kind that is on; Prepared is "not a cantrip"; a spell of unknown kind passes every Kind chip', () => {
+  const s = newGame(7), rows = spellRows(s, cleric(s)), f = (o) => ({ ...noFilters(), ...o }), names = (o) => filterSpells(rows, f(o)).map((r) => r.spell).sort();
+  assert.deepEqual(names({}), ['cure-wounds', 'healing-word', 'sacred-flame', 'shield-of-faith']);
+  assert.deepEqual(names({ level: ['cantrip'] }), ['sacred-flame']);
+  assert.deepEqual(names({ level: ['prepared'] }), ['cure-wounds', 'healing-word', 'shield-of-faith']);
+  assert.deepEqual(names({ level: ['cantrip', 'prepared'] }).length, 4);
+  assert.deepEqual(names({ level: ['prepared'], kind: ['healing'] }), ['cure-wounds', 'healing-word']);
+  assert.deepEqual(names({ level: ['prepared'], kind: ['healing'], cast: ['Bonus'] }), ['healing-word']);
+  assert.deepEqual(names({ cast: ['Action', 'Bonus'], conc: true }), ['shield-of-faith']);
+  assert.deepEqual(names({ ritual: true }), []);
+  const unknown = rows.map((r) => ({ ...r, kinds: [] }));
+  assert.equal(filterSpells(unknown, f({ kind: ['damage'] })).length, 4, 'kind not known: shown under every kind');
+  assert.equal(filtersOn(f({ level: ['cantrip'], kind: ['healing', 'damage'], can: true })), 4);
+  assert.equal(castGroup({ time: 'minute' }), 'Longer'); assert.equal(castGroup({ time: 'reaction' }), 'Reaction');
+});
+
+test('Can cast now follows the greyed state; a spell with no slot left says so, and out of turn the engine\'s own words', () => {
+  const s = fight(), cur = s.entities[current(s)], other = Object.values(s.entities).find((e) => e.id !== cur.id && e.spells?.length && s.encounter.order.some((o) => o.id === e.id));
+  const rows = spellRows(s, other);
+  assert.ok(rows.every((r) => r.why), 'not its turn: every row is greyed');
+  assert.match(rows[0].why, /isn't .+ turn/);
+  assert.equal(filterSpells(rows, { ...noFilters(), can: true }).length, 0);
+  const mine = Object.values(s.entities).find((e) => e.spells?.includes('cure-wounds'));
+  mine.slots[1] = 0;
+  assert.ok(spellRows(s, mine).filter((r) => r.level > 0).every((r) => r.why));
+});
+
+test('a creature spell with nobody within its range is greyed "Nobody within N ft."; an area, a self spell and a spell with someone in range are not', () => {
+  const s = newGame(7);
+  const e = cleric(s), foes = Object.values(s.entities).filter((x) => x.side === 'foe');
+  for (const x of Object.values(s.entities)) if (x.id !== e.id) x.pos = { q: e.pos.q + 40, r: e.pos.r };            // everyone far out of every range (the engine's list counts allies too)
+  const by = Object.fromEntries(spellRows(s, e).map((r) => [r.spell, r]));
+  assert.equal(by['sacred-flame'].why, 'Nobody within 60 ft.');
+  assert.equal(by['healing-word'].why, '', 'it can be aimed at the caster');
+  foes[0].pos = { q: e.pos.q + 1, r: e.pos.r };
+  assert.equal(spellRows(s, e).find((r) => r.spell === 'sacred-flame').why, '');
+});
+
+test('Explore\'s healing shortcut for a spell jumps to its row in the Spells tab', () => {
+  const s = newGame(7), e = cleric(s);
+  e.hp = 2;
+  const j = rankExplore(s, e).find((r) => r.id === 'heal:cure-wounds');
+  assert.ok(j, 'a hurt cleric is offered Cure Wounds');
+  assert.equal(j.jumpTab, 'spells'); assert.equal(j.jump, 'spell:cure-wounds');
+  assert.ok(spellRows(s, e).some((r) => r.id === j.jump), 'the row it jumps to exists');
 });

@@ -17,7 +17,7 @@ import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker } from './tracker.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
-import { initActionPanel, spellWhy } from './actionpanel.js';
+import { initActionPanel } from './actionpanel.js';
 import { initDrawer } from './drawer.js';
 import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
@@ -383,14 +383,6 @@ function idled() {
 }
 
 // ---------- rendering the UI ----------
-function button(label, sub, cls, why, onClick) {
-  const b = document.createElement('button');
-  b.type = 'button'; b.className = `${cls} ${why ? 'off' : ''}`;
-  b.innerHTML = `<span>${esc(label)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}`;
-  b.onclick = () => { if (skipping()) return; if (why) toast(why); else onClick(); };
-  return b;
-}
-
 // Cast a spell that has nothing to aim on the spot, or arm it (or put it down again if it is armed).
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
@@ -480,21 +472,8 @@ function refresh() {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
     const my = mine(e), full = !!e.abil;
     const myTurn = enc && cur === e.id && up(e);
-    // The Spells tab is T4b's: until it exists the spell buttons (and Metamagic) are built here, in the tab with id `all`. Everything else has a row in its own
-    // tab (actionpanel.js: Attacks, Bonus, Move, Features, Explore).
-    const bar = $('actions'); bar.textContent = '';
-    bar.classList.remove('many');
-    if (bar.dataset.for !== e.id) { bar.scrollLeft = 0; bar.dataset.for = e.id; }        // another creature starts at the left
+    // The spell buttons, Metamagic and everything else a creature can do are rows in the action panel's tabs (actionpanel.js).
     if (my && up(e)) {
-      for (const id of e.spells ?? []) {
-        const sp = SPELLS[id], armed = mode.kind === 'spell' && mode.id === id;
-        const why = spellWhy(S, e, sp);
-        const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
-        // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
-        bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why, () => startSpell(e, id, armed)));
-      }
-      for (const cb of CLS.buttons(e)) if (cb.feature === 'metamagic') bar.append(button(cb.label, cb.sub, cb.cls, cb.why, cb.onClick));
-      bar.classList.toggle('many', bar.querySelectorAll('button').length > 6);       // on a phone, two rows (see style.css)
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
       if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(S, e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
@@ -899,11 +878,11 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
-// The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do. Until T4b the spell buttons are built in refresh() and sit in the tab with id `all`.
+// The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
-  openFeature: (e, id) => CLS.openFeature(e, id), flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  openFeature: (e, id) => CLS.openFeature(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
   fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 

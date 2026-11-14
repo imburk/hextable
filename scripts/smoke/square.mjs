@@ -207,8 +207,8 @@ async function squares(browser, url, label, opts) {
       await run.do('the wizard aims Burning Hands east and then along a diagonal: the squares lit are the squares the engine reports for the cone, and they are painted', async () => {
         await turnOf('wizard');
         await choose('Tavin');
-        await panelTab(page, 'all');
-        await page.click('#ap-all button:has-text("Burning Hands")');
+        await panelTab(page, 'spells');
+        await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'burning-hands');
         const w = await pos('wizard');
         const aim = async (dq, dr) => {
