@@ -2,10 +2,10 @@
 // areas (Ice Storm's hail, Sleet Storm, Fog Cloud, Grease). Design: docs/specs/rules-expansion.md,
 // build notes for #165.
 //
-// It is `fx.terrain` on a lasting effect (durations.js), made when the spell is cast (engine.js):
+// It is `fx.terrain` on a lasting effect (durations.js), made when the spell is cast (engine/casting.js):
 //   { area, hexes: [col keys], origin, difficult?: true, obscured?: 'heavy' | 'light' }
 // laid out as the spell's area was, and gone when the effect ends. Movement reads difficultAt()
-// (engine.js, moveOptions); sight reads obscuredAt() (sight.js, sees).
+// (engine/world.js, moveOptions); sight reads obscuredAt() (sight.js, sees).
 import * as H from './hex.js';
 import { FT, gap } from './space.js';
 

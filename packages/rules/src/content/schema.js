@@ -732,7 +732,7 @@ function lintGrants(g, cls, say) {
   // `freeCast`: for one of the feature's uses, cast a spell with no slot as a Magic action: any
   // spell of a class's list up to a level ({ list, maxLevel }), or one of these ({ spells }).
   if (g.freeCast !== undefined && !validFreeCast(g.freeCast)) say('freeCast is { list, maxLevel } or { spells }');
-  // `metamagic`: a Metamagic option known, by its id, its cost from a pool (engine.js, metamagicFor);
+  // `metamagic`: a Metamagic option known, by its id, its cost from a pool (engine/casting.js, metamagicFor);
   // `metamagicMax`: so many options a spell while the feature `while` names has its effect going.
   if (g.metamagic !== undefined && !(g.metamagic && ['careful', 'distant', 'empowered', 'extended', 'heightened', 'quickened', 'seeking', 'subtle', 'transmuted', 'twinned'].includes(g.metamagic.id)
     && isInt(g.metamagic.cost) && g.metamagic.cost > 0 && ID.test(g.metamagic.pool ?? '') && Object.keys(g.metamagic).length === 3)) say('metamagic is { id, cost, pool }');

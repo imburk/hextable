@@ -155,7 +155,7 @@ export function featuresOf(sheet) {
 // person needs nothing) and, if it needs Attunement, while `attuned`. Its magic flows into the record: the armour
 // worn, a Shield, attacks, Armor Class, scores, and features whose modifiers modifiers.js reads. Without the
 // Attunement it needs, it gives only what its mundane item gives. `attuning: { item, end? }` is the item the
-// character will spend its next Short Rest attuning to, or ending its Attunement to (engine.js, shortRest).
+// character will spend its next Short Rest attuning to, or ending its Attunement to (engine/rests.js, shortRest).
 export const ATTUNE_MAX = 3;
 export const ORBIT_MAX = 3;
 export function heldItems(sheet) {
