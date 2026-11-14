@@ -235,12 +235,16 @@ const hideRow = (S, e, row = (r) => r) => {
   return e.hiding ? row({ id: 'hide', kind: 'none', armed: true, label: 'Hidden', sub: `Stealth ${e.hiding.dc} to find`, why: 'Already hidden: an attack, a spoken spell or a noise gives it away.', time: null })
     : row({ id: 'hide', kind: 'send', label: 'Hide', sub: `Stealth ${signed(checkBonus(e, { skill: 'stealth' }))} · DC 15`, chip: CHIP[time], time, why: (enc && inFight(S, e.id) ? blocked(S, e, time) : '') || hideProblem(S, e), send: { type: 'hide', actor: e.id } });
 };
+// Feet of movement as shown: on a square map the engine keeps fractions (a diagonal is 5 x √2 ft) and the table sees the whole
+// feet left, rounded down, as the engine's own messages say them (`feetLeft`); hex maps show the number as it is.
+export const feetShown = (S, n) => (S?.map?.grid === 'square' ? Math.floor(n + 1e-6) : n);
+
 // The speed left this turn for the Move tab's meter: { left, max, prone }. `max` is the walking Speed with each Dash added.
 export function moveBudget(S, e) {
   const b = S.encounter?.budget;
   if (!b) return null;
   const base = e.speed ?? b.move, max = Math.max(b.move, base * (1 + (b.dashes ?? 0)));
-  return { left: b.move, max, prone: !!e.cond?.prone };
+  return { left: feetShown(S, b.move), max: feetShown(S, max), prone: !!e.cond?.prone };
 }
 
 // A spell as a row (the Bonus tab lists the spells that cost a Bonus Action; the rest are T4b's).
@@ -324,7 +328,7 @@ export function statusHtml(S, e, { mine = false, full = false, formLabel = '', b
     const left = untilText(S, fx), label = `${esc(fx.name)}${fx.conc ? ' (C)' : ''}${left ? ` · ${esc(left.replace(' left', '').replace(/^until /, 'until '))}` : ''}`;
     return pill(`fx:${fx.id}`, label, 'fx');
   }).join('');
-  return (b ? pip('Action', b.action > 0) + (b.attacks ? pip(`Attacks left ${b.attacksLeft}`, true) : '') + pip('Bonus Action', b.bonus > 0) + pip(`Move ${b.move} ft`, b.move >= 5) : '') +
+  return (b ? pip('Action', b.action > 0) + (b.attacks ? pip(`Attacks left ${b.attacksLeft}`, true) : '') + pip('Bonus Action', b.bonus > 0) + pip(`Move ${feetShown(S, b.move)} ft`, b.move >= 5) : '') +
     (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
     Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
     plain + (formLabel ? `<b class="form">${esc(formLabel)} form</b>` : '') + (dying ? pill('dying', esc(dying)) : '') + (e.hidden ? '<span>Hidden from players</span>' : '') +
