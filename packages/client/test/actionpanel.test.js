@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, gearRows, lightRow, potionTargets } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
@@ -30,12 +30,12 @@ function fight() {
   return s;
 }
 
-test('exploring: Explore first, then Spells, Features, Items; the shell draws Explore, Spells and Features', () => {
+test('exploring: Explore first, then Spells, Features, Items; the shell draws Explore, Spells, Features and Items', () => {
   const s = newGame(7), c = panelContext(s, s.entities.cleric);
   assert.equal(c.situation, 'explore'); assert.equal(c.default, 'explore');
   assert.deepEqual(c.tabs.map((t) => t.id), ['explore', 'spells', 'features', 'items']);
-  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['explore', 'spells', 'features']);
-  assert.deepEqual(visibleTabs(c, { spells: false, features: false }).map((t) => t.id), ['explore'], 'a tab with nothing in it is not drawn');
+  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['explore', 'spells', 'features', 'items']);
+  assert.deepEqual(visibleTabs(c, { spells: false, features: false, items: false }).map((t) => t.id), ['explore'], 'a tab with nothing in it is not drawn');
   assert.equal(defaultTab(c, visibleTabs(c)), 'explore');
   assert.equal(defaultTab(c, visibleTabs(c), { pref: 'remember', last: { explore: 'spells' } }), 'spells');
 });
@@ -45,13 +45,13 @@ test('in a fight: on your turn Attacks (Spells with no attack), on another\'s Re
   const mine = panelContext(s, cur, { dm: true });
   assert.equal(mine.situation, 'turn'); assert.deepEqual(mine.tabs.map((t) => t.id), ['attacks', 'spells', 'bonus', 'move', 'features', 'items']);
   assert.equal(mine.default, cur.attacks?.length || cur.actions?.length ? 'attacks' : 'spells');
-  assert.deepEqual(visibleTabs(mine).map((t) => t.id), ['attacks', 'spells', 'bonus', 'move', 'features']);
-  assert.deepEqual(visibleTabs(mine, { spells: false, attacks: false, features: false }).map((t) => t.id), ['bonus', 'move']);
+  assert.deepEqual(visibleTabs(mine).map((t) => t.id), ['attacks', 'spells', 'bonus', 'move', 'features', 'items']);
+  assert.deepEqual(visibleTabs(mine, { spells: false, attacks: false, features: false, items: false }).map((t) => t.id), ['bonus', 'move']);
   assert.equal(defaultTab(mine, visibleTabs(mine, { attacks: false })), 'spells', 'no attack: the spells are the default');
   const waiting = Object.values(s.entities).find((e) => e.kind === 'pc' && e.id !== cur.id && s.encounter.order.some((o) => o.id === e.id));
   const c = panelContext(s, waiting, { dm: true });
   assert.equal(c.situation, 'wait'); assert.deepEqual(c.tabs.map((t) => t.id), ['reactions', 'spells', 'features', 'items']);
-  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['reactions', 'spells', 'features']);
+  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['reactions', 'spells', 'features', 'items']);
 });
 
 test('Reactions is greyed with a reason when there is none to take, active and pulsing with a question waiting', () => {
@@ -152,7 +152,7 @@ test('how a pill ends: a lasting effect, concentration, a condition, dying', () 
 // ---------- T4a: the Attacks, Bonus, Move and Features tabs ----------
 const hero = (sheet, at = { q: 0, r: 0, z: 0 }) => { const s = newGame(7); s.entities.hero = makeEntity(derive(sheet).record, { id: 'hero', kind: 'pc', side: 'party', pos: at, owner: 'u1' }); return s; };
 const A = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 10 };
-const fighter = (level = 5) => ({ name: 'Tor', class: 'fighter', level, abilities: A, skills: ['athletics', 'perception'], weapons: ['longsword'] });
+const fighter = (level = 5) => ({ name: 'Tor', class: 'fighter', level, abilities: ABIL, skills: ['athletics', 'perception'], weapons: ['longsword'] });
 const turnOf = (s, id) => { for (let i = 0; i < 20 && current(s) !== id; i++) ok(apply(s, { type: 'endTurn', actor: current(s) }, DM)); assert.equal(current(s), id); };
 const inFightAs = (s, id) => { ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM)); turnOf(s, id); return s.entities[id]; };
 const whys = (rows) => rows.filter((r) => r.why);
@@ -327,4 +327,138 @@ test('Explore\'s healing shortcut for a spell jumps to its row in the Spells tab
   assert.ok(j, 'a hurt cleric is offered Cure Wounds');
   assert.equal(j.jumpTab, 'spells'); assert.equal(j.jump, 'spell:cure-wounds');
   assert.ok(spellRows(s, e).some((r) => r.id === j.jump), 'the row it jumps to exists');
+});
+
+// ---------- the Items tab (T4b, E18) ----------
+const DMCTX = { role: 'dm', userId: 'dm' };
+const ABIL = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 };
+const sheetOf = (items) => ({ name: 'Brenna', class: 'fighter', level: 5, subclass: 'champion', abilities: ABIL, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, weapons: ['longbow'], items });
+// A built character joins the party beside the others; returns its id.
+function built(s, items) {
+  const r = apply(s, { type: 'setSheet', sheet: sheetOf(items) }, DMCTX); ok(r);
+  return r.events.find((x) => x.type === 'spawned').id;
+}
+
+test('items: a hand-typed creature has its kit as names only, no Use rows; the tab is drawn when something is carried', () => {
+  const s = newGame(7), it = itemRows(s, s.entities.fighter);
+  assert.deepEqual([it.uses, it.gear], [[], []]);
+  assert.ok(it.also.includes('Longsword') && it.any, 'kit names are listed');
+  assert.equal(itemRows(s, s.entities.m1).any, false, 'a monster carries nothing: no tab');
+  assert.equal(itemRows(s, s.entities.m1).light, null);
+  assert.deepEqual(visibleTabs(panelContext(s, s.entities.m1, { mine: true }), { items: itemRows(s, s.entities.m1).any }).map((t) => t.id).includes('items'), false);
+});
+
+test('items: a Use row per use of an item with the engine\'s reason, charges as left/max and the cost; ungreyed rows first', () => {
+  const s = newGame(7), id = built(s, [{ id: 'i1', item: 'potion-of-healing' }, { id: 'i2', item: 'wand-of-magic-missiles' }, { id: 'i3', item: 'staff-of-healing', equipped: true }]);
+  const it = itemRows(s, s.entities[id]), by = Object.fromEntries(it.uses.map((r) => [r.id, r]));
+  assert.deepEqual(Object.keys(by).sort(), ['item:i1:0', 'item:i2:0', 'item:i3:0', 'item:i3:1', 'item:i3:2']);
+  assert.equal(by['item:i1:0'].why, '');
+  assert.equal(by['item:i1:0'].chip, 'Bonus');
+  assert.deepEqual(by['item:i1:0'].send, { type: 'use', actor: id, item: 'i1', which: 0 });
+  assert.equal(by['item:i1:0'].reach, 5, 'a potion is given to someone within 5 ft');
+  assert.match(by['item:i2:0'].why, /must be held to be used/, 'the wand is in the pack, not held');
+  assert.match(by['item:i3:0'].why, /attuned/);
+  assert.equal(by['item:i2:0'].pips.max, 7);
+  assert.equal(by['item:i2:0'].pips.left, 7, 'full when the sheet says nothing');
+  assert.ok(by['item:i1:0'] === it.uses[0], 'what can be done now comes first');
+  assert.ok(it.uses.slice(1).every((r) => r.why));
+  // a charge spent shows as left / max
+  s.entities[id].sheet.items.find((x) => x.id === 'i2').charges = 3; s.entities[id].sheet.items.find((x) => x.id === 'i2').equipped = true;
+  const w = itemRows(s, s.entities[id]).uses.find((r) => r.id === 'item:i2:0');
+  assert.deepEqual([w.why, w.pips.left, w.pips.max], ['', 3, 7]);
+  // and a row sent through apply does what the row says
+  assert.equal(w.aimed, true, 'a spell from an item is aimed: the engine\'s "Pick a target" means arm, not greyed');
+  assert.deepEqual([w.level, w.upTo, w.cost], [1, 3, 1]);
+  assert.match(apply(s, w.send, { role: 'dm' }).error, /Pick a target for Magic Missile/, 'the engine does ask for the aim');
+  inFightAs(s, id);                                              // a harmful spell outside a fight only starts one and spends nothing
+  const before = s.entities[id].sheet.items.length, r = ok(apply(s, { ...w.send, targets: ['m1'] }, { role: 'dm' }));
+  assert.ok(r.events.some((x) => x.type === 'item'));
+  assert.equal(s.entities[id].sheet.items.find((x) => x.id === 'i2').charges, 2);
+  assert.equal(s.entities[id].sheet.items.length, before);
+});
+
+test('items: a potion offers the creatures within reach, not those further off, not the dead; a fight offers only those in it', () => {
+  const s = newGame(7), id = built(s, [{ id: 'i1', item: 'potion-of-healing' }]), me = s.entities[id];
+  ['fighter', 'wizard', 'cleric', 'rogue'].forEach((o, i) => ok(apply(s, { type: 'place', actor: o, to: { q: me.pos.q + 6 + i, r: me.pos.r } }, DMCTX)));
+  assert.deepEqual(potionTargets(s, me, 5), [], 'nobody within reach');
+  ok(apply(s, { type: 'place', actor: 'rogue', to: { q: me.pos.q + 1, r: me.pos.r } }, DMCTX));
+  ok(apply(s, { type: 'place', actor: 'cleric', to: { q: me.pos.q + 4, r: me.pos.r } }, DMCTX));
+  assert.deepEqual(potionTargets(s, s.entities[id], 5).map((t) => t.id), ['rogue']);
+  s.entities.rogue.hp = 0;
+  assert.deepEqual(potionTargets(s, s.entities[id], 5).map((t) => [t.id, t.down]), [['rogue', true]], 'at 0 Hit Points a creature can still be given one');
+  s.entities.rogue.dead = true;
+  assert.deepEqual(potionTargets(s, s.entities[id], 5), []);
+  assert.deepEqual(potionTargets(s, me, 0), [], 'an item with no reach has no one to give it to');
+  const row = itemRows(s, s.entities[id]).uses[0];
+  ok(apply(s, { ...row.send }, DMCTX));
+});
+
+test('items: gear says carried, worn or held and attuned; Wear and Attune are buttons that send equip and attune, greyed in a fight with the engine\'s words', () => {
+  const s = newGame(7), id = built(s, [{ id: 'i1', item: 'staff-of-striking' }, { id: 'i2', item: 'ring-of-jumping' }, { id: 'i3', item: 'chime-of-opening' }]);
+  let g = Object.fromEntries(gearRows(s, s.entities[id]).map((x) => [x.key, x]));
+  assert.equal(g.i1.sub, 'Not held · Needs attunement');
+  assert.deepEqual(g.i1.acts.map((a) => [a.label, a.why, a.send.type]), [['Wield', '', 'equip'], ['Attune', '', 'attune']]);
+  assert.equal(g.i3.sub, 'Carried');
+  assert.deepEqual(g.i3.acts, [], 'carried: nothing to put on, no attunement');
+  ok(apply(s, g.i1.acts[0].send, DMCTX));
+  ok(apply(s, g.i2.acts[0].send, DMCTX));
+  ok(apply(s, g.i1.acts[1].send, DMCTX));
+  g = Object.fromEntries(gearRows(s, s.entities[id]).map((x) => [x.key, x]));
+  assert.equal(g.i1.sub, 'Held · Attuning at the next Short Rest');
+  assert.deepEqual(g.i1.acts.map((a) => a.label), ['Put away', 'Cancel attuning']);
+  assert.equal(g.i2.sub, 'Worn · Needs attunement');
+  ok(apply(s, g.i1.acts[1].send, DMCTX));
+  assert.equal(gearRows(s, s.entities[id]).find((x) => x.key === 'i1').sub, 'Held · Needs attunement', 'cancelled');
+  s.entities[id].sheet.items[0].attuned = true;
+  const a = gearRows(s, s.entities[id]).find((x) => x.key === 'i1');
+  assert.equal(a.sub, 'Held · Attuned');
+  assert.deepEqual(a.acts[1].send, { type: 'attune', actor: id, item: 'i1', end: true });
+  ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DMCTX));
+  const f = gearRows(s, s.entities[id]).find((x) => x.key === 'i2');
+  assert.match(f.acts[0].why, /can't change what they wear in the middle of a fight/);
+  assert.match(f.acts[1].why, /can't attune to an item in the middle of a fight/);
+  const refused = apply(s, f.acts[0].send, DMCTX);
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /in the middle of a fight/, 'the row\'s words are the engine\'s');
+});
+
+test('items: the light row: the DM lights or puts out, a player is told why not; a creature with nothing and no light has none', () => {
+  const s = newGame(7), f = s.entities.fighter;
+  assert.equal(lightRow(s, f, { dm: false }).why, 'Only the DM hands out light.');
+  assert.deepEqual(lightRow(s, f, { dm: true }).send, { type: 'setLight', actor: 'fighter', item: 'torch' });
+  ok(apply(s, lightRow(s, f, { dm: true }).send, DMCTX));
+  const out = lightRow(s, s.entities.fighter, { dm: true });
+  assert.match(out.label, /Put out the torch/);
+  assert.match(out.sub, /Bright 20 ft, then Dim 20 ft/);
+  assert.deepEqual(out.send, { type: 'setLight', actor: 'fighter', item: null });
+  ok(apply(s, out.send, DMCTX));
+  assert.equal(s.entities.fighter.light, undefined);
+});
+
+test('items: two of the same potion are one row marked x2 that sends the first; different items and charged items are not merged', () => {
+  const s = newGame(7), id = built(s, [{ id: 'i1', item: 'potion-of-healing' }, { id: 'i2', item: 'potion-of-healing' }, { id: 'i3', item: 'potion-of-heroism' }]);
+  const uses = itemRows(s, s.entities[id]).uses;
+  assert.equal(uses.length, 2);
+  const heal = uses.find((r) => /Healing/.test(r.sub));
+  assert.match(heal.sub, /x2/);
+  assert.equal(heal.send.item, 'i1');
+  assert.doesNotMatch(uses.find((r) => /Heroism/.test(r.sub)).sub, /x\d/);
+  ok(apply(s, heal.send, DMCTX));
+  assert.equal(itemRows(s, s.entities[id]).uses.find((r) => /Healing/.test(r.sub)).sub.includes('x2'), false, 'one left: no count');
+});
+
+test('items: an item spell is armed from its row (not greyed for lacking a target); a use with upTo offers the levels; other reasons still grey it', () => {
+  const s = newGame(7), id = built(s, [{ id: 'i2', item: 'wand-of-magic-missiles', equipped: true }, { id: 'i3', item: 'ring-of-jumping', equipped: true, attuned: true }, { id: 'i4', item: 'wand-of-magic-missiles' }]);
+  const rows = itemRows(s, s.entities[id]).uses, by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(by['item:i2:0'].why, ''); assert.equal(by['item:i2:0'].aimed, true);
+  assert.match(by['item:i4:0'].why, /must be held/, 'a wand not held is still greyed with its own reason');
+  assert.equal(by['item:i3:0'].aimed, false, 'a self spell is sent at once');
+  const armed = itemRows(s, s.entities[id], { mode: { kind: 'spell', id: 'magic-missile', item: { key: 'i2', which: 0, base: 1 } } }).uses.find((r) => r.id === 'item:i2:0');
+  assert.equal(armed.armed, true);
+  assert.equal(spellRow(s, s.entities[id], 'magic-missile', { mode: { kind: 'spell', id: 'magic-missile', item: { key: 'i2', which: 0, base: 1 } } }).armed, false, 'it does not arm the Spells tab row');
+  // the aim and the level are sent as `use` takes them
+  inFightAs(s, id);
+  const r = ok(apply(s, { ...by['item:i2:0'].send, targets: ['m1', 'm1', 'm2', 'm2'], level: 2 }, DMCTX));
+  assert.equal(s.entities[id].sheet.items.find((x) => x.id === 'i2').charges, 5, 'level 2 costs 2 charges');
+  assert.ok(r.events.some((x) => x.type === 'cast'));
 });
