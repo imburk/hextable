@@ -160,8 +160,7 @@ other choice (the notes change with the choice). Nothing is replaced until **Loa
   20000 squares, or more than 50000 wall lines, 200000 wall points, 20000 doors or 20000 lights; whatever of it the map can hold
   is limited as for any map (5000 walls after straight runs are joined, 2000 doors and things, 20000 squares).
 
-What it cannot do yet is in `docs/DEBT.md` (T24): using a door on a square map is blocked by an engine bug (the DM can still
-open it from the DM panel).
+What it cannot do yet is in `docs/DEBT.md` (T24).
 
 ## The valley on squares
 
