@@ -142,4 +142,8 @@ export function serverTransport(first) {
   return t;
 }
 export const savedSession = () => store.get('hextable.session');
+// Does this device hold a solo game, or a table it remembers? (The lobby offers Continue / Rejoin from these.)
+export const hasSoloGame = () => !!store.get('hextable.solo');
+export const forgetSession = () => store.del('hextable.session');
+export const forgetSolo = () => { store.del('hextable.solo'); store.del('hextable.solo.pins'); };
 export const prefs = store;

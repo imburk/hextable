@@ -251,3 +251,7 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
   #tr-edit { display: inline-flex; align-items: center; }
   #tracker:not(.edit) .tr-dm, #tracker:not(.edit) .tr-tick, #tracker:not(.edit) .tr-ctl button:not([data-do="sheet"]) { display: none; }
 }
+
+#lobby-remember { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; } #lobby-remember[hidden] { display: none; }
+#lobby-remember p { margin: 0; color: var(--ink); } #lobby-rejoin { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#lobby-new[hidden] { display: none; } #lobby-card button.leave.sure { outline-offset: 2px; }

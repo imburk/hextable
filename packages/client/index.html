@@ -62,6 +62,11 @@
     <button type="button" id="drawer-pin" aria-pressed="false" aria-label="Keep the menu open beside the map" title="Keep open">Pin</button>
     <button type="button" id="drawer-close" aria-label="Close the menu">&times;</button>
   </header>
+  <div id="menu-session" hidden>
+    <button type="button" id="menu-new" class="leave" hidden>New game</button>
+    <button type="button" id="menu-leave" class="leave" hidden>Leave table</button>
+    <p id="menu-note" class="note" role="status" hidden></p>
+  </div>
   <div id="drawer-tabs" role="tablist" aria-label="Menu">
     <button type="button" role="tab" id="tab-turns" data-tab="turns" aria-controls="tracker" aria-selected="false" tabindex="-1">Turns</button>
     <button type="button" role="tab" id="tab-sheet" data-tab="sheet" aria-controls="sheet" aria-selected="false" tabindex="-1">Sheet</button>
@@ -202,7 +207,11 @@
     <div class="row"><button type="button" id="lobby-host">Host a table</button></div>
     <label for="lobby-code">Table code</label>
     <div class="row"><input id="lobby-code" maxlength="6" placeholder="ABC123"><button type="button" id="lobby-join">Join</button></div>
-    <div class="row"><button type="button" id="lobby-solo" class="quiet">Play solo on this device</button></div>
+    <div id="lobby-remember" hidden>
+      <p id="lobby-table"></p>
+      <div class="row"><button type="button" id="lobby-rejoin">Rejoin</button><button type="button" id="lobby-forget" class="quiet">Forget</button></div>
+    </div>
+    <div class="row"><button type="button" id="lobby-solo" class="quiet">Play solo on this device</button><button type="button" id="lobby-new" class="quiet leave" hidden>New game</button></div>
     <p id="lobby-msg" role="status"></p>
     <div class="row"><button type="button" id="lobby-about" class="quiet">About Hextable</button></div>
   </form>
