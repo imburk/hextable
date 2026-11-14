@@ -19,6 +19,9 @@ in a private repo, `imburk/hextable-ops`; you do not need them to take an issue.
    must pass. New behaviour needs a new test.
 5. In the pull request, say what you changed, how you checked it, and what
    you did not check. Do not merge your own pull request.
+6. If you are contributing from outside the project, your first pull request
+   must carry the acceptance line of the contributor agreement in
+   [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Hard limits
 

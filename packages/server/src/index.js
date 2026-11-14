@@ -4,6 +4,7 @@
 //   PORT       port to listen on (default 8080; 0 picks a free one, and the start-up line says which)
 //   DATA_DIR   where tables are saved between restarts (default ./data)
 //   TIMELINE_CAP  timeline entries kept besides chronicle entries (default 5000)
+//   TRUST_PROXY, CLIENT_IP_HEADER   how to find the client address behind a proxy (default: socket address only)
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
@@ -13,7 +14,7 @@ import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createLimits, limitsFromEnv, LIMIT_MESSAGE } from "./limits.js";
+import { clientAddress, createLimits, limitsFromEnv, proxyFromEnv, LIMIT_MESSAGE } from "./limits.js";
 import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
 import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
@@ -77,10 +78,11 @@ const DM_FRAME_MAX = MAX_MAP_ACTION_BYTES + 4096;
 const limits = createLimits(limitsFromEnv(process.env));
 setInterval(() => limits.sweep(), 60_000).unref();
 
-// The address of whoever is connecting: the first entry of x-forwarded-for when there is one
-// (the host's proxy puts it there), else the socket's own. Without a proxy in front, a client
-// can forge that header, so only run unproxied if that is acceptable.
-const addressOf = (req) => String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim() || req.socket.remoteAddress || "unknown";
+// The address of whoever is connecting, for the per-address limits. By default the socket's own address:
+// x-forwarded-for is ignored because a client can forge it. TRUST_PROXY and CLIENT_IP_HEADER say how to
+// read it behind a proxy (see limits.js and the README).
+const proxy = proxyFromEnv(process.env);
+const addressOf = (req) => clientAddress(req, proxy);
 
 // Scripts and connections only from this origin; Google Fonts for styles and fonts. Inline
 // styles are allowed because the UI sets style attributes (colours of tokens and swatches).

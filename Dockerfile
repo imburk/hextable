@@ -16,9 +16,8 @@ COPY packages/rules/src packages/rules/src
 COPY packages/server/src packages/server/src
 COPY --from=build /app/dist dist
 ENV PORT=8080 DATA_DIR=/data NODE_ENV=production
-# DATA_DIR exists and belongs to `node`, so a plain Docker volume starts out writable.
+# DATA_DIR exists and belongs to `node`, so a plain Docker volume starts out writable. No VOLUME line: Railway refuses to build a Dockerfile that has one.
 RUN mkdir /data && chown node:node /data
-VOLUME /data
 EXPOSE 8080
 # The entrypoint starts as root, fixes the ownership of DATA_DIR (a Railway volume arrives root-owned),
 # then drops to the `node` user before the server starts. See packages/server/README.md.
