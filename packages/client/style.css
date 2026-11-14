@@ -129,6 +129,10 @@ button.quiet { background: transparent; }
 /* who plays whom, leaving */
 .assign { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .assign select { min-height: 40px; min-width: 9em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, #222); color: inherit; font: inherit; }
+/* The square rules have long choices: the question above, the list under it, the full width. */
+#dm-square-rules .assign { flex-direction: column; align-items: stretch; gap: 4px; }
+#dm-square-rules .assign select { width: 100%; }
+#dm-square-rules .note { margin-top: 0; }
 button.leave.sure { outline: 2px solid currentColor; }
 
 /* a creature the players can't see yet (only the DM is ever sent one) */

@@ -33,7 +33,7 @@ import { initClasses, formOf, formName } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
-import { initTableControls, importLine } from './tablecontrols.js';
+import { initTableControls, importLine, gridWords } from './tablecontrols.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 
@@ -420,7 +420,7 @@ $('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
   const what = `${area.size} ft ${area.shape}${area.shape === 'line' && area.width > 5 ? ` (${area.width} ft wide)` : ''}`;
-  if (area.shape === 'cone' || area.shape === 'line' || (area.shape === 'cube' && !(range > 0))) return `tap a hex to aim the ${what}`;
+  if (area.shape === 'cone' || area.shape === 'line' || (area.shape === 'cube' && !(range > 0))) return gridWords(`tap a hex to aim the ${what}`, gridOf(S?.map));
   return area.shape === 'cube' ? `tap where the near side of the ${what} goes (within ${range} ft)` : `tap where the ${what} goes (within ${range} ft)`;
 }
 // Highlights and the hint for an action being aimed.
@@ -533,9 +533,9 @@ function refresh() {
     }
   }
   if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
-  if (mode.kind === 'spawn') hint = `Tap a hex to add a ${MONSTERS[mode.monster].name}`;
-  if (mode.kind === 'place') hint = `Tap a hex to place ${name(selId)}`;
-  if (mode.kind === 'encounter') hint = 'Tap the hex where the fight breaks out';
+  if (mode.kind === 'spawn') hint = gridWords(`Tap a hex to add a ${MONSTERS[mode.monster].name}`, gridOf(S.map));
+  if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
+  if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   showPick();

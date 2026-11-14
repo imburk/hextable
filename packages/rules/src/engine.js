@@ -31,7 +31,7 @@ export { ENGAGE_RANGE } from './engine/movement.js';
 export { actionSpent, attacksLeft, fromPool } from './engine/attacks.js';
 export { teleportSpot } from './engine/casting.js';
 export { HIDE_DC, hideProblem, usesFor } from './engine/features.js';
-export { SETTINGS } from './engine/dm.js';
+export { SETTINGS, SETTING_TEXT } from './engine/dm.js';
 
 export { FT };                       // feet per hex
 export { opportunityAttack };
