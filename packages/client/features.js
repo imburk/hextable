@@ -3,7 +3,7 @@
 // when it can be used, an `action` (time, target, cost...). The engine decides everything; this file
 // only lists them and sends { type: 'feature', actor, feature }.
 import { blocked, up } from './shared/engine.js';
-import { needsChoice } from './classes.js';
+import { needsChoice, chooserButtons, usesLeft } from './classes.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'Free' };
@@ -32,12 +32,56 @@ export function featureButtons(S, e) {
     const cost = f.action.cost?.n ?? 1;
     const live = !!(S.effects ?? []).find((fx) => fx.source === e.id && fx.feature === f.id);
     const why = (time && blocked(S, e, time)) || (f.uses && !(f.action.renew && live) && left < cost && `${e.name} has no uses of ${f.name} left.`) ||
-      (f.action.unless === 'heavy' && e.armour === 'heavy' && `${e.name} can't use ${f.name} in Heavy armor.`) || '';
+      (f.action.unless === 'heavy' && e.armour === 'heavy' && `${e.name} can't use ${f.name} in Heavy armor.`) || (!time && blocked(S, e, null)) || '';
     out.push({ label: live && f.action.renew ? `${f.name} (extend)` : f.name, cls: time === 'bonus' || f.action.time === 'free' ? 'bonus' : '', why,
-      sub: [TIME[f.action.time], f.uses ? `${left} left` : ''].filter(Boolean).join(' · '), send: { type: 'feature', actor: e.id, feature: f.id }, ...(aim ? { aim: f.id } : {}) });
+      sub: [TIME[f.action.time], f.uses ? `${left} left` : ''].filter(Boolean).join(' · '), send: { type: 'feature', actor: e.id, feature: f.id }, ...(aim ? { aim: f.id } : {}), feature: f.id, time: f.action.time });
   }
   return out;
 }
+
+// ---------- the Features tab (docs/specs/table-ui.md, Decision 6) ----------
+export const CHIP = { action: 'Action', bonus: 'Bonus', reaction: 'Reaction', free: 'Free' };
+// "Back on a Long Rest", for the line under a feature's pips.
+export const rechargeText = (u) => (!u ? '' : u.recharge === 'short' ? 'Back on a Short Rest' : `Back on a Long Rest${u.short ? ` (${u.short} back on a Short Rest)` : ''}`);
+// The pool a feature draws on, as pips: its own uses, or those of the feature it spends (Divine Spark spends Channel Divinity).
+function pipsOf(e, f) {
+  const own = f.uses ? f : f.action?.cost?.resource ? (e.feats ?? []).find((x) => x.id === f.action.cost.resource) : null;
+  if (!own?.uses) return null;
+  return { left: e.uses?.[own.id] ?? 0, max: own.uses.max, text: rechargeText(own.uses), unit: f.action?.pool || f.exchange ? (f.action?.pool ? 'HP' : 'points') : '' };
+}
+// The rows of the Features tab: every feature that has a button, or uses to count, with its pips and how it comes back. `mode`: what is armed.
+// A row: { id, kind ('send' | 'arm' | 'chooser' | 'none'), label, sub, why, chip, time, pips, armed, send?, arm?, mode?, feature }. The reason for a greyed row
+// is the engine's own check (`blocked`, uses left); `why` is empty when the feature can be used now.
+export function featureRows(S, e, { mode = null } = {}) {
+  const rows = [], done = new Set();
+  const fOf = (id) => (e.feats ?? []).find((f) => f.id === id);
+  for (const b of chooserButtons(S, e)) {
+    done.add(b.feature);
+    rows.push({ id: `feat:${b.feature}`, kind: 'chooser', label: b.label, sub: b.kind === 'form' && formNow(e) ? b.sub : '', why: b.why, chip: CHIP[b.time] ?? '', time: b.time, feature: b.feature, pips: pipsOf(e, b.f),
+      armed: b.cls.includes('armed') && b.kind === 'form' });
+  }
+  for (const fb of featureButtons(S, e)) {
+    done.add(fb.feature);
+    const armed = !!fb.aim && mode?.kind === 'feature' && mode.id === fb.aim;
+    rows.push({ id: `feat:${fb.feature}`, kind: fb.aim ? 'arm' : 'send', label: fb.label, sub: fb.aim ? 'Tap a creature' : '', why: fb.why, chip: CHIP[fb.time] ?? '', time: fb.time, feature: fb.feature, pips: pipsOf(e, fOf(fb.feature)),
+      armed, send: fb.send, ...(fb.aim ? { arm: { kind: 'feature', id: fb.aim }, mode: { kind: 'feature', id: fb.aim, name: fb.label } } : {}) });
+  }
+  // A feature with uses and no button of its own: it works by itself, on a Reaction's instruction, or the DM applies it. Listed so the count is visible.
+  for (const f of e.feats ?? []) {
+    if (done.has(f.id) || !f.uses || f.metamagic) continue;
+    const reaction = f.action?.time === 'reaction';
+    rows.push({ id: `feat:${f.id}`, kind: 'none', label: f.name, sub: reaction ? 'Reaction: set on the Reactions tab' : (e.feats ?? []).some((x) => x.action?.cost?.resource === f.id) ? 'The pool the features above spend' : f.tier === 'manual' ? 'The DM applies it' : 'Works by itself, no button', why: '', chip: CHIP[f.action?.time] ?? '', time: f.action?.time ?? null, feature: f.id, pips: pipsOf(e, f), armed: false });
+  }
+  // The older hand-typed Second Wind, for a character whose record has it as a plain feature and not in `feats`.
+  if (e.features?.secondWind && !hasFeat(e, 'second-wind')) {
+    const left = e.uses?.secondWind ?? 0;
+    const why = blocked(S, e, 'bonus') || (!left && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '';
+    rows.push({ id: 'feat:secondWind', kind: 'send', label: 'Second Wind', sub: `Heal 1d10+${e.level}`, why, chip: 'Bonus', time: 'bonus', feature: 'secondWind',
+      pips: { left, max: Math.max(left, e.features.secondWind), text: 'Back on a Short Rest', unit: '' }, armed: false, send: { type: 'secondWind', actor: e.id } });
+  }
+  return rows;
+}
+const formNow = (e) => !!(typeof e.form === 'string' ? e.form : e.form?.block);
 
 // The Features section of the sheet.
 export function featuresHtml(e, mineHere = false) {

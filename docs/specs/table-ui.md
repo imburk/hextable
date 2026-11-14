@@ -1228,3 +1228,38 @@ What was settled while building, where it differs from the text above, and what 
   them (one line, outside the T3 file list; the alternative was editing every tap). The new pass does not use `open()`.
 - **Not verified.** A real finger's drag on the head, a screen reader, the three themes beyond Classic, a real asked reaction with the new tab (the smoke sets a pending record in the page;
   `SMOKE_ONLY=prompt` covers the real one with the old bar).
+
+### T4a: the Attacks, Bonus, Move and Features tabs (PR for #235)
+
+What was settled while building, where it differs from the text above, and what was left.
+
+- **Files.** `actionpanel.js` (the row builders `attackRows`, `bonusRows`, `moveRows`, `moveBudget`, `spellRow`, `tabRows`, all pure; the page code draws them), `features.js` (`featureRows`, `CHIP`,
+  `rechargeText`), `classes.js` (`chooserButtons`, the pure half of what `buttons()` built, and `openFeature(e, id)`), `app.js` (the bar code is gone), `actionpanel.css`, `index.html` (four pane
+  containers; the Settings select loses its "always the full bar" choice). Tests: `packages/client/test/actionpanel.test.js`. Smoke: `SMOKE_ONLY=paneltabs` is new.
+- **One row shape.** `{ id, kind, label, sub, why, chip, time, armed, pips? }`. `kind` is what a tap does: `send` (an action), `arm` (a mode: `attack`, `action`, `feature`), `spell`, `chooser` (opens the
+  card of `classes.js`), `fly` (Higher and Lower) or `none`. `why` is always the engine's own check (`blocked`, uses left, `actionSpent`, `usesFor`, `hideProblem`, `spellWhy`). A greyed row is
+  `aria-disabled`, dashed, its name and numbers fade and its reason stays at full strength under it; a tap on it shows the toast and sends nothing.
+- **Attacks.** A character's `attacks` (to hit, damage and type, reach or range), or a monster's `actions` (Multiattack, recharge, uses a day, reach or range). An attack taken from Extra Attack, a
+  Multiattack pool or Flurry of Blows is checked against that pool and not the action (the old bar greyed the second attack); a bonus-time attack (the Monk's Unarmed Strike) is checked against the Bonus Action.
+- **Bonus.** A filter by `time === 'bonus'` over attacks, features, spells (`def.time` bonus), the standard actions that are a Bonus Action for this creature (Nimble Escape: Disengage and Hide; Cunning
+  Action, `e.bonusActs`: Dash, Disengage and Hide, sent with `bonus: true`). With no Bonus Action left the tab says `No Bonus Action:` and the engine's words, and every row carries them; with nothing
+  to offer it says so. This tab is always on your turn, empty or not.
+- **Move.** The Speed left as a number and a bar (the walking Speed with each Dash added), Dash, Disengage, Dodge, Hide, Search, the objects in reach, Higher and Lower for a flyer. A prone creature gets
+  the spec's sentence. No stand-up row (engine item, as the text above says).
+- **Features.** Every feature that has a button (a self feature, an aimed one, or one that opens a chooser) or uses to count, with its cost chip, pips (`●●○ 2 / 3`, or the number alone above eight),
+  and "Back on a Short Rest" or "Long Rest". The pool a feature spends (Divine Spark spends Channel Divinity) is shown on its row. A feature with uses and no button is an info row (a Reaction: "set on the
+  Reactions tab"; a pool: "the pool the features above spend"; a feature the DM applies; one that works by itself). Features with no uses are on the Sheet. The older hand-typed Second Wind is a row too.
+  Outside your turn the rows are browsable and greyed with the engine's "It isn't X's turn".
+- **Which tabs are drawn.** Exploring: Explore, Spells (the `all` tab), Features. Your turn: Attacks (not for a creature with no attack: a wizard opens on Spells), Spells, Bonus, Move, Features. Another's
+  turn: Reactions, Spells, Features. A tab with nothing in it is not drawn (Attacks, Spells, Features); Bonus and Move always are on your turn. The Items tab is T4b's.
+- **"All" is not gone.** Spells are T4b's, so the tab with id `all` stays and holds the spell buttons and Metamagic as the bar built them, in the Spells position and labelled **Spells**. Everything else
+  has a row elsewhere. The `hextable.panelTab = all` preference value and the `open()` line in `scripts/smoke/lib.mjs` are removed: with the bar gone the value would hide Explore and every other row.
+  `panelTab(page, id)` in `lib.mjs` opens a tab by tapping it, for the passes that drive a button. The Explore healing shortcuts go to the Features row (Second Wind, Lay On Hands); the spell ones to the
+  spell button.
+- **Heights.** The compact pane is cut back to whole rows (a row is never cut through the middle), at most 132 px, and a dashed line under it says how many are below and raises the panel when tapped.
+  The "more room" button is a small arrow at the end of the strip (it has a label for a screen reader) so five tabs fit at 390 px. Raised: 55 % of the screen on a phone; on a wide screen
+  `max(184px, 40vh - 130px)`, since 40 % of the screen minus the head and the tabs left no more rows than compact.
+- **From the martial-class pull request (#230).** Rows come from the record, so Patient Defense, Step of the Wind, Stunning Strike, Flurry of Blows, Wholeness of Body and Rage appear with what the engine
+  already exposes. Not in the panel yet (DEBT T19): the Brutal Strike and Cunning Strike choices on an attack, Intimidating Presence's targets, Self-Restoration's `cure`, the `free` standing instructions on
+  Reactions, and the new events.
+- **Not verified.** A real finger; a screen reader on the new rows; the three themes beyond Classic; objects in reach and a prone creature in a browser (the unit tests cover the rows; the send is the old one).

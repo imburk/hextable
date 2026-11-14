@@ -9,21 +9,24 @@
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import * as H from './shared/hex.js';
-import { inFight, current, up, blocked, usesFor, hideProblem, checkBonus, clockText } from './shared/engine.js';
+import { inFight, current, up, blocked, usesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { actionProfile } from './shared/effects.js';
 import { reactionsOf, canReact } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
 import { SPELLS, MONSTERS } from './shared/content/index.js';
 import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
+import { featureRows, CHIP } from './features.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 
 // ---------- which tabs, when ----------
-export const TAB_LABEL = { explore: 'Explore', attacks: 'Attacks', spells: 'Spells', bonus: 'Bonus', move: 'Move', features: 'Features', items: 'Items', reactions: 'Reactions', down: 'Down', all: 'All' };
-// The tabs that have rows today. The others are in the spec (Decision 6) and come with T4a and T4b; until then "All" holds their buttons.
-export const BUILT = new Set(['explore', 'reactions', 'down', 'all']);
+export const TAB_LABEL = { explore: 'Explore', attacks: 'Attacks', spells: 'Spells', bonus: 'Bonus', move: 'Move', features: 'Features', items: 'Items', reactions: 'Reactions', down: 'Down', all: 'Spells' };
+// The tabs that have rows today. Spells and Items are T4b's; until then the tab with id `all` (labelled Spells) holds the spell buttons (and Metamagic) as the
+// action bar built them, and there is no Items tab (the bar had no item buttons).
+export const BUILT = new Set(['explore', 'reactions', 'down', 'attacks', 'bonus', 'move', 'features']);
 
 // Whether the Reactions tab is available for `e` now, and if not why, in words. A question waiting for this creature makes it
 // active whatever else is true: `S.prompt` is what a player is sent, `S.pending` what the DM is sent.
@@ -51,17 +54,23 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
 }
 
-// The tabs the shell draws: the built ones in the spec's order, then "All" while there is anything to do (a creature that is up).
-export function visibleTabs(ctx) {
-  const own = ctx.tabs.filter((t) => t.built);
-  return ['explore', 'turn', 'wait'].includes(ctx.situation) ? [...own, { id: 'all', label: TAB_LABEL.all, built: true }] : own;
+// The tabs the shell draws: the built ones in the spec's order, with the temporary spell tab (id `all`) where Spells goes. `has` says which tabs have anything in
+// them: Attacks and Features are left out when empty (a wizard has no attack; a monster no features); Bonus and Move are always there on your turn, and a
+// Bonus tab with nothing available says why. `spells`: the creature has spell buttons.
+export function visibleTabs(ctx, { spells = true, attacks = true, features = true } = {}) {
+  const out = [];
+  for (const t of ctx.tabs) {
+    if (t.id === 'spells') { if (spells) out.push({ id: 'all', label: TAB_LABEL.all, built: true }); continue; }
+    if (!t.built) continue;
+    if ((t.id === 'attacks' && !attacks) || (t.id === 'features' && !features)) continue;
+    out.push(t);
+  }
+  return out;
 }
 
-// Which tab is open. `pref`: 'auto' (the spec's default), 'remember' (the last tab used in this situation) or, until T4a replaces
-// it, 'all' (always today's bar). `last`: { [situation]: tab id }.
+// Which tab is open. `pref`: 'auto' (the spec's default) or 'remember' (the last tab used in this situation). `last`: { [situation]: tab id }.
 export function defaultTab(ctx, tabs, { pref = 'auto', last = {} } = {}) {
   const has = (id) => tabs.some((t) => t.id === id);
-  if (pref === 'all' && has('all')) return 'all';
   if (pref === 'remember' && has(last[ctx.situation])) return last[ctx.situation];
   if (ctx.situation === 'wait') {
     const r = ctx.tabs.find((t) => t.id === 'reactions');
@@ -121,16 +130,16 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   if (hurt(e)) {
     for (const id of e.spells ?? []) {
       const sp = SPELLS[id];
-      if (sp?.heals && !spellWhy(S, e, sp)) aid.push(row({ id: `heal:${id}`, kind: 'jump', label: sp.name, sub: `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · heals`, jump: sp.name }));
+      if (sp?.heals && !spellWhy(S, e, sp)) aid.push(row({ id: `heal:${id}`, kind: 'jump', label: sp.name, sub: `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · heals`, jump: sp.name, jumpTab: 'all' }));
     }
     for (const f of e.feats ?? []) {
       if (!HEAL_FEATS.includes(f.id)) continue;
       const left = f.uses ? (e.uses?.[f.id] ?? 0) : null;
       if (blocked(S, e, f.action?.time === 'free' ? null : f.action?.time ?? 'action') || (left !== null && left < 1)) continue;
-      aid.push(row({ id: `heal:${f.id}`, kind: 'jump', label: f.name, sub: `${left === null ? '' : `${left} left · `}heals`, jump: f.name }));
+      aid.push(row({ id: `heal:${f.id}`, kind: 'jump', label: f.name, sub: `${left === null ? '' : `${left} left · `}heals`, jump: `feat:${f.id}`, jumpTab: 'features' }));
     }
     if (e.features?.secondWind && !(e.feats ?? []).some((f) => f.id === 'second-wind') && e.uses?.secondWind > 0 && !blocked(S, e, 'bonus'))
-      aid.push(row({ id: 'heal:secondWind', kind: 'jump', label: 'Second Wind', sub: `${e.uses.secondWind} left · heals`, jump: 'Second Wind' }));
+      aid.push(row({ id: 'heal:secondWind', kind: 'jump', label: 'Second Wind', sub: `${e.uses.secondWind} left · heals`, jump: 'feat:secondWind', jumpTab: 'features' }));
   }
   const rests = dm && !enc ? [
     row({ id: 'shortRest', kind: 'shortRest', label: 'Short rest…', sub: 'Choose who spends Hit Point Dice' }),
@@ -165,6 +174,111 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   if (!weary) list.push(...rests);
   return list.map((r, i) => ({ ...r, grid: i < 4 }));
 }
+
+// ---------- the Attacks, Bonus, Move and Features tabs (T4a) ----------
+// Each returns rows of one shape: { id, kind, label, sub, why, chip, time, armed, ... }. `kind` says what a tap does: `send` (an action to send, `send`), `arm`
+// (set the mode `mode`; a tap on the armed row puts it down again), `spell` (cast `spell`, or arm it), `chooser` (open the card of `feature`), `fly` (`delta` feet
+// to the height the next move ends at) or `none` (nothing to tap). `why` is the engine's reason a row cannot be used now ('' if it can); the shell writes it on the
+// row. `time` is what it costs ('action', 'bonus', 'reaction', 'free' or null) and `chip` its words. The Bonus tab is a filter on the others by `time`.
+const armedBy = (mode, kind, id) => !!mode && mode.kind === kind && mode.id === id;
+
+// Attacks: a character's `attacks`, or a monster's `actions` (Multiattack, recharge, uses a day).
+export function attackRows(S, e, { mode = null } = {}) {
+  const b = S.encounter?.budget, mineTurn = !!b && current(S) === e.id, rows = [];
+  if (e.actions) {
+    for (const def of e.actions) {
+      const p = actionProfile(def), armed = armedBy(mode, 'action', def.id), time = p.time === 'bonus' ? 'bonus' : 'action';
+      const pooled = mineTurn && !!b.attacks && fromPool(b, def.id);
+      const why = (pooled ? blocked(S, e, null) : blocked(S, e, time)) || actionSpent(e, def) || (def.multiattack && !S.encounter ? `${def.name} is for a fight. Use one of its attacks to start one.` : '');
+      const reach = p.reach ? `reach ${p.reach} ft` : p.range ? `range ${p.range[0]}/${p.range[1]} ft` : '';
+      const sub = [p.short, p.bonus !== undefined ? signed(p.bonus) : '', p.dc ? `DC ${p.dc}` : '', reach, p.recharge ? `recharge ${p.recharge[0]}–6${e.spent?.[def.id] ? ' (not yet)' : ''}` : '', p.uses ? `${e.charges?.[def.id] ?? p.uses.n}/day left` : ''].filter(Boolean).join(' · ');
+      const sends = p.aim === 'multi' || p.aim === 'self' || p.aim === 'none';
+      rows.push({ id: `act:${def.id}`, label: def.name, sub, why, chip: pooled ? 'Multiattack' : CHIP[time], time: pooled ? null : time, armed,
+        ...(sends ? { kind: 'send', send: { type: 'act', actor: e.id, action: def.id } }
+          : { kind: 'arm', arm: { kind: 'action', id: def.id }, mode: { kind: 'action', id: def.id, area: p.aim === 'area', aim: null } }) });
+    }
+    return rows;
+  }
+  for (const a of e.attacks ?? []) {
+    const armed = armedBy(mode, 'attack', a.id), flurry = !!b?.bonusAttacks && b.bonusAttacks.with === a.id && b.bonusAttacks.left > 0;
+    const bonusTime = !flurry && a.time === 'bonus', pooled = mineTurn && !flurry && !bonusTime && !!b.attacks && fromPool(b, a.id);
+    const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
+    const reach = a.type === 'melee' ? `reach ${a.reach ?? 5} ft` : a.range ? `range ${a.range[0]}/${a.range[1]} ft` : '';
+    rows.push({ id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
+      chip: flurry ? 'Flurry' : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } });
+  }
+  return rows;
+}
+
+// The standard actions and the objects in reach, for the Move tab. `fly`: { aloft, alt } for a creature that can fly.
+export function moveRows(S, e, { fly = null } = {}) {
+  const enc = S.encounter, nimble = !!e.features?.nimbleEscape, rows = [], row = (r) => ({ sub: '', why: '', armed: false, std: true, ...r });
+  rows.push(row({ id: 'dash', kind: 'send', label: 'Dash', sub: 'Double your move', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dash', actor: e.id } }));
+  const dt = nimble ? 'bonus' : 'action';
+  rows.push(row({ id: 'disengage', kind: 'send', label: 'Disengage', sub: 'No Opportunity Attacks', chip: CHIP[dt], time: dt, why: blocked(S, e, dt), send: { type: 'disengage', actor: e.id } }));
+  rows.push(row({ id: 'dodge', kind: 'send', label: 'Dodge', sub: 'Attackers roll with Disadvantage', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dodge', actor: e.id } }));
+  rows.push(hideRow(S, e, row));
+  rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(checkBonus(e, { skill: 'perception' }))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
+    why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } }));
+  for (const u of usesFor(S, e)) rows.push(row({ id: `use:${u.object}:${u.verb}`, kind: 'send', label: u.label, sub: u.name, chip: u.time === 'free' ? 'Free once a turn' : CHIP.action, time: u.time === 'free' ? 'free' : 'action', why: u.why,
+    send: { type: 'use', actor: e.id, object: u.object, verb: u.verb }, std: false }));
+  if (fly?.aloft) {
+    const alt = fly.alt;
+    rows.push(row({ id: 'fly-up', kind: 'fly', label: 'Higher', sub: `Fly at ${alt + FT} ft`, delta: FT, time: null, std: false }));
+    rows.push(row({ id: 'fly-down', kind: 'fly', label: alt ? 'Lower' : 'On the ground', sub: alt ? `Fly at ${alt - FT} ft${alt === FT ? ' (land)' : ''}` : 'Tap Higher to take off', delta: -FT, time: null, std: false, why: alt ? '' : 'Already as low as it goes.' }));
+  }
+  return rows;
+}
+const hideRow = (S, e, row = (r) => r) => {
+  const enc = S.encounter, time = e.features?.nimbleEscape ? 'bonus' : 'action';
+  return e.hiding ? row({ id: 'hide', kind: 'none', armed: true, label: 'Hidden', sub: `Stealth ${e.hiding.dc} to find`, why: 'Already hidden: an attack, a spoken spell or a noise gives it away.', time: null })
+    : row({ id: 'hide', kind: 'send', label: 'Hide', sub: `Stealth ${signed(checkBonus(e, { skill: 'stealth' }))} · DC 15`, chip: CHIP[time], time, why: (enc && inFight(S, e.id) ? blocked(S, e, time) : '') || hideProblem(S, e), send: { type: 'hide', actor: e.id } });
+};
+// The speed left this turn for the Move tab's meter: { left, max, prone }. `max` is the walking Speed with each Dash added.
+export function moveBudget(S, e) {
+  const b = S.encounter?.budget;
+  if (!b) return null;
+  const base = e.speed ?? b.move, max = Math.max(b.move, base * (1 + (b.dashes ?? 0)));
+  return { left: b.move, max, prone: !!e.cond?.prone };
+}
+
+// A spell as a row (the Bonus tab lists the spells that cost a Bonus Action; the rest are T4b's).
+export function spellRow(S, e, id, { mode = null } = {}) {
+  const sp = SPELLS[id], what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
+  return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', what].filter(Boolean).join(' · '), why: spellWhy(S, e, sp),
+    chip: CHIP[sp.time] ?? 'Action', time: sp.time, armed: armedBy(mode, 'spell', id) };
+}
+
+// Everything that costs a Bonus Action, from every kind (Decision 6): spells with `time: 'bonus'`, features whose action is a Bonus Action, the standard actions that are
+// one for this creature (Nimble Escape: Disengage and Hide; Cunning Action, `bonusActs`: Dash, Disengage, Hide), a monster's bonus actions and a bonus attack.
+// Returns { rows, available, why }: `available` is whether a Bonus Action is left, `why` the engine's reason when it is not.
+export function bonusRows(S, e, { mode = null, fly = null } = {}) {
+  const rows = [], seen = new Set(), add = (r) => { if (!seen.has(r.id)) { seen.add(r.id); rows.push(r); } };
+  for (const r of attackRows(S, e, { mode })) if (r.time === 'bonus') add(r);
+  for (const r of featureRows(S, e, { mode })) if (r.time === 'bonus') add(r);
+  for (const id of e.spells ?? []) if (SPELLS[id]?.time === 'bonus') add(spellRow(S, e, id, { mode }));
+  const std = moveRows(S, e, { fly }), nimble = !!e.features?.nimbleEscape;
+  for (const r of std) if (r.std && r.time === 'bonus') add(r);
+  for (const kind of e.bonusActs ?? []) {
+    if (nimble && kind !== 'dash') continue;                                                      // already a Bonus Action row above
+    const base = std.find((r) => r.id === kind);
+    if (!base) continue;
+    add({ ...base, id: `${kind}-bonus`, label: `${base.label} (Bonus)`, chip: CHIP.bonus, time: 'bonus', why: kind === 'hide' && base.kind === 'none' ? base.why : (kind === 'hide' ? (S.encounter && inFight(S, e.id) ? blocked(S, e, 'bonus') : '') || hideProblem(S, e) : blocked(S, e, 'bonus')),
+      ...(base.send ? { send: { ...base.send, bonus: true } } : {}) });
+  }
+  const why = blocked(S, e, 'bonus');
+  return { rows: rows.map((r) => (r.why || !why ? r : { ...r, why })), available: !why, why };
+}
+
+// The rows of the tab `id` for `e` ('' for a tab with none). One place for the shell and the tests.
+export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
+  if (id === 'attacks') return attackRows(S, e, { mode });
+  if (id === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
+  if (id === 'move') return moveRows(S, e, { fly });
+  if (id === 'features') return featureRows(S, e, { mode });
+  return [];
+}
+
 
 // ---------- the status line ----------
 // What the pills say, and how each ends. Pure: it reads the creature and the state's lasting effects.
@@ -221,15 +335,17 @@ const $ = (id) => document.getElementById(id);
 const ARMS = (m) => !!m && m.kind !== 'move';
 
 // ctx: { prefs, state(), isDM(), mine(e), act, toast, skipping(), setMode(m), move (the idle mode), castSpell(e, id, armed), openSheet(),
-//        shortRest(), hpFraction(e), formLabel(e), budget(e), onSize() }.
+//        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ aloft, alt }),
+//        fly(e, delta) (change the height of the next move), render(), selected() }.
 export function initActionPanel(ctx) {
   const { prefs } = ctx;
   const card = $('card'), body = $('ap-body'), tabsEl = $('ap-tabs'), how = $('ap-how');
-  let sel = { key: '', tab: null }, rows = [], raised = false, moreOpen = false, howKey = null, ctxNow = null, tabsNow = [], found = [false, false];
-  const pref = () => ({ remember: 'remember', all: 'all' })[prefs.get('hextable.panelTab')] ?? 'auto';
+  let sel = { key: '', tab: null }, rowsBy = {}, raised = false, moreOpen = false, howKey = null, ctxNow = null, tabsNow = [], found = [false, false];
+  const pref = () => (prefs.get('hextable.panelTab') === 'remember' ? 'remember' : 'auto');
   const last = () => prefs.get('hextable.panelLast') ?? {};
   const narrow = () => { try { return matchMedia('(max-width: 600px)').matches; } catch { return false; } };
-  const panes = { explore: $('ap-explore'), reactions: $('ap-reactions'), down: $('ap-down'), all: $('ap-all') };
+  const panes = { explore: $('ap-explore'), attacks: $('ap-attacks'), bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down'), all: $('ap-all') };
+  const LISTS = ['explore', 'attacks', 'bonus', 'move', 'features'];
 
   const setHtml = (el, html) => { if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; } };
 
@@ -266,35 +382,73 @@ export function initActionPanel(ctx) {
     if (Number.isInteger(n) && n >= 1 && n <= tabsNow.length && tabsNow.length > 1) choose(tabsNow[n - 1].id);
   });
 
-  // A tap on an Explore row does what the same button of the bar does.
+  // A tap on a row does what the same button of the bar did.
   function run(r) {
     const S = ctx.state(), e = S.entities[ctx.selected()];
     if (!e || ctx.skipping()) return;
     if (r.why) return ctx.toast(r.why);
     switch (r.kind) {
-      case 'send': return ctx.act(r.send);
-      case 'use': return ctx.act(r.send);
+      case 'send': case 'use': return ctx.act(r.send);
+      case 'arm': return ctx.setMode(r.armed ? ctx.move : r.mode);
+      case 'spell': return ctx.castSpell(e, r.spell, r.armed);
+      case 'chooser': return ctx.openFeature(e, r.feature);
+      case 'fly': return ctx.fly(e, r.delta);
       case 'follow': if (r.armed) { ctx.setMode(ctx.move); return ctx.act(r.send); } return ctx.setMode({ kind: 'follow' });
       case 'ritual': return ctx.castSpell(e, r.spell, r.armed);
       case 'shortRest': return ctx.shortRest();
       case 'check': return ctx.openSheet();
       case 'jump': {
-        choose('all');
-        const b = [...$('actions').querySelectorAll('button')].find((x) => x.querySelector('span')?.textContent === r.jump);
+        choose(r.jumpTab ?? 'all');
+        const b = r.jumpTab === 'features' ? panes.features.querySelector(`[data-row="${CSS.escape(r.jump)}"]`)
+          : [...$('actions').querySelectorAll('button')].find((x) => x.querySelector('span')?.textContent === r.jump);
         if (b) { b.scrollIntoView({ block: 'nearest', inline: 'center' }); b.focus({ preventScroll: true }); }
         return;
       }
       default: return;
     }
   }
-  panes.explore.addEventListener('click', (ev) => {
-    const b = ev.target.closest('[data-row]'); if (!b) return;
-    const r = rows.find((x) => x.id === b.dataset.row); if (r) run(r);
-  });
+  for (const id of LISTS) {
+    panes[id].addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-row]'); if (!b) return;
+      const r = (rowsBy[id] ?? []).find((x) => x.id === b.dataset.row); if (r) run(r);
+    });
+  }
   panes.explore.addEventListener('toggle', (ev) => { if (ev.target.matches('details.ap-more')) moreOpen = ev.target.open; }, true);
 
-  const rowHtml = (r) => `<button type="button" class="ap-row${r.armed ? ' armed' : ''}${r.why ? ' off' : ''}" data-row="${esc(r.id)}" aria-disabled="${r.why ? 'true' : 'false'}"${r.why ? ` aria-describedby="ap-w-${esc(r.id).replace(/[^\w-]/g, '_')}"` : ''}>
-    <span class="ap-t">${esc(r.label)}</span>${r.sub ? `<small class="ap-s">${esc(r.sub)}</small>` : ''}${r.why ? `<small class="ap-why" id="ap-w-${esc(r.id).replace(/[^\w-]/g, '_')}">${esc(r.why)}</small>` : ''}</button>`;
+  const pipDots = (p) => (p.max <= 8 ? `<span class="pips" aria-hidden="true">${'●'.repeat(Math.max(0, Math.min(p.left, p.max)))}${'○'.repeat(Math.max(0, p.max - p.left))}</span> ` : '');
+  const pipsHtml = (p) => (p ? `<small class="ap-pips">${pipDots(p)}<b>${p.left} / ${p.max}${p.unit ? ` ${esc(p.unit)}` : ''}</b>${p.text ? ` · ${esc(p.text)}` : ''}</small>` : '');
+  const rowHtml = (r) => {
+    const wid = `ap-w-${esc(r.id).replace(/[^\w-]/g, '_')}`, tag = r.kind === 'none' && !r.why ? 'div' : 'button';
+    return `<${tag}${tag === 'button' ? ' type="button"' : ''} class="ap-row${r.armed ? ' armed' : ''}${r.why ? ' off' : ''}${tag === 'div' ? ' info' : ''}" data-row="${esc(r.id)}"${tag === 'button' ? ` aria-disabled="${r.why ? 'true' : 'false'}"` : ''}${r.why ? ` aria-describedby="${wid}"` : ''}>
+    <span class="ap-top"><span class="ap-t">${esc(r.label)}</span>${r.chip ? `<span class="ap-chip">${esc(r.chip)}</span>` : ''}</span>${r.sub ? `<small class="ap-s">${esc(r.sub)}</small>` : ''}${pipsHtml(r.pips)}${r.why ? `<small class="ap-why" id="${wid}">${esc(r.why)}</small>` : ''}</${tag}>`;
+  };
+  const listHtml = (head, list) => `${head}<div class="ap-list">${list.map(rowHtml).join('')}</div>`;
+  // The Move tab's meter: the Speed left this turn.
+  const moveHead = (S, e) => {
+    const m = moveBudget(S, e); if (!m) return '';
+    return `<div class="ap-speed"><span>Speed left <b>${m.left} ft</b>${m.max > m.left ? ` of ${m.max}` : ''}</span><span class="ap-meter" role="presentation"><i style="width:${m.max ? Math.round((m.left / m.max) * 100) : 0}%"></i></span></div>${m.prone ? '<p class="ap-why-line">Prone. You stand at the start of your turn, using half your Speed.</p>' : ''}`;
+  };
+  // Only whole rows show in the compact pane: its height is cut back to the last row that fits, and a line under it says how many more are below.
+  const cue = document.createElement('button'); cue.type = 'button'; cue.id = 'ap-cue'; cue.hidden = true; body.append(cue);
+  cue.onclick = () => { raised = true; ctx.render(); };
+  const rowsOf = (el) => [...el.querySelectorAll('.ap-row, .ap-more > summary')];
+  function cueFor(el) {
+    const box = el.getBoundingClientRect(), hidden = el.hidden ? 0 : rowsOf(el).filter((it) => it.getBoundingClientRect().bottom > box.bottom + 1).length;
+    cue.hidden = !hidden; cue.textContent = hidden ? `▾ ${hidden} more: scroll or tap for more room` : '';
+  }
+  function fit(el) {
+    el.style.maxHeight = '';
+    const cap = parseFloat(getComputedStyle(el).maxHeight), items = rowsOf(el);
+    if (cap > 0 && items.length && el.scrollHeight > cap + 1) {
+      const top = el.getBoundingClientRect().top - el.scrollTop;
+      let h = 0;
+      for (const it of items) { const bottom = it.getBoundingClientRect().bottom - top; if (bottom <= cap + 1 || !h) h = Math.max(h, bottom); }
+      el.style.maxHeight = `${Math.ceil(h)}px`;
+    }
+    cueFor(el);
+  }
+  for (const id of [...LISTS, 'reactions', 'down']) panes[id].addEventListener('scroll', () => cueFor(panes[id]), { passive: true });
+
   const exploreHtml = (list) => `<div class="ap-grid">${list.filter((r) => r.grid).map(rowHtml).join('')}</div>${list.some((r) => !r.grid) ? `<details class="ap-more"${moreOpen ? ' open' : ''}><summary>More</summary><div class="ap-list">${list.filter((r) => !r.grid).map(rowHtml).join('')}</div></details>` : ''}`;
 
   function reactionsPane(S, e, r) {
@@ -351,9 +505,9 @@ export function initActionPanel(ctx) {
 
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
-      const legacy = pref() === 'all';
-      tabsNow = visibleTabs(ctxNow);
-      if (legacy && tabsNow.some((t) => t.id === 'all')) tabsNow = tabsNow.filter((t) => t.id === 'all');       // the preference "always the full bar": no tabs, today's card
+      const fly = ctx.flyInfo(e);
+      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: !!(e.attacks?.length || e.actions?.length), features: featureRows(S, e).length > 0 };
+      tabsNow = visibleTabs(ctxNow, has);
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
       if (sel.key !== key) sel = { key, tab: null };
@@ -364,18 +518,29 @@ export function initActionPanel(ctx) {
       setHtml(tabsEl, tabsNow.map((t, i) => {
         const off = t.id === 'reactions' && !t.ok && !t.pending;
         return `<button type="button" role="tab" id="ap-tab-${t.id}" data-tab="${t.id}" aria-selected="${t.id === tab}" aria-controls="ap-${t.id}" tabindex="${t.id === tab ? 0 : -1}" class="${off ? 'off ' : ''}${t.pending ? 'pulse' : ''}"${off ? ' aria-disabled="true"' : ''}${i < 6 ? ` aria-keyshortcuts="${i + 1}"` : ''}>${esc(t.label)}${t.pending ? '<i class="sr-only"> (a question is waiting)</i>' : ''}</button>`;
-      }).join('') + (tab !== 'all' && tab !== 'down' && !legacy ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body">${raised ? 'Less' : 'More room'}</button>` : ''));
+      }).join('') + (tab !== 'all' && tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body" aria-label="${raised ? 'Less room' : 'More room'}" title="${raised ? 'Less room' : 'More room'}">${raised ? '▾' : '▴'}</button>` : ''));
 
       // the panes: only the open one is shown
       for (const [id, el] of Object.entries(panes)) el.hidden = id !== tab;
-      if (tab === 'explore') { rows = rankExplore(S, e, { dm, mode, found: found[0] || found[1] }); setHtml(panes.explore, exploreHtml(rows)); }
+      if (tab === 'explore') { rowsBy.explore = rankExplore(S, e, { dm, mode, found: found[0] || found[1] }); setHtml(panes.explore, exploreHtml(rowsBy.explore)); }
+      if (['attacks', 'features', 'move', 'bonus'].includes(tab)) {
+        let head = '', list;
+        if (tab === 'bonus') {
+          const b = bonusRows(S, e, { mode, fly }); list = b.rows;
+          head = (b.available ? '' : `<p class="ap-why-line">No Bonus Action: ${esc(b.why)}</p>`) + (list.length ? '' : '<p class="ap-why-line">Nothing this creature has costs a Bonus Action.</p>');
+        } else list = tabRows(S, e, tab, { mode, fly });
+        if (tab === 'move') head = moveHead(S, e);
+        rowsBy[tab] = list;
+        setHtml(panes[tab], listHtml(head, list));
+      }
       if (tab === 'reactions') reactionsPane(S, e, react ?? reactionState(S, e, { dm }));
       if (tab === 'down') downPane(S, e);
       body.hidden = !tabsNow.length;
       card.dataset.tab = tab ?? '';
       card.dataset.situation = ctxNow.situation;
       card.toggleAttribute('data-raised', raised && tab !== 'all');
-      card.toggleAttribute('data-collapsed', !legacy && ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
+      card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
+      if (panes[tab] && tab !== 'all' && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
       return tab;
     },
     get tab() { return sel.tab ?? card.dataset.tab; },

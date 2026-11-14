@@ -1,11 +1,11 @@
 import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab } from './lib.mjs';
 
 // ---------- the action panel (docs/specs/table-ui.md, Decision 6, task T3) ----------
-// Solo as the DM at 1280x800 and at 390x844 with touch: Explore first with the ranking and the DM's rests, the temporary "All" tab
-// holding today's bar, a pill that says how it ends, the raised height, a follow armed on a phone (the panel steps aside for the map),
+// Solo as the DM at 1280x800 and at 390x844 with touch: Explore first with the ranking and the DM's rests, the Features tab
+// (a greyed row says why on screen), a pill that says how it ends, the raised height, a follow armed on a phone (the panel steps aside for the map),
 // a fight (Reactions on another's turn, the question waiting, nothing covering the chips or the initiative strip). Then a table: a DM
 // and a phone player, who gets no "Lead the party", sees Reactions on another's turn and no tab strip on its own.
-// These passes do not use lib.open(): it sets the preference that keeps today's bar, and this is about the default.
+// The tabs' own rows (Attacks, Bonus, Move, Features) are driven by SMOKE_ONLY=paneltabs.
 const go = async (page, url) => { await page.goto(url); await waitShown(page, '#lobby'); };
 const tabOf = (page) => page.evaluate(() => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab ?? null);
 const rows = (page) => page.$$eval('#ap-explore [data-row]', (b) => b.map((x) => x.dataset.row));
@@ -61,13 +61,15 @@ async function solo(browser, url, label, opts) {
         await wait(page, (k) => window.hextable.state.timeline.length > k && window.hextable.state.timeline.some((e, i) => i >= k && e.type === 'check' && e.search), n);
       });
 
-      await run.do('the All tab holds today\'s bar unchanged, Explore comes back', async () => {
-        await page.click('#ap-tab-all'); await waitTab(page, 'all'); await waitShown(page, '#actions'); await waitShown(page, '#ap-explore', false);
-        const names = await page.$$eval('#actions button', (b) => b.map((x) => x.querySelector('span')?.textContent));
-        for (const want of ['Longsword', 'Follow', 'Search', 'Hide']) if (!names.includes(want)) throw new Error(`the bar lost ${want}: ${names}`);
+      await run.do('the Features tab has a row for Second Wind with its pips and the reason it is greyed written on screen, Explore comes back', async () => {
+        await page.click('#ap-tab-features'); await waitTab(page, 'features'); await waitShown(page, '#ap-features'); await waitShown(page, '#ap-explore', false);
+        await waitShown(page, '#ap-features [data-row="feat:secondWind"], #ap-features [data-row="feat:second-wind"]');
+        const sw = await page.$eval('#ap-features [data-row^="feat:"]', (b) => ({ t: b.textContent.replace(/\s+/g, ' '), off: b.getAttribute('aria-disabled'), why: b.querySelector('.ap-why')?.getBoundingClientRect().height }));
+        if (!/Second Wind/.test(sw.t) || !/\d \/ \d/.test(sw.t) || !/Back on a/.test(sw.t)) throw new Error(`no pips or recharge text: ${sw.t}`);
+        if (sw.off !== 'true' || !sw.why || !/full Hit Points/.test(sw.t)) throw new Error(`a greyed row does not say why on screen: ${JSON.stringify(sw)}`);
         await clear(page, touch, false);
         await page.click('#ap-tab-explore'); await waitTab(page, 'explore'); await waitShown(page, '#actions', false);
-        if (!touch) { await page.keyboard.press('2'); await waitTab(page, 'all'); await page.keyboard.press('1'); await waitTab(page, 'explore'); }
+        if (!touch) { await page.keyboard.press('2'); await waitTab(page, 'features'); await page.keyboard.press('1'); await waitTab(page, 'explore'); }
       });
 
       await run.do('a condition is a pill; tapping it says how it ends, tapping again closes it', async () => {
@@ -84,6 +86,8 @@ async function solo(browser, url, label, opts) {
       });
 
       await run.do('the raised height gives more room and the map is still there; back to compact', async () => {
+        await page.click('#ap-explore details.ap-more > summary');          // more rows than the compact height shows, or there is nothing to raise
+        await wait(page, () => document.querySelector('#ap-explore details.ap-more')?.open);
         const h0 = await page.$eval('#ap-explore', (e) => e.getBoundingClientRect().height);
         await page.click('#ap-grip');
         await wait(page, () => document.querySelector('#card').hasAttribute('data-raised'));
@@ -92,6 +96,7 @@ async function solo(browser, url, label, opts) {
         if ((await page.getAttribute('#ap-grip', 'aria-expanded')) !== 'true') throw new Error('the grip does not say it is open');
         await clear(page, touch, false); await shot('raised');
         await page.click('#ap-grip'); await wait(page, () => !document.querySelector('#card').hasAttribute('data-raised'));
+        await page.click('#ap-explore details.ap-more > summary'); await wait(page, () => !document.querySelector('#ap-explore details.ap-more')?.open);
       });
 
       await run.do('Follow armed: on a phone the rows step aside for the map, on a desktop they stay; Cancel brings them back', async () => {
@@ -129,7 +134,7 @@ async function solo(browser, url, label, opts) {
         await wait(page, () => document.querySelector('#rp').hidden);
       });
 
-      await run.do('on its own turn the card is today\'s bar and End turn, with no tab strip to spend room on', async () => {
+      await run.do('on its own turn the card opens on Attacks with End turn, and the tab strip names Bonus and Move', async () => {
         const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
         const isPc = await state(page, (S, i) => S.entities[i].kind === 'pc', cur);
         if (!isPc) { // walk the order to a character's turn
@@ -140,8 +145,9 @@ async function solo(browser, url, label, opts) {
         }
         const me = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
         await page.evaluate((i) => window.hextable.select(i), me);
-        await waitShown(page, '#actions'); await waitShown(page, '#btn-end');
-        if (await shown(page, '#ap-tabs')) throw new Error('a one-tab strip is spending room');
+        await waitTab(page, 'attacks'); await waitShown(page, '#ap-attacks'); await waitShown(page, '#btn-end'); await waitShown(page, '#actions', false);
+        const tabs = await page.$$eval('#ap-tabs [data-tab]', (b) => b.map((x) => x.dataset.tab));
+        for (const want of ['attacks', 'bonus', 'move']) if (!tabs.includes(want)) throw new Error(`no ${want} tab in ${tabs}`);
         await clear(page, touch, true); await shot('turn');
       });
     } finally { await ctx.close(); }
@@ -194,7 +200,7 @@ async function table(browser, url) {
         await waitTab(phone, 'reactions'); await waitShown(phone, '#ap-reactions');
         await clear(phone, true, true);
       });
-      await run.do('on its turn the phone is given today\'s bar and End turn', async () => {
+      await run.do('on its turn the phone is given Attacks and End turn', async () => {
         for (let k = 0; k < 14; k++) {
           const mineNow = await state(phone, (S) => !!S.entities[S.encounter.order[S.encounter.turn].id].owner);
           if (mineNow) break;
@@ -202,7 +208,7 @@ async function table(browser, url) {
           await wait(host, () => window.hextable.waiting === 0, null, 15000);
           await sleep(100);
         }
-        await waitShown(phone, '#btn-end'); await waitShown(phone, '#actions');
+        await waitShown(phone, '#btn-end'); await waitShown(phone, '#ap-attacks');
         await clear(phone, true, true);
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }

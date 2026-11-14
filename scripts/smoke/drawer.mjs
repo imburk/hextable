@@ -164,6 +164,8 @@ async function drawerPass(browser, url, label, opts) {
         await wait(page, (i) => window.hextable.state && document.querySelector('#c-name')?.textContent === window.hextable.state.entities[i].name, id);
         if (phone) await waitShown(page, '#drawer', false);
         else { await closeMenu(page); }
+        // The fight starts at a foe with the party far off, so "The party has fallen" can be up by now (it comes when the beats are still): put it aside, it is not what this step is about.
+        if (await shown(page, '#df .df-card')) { await page.click('#df [data-df="aside"]'); await waitShown(page, '#df .df-card', false); }
         await page.click('#order li'); await waitShown(page, '#drawer'); await waitShown(page, '#tracker');
         await closeMenu(page);
       });

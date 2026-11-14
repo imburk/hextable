@@ -130,30 +130,30 @@ async function dice(browser, url, label, opts) {
         bad = await audit(me); if (bad.length) throw new Error(bad.join('; '));
       });
 
-      await run.do('nothing is left on the screen: no dice canvas, and the action bar takes a touch', async () => {
+      await run.do('nothing is left on the screen: no dice canvas, and the action panel takes a touch', async () => {
         await idle();
         if (await shown(me, '#dice')) throw new Error('the dice canvas is still over the screen with nothing in the air');
         await me.click(`#party button:has-text("${await me.evaluate((p) => window.hextable.state.entities[p].name, pc)}")`).catch(() => {});
         const r = await me.evaluate(() => {
-          const bar = document.getElementById('actions'), b = bar && bar.querySelector('button');
+          const bar = document.getElementById('ap-body'), b = bar && [...bar.querySelectorAll('[data-row], #actions button')].find((x) => x.getClientRects().length);
           if (!b) return { none: true };
           const q = b.getBoundingClientRect(), top = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
           return { ok: !top || b.contains(top) || top === b, over: top && (top.id || top.className || top.tagName) };
         });
-        if (!r.none && !r.ok) throw new Error(`the action bar is covered by ${r.over}`);
+        if (!r.none && !r.ok) throw new Error(`the action panel is covered by ${r.over}`);
       });
 
-      await run.do('under throw the tray is on screen and clear of the action bar', async () => {
+      await run.do('under throw the tray is on screen and clear of the action panel', async () => {
         await host.evaluate(() => window.hextable.act({ type: 'setting', key: 'diceThrow', value: 'throw' }));
         await wait(me, () => window.hextable.state.settings.diceThrow === 'throw');
         await me.evaluate((p) => window.hextable.act({ type: 'check', actor: p, skill: 'athletics' }), pc);
         await waitShown(me, '#dice-tray');
         const r = await me.evaluate(() => {
-          const t = document.getElementById('dice-tray').getBoundingClientRect(), b = document.getElementById('actions').getBoundingClientRect();
+          const t = document.getElementById('dice-tray').getBoundingClientRect(), b = document.getElementById('ap-body').getBoundingClientRect();
           return { t: [t.left, t.top, t.right, t.bottom], b: [b.left, b.top, b.right, b.bottom], w: innerWidth, h: innerHeight, shown: b.height > 0 };
         });
         if (r.t[0] < 0 || r.t[2] > r.w || r.t[1] < 0 || r.t[3] > r.h) throw new Error(`the tray is off screen: ${JSON.stringify(r)}`);
-        if (r.shown && r.t[3] > r.b[1] && r.t[1] < r.b[3] && r.t[2] > r.b[0] && r.t[0] < r.b[2]) throw new Error(`the tray covers the action bar: ${JSON.stringify(r)}`);
+        if (r.shown && r.t[3] > r.b[1] && r.t[1] < r.b[3] && r.t[2] > r.b[0] && r.t[0] < r.b[2]) throw new Error(`the tray covers the action panel: ${JSON.stringify(r)}`);
         await (touch ? me.locator('#dice-tray .dt-throw').tap() : me.click('#dice-tray .dt-throw'));
         await wait(me, () => window.hextable.thrown.some((g) => g.type === 'check'), null, 15000);
         await me.evaluate(() => window.hextable.dice.skip());

@@ -42,6 +42,33 @@ export function kindOf(f) {
   return null;
 }
 export const needsChoice = (f) => kindOf(f) !== null;
+// What is left of the thing a feature spends: its own uses, or those of the resource it names (Divine Spark spends Channel Divinity); null if it spends none.
+export const usesLeft = (e, f) => (f.uses ? e.uses?.[f.id] ?? 0 : f.action?.cost?.resource ? e.uses?.[f.action.cost.resource] ?? 0 : null);
+export const usesName = (f) => (f.uses ? '' : f.action?.cost?.resource ? ` ${nice(f.action.cost.resource)}` : '');
+
+// The features that open a chooser first, as the buttons the panel lists (pure: no page). `st`: the state. Each: { label, sub, cls, why, feature, kind, time, f }.
+// `kind` is the chooser (kindOf); `time` the action it costs ('action', 'bonus', 'reaction', 'free', or null for none).
+export function chooserButtons(st, e) {
+  const out = [];
+  for (const f of e.feats ?? []) {
+    const kind = kindOf(f);
+    if (!kind || !f.action && kind !== 'exchange' && kind !== 'free') continue;
+    const a = f.action, time = a ? (a.time === 'free' ? null : a.time) : null, left = usesLeft(e, f);
+    let label = f.name, sub = '', why = '', cls = a && (a.time === 'bonus' || a.time === 'free') ? 'bonus' : '';
+    if (kind === 'modes') sub = [TIME[a.time], left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · ');
+    else if (kind === 'pool') sub = [TIME[a.time], `${left} HP left`].join(' · ');
+    else if (kind === 'exchange') { sub = `${left} of ${f.uses.max} points`; cls = ''; }
+    else if (kind === 'free') sub = `Cast free · ${left} left`;
+    else if (kind === 'form') {
+      const now = formOf(e);
+      label = now ? `${f.name}: ${formName(e)}` : f.name; sub = now ? `${TIME[a.time]} · leave or change` : `${TIME[a.time]} · ${left} left`; cls = `${cls} ${now ? 'armed' : ''}`;
+    }
+    if (time) why = blocked(st, e, time) || '';
+    if (kind === 'modes' || kind === 'pool') { const cost = a.cost?.n ?? 1; if (left !== null && !a.pool && left < cost) why ||= `${e.name} has no uses of ${f.name} left.`; if (a.pool && left < 1) why ||= `${f.name} has no Hit Points left.`; }
+    out.push({ label, sub, cls, why: kind === 'exchange' || kind === 'free' ? '' : why, feature: f.id, kind, time: a ? a.time : null, f });
+  }
+  return out;
+}
 export const metamagicKnown = (e) => (e.feats ?? []).filter((f) => f.metamagic);
 
 // Forms the feature offers: pack Beasts within its limits (`action.form`: types, maxCr, fly). The engine checks again.
@@ -97,8 +124,6 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
   const creatures = (e) => Object.values(S().entities).filter((x) => x.pos && !x.dead && !x.hidden)
     .sort((a, b) => (a.id === e.id ? -1 : b.id === e.id ? 1 : (a.side === e.side ? 0 : 1) - (b.side === e.side ? 0 : 1) || a.name.localeCompare(b.name)));
   const seen = (x) => (x.abil ? ` (${x.hp}/${x.maxHp} HP)` : '');
-  const usesLeft = (e, f) => (f.uses ? e.uses?.[f.id] ?? 0 : f.action?.cost?.resource ? e.uses?.[f.action.cost.resource] ?? 0 : null);
-  const usesName = (f) => (f.uses ? '' : f.action?.cost?.resource ? ` ${nice(f.action.cost.resource)}` : '');
 
   // ---------- Divine Spark and the like: one of several modes ----------
   function modesPanel(e, f) {
@@ -289,26 +314,9 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
   const chosenFor = (e, spellId) => (pend && pend.actor === e.id && pend.spell === spellId ? pend : null);
 
   // ---------- the buttons of the action bar ----------
+  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, exchange: exchangePanel, free: freePanel })[kindOf(f)](e, f);
   function buttons(e) {
-    const out = [];
-    const st = S();
-    for (const f of e.feats ?? []) {
-      const kind = kindOf(f);
-      if (!kind || !f.action && kind !== 'exchange' && kind !== 'free') continue;
-      const a = f.action, time = a ? (a.time === 'free' ? null : a.time) : null, left = usesLeft(e, f);
-      let label = f.name, sub = '', why = '', cls = a && (a.time === 'bonus' || a.time === 'free') ? 'bonus' : '', panel = () => null;
-      if (kind === 'modes') { sub = [TIME[a.time], left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · '); panel = () => modesPanel(e, f); }
-      else if (kind === 'pool') { sub = [TIME[a.time], `${left} HP left`].join(' · '); panel = () => poolPanel(e, f); }
-      else if (kind === 'exchange') { sub = `${left} of ${f.uses.max} points`; panel = () => exchangePanel(e, f); cls = ''; }
-      else if (kind === 'free') { label = f.name; sub = `Cast free · ${left} left`; panel = () => freePanel(e, f); }
-      else if (kind === 'form') {
-        const now = formOf(e);
-        label = now ? `${f.name}: ${formName(e)}` : f.name; sub = now ? `${TIME[a.time]} · leave or change` : `${TIME[a.time]} · ${left} left`; cls = `${cls} ${now ? 'armed' : ''}`; panel = () => formPanel(e, f);
-      }
-      if (time) why = blocked(st, e, time) || '';
-      if (kind === 'modes' || kind === 'pool') { const cost = a.cost?.n ?? 1; if (left !== null && !a.pool && left < cost) why ||= `${e.name} has no uses of ${f.name} left.`; if (a.pool && left < 1) why ||= `${f.name} has no Hit Points left.`; }
-      out.push({ label, sub, cls, why: kind === 'exchange' || kind === 'free' ? '' : why, onClick: () => show(panel()), feature: f.id });
-    }
+    const out = chooserButtons(S(), e).map(({ label, sub, cls, why, feature, f }) => ({ label, sub, cls, why, feature, onClick: () => show(panelOf(e, f)) }));
     if (metamagicKnown(e).length && spellsToCast(e).length) {
       const known = metamagicKnown(e), pool = known[0].metamagic.pool, left = e.uses?.[pool] ?? 0;
       const here = pend && pend.actor === e.id;
@@ -329,14 +337,16 @@ export function initClasses({ act, state, mine, isDM, toast, arm, castSpell }) {
     if (!mine(e)) return;
     for (const b of rootEl.querySelectorAll('[data-feat-use]')) {
       const f = (e.feats ?? []).find((x) => x.id === b.dataset.featUse);
-      if (f) b.onclick = () => show(({ modes: modesPanel, form: formPanel, pool: poolPanel, exchange: exchangePanel, free: freePanel })[kindOf(f)](e, f));
+      if (f) b.onclick = () => show(panelOf(e, f));
     }
     for (const b of rootEl.querySelectorAll('[data-meta-open]')) b.onclick = () => (metamagicKnown(e).length ? show(metaPanel(e)) : toast(`${e.name} knows no Metamagic options yet: choose them on the sheet.`));
     for (const b of rootEl.querySelectorAll('[data-leave-form]')) b.onclick = () => act({ type: 'feature', actor: e.id, feature: b.dataset.leaveForm });
   }
 
   return {
-    buttons, decorate, bindSheet, sheetBanner, pickable, chosenFor,
+    buttons, decorate, bindSheet,
+    // Opens the chooser of a feature (the panel's Features row, and the sheet's Use button).
+    openFeature(e, id) { const f = (e.feats ?? []).find((x) => x.id === id); if (f && needsChoice(f)) show(panelOf(e, f)); }, sheetBanner, pickable, chosenFor,
     // A spell armed with Metamagic that needs more targets (Twinned): the most it may take now.
     most(e, sp, n) { return chosenFor(e, sp.id)?.twinned ? targetCount(sp.def, e.level, sp.level + 1) : n; },
     hint(e, spellId) { const p = chosenFor(e, spellId); return p?.label ? ` · ${p.label}` : ''; },

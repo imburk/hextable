@@ -3,8 +3,8 @@
 // intents through the transport. It never changes game state itself.
 import * as H from './shared/hex.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
-import { featureButtons, featuresHtml, initShortRest, hasFeat } from './features.js';
-import { moveOptions, current, inFight, up, hostile, blocked, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, usesFor, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, hideProblem } from './shared/engine.js';
+import { featuresHtml, initShortRest } from './features.js';
+import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
@@ -15,7 +15,7 @@ import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './render.js';
 import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker } from './tracker.js';
-import { initActionPanel, nearestAlly, spellWhy } from './actionpanel.js';
+import { initActionPanel, spellWhy } from './actionpanel.js';
 import { initDrawer } from './drawer.js';
 import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
@@ -381,21 +381,6 @@ function button(label, sub, cls, why, onClick) {
   return b;
 }
 
-// A creature that plays from its actions (a monster): one button per action, with what its
-// first step does. Multiattack and anything with nothing to aim go off at once.
-function actionButtons(e, bar) {
-  const b = S.encounter?.budget, mine = b && current(S) === e.id;
-  for (const def of e.actions) {
-    const p = actionProfile(def), armed = mode.kind === 'action' && mode.id === def.id;
-    const pooled = mine && b.attacks && fromPool(b, def.id);
-    const why = (pooled ? blocked(S, e, null) : blocked(S, e, 'action')) || actionSpent(e, def) ||
-      (def.multiattack && !S.encounter ? `${def.name} is for a fight. Use one of its attacks to start one.` : '');
-    const sub = [pooled ? 'from Multiattack' : p.aim === 'multi' ? 'Action' : '', p.short, p.bonus !== undefined ? signed(p.bonus) : '', p.dc ? `DC ${p.dc}` : '',
-      p.recharge ? `recharge ${p.recharge[0]}–6` : '', p.uses ? `${e.charges?.[def.id] ?? p.uses.n}/day left` : ''].filter(Boolean).join(' · ');
-    const go = () => (p.aim === 'multi' || p.aim === 'self' || p.aim === 'none' ? act({ type: 'act', actor: e.id, action: def.id }) : setMode(armed ? MOVE : { kind: 'action', id: def.id, area: p.aim === 'area', aim: null }));
-    bar.append(button(def.name, sub, armed ? 'armed' : '', why, go));
-  }
-}
 // Cast a spell that has nothing to aim on the spot, or arm it (or put it down again if it is armed).
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
@@ -485,68 +470,21 @@ function refresh() {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
     const my = mine(e), full = !!e.abil;
     const myTurn = enc && cur === e.id && up(e);
+    // The Spells tab is T4b's: until it exists the spell buttons (and Metamagic) are built here, in the tab with id `all`. Everything else has a row in its own
+    // tab (actionpanel.js: Attacks, Bonus, Move, Features, Explore).
     const bar = $('actions'); bar.textContent = '';
     bar.classList.remove('many');
     if (bar.dataset.for !== e.id) { bar.scrollLeft = 0; bar.dataset.for = e.id; }        // another creature starts at the left
     if (my && up(e)) {
-      if (enc && inFight(S, e.id) && cur !== e.id) bar.innerHTML = `<span class="wait">Waiting for ${esc(name(cur))}…</span>`;
-      else {
-        if (e.actions) actionButtons(e, bar);
-        else for (const a of e.attacks) {
-          const armed = mode.kind === 'attack' && mode.id === a.id;
-          bar.append(button(a.name, `${signed(a.bonus)} · ${a.damage} ${a.dtype}`, armed ? 'armed' : '', blocked(S, e, 'action'),
-            () => setMode(armed ? MOVE : { kind: 'attack', id: a.id })));
-        }
-        for (const id of e.spells) {
-          const sp = SPELLS[id], armed = mode.kind === 'spell' && mode.id === id;
-          const why = spellWhy(S, e, sp);
-          const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
-          // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
-          const pick = () => startSpell(e, id, armed);
-          bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why,
-            pick));
-        }
-        for (const fb of featureButtons(S, e)) {
-          const armed = fb.aim && mode.kind === 'feature' && mode.id === fb.aim;
-          bar.append(button(fb.label, fb.sub, `${fb.cls} ${armed ? 'armed' : ''}`, fb.why, () => (fb.aim ? setMode(armed ? MOVE : { kind: 'feature', id: fb.aim, name: fb.label }) : act(fb.send))));
-        }
-        for (const cb of CLS.buttons(e)) bar.append(button(cb.label, cb.sub, cb.cls, cb.why, cb.onClick));
-        if (e.features.secondWind && !hasFeat(e, 'second-wind') && (enc || e.hp < e.maxHp))
-          bar.append(button('Second Wind', `Bonus · heal 1d10+${e.level} · ${e.uses.secondWind} left`, 'bonus',
-            blocked(S, e, 'bonus') || (!e.uses.secondWind && 'No uses of Second Wind left.') || (e.hp >= e.maxHp && `${e.name} is at full Hit Points.`) || '',
-            () => act({ type: 'secondWind', actor: e.id })));
-        if (aloft(S, e)) {
-          const alt = altOf(e);
-          bar.append(button('Higher', `Fly at ${alt + FT} ft`, '', '', () => { flyAlt[e.id] = alt + FT; refresh(); }));
-          bar.append(button(alt ? 'Lower' : 'On the ground', alt ? `Fly at ${alt - FT} ft${alt === FT ? ' (land)' : ''}` : 'Tap Higher to take off', '', alt ? '' : 'Already as low as it goes.', () => { flyAlt[e.id] = alt - FT; refresh(); }));
-        }
-        // Walking together, outside a fight: follow someone, or stop; the DM can have the whole party follow this one.
-        if (!inFight(S, e.id) && e.side === 'party') {
-          const leader = e.follow && S.entities[e.follow];
-          if (leader) bar.append(button('Stop following', `Following ${leader.name}`, '', '', () => act({ type: 'follow', actor: e.id, leader: null })));
-          else {
-            const armed = mode.kind === 'follow', near = nearestAlly(S, e);
-            bar.append(button(armed ? 'Follow nearest' : 'Follow', armed ? (near ? `${near.name} · or tap someone` : 'Tap a party member') : 'Walk behind someone', armed ? 'armed' : '', near ? '' : 'Nobody else in the party to follow.',
-              () => (armed ? (setMode(MOVE), act({ type: 'follow', actor: e.id, leader: near.id })) : setMode({ kind: 'follow' }))));
-          }
-          if (isDM() && !enc) bar.append(button('Lead the party', 'Everyone follows; then tap where to go', '', '', () => act({ type: 'partyFollow', leader: e.id })));
-        }
-        bar.append(button('Search', `${enc ? 'Action · ' : ''}Perception ${signed(checkBonus(e, { skill: 'perception' }))} · 15 ft`, '', blocked(S, e, 'action'), () => act({ type: 'search', actor: e.id })));
-        // The Hide action (DC 15 Stealth). Whether it may be tried is judged against the enemies this creature can see, as the engine does.
-        const hideTime = e.features.nimbleEscape ? 'bonus' : 'action';
-        if (e.hiding) bar.append(button('Hidden', `Stealth ${e.hiding.dc} to find`, 'armed', 'Already hidden: an attack, a spoken spell or a noise gives it away.', () => {}));
-        else bar.append(button('Hide', `${enc ? (hideTime === 'bonus' ? 'Bonus · ' : 'Action · ') : ''}Stealth ${signed(checkBonus(e, { skill: 'stealth' }))} · DC 15`, hideTime === 'bonus' ? 'bonus' : '',
-          (enc && inFight(S, e.id) ? blocked(S, e, hideTime) : '') || hideProblem(S, e), () => act({ type: 'hide', actor: e.id })));
-        // Doors and other things within reach.
-        for (const u of usesFor(S, e)) bar.append(button(`${u.label}`, `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, '', u.why, () => act({ type: 'use', actor: e.id, object: u.object, verb: u.verb })));
-        if (myTurn) {
-          bar.append(button('Dash', 'Action · double move', '', blocked(S, e, 'action'), () => act({ type: 'dash', actor: e.id })));
-          const nimble = e.features.nimbleEscape;
-          bar.append(button('Disengage', `${nimble ? 'Bonus' : 'Action'} · no Opportunity Attacks`, nimble ? 'bonus' : '', blocked(S, e, nimble ? 'bonus' : 'action'), () => act({ type: 'disengage', actor: e.id })));
-          bar.append(button('Dodge', 'Action · attackers roll with Disadvantage', '', blocked(S, e, 'action'), () => act({ type: 'dodge', actor: e.id })));
-        }
-        bar.classList.toggle('many', bar.querySelectorAll('button').length > 6);       // on a phone, two rows (see style.css)
+      for (const id of e.spells ?? []) {
+        const sp = SPELLS[id], armed = mode.kind === 'spell' && mode.id === id;
+        const why = spellWhy(S, e, sp);
+        const what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
+        // A spell with nothing to aim (it affects the caster, or the DM applies it) is cast on the spot.
+        bar.append(button(sp.name, `${sp.level ? 'Slot' : 'Cantrip'}${sp.time === 'bonus' ? ' · Bonus' : ''} · ${what}`, `${armed ? 'armed' : ''} ${sp.time === 'bonus' ? 'bonus' : ''}`, why, () => startSpell(e, id, armed)));
       }
+      for (const cb of CLS.buttons(e)) if (cb.feature === 'metamagic') bar.append(button(cb.label, cb.sub, cb.cls, cb.why, cb.onClick));
+      bar.classList.toggle('many', bar.querySelectorAll('button').length > 6);       // on a phone, two rows (see style.css)
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
       if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(S, e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
@@ -944,10 +882,12 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
-// The action panel (actionpanel.js): the card's head and status, and the tabs. The bar of today's buttons is still built above and sits in its "All" tab.
+// The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do. Until T4b the spell buttons are built in refresh() and sit in the tab with id `all`.
 const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
-  budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }) });
+  budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
+  openFeature: (e, id) => CLS.openFeature(e, id), flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.

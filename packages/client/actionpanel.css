@@ -5,13 +5,19 @@
 #ap-how p { margin: 4px 0 0; color: var(--muted); } #ap-how .row { margin: 8px 0 0; } #ap-how button { min-height: 44px; }
 
 #ap-body { min-height: 0; }
-#ap-explore, #ap-reactions, #ap-down { max-height: 112px; overflow-y: auto; overscroll-behavior: contain; }
-#card[data-raised] :is(#ap-explore, #ap-reactions, #ap-down) { max-height: max(112px, calc(55vh - 200px)); }
+#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down { max-height: 132px; overflow-y: auto; overscroll-behavior: contain; }
+#card[data-raised] :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(132px, calc(55vh - 200px)); }
 #card[data-collapsed] #ap-body { display: none; }
 .ap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ap-list { display: grid; gap: 6px; margin-top: 6px; }
 .ap-row { text-align: left; display: grid; align-content: center; gap: 1px; min-height: 48px; padding: 6px 10px; min-width: 0; }
-.ap-row .ap-t { font-weight: 700; } .ap-row small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.ap-row .ap-t { font-weight: 700; }
+.ap-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ap-chip { flex: none; font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); }
+.ap-row small.ap-pips { color: var(--ink); } .ap-pips .pips { letter-spacing: 1px; color: var(--accent); }
+.ap-row.info { border: 1px dashed var(--line); border-radius: var(--radius); background: transparent; cursor: default; }
+.ap-speed { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 13px; }
+.ap-meter { flex: 1; height: 8px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; } .ap-meter i { display: block; height: 100%; background: var(--accent); } .ap-row small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .ap-row small.ap-why { color: var(--ink); font-size: 12px; }
 .ap-row.armed { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); } .ap-row.armed small { color: inherit; }
 .ap-more { margin-top: 6px; } .ap-more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
@@ -20,19 +26,27 @@
 #ap-reactions small { display: block; color: var(--muted); }
 
 #ap-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-#ap-tabs button { flex: 1 0 auto; min-width: 64px; min-height: 48px; padding: 4px 10px; }
+#ap-tabs button { flex: 1 1 auto; min-width: 0; min-height: 48px; padding: 4px 6px; white-space: nowrap; }
 #ap-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #ap-tabs button.off { opacity: .5; }
-#ap-tabs button#ap-grip { flex: none; background: transparent; }
+#ap-tabs button#ap-grip { flex: none; min-width: 44px; background: transparent; }
 #ap-tabs button.pulse { border-color: var(--accent); animation: ap-pulse .9s ease-in-out infinite alternate; }
 @keyframes ap-pulse { to { background: var(--accent); color: var(--accent-ink); } }
 @media (prefers-reduced-motion: reduce) { #ap-tabs button.pulse { animation: none; background: var(--accent); color: var(--accent-ink); } }
 
 @media (min-width: 900px) {
-  #ap-explore .ap-list { grid-template-columns: 1fr 1fr; }
-  #card[data-raised] :is(#ap-explore, #ap-reactions, #ap-down) { max-height: max(112px, calc(40vh - 150px)); }
+  :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features) .ap-list { grid-template-columns: 1fr 1fr; }
+  #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(184px, calc(40vh - 130px)); }
 }
 
 /* The card is a grid; its rows must not grow to the width of the bar of buttons, which scrolls sideways inside it. */
 #card { grid-template-columns: minmax(0, 1fr); }
 #ap-body, #ap-all { min-width: 0; }
+
+/* A greyed row keeps its reason at full strength: only the name and the numbers fade, so the words can be read without a hover. */
+button.ap-row.off { opacity: 1; border-style: dashed; }
+.ap-row.off .ap-top, .ap-row.off .ap-s, .ap-row.off .ap-pips { opacity: .55; }
+
+
+/* Under a pane with more rows than fit: how many are below. */
+#ap-cue { width: 100%; min-height: 28px; margin-top: 4px; padding: 0 8px; font-size: 12px; color: var(--muted); background: transparent; border-style: dashed; }
