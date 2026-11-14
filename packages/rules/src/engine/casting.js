@@ -1,6 +1,6 @@
 // Casting (engine.js): the cast action, Metamagic, Counterspell and other spells that answer a
 // spell, teleport destinations, and ending a lasting effect.
-import { col, key } from '../grid.js';
+import { gridOf, col, key } from '../grid.js';
 import { SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
@@ -37,7 +37,7 @@ export function teleportSpot(s, e, step, hex, name, player = false) {
   const why = roomAt(s, e, to);
   if (why) fail(why);
   if (step.see && canSee(s, e, spotOf(e, to)) === 'no') fail(`${e.name} can't see that space.`);
-  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to) && knownTo(s, e, o)) || fail('That space is occupied.');
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to, gridOf(s.map)) && knownTo(s, e, o)) || fail('That space is occupied.');
   return to;
 }
 

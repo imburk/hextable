@@ -2,6 +2,7 @@
 // (engine.js).
 import { MONSTER_ACTIONS, SPELLS } from '../content/index.js';
 import { lintRecord } from '../content/schema.js';
+import { gridOf } from '../grid.js';
 import { ground, overlapAt } from '../space.js';
 import { xpFor } from '../rewards.js';
 import { barriers } from '../walls.js';
@@ -75,7 +76,7 @@ export function remake(s, e, record, sheet, ev) {
   problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
   const body = { size: record.size ?? 'medium' };
   (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
-  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos)) || fail(`Someone is in the way of ${e.name} growing.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
   const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
   const lost = e.maxHp - e.hp;
   fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);

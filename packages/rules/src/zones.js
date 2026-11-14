@@ -28,10 +28,10 @@ export function holds(s, fx, t) {
   if (z.follows) {
     const c = s.entities[z.follows];
     if (!c || c.dead || c.id === t.id) return false;
-    return footprint(t).some((f) => gridOf(s.map).dist(f, c.pos) <= n) && gap(s, c.pos, t.pos) <= n;
+    return footprint(t, t.pos, gridOf(s.map)).some((f) => gridOf(s.map).dist(f, c.pos) <= n) && gap(s, c.pos, t.pos) <= n;
   }
   const keys = new Set(z.hexes);
-  if (!footprint(t).some((f) => keys.has(col(f)))) return false;
+  if (!footprint(t, t.pos, gridOf(s.map)).some((f) => keys.has(col(f)))) return false;
   const o = z.origin, shape = z.area.shape, tall = z.area.height ?? z.area.size;
   if (shape === 'cylinder') return t.pos.z > o.z - FT / 2 && t.pos.z <= o.z + tall;
   if (shape === 'cube') return t.pos.z < o.z + z.area.size && t.pos.z + sizeOf(t).height > o.z;

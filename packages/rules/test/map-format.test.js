@@ -56,9 +56,10 @@ test("migrateMap: a format 1 document becomes format 2 on hexes, with nothing el
   for (const x of [null, undefined, 7, "map", []]) assert.equal(migrateMap(x), x);
 });
 
-test("the linter: a square map is refused until square maps can be played; the grid, cell size and door edges are checked", () => {
+test("the linter: a square map is accepted since task S6; the grid, cell size and door edges are checked", () => {
+  // The tavern read as squares: only its doors on hex edges 4 and 5 are wrong (a square has 4 sides).
   const sq = { ...tavern(), grid: "square" };
-  assert.deepEqual(lintMap(sq), ["Square maps come in a later version."]);
+  assert.ok(lintMap(sq).length > 0 && lintMap(sq).every((p) => /^Object "o\d+" has an edge that is not 0 to 3\.$/.test(p)), lintMap(sq).join(" "));
   assert.deepEqual(lintMap({ ...tavern(), grid: "octagon" }), ['Its grid is "octagon"; it can be hex or square.']);
   assert.deepEqual(lintMap({ ...tavern(), grid: undefined }), ['Its grid is "undefined"; it can be hex or square.']);
   assert.deepEqual(lintMap({ ...tavern(), cellFeet: 10 }), ["A hex must be 5 feet."]);
@@ -73,15 +74,16 @@ test("the linter: a square map is refused until square maps can be played; the g
 
 test("a format 1 map file loads through loadMap once migrated, as the editor loads a file; a rejected load changes nothing", () => {
   const file = JSON.stringify(formatOne(tavern()));
-  // Sent as it is, a format 1 document is refused by its format, and the table is untouched.
-  const s = newGame(4), before = JSON.stringify(s);
+  // Sent as it is, a format 1 document is migrated by loadMap itself (task S6), as the editor would.
+  const s = newGame(4), r = newGame(4);
   const raw = apply(s, { type: "loadMap", map: JSON.parse(file) }, DM);
-  assert.equal(raw.ok, false);
-  assert.equal(raw.error, "That map can't be used. Its format is 1; this game reads format 2.");
-  assert.equal(JSON.stringify(s), before);
-  // A square map likewise.
+  assert.ok(raw.ok, raw.error);
+  assert.deepEqual(raw.events, apply(r, { type: "loadMap", map: tavern() }, DM).events);
+  assert.deepEqual(s, r);
+  // A map that does not lint is refused, and the table is untouched.
+  const before = JSON.stringify(s);
   const sq = apply(s, { type: "loadMap", map: { ...tavern(), grid: "square" } }, DM);
-  assert.equal(sq.error, "That map can't be used. Square maps come in a later version.");
+  assert.match(sq.error, /^That map can't be used\. Object "o\d+" has an edge that is not 0 to 3\.$/);
   assert.equal(JSON.stringify(s), before);
   // The editor's "Open a map file": migrateMap, then loadMap. It loads and plays as the stock tavern does.
   const t = newGame(4), u = newGame(4);

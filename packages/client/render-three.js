@@ -568,7 +568,7 @@ export class ThreeRenderer {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;
         const hex = { q: h.q, r: h.r, z: column[i].z };
-        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.z === hex.z && footprint(e).some((f) => f.q === hex.q && f.r === hex.r));
+        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
         return { hex, id: occ?.id ?? null };
       }
       if (y < -60) break;

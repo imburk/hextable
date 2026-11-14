@@ -117,7 +117,7 @@ export class Builder {
 // Where something stands on a hex (drawing units), and the middle of the hexes a creature fills.
 export function stand(map, h) { const w = gridOf(map).toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
 export function spot(map, e, pos) {
-  const base = stand(map, pos), parts = footprint(e ?? {}, pos);
+  const base = stand(map, pos), parts = footprint(e ?? {}, pos, gridOf(map));
   if (parts.length === 1) return base;
   let x = 0, z = 0;
   for (const f of parts) { const w = gridOf(map).toWorld(f); x += w.x; z += w.z; }
@@ -373,7 +373,7 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
   for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = G.toWorld(e.pos); b.flatHex(w.x, w.z, stand(s.map, { q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
   const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
     const e = s.entities[id]; if (!e) return;
-    for (const f of footprint(e)) { const k = cellKey(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }
+    for (const f of footprint(e, e.pos, G)) { const k = cellKey(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }
   };
   for (const id of hl.targets) ringOn(id, c.target);
   for (const id of hl.allies) ringOn(id, c.ally);

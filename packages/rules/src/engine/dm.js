@@ -4,16 +4,16 @@
 import { gridOf, col, key, parse } from '../grid.js';
 import { CONTENT, MONSTERS, TILES } from '../content/index.js';
 import { effectsOf, endEffect } from '../durations.js';
-import { FT, ground, landing, overlapAt, regionAt, STEP_MAX, under } from '../space.js';
+import { FT, ground, landing, overlapAt, regionAt, SQUARE_RANGES, STEP_MAX, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
-import { EDITS, lintMap } from '../map.js';
+import { EDITS, lintMap, migrateMap } from '../map.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
 import { SIGHT_RULES } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, ent, fail, inFight, living, up } from './shared.js';
-import { airspace, fitsOn, joinEncounter, lookAround, objectName, objectOf, reveal, revealRegion, setObject, unfollow, unhide } from './world.js';
+import { airspace, DIAGONALS, fitsOn, joinEncounter, lookAround, objectName, objectOf, reveal, revealRegion, setObject, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { checkEnd, damage, endEncounter, startEncounter } from './resolve.js';
@@ -58,7 +58,7 @@ export const handlers = {
     (at && TILES[ground(s.map, at).tile.t].cost < Infinity) || fail("A creature can't stand there.");
     const body = { size: tpl.size };
     fitsOn(s.map, body, at, barriers(s.map)) || fail(`There isn't room for something ${tpl.size} there.`);
-    !living(s).some((o) => overlapAt(o, o.pos, body, at)) || fail('That hex is occupied.');
+    !living(s).some((o) => overlapAt(o, o.pos, body, at, gridOf(s.map))) || fail('That hex is occupied.');
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
@@ -70,7 +70,7 @@ export const handlers = {
     const e = ent(s, a.actor);
     // On the nearest floor, or exactly where asked if a height is given and there is room there (in the air, say).
     const to = (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z)) || fail("There's nothing there to stand on.");
-    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to)) || fail('That hex is occupied.');
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to, gridOf(s.map))) || fail('That hex is occupied.');
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
@@ -148,14 +148,16 @@ export const handlers = {
     e.light = { bright: l.bright, dim: l.dim, ...(item ? { item } : {}) };
     ev.push({ type: 'light', id: e.id, bright: l.bright, dim: l.dim, ...(item ? { item, name: LIGHTS[item].name } : {}) });
   },
-  // Play on a different map. The party is set down at its start; the creatures of the old
-  // place stay behind with it. { type: 'loadMap', map }
+  // Play on a different map, of either grid. The party is set down at its start; the creatures of
+  // the old place stay behind with it, and so do areas laid on its cells (E8, below). A map of an
+  // older format is brought up to date first, as every map that enters the game is. { type: 'loadMap', map }
   loadMap(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.encounter || fail("The map can't change in the middle of a fight.");
-    const problems = lintMap(a.map);
+    let map;
+    try { map = migrateMap(structuredClone(a.map)); } catch { fail("That map can't be used. It is not a map document."); }
+    const problems = lintMap(map);
     problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
-    const map = structuredClone(a.map);
     const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
     const first = map.starts[0] ?? parse(Object.keys(map.levels[0].tiles)[0]);
     const start = landing(map, first, first.z ?? 0);
@@ -178,6 +180,10 @@ export const handlers = {
     spots.length === party.length || fail("That map has no room for the party at its start.");
     const leaving = new Set(Object.values(s.entities).filter((e) => e.side !== 'party').map((e) => e.id));
     for (const fx of [...effectsOf(s)]) if (leaving.has(fx.source) || fx.parts.some((p) => leaving.has(p.target))) endEffect(s, ev, fx, 'the party moved on');
+    // E8 (docs/specs/square-grid.md, Decision 4): a lasting area laid on the old map's cells, a zone
+    // (Moonbeam, Web) or changed ground (Grease, Fog Cloud), is left behind with them. A zone that
+    // moves with a creature of the party (Spirit Guardians) goes with it.
+    for (const fx of [...effectsOf(s)]) if (fx.terrain || (fx.zone && !fx.zone.follows)) endEffect(s, ev, fx, 'the party moved on');
     for (const id of leaving) delete s.entities[id];
     s.map = map;
     party.forEach((e, i) => { e.pos = spots[i]; });
@@ -257,7 +263,22 @@ export const handlers = {
 };
 
 // Table rules the DM can switch, and what each may be set to.
-export const SETTINGS = { sight: SIGHT_RULES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
+export const SETTINGS = { sight: SIGHT_RULES,
+  // Square maps only (docs/specs/square-grid.md): how a diagonal step is counted, and how reach and
+  // range are measured. Absent means the first value. What each means is SETTING_TEXT, below.
+  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'] };
+// What the square-map settings mean, in words a DM reads beside the choice.
+export const SETTING_TEXT = {
+  diagonals: {
+    real: 'Diagonals are measured for real (the default): a step to a side costs 5 ft, a diagonal step about 7 ft (5 x 1.41), doubled by Difficult Terrain as any step is. A creature with any movement left may still enter one more square on the flat (not up or down: climbing, stairs, a ladder or flying up is paid in full); that step uses up the rest. Forced movement counts diagonals the same way, with no extra square. A table rule, not the SRD count.',
+    srd: 'Every diagonal costs 5 ft, the same as a step to a side, as the SRD counts squares.',
+    alternate: 'Every second diagonal in a turn costs 10 ft (5, 10, 5, 10...); forced movement counts its own diagonals the same way. A table rule; it is not in the SRD.',
+  },
+  squareRange: {
+    real: 'Reach and range are measured centre to centre for real and rounded down to a whole 5 ft (the default): the 8 squares around a creature are within 5 ft, three squares diagonally are 20 ft. A table rule, not the SRD count.',
+    srd: 'Reach and range count squares as the SRD does: a diagonal counts as one square, like a side.',
+  },
+};
 

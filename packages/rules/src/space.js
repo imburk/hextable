@@ -69,10 +69,25 @@ export const concealed = (map, e) => !!e && e.side !== 'party' && (!!e.hidden ||
 // ---------- distance ----------
 // How many hexes of height a difference in feet counts as: under 5 ft is none.
 export const rise = (dz) => Math.floor((Math.abs(dz) + 2.49) / FT);
-// Distance between two positions in hexes, counting height. How the two combine is a table rule
+// How far apart two cells are, in cells, when reach or range is measured (a 5-foot reach is 1).
+// On hexes it is the grid's own count. On squares it is the table rule `squareRange`: 'real' (the
+// default) measures centre to centre for real and rounds down to a whole cell, so the 8 squares
+// around a creature are within 5 feet but three squares diagonally are 20 feet, not 15; 'srd'
+// counts squares as the SRD does, a diagonal like a side (SRD 5.2.1 1826-1829). Worked out in whole
+// numbers, so it is the same on every machine.
+export const SQUARE_RANGES = ['real', 'srd'];
+function realCells(a, b) {
+  const dq = a.q - b.q, dr = a.r - b.r, d2 = dq * dq + dr * dr;
+  let n = Math.floor(Math.sqrt(d2));
+  while (n * n > d2) n--;
+  while ((n + 1) * (n + 1) <= d2) n++;
+  return n;
+}
+export const measure = (s, G) => (G.kind === 'square' && (s?.settings?.squareRange ?? 'real') === 'real' ? realCells : G.dist);
+// Distance between two positions in cells, counting height. How the two combine is a table rule
 // (settings.vertical): 'max' counts a diagonal as one, 'sum' adds them, 'true' measures the straight line.
 export function gap(s, a, b) {
-  const h = gridOf(s?.map).dist(a, b), v = rise((a.z ?? 0) - (b.z ?? 0)), rule = s?.settings?.vertical ?? 'max';
+  const h = measure(s, gridOf(s?.map))(a, b), v = rise((a.z ?? 0) - (b.z ?? 0)), rule = s?.settings?.vertical ?? 'max';
   return rule === 'sum' ? h + v : rule === 'true' ? Math.round(Math.hypot(h, v)) : Math.max(h, v);
 }
 // How high a wall stands above the floor of its level, and how tall a creature is, in feet.
@@ -80,11 +95,13 @@ export const WALL_HEIGHT = 10, HEADROOM = 5;
 
 // ---------- size ----------
 // A creature fills a footprint of hexes, anchored on the hex of its position, and stands so high.
-// The shape is the grid's (`G.footprint`); `G` is the map's grid, hexes if not given
-// (docs/specs/square-grid.md, Decision 1: S6 makes it required).
+// The shape is the grid's (`G.footprint`). Every caller in packages/rules/src and the client
+// passes the map's grid, `gridOf(map)`, and a test (square-moving.test.js) reads the source and
+// fails on a call that leaves it out, so no rules code measures a square map in hexes (task S6).
+// The hex default stays for the hex tests that call these directly.
 export const sizeOf = (e) => SIZES[e?.size] ?? SIZES.medium;
 export const shapeOf = (e, G = HEX) => G.footprint(e?.size);
-// The hexes a creature fills when it stands at `pos` (its own position if none is given).
+// The cells a creature fills when it stands at `pos` (its own position if none is given).
 export const footprint = (e, pos = e.pos, G = HEX) => shapeOf(e, G).map(([dq, dr]) => ({ q: pos.q + dq, r: pos.r + dr, z: pos.z ?? 0 }));
 // Would two creatures be in each other's space, one at `pa` and the other at `pb`?
 export function overlapAt(a, pa, b, pb, G = HEX) {
@@ -94,13 +111,15 @@ export function overlapAt(a, pa, b, pb, G = HEX) {
   if (sa.length === 1 && sb.length === 1) return pa.q === pb.q && pa.r === pb.r;
   return sa.some(([aq, ar]) => sb.some(([bq, br]) => pa.q + aq === pb.q + bq && pa.r + ar === pb.r + br));
 }
-// Distance in hexes between two creatures, one at `pa` and the other at `pb`: between the nearest
-// parts of them, across and up, combined by the table rule for height.
-export function apartAt(s, a, pa, b, pb, G = HEX) {
+// Distance in cells between two creatures, one at `pa` and the other at `pb`: between the nearest
+// parts of them, across (as reach and range are measured, `measure`) and up, combined by the table
+// rule for height. The grid is the map's unless given.
+export function apartAt(s, a, pa, b, pb, G = gridOf(s?.map)) {
   const sa = shapeOf(a, G), sb = shapeOf(b, G);
+  const dist = measure(s, G);
   let h = Infinity;
-  if (sa.length === 1 && sb.length === 1) h = G.dist(pa, pb);
-  else for (const [aq, ar] of sa) for (const [bq, br] of sb) h = Math.min(h, G.dist({ q: pa.q + aq, r: pa.r + ar }, { q: pb.q + bq, r: pb.r + br }));
+  if (sa.length === 1 && sb.length === 1) h = dist(pa, pb);
+  else for (const [aq, ar] of sa) for (const [bq, br] of sb) h = Math.min(h, dist({ q: pa.q + aq, r: pa.r + ar }, { q: pb.q + bq, r: pb.r + br }));
   const za = pa.z ?? 0, zb = pb.z ?? 0;
   // The lower creature reaches up by its own height: only what lies above its head counts.
   const v = rise(zb >= za ? Math.max(0, zb - (za + sizeOf(a).height - FT)) : Math.max(0, za - (zb + sizeOf(b).height - FT)));
