@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { apply, moveOptions } from "../src/engine.js";
 import { SQUARE } from "../src/grid.js";
 import { lintMap } from "../src/map.js";
-import { ALL_STOCK_MAPS, SQUARE_STOCK_MAPS, STOCK_MAPS } from "../src/content/maps/index.js";
+import { SQUARE_STOCK_MAPS, STOCK_MAPS } from "../src/content/maps/index.js";
 import { TILES } from "../src/content/terrain.js";
 import { newGame } from "../src/scenario.js";
 import { landing } from "../src/space.js";
@@ -41,10 +41,10 @@ function walk(m, from) {
   return seen;
 }
 
-test("the square stock map is listed with the five hex maps, which stay as they were", () => {
-  assert.deepEqual(STOCK_MAPS.map((m) => m.id), ["tavern", "dungeon", "cave", "forest-road", "keep"]);
-  assert.ok(STOCK_MAPS.every((m) => m.map.grid === "hex"));
-  assert.deepEqual(ALL_STOCK_MAPS.map((m) => m.id), ["tavern", "dungeon", "cave", "forest-road", "keep", "undercroft"]);
+test("the square stock map is listed with the five hex maps, and every name says its grid", () => {
+  assert.deepEqual(STOCK_MAPS.map((m) => m.id), ["tavern", "dungeon", "cave", "forest-road", "keep", "undercroft"]);
+  assert.deepEqual(STOCK_MAPS.filter((m) => m.map.grid === "hex").map((m) => m.id), ["tavern", "dungeon", "cave", "forest-road", "keep"]);
+  for (const m of STOCK_MAPS) assert.match(m.name, m.map.grid === "square" ? /squares\)$/ : /hexes\)$/, m.id);
   const m = SQUARE_STOCK_MAPS[0];
   assert.ok(m.name && m.text);
   assert.equal(m.map.id, m.id);

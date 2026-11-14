@@ -184,6 +184,25 @@ async function valley(browser, url, label, opts) {
         await wait(page, () => window.hextable?.state?.entities);
         if ((await gridOf(page)) !== 'hex') throw new Error('Continue changed the saved game\'s grid');
       });
+      await run.do('a solo game starts on the square stock map chosen in the lobby, and a hero walks through its door', async () => {
+        await page.evaluate(() => localStorage.removeItem('hextable.solo'));
+        await page.reload(); await waitShown(page, '#lobby');
+        const names = await page.$$eval('#lobby-map option', (o) => o.map((x) => x.textContent));
+        if (!names.some((n) => /Thornwick Undercroft \(squares\)/.test(n)) || !names.some((n) => /Copper Kettle \(tavern, hexes\)/.test(n))) throw new Error(`names: ${names}`);
+        await page.selectOption('#lobby-map', 'undercroft');
+        await page.click('#lobby-solo');
+        await wait(page, () => window.hextable?.state?.map?.id === 'undercroft');
+        if ((await gridOf(page)) !== 'square') throw new Error('the stock map is not on squares');
+        const act = (a) => page.evaluate((x) => window.hextable.act(x), a);
+        const at = () => page.evaluate(() => JSON.stringify(window.hextable.state.entities.fighter.pos));
+        await act({ type: 'move', actor: 'fighter', to: { q: 3, r: 18, z: 0 } });
+        await wait(page, () => window.hextable.state.entities.fighter.pos.r === 18);
+        await act({ type: 'use', actor: 'fighter', object: 'o1', verb: 'open' });
+        await wait(page, () => window.hextable.state.map.objects.find((o) => o.id === 'o1').state === 'open');
+        await act({ type: 'move', actor: 'fighter', to: { q: 3, r: 15, z: 0 } });
+        await wait(page, () => window.hextable.state.entities.fighter.pos.r === 15);
+        if (!/"r":15/.test(await at())) throw new Error(`the hero is at ${await at()}`);
+      });
       await run.do('a hosted table starts on the grid chosen', async () => {
         await page.reload(); await waitShown(page, '#lobby');
         if ((await picked(page)) !== 'square') throw new Error('square not remembered');

@@ -16,7 +16,7 @@ async function controlsSolo(browser, url, label, opts) {
       await run.do('the lobby offers the stock maps and solo starts on the one chosen', async () => {
         await open(page, url);
         const opts2 = await page.$$eval('#lobby-map option', (o) => o.map((x) => x.value));
-        if (opts2.length !== 6 || opts2[0] !== '') throw new Error(`lobby maps: ${opts2}`);
+        if (opts2.length !== 7 || opts2[0] !== '') throw new Error(`lobby maps: ${opts2}`);
         await shot('controls-lobby');
         await page.selectOption('#lobby-map', 'cave');
         await playSolo(page);

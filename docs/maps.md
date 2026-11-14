@@ -36,9 +36,9 @@ once the doors are open (locked, secret and portcullis included), and that the e
 ## Where they live
 
 `packages/rules/src/content/maps/`: one `.js` file per map holding `export default { ...map document }`
-(data only, no functions), and `index.js`, which lists them as `STOCK_MAPS` (the five hex maps),
-`SQUARE_STOCK_MAPS` (the one on squares) and `ALL_STOCK_MAPS` (both, which the lobby and the DM panel offer;
-`{ id, name, text, map }`). They sit beside the other content so the build copies them to
+(data only, no functions), and `index.js`, which lists them as `STOCK_MAPS` (all six: the five hex maps and the one on
+squares, which the lobby, the DM panel and the editor offer; `{ id, name, text, map }`; each name says its grid) and
+`SQUARE_STOCK_MAPS` (the ones on squares). They sit beside the other content so the build copies them to
 `dist/shared/content/maps/` with the rules, and the editor imports them from `./shared/...`.
 They are `.js` rather than `.json` because the browser cannot import JSON without import attributes.
 

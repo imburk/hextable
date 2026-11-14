@@ -1,7 +1,7 @@
 // Three table controls for the DM (issue #163): the table's pace, the stock maps, and the line on a character's
 // sheet that says where its Fantasy Grounds import report went. Each one only builds and sends ordinary actions
 // ({ type: 'setting', key: 'pace' }, { type: 'loadMap' }); nothing here decides a rule.
-import { ALL_STOCK_MAPS as STOCK_MAPS } from './shared/content/maps/index.js';
+import { STOCK_MAPS } from './shared/content/maps/index.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
