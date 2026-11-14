@@ -265,11 +265,13 @@ function formation(s, leader, walked, pending, ev) {
     const i = plan.findIndex((p) => holders(p.f, p.h).every((o) => unseenBy(s, o, p.f)));
     const { f, h } = plan.splice(Math.max(0, i), 1)[0];
     movers.delete(f.id);
-    const reach = moveOptions(s, f), now = (sp) => sp.here || sp.canStop;
+    // Places the others still to walk are going to are left for them.
+    const theirsToGo = (h) => plan.some((p) => overlapAt(p.f, p.h, f, h, G));
+    const reach = moveOptions(s, f), now = (sp) => sp.here || (sp.canStop && !theirsToGo(sp.h));
     let to = i < 0 ? placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos : h;
     const lurker = holders(f, to).find((o) => unseenBy(s, o, f) && hostile(o, f));
     if (lurker) {
-      const beside = [...reach.values()].filter((v) => v.canStop && G.dist(v.h, to) === 1 && Math.abs(v.h.z - to.z) <= STEP_MAX && !walls(v.h, to)).sort((x, y) => x.cost - y.cost)[0];
+      const beside = [...reach.values()].filter((v) => v.canStop && !theirsToGo(v.h) && G.dist(v.h, to) === 1 && Math.abs(v.h.z - to.z) <= STEP_MAX && !walls(v.h, to)).sort((x, y) => x.cost - y.cost)[0];
       to = beside ? beside.h : f.pos;
     } else if (key(to) !== key(f.pos) && !reach.get(key(to))?.canStop) to = placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos;   // someone it did not know of, not hostile
     if (key(to) !== key(f.pos)) {

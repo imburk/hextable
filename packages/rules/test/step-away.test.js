@@ -14,6 +14,7 @@ import { migrate, VERSION } from "../src/migrate.js";
 import { startEffect, turnKey } from "../src/durations.js";
 import { turnInZones } from "../src/zones.js";
 import { KIT } from "../src/engine/resolve.js";
+import { joinEncounter } from "../src/engine/world.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, SAM = { role: "player", userId: "sam" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -500,4 +501,26 @@ test("undo across the update is exact: a step taken on an old-form stamp undoes 
   until(s, "cleric");
   skip(s);
   assert.ok(over(s, fx), "and it ends at the end of the next one");
+});
+
+// A creature joining the fight re-sorts the order (joinEncounter, world.js). A stamp still in the old
+// form (a place in the order, from before state version 22) is named by its creature first, as
+// settleOrder does, so the place moving under it cannot end the effect a turn early (review of #306).
+for (const grid of ["hex", "square"]) test(`a creature joining mid-turn does not mis-time an effect stamped in the old form (${grid})`, () => {
+  const s = fight(grid === "square" ? { grid } : {});
+  until(s, "fighter");
+  const fx = blind(s, "fighter", "m1", "turnEnd");
+  const place = s.encounter.order.findIndex((o) => o.id === "fighter");
+  fx.parts[0].born = `${s.encounter.id}:${s.encounter.round}:${place}`;                    // as a table saved before version 22 has it
+  const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: H.neighbors({ q: 0, r: 0 })[0] }, DM)).events[0].id;
+  s.entities[id].initBonus = 50;                                                            // first in the order: every place moves down one
+  joinEncounter(s, s.entities[id], []);
+  assert.equal(s.encounter.order[0].id, id);
+  assert.equal(current(s), "fighter");
+  assert.equal(fx.parts[0].born, `${s.encounter.id}:${s.encounter.round}:fighter`);
+  skip(s);
+  assert.ok(lasts(s, fx), "not ended by the end of the turn it was made in");
+  until(s, "fighter");
+  skip(s);
+  assert.ok(!lasts(s, fx), "ended at the end of the fighter's next turn");
 });
