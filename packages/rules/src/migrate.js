@@ -12,6 +12,7 @@ import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
 import { restamp } from './durations.js';
+import { validFormation } from './engine.js';
 
 export const VERSION = 22;
 
@@ -117,6 +118,10 @@ export function migrate(state) {
     for (const p of Array.isArray(fx?.parts) ? fx.parts : []) if (p && p.born !== undefined) p.born = restamp(state.encounter, p.born);
     if (fx?.zone?.last && typeof fx.zone.last === 'object') for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(state.encounter, fx.zone.last[k]);
   }
+  // A leader's formation (#303), `formation` on a party member: no version of its own, as a table
+  // saved before then has none, and a leader without one walks its followers as the column, as
+  // they always walked. One that is not whole is dropped, which is the column again.
+  for (const e of Object.values(state.entities)) if (e.formation !== undefined && !validFormation(e.formation)) delete e.formation;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

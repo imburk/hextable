@@ -209,6 +209,9 @@ const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage acti
   feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', levelUp: 'levelled up', equip: 'put on or took off an item', attune: 'chose an item to attune to',
   drop: 'dropped something', pickUp: 'picked something up' };
 
+// How a formation reads in a step's label (engine/world.js, SHAPES).
+const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
+
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;
   const real = (id) => after.entities[id]?.name ?? prior?.entities?.[id]?.name ?? 'Someone';
@@ -255,7 +258,8 @@ export function describeStep(action, events, before, after) {
     case 'conclusion': label = a.publish ? 'The rewards were given out' : a.skip ? 'The rewards were skipped' : 'The rewards were changed'; break;
     case 'act': label = `${who} used ${after.entities[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? prior?.entities?.[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? 'an action'}`; break;
     case 'follow': label = a.leader === null || a.leader === undefined ? `${who} stopped following` : `${who} started following ${name(a.leader)}`; break;
-    case 'partyFollow': label = `The party fell in behind ${name(a.leader)}`; break;
+    case 'partyFollow': label = `The party fell in behind ${name(a.leader)}${SHAPE_WORDS[a.shape] ? ` ${SHAPE_WORDS[a.shape]}` : ''}`; break;
+    case 'formation': label = a.slots ? `The places behind ${name(a.leader)} were changed` : `The party walks behind ${name(a.leader)} ${SHAPE_WORDS[a.shape] ?? 'in a formation'}`; break;
     case 'marchingOrder': label = 'The marching order was set'; break;
     // Handouts and notes name no creature. Their titles and words are left out: a step is shown to
     // players who may not hold that handout.

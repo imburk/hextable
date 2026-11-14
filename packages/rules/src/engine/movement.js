@@ -1,15 +1,15 @@
 // Movement actions (engine.js): move, dash, stand, disengage, and walking together (follow,
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
 import { gridOf, col, key } from '../grid.js';
-import { apart, apartAt, footprint, FT, ground, landing, measure, STEP_MAX, unseenAt } from '../space.js';
+import { apart, apartAt, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
 import { entered, snapshot } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
-import { objectDef } from '../walls.js';
+import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, OPPORTUNITY, opportunityAttack, reactionsOf } from '../reactions.js';
 import { modifiers, speedOf } from '../modifiers.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, need, unblocked, up } from './shared.js';
-import { airspace, aloft, along, below, byMarch, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, below, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { checkEnd, engage, KIT, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
 
@@ -143,13 +143,18 @@ const KEEP_UP = 2;                   // cells: a follower stays this close to th
 const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.march ?? -1)) + 1;
 
 // The leader has walked `walked` (from where it set off). Everyone following it, and everyone
-// following them, walks after it in marching order.
+// following them, walks after it: those with a slot in its formation to their slots, if every one
+// of them has room there; the rest, and everyone when there is no room, in marching order along the
+// leader's trail (the column).
 function march(s, leader, walked, ev) {
   if (leader.side !== 'party') return;
   const G = gridOf(s.map), trail = trailOf(walked.slice().reverse(), null, G);
   const moved = new Set([leader.id]);
   let front = leader;
   const pending = living(s).filter((x) => x.follow && x.id !== leader.id).sort(byMarch);
+  const fell = formation(s, leader, walked, pending, ev);
+  if (fell === 'fight') return;                          // it walked into a fight: the rest were brought up when it started
+  for (const f of fell) { pending.splice(pending.indexOf(f), 1); moved.add(f.id); front = f; }
   for (;;) {
     const f = pending.find((x) => moved.has(x.follow));
     if (!f) return;
@@ -176,6 +181,113 @@ function march(s, leader, walked, ev) {
     moved.add(f.id);
     front = f;
   }
+}
+
+// A creature the party does not know is there: one the DM hid, one hiding from this follower, and
+// under the los and light rules one nobody in the party can see. A formation is laid out as if it
+// were not there, so the shape the party takes never gives it away; a follower whose place it holds
+// stops beside it and finds it, as a move onto it does.
+const unseenBy = (s, o, f) => o.side !== 'party' && !o.dead && (o.hidden || hiddenFrom(o, f) || (sightRule(s) !== 'rooms' && unknown(s, o)));
+const SNAP = 0.75;                   // cells: how far from the point of its slot a follower's place may be
+const ORIGIN = { q: 0, r: 0 };
+
+// The leader's formation, after it walked: lay out a place for each follower with a slot, and walk
+// them there. Every one must have room: a place within SNAP of its slot, standable, free, not more
+// than beside the leader (never ahead of it), and joined to it (the leader could walk there not much
+// further than it is: nobody is put behind a wall). If any has none (a corridor, a door, a crowd)
+// nobody is laid out: the column takes them all, and the formation comes back where there is room.
+// Returns those who walked, or 'fight'.
+function formation(s, leader, walked, pending, ev) {
+  const G = gridOf(s.map), B = barriers(s.map);
+  const members = pending.filter((x) => x.follow === leader.id && x.side === 'party' && !(s.encounter && inFight(s, x.id)));
+  const slots = slotsFor(leader, members);
+  if (!slots) return [];
+  const face = walkFace(G, walked) ?? leader.formation.face ?? 0;
+  if (leader.formation.face !== face) leader.formation.face = face;
+  const F = frameOf(G, leader.pos, face), uu = F.u.x ** 2 + F.u.z ** 2;
+  const o0 = G.toWorld(ORIGIN), cell = Math.min(...G.neighbors(ORIGIN).map((n) => Math.hypot(G.toWorld(n).x - o0.x, G.toWorld(n).z - o0.z)));
+  const walls = (a, b) => { const lv = ground(s.map, a)?.level; return !!lv && B.blocked(lv.id, a, b); };
+  // The places creatures the party does not know of stand on, which no way is found through: each
+  // is taken as reached from a free neighbour with no wall between, one step further.
+  const lurkers = living(s).filter((o) => unseenBy(s, o, leader));
+  const lurkCells = lurkers.flatMap((o) => footprint(o, o.pos, G));
+  const besideLurk = (reach) => {
+    const out = [];
+    for (const h of lurkCells) {
+      if (reach.has(key(h))) continue;
+      let cost = Infinity;
+      for (const n of G.neighbors(h)) { const v = reach.get(key({ ...n, z: h.z })); if (v && v.cost + FT < cost && !walls(v.h, h)) cost = v.cost + FT; }
+      if (cost < Infinity) out.push({ h, cost, canStop: false });
+    }
+    return out;
+  };
+  // How far the leader would walk to each column.
+  const theirs = new Map([[col(leader.pos), 0]]);
+  const lr = moveOptions(s, leader);
+  for (const v of [...lr.values(), ...besideLurk(lr)]) { const c = col(v.h), was = theirs.get(c); if (was === undefined || v.cost < was) theirs.set(c, v.cost); }
+  const joined = (h) => (theirs.get(col(h)) ?? Infinity) <= 2 * FT * (G.dist(leader.pos, h) + KEEP_UP);
+  const ahead = (h) => { const w = G.toWorld(h); return ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu; };
+  const water = (h) => ground(s.map, h)?.tile.t === 'water';
+  const inSlot = members.filter((x) => slots[x.id]);
+  const movers = new Set(pending.map((x) => x.id));
+  // The best place for `f` among those `test` allows, nearest its slot.
+  const placeFor = (f, spots, test) => {
+    const T = slotPoint(F, slots[f.id]);
+    let best = null, bestKey = null;
+    for (const sp of spots) {
+      const w = G.toWorld(sp.h), d = Math.hypot(w.x - T.x, w.z - T.z) / cell, fwd = ahead(sp.h);
+      if (fwd > 0.5 + 1e-9 || !joined(sp.h) || !test(sp, d)) continue;
+      const rank = [d, fwd, Math.abs(sp.h.z - f.pos.z), sp.cost];
+      if (!best || less(rank, bestKey)) { best = sp; bestKey = rank; }
+    }
+    return best;
+  };
+  const spotsOf = (f, reach) => [{ h: f.pos, cost: 0, here: true }, ...[...reach.values()].filter((v) => key(v.h) !== key(f.pos)), ...besideLurk(reach)];
+  const plan = [], claimed = [];
+  for (const f of inSlot) {
+    if (!up(f)) return [];
+    const reach = moveOptions(s, f);
+    // What stands still while they walk: everyone but those still to walk and those the party does not know of.
+    const still = living(s).filter((o) => o.id !== f.id && !movers.has(o.id) && !unseenBy(s, o, f));
+    const free = (h) => !still.some((o) => overlapAt(o, o.pos, f, h, G)) && !claimed.some(([c, ch]) => overlapAt(c, ch, f, h, G));
+    // Where it may stop: as moveOptions says, or where only someone still to walk, or unknown, stands now.
+    const standable = (sp) => sp.here || sp.canStop || (!water(sp.h) && living(s).some((o) => o.id !== f.id && overlapAt(o, o.pos, f, sp.h, G)));
+    const best = placeFor(f, spotsOf(f, reach), (sp, d) => d <= SNAP && standable(sp) && free(sp.h));
+    if (!best) return [];
+    plan.push({ f, h: best.h });
+    claimed.push([f, best.h]);
+  }
+  // Walk them, each when its place is clear; one whose place is still held by another of them
+  // (they would swap) takes the best place free now.
+  const done = [];
+  const holders = (f, h) => living(s).filter((o) => o.id !== f.id && overlapAt(o, o.pos, f, h, G));
+  while (plan.length) {
+    const i = plan.findIndex((p) => holders(p.f, p.h).every((o) => unseenBy(s, o, p.f)));
+    const { f, h } = plan.splice(Math.max(0, i), 1)[0];
+    movers.delete(f.id);
+    const reach = moveOptions(s, f), now = (sp) => sp.here || sp.canStop;
+    let to = i < 0 ? placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos : h;
+    const lurker = holders(f, to).find((o) => unseenBy(s, o, f) && hostile(o, f));
+    if (lurker) {
+      const beside = [...reach.values()].filter((v) => v.canStop && G.dist(v.h, to) === 1 && Math.abs(v.h.z - to.z) <= STEP_MAX && !walls(v.h, to)).sort((x, y) => x.cost - y.cost)[0];
+      to = beside ? beside.h : f.pos;
+    } else if (key(to) !== key(f.pos) && !reach.get(key(to))?.canStop) to = placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos;   // someone it did not know of, not hostile
+    if (key(to) !== key(f.pos)) {
+      const had = !!s.encounter;
+      walk(s, f, reach, key(to), ev, false);
+      if (!had && s.encounter) return 'fight';
+    }
+    if (lurker && !lurker.dead && apart(s, f, lurker) <= 1 && unseenBy(s, lurker, f)) bumped(s, lurker, f, ev);
+    done.push(f);
+  }
+  return done;
+}
+// The slots of `followers` as they stand around `leader`, the shape the party is in. Facing as the
+// leader's formation last faced, or (a new one) away from the middle of those following.
+function capture(s, leader, followers, fresh) {
+  const G = gridOf(s.map), had = fresh ? null : leader.formation;
+  const { face, slots } = captureSlots(G, leader, followers, had?.face ?? null);
+  leader.formation = { shape: had?.shape ?? 'held', slots: { ...(had?.slots ?? {}), ...slots }, face };
 }
 
 export const handlers = {
@@ -273,6 +385,11 @@ export const handlers = {
     e.follow !== l.id || fail(`${e.name} is already following ${l.name}.`);
     for (let x = l, n = 0; x && n < 100; x = s.entities[x.follow], n++) x.id !== e.id || fail(`${l.name} is following ${e.name}.`);
     e.follow = l.id; e.march = nextMarch(s);
+    // Someone starting to lead keeps the shape the party stands in; a held or set-by-hand shape
+    // takes in a newcomer where it stands. A preset or the column deals it a place as it walks.
+    const fm = l.formation;
+    if (!fm) capture(s, l, living(s).filter((x) => x.follow === l.id && x.side === 'party'), true);
+    else if ((fm.shape === 'held' || fm.shape === 'custom') && !fm.slots[e.id]) capture(s, l, [e], false);
     ev.push({ type: 'follow', id: e.id, leader: l.id });
   },
   // The order the party walks in, first to last. { type: 'marchingOrder', order: [ids] }
@@ -286,12 +403,16 @@ export const handlers = {
     [...order, ...rest].forEach((id, i) => { s.entities[id].march = i; });
     ev.push({ type: 'marchingOrder', order: [...order, ...rest] });
   },
-  // Everyone else in the party falls in behind one of them, in marching order. { type: 'partyFollow', leader }
+  // Everyone else in the party falls in behind one of them, in marching order, in a formation.
+  // { type: 'partyFollow', leader, shape? }: the DM, or whoever controls the leader. `shape` is a
+  // preset (SHAPES) or 'held' (as they stand now); without it the leader keeps the formation it has,
+  // and one leading for the first time keeps the shape the party stands in.
   partyFollow(s, a, ctx, ev) {
-    ctx.role === 'dm' || fail('Only the DM can move the whole party.');
     const l = s.entities[a.leader];
     (l && l.side === 'party' && !l.dead) || fail('Only a member of the party can lead.');
+    control(l, ctx);
     !s.encounter || fail('Nobody falls into line in the middle of a fight.');
+    a.shape === undefined || [...SHAPES, 'held'].includes(a.shape) || fail(`No such formation: the choices are ${[...SHAPES, 'held'].join(', ')}.`);
     const rest = living(s).filter((x) => x.side === 'party' && x.id !== l.id && up(x)).sort(byMarch);
     rest.length || fail(`There is nobody to follow ${l.name}.`);
     if (l.follow) unfollow(s, l, ev);
@@ -302,6 +423,43 @@ export const handlers = {
       x.follow = l.id;
       ev.push({ type: 'follow', id: x.id, leader: l.id });
     }
+    setFormation(s, l, a.shape ?? (l.formation ? null : 'held'), rest, ev);
+  },
+  // How the party walks behind its leader. { type: 'formation', leader, shape } (a preset or 'held'),
+  // or { type: 'formation', leader, slots: { [follower id]: { back, side } } } to place some by hand
+  // (the rest keep theirs). The DM, or the leader's controller while it leads.
+  formation(s, a, ctx, ev) {
+    const l = s.entities[a.leader];
+    (l && l.side === 'party' && !l.dead) || fail('Only a member of the party can lead.');
+    control(l, ctx);
+    !s.encounter || fail('Nobody falls into line in the middle of a fight.');
+    const followers = living(s).filter((x) => x.follow === l.id && x.side === 'party').sort(byMarch);
+    ctx.role === 'dm' || followers.length || fail(`${l.name} isn't leading anyone.`);
+    (a.shape === undefined) !== (a.slots === undefined) || fail('Give a formation, or places in it, but not both.');
+    if (a.shape !== undefined) {
+      [...SHAPES, 'held'].includes(a.shape) || fail(`No such formation: the choices are ${[...SHAPES, 'held'].join(', ')}.`);
+      return setFormation(s, l, a.shape, followers, ev);
+    }
+    (a.slots && typeof a.slots === 'object' && !Array.isArray(a.slots) && Object.keys(a.slots).length) || fail('Give the places as { id: { back, side } }.');
+    const ids = Object.keys(a.slots);
+    // One answer for a creature that is not there, one not in the party and one not following, so nothing is given away.
+    for (const id of ids) followers.some((x) => x.id === id) || fail(`Only those following ${l.name} can be given a place behind them.`);
+    for (const id of ids) validSlot(a.slots[id]) || fail(`A place is steps back (0 to 12) and to the side (-12 to 12, right is more), in half steps.`);
+    const fm = l.formation;
+    const base = !fm || fm.shape === 'column' ? {} : SHAPES.includes(fm.shape) ? presetSlots(fm.shape, followers.map((x) => x.id)) : fm.slots;
+    const slots = structuredClone(base);
+    for (const id of ids) slots[id] = { back: a.slots[id].back || 0, side: a.slots[id].side || 0 };
+    l.formation = { shape: 'custom', slots, ...(fm?.face !== undefined ? { face: fm.face } : {}) };
+    ev.push({ type: 'formation', id: l.id, shape: 'custom', slots: structuredClone(slots) });
   },
 };
+
+// Set a leader's formation to a preset, to the shape `followers` stand in ('held'), or (null) leave it.
+function setFormation(s, l, shape, followers, ev) {
+  if (shape === null) return;
+  if (shape === 'held') capture(s, l, followers, true);
+  else l.formation = { shape, ...(l.formation?.face !== undefined ? { face: l.formation.face } : {}) };
+  ev.push({ type: 'formation', id: l.id, shape, ...(l.formation.slots ? { slots: structuredClone(l.formation.slots) } : {}) });
+}
+
 
