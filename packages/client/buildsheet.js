@@ -242,7 +242,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     for (const sl of slots) {
       const def = sl.taken ? CONTENT.feats[sl.taken.id] : null, key = sl.at.replace(/[^a-z0-9]+/gi, '-');
       const ids = new Set(sl.offer); if (sl.taken && !ids.has(sl.taken.id)) ids.add(sl.taken.id);
-      const box = el('div', { class: 'qb-pick', id: `feat-${key}`, 'data-at': sl.at }, pickOne(`feat-${key}-id`, `${sl.name}: ${sl.category === 'origin' ? 'an Origin feat' : 'a feat'}`,
+      const box = el('div', { class: 'qb-pick', id: `feat-${key}`, 'data-at': sl.at }, pickOne(`feat-${key}-id`, sl.name,
         [['', 'None'], ...[...ids].map((id) => [id, CONTENT.feats[id].name])], sl.taken?.id, (v) => { setEntry(sl.at, v ? { id: v, at: sl.at } : null); build(); }));
       if (def) {
         const t = sl.taken, put = (patch) => { const next = { ...t, ...patch }; for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]; setEntry(sl.at, next); };
