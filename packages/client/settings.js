@@ -63,6 +63,14 @@ export function initSettings(ctx) {
     : 'Real shadows are drawn by the Three.js renderer only (?renderer=three). Automatic draws them on a computer or tablet and, on a phone, only once the screen shows it has room; it drops them first if the screen falls behind. On keeps them whatever happens.';
   shadows.onchange = (ev) => { prefs.set('hextable.shadows', ev.target.value); window.dispatchEvent(new CustomEvent('hextable-shadows', { detail: ev.target.value })); };
 
+  // The edge of a fight (docs/specs/renderer.md, arena-edge notes): both renderers, hexes and squares. 'dim' is the lighting change alone.
+  const ae = document.createElement('div');
+  ae.innerHTML = '<label class="assign">Edge of a fight <select id="set-arena-edge"><option value="dim">Dimmed surroundings only</option><option value="edge">Dimmed, with a glowing edge</option></select></label>'
+    + '<p class="note">While a fight runs, everything outside its arena is dimmed. The edge can also glow. Either way the arena flashes where a move out of it was refused.</p>';
+  $('set-look-note').before(...ae.children);
+  $('set-arena-edge').value = LOOK.arenaEdge;
+  $('set-arena-edge').onchange = (ev) => { prefs.set('hextable.arenaEdge', ev.target.value); ctx.look('arenaEdge', ev.target.value); };
+
   // The drawer: which side, and (wide screens) pinned.
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);

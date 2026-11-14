@@ -1,5 +1,6 @@
 import { sleep, scenario, wait, state, open, playSolo, calm, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
+import { arenaEdge } from './three.mjs';
 
 // ---------- squares drawn by the default renderer (docs/specs/square-grid.md, S9a) ----------
 // The engine's square-room fixture is loaded through the game's own loadMap action, as the DM of a solo game (there is no UI for choosing
@@ -170,7 +171,7 @@ async function squares(browser, url, label, opts) {
         if (a.move !== 30) throw new Error(`her movement is ${a.move}, not 30`);
         await choose('Brenna');
         await page.evaluate(() => window.hextable.R.settle());
-        await wait(page, () => window.hextable.R.edge.n > 0, null, 5000);
+        await wait(page, () => window.hextable.R.state?.encounter && window.hextable.R.edgeFx.phase === 'on', null, 5000);      // the arena is up (the default look has no glowing edge to wait for: #305)
         await look(5, 5, 22); await shot('4-fight');
       });
 
@@ -244,4 +245,10 @@ async function squares(browser, url, label, opts) {
 export default async function (browser, url) {
   await squares(browser, url, 'squares at 1280x800', { viewport: { width: 1280, height: 800 } });
   await squares(browser, url, 'squares at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  // The edge of a fight on the default renderer, on squares and on hexes (the Three.js renderer's runs are in three.mjs).
+  const D = { viewport: { width: 1280, height: 800 } }, P = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
+  await arenaEdge(browser, url, 'arena edge: default renderer, squares, 1280x800', { ...D, three: false, grid: 'square' });
+  await arenaEdge(browser, url, 'arena edge: default renderer, squares, 390x844 with touch', { ...P, three: false, grid: 'square' });
+  await arenaEdge(browser, url, 'arena edge: default renderer, hexes, 1280x800', { ...D, three: false, grid: 'hex' });
+  await arenaEdge(browser, url, 'arena edge: default renderer, hexes, 390x844 with touch', { ...P, three: false, grid: 'hex' });
 }

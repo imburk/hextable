@@ -5,7 +5,7 @@ import { HEX, gridOf, col as cellCol, key as cellKey, parse as cellParse } from 
 import { allTiles, footprint, ground, shown, surfaces, under } from './shared/space.js';
 import { objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
-import { zoneHexes } from './render.js';
+import { edgeLook, zoneHexes } from './render.js';
 
 export const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 export const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
@@ -175,7 +175,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     if (h.z > ceiling) continue;
     if (pictured.has(h.level.id)) {
       const w = G.toWorld(h), inFight = enc && enc.arena[cellCol(h)];
-      gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
+      gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight && edgeLook(th) ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
       continue;
     }
     if (caves.has(h.level.id)) continue;
@@ -187,7 +187,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
     const f = seenShade(h.level.id, cellCol(h));
     if (f !== 1) c = c.map((v) => v * f);
-    const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
+    const rim = enc && !locked && edgeLook(th) ? [...th.arenaRim, 1] : shade(c, th.rim);
     if (!room) {
       b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
       b.flatHex(w.x, w.z, y, 0.86, 1, rim);
@@ -217,7 +217,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
         if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
         if (f !== 1) c = c.map((v) => v * f);
-        const inArena = enc && !locked, grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
+        const inArena = enc && !locked && edgeLook(th), grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
         const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955, G);
         const fan = (poly, col) => { const m = wpt(centroidOf(poly), y); for (let i = 0; i < poly.length; i++) b.tri(wpt(poly[(i + 1) % poly.length], y), wpt(poly[i], y), m, col); };
         if (inner) fan(inner, [...c, 1]);
@@ -331,29 +331,32 @@ export function swingDoor(b, info, f) {
   b.slab(p, [ex, ey], info.y0, info.h, 0.07 - 0.02 * f, info.shut.map((v, i) => v + (info.open[i] - v) * f));
 }
 
-// The glowing curtain round the arena of a fight. `base` is the mean height it grows from.
-export function buildEdge({ map, enc, theme: th, ceiling }) {
+// The glowing curtain round the arena of a fight. `base` is the mean height it grows from. The curtain is made only in the 'edge' look
+// (render.js, edgeLook); in the 'dim' look it is empty, but `base` is still found. `only` (a Set of cols) and `tall` make the flash of a
+// refused move, which is drawn in either look.
+export function buildEdge({ map, enc, theme: th, ceiling, only = null, tall = 2.1 }) {
   const G = gridOf(map), eb = new Builder(G);
   let base = 0;
   if (enc) {
-    const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
+    const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
     const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
     let ys = 0, ny = 0;
     for (const h of allTiles(map)) {
       if (h.z > ceiling || !enc.arena[cellCol(h)]) continue;
       const w = G.toWorld(h), y = surfY(h.z, h.tile) + 0.03;
-      ys += y; ny++; base = ys / ny;
-      const top = eb.cellRing(w.x, w.z, 1.02, y), inner = eb.cellRing(w.x, w.z, 0.86, y);
+      if (!only) { ys += y; ny++; base = ys / ny; }
+      if (only && !only.has(cellCol(h))) continue;
+      const top = eb.cellRing(w.x, w.z, 1.02, y), inner = eb.cellRing(w.x, w.z, only ? 0.6 : 0.86, y);
       for (let i = 0; i < top.length; i++) {
         const n = (i + 1) % top.length, [sx, sz] = sideAt(eb.shape, i), out = G.fromWorld(w.x + sx * 1.8, w.z + sz * 1.8);
         if (enc.arena[cellCol(out)]) continue;
-        const lo = [...glow, 0.85], hi = [...glow, 0];
+        const lo = [...glow, only ? 1 : 0.85], hi = [...glow, 0];
         quad2(top[i], top[n], [top[n][0], y + tall, top[n][2]], [top[i][0], y + tall, top[i][2]], lo, lo, hi, hi);
-        quad2(inner[i], inner[n], top[n], top[i], [...glow, 0.35], [...glow, 0.35], [...glow.map((x) => x * 0.5 + 0.5), 1], [...glow.map((x) => x * 0.5 + 0.5), 1]);
+        quad2(inner[i], inner[n], top[n], top[i], [...glow, only ? 0.75 : 0.35], [...glow, only ? 0.75 : 0.35], [...glow.map((x) => x * 0.5 + 0.5), 1], [...glow.map((x) => x * 0.5 + 0.5), 1]);
       }
     }
   }
-  return { b: eb, base };
+  return { b: only || edgeLook(th) ? eb : new Builder(G), base };
 }
 
 // Highlights, lasting zones, the marks under fliers, rings, the editor's pins and the bars across steps a wall stops.
