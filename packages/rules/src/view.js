@@ -492,7 +492,8 @@ export function viewEvents(events, state, viewer) {
       case 'effectStart':
       case 'effectEnd': {                              // a lasting effect that involves one of ours
         const targets = (ev.targets || []).filter((id) => cls(id) !== 'hidden');
-        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) out.push({ ...pick(ev, ['type', 'fx', 'name', 'source', 'conc', 'lasts', 'why']), targets });
+        // Whose it was and why it ended (`why` names its caster: "Imp went down") only where they know of its caster.
+        if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) out.push({ ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(typeof ev.source === 'string' && cls(ev.source) === 'hidden' ? [] : ['source', 'why'])]), targets });
         break;
       }
       case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known

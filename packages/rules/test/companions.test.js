@@ -476,3 +476,46 @@ test("a part that was to end with the vanished creature's turn ends with it (L7)
   assert.ok(fx.parts[0].ended);
   assert.ok(!fx.parts[1].ended, "the rest goes on");
 });
+
+// ---------- re-review of #313 ----------
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+  test(`a companion the party could not see vanishes leaving what it did to them as an unseen death would: same events, view and record${on} (N1)`, async () => {
+    const { startEffect } = await import("../src/durations.js");
+    const run = (bonded) => {
+      const { s, wolf } = table(grid);
+      if (bonded) bond(s, wolf, s.entities.m1.id, { kind: "familiar" });
+      s.entities.fighter.cond.grappled = { source: wolf };
+      s.entities.fighter.cond.frightened = { source: wolf };
+      // A lasting effect of its own, without Concentration, on a party member; and a part of another's that ends with its turn.
+      const fx = startEffect(s, { name: "Blindness", spell: null, source: wolf, conc: false, duration: "1 minute" });
+      fx.parts.push({ target: "rogue", cond: "blinded" }); s.entities.rogue.cond.blinded = { source: wolf, effect: fx.id };
+      const fy = startEffect(s, { name: "Mark", spell: null, source: "m1", conc: false, duration: "1 minute" });
+      fy.parts.push({ target: "cleric", cond: "prone", ends: { on: "turnEnd", who: wolf } }); s.entities.cleric.cond.prone = { effect: fy.id };
+      ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
+      const r = ok(apply(s, { type: "harm", actor: wolf, amount: 9999 }, DM));
+      ok(apply(s, { type: "advanceTime", minutes: 0.5 }, DM));
+      return { s, r, ev: [U1, U2].map((u) => json(viewEvents(r.events, s, u))), view: [U1, U2].map((u) => json(view(s, u))), tl: json(viewEvents(s.timeline, s, U1)) };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.ev, B.ev);
+    assert.deepEqual(A.ev, ["[]", "[]"]);
+    assert.deepEqual(A.view, B.view);
+    assert.equal(A.tl, B.tl);
+    assert.ok(A.s.entities.fighter.cond.grappled, "the grapple is left for the DM");
+    assert.ok(A.r.events.some((e) => e.type === "manual" && e.partial && /left as it was/.test(e.text) && /Blindness/.test(e.text) && /Grappled/.test(e.text)), "the DM is told what is left");
+    assert.ok(!json(A.view).includes(A.s.timeline.find((e) => e.type === "vanished").id), "no id of it reaches a player");
+  });
+}
+
+test("the end of a lasting effect whose caster players do not know of names neither the caster nor why", () => {
+  const { s, wolf } = table();
+  ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
+  const ev = [{ type: "effectEnd", fx: "fx9", name: "Blindness", source: wolf, targets: ["fighter"], why: "Greyjaw went down", conc: true }];
+  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", fx: "fx9", name: "Blindness", conc: true, targets: ["fighter"] }]);
+  const mine = [{ ...ev[0], source: "cleric", why: "Odessa ended it" }];
+  assert.equal(viewEvents(mine, s, U1)[0].why, "Odessa ended it");
+  const thing = [{ ...ev[0], source: null, why: "the fight ended" }];
+  assert.equal(viewEvents(thing, s, U1)[0].why, "the fight ended", "an effect of no creature keeps its words");
+});

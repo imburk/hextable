@@ -785,7 +785,61 @@ function leaveGear(s, e, ev, unseen) {
   // Seen by the party, `seen` lets the line reach them though the creature is gone (view.js, `object`).
   ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(placed ? { placed: true } : {}) });
   if (unseen) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true,
-    text: `${e.name} vanished where the party could not see it. What it carried (${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}) lies in ${o.id}, which only you see: when the party finds it, open it to them with the map editor (the pile without \`by\`).` });
+    text: `${e.name} vanished where the party could not see it. What it carried (${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}) lies in ${o.id}, which only you see: when the party finds it, open it to them with the map editor: the pile without \`by\` or \`left\`, and with the id of the cell's own pile (\`pile-<level>-<q>_<r>\`, no \`-h\`), or onto that pile if there is one.` });
+}
+
+// What a companion the party could see leaves undone ends with it. A part on it, or one that was to end with
+// a turn of its (`ends.who`: "until the end of its next turn"), ends: that turn will not come (review of #313,
+// L7). A condition it put on another with no lasting effect behind it: a grapple ends, since there is nobody
+// left to hold on (SRD Grappled); any other loses the name of a creature that is no longer there, and the DM
+// is told it is theirs to end (L3).
+function settleSeen(s, e, ev) {
+  const name = e.name, its = (p) => !p.ended && (p.target === e.id || p.ends?.who === e.id);
+  for (const fx of [...effectsOf(s)]) {
+    if (fx.source === e.id) { endEffect(s, ev, fx, `${name} vanished`); continue; }
+    const on = fx.parts.filter(its);
+    if (!on.length) continue;
+    if (fx.parts.every((p) => p.ended || its(p))) endEffect(s, ev, fx, `${name} vanished`);
+    else useUp(s, ev, on);
+  }
+  for (const x of Object.values(s.entities)) {
+    if (x.id === e.id || !x.cond) continue;
+    for (const [c, v] of Object.entries(x.cond)) {
+      if (v?.source !== e.id || v.effect !== undefined) continue;
+      if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
+      delete v.source;
+      ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has vanished. Whether that ends is the DM's.` });
+    }
+  }
+}
+// One the party could not see: clearing what it did would show them that it is gone, which an unseen
+// creature's death never does (re-review of #313, N1). So its lasting effects, a part of another's that is on
+// it or ends with its turn, and what it put on others stay exactly as they would after an unseen death, and
+// the DM is told what is left, to clear by hand. Only one change: in the party's own records (sent to players
+// whole) a mention of it becomes 'someone' and a key that is its id goes, which is what view.js already sends
+// for a creature they do not know of (`scrub`), so that their view stays as it was and no id is left that
+// view.js could no longer tell was hidden.
+function settleUnseen(s, e, ev) {
+  const left = [];
+  for (const fx of effectsOf(s)) {
+    if (fx.source === e.id) left.push(`${fx.name} (its own)`);
+    else if (fx.parts.some((p) => !p.ended && (p.target === e.id || p.ends?.who === e.id))) left.push(`${fx.name} (a part on it, or ending with its turn)`);
+  }
+  const named = (x, out) => {
+    if (!x || typeof x !== 'object') return;
+    for (const k of Object.keys(x)) {
+      if (!Array.isArray(x) && k === e.id) { delete x[k]; out.n++; continue; }
+      if (x[k] === e.id) { x[k] = 'someone'; out.n++; } else named(x[k], out);
+    }
+  };
+  for (const x of Object.values(s.entities)) {
+    if (x.id === e.id || x.side !== 'party') continue;
+    for (const [c, v] of Object.entries(x.cond ?? {})) if (v?.source === e.id) left.push(`${x.name} is ${conditionName(c)} from it`);
+    const out = { n: 0 };
+    named(x, out);
+  }
+  if (left.length) ev.push({ type: 'manual', actor: null, name: e.name, partial: true,
+    text: `${e.name} vanished where the party could not see it. So that the party learns nothing, what it did is left as it was: ${left.join('; ')}. End what should end (endEffect, condition) when the party could know.` });
 }
 
 // A bonded creature leaves the map: `why` is 'hp0' (it dropped to 0 Hit Points and its bond says it
@@ -797,28 +851,7 @@ function leaveGear(s, e, ev, unseen) {
 // `party` when it was the party's, since view.js can no longer look it up (hidden-information.md).
 export function vanish(s, e, why, ev) {
   const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
-  // A part on it, or one that was to end with a turn of its (`ends.who`: "until the end of its next turn"),
-  // ends: that turn will not come (review of #313, L7).
-  const its = (p) => !p.ended && (p.target === e.id || p.ends?.who === e.id);
-  for (const fx of [...effectsOf(s)]) {
-    if (fx.source === e.id) { endEffect(s, ev, fx, `${name} vanished`); continue; }
-    const on = fx.parts.filter(its);
-    if (!on.length) continue;
-    if (fx.parts.every((p) => p.ended || its(p))) endEffect(s, ev, fx, `${name} vanished`);
-    else useUp(s, ev, on);
-  }
-  // A condition it put on another with no lasting effect behind it: a grapple ends, since there is nobody
-  // left to hold on (SRD Grappled); any other loses the name of a creature that is no longer there, and
-  // the DM is told it is theirs to end (review of #313, L3).
-  for (const x of Object.values(s.entities)) {
-    if (x.id === e.id || !x.cond) continue;
-    for (const [c, v] of Object.entries(x.cond)) {
-      if (v?.source !== e.id || v.effect !== undefined) continue;
-      if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
-      delete v.source;
-      ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has vanished. Whether that ends is the DM's.` });
-    }
-  }
+  if (seen) settleSeen(s, e, ev); else settleUnseen(s, e, ev);
   for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
   if (e.follow) unfollow(s, e, ev);
   leaveGear(s, e, ev, !seen);
