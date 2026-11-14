@@ -84,8 +84,16 @@ async function link(browser, url) {
         await waitShown(phone, '#link-note', false);
       });
 
+      // While the phone is cut off the browser logs each failed reconnect as a console error. Those are
+      // the point of the step, not a fault: they are let through from the cut until the connection is back.
+      const EXPECTED = /WebSocket connection to .* failed|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_CONNECTION/;
+      let cut = false;
+      const pushProblem = run.problems.push.bind(run.problems);
+      run.problems.push = (p) => (cut && /\(phone\)/.test(p) && EXPECTED.test(p) ? run.problems.length : pushProblem(p));
+
       await run.do('cut the phone off: its own dot goes lost and says it is reconnecting or offline', async () => {
         if ((await dotState(phone)) !== 'good') throw new Error('the phone was not good before being cut off');
+        cut = true;
         await phoneCtx.setOffline(true);
         await phone.evaluate(() => window.hextable.dropSocket());          // an offline browser may keep an open socket for a while: drop it
         await waitDot(phone, 'lost');
@@ -107,6 +115,7 @@ async function link(browser, url) {
         await phoneCtx.setOffline(false);
         await waitDot(phone, 'good', 30000);
         await waitRow(host, id, 'good', 30000);
+        cut = false;
         await closeMenu(host);
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }
