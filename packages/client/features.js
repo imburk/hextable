@@ -70,7 +70,7 @@ export function featureRows(S, e, { mode = null } = {}) {
   for (const f of e.feats ?? []) {
     if (done.has(f.id) || !f.uses || f.metamagic) continue;
     const reaction = f.action?.time === 'reaction';
-    rows.push({ id: `feat:${f.id}`, kind: 'none', label: f.name, sub: reaction ? 'Reaction: set on the Reactions tab' : f.tier === 'manual' ? 'The DM applies it' : 'Works by itself, no button', why: '', chip: CHIP[f.action?.time] ?? '', time: f.action?.time ?? null, feature: f.id, pips: pipsOf(e, f), armed: false });
+    rows.push({ id: `feat:${f.id}`, kind: 'none', label: f.name, sub: reaction ? 'Reaction: set on the Reactions tab' : (e.feats ?? []).some((x) => x.action?.cost?.resource === f.id) ? 'The pool the features above spend' : f.tier === 'manual' ? 'The DM applies it' : 'Works by itself, no button', why: '', chip: CHIP[f.action?.time] ?? '', time: f.action?.time ?? null, feature: f.id, pips: pipsOf(e, f), armed: false });
   }
   // The older hand-typed Second Wind, for a character whose record has it as a plain feature and not in `feats`.
   if (e.features?.secondWind && !hasFeat(e, 'second-wind')) {
