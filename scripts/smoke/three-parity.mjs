@@ -157,7 +157,8 @@ async function threeParity(browser, url, label, opts) {
       });
     } finally { await ctx.close(); }
   });
-  await beats(browser, `${url}?renderer=three`, `${label}: doors and falls on the Three.js renderer`, opts);
+  // shadows off: this pass is about when things happen, and with software GL the sun's pass makes a frame three or four times as long on a computer, which the timing steps feel
+  await beats(browser, `${url}?renderer=three&shadows=off`, `${label}: doors and falls on the Three.js renderer`, opts);
 }
 
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=three-parity.
