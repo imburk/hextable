@@ -20,7 +20,7 @@ import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
 import { VERSION } from './shared/migrate.js';
 import { THEMES, setLook } from './themes.js';
-import { localTransport, serverTransport, savedSession, prefs, downloadTable } from './transport.js';
+import { localTransport, serverTransport, savedSession, hasSoloGame, forgetSession, forgetSolo, prefs, downloadTable } from './transport.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
@@ -446,6 +446,7 @@ function refresh() {
   $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
   $('clock').textContent = clockText(S.clock);
   $('btn-leave').hidden = isDM() || !!T.solo;
+  $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
   showUndo();
 
   // turn order
@@ -888,31 +889,47 @@ $('dm-dice-throw').onchange = (ev) => act({ type: 'setting', key: 'diceThrow', v
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };
 $('dm-auto').onchange = () => S && onUpdate(S, []);
-$('dm-new').onclick = () => T.reset?.();
 $('dm-export').onclick = () => T.export().then((table) => {
   downloadTable(table);
   const n = table.assetsSkipped?.length ?? 0;
   if (n) toast(`Saved. ${n} picture${n === 1 ? ' was' : 's were'} too much to include (the limit is ${Math.round(table.assetLimit / 1048576)} MB of pictures).`);
 }, (e) => toast(e.message));
-// Leaving takes two taps, so a stray one can't drop you from the table.
-let leaveTimer = null;
-function leaveTable(btn) {
+// Anything that discards a game takes two taps, so a stray one can't. The first arms the button for 3 seconds
+// and shows what it will do; the second does it.
+const armTimers = new Map();
+function twoTap(btn, armed, note, go) {
   if (!btn.classList.contains('sure')) {
-    const label = btn.textContent;
-    btn.classList.add('sure'); btn.textContent = 'Tap again to leave';
-    clearTimeout(leaveTimer); leaveTimer = setTimeout(() => { btn.classList.remove('sure'); btn.textContent = label; }, 3000);
+    btn.dataset.label = btn.textContent;
+    btn.classList.add('sure'); btn.textContent = armed;
+    const n = btn.id.startsWith('menu-') ? $('menu-note') : null;
+    if (n) { n.textContent = note; n.hidden = false; }
+    clearTimeout(armTimers.get(btn)); armTimers.set(btn, setTimeout(() => disarm(btn), 3000));
     return;
   }
-  clearTimeout(leaveTimer); btn.classList.remove('sure'); btn.textContent = btn.id === 'dm-leave' ? 'Leave table' : 'Leave';
+  clearTimeout(armTimers.get(btn)); disarm(btn); go();
+}
+function disarm(btn) {
+  if (!btn.classList.contains('sure')) return;
+  btn.classList.remove('sure'); btn.textContent = btn.dataset.label;
+  if (btn.id.startsWith('menu-')) $('menu-note').hidden = true;
+}
+const LEAVE_NOTE = 'Leaving forgets this table on this device.';
+const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
+function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
+function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = true;
+  $('btn-leave').hidden = $('btn-undo').hidden = true; $('menu-session').hidden = true;
   D.sync(null);
-  lobbyBusy(false); $('lobby-msg').textContent = 'You left the table.'; $('lobby').hidden = false;
+  lobbyBusy(false); showLobby('You left the table.');
 }
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
+$('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
+const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.(); });
+$('dm-new').onclick = newWorld;
+$('menu-new').onclick = newWorld;
 for (const [id, m] of Object.entries(MONSTERS)) {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = `Add ${m.name}`;
   b.onclick = () => { closeDM(); setMode({ kind: 'spawn', monster: id }); };
@@ -976,7 +993,7 @@ function start(transport, map = null) {
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
-    if (expired) { TL.skip(); S = null; lobbyBusy(false); $('lobby').hidden = false; $('lobby-msg').textContent = msg; } else toast(msg); };
+    if (expired) { TL.skip(); S = null; lobbyBusy(false); showLobby(msg); } else toast(msg); };
   T.on.lobby = () => S && refresh();
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };
   T.on.history = (msg) => {
@@ -993,9 +1010,23 @@ function start(transport, map = null) {
     }
     refresh();
   };
-  T.on.welcome = (you) => { SC.resync(); $('lobby').hidden = you.approved; if (!you.approved) $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; };
+  T.on.welcome = (you) => { SC.resync(); $('lobby').hidden = you.approved; if (!you.approved) { $('lobby-remember').hidden = true; $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; } };
   T.start();
 }
+// The lobby says what this device holds: a remembered table (Rejoin or Forget) and a saved solo game (Continue or New game).
+function showLobby(msg = '') {
+  const sess = savedSession(), solo = hasSoloGame();
+  $('lobby-remember').hidden = !sess;
+  if (sess) $('lobby-table').textContent = `This device remembers table ${sess.code}.`;
+  $('lobby-solo').textContent = solo ? 'Continue solo game' : 'Play solo on this device';
+  $('lobby-new').hidden = !solo;
+  $('lobby-msg').textContent = msg;
+  $('lobby').hidden = false;
+  (sess ? $('lobby-rejoin') : $('lobby-solo')).focus?.({ preventScroll: true });
+}
+$('lobby-rejoin').onclick = () => { const sess = savedSession(); if (!sess) return showLobby(); $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', ...sess })); };
+$('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { forgetSession(); showLobby('Table forgotten.'); });
+$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { forgetSolo(); $('lobby').hidden = true; start(localTransport(), TC.lobbyChoice()); });
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
 $('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName() }), TC.lobbyChoice());
 $('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) start(serverTransport({ t: 'join', code, name: lobbyName() })); else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
@@ -1006,6 +1037,5 @@ $('lobby-card').onsubmit = (ev) => ev.preventDefault();
   let server = false;
   try { const r = await fetch('./api/ping', { cache: 'no-store' }); server = r.ok && (await r.json()).ok === true; } catch { /* no table server: solo */ }
   if (!server) return start(localTransport());
-  const sess = savedSession();
-  if (sess) start(serverTransport({ t: 'resume', ...sess })); else $('lobby').hidden = false;
+  showLobby();
 })();
