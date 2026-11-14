@@ -5,7 +5,7 @@ import * as H from '../hex.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, fightOver, ROUND, roundStarted, startEffect, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
@@ -222,6 +222,8 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
+  // Relentless Rage: dropping to 0 Hit Points without dying outright while raging, a Constitution save keeps it up.
+  if (!dying && t.hp <= 0 && lost - before < t.maxHp) relentless(s, t, ev);
   if (dying) {                                            // already dying
     if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
     if (t.dead) ev.push({ type: 'died', id: t.id });
@@ -242,9 +244,29 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   concentrationLost(s, ev, t, `${t.name} went down`);
 }
 
+// A creature with `relentless` (Relentless Rage) has dropped to 0 Hit Points while the feature it
+// names has its effect going: a Constitution save, DC `dc` plus `step` for each use since its last
+// rest (counted in its `uses` under the feature's id; rests.js clears it), and on a success its Hit
+// Points become `hp`.
+function relentless(s, t, ev) {
+  const f = (t.feats ?? []).find((x) => x.relentless);
+  if (!f || !effectsOf(s).some((fx) => fx.source === t.id && fx.feature === f.relentless.while)) return;
+  const r = f.relentless, n = t.uses?.[f.id] ?? 0, dc = r.dc + r.step * n;
+  (t.uses ??= {})[f.id] = n + 1;
+  const { used, ...sv } = savingThrow(s, t, 'con', dc, null, null, null, null, ev);
+  ev.push({ type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name });
+  useUp(s, ev, used ?? []);
+  if (!sv.success) return;
+  t.hp = Math.min(t.maxHp, r.hp);
+  ev.push({ type: 'std', id: t.id, action: f.name });
+  ev.push({ type: 'heal', target: t.id, amount: t.hp, hp: t.hp });
+}
+
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
-function rollToHit(s, e, t, atk, ev, extra = {}) {
-  const { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, atk);
+// `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
+function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false } = {}) {
+  let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, atk);
+  if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
   unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
@@ -372,7 +394,9 @@ function reactToHit(s, t, e, atk, roll_, ev) {
 export function reactAgainst(s, t, e, on, ev, why) {
   if (!canReact(t) || t.object || !e || e.object || e.id === t.id || !hostile(t, e) || !up(e)) return null;
   for (const r of reactionsOf(t)) {
-    if (r.on !== on || r.kind !== 'spell') continue;
+    if (r.on !== on) continue;
+    if (r.kind === 'feature' && r.reaction.attack) { if (strikeBack(s, t, e, r, ev, why)) return {}; continue; }
+    if (r.kind !== 'spell') continue;
     const w = instruction(t, r);
     if (w === 'never') continue;
     const sp = SPELLS[r.id], slots = slotsFor(s, t, sp);
@@ -389,13 +413,37 @@ export function reactAgainst(s, t, e, on, ev, why) {
   return null;
 }
 
+// A feature reaction that answers damage with a melee attack (Retaliation: `{ on: 'damaged', attack:
+// 'melee', within }`): `t` took damage from `e`, within `within` feet. Its instruction decides, or its
+// player when it says `ask`. It attacks with its first melee attack, as an Opportunity Attack is made.
+// Returns true if it was taken.
+function strikeBack(s, t, e, r, ev, why) {
+  const x = r.reaction, atk = (t.attacks ?? []).find((a) => a.type === 'melee');
+  if (!atk || t.actions || apart(s, t, e) * FT > x.within) return false;
+  if (atk.reach !== undefined && apart(s, t, e) * FT > atk.reach) return false;
+  const w = instruction(t, r);
+  if (w === 'never') return false;
+  if (w === 'ask') {
+    const a = ask(s, t, { trigger: 'damaged', by: e.id }, [{ reaction: r.id, name: r.name }]);
+    if (a === null) { tellDM(t, r, why, ev); return false; }
+    if (a.take !== r.id) return false;
+  }
+  t.reactionUsed = true;
+  ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'damaged', against: e.id });
+  resolveAttack(s, t, e, atk, ev, { reaction: r.id });
+  return true;
+}
+
 // A weapon attack by a creature whose attacks are still flat records (monsters and
 // hand-entered characters). Spells resolve through effect steps instead.
-export function resolveAttack(s, e, t, atk, ev, extra = {}) {
-  const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra);
+// `brutal`: a Brutal Strike option chosen for this attack ({ id, name, dice, effects, unique? },
+// attacks.js, brutalFor): Advantage is given up, and a hit deals `dice` more and then runs the option.
+export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null } = {}) {
+  const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra, { forgo: !!brutal });
   if (!hit) return;
   const rs = [roll(s, atk.damage, { crit })];
   const notes = [];
+  if (brutal) { rs.push(roll(s, brutal.dice, { crit })); notes.push(`Brutal Strike: ${brutal.name}`); }
   if (atk.bonusOnAdv && mode === 'adv') rs.push(roll(s, atk.bonusOnAdv, { crit }));
   const sneakKey = `sneak:${e.id}`;
   if (e.features.sneak && !atk.spell && (atk.finesse || atk.type === 'ranged') && !s.encounter?.flags[sneakKey] && mode !== 'dis') {
@@ -410,6 +458,20 @@ export function resolveAttack(s, e, t, atk, ev, extra = {}) {
   const r = together(...rs);
   damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
+  if (brutal && !t.dead) strikeEffect(s, e, t, brutal, ev);
+}
+
+// What a choice made for a hit does to its target after the damage (a Brutal Strike option): its
+// steps, on a lasting effect bound to its parts when they have an ending. `unique`: an earlier one
+// of the same option on that target, from anyone, ends first ("only the most recent one").
+export function strikeEffect(s, e, t, o, ev, src = {}) {
+  if (o.unique) for (const fx of [...effectsOf(s)]) if (fx.option === o.id && fx.parts.some((p) => p.target === t.id && !p.ended)) endEffect(s, ev, fx, `a new ${o.name}`);
+  const steps = structuredClone(o.effects), fx = boundEffect(s, o.name, e.id, steps);
+  if (fx) fx.option = o.id;
+  const depth = s.stack?.length ?? 0;
+  begin(s, { steps, actor: e.id, targets: [t.id], src: { name: o.name, ...src, ...(fx ? { fx: fx.id } : {}) } });
+  if (depth) run(s, ev, KIT, depth); else resolve(s, ev);
+  if (fx) settle(s, ev, fx, [t]);
 }
 
 // Run an action's effect steps against its targets. Costs are the caller's. `tag` marks the

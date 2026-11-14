@@ -7,7 +7,7 @@ import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
 import { objectDef } from '../walls.js';
 import { canReact, instruction, OPPORTUNITY, opportunityAttack, reactionsOf } from '../reactions.js';
-import { speedOf } from '../modifiers.js';
+import { modifiers, speedOf } from '../modifiers.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, hostile, inFight, less, living, need, unblocked, up } from './shared.js';
 import { airspace, aloft, along, byMarch, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
@@ -21,7 +21,8 @@ export const ENGAGE_RANGE = 2;       // walking this close to a hostile starts t
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && canReact(o) &&
-    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && canSee(s, o, e) !== 'no');     // SRD: a creature it can see
+    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && canSee(s, o, e) !== 'no'     // SRD: a creature it can see
+    && !modifiers(s, o, 'opportunity').autoFail);                                                                       // Staggering Blow: it can't make them now
 }
 // A creature has just stepped from `prev` to where it stands now: whatever that sets off, goes
 // off. Returns true if something did, which ends the creature's movement there.

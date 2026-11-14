@@ -5,7 +5,8 @@ import { turnEnded } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { turnInZones } from '../zones.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, ft, inFight, need, up, walled } from './shared.js';
+import { able, control, current, ent, fail, featOf, ft, inFight, need, up, walled } from './shared.js';
+import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { advanceTurn, checkEnd, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
 
@@ -71,6 +72,24 @@ function takeAction(s, e, def, a, ev) {
   checkEnd(s, ev);
 }
 
+// Brutal Strike (`brutal` on a built character's features): on its own turn, after the feature named
+// in `after` that turn (Reckless Attack), once a turn, on an attack using Strength that has no
+// Disadvantage. Returns the option to apply ({ id, name, dice, effects, unique? }), or refuses.
+function brutalFor(s, e, t, atk, id) {
+  const fs = (e.feats ?? []).filter((f) => f.brutal), base = fs.find((f) => f.brutal.dice);
+  base || fail(`${e.name} has no Brutal Strike.`);
+  const options = fs.flatMap((f) => f.brutal.options);
+  const o = (typeof id === 'string' && options.find((x) => x.id === id)) || fail(`Choose a ${base.name} effect: ${options.map((x) => x.name).join(', ')}.`);
+  const flags = s.encounter.flags;
+  current(s) === e.id || fail(`${base.name} is used on ${e.name}'s turn.`);
+  flags[`${base.brutal.after}:${e.id}`] || fail(`${base.name} needs ${featOf(e, base.brutal.after)?.name ?? base.brutal.after} this turn.`);
+  !flags[`brutal:${e.id}`] || fail(`${e.name} has already used ${base.name} this turn.`);
+  atk.abil === 'str' || fail(`${base.name} is for an attack using Strength.`);
+  const m = rollMode(s, e, t, atk);
+  !m.dis.length || fail(`That attack roll has Disadvantage (${m.dis.join(', ')}), so ${base.name} can't be used on it.`);
+  return { ...structuredClone(o), dice: base.brutal.dice };
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -79,6 +98,7 @@ export const handlers = {
     const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
+      a.brutal === undefined || fail(`Brutal Strike is made with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
       return takeAction(s, e, def, { target: a.target }, ev);
@@ -99,6 +119,7 @@ export const handlers = {
     const pooled = !flurry && !bonusTime && fromPool(b, atk.id);
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
     if (flurry) { if (--b.bonusAttacks.left <= 0) delete b.bonusAttacks; }
     else if (bonusTime) b.bonus--;
     else if (pooled) fromPool(b, atk.id, true);
@@ -107,7 +128,8 @@ export const handlers = {
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
     }
-    resolveAttack(s, e, t, atk, ev);
+    if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
+    resolveAttack(s, e, t, atk, ev, {}, { brutal });
     checkEnd(s, ev);
   },
 

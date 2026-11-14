@@ -13,7 +13,7 @@
 // ends. A spell with no duration of its own whose parts carry such an ending (Ray of Frost) gets
 // an effect anyway, `bound`, that ends when its parts do.
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
-import { incapacitated } from './modifiers.js';
+import { has, incapacitated } from './modifiers.js';
 import { leaveForm } from './forms.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
@@ -176,5 +176,7 @@ export function concentrationCheck(s, ev, t, amount, kit) {
 export function concentrationLost(s, ev, t, why) {
   if (!(t.dead || t.hp <= 0 || incapacitated(t))) return;
   breakConcentration(s, ev, t.id, why);
-  for (const fx of effectsOf(s).filter((x) => x.fragile && x.source === t.id)) endEffect(s, ev, fx, why);   // Rage ends on being Incapacitated
+  // Rage ends on being Incapacitated; `fragile: 'unconscious'` only on being Unconscious (Persistent Rage), or down or dead.
+  const ends = (fx) => fx.fragile === true || t.dead || t.hp <= 0 || has(t, fx.fragile);
+  for (const fx of effectsOf(s).filter((x) => x.fragile && x.source === t.id && ends(x))) endEffect(s, ev, fx, why);
 }

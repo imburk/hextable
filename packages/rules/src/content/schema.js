@@ -33,7 +33,9 @@ export const REMAINS = ['frozen-statue', 'dust'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
-  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20'];
+  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20',
+  // `opportunity`: whether the creature can make Opportunity Attacks (`autoFail`: it can't; Staggering Blow).
+  'opportunity'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
@@ -118,6 +120,12 @@ function lintModifier(m, say) {
   if (m.onFail !== undefined && !(m.onFail === true && m.op === 'add' && ['d20', 'attack.roll', 'save'].includes(m.on))) say('`onFail` is true, on an add to d20, attack.roll or save');
   if (m.cost !== undefined && !(m.onFail === true && ID.test(m.cost))) say('`cost` names a feature, with onFail');
   if (m.on === 'd20' && !m.onFail) say('the d20 hook is for onFail dice');
+  if (m.on === 'opportunity' && m.op !== 'autoFail') say('the opportunity hook takes autoFail (no Opportunity Attacks)');
+  // `except: 'source'`: on a modifier a creature puts on another, it does not hold for rolls the
+  // source itself makes (Sundering Blow: "another creature"). `stack: false`: of several modifiers
+  // of one name, only one applies to a roll (and only that one is used up).
+  if (m.except !== undefined && !(m.except === 'source' && m.on === 'attack.received')) say('`except` is "source", on attack.received');
+  if (m.stack !== undefined && m.stack !== false) say('`stack` is false or left out');
   lintWhen(m.when, say);
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
@@ -592,7 +600,12 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   // Since the magic items (#189): a score that becomes a number unless already as high (Amulet of Health), a bonus to
   // Armor Class while wearing no armour and holding no Shield (Bracers of Defense), a sense gained or its range increased
   // (Goggles of Night).
-  'setAbility', 'bareAc', 'senseRange'];
+  'setAbility', 'bareAc', 'senseRange',
+  // Since the martial classes' levels 7 to 15 (#224): movement with another feature's action (Instinctive Pounce), a
+  // choice on a hit (Brutal Strike), staying up at 0 Hit Points (Relentless Rage), something done on rolling Initiative
+  // (Persistent Rage, Uncanny Metabolism, Perfect Focus), and another feature's lasting effect that needs no renewing
+  // (Persistent Rage).
+  'moveWith', 'brutal', 'relentless', 'initiative', 'persist'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -720,6 +733,10 @@ function lintGrants(g, cls, say) {
     // an effect that would apply one of these conditions, and the save is rolled again with Advantage (Countercharm).
     if (r?.on === 'saveFailed') {
       if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range % 5 === 0 && Object.keys(r).length === 3)) say('a saveFailed reaction is { on, conditions, range }');
+    // Or `{ on: 'damaged', attack: 'melee', within }`: it takes damage from a hostile creature within
+    // `within` feet, and makes one melee attack against it (Retaliation).
+    } else if (r?.on === 'damaged') {
+      if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within % 5 === 0 && Object.keys(r).length === 3)) say('a damaged reaction is { on, attack: "melee", within }');
     } else if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
     else {
       if (r.on !== 'hit') say('reaction.on is "hit" (a feature that cuts the damage of a hit)');
@@ -767,6 +784,54 @@ function lintGrants(g, cls, say) {
   if (g.conditionImmune !== undefined && !(allOf(CONDITIONS)(g.conditionImmune) && g.conditionImmune.length)) say('conditionImmune lists conditions');
   if (g.spellLists !== undefined && !(Array.isArray(g.spellLists) && g.spellLists.length && g.spellLists.every((x) => ID.test(x)))) say('spellLists names classes whose spell lists it opens');
   if (g.critOn !== undefined && !(isInt(g.critOn) && g.critOn >= 15 && g.critOn <= 19)) say('critOn is the lowest d20 roll that is a Critical Hit');
+  // `moveWith: { of }`: starting that feature's lasting effect with its action (not extending it) also
+  // gives up to half the creature's Speed of movement in that turn (Instinctive Pounce with Rage).
+  if (g.moveWith !== undefined && !(g.moveWith && ID.test(g.moveWith.of ?? '') && Object.keys(g.moveWith).length === 1)) say('moveWith is { of: feature id }');
+  // `brutal`: once on its turn, after using the feature `after` that turn (Reckless Attack), the
+  // creature gives up Advantage on one Strength attack roll that has no Disadvantage; on a hit it deals
+  // `dice` more of the attack's type and one of `options` happens to the target (Brutal Strike; a
+  // later feature adds options). An option is { id, name, effects, unique? }; `unique`: a target has
+  // only the most recent one.
+  if (g.brutal !== undefined) {
+    const b = g.brutal;
+    if (!b || typeof b !== 'object' || Array.isArray(b) || !Object.keys(b).every((k) => ['after', 'dice', 'options'].includes(k))) say('brutal is { after?, dice?, options }');
+    else {
+      if (b.after !== undefined && !ID.test(b.after)) say('brutal.after names a feature');
+      if (b.dice !== undefined && !isDice(b.dice)) say('brutal.dice is dice');
+      if ((b.after === undefined) !== (b.dice === undefined)) say('brutal gives after and dice together (the feature itself), or neither (more options)');
+      if (!(Array.isArray(b.options) && b.options.length)) say('brutal.options lists options');
+      else for (const o of b.options) {
+        if (!(o && ID.test(o.id ?? '') && isText(o.name) && Object.keys(o).every((k) => ['id', 'name', 'effects', 'unique'].includes(k)))) { say('a brutal option is { id, name, effects, unique? }'); continue; }
+        if (o.unique !== undefined && o.unique !== true) say('a brutal option\'s unique is true or left out');
+        lintSteps(bakeValues(o.effects, cls, say), say);
+      }
+    }
+  }
+  // `relentless`: dropping to 0 Hit Points without dying outright while the feature `while` has its
+  // effect going, the creature makes a Constitution save, DC `dc` and `step` more for each earlier use
+  // since its last rest; on a success its Hit Points become `hp` (Relentless Rage).
+  if (g.relentless !== undefined) {
+    const r = g.relentless;
+    if (!(r && ID.test(r.while ?? '') && isInt(r.dc) && r.dc > 0 && isInt(r.step) && r.step >= 0 && r.hp !== undefined && Object.keys(r).length === 4)) say('relentless is { while, dc, step, hp }');
+    else lintAmount(r.hp, cls, say, 'relentless.hp');
+  }
+  // `initiative`: when the creature rolls Initiative, the feature named in `regain` gets back all its
+  // uses (or, with `upTo`, as many as make it that many), and with `heal` the creature regains that
+  // many Hit Points (`addLevel`: plus its class level). With uses of its own, it spends one, and only
+  // when it gives something back. `unless`: not if that other feature was used on this roll.
+  if (g.initiative !== undefined) {
+    const x = g.initiative;
+    if (!(x && ID.test(x.regain ?? '') && Object.keys(x).every((k) => ['regain', 'upTo', 'heal', 'addLevel', 'unless'].includes(k)))) say('initiative is { regain, upTo?, heal?, addLevel?, unless? }');
+    else {
+      if (x.upTo !== undefined && !(isInt(x.upTo) && x.upTo > 0)) say('initiative.upTo is a whole number');
+      if (x.heal !== undefined) lintAmount(x.heal, cls, say, 'initiative.heal', true);
+      if (x.addLevel !== undefined && !(x.addLevel === true && x.heal !== undefined)) say('initiative.addLevel is true, with heal');
+      if (x.unless !== undefined && !ID.test(x.unless)) say('initiative.unless names a feature');
+    }
+  }
+  // `persist: { of, endsOn }`: that feature's lasting effect lasts its whole duration without being
+  // extended, and ends early only when its creature has the condition `endsOn` (Persistent Rage).
+  if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
 const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
   || (Object.keys(x).length === 1 && Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))));
@@ -1065,7 +1130,8 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
-const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore'];
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
+  'moveWith', 'brutal', 'relentless', 'initiative'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1106,9 +1172,22 @@ function lintFeat(f, say) {
       && (au.immune === undefined || (allOf(CONDITIONS)(au.immune) && au.immune.length)) && (au.modifiers === undefined || (Array.isArray(au.modifiers) && au.modifiers.length <= 10)))) sub('its aura is { range, modifiers?, immune? }.');
     else for (const m of au.modifiers ?? []) lintModifier(m, sub);
   }
+  if (f.moveWith !== undefined && !(f.moveWith && ID.test(f.moveWith.of ?? ''))) sub('its moveWith is { of }.');
+  if (f.brutal !== undefined) {
+    const b = f.brutal;
+    if (!(b && (b.dice === undefined || isDice(b.dice)) && (b.after === undefined || ID.test(b.after)) && Array.isArray(b.options) && b.options.length && b.options.length <= 10
+      && b.options.every((o) => o && ID.test(o.id ?? '') && isText(o.name)))) sub('its brutal is { after?, dice?, options }.');
+    else for (const o of b.options) lintSteps(o.effects, sub);
+  }
+  if (f.relentless !== undefined && !(f.relentless && ID.test(f.relentless.while ?? '') && isInt(f.relentless.dc) && isInt(f.relentless.step) && isInt(f.relentless.hp) && f.relentless.hp > 0 && f.relentless.hp <= 100)) sub('its relentless is { while, dc, step, hp }.');
+  if (f.initiative !== undefined && !(f.initiative && ID.test(f.initiative.regain ?? '') && (f.initiative.upTo === undefined || isInt(f.initiative.upTo))
+    && (f.initiative.heal === undefined || isDice(f.initiative.heal)) && (f.initiative.unless === undefined || ID.test(f.initiative.unless)))) sub('its initiative is { regain, upTo?, heal?, unless? }.');
   if (f.reaction?.on === 'saveFailed') {
     const r = f.reaction;
     if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range <= 300)) sub('its saveFailed reaction is { on, conditions, range }.');
+  } else if (f.reaction?.on === 'damaged') {
+    const r = f.reaction;
+    if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within <= 30 && Object.keys(r).length === 3)) sub('its damaged reaction is { on, attack: "melee", within }.');
   } else if (f.reaction !== undefined) {
     const r = f.reaction;
     if (!(r && r.on === 'hit' && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))

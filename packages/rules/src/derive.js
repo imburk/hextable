@@ -47,7 +47,7 @@ export const levelOf = (sheet) => classesOf(sheet).reduce((n, k) => n + k.level,
 // Ability Score Improvement) is played under the class's id in front ("bard-spellcasting"), and so
 // are what the class's own features say of it (a cost in its uses, `with`), so each keeps its own
 // uses and choices. The first class's ids are never changed.
-const REFS = ['resource', 'of', 'with', 'while', 'pool', 'cost'];
+const REFS = ['resource', 'of', 'with', 'while', 'pool', 'cost', 'after', 'regain', 'unless'];
 function relabel(x, map) {
   if (Array.isArray(x)) return x.map((y) => relabel(y, map));
   if (!x || typeof x !== 'object') return x;
@@ -474,6 +474,15 @@ export function derive(sheet) {
       if (r.cut?.add) { r.cut = { dice: dice(r.cut.dice, r.cut.add.reduce((n, x) => n + amount(x, c, level, abil), 0)) }; }
       out.reaction = r;
     }
+    // Since #224: movement with another feature's action, Brutal Strike's options, Relentless Rage's
+    // Hit Points, and what happens on rolling Initiative, with their class numbers put in.
+    if (g.moveWith) out.moveWith = { ...g.moveWith };
+    if (g.brutal) out.brutal = { ...(g.brutal.after ? { after: g.brutal.after, dice: g.brutal.dice } : {}), options: g.brutal.options.map((o) => ({ ...o, effects: bake(o.effects) })) };
+    if (g.relentless) out.relentless = { ...g.relentless, hp: amount(g.relentless.hp, c, level, abil) };
+    if (g.initiative) {
+      const { addLevel, heal, ...rest } = g.initiative;
+      out.initiative = { ...rest, ...(heal !== undefined ? { heal: addLevel ? dice(amount(heal, c, level, abil), level) : amount(heal, c, level, abil) } : {}) };
+    }
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
     if (g.critOn) critOn = Math.min(critOn, g.critOn);
@@ -487,6 +496,16 @@ export function derive(sheet) {
   for (const x of feats) {
     const cu = x.f.grants?.cure, to = cu && feat.find((o) => o.id === cu.of)?.action;
     if (to?.cure) to.cure.conditions = [...new Set([...to.cure.conditions, ...cu.conditions])];
+  }
+
+  // A feature whose lasting effect another makes last without renewing (Persistent Rage on Rage): its
+  // parts no longer end with the turn, and it ends early only on the condition named.
+  for (const x of feats) {
+    const p = x.f.grants?.persist, to = p && feat.find((o) => o.id === p.of)?.action;
+    if (!to) continue;
+    for (const st of to.effects ?? []) if (st.ends?.on === 'turnEnd') delete st.ends;
+    delete to.endsWhenIncapacitated;
+    to.endsOn = p.endsOn;
   }
 
   const named = (k) => (k.subclass === k.c.subclass.id && k.level >= 3 ? `${k.c.name} (${k.c.subclass.name})` : k.c.name);

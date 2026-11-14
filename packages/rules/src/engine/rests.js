@@ -32,6 +32,7 @@ export const handlers = {
       Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
       for (const f of e.feats ?? []) if (f.uses) e.uses[f.id] = f.uses.max;   // every feature with uses
+      for (const f of e.feats ?? []) if (f.relentless) delete e.uses[f.id];   // Relentless Rage's DC is 10 again
       if (e.hitDie) e.hd = e.level;                                        // and all spent Hit Point Dice
       if (e.hitDice) e.hdBy = { ...e.hitDice };
       if (e.tempHp) { e.tempHp = 0; delete e.tempFx; }
@@ -100,6 +101,7 @@ export const handlers = {
         heal(s, e, Math.max(1, r.total + mod(e.abil.con)), ev, { dice: r.dice, bonus: mod(e.abil.con), by: e.id });
       }
       for (const f of e.feats ?? []) {
+        if (f.relentless) delete e.uses[f.id];                              // Relentless Rage's DC is 10 again
         if (!f.uses) continue;
         if (f.uses.recharge === 'short') e.uses[f.id] = f.uses.max;
         else if (f.uses.short) e.uses[f.id] = Math.min(f.uses.max, (e.uses[f.id] ?? 0) + f.uses.short);
