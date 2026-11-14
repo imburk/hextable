@@ -259,6 +259,7 @@ export async function casters(browser, url, label, opts) {
       run.watch(page);
       const shot = (n) => page.screenshot({ path: `/tmp/caster-screens/${size}-${n}.png` });
       const ids = {};
+      const step = (name, fn) => run.do(name, async () => { try { await fn(); } catch (e) { await page.screenshot({ path: `/tmp/caster-screens/${size}-failed.png` }).catch(() => {}); throw e; } });
       const A = { str: 10, dex: 14, con: 14, int: 10, wis: 14, cha: 10 };
       const sheets = {
         Wyn: { name: 'Wyn', class: 'wizard', level: 14, subclass: 'evoker', abilities: { ...A, int: 20 }, skills: ['arcana', 'history'], choices: {}, spells: ['fire-bolt', 'fireball', 'magic-missile', 'shield'] },
@@ -277,10 +278,12 @@ export async function casters(browser, url, label, opts) {
           if (box && (await loc.evaluate((el, [x, y]) => { const t = document.elementFromPoint(x, y); return !!t && (el === t || el.contains(t)); }, [box.x + box.width / 2, box.y + box.height / 2]).catch(() => false))) return;
           await sleep(250);
         }
+        await page.screenshot({ path: `/tmp/caster-screens/${size}-failed.png` });
         throw new Error(`${sel} stayed covered`);
       };
-      const pick = async (n) => { await closePanels(page); await onTop(`#party button:has-text("${n}")`); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
-      const feat = async (name) => { await panelTab(page, 'features'); await onTop(`#ap-features [data-row]:has-text("${name}")`); await tap(page, `#ap-features [data-row]:has-text("${name}")`); await waitShown(page, '#cp .cp-card'); };
+      const pick = async (n) => { await closePanels(page); await onTop(`#party button:has-text("${n}")`); await tap(page, `#party button:has-text("${n}")`); await waiting((i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n], 8000); };
+      const feat = async (name) => { await panelTab(page, 'features'); for (let k = 0; k < 4; k++) { await onTop(`#ap-features [data-row]:has-text("${name}")`); await tap(page, `#ap-features [data-row]:has-text("${name}")`); if (await waitShown(page, '#cp .cp-card', true, 2500).then(() => true, () => false)) return; }   // a tap while the list is still scrolling can miss
+        await waitShown(page, '#cp .cp-card'); };
       const card = async (why) => {                                        // the card is open, whole on screen, and its buttons are large enough to touch
         await waitShown(page, '#cp .cp-card');
         const box = await page.$eval('#cp .cp-card', (x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom, innerWidth, innerHeight]; });
@@ -322,7 +325,7 @@ export async function casters(browser, url, label, opts) {
         return now[0];
       };
 
-      await run.do('a level 14 wizard, a level 15 warlock and a level 11 ranger join the party', async () => {
+      await step('a level 14 wizard, a level 15 warlock and a level 11 ranger join the party', async () => {
         await open(page, url); await playSolo(page);
         await ev(() => { document.getElementById('dm-auto').checked = false; });
         let q = 0;
@@ -344,7 +347,7 @@ export async function casters(browser, url, label, opts) {
         for (let k = 0; k < 30 && (await cur()) !== id; k++) { await ev((c) => window.hextable.act({ type: 'endTurn', actor: c }), await cur()); await idle(); }
         if ((await cur()) !== id) throw new Error(`it never became ${id}'s turn`);
       };
-      await run.do('a fight starts with the three in it', async () => {
+      await step('a fight starts with the three in it', async () => {
         await idle();
         await ev(() => window.hextable.act({ type: 'startEncounter', center: { q: -2, r: 4 }, radius: 8 }));
         await waiting(() => !!window.hextable.state.encounter, null, 20000); await idle();
@@ -352,7 +355,7 @@ export async function casters(browser, url, label, opts) {
         await turnOf(ids.Wyn); await pick('Wyn');
       });
 
-      await run.do('the wizard\'s Overchannel card: the first use is free, the slot and the roll are chosen, and the card fits the screen', async () => {
+      await step('the wizard\'s Overchannel card: the first use is free, the slot and the roll are chosen, and the card fits the screen', async () => {
         await pick('Wyn');
         await feat('Overchannel');
         await card('evoker');
@@ -367,7 +370,7 @@ export async function casters(browser, url, label, opts) {
         await shot('evoker');
       });
 
-      await run.do('Fireball with Overchannel and Empowered Evocation: armed with both, a tap on a goblin sends it, the use is counted', async () => {
+      await step('Fireball with Overchannel and Empowered Evocation: armed with both, a tap on a goblin sends it, the use is counted', async () => {
         const g = await foeBeside(ids.Wyn);
         ids.g1 = g;
         await page.selectOption('#cp-spell', 'fireball');
@@ -390,7 +393,7 @@ export async function casters(browser, url, label, opts) {
         await shot('evoker-cast');
       });
 
-      await run.do('the next Overchannel costs dice of Necrotic damage per slot level, and the card says so', async () => {
+      await step('the next Overchannel costs dice of Necrotic damage per slot level, and the card says so', async () => {
         await closePanels(page); await pick('Wyn');
         await feat('Overchannel');
         await page.selectOption('#cp-spell', 'fireball');
@@ -402,7 +405,7 @@ export async function casters(browser, url, label, opts) {
         await tap(page, '#cp-close'); await waitShown(page, '#cp', false);
       });
 
-      await run.do('Armor of Shadows casts at will on the warlock alone, Mystic Arcanum shows its use', async () => {
+      await step('Armor of Shadows casts at will on the warlock alone, Mystic Arcanum shows its use', async () => {
         await turnOf(ids.Mor);
         await closePanels(page); await pick('Mor');
         await panelTab(page, 'features');
@@ -419,8 +422,11 @@ export async function casters(browser, url, label, opts) {
         await wait(page, (k) => window.hextable.state.timeline.slice(k).some((e) => e.type === 'cast' && e.spell === 'mage-armor' && e.via), n, 15000);
       });
 
-      await run.do('the warlock\'s Repelling Blast: the distance is chosen on a card and the cantrip is armed with it', async () => {
-        await ev((c) => window.hextable.act({ type: 'endTurn', actor: c }), ids.Mor); await idle();       // the turn of Armor of Shadows is over
+      await step('the warlock\'s Repelling Blast: the distance is chosen on a card and the cantrip is armed with it', async () => {
+        for (let k = 0; k < 5 && (await cur()) === ids.Mor; k++) {              // the turn of Armor of Shadows is over (an action sent while the beats play is dropped: send again)
+          await idle(); await ev((c) => window.hextable.act({ type: 'endTurn', actor: c }), ids.Mor);
+          await wait(page, (m) => window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id !== m, ids.Mor, 6000).catch(() => {});
+        }
         await turnOf(ids.Mor);
         ids.g4 = await foeBeside(ids.Mor);
         await pick('Mor');
@@ -439,7 +445,7 @@ export async function casters(browser, url, label, opts) {
         await waiting((k) => window.hextable.state.timeline.slice(k).some((e) => e.type === 'cast' && e.spell === 'eldritch-blast'), n);
       });
 
-      await run.do('a fight: Hurl Through Hell is armed from its card and the engine\'s words show when no attack has hit', async () => {
+      await step('a fight: Hurl Through Hell is armed from its card and the engine\'s words show when no attack has hit', async () => {
         await closePanels(page);
         await turnOf(ids.Mor);
         const target = await foeBeside(ids.Mor);
@@ -453,10 +459,10 @@ export async function casters(browser, url, label, opts) {
         await wait(page, () => /follows a hit|not hit/.test(document.querySelector('#toast')?.textContent ?? ''), null, 8000);
       });
 
-      await run.do('Superior Hunter\'s Prey: greyed with the engine\'s words until a creature is marked, then the card offers who takes the damage and arms the attack', async () => {
+      await step('Superior Hunter\'s Prey: greyed with the engine\'s words until a creature is marked, then the card offers who takes the damage and arms the attack', async () => {
         await turnOf(ids.Ash);
         ids.g2 = await foeBeside(ids.Ash);
-        ids.g3 = await foeBeside(ids.Ash);
+        ids.g3 = await foeBeside(ids.g2);
         await pick('Ash');
         await panelTab(page, 'features');
         const row = await text('#ap-features [data-row]:has-text("Superior Hunter")');
@@ -465,8 +471,8 @@ export async function casters(browser, url, label, opts) {
         const mark = await state(page, (S, ids2) => !!S.entities[ids2[0]] && !S.entities[ids2[0]].dead, [ids.g2]);
         if (!mark) throw new Error('the goblin to mark is gone');
         await ev(([a, g]) => window.hextable.act({ type: 'cast', actor: a, spell: 'hunters-mark', target: g }), [ids.Ash, ids.g2]);
-        await wait(page, (a) => window.hextable.state.effects?.some((x) => x.source === a && x.spell === 'hunters-mark'), ids.Ash, 15000);
-        await panelTab(page, 'explore'); await panelTab(page, 'features');
+        await waiting((a) => window.hextable.state.effects?.some((x) => x.source === a && x.spell === 'hunters-mark'), ids.Ash);
+        await panelTab(page, 'features');
         const now = await text('#ap-features [data-row]:has-text("Superior Hunter")');
         if (/no creature marked/.test(now)) throw new Error(`still greyed: ${now}`);
         await feat('Superior Hunter');
@@ -482,12 +488,12 @@ export async function casters(browser, url, label, opts) {
         const evs = await since(n);
         if (evs.some((e) => e.type === 'damage' && e.target === ids.g2) && !evs.some((e) => e.type === 'note' && /Superior Hunter's Prey/.test(e.text))) throw new Error('the mark hit, but no damage went to the second creature');
       });
-      await run.do('the fight is over', async () => {
+      await step('the fight is over', async () => {
         await ev(() => { if (window.hextable.state.encounter) window.hextable.act({ type: 'endEncounter' }); });
         await wait(page, () => !window.hextable.state.encounter, null, 20000); await idle();
       });
 
-      await run.do('the wizard spent slots: the DM\'s Short Rest offers Arcane Recovery, and the chosen slot comes back', async () => {
+      await step('the wizard spent slots: the DM\'s Short Rest offers Arcane Recovery, and the chosen slot comes back', async () => {
         const before = await state(page, (S, i) => S.entities[i].slots[3], ids.Wyn);
         await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
         await tap(page, '#dm-short-rest');
@@ -502,7 +508,7 @@ export async function casters(browser, url, label, opts) {
         if (used !== 0) throw new Error(`Arcane Recovery uses: ${used}`);
       });
 
-      await run.do('the build screen: the invocation list counts to the Invocations column, shows each prerequisite and stops at the limit', async () => {
+      await step('the build screen: the invocation list counts to the Invocations column, shows each prerequisite and stops at the limit', async () => {
         await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
         await tap(page, '#qb-add'); await waitShown(page, '#qb');
         await page.selectOption('#qb-class', 'warlock');
@@ -525,7 +531,7 @@ export async function casters(browser, url, label, opts) {
         if (box[0] < -1 || box[1] > box[2] + 1) throw new Error(`the build screen does not fit: ${box}`);
       });
 
-      await run.do('the build screen: a feat is chosen for each place, and its ability points are placed', async () => {
+      await step('the build screen: a feat is chosen for each place, and its ability points are placed', async () => {
         const places = await page.$$eval('#qb-feats-pick [data-at]', (b) => b.map((x) => x.dataset.at));
         if (!places.includes('ability-score-improvement-4') || !places.includes('background')) throw new Error(`places: ${places}`);
         await page.selectOption('#feat-ability-score-improvement-4-id', 'ability-score-improvement');

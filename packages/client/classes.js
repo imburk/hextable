@@ -651,6 +651,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   function setPending(p) { pend = p; }
   // A cast is sent with what was chosen for it: Metamagic, or the feature that casts it.
   function decorate(action) {
+    if (last && last.action !== action && action.type !== 'cast') last = null;        // a refusal of some other action (the DM's spawn) must not reopen the card of an earlier one
     if (action.type === 'shortRest' && action.recover === undefined) return restAction(action);
     if (action.type !== 'cast' || !pend || pend.actor !== action.actor || pend.spell !== action.spell) return action;
     const out = { ...action, ...structuredClone(pend.extra) };
