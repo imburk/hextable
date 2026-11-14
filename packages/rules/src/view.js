@@ -502,6 +502,10 @@ export function viewEvents(events, state, viewer) {
       case 'gear':                                     // an item came or went, for a creature of theirs; who with, if they know of them
         if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why', 'key', 'pack', 'nameOnly']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}) });
         break;
+      case 'item':                                     // a magic item used (E18): all of it for one of theirs; for another they see, what it used, never its charges
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'pack', 'use', 'target', 'charges', 'max', 'consumed']));
+        else out.push(pick(ev, ['type', 'id', 'item', 'use', 'target', 'consumed']));
+        break;
       case 'equip':                                    // a magic item put on or taken off, attuning chosen, an Attunement made or ended:
       case 'attuning':                                 // a party creature's, whose sheet the party is sent; never another's
       case 'attuned':

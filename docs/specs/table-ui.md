@@ -1263,3 +1263,38 @@ What was settled while building, where it differs from the text above, and what 
   already exposes. Not in the panel yet (DEBT T19): the Brutal Strike and Cunning Strike choices on an attack, Intimidating Presence's targets, Self-Restoration's `cure`, the `free` standing instructions on
   Reactions, and the new events.
 - **Not verified.** A real finger; a screen reader on the new rows; the three themes beyond Classic; objects in reach and a prone creature in a browser (the unit tests cover the rows; the send is the old one).
+
+### E18: using items, engine (PR for #276)
+
+- **The action is `use` with `item`, not a new `item` action.** `{ type: 'use', actor, item: key on the sheet, which?, target? }`
+  (`which`: the item's `activate` use, 0 for the first). A new action type needs a label in `history.js`, which was not
+  among the files of this job; `use` already reads "used something", which also tells players nothing of what. `use`
+  with `object` is unchanged; both at once is refused.
+- **What it checks.** A built character (a hand-typed one holds pack items by name only); the item worn or held where its
+  magic works and attuned if it needs it (`itemActive`); up and able; in a fight its own turn and the use's time (an
+  `action` use is a Magic action, refused on Action Surge's extra action after another, as casting is; `free` takes
+  nothing); `cost` charges of what is left (a sheet entry's `charges`, full when not set). A refused use changes nothing.
+- **What it does.** `effects` run on the effect runner as a feature's steps do, on the user, or for a potion on
+  `target`, a creature within 5 ft (SRD "Potions": drinking it or administering it is a Bonus Action; a creature at 0
+  Hit Points can be given one). `consumed` takes the entry off the sheet (and `attuning` that named it); an item that
+  gives its holder something would be taken off by remaking the character, checked first (none consumed does today).
+- **Spells from items go to the DM.** SRD "Spells Cast from Items": no slot, no components, the lowest level, the user's
+  spellcasting ability unless the item gives a DC (+0 with the Proficiency Bonus for a user with none). `cast` would
+  open a Counterspell window and give a hider away for a Verbal component, which a spell with no components does not,
+  and casting.js was not in this job, so the engine spends the time and charges and sends a `manual` naming the spell,
+  its level, DC and attack bonus. **Next:** a way into `cast` for an item (no slot, no components, a given DC and attack,
+  the use's time), after which these uses run as spells.
+- **Spell Scrolls.** Read at the spell's casting time; refused if no class of the reader has the spell on its list
+  ("unintelligible"); a spell above the highest slot level the reader has takes an ability check with that class's
+  spellcasting ability (the best, if several) against DC 10 + its level; on a failure the scroll is gone and the spell
+  with it (`std` "the spell fades"). DC and attack from the spell's level (`scrollStats`, the SRD table).
+- **Events.** `item { id, key, item, pack, use, target?, charges?, max?, consumed? }`; a consumed item also a
+  `gear { why: 'used', taken: true }`; then the steps' events or the `manual`. Spending the last charge tells the DM
+  (`manual`, partial) that the description may say what that does. Players: their own `item` whole; another creature's
+  they know of without `key`, `pack`, `charges`, `max` (view.js).
+- **Tiers.** The linter counts a use whose steps are not all `manual` as something the engine applies, so the Potions
+  of Healing are `auto` and the Potion of Heroism `assist` (its Temporary Hit Points; Bless is the DM's). Every other
+  item keeps its tier.
+- **Left out.** Charges back at dawn (rests.js was not in this job; the DM sets `charges` on the sheet), "once a dawn"
+  uses, extra charges for a higher spell level (Wand of Magic Missiles, Staff of Healing), Use Magic Device's 1d6 and
+  any-scroll reading, the d20 on the last charge, an interrupted reading keeping the scroll.
