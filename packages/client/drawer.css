@@ -77,3 +77,9 @@ body.drawer-pretable #drawer-scrim { bottom: 0; }
 @media (min-width: 900px) { #drawer-tabs button { min-width: 0; padding: 6px 8px; } }
 /* Wide and unpinned, the top bar stays clear above the drawer: the burger closes it again, and Undo stays one tap away. */
 @media (min-width: 900px) { body:not(.drawer-pinned) #drawer { top: calc(max(10px, env(safe-area-inset-top)) + 54px); padding-top: 0; } }
+
+/* New game or Leave table, always at the top of the menu (docs/DEBT.md T16). */
+#menu-session { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 14px 8px; }
+#menu-session[hidden] { display: none; }
+#menu-session button { min-height: 44px; flex: 1; }
+#menu-session .note { flex-basis: 100%; margin: 0; }
