@@ -87,16 +87,20 @@ async function squareEditor(browser, url, label, opts) {
       const screen = (p, z = 0) => ev(([x, y, z0]) => window.hextable.R.screenPoint(x, y, z0), [p[0], p[1], z]);
       // The camera over a point of the map (feet), in the strip above the editor, still.
       const frame = async (fx, fy, dist) => {
-        const top = await panelTop();
+        const top = await panelTop().then(async (t) => (t > 40 ? t : ev(() => innerHeight * 0.55)));         // with the editor shut there is no panel: the upper half of the screen will do
         await ev(([x, y, d]) => { const R = window.hextable.R; R.cam.x = x * Math.sqrt(3) / 5; R.cam.z = y * Math.sqrt(3) / 5; R.cam.goal = null; R.cam.dist = d; R.cam.yaw = 0; }, [fx, fy, dist]);
-        let last = '';
-        for (let i = 0; i < 40; i++) {
+        // Settled means a real condition: the point's own screen position is inside the strip above the editor, twice running the same.
+        let last = '', still = 0, now = null;
+        for (let i = 0; i < 80; i++) {
           const d = await ev(([x0, y0, tx, ty]) => { const R = window.hextable.R, p = R.planePoint(tx, ty, 0); return p && [x0 - p[0], y0 - p[1]]; }, [fx, fy, vw / 2, top / 2]);
           if (d && Math.hypot(...d) > 0.3) await ev(([dx, dy]) => { const R = window.hextable.R; R.cam.x += dx * Math.sqrt(3) / 5; R.cam.z += dy * Math.sqrt(3) / 5; R.cam.goal = null; }, d);
-          const now = await ev(([x, y]) => JSON.stringify(window.hextable.R.screenPoint(x, y, 0)), [fx, fy]);
-          if (now === last) return;
-          last = now; await sleep(150);
+          await sleep(150);
+          now = await ev(([x, y]) => window.hextable.R.screenPoint(x, y, 0), [fx, fy]);
+          const inside = now && now.x > 4 && now.x < vw - 4 && now.y > 4 && now.y < top - 4, key = JSON.stringify(now);
+          still = inside && key === last ? still + 1 : 0; last = key;
+          if (still >= 2) return;
         }
+        throw new Error(`the camera did not settle on ${fx},${fy}: the point is at ${JSON.stringify(now)}, the strip above the editor is ${top} px high`);
       };
       const tapPoint = async (p, dx = 1, dy = -1) => {
         const s = await screen(p), top = await panelTop();
