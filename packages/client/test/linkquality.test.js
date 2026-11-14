@@ -62,19 +62,19 @@ test('the thresholds are the ones in LINK, and LINK_FAST changes the clock and n
 });
 
 test('plain words for each state', () => {
-  assert.equal(explain(run(start(), [ok(1200), ok(1240)])).text, 'Slow replies from the table: about 1.2 s');
+  assert.equal(explain(run(start(), [ok(1200), ok(1240)])).text, 'Slow replies from the table: about 1.2\u00a0s');
   assert.equal(explain(run(start(), [down({ attempt: 3 }), down({ attempt: 3 })])).text, 'Reconnecting, attempt 3');
   assert.match(explain(run(start(), [down({ offline: true }), down({ offline: true })])).text, /offline/);
   assert.match(explain(run(start(), [miss, miss, miss, miss])).text, /^No answer from the table for about 16 s/);
-  assert.equal(explain(run(start(), [ok(80), ok(100)])).text, 'Connected. Replies in about 90 ms');
+  assert.equal(explain(run(start(), [ok(80), ok(100)])).text, 'Connected. Replies in about 90\u00a0ms');
   assert.deepEqual(['good', 'shaky', 'lost'].map((s) => explain({ ...start(), state: s, misses: 1, rtts: [5] }).label), ['Good', 'Shaky', 'Lost']);
-  assert.equal(seconds(950), '950 ms'); assert.equal(seconds(2500), '2.5 s');
+  assert.equal(seconds(950), '950\u00a0ms'); assert.equal(seconds(2500), '2.5\u00a0s');
 });
 
 test("the DM's view of a player: the report, the lobby and the clock", () => {
   const now = 100000, rep = (state, age = 1000, rtt) => ({ state, rtt, at: now - age });
   assert.equal(seenState(rep('good'), true, now).state, 'good');
-  assert.equal(seenState(rep('shaky', 1000, 1500), true, now).text, 'Shaky: replies in about 1.5 s');
+  assert.equal(seenState(rep('shaky', 1000, 1500), true, now).text, 'Shaky: replies in about 1.5\u00a0s');
   assert.equal(seenState(rep('good'), false, now).state, 'lost');               // the server says they are not at the table
   assert.equal(seenState(null, true, now).state, 'lost');                        // never heard
   assert.equal(seenState(rep('good', LINK.staleMs + 1), true, now).state, 'lost'); // gone quiet

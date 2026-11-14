@@ -109,6 +109,7 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   let judged = linkStart(), pingN = 0, waitingPong = null, reconnects = [], everOpen = false, lastReport = { at: 0, state: null };
   t.link = { known: false, state: 'good', ...linkExplain(judged, cfg), rtt: null };
   t.links = new Map();
+  t.linkCfg = cfg;                     // the thresholds in force (the DM's view of a quiet player uses cfg.staleMs)
   const sample = (s) => {
     const now = Date.now();
     reconnects = reconnects.filter((x) => now - x < cfg.flapMs);

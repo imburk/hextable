@@ -770,7 +770,7 @@ const DOT = mountDot({ transport: () => T, parent: $('tools'), before: $('btn-un
 const linkOf = (e) => {
   if (!e.owner || T.solo) return null;
   const m = (T.lobby?.members ?? []).find((x) => x.id === e.owner);
-  return { ...seenState(T.links?.get(e.owner), m?.online, Date.now()), who: m?.name };
+  return { ...seenState(T.links?.get(e.owner), m?.online, Date.now(), T.linkCfg), who: m?.name };
 };
 const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, act, toast, link: linkOf,
   pick: (id) => { select(id); R.focus(id); refresh(); if (!D.wide) D.close(); },      // on a phone the map is what was asked for

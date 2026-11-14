@@ -60,7 +60,8 @@ export function step(m, s, cfg = LINK) {
 }
 
 export const average = (m) => (m.rtts.length ? m.rtts.reduce((a, b) => a + b, 0) / m.rtts.length : null);
-export const seconds = (ms) => (ms < 1000 ? `${Math.max(1, Math.round(ms / 10) * 10)} ms` : `${(ms / 1000).toFixed(1)} s`);
+// A non-breaking space before the unit, so "1.2 s" is never cut at the end of a line.
+export const seconds = (ms) => (ms < 1000 ? `${Math.max(1, Math.round(ms / 10) * 10)}\u00a0ms` : `${(ms / 1000).toFixed(1)}\u00a0s`);
 
 // The state in plain words: { label (a word or two), text (the sentence a tap shows) }.
 export function explain(m, cfg = LINK) {
