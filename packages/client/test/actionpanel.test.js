@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { reactionsHtml } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
 const { chooserButtons, kindOf, strikeChoices, payFor, optionWhy } = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
@@ -615,4 +615,96 @@ test('Features: a feature that works through a standing instruction says what it
   assert.equal(row.chip, 'Not a Reaction'); assert.match(row.sub, /Never/); assert.match(row.sub, /does nothing until set to Always/i);
   ok(apply(s, { type: 'reactions', actor: 'hero', set: { indomitable: 'always' } }, DM));
   assert.match(panelFeatureRows(s, e).find((r) => r.id === 'feat:indomitable').sub, /Always/);
+});
+
+// ---- E17: Give..., Drop and Pick up in the Items tab ----
+const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
+// Brenna (built) beside the rogue, a rope and an item or two.
+function beside(items, gear) {
+  const s = newGame(7), id = built(s, items);
+  for (const m of Object.keys(s.entities)) if (!['rogue', id].includes(m)) delete s.entities[m];
+  const r = s.entities.rogue, at = { ...r.pos };
+  for (const d of [{ q: 1, r: 0 }, { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 0, r: -1 }]) {
+    const t = { ...at, q: at.q + d.q, r: at.r + d.r };
+    if (apply(s, { type: 'place', actor: id, to: t }, DMCTX).ok) break;
+  }
+  if (gear) s.entities[id].gear = gear;
+  return { s, id };
+}
+
+test('items: Give... and Drop on each thing carried, from the engine\'s own lists; a worn or held thing has neither and says take it off first', () => {
+  const { s, id } = beside([{ id: 'i1', item: 'potion-of-healing' }, { id: 'i2', item: 'wand-of-magic-missiles', equipped: true }], ['Rope', 'Rope', 'Torch']);
+  const it = itemRows(s, s.entities[id], { dm: true });
+  const g = Object.fromEntries(it.gear.map((x) => [x.key, x]));
+  assert.deepEqual(g.i1.acts.map((a) => a.label), ['Give...', 'Drop']);
+  assert.deepEqual(g.i1.acts[1].send, { type: 'drop', actor: id, item: 'i1' });
+  assert.deepEqual(g.i1.acts[0].give, { item: 'i1' });
+  assert.deepEqual(g.i2.acts.map((a) => a.label), ['Put away'], 'held: no Give or Drop, only what was there'); assert.match(g.i2.note, /Take it off first/);
+  assert.deepEqual(it.names.map((n) => [n.label, n.count]), [['Rope', 2], ['Torch', 1]]);
+  assert.deepEqual(it.names[0].acts[1].send, { type: 'drop', actor: id, item: 'Rope' });
+  assert.deepEqual(it.targets.map((t) => t.id), ['rogue'], 'the creatures the engine offers');
+  assert.equal(it.targets[0].why, ''); assert.equal(g.i1.acts[0].why, '');
+  // what is sent is accepted by the engine
+  ok(apply(s, { type: 'pass', actor: id, item: 'i1', to: it.targets[0].id }, DMCTX));
+  ok(apply(s, it.names[0].acts[1].send, DMCTX));
+  assert.equal(s.entities[id].sheet.items.some((x) => x.id === 'i1'), false);
+  assert.equal(s.entities[id].gear.filter((x) => x === 'Rope').length, 1);
+});
+
+test('items: nobody within 5 ft greys Give... with a reason; in a fight the engine\'s words grey both, and the time is free then the action', () => {
+  const { s, id } = beside([{ id: 'i1', item: 'potion-of-healing' }], ['Rope']);
+  ok(apply(s, { type: 'place', actor: id, to: { q: s.entities.rogue.pos.q + 6, r: s.entities.rogue.pos.r } }, DMCTX));
+  let g = itemRows(s, s.entities[id]).gear[0];
+  assert.equal(g.acts[0].why, 'Nobody is within 5 feet.'); assert.equal(g.acts[1].why, '');
+  const { s: f, id: fid } = beside([{ id: 'i1', item: 'potion-of-healing' }], ['Rope']);
+  ok(apply(f, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DMCTX));
+  if (current(f) !== fid) {
+    g = itemRows(f, f.entities[fid]).gear[0];
+    assert.match(g.acts[1].why, /isn't Brenna's turn/); assert.match(g.acts[0].why, /isn't Brenna's turn/);
+  }
+  for (let i = 0; i < 20 && current(f) !== fid; i++) ok(apply(f, { type: 'endTurn', actor: current(f) }, DMCTX));
+  const it = itemRows(f, f.entities[fid]);
+  assert.equal(it.time, 'free'); assert.equal(it.gear[0].acts[1].why, '');
+  ok(apply(f, it.gear[0].acts[1].send, DMCTX));
+  assert.equal(itemRows(f, f.entities[fid]).time, 'action', 'the second handling takes the action');
+});
+
+test('items: a pile in reach lists a Pick up for each thing and Take all outside a fight; the tab is drawn for it; in a fight there is no Take all', () => {
+  const { s, id } = beside([{ id: 'i1', item: 'potion-of-healing' }], ['Rope']);
+  const e = () => s.entities[id];                       // a sheet change remakes the creature
+  ok(apply(s, { type: 'drop', actor: id, item: 'i1' }, DMCTX)); ok(apply(s, { type: 'drop', actor: id, item: 'Rope' }, DMCTX));
+  assert.equal(itemRows(s, e()).gear.length, 0);
+  const it = itemRows(s, e(), { dm: false });
+  assert.equal(it.any, true, 'the tab is there for a pile alone');
+  assert.equal(it.ground.length, 1);
+  const p = it.ground[0];
+  assert.deepEqual(p.things.map((x) => x.label), ['Potion of Healing', 'Rope']);
+  assert.deepEqual(p.things[1].send, { type: 'pickUp', actor: id, object: p.object, item: s.map.objects.find((o) => o.id === p.object).contents[1].id });
+  assert.deepEqual(p.all.send, { type: 'pickUp', actor: id, object: p.object });
+  assert.equal(p.unseen, false);
+  ok(apply(s, p.things[0].send, DMCTX));
+  assert.equal(itemRows(s, e()).ground[0].all, null, 'one thing left: no Take all');
+  ok(apply(s, itemRows(s, e()).ground[0].things[0].send, DMCTX));
+  assert.equal(itemRows(s, e()).ground.length, 0, 'an empty pile leaves the list');
+  // in a fight: a pile of two has no Take all, only a Pick up for each, greyed until it is the creature's turn
+  const w = beside([], ['Rope', 'Torch']);
+  ok(apply(w.s, { type: 'drop', actor: w.id, item: 'Rope' }, DMCTX)); ok(apply(w.s, { type: 'drop', actor: w.id, item: 'Torch' }, DMCTX));
+  ok(apply(w.s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DMCTX));
+  for (let i = 0; i < 20 && current(w.s) !== w.id; i++) ok(apply(w.s, { type: 'endTurn', actor: current(w.s) }, DMCTX));
+  const g = itemRows(w.s, w.s.entities[w.id]).ground[0];
+  assert.equal(g.things.length, 2); assert.equal(g.all, null); assert.equal(g.time, 'free');
+  ok(apply(w.s, g.things[0].send, DMCTX));
+});
+
+test('items: a player is offered only the creatures and piles the engine sent; a hidden creature is not a Give... target, a pile dropped unseen is not listed', () => {
+  const { s, id } = beside([], ['Rope']);
+  s.entities[id].owner = 'pat'; s.entities[id].ownerName = 'pat';
+  const rogue = s.entities.rogue; rogue.hidden = true;
+  const PAT = { role: 'player', userId: 'pat' };
+  const seen = view(s, PAT);
+  assert.deepEqual(handRows(seen, seen.entities[id]).targets, [], 'a player\'s view offers nobody it does not know of');
+  assert.deepEqual(handRows(s, s.entities[id], { dm: false }).targets, [], 'and what the full state holds is filtered for a player as well');
+  assert.deepEqual(handRows(s, s.entities[id], { dm: true }).targets.map((t) => t.id), ['rogue'], 'the DM may');
+  const dm = handRows(s, s.entities[id], { dm: true });
+  assert.equal(dm.ground.length, 0);
 });

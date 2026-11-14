@@ -29,7 +29,7 @@ const REWARD = new Set(['conclusionReady', 'conclusion', 'conclusionSkipped', 'l
 export function kindOf(ev) {
   const t = ev?.type;
   if (DM_ONLY.has(t)) return 'dm';
-  if (LOOT.has(t)) return 'loot';
+  if (LOOT.has(t) || (t === 'object' && (ev.verb === 'drop' || ev.verb === 'pickup'))) return 'loot';       // a pile dropped on or taken from (E17) is a trade of things, as `gear` is
   if (TALK.has(t)) return 'talk';
   if (t === 'rewound') return ev.to === 'rest' ? 'explore' : 'combat';
   return COMBAT.has(t) ? 'combat' : 'explore';
