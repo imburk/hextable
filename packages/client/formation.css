@@ -1,0 +1,28 @@
+/* The formation popup (formation.js). Colour, type and radius come from the theme tokens. A card in the middle on a wide screen, a bottom sheet on a phone. */
+#fm { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: #0008; padding: 12px; }
+#fm .fm-card { background: var(--panel-2, #31403a); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; width: min(460px, 100%); max-height: 100%; overflow: auto; overscroll-behavior: contain; }
+#fm h2 { margin: 0 0 8px; }
+.fm-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.fm-preset { min-height: 44px; flex: 1 1 auto; }
+.fm-preset[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.fm-note { color: var(--muted); font-size: 13px; margin: 0 0 8px; min-height: 2.7em; }
+.fm-board { --fm-p: 48px; position: relative; margin: 0 auto 10px; width: calc(var(--fm-cols) * var(--fm-p)); height: calc(var(--fm-rows) * var(--fm-p) * var(--fm-row)); max-width: none; touch-action: pan-y; }
+.fm-cell { position: absolute; translate: -50% -50%; width: calc(var(--fm-p) * .92); height: calc(var(--fm-p) * .92 * var(--fm-row)); min-height: 0; padding: 0; background: #ffffff12; border: 1px solid var(--line); border-radius: 8px; }
+.fm-board[data-grid="hex"] .fm-cell { border: 0; border-radius: 0; background: #ffffff1c; clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%); }
+.fm-cell:disabled { opacity: .2; }
+.fm-cell:hover:not(:disabled) { background: #d7a84a55; }
+.fm-tok { position: absolute; translate: -50% -50%; width: calc(var(--fm-p) * .78); height: calc(var(--fm-p) * .78); min-height: 0; padding: 0; border-radius: 50%; background: var(--c); color: #fff; font-weight: 800; font-size: 18px; text-shadow: 0 1px 2px #000a; border: 2px solid #fff9; touch-action: none; cursor: grab; z-index: 2; user-select: none; }
+.fm-tok.lead { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent); cursor: default; opacity: 1; }
+.fm-tok.picked { box-shadow: 0 0 0 3px var(--accent); }
+.fm-tok.drag { z-index: 3; cursor: grabbing; opacity: .85; }
+.fm-actions { justify-content: flex-end; margin: 0; }
+.fm-actions button { min-height: 48px; min-width: 96px; }
+.fm-ok { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.fm-ok:disabled { opacity: .45; }
+@media (max-width: 600px) {
+  #fm { align-items: flex-end; padding: 0; }
+  #fm .fm-card { width: 100%; border-radius: 14px 14px 0 0; padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .fm-board { --fm-p: min(48px, calc((100vw - 28px) / var(--fm-cols))); }
+  .fm-tok { font-size: 20px; }
+}
+#dm-march .fm-march { min-height: 36px; margin-left: 6px; }

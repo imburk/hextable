@@ -50,6 +50,7 @@ const REGISTRY = {
   items: ['items'],
   link: ['link'],
   square: ['square'],
+  formation: ['formation'],
 };
 
 const only = process.env.SMOKE_ONLY;
