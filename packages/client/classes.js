@@ -12,6 +12,7 @@ import { targetCount } from './shared/effects.js';
 import { blocked, current, FT } from './shared/engine.js';
 import { gridOf } from './shared/grid.js';
 import { conditionName } from './shared/modifiers.js';
+import { mod } from './shared/derive.js';
 
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'No action' };
 export const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
@@ -34,9 +35,14 @@ function h(tag, attrs = {}, ...kids) {
 // ---------- what a feature needs, by what its record says ----------
 export const formOf = (e) => (typeof e.form === 'string' ? e.form : e.form?.block) ?? null;
 export const formName = (e) => { const id = formOf(e); return id ? CONTENT.monsters[id]?.name ?? nice(id) : ''; };
-// Which chooser a feature has: 'modes', 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it), or null.
+// Which chooser a feature has: 'modes', 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it),
+// 'evoker', 'repel' (with a cast), 'prey' (with an attack), 'hurl' (a slot may pay), or null.
 const manyTargets = (f) => typeof f.action?.target?.creature?.count === 'number' && f.action.target.creature.count > 1;
 export function kindOf(f) {
+  if (f.empowered || f.overchannel) return 'evoker';           // Empowered Evocation, Overchannel: chosen with a cast (#302)
+  if (f.repel) return 'repel';                                  // Repelling Blast: how far, chosen with the cantrip
+  if (f.markSpread) return 'prey';                              // Superior Hunter's Prey: chosen with an attack
+  if (f.action?.orSlot) return 'hurl';                          // Hurl Through Hell: a Pact Magic slot may pay for it
   if (f.action?.modes?.length) return 'modes';
   if (f.action?.form) return 'form';
   if (f.action?.pool) return 'pool';
@@ -56,9 +62,13 @@ export function chooserButtons(st, e) {
   const out = [];
   for (const f of e.feats ?? []) {
     const kind = kindOf(f);
-    if (!kind || !f.action && kind !== 'exchange' && kind !== 'free') continue;
+    if (!kind || !f.action && !NO_ACTION.includes(kind)) continue;
     const a = f.action, time = a ? (a.time === 'free' ? null : a.time) : null, left = usesLeft(e, f);
     let label = f.name, sub = '', why = '', cls = a && (a.time === 'bonus' || a.time === 'free') ? 'bonus' : '';
+    if (kind === 'evoker') { sub = evokerSub(e, f); out.push({ label, sub, cls: '', why: '', feature: f.id, kind, time: null, f }); continue; }
+    if (kind === 'repel') { sub = `Pushes up to ${f.repel.feet} ft · with ${spellName(f.repel.spell)}`; why = (e.spells ?? []).includes(f.repel.spell) ? '' : `${e.name} doesn't know ${spellName(f.repel.spell)}.`; out.push({ label, sub, cls: '', why, feature: f.id, kind, time: null, f }); continue; }
+    if (kind === 'prey') { sub = 'Once a turn · with a weapon attack'; out.push({ label, sub, cls: '', why: preyWhy(st, e, f), feature: f.id, kind, time: null, f }); continue; }
+    if (kind === 'hurl') { sub = ['No action', 'after a hit', `${left} left`].join(' · '); out.push({ label, sub, cls: 'bonus', why: '', feature: f.id, kind, time: 'free', f }); continue; }
     if (kind === 'modes') sub = [TIME[a.time], left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · ');
     else if (kind === 'pool') sub = [TIME[a.time], `${left} HP left`].join(' · ');
     else if (kind === 'targets') {
@@ -70,7 +80,7 @@ export function chooserButtons(st, e) {
       continue;
     }
     else if (kind === 'exchange') { sub = `${left} of ${f.uses.max} points`; cls = ''; }
-    else if (kind === 'free') sub = `Cast free · ${left} left`;
+    else if (kind === 'free') sub = freeSub(f, left);
     else if (kind === 'form') {
       const now = formOf(e);
       label = now ? `${f.name}: ${formName(e)}` : f.name; sub = now ? `${TIME[a.time]} · leave or change` : `${TIME[a.time]} · ${left} left`; cls = `${cls} ${now ? 'armed' : ''}`;
@@ -81,6 +91,73 @@ export function chooserButtons(st, e) {
   }
   return out;
 }
+const NO_ACTION = ['exchange', 'free', 'evoker', 'repel', 'prey'];      // choosers of a feature that has no `action` of its own
+const spellName = (id) => SPELLS[id]?.name ?? nice(id);
+// A feature that casts for free (`freeCast`): what it costs, in words.
+export const freeSub = (f, left) => (f.freeCast?.atWill ? 'Cast free, as often as you like' : `Cast free · ${left ?? 0} left`) + (f.freeCast?.self ? ' · on yourself' : '') + (f.freeCast?.dark ? ' · in dim light or darkness' : '');
+
+// ---------- Empowered Evocation and Overchannel (#232): chosen with a cast ----------
+// The damage rolls a spell makes, counted as the engine counts them (a step with `damage`).
+export function damageSteps(sp) {
+  let n = 0;
+  const walk = (steps) => { for (const st of steps ?? []) { if (!st || typeof st !== 'object') continue; if ('damage' in st) n++; for (const v of Object.values(st)) if (Array.isArray(v)) walk(v); else if (v && typeof v === 'object' && Array.isArray(v.effects)) walk(v.effects); } };
+  walk(sp.def.effects);
+  return n;
+}
+const featsOf = (e, key) => (e.feats ?? []).find((f) => f[key]);
+// The Overchannel cost of the next use: nothing the first time since a Long Rest, then `n + 1` dice of Necrotic damage for each level of the slot.
+export function overchannelCost(e, f, slot) {
+  const n = e.uses?.[f.id] ?? 0, die = f.overchannel.die;
+  return n === 0 ? { free: true, n, text: 'The first use since a Long Rest is free.' } : { free: false, n, dice: `${slot * (n + 1)}d${die}`, text: `${n + 1}d${die} Necrotic damage for each level of the slot (${slot * (n + 1)}d${die} at level ${slot}), ignoring Resistance and Immunity.` };
+}
+function evokerSub(e, f) {
+  if (f.overchannel) { const c = overchannelCost(e, f, 1); return c.free ? 'Maximum damage · the first use is free' : `Maximum damage · costs ${c.n + 1}d${f.overchannel.die} a slot level`; }
+  const add = mod(e.abil?.[f.empowered.ability] ?? 10);
+  return `Adds ${signedN(add)} to one damage roll of a ${nice(f.empowered.school)} spell`;
+}
+// The spells an evoker's chooser offers, each with what applies: { sp, empower (a damage roll to add to), over (why not, or '') }.
+export function evokerSpells(e) {
+  const ef = featsOf(e, 'empowered'), of = featsOf(e, 'overchannel'), out = [];
+  for (const id of e.spells ?? []) {
+    const sp = SPELLS[id];
+    if (!sp || sp.time === 'reaction') continue;
+    const rolls = damageSteps(sp), onList = (l) => (sp.def.classes ?? []).includes(l);
+    const empower = !!ef && rolls > 0 && sp.def.school === ef.empowered.school && onList(ef.empowered.list);
+    const over = !!of && rolls > 0 && sp.level >= 1 && sp.level <= of.overchannel.maxSlot && onList(of.overchannel.list);
+    if (empower || over) out.push({ sp, rolls, empower, over });
+  }
+  return out.sort((a, b) => a.sp.level - b.sp.level || a.sp.name.localeCompare(b.sp.name));
+}
+// The slot levels a spell may be cast at: its own up to `top`, with a slot left.
+export const slotsFor = (e, sp, top = 9) => Object.keys(e.slotsMax ?? {}).map(Number).filter((l) => l >= sp.level && l <= top && (e.slots?.[l] ?? 0) > 0).sort((a, b) => a - b);
+
+// ---------- Superior Hunter's Prey (#232): chosen with an attack ----------
+// The creatures `e` has marked with the feature's spell (Hunter's Mark): lasting effects the view shows, with a part on the caster that works against the creature.
+export function markedBy(st, e, f) {
+  const ids = [];
+  for (const fx of st.effects ?? []) {
+    if (fx.source !== e.id || fx.spell !== f.markSpread.spell) continue;
+    for (const p of fx.parts ?? []) if (!p.ended && p.target === e.id && p.against && p.modifier?.on === 'damage.dealt' && !ids.includes(p.against)) ids.push(p.against);
+  }
+  return ids;
+}
+// Why the feature cannot be used now ('' if it can): the engine's own words.
+export function preyWhy(st, e, f) {
+  const enc = st.encounter;
+  if (!enc) return `${f.name} is used in a fight.`;
+  if (current(st) !== e.id) return `${f.name} is used on ${e.name}'s turn.`;
+  if (enc.flags?.[`prey:${e.id}`]) return `${e.name} has already used ${f.name} this turn.`;
+  if (!markedBy(st, e, f).length) return `${e.name} has no creature marked by ${spellName(f.markSpread.spell)}.`;
+  return '';
+}
+// Who may take the spread damage: seen creatures within the feature's range of a marked one (the engine checks sight and range again).
+export function preyCandidates(st, e, f) {
+  const G = gridOf(st.map), marked = markedBy(st, e, f).map((id) => st.entities[id]).filter((x) => x?.pos);
+  return Object.values(st.entities).filter((x) => x.pos && !x.dead && !x.hidden && x.id !== e.id && !marked.some((m) => m.id === x.id))
+    .map((x) => ({ x, d: Math.min(...marked.map((m) => Math.round(G.dist(m.pos, x.pos) * FT))) })).filter((m) => m.d <= f.markSpread.range)
+    .sort((a, b) => (a.x.side === e.side) - (b.x.side === e.side) || a.d - b.d);
+}
+
 // What pays for a use of a feature: its own uses, or, with none left, the pool its `orCost` names (Intimidating Presence: a use of Rage).
 export function payFor(e, f) {
   const a = f.action ?? {}, n = a.cost?.n ?? 1, own = !!f.uses, left = own ? e.uses?.[f.id] ?? 0 : null;
@@ -263,17 +340,134 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     };
   }
 
-  // ---------- Divine Intervention: cast a spell of the list through the feature ----------
+  // ---------- Divine Intervention, Mystic Arcanum, the at-will Invocations...: cast a spell through the feature ----------
+  // `freeCast`: `atWill` (no uses), `self` (on the caster only: the cast is sent at once, aimed at the caster), `dark` (Dim Light or Darkness only; the engine checks), `sureSave`.
   function freePanel(e, f) {
-    const list = freeSpells(f), st = mem(`${e.id}:${f.id}`, () => ({ spell: null }));
+    const list = freeSpells(f), st = mem(`${e.id}:${f.id}`, () => ({ spell: null })), fc = f.freeCast;
     if (!list.some((s) => s.id === st.spell)) st.spell = list[0]?.id ?? null;
     const sel = h('select', { id: 'cp-spell', 'aria-label': 'Spell', onchange: () => { st.spell = sel.value; } },
       ...list.map((sp) => h('option', { value: sp.id, text: `${sp.name} (${sp.level ? `level ${sp.level}` : 'cantrip'})`, selected: sp.id === st.spell })));
+    const rules = [fc.atWill ? 'As often as you like, with no spell slot.' : `${usesLeft(e, f)} left. Casts with no spell slot.`, fc.self ? `On ${e.name} only.` : '', fc.dark ? 'Works only in Dim Light or Darkness.' : '',
+      fc.sureSave ? 'Its saving throw is a success, with no roll.' : '', fc.time === 'action' ? 'A Magic action.' : ''].filter(Boolean).join(' ');
     return {
-      key: `${e.id}:${f.id}`, title: f.name, note: `${usesLeft(e, f)} left. Casts a spell from the list with no spell slot. ${f.text}`,
+      key: `${e.id}:${f.id}`, title: f.name, note: `${rules} ${f.text}`,
       body: [h('label', { class: 'cp-f' }, h('span', { text: 'Spell' }), sel)],
-      buttons: [{ label: 'Choose targets', primary: true, id: 'cp-use', run: () => { if (!st.spell) return; close(); setPending({ actor: e.id, spell: st.spell, extra: { via: f.id }, label: `${f.name}: no spell slot` }); castSpell(e, st.spell); } }],
+      buttons: [{ label: fc.self ? 'Cast' : 'Choose targets', primary: true, id: 'cp-use', run: () => {
+        if (!st.spell) return;
+        const sp = SPELLS[st.spell];
+        close(); setPending({ actor: e.id, spell: st.spell, extra: { via: f.id }, label: `${f.name}: no spell slot`, reopen: () => freePanel(e, f) });
+        if (fc.self) act({ type: 'cast', actor: e.id, spell: st.spell, ...(sp.aim === 'self' || sp.aim === 'none' ? {} : { target: e.id }) });
+        else castSpell(e, st.spell);
+      } }],
       reopen: () => freePanel(e, f),
+    };
+  }
+
+  // ---------- Empowered Evocation and Overchannel: chosen with a cast ----------
+  function evokerPanel(e) {
+    const ef = featsOf(e, 'empowered'), of = featsOf(e, 'overchannel'), list = evokerSpells(e);
+    const st = mem(`${e.id}:evoker`, () => ({ spell: null, empower: 'auto', over: false, slot: null }));
+    const entry = list.find((x) => x.sp.id === st.spell) ?? list[0] ?? null;
+    if (entry && entry.sp.id !== st.spell) { st.spell = entry.sp.id; st.empower = entry.rolls > 1 || entry.sp.repeat ? '0' : 'auto'; st.slot = null; }
+    const sp = entry?.sp ?? null, draw = () => show(evokerPanel(e));
+    const levels = sp ? (sp.level === 0 ? [] : slotsFor(e, sp, entry.over && st.over ? of.overchannel.maxSlot : 9)) : [];
+    if (sp && sp.level > 0 && !levels.includes(st.slot)) st.slot = levels[0] ?? null;
+    const rays = !!sp?.repeat, nRolls = sp ? (rays ? Math.max(1, targetCount(sp.def, e.level, st.slot ?? sp.level)) : entry.rolls) : 0;
+    const spellSel = h('select', { id: 'cp-spell', 'aria-label': 'Spell', onchange: () => { st.spell = spellSel.value; st.empower = 'auto'; st.slot = null; st.over = false; const x = list.find((y) => y.sp.id === st.spell); if (x && (x.rolls > 1 || x.sp.repeat)) st.empower = '0'; draw(); } },
+      ...list.map((x) => h('option', { value: x.sp.id, text: `${x.sp.name} (${x.sp.level ? `level ${x.sp.level}` : 'cantrip'})`, selected: x.sp.id === st.spell })));
+    const body = [h('label', { class: 'cp-f' }, h('span', { text: 'Spell' }), spellSel)];
+    if (sp && levels.length) body.push(h('div', { class: 'cp-f', 'data-part': 'slot' }, h('span', { text: 'Spell slot level' }),
+      h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Slot level' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.slot === l), text: `Level ${l} (${e.slots?.[l] ?? 0} left)`, onclick: () => { st.slot = l; draw(); } })))));
+    if (ef) {
+      const add = mod(e.abil?.[ef.empowered.ability] ?? 10), can = !!entry?.empower;
+      const opts = [['auto', 'Let the engine decide'], ['no', `Do not add the ${signedN(add)}`], ...Array.from({ length: nRolls }, (_, i) => [String(i), `${rays ? 'Ray' : 'Damage roll'} ${i + 1}`])];
+      if (st.empower !== 'auto' && st.empower !== 'no' && Number(st.empower) >= nRolls) st.empower = 'auto';
+      body.push(h('div', { class: 'cp-f', 'data-part': 'empower' }, h('span', { text: `${ef.name}: add ${signedN(add)} to one damage roll` }),
+        !can ? h('p', { class: 'cp-note cp-why', text: sp ? `${sp.name} is not a ${nice(ef.empowered.school)} spell on the ${nice(ef.empowered.list)} list that deals damage.` : 'No spell to choose.' }) : h('p', { class: 'cp-note', text: nRolls > 1 ? `${sp.name} makes ${nRolls} ${rays ? 'rays' : 'damage rolls'}: choose the one it is added to.` : 'Added to the roll unless the spell also catches creatures that are not your foes; then the DM is told, or choose the roll here.' }),
+        h('div', { class: 'cp-levels', role: 'group', 'aria-label': ef.name }, ...opts.map(([v, t]) => h('button', { type: 'button', 'data-empower': v, 'aria-pressed': String(st.empower === v), disabled: !can, text: t, onclick: () => { st.empower = v; draw(); } })))));
+    }
+    if (of) {
+      const why = !sp ? 'No spell to choose.' : !entry.over ? (sp.level === 0 ? `${of.name} is for a spell of level 1 to ${of.overchannel.maxSlot}, not a cantrip.` : `${of.name} is for a damaging ${nice(of.overchannel.list)} spell cast with a slot of level 1 to ${of.overchannel.maxSlot}.`) : '';
+      if (why) st.over = false;
+      const c = overchannelCost(e, of, st.slot ?? sp?.level ?? 1);
+      body.push(h('label', { class: `cp-check cp-opt${why ? ' off' : ''}`, 'data-part': 'overchannel' },
+        h('input', { type: 'checkbox', id: 'cp-over', checked: st.over, disabled: !!why, onchange: (ev) => { st.over = ev.target.checked; draw(); } }),
+        h('span', {}, h('b', { text: `${of.name}: the spell deals its maximum damage` }), h('small', { text: why || c.text }))));
+    }
+    const extra = () => ({ ...(ef && entry?.empower && st.empower !== 'auto' ? { empower: st.empower === 'no' ? false : Number(st.empower) } : {}), ...(of && st.over ? { overchannel: true } : {}),
+      ...(sp && sp.level > 0 && st.slot && (st.slot > sp.level || st.over) ? { slot: st.slot } : {}) });
+    const label = () => [ef && entry?.empower && st.empower !== 'auto' && st.empower !== 'no' ? ef.name : '', of && st.over ? of.name : ''].filter(Boolean).join(' + ');
+    return {
+      key: `${e.id}:evoker`, title: 'Cast with Evoker options', note: [ef?.text, of ? `Overchannel: ${overchannelCost(e, of, 1).free ? 'the next use is free' : `the next use costs ${overchannelCost(e, of, 1).n + 1}d${of.overchannel.die} Necrotic a slot level`}.` : ''].filter(Boolean).join(' '),
+      body: list.length ? body : [h('p', { class: 'cp-note', text: `${e.name} has no spell that ${[ef?.name, of?.name].filter(Boolean).join(' or ')} applies to.` })],
+      buttons: list.length ? [{ label: sp?.aim === 'self' || sp?.aim === 'none' ? `Cast ${sp?.name ?? ''}` : 'Choose targets', primary: true, id: 'cp-use', run: () => {
+        if (!sp) return;
+        close(); setPending({ actor: e.id, spell: sp.id, extra: extra(), label: label(), reopen: () => evokerPanel(e) });
+        castSpell(e, sp.id);
+      } }] : [],
+      reopen: () => evokerPanel(e),
+    };
+  }
+
+  // ---------- Repelling Blast: how far each creature the cantrip hits is pushed ----------
+  function repelPanel(e, f) {
+    const R = f.repel, sp = SPELLS[R.spell], steps = Array.from({ length: R.feet / 5 }, (_, i) => (i + 1) * 5), st = mem(`${e.id}:${f.id}`, () => ({ feet: R.feet }));
+    if (st.feet !== 0 && !steps.includes(st.feet)) st.feet = R.feet;
+    const draw = () => show(repelPanel(e, f));
+    return {
+      key: `${e.id}:${f.id}`, title: f.name, note: `Each Large or smaller creature ${sp?.name ?? spellName(R.spell)} hits with an attack roll is pushed straight away from you, up to ${R.feet} feet. ${f.text}`,
+      body: [h('div', { class: 'cp-f', 'data-part': 'repel' }, h('span', { text: 'Push each creature hit' }),
+        h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Distance' }, ...[0, ...steps].map((n) => h('button', { type: 'button', 'data-feet': n, 'aria-pressed': String(st.feet === n), text: n ? `${n} ft` : 'Not at all', onclick: () => { st.feet = n; draw(); } }))))],
+      buttons: [{ label: sp?.aim === 'self' || sp?.aim === 'none' ? `Cast ${sp.name}` : 'Choose targets', primary: true, id: 'cp-use', run: () => {
+        if (!sp) return;
+        close(); setPending({ actor: e.id, spell: sp.id, extra: st.feet ? { repel: st.feet } : {}, label: st.feet ? `${f.name}: ${st.feet} ft` : '', reopen: () => repelPanel(e, f) });
+        castSpell(e, sp.id);
+      } }],
+      reopen: () => repelPanel(e, f),
+    };
+  }
+
+  // ---------- Superior Hunter's Prey: another creature takes the mark's damage too ----------
+  function preyPanel(e, f) {
+    const M = f.markSpread, st = mem(`${e.id}:${f.id}`, () => ({ attack: null, prey: null })), weapons = (e.attacks ?? []).filter((a) => !a.spell);
+    if (!weapons.some((a) => a.id === st.attack)) st.attack = weapons[0]?.id ?? null;
+    const cands = preyCandidates(S(), e, f), marked = markedBy(S(), e, f).map((id) => S().entities[id]?.name).filter(Boolean), why = preyWhy(S(), e, f);
+    if (!cands.some((m) => m.x.id === st.prey)) st.prey = cands[0]?.x.id ?? null;
+    const aSel = h('select', { id: 'cp-attack', 'aria-label': 'Attack', onchange: () => { st.attack = aSel.value; } }, ...weapons.map((a) => h('option', { value: a.id, text: `${a.name} (${signedN(a.bonus)}, ${a.damage} ${a.dtype})`, selected: a.id === st.attack })));
+    const pSel = h('select', { id: 'cp-prey', 'aria-label': 'Second creature', onchange: () => { st.prey = pSel.value; } }, ...cands.map((m) => h('option', { value: m.x.id, text: `${m.x.name} · ${m.d} ft from the mark${seen(m.x)}`, selected: m.x.id === st.prey })));
+    return {
+      key: `${e.id}:${f.id}`, title: f.name, note: `Once a turn, when an attack damages a creature you have marked, the mark's extra damage also hits another creature you can see within ${M.range} feet of it. ${marked.length ? `Marked now: ${marked.join(', ')}.` : ''}`,
+      body: [why ? h('p', { class: 'cp-note cp-why', id: 'cp-why', text: why }) : null,
+        h('label', { class: 'cp-f' }, h('span', { text: 'Attack' }), aSel),
+        h('label', { class: 'cp-f' }, h('span', { text: 'Second creature' }), cands.length ? pSel : h('p', { class: 'cp-note', text: `Nobody else is within ${M.range} feet of a marked creature.` })),
+        h('p', { class: 'cp-note', text: 'Then tap the marked creature to attack it. The engine checks the mark, sight and distance, and says why if it refuses.' })],
+      buttons: [{ label: 'Choose target', primary: true, id: 'cp-use', run: () => {
+        if (!st.attack || !st.prey) return show(preyPanel(e, f), 'Choose an attack and a second creature.');
+        const a = weapons.find((x) => x.id === st.attack);
+        close(); armAttack({ id: a.id, label: `${f.name}: ${S().entities[st.prey]?.name ?? ''}`, extra: { prey: st.prey } });
+      } }],
+      reopen: () => preyPanel(e, f),
+    };
+  }
+
+  // ---------- Hurl Through Hell: with its use spent, a Pact Magic slot restores it ----------
+  function hurlPanel(e, f) {
+    const left = usesLeft(e, f) ?? 0, st = mem(`${e.id}:${f.id}`, () => ({ slot: 0 })), levels = e.pact ? Object.keys(e.slotsMax ?? {}).map(Number).filter((l) => (e.slots?.[l] ?? 0) > 0).sort((a, b) => a - b) : [];
+    if (st.slot && !levels.includes(st.slot)) st.slot = 0;
+    if (left > 0) st.slot = 0;
+    const draw = () => show(hurlPanel(e, f));
+    const body = [h('p', { class: 'cp-note', text: left > 0 ? `${left} use left. It follows an attack that hit this turn, once a turn, and takes no action.` : `No use left. A Pact Magic slot can restore it: choose its level.` }),
+      left > 0 ? null : h('div', { class: 'cp-f', 'data-part': 'slot' }, h('span', { text: 'Pact Magic slot to spend' }),
+        levels.length ? h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Slot level' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.slot === l), text: `Level ${l} (${e.slots[l]} left)`, onclick: () => { st.slot = l; draw(); } })))
+          : h('p', { class: 'cp-note cp-why', text: `${e.name} has no Pact Magic slot left.` })),
+      h('p', { class: 'cp-note', text: 'Then tap a creature you hit with an attack roll this turn.' })];
+    return {
+      key: `${e.id}:${f.id}`, title: f.name, note: f.text, body,
+      buttons: [{ label: 'Choose target', primary: true, id: 'cp-use', run: () => {
+        if (left < 1 && !st.slot) return show(hurlPanel(e, f), levels.length ? 'Choose the Pact Magic slot that restores it.' : `${e.name} has no use or slot left.`);
+        close(); arm({ id: f.id, name: st.slot ? `${f.name} (level ${st.slot} slot)` : f.name, ...(st.slot ? { extra: { slot: st.slot } } : {}) });
+      } }],
+      reopen: () => hurlPanel(e, f),
     };
   }
 
@@ -429,7 +623,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
       body: [h('label', { class: 'cp-f' }, h('span', { text: 'Spell' }), spellSel), h('div', { class: 'cp-f' }, h('span', { text: 'Options you know' }), ...rows), ...extra],
       buttons: [{ label: sp?.aim === 'self' || sp?.aim === 'none' ? `Cast ${sp?.name ?? ''}` : 'Choose targets', primary: true, id: 'cp-use', run: () => {
         if (!sp) return;
-        close(); setPending({ actor: e.id, spell: sp.id, extra: build(), twinned: st.picked.includes('twinned'), label: st.picked.length ? `${st.picked.map(nice).join(' + ')}: ${total} SP` : '' });
+        close(); setPending({ actor: e.id, spell: sp.id, extra: build(), twinned: st.picked.includes('twinned'), label: st.picked.length ? `${st.picked.map(nice).join(' + ')}: ${total} SP` : '', reopen: () => metaPanel(e, sp.id) });
         castSpell(e, sp.id);
       } }],
       reopen: () => metaPanel(e),
@@ -448,7 +642,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   const chosenFor = (e, spellId) => (pend && pend.actor === e.id && pend.spell === spellId ? pend : null);
 
   // ---------- the buttons of the action bar ----------
-  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel })[kindOf(f)](e, f);
+  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel })[kindOf(f)](e, f);
   function buttons(e) {
     const out = chooserButtons(S(), e).map(({ label, sub, cls, why, feature, f }) => ({ label, sub, cls, why, feature, onClick: () => show(panelOf(e, f)) }));
     if (metamagicKnown(e).length && spellsToCast(e).length) {
@@ -499,7 +693,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     refused(msg) {
       if (!last) return false;
       const { spec, pend: p } = last; last = null;
-      if (p) { pend = p; show(metaPanel(S().entities[p.actor], p.spell), msg); return true; }
+      if (p) { pend = p; show((p.reopen ?? (() => metaPanel(S().entities[p.actor], p.spell)))(), msg); return true; }
       if (!spec?.reopen) return false;
       show(spec.reopen(), msg); return true;
     },
