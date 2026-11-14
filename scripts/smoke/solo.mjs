@@ -63,7 +63,7 @@ async function solo(browser, url, label, opts) {
         await closePanels(page);
         // Look at the middle of the field, far enough out that party and monsters are both in the arena.
         const pt = await page.evaluate(async () => {
-          const H = await import('./shared/hex.js'), R = window.hextable.R, w = H.toWorld({ q: -1, r: 1 });
+          const H = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, w = H.toWorld({ q: -1, r: 1 });
           R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 30;
           await new Promise((r) => setTimeout(r, 600));
           return R.screenOf({ q: -1, r: 1, z: 0 });
@@ -115,7 +115,7 @@ async function solo(browser, url, label, opts) {
         await sleep(500);
         // Find a tile on screen that the editor panel does not cover, and a terrain it is not already.
         const target = await page.evaluate(async () => {
-          const H = await import('./shared/hex.js'), R = window.hextable.R, S = window.hextable.state;
+          const H = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, S = window.hextable.state;
           const lv = S.map.levels.find((l) => l.z === 0) ?? S.map.levels[0];
           const terrains = [...document.querySelectorAll('#ed-terrain button')].map((b) => b.dataset.t);
           const w = R.canvas.clientWidth, h = R.canvas.clientHeight;

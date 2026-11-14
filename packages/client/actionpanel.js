@@ -8,7 +8,7 @@
 // plain data, so a test can drive it with no page. `initActionPanel` below is the only part that touches the page. Nothing here
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
-import * as H from './shared/hex.js';
+import { gridOf, col as cellCol } from './shared/grid.js';
 import { inFight, current, up, blocked, usesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile } from './shared/effects.js';
 import { reactionsOf, canReact } from './shared/reactions.js';
@@ -84,8 +84,9 @@ export function defaultTab(ctx, tabs, { pref = 'auto', last = {} } = {}) {
 // ---------- the Explore tab ----------
 // The nearest other living party member: whom Follow picks if nobody is tapped.
 export function nearestAlly(S, e) {
+  const G = gridOf(S.map);
   return Object.values(S.entities).filter((x) => x.id !== e.id && x.side === 'party' && !x.dead)
-    .sort((a, b) => H.dist(a.pos, e.pos) - H.dist(b.pos, e.pos))[0] ?? null;
+    .sort((a, b) => G.dist(a.pos, e.pos) - G.dist(b.pos, e.pos))[0] ?? null;
 }
 // Why a spell cannot be cast now, in the engine's words ('' if it can).
 export function spellWhy(S, e, sp) {
@@ -97,7 +98,7 @@ const HEAL_FEATS = ['second-wind', 'lay-on-hands'];
 const hurt = (e) => e.maxHp > 0 && e.hp > 0 && e.hp <= e.maxHp / 2;
 const dimHere = (S, e) => {
   if (S.settings?.sight !== 'light') return false;
-  if (S.sight?.rule === 'light') return !!S.sight.light?.[under(S.map, e.pos)?.level]?.[H.col(e.pos)];       // a player is sent which tiles are not Bright
+  if (S.sight?.rule === 'light') return !!S.sight.light?.[under(S.map, e.pos)?.level]?.[cellCol(e.pos)];       // a player is sent which tiles are not Bright
   try { return lightAt(S, e.pos) !== 'bright'; } catch { return false; }
 };
 // Whether a party member is under half or has spent spell slots: the DM's rests are then worth offering first.

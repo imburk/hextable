@@ -1,7 +1,7 @@
 // The DM's map editor, paint mode: a UI over the engine's `mapEdit` and `loadMap` actions. It never
 // changes the map itself: every edit is sent as an action, and the engine checks the whole map
 // before taking it. Design: docs/specs/maps-and-objects.md, "Putting a place into the game".
-import * as H from './shared/hex.js';
+import * as Gr from './shared/grid.js';
 import { TILES } from './shared/content/terrain.js';
 import { CONTENT } from './shared/content/index.js';
 import { WALL_KINDS, barriers, center, edgeSegment, objectHexes, objectSegment } from './shared/walls.js';
@@ -35,9 +35,9 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 const fresh = (base, taken) => { let id = base, n = 2; while (taken.has(id)) id = `${base}-${n++}`; return id; };
 const same = (p, q) => Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6;
 const sameSeg = (w, [a, b]) => (same(w.a, a) && same(w.b, b)) || (same(w.a, b) && same(w.b, a));
-const edgeOf = (a, b) => H.DIRS.findIndex(([dq, dr]) => a.q + dq === b.q && a.r + dr === b.r);
 
 export class Editor {
+  get G() { return Gr.gridOf(this.S.map); }      // the grid of the map being edited
   // ctx: { R, act, toast, state(), isDM(), refresh() }
   constructor(ctx) {
     Object.assign(this, ctx);
@@ -83,15 +83,15 @@ export class Editor {
   }
   // What to light up on the map: the room being drawn, the start, and the first hex of a two-tap edit.
   marks() {
-    const l = this.level(), at = (k) => { const h = H.parse(k); return H.key({ ...h, z: l.z + (l.tiles[k]?.h ?? 0) }); };
+    const l = this.level(), at = (k) => { const h = Gr.parse(k); return Gr.key({ ...h, z: l.z + (l.tiles[k]?.h ?? 0) }); };
     const move = [], area = [];
     if (this.tool === 'region') { const r = this.S.map.regions.find((x) => x.id === this.region); if (r) move.push(...r.hexes.map(at)); }
-    if (this.tool === 'start') for (const s of this.S.map.starts) area.push(H.key({ q: s.q, r: s.r, z: s.z ?? 0 }));
+    if (this.tool === 'start') for (const s of this.S.map.starts) area.push(Gr.key({ q: s.q, r: s.r, z: s.z ?? 0 }));
     if (this.pending) {
-      const pl = this.S.map.levels.find((x) => x.id === this.pending.level) ?? l, k = H.col(this.pending);
-      area.push(H.key({ ...this.pending, z: pl.z + (pl.tiles[k]?.h ?? 0) }));
+      const pl = this.S.map.levels.find((x) => x.id === this.pending.level) ?? l, k = Gr.col(this.pending);
+      area.push(Gr.key({ ...this.pending, z: pl.z + (pl.tiles[k]?.h ?? 0) }));
     }
-    for (const h of this.#strokeArea()) area.push(H.key({ ...h, z: l.z + (l.tiles[H.col(h)]?.h ?? 0) }));
+    for (const h of this.#strokeArea()) area.push(Gr.key({ ...h, z: l.z + (l.tiles[Gr.col(h)]?.h ?? 0) }));
     return { move, area };
   }
 
@@ -135,19 +135,19 @@ export class Editor {
     if (this.tool === 'trace') return this.#traceTap(px, py);
     const l = this.level(), h = this.R.planeHex(px, py, l.z);
     if (!h) return;
-    const k = H.col(h), tile = l.tiles[k], map = this.S.map, area = this.areaOver ?? H.range(h, this.brush);
+    const k = Gr.col(h), tile = l.tiles[k], map = this.S.map, area = this.areaOver ?? this.G.range(h, this.brush);
     switch (this.tool) {
       case 'paint': {
-        const ops = area.filter((x) => l.tiles[H.col(x)]?.t !== this.terrain).map((at) => ({ op: 'tile', level: l.id, at, tile: { ...(l.tiles[H.col(at)] ?? {}), t: this.terrain } }));
+        const ops = area.filter((x) => l.tiles[Gr.col(x)]?.t !== this.terrain).map((at) => ({ op: 'tile', level: l.id, at, tile: { ...(l.tiles[Gr.col(at)] ?? {}), t: this.terrain } }));
         return ops.length && this.edit(ops);
       }
       case 'erase': {
-        const gone = new Set(area.map(H.col).filter((c) => l.tiles[c]));
+        const gone = new Set(area.map(Gr.col).filter((c) => l.tiles[c]));
         if (!gone.size) return;
-        const ops = map.objects.filter((o) => o.level === l.id && objectHexes(o).some((x) => gone.has(H.col(x)))).map((o) => ({ op: 'unobject', id: o.id }));
-        const left = (s) => !gone.has(H.col(s)) || map.levels.some((x) => x.id !== l.id && x.tiles[H.col(s)]);
+        const ops = map.objects.filter((o) => o.level === l.id && objectHexes(o).some((x) => gone.has(Gr.col(x)))).map((o) => ({ op: 'unobject', id: o.id }));
+        const left = (s) => !gone.has(Gr.col(s)) || map.levels.some((x) => x.id !== l.id && x.tiles[Gr.col(s)]);
         if (!map.starts.every(left)) ops.push({ op: 'starts', starts: map.starts.filter(left) });
-        for (const c of gone) ops.push({ op: 'tile', level: l.id, at: H.parse(c), tile: null });
+        for (const c of gone) ops.push({ op: 'tile', level: l.id, at: Gr.parse(c), tile: null });
         return this.edit(ops);
       }
       case 'wall': return this.#pair(h, (a, e) => {
@@ -157,10 +157,10 @@ export class Editor {
       case 'object': {
         const def = CONTENT.objects[this.def];
         if (def.kind === 'door') return this.#pair(h, (a, e) => {
-          const b = { q: a.q + H.DIRS[e][0], r: a.r + H.DIRS[e][1] }, seg = edgeSegment(a, e);
+          const b = { q: a.q + this.G.DIRS[e][0], r: a.r + this.G.DIRS[e][1] }, seg = edgeSegment(a, e);
           const had = map.objects.find((o) => o.level === l.id && Number.isInteger(o.edge) && sameSeg({ a: edgeSegment(o.at, o.edge)[0], b: edgeSegment(o.at, o.edge)[1] }, seg));
           if (had) return [{ op: 'unobject', id: had.id }];
-          const [at, edge] = l.tiles[H.col(a)] || !l.tiles[H.col(b)] ? [a, e] : [b, (e + 3) % 6];      // a door stands on a tile of its level
+          const [at, edge] = l.tiles[Gr.col(a)] || !l.tiles[Gr.col(b)] ? [a, e] : [b, (e + 3) % 6];      // a door stands on a tile of its level
           return [...map.walls.filter((w) => w.level === l.id && sameSeg(w, seg)).map((w) => ({ op: 'unwall', id: w.id })),
             { op: 'object', object: { def: this.def, level: l.id, at: { q: at.q, r: at.r }, edge } }];
         });
@@ -175,7 +175,7 @@ export class Editor {
       }
       case 'region': {
         const room = map.regions.find((r) => r.id === this.region);
-        const keys = area.map(H.col).filter((c) => l.tiles[c]);
+        const keys = area.map(Gr.col).filter((c) => l.tiles[c]);
         if (!keys.length) return this.toast('Rooms are made of tiles. Paint the floor first.');
         if (!room) {
           const name = $('ed-rname').value.trim();
@@ -198,7 +198,7 @@ export class Editor {
   #pair(h, make) {
     const p = this.pending, l = this.level();
     if (!p || p.level !== l.id || (p.q === h.q && p.r === h.r)) { this.pending = p && p.q === h.q && p.r === h.r ? null : { q: h.q, r: h.r, level: l.id }; return this.refresh(); }
-    const e = edgeOf(p, h);
+    const e = this.G.edgeOf(p, h);
     if (e < 0) { this.pending = { q: h.q, r: h.r, level: l.id }; return this.refresh(); }
     this.pending = null;
     this.edit(make({ q: p.q, r: p.r }, e));
@@ -215,9 +215,9 @@ export class Editor {
     const taken = (seg) => done.some((s) => sameSeg({ a: s[0], b: s[1] }, seg)) || map.walls.some((w) => w.level === l.id && sameSeg(w, seg)) ||
       map.objects.some((o) => o.level === l.id && Number.isInteger(o.edge) && sameSeg({ a: edgeSegment(o.at, o.edge)[0], b: edgeSegment(o.at, o.edge)[1] }, seg));
     for (const c of inside) {
-      const h = H.parse(c);
-      H.DIRS.forEach(([dq, dr], e) => {
-        if (inside.has(H.col({ q: h.q + dq, r: h.r + dr }))) return;
+      const h = Gr.parse(c);
+      this.G.DIRS.forEach(([dq, dr], e) => {
+        if (inside.has(Gr.col({ q: h.q + dq, r: h.r + dr }))) return;
         const seg = edgeSegment(h, e);
         if (taken(seg)) return;
         done.push(seg); ops.push({ op: 'wall', wall: { level: l.id, a: seg[0], b: seg[1], kind: this.kind } });
@@ -233,14 +233,14 @@ export class Editor {
   #strokeArea() {
     if (!this.stroke) return [];
     const seen = new Map();
-    for (const c of this.stroke.hexes.values()) for (const x of H.range(c, this.brush)) seen.set(H.col(x), x);
+    for (const c of this.stroke.hexes.values()) for (const x of this.G.range(c, this.brush)) seen.set(Gr.col(x), x);
     return [...seen.values()];
   }
   #drag() {
     const add = (x, y) => {
       const h = this.R.planeHex(x, y, this.level().z);
-      if (!h || this.stroke.hexes.has(H.col(h))) return false;
-      this.stroke.hexes.set(H.col(h), h); return true;
+      if (!h || this.stroke.hexes.has(Gr.col(h))) return false;
+      this.stroke.hexes.set(Gr.col(h), h); return true;
     };
     const show = () => this.R.setHighlights(this.marks());
     return {
@@ -282,7 +282,7 @@ export class Editor {
     const l = this.level(), tiles = Object.entries(l.tiles).slice(0, 600), sig = `${l.id}|${tiles.map(([k, t]) => `${k}:${t.h ?? 0}`).join(',')}`;
     if (sig !== this.hKey) {
       this.hKey = sig; this.hBox.textContent = '';
-      this.hItems = tiles.map(([k, t]) => { const e = document.createElement('i'); e.textContent = String(t.h ?? 0); if (t.h) e.className = t.h > 0 ? 'up' : 'down'; this.hBox.append(e); return { e, hex: { ...H.parse(k), z: l.z + (t.h ?? 0) } }; });
+      this.hItems = tiles.map(([k, t]) => { const e = document.createElement('i'); e.textContent = String(t.h ?? 0); if (t.h) e.className = t.h > 0 ? 'up' : 'down'; this.hBox.append(e); return { e, hex: { ...Gr.parse(k), z: l.z + (t.h ?? 0) } }; });
     }
     if (this.hRaf) return;
     const tick = () => {
@@ -294,7 +294,7 @@ export class Editor {
   }
   static STEP = 2.5;
   #heightTap(h, l) {
-    const tile = l.tiles[H.col(h)];
+    const tile = l.tiles[Gr.col(h)];
     if (!tile) return this.toast('Heights belong to tiles. Paint the floor first.');
     const cur = tile.h ?? 0, to = Math.max(-30, Math.min(60, cur + (this.hmode === 'down' ? -Editor.STEP : Editor.STEP)));
     this.lastH = { level: l.id, q: h.q, r: h.r };
@@ -306,14 +306,14 @@ export class Editor {
   // Tap the foot of the stairs, then the top, in a straight line: the hexes between take even steps.
   #stairsTap(h) {
     const l = this.level(), p = this.pending, map = this.S.map;
-    const here = (lv, c) => lv.tiles[H.col(c)];
+    const here = (lv, c) => lv.tiles[Gr.col(c)];
     if (!here(l, h)) return this.toast('Stairs run between tiles. Paint the floor first.');
     if (!p || (p.q === h.q && p.r === h.r && p.level === l.id)) { this.pending = p ? null : { q: h.q, r: h.r, level: l.id }; return this.refresh(); }
     this.pending = null;
     const pl = map.levels.find((x) => x.id === p.level);
     if (!pl || !here(pl, p)) return this.refresh();
     const za = pl.z + (here(pl, p).h ?? 0), zb = l.z + (here(l, h).h ?? 0);
-    const dq = h.q - p.q, dr = h.r - p.r, n = H.dist(p, h);
+    const dq = h.q - p.q, dr = h.r - p.r, n = this.G.dist(p, h);
     if (!(dq === 0 || dr === 0 || dq + dr === 0)) return this.toast('Stairs need a straight line of hexes: along one of the three grid directions.');
     if (n < 2) return this.toast('Pick two hexes with at least one between them.');
     if (za === zb) return this.toast('Both ends are the same height, so there is nothing to climb. Raise the top first.');
@@ -323,7 +323,7 @@ export class Editor {
     for (let i = 1; i < n; i++) {
       const at = { q: p.q + Math.sign(dq) * i, r: p.r + Math.sign(dr) * i }, z = rounded(za + (zb - za) * i / n);
       worst = Math.max(worst, Math.abs(z - prev)); prev = z;
-      const off = z - base.z, old = base.tiles[H.col(at)] ?? { t: here(base, foot).t };
+      const off = z - base.z, old = base.tiles[Gr.col(at)] ?? { t: here(base, foot).t };
       const tile = { ...old, h: off }; if (!off) delete tile.h;
       ops.push({ op: 'tile', level: base.id, at, tile });
     }
@@ -335,13 +335,13 @@ export class Editor {
 
   // ---------- object properties ----------
   #objectsAt(h, l) {
-    const k = H.col(h);
-    return this.S.map.objects.filter((o) => o.level === l.id && objectHexes(o).some((x) => H.col(x) === k));
+    const k = Gr.col(h);
+    return this.S.map.objects.filter((o) => o.level === l.id && objectHexes(o).some((x) => Gr.col(x) === k));
   }
   #propsTap(h, l) {
     const P = this.props, map = this.S.map;
     if (P?.pick === 'to') {
-      const t = l.tiles[H.col(h)];
+      const t = l.tiles[Gr.col(h)];
       if (!t) return this.toast('It has to lead to a tile.');
       this.#readForm(); P.draft.to = { q: h.q, r: h.r, z: l.z + (t.h ?? 0) }; P.pick = null; return this.#renderForm();
     }
@@ -498,7 +498,7 @@ export class Editor {
     this.edit(ops);
   }
   // The hex a traced door belongs to is the one nearest its middle; it needs a floor tile, so one is added if it is missing.
-  #doorAt(mid, l) { const at = H.fromWorld(mid[0], mid[1], FT / Math.sqrt(3)); return { at: { q: at.q, r: at.r }, tile: l.tiles[H.col(at)] ? null : { op: 'tile', level: l.id, at: { q: at.q, r: at.r }, tile: { t: 'stone' } } }; }
+  #doorAt(mid, l) { const at = this.G.cell(mid[0], mid[1]); return { at: { q: at.q, r: at.r }, tile: l.tiles[Gr.col(at)] ? null : { op: 'tile', level: l.id, at: { q: at.q, r: at.r }, tile: { t: 'stone' } } }; }
   #placeDoor(l, a, b) {
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) { this.refresh(); return this.toast('A door needs two points at least 1 ft apart.', true); }
     const { at, tile } = this.#doorAt([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], l);
@@ -572,7 +572,7 @@ export class Editor {
       for (let q = Math.ceil(ox / FT - r / 2); ; q++) {
         const [cx, cy] = center({ q, r });
         if (cx > ox + fw) break;
-        if (cx >= ox && cy >= oy && cy <= oy + fh && !l.tiles[H.col({ q, r })]) ops.push({ op: 'tile', level: l.id, at: { q, r }, tile: { t: 'stone' } });
+        if (cx >= ox && cy >= oy && cy <= oy + fh && !l.tiles[Gr.col({ q, r })]) ops.push({ op: 'tile', level: l.id, at: { q, r }, tile: { t: 'stone' } });
       }
     }
     if (!ops.length) return this.toast('Every hex under the picture has a floor already.', true);
@@ -628,10 +628,10 @@ export class Editor {
     if (this.barCache?.key === key) return this.barCache.bars;
     const B = barriers(map), bars = [];
     for (const k of Object.keys(l.tiles)) {
-      const h = H.parse(k);
+      const h = Gr.parse(k);
       for (let e = 0; e < 3; e++) {
-        const n = { q: h.q + H.DIRS[e][0], r: h.r + H.DIRS[e][1] };
-        if (!l.tiles[H.col(n)] || !B.blocked(l.id, h, n, 'move')) continue;
+        const n = { q: h.q + this.G.DIRS[e][0], r: h.r + this.G.DIRS[e][1] };
+        if (!l.tiles[Gr.col(n)] || !B.blocked(l.id, h, n, 'move')) continue;
         bars.push([...center(h), ...center(n)]);
       }
     }
@@ -735,7 +735,7 @@ export class Editor {
   // ---------- map files ----------
   blank() {
     const tiles = {};
-    for (const h of H.range({ q: 0, r: 0 }, 3)) tiles[H.col(h)] = { t: 'stone' };
+    for (const h of Gr.HEX.range({ q: 0, r: 0 }, 3)) tiles[Gr.col(h)] = { t: 'stone' };
     this.levelId = 'ground'; this.region = ''; this.pending = null;
     this.act({ type: 'loadMap', map: newMap({ id: 'new-map', name: 'New map', levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: 0, r: 0, z: 0 }] }) });
     this.refresh();
