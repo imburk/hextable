@@ -59,7 +59,7 @@ export const handlers = {
     (at && TILES[ground(s.map, at).tile.t].cost < Infinity) || fail("A creature can't stand there.");
     const body = { size: tpl.size };
     fitsOn(s.map, body, at, barriers(s.map)) || fail(`There isn't room for something ${tpl.size} there.`);
-    !living(s).some((o) => overlapAt(o, o.pos, body, at, gridOf(s.map))) || fail('That hex is occupied.');
+    !living(s).some((o) => overlapAt(o, o.pos, body, at, gridOf(s.map))) || fail(`That ${gridOf(s.map).word.one} is occupied.`);
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
@@ -71,7 +71,7 @@ export const handlers = {
     const e = ent(s, a.actor);
     // On the nearest floor, or exactly where asked if a height is given and there is room there (in the air, say).
     const to = (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z)) || fail("There's nothing there to stand on.");
-    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to, gridOf(s.map))) || fail('That hex is occupied.');
+    !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to, gridOf(s.map))) || fail(`That ${gridOf(s.map).word.one} is occupied.`);
     e.pos = to;
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
@@ -290,7 +290,7 @@ export const SETTING_TEXT = {
   },
   squareCover: {
     obstacle: 'Cover by what is in the way (the default): the line to the middle of the target and the lines to its corners. All clear: no cover. The middle clear but a corner hidden, or a creature on the line: Half. The middle behind something solid but part of the target showing round it: Three-Quarters. All of it behind a window, a rail or a lowered grille: Three-Quarters. All of it behind a wall or a shut door: Total. A chest, a crate or a statue gives Half at most. A curtain is no cover; what is behind it cannot be seen. A table rule; the SRD does not say how to judge cover on a grid.',
-    corners: 'Cover by the corners of the target\'s square in view, as on hexes: all four, none; two or three, Half; one, Three-Quarters; none and the middle hidden, Total. Walls and shut doors count, a rail gives Half, windows and things in a square do not count. A table rule.',
+    corners: 'Cover by the corners of the target\'s square in view: all four, none; two or three, Half; one, Three-Quarters; none and the middle hidden, Total. Walls and shut doors count, a rail gives Half, windows and things in a square do not count. A table rule.',
   },
 };
 

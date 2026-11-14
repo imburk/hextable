@@ -83,7 +83,7 @@ export function lintMap(doc, extra = []) {
     if (!l.tiles || typeof l.tiles !== 'object' || Array.isArray(l.tiles)) { bad.push(`Level "${l.id}" has no tiles.`); continue; }
     for (const [k, t] of Object.entries(l.tiles)) {
       count++;
-      if (!COL.test(k)) { bad.push(`Level "${l.id}" has a tile at "${k}", which is not a hex.`); break; }
+      if (!COL.test(k)) { bad.push(`Level "${l.id}" has a tile at "${k}", which is not a ${G.word.one}.`); break; }
       if (!t || !Object.hasOwn(TILES, t.t)) { bad.push(`The tile at ${k} on "${l.id}" has unknown terrain "${t?.t}".`); break; }
       if ((t.h !== undefined && !num(t.h)) || (t.lift !== undefined && !num(t.lift))) { bad.push(`The tile at ${k} on "${l.id}" has a height that is not a number.`); break; }
     }
@@ -95,7 +95,7 @@ export function lintMap(doc, extra = []) {
     else if (MAP_LIMITS[k] && doc[k].length > MAP_LIMITS[k]) bad.push(`It has more than ${MAP_LIMITS[k]} ${k}.`);
   }
   for (const st of Array.isArray(doc.starts) ? doc.starts : []) {
-    if (!st || !Number.isInteger(st.q) || !Number.isInteger(st.r)) bad.push('A start is not a hex.');
+    if (!st || !Number.isInteger(st.q) || !Number.isInteger(st.r)) bad.push(`A start is not a ${G.word.one}.`);
     else if (!doc.levels.some((l) => l.tiles?.[`${st.q},${st.r}`])) bad.push(`The start at ${st.q},${st.r} has nothing to stand on.`);
   }
   if (bad.length) return bad;
@@ -115,12 +115,12 @@ export function lintMap(doc, extra = []) {
     const def = Object.hasOwn(CONTENT.objects, o.def) ? CONTENT.objects[o.def] : null, level = doc.levels.find((l) => l.id === o.level);
     if (!def) { bad.push(`Object "${o.id}" is of unknown kind "${o.def}".`); continue; }
     if (!level) { bad.push(`Object "${o.id}" is on a level that does not exist.`); continue; }
-    if (!o.at || !Number.isInteger(o.at.q) || !Number.isInteger(o.at.r) || !level.tiles[col(o.at)]) bad.push(`Object "${o.id}" is not on a hex of its level.`);
+    if (!o.at || !Number.isInteger(o.at.q) || !Number.isInteger(o.at.r) || !level.tiles[col(o.at)]) bad.push(`Object "${o.id}" is not on a ${G.word.one} of its level.`);
     if (!Object.hasOwn(def.states, o.state)) bad.push(`Object "${o.id}" is in a state its kind does not have: "${o.state}".`);
     if (o.edge !== undefined && !(Number.isInteger(o.edge) && o.edge >= 0 && o.edge < G.EDGES)) bad.push(`Object "${o.id}" has an edge that is not 0 to ${G.EDGES - 1}.`);
     if (o.seg !== undefined && !(o.seg && point(o.seg.a) && point(o.seg.b))) bad.push(`Object "${o.id}" has a line that is not two points.`);
-    if (def.kind === 'door' && o.edge === undefined && o.seg === undefined) bad.push(`Door "${o.id}" needs a hex edge or a line to stand on.`);
-    if (def.kind !== 'door' && (o.edge !== undefined || o.seg !== undefined)) bad.push(`Object "${o.id}" stands in a hex, not on an edge.`);
+    if (def.kind === 'door' && o.edge === undefined && o.seg === undefined) bad.push(`Door "${o.id}" needs a ${G.word.one} edge or a line to stand on.`);
+    if (def.kind !== 'door' && (o.edge !== undefined || o.seg !== undefined)) bad.push(`Object "${o.id}" stands in a ${G.word.one}, not on an edge.`);
     if (o.key !== undefined && !text(o.key)) bad.push(`Object "${o.id}" has a key that is not a name.`);
     if (o.name !== undefined && !text(o.name)) bad.push(`Object "${o.id}" has a name that is not text.`);
     for (const l of o.links ?? []) {
@@ -140,10 +140,10 @@ export function lintMap(doc, extra = []) {
     if (!text(r.name)) bad.push(`Region "${r.id}" has no name.`);
     const level = doc.levels.find((l) => l.id === r.level);
     if (!level) { bad.push(`Region "${r.id}" is on a level that does not exist.`); continue; }
-    if (!Array.isArray(r.hexes) || !r.hexes.length) { bad.push(`Region "${r.id}" has no hexes.`); continue; }
+    if (!Array.isArray(r.hexes) || !r.hexes.length) { bad.push(`Region "${r.id}" has no ${G.word.many}.`); continue; }
     for (const k of r.hexes) {
-      if (typeof k !== 'string' || !COL.test(k) || !level.tiles[k]) { bad.push(`Region "${r.id}" includes "${k}", which is not a hex of its level.`); break; }
-      if (taken.has(`${r.level}|${k}`)) { bad.push(`Hex ${k} is in two regions.`); break; }
+      if (typeof k !== 'string' || !COL.test(k) || !level.tiles[k]) { bad.push(`Region "${r.id}" includes "${k}", which is not a ${G.word.one} of its level.`); break; }
+      if (taken.has(`${r.level}|${k}`)) { bad.push(`${G.word.one[0].toUpperCase()}${G.word.one.slice(1)} ${k} is in two regions.`); break; }
       taken.add(`${r.level}|${k}`);
     }
     if (r.revealed !== undefined && typeof r.revealed !== 'boolean') bad.push(`Region "${r.id}": revealed must be true or false.`);
@@ -173,7 +173,7 @@ const drop = (list, id, what) => { const i = list.findIndex((x) => x.id === id);
 export const EDITS = {
   tile(map, { level, at, tile }) {
     const l = map.levels.find((x) => x.id === level);
-    if (!l || !at) return 'A tile needs a level and a hex.';
+    if (!l || !at) return `A tile needs a level and a ${gridOf(map).word.one}.`;
     if (tile) l.tiles[col(at)] = structuredClone(tile);
     else {
       delete l.tiles[col(at)];
@@ -214,7 +214,7 @@ export const EDITS = {
   unobject: (map, { id }) => drop(map.objects, id, 'object'),
   // A region claims its hexes: any other region on that level gives them up.
   region(map, { region }) {
-    if (!region || typeof region !== 'object' || !Array.isArray(region.hexes)) return 'A region needs a record with hexes.';
+    if (!region || typeof region !== 'object' || !Array.isArray(region.hexes)) return `A region needs a record with ${gridOf(map).word.many}.`;
     const id = region.id ?? nextId(map.regions, 'r'), mine = new Set(region.hexes);
     for (const r of map.regions) if (r.id !== id && r.level === region.level) r.hexes = r.hexes.filter((k) => !mine.has(k));
     map.regions = map.regions.filter((r) => r.id === id || r.hexes.length);
