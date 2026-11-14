@@ -6,6 +6,8 @@ import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMe
 const MARK = 'Smoke mark';
 const marked = (page) => page.evaluate((m) => JSON.stringify(window.hextable.state).includes(m), MARK);
 const inView = (page, sel) => page.evaluate((s) => { const e = document.querySelector(s), r = e.getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; }, sel);
+// The drawer slides in: wait until the element has come to rest inside the screen, not for a fixed time.
+const settled = (page, sel) => wait(page, (s) => { const e = document.querySelector(s), r = e?.getBoundingClientRect(); return !!r && r.width > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; }, sel).then(() => true, () => false);
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.trim());
 const session = (page) => page.evaluate(() => localStorage.getItem('hextable.session'));
 
@@ -27,7 +29,7 @@ async function solo(browser, url, label, opts) {
         for (const tab of ['turns', 'settings', 'log']) {
           await openTab(page, tab);
           if (!(await shown(page, '#menu-new'))) throw new Error(`no New game on ${tab}`);
-          if (!(await inView(page, '#menu-new'))) throw new Error(`New game is out of view on ${tab}`);
+          if (!(await settled(page, '#menu-new'))) throw new Error(`New game is out of view on ${tab}`);
           if (await shown(page, '#menu-leave')) throw new Error('Leave table shown in a solo game');
         }
       });
@@ -82,7 +84,7 @@ async function table(browser, url) {
         await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
         code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
         await openTab(host, 'turns');
-        if (!(await shown(host, '#menu-leave')) || !(await inView(host, '#menu-leave'))) throw new Error('no Leave table at the top of the DM menu');
+        if (!(await shown(host, '#menu-leave')) || !(await settled(host, '#menu-leave'))) throw new Error('no Leave table at the top of the DM menu');
         if (await shown(host, '#menu-new')) throw new Error('New game shown at a table');
       });
       await run.do('a player joins and has Leave table at the top of the menu on a phone', async () => {
@@ -92,7 +94,7 @@ async function table(browser, url) {
         await openTab(host, 'dm'); await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await phone.click('#btn-menu'); await waitShown(phone, '#drawer');
-        if (!(await shown(phone, '#menu-leave')) || !(await inView(phone, '#menu-leave'))) throw new Error('no Leave table at the top of the player menu');
+        if (!(await shown(phone, '#menu-leave')) || !(await settled(phone, '#menu-leave'))) throw new Error('no Leave table at the top of the player menu');
       });
       await run.do('the DM sees what leaving does on the first tap, and the table is kept', async () => {
         await host.click('#menu-leave');
