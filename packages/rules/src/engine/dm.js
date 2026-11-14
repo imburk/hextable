@@ -55,6 +55,7 @@ export const handlers = {
       breaks !== 'off' || fail('At this table only the DM sets a character aside.');
     }
     !e.dead || fail(`${e.name} is dead.`);
+    inFight(s, e.id) || fail(`${e.name} can be set aside only in a fight.`);
     const how = a.how ?? s.settings.away ?? AWAY[0];
     AWAY.includes(how) || fail(`That can be: ${AWAY.join(', ')}.`);
     if (!dm && breaks === 'ask') {
@@ -64,7 +65,8 @@ export const handlers = {
       return;
     }
     (!e.away || e.away.asked || (dm && a.how !== undefined && e.away.how !== how)) || fail(`${e.name} is already set aside.`);
-    e.away = { how, by: dm ? 'dm' : 'player' };
+    // A player's break stays theirs when the DM grants it or changes how, so they can come back by themselves.
+    e.away = { how, by: e.away?.by === 'player' || !dm ? 'player' : 'dm' };
     ev.push({ type: 'away', id: e.id, how, by: e.away.by });
     // Set aside on its own turn: the rest of the turn goes as the rule says. A stand-in plays on.
     const enc = s.encounter;
@@ -79,10 +81,12 @@ export const handlers = {
     if (how === 'hold' ? finishTurn(s, e, ev) : awayTurn(s, e, ev)) advanceTurn(s, ev);   // a turn under way is not held: it ends
   },
   // { type: 'stepBack', actor }: the creature is back (or its request to step away is taken back). By
-  // its player or the DM. A turn held this round is taken after the one going on.
+  // the DM, or by its player when the player stepped it aside (a player does not undo the DM's).
+  // A turn held this round is taken after the one going on.
   stepBack(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     e.away || fail(`${e.name} is not set aside.`);
+    ctx.role === 'dm' || e.away.by === 'player' || fail(`The DM set ${e.name} aside; only the DM can bring them back.`);
     const was = e.away;
     delete e.away;
     ev.push({ type: 'back', id: e.id, ...(was.asked ? { asked: true } : {}) });

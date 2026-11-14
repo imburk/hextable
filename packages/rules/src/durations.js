@@ -67,8 +67,11 @@ export function endEffect(s, ev, fx, why) {
 const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended);
 
 // The turn now being taken, as a part records it: a part made in a creature's turn does not end
-// at the end of that same turn ("until the end of its next turn").
-export const turnKey = (s) => (s.encounter ? `${s.encounter.id}:${s.encounter.round}:${s.encounter.turn}` : null);
+// at the end of that same turn ("until the end of its next turn"). Named by the fight, the round and
+// whose turn it is, not by its place in the order: a creature has one turn a round, and its place can
+// move while the turn goes on (stepping away, a creature joining the fight; engine/resolve.js).
+// Before the first turn of a fight (`turn: -1`) it is the place.
+export const turnKey = (s) => (s.encounter ? `${s.encounter.id}:${s.encounter.round}:${s.encounter.order[s.encounter.turn]?.id ?? s.encounter.turn}` : null);
 const ownTiming = (p) => !p.ended && (p.ends?.on === 'turnStart' || p.ends?.on === 'turnEnd');
 
 // An effect's time ran out: it ends, except parts that keep their own turn boundary.

@@ -10,6 +10,9 @@ import * as H from "../src/hex.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
+import { startEffect, turnKey } from "../src/durations.js";
+import { turnInZones } from "../src/zones.js";
+import { KIT } from "../src/engine/resolve.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, SAM = { role: "player", userId: "sam" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -199,7 +202,7 @@ test("who may: a player for their own, as `breaks` allows; the DM for anyone and
   ok(apply(s, { type: "stepAway", actor: "wizard" }, PAT));
   assert.equal(apply(s, { type: "stepAway", actor: "wizard" }, PAT).error, `${s.entities.wizard.name} is already set aside.`);
   ok(apply(s, { type: "stepAway", actor: "wizard", how: "hold" }, DM));
-  assert.deepEqual(s.entities.wizard.away, { how: "hold", by: "dm" }, "the DM changes how");
+  assert.deepEqual(s.entities.wizard.away, { how: "hold", by: "player" }, "the DM changes how; the break is still the player's");
   assert.equal(apply(s, { type: "stepBack", actor: "fighter" }, PAT).error, `${s.entities.fighter.name} is not set aside.`);
   ok(apply(s, { type: "stepAway", actor: "m1" }, DM));
   ok(apply(s, { type: "stepBack", actor: "wizard" }, PAT));
@@ -217,7 +220,27 @@ test("who may: a player for their own, as `breaks` allows; the DM for anyone and
   const o = fight({}, { breaks: "off" });
   assert.equal(apply(o, { type: "stepAway", actor: "wizard" }, PAT).error, "At this table only the DM sets a character aside.");
   ok(apply(o, { type: "stepAway", actor: "wizard" }, DM));
-  ok(apply(o, { type: "stepBack", actor: "wizard" }, PAT));
+  assert.deepEqual(o.entities.wizard.away, { how: "dodge", by: "dm" });
+  assert.equal(apply(o, { type: "stepBack", actor: "wizard" }, PAT).error, `The DM set ${o.entities.wizard.name} aside; only the DM can bring them back.`);
+  ok(apply(o, { type: "stepBack", actor: "wizard" }, DM));
+  // Granted on request, the break is the player's: they come back by themselves.
+  ok(apply(a, { type: "stepBack", actor: "wizard" }, PAT));
+});
+
+test("only in a fight, and the end of the fight brings everyone back", () => {
+  const s = newGame(1);
+  s.entities.wizard.owner = "pat";
+  assert.equal(apply(s, { type: "stepAway", actor: "wizard" }, PAT).error, `${s.entities.wizard.name} can be set aside only in a fight.`);
+  assert.equal(apply(s, { type: "stepAway", actor: "wizard" }, DM).error, `${s.entities.wizard.name} can be set aside only in a fight.`);
+  const f = fight({}, { breaks: "ask" });
+  ok(apply(f, { type: "stepAway", actor: "wizard" }, PAT));
+  ok(apply(f, { type: "stepAway", actor: "m1" }, DM));
+  const r = ok(apply(f, { type: "endEncounter" }, DM));
+  assert.equal(f.entities.wizard.away, undefined, "a request too");
+  assert.equal(f.entities.m1.away, undefined);
+  assert.deepEqual(viewEvents(r.events, f, PAT).filter((e) => e.type === "back"), [{ type: "back", id: "wizard", why: "fightOver" }]);
+  ok(apply(f, { type: "startEncounter", center: f.entities.fighter.pos, radius: 30 }, DM));
+  assert.ok(Object.values(f.entities).every((e) => !e.away), "the next fight starts with nobody aside");
 });
 
 test("players are told of their party's stepping away, and nothing of a foe the DM sets aside", () => {
@@ -287,3 +310,85 @@ test("the same on a square map", () => {
   assert.ok(ev.some((e) => e.type === "std" && e.id === "wizard" && e.action === "Dodge"));
   assert.deepEqual(s.entities.wizard.pos, pos);
 });
+
+// A turn is named by its fight, round and creature (turnKey), not by its place in the order, so a
+// turn moved or resumed keeps its name and what was made in it ends when it should (review of #306).
+const blind = (s, source, target, on) => {
+  const fx = startEffect(s, { name: "Test", source, duration: "1 minute" });
+  fx.parts.push({ target, cond: "blinded", ends: { on, of: "source" }, born: turnKey(s) });
+  s.entities[target].cond.blinded = true;
+  return fx;
+};
+const lasts = (s, fx) => !fx.parts[0].ended;
+for (const grid of ["hex", "square"]) {
+  const opts = grid === "square" ? { grid } : {};
+  // The order on squares differs: work from whatever it is.
+  const later = (s, id) => { const o = ids(s), i = o.indexOf(id); return o.slice(i + 1).find((x) => s.entities[x].side === "party" && x !== id); };
+
+  test(`an effect lasting to the end of its source's next turn, across a turn resumed at the end of the round (end, endKeep; ${grid})`, () => {
+    for (const how of ["end", "endKeep"]) {
+      const s = fight(opts);
+      until(s, "fighter");
+      const key = turnKey(s), fx = blind(s, "fighter", "m1", "turnEnd");
+      ok(apply(s, { type: "stepAway", actor: "fighter", how }, DM));
+      assert.notEqual(turnKey(s), key, "the next creature's turn has a name of its own");
+      ok(apply(s, { type: "stepBack", actor: "fighter" }, DM));
+      until(s, "fighter");
+      assert.equal(turnKey(s), key, "the same turn, the same name");
+      skip(s);
+      assert.ok(lasts(s, fx), "not ended by the end of the turn it was made in");
+      until(s, "fighter");
+      skip(s);
+      assert.ok(!lasts(s, fx), "ended at the end of the next one");
+    }
+  });
+
+  test(`an effect lasting to the end of the turn going on, when a held turn is put after it (hold; ${grid})`, () => {
+    const s = fight(opts, { away: "hold" });
+    const held = ids(s).find((x) => s.entities[x].side === "party"), next = later(s, held);
+    ok(apply(s, { type: "stepAway", actor: held }, DM));
+    until(s, next);
+    const key = turnKey(s), fx = blind(s, next, "m1", "turnEnd"), start = blind(s, next, "m2", "turnStart");
+    ok(apply(s, { type: "stepBack", actor: held }, DM));
+    assert.equal(turnKey(s), key, "the turn going on keeps its name when a place before it moves");
+    skip(s);
+    assert.equal(current(s), held);
+    assert.ok(lasts(s, fx) && lasts(s, start));
+    until(s, next);
+    assert.ok(!lasts(s, start), "ended at the start of its source's next turn");
+    skip(s);
+    assert.ok(!lasts(s, fx), "ended at the end of it");
+  });
+
+  test(`a stand-in's turn and a dodged turn are ordinary turns for what lasts (standIn, dodge; ${grid})`, () => {
+    for (const how of ["standIn", "dodge"]) {
+      const s = fight(opts);
+      until(s, "fighter");
+      const fx = blind(s, "fighter", "m1", "turnEnd"), start = blind(s, "fighter", "m2", "turnStart");
+      ok(apply(s, { type: "stepAway", actor: "fighter", how }, DM));
+      if (how === "standIn") skip(s);
+      assert.ok(lasts(s, fx) && lasts(s, start), how);
+      until(s, ids(s)[0]);
+      for (let i = 0; i < 20 && lasts(s, fx); i++) skip(s);
+      assert.ok(!lasts(s, start) && !lasts(s, fx), how);
+      assert.equal(s.encounter.round, 2, "within its next turn");
+    }
+  });
+
+  test(`a zone works once a turn on a creature, also when the turn's place moves (${grid})`, () => {
+    const s = fight(opts, { away: "hold" });
+    const held = ids(s).find((x) => s.entities[x].side === "party"), next = later(s, held);
+    ok(apply(s, { type: "stepAway", actor: held }, DM));
+    until(s, next);
+    const fx = startEffect(s, { name: "Test zone", source: next, duration: "1 minute" });
+    fx.zone = { area: { shape: "emanation", size: 300 }, on: ["turnEnd"], once: "turn", follows: next, spare: [], steps: [], src: {}, last: {} };
+    const ev = [];
+    turnInZones(s, ev, KIT, s.entities.m1, "turnEnd");
+    ok(apply(s, { type: "stepBack", actor: held }, DM));
+    turnInZones(s, ev, KIT, s.entities.m1, "turnEnd");
+    assert.equal(ev.filter((e) => e.type === "zone").length, 1, "the same turn: once");
+    skip(s);
+    turnInZones(s, ev, KIT, s.entities.m1, "turnEnd");
+    assert.equal(ev.filter((e) => e.type === "zone").length, 2, "the held creature's turn is another turn");
+  });
+}

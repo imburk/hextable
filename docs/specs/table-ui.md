@@ -1525,13 +1525,17 @@ same choices; a stand-in may play the character until the player is back. The SR
 "delay your turn"; a creature takes one turn a round, in initiative order, SRD "Combat"): it is a named table rule.
 
 - **State.** `e.away = { how, by: 'dm' | 'player' }` on the creature, or `{ asked: true, by: 'player' }` for a request
-  not yet granted. It stays across fights until `stepBack` (the player is away, not the fight). In the encounter,
+  not yet granted. Only in a fight ("can be set aside only in a fight"); the end of the fight brings everyone back
+  (a `back` event with `why: 'fightOver'`), a request too, so the next fight starts with nobody aside (review of #306).
+  `by` is `player` for a player's break, also once the DM grants it or changes `how`; `dm` only when the DM set the
+  creature aside. A player may `stepBack` only a `player` one; the DM, any. In the encounter,
   `moved = { [id]: { n, keep, round, after?, turn? } }` (who was moved where; `turn` is the budget and flags of a turn
   set aside part-way through) and `held = { [id]: round }`. All absent when unused, so no state version bump and no
   migration: an old table plays as before, and its settings read as the first value of each rule.
 - **Actions.** `stepAway { actor, how? }`: the creature's controller or the DM. `how` is the DM's only (one of
   `AWAY`); without it the table rule `away` applies. Sent again by the DM with another `how` it changes it.
-  `stepBack { actor }`: the controller or the DM; also takes back a request. Both in `engine/dm.js`; the turn-order
+  `stepBack { actor }`: the DM, or the controller when the break is theirs (`by: 'player'`; "The DM set Pip aside;
+  only the DM can bring them back."); also takes back a request. Both in `engine/dm.js`; the turn-order
   helpers (`awayHow`, `presentAfter`, `moveToEnd`, `heldBack`, `settleOrder`, `newRound`, `awayTurn`, `finishTurn`) in
   `engine/resolve.js`. `endTurn` (attacks.js) now ends its turn through `finishTurn`, the same code as before.
 - **`away`, what is done with its turns** (`SETTING_TEXT.away` has the DM's words):
@@ -1548,6 +1552,20 @@ same choices; a stand-in may play the character until the player is back. The SR
   can keep playing"), `ask` (the press is a request the table sees; the DM grants it by sending `stepAway`), `off`
   (the DM only). Not built: "auto after N seconds". The engine has no wall clock (it would break replay), and it never
   acts on a connection's state. A timer, if wanted, belongs to the server, sending the DM's `stepAway` (see below).
+- **Turn names (review of #306).** `turnKey` (durations.js), which names the turn a lasting effect's part was made in
+  ("until the end of its next turn") and a zone's once-a-turn marker, was the fight, the round and the place in the
+  order. A place can now move while a turn goes on (a turn resumed at the end of the round, a held turn put in before
+  the one going on; a creature joining the fight already re-sorted the order mid-turn), so it is now the fight, the
+  round and whose turn it is: a creature has one turn a round (stepping away moves a turn at most once a round, and a
+  held turn is one never begun). A part made in a saved game during the turn going on, under the old name, may end one
+  turn early once after the update. Nothing else keeps a place in the order: the budget and flags of a turn set aside
+  go with it, a waiting reaction stops any stepping away, and the engine has no readied actions.
+- **`hold` skips the turn entirely.** A held turn that is passed over is no turn: nothing at the start or the end of
+  its turn happens (a save to end a condition at the end of its turn, a zone's damage at the start, effects that end
+  then, its Reaction coming back). By the SRD every creature takes a turn each round, doing nothing if it likes, so this
+  is a table convenience the SRD does not give: the SRD's own course for a player who is away is closest to `dodge`
+  (the turn is taken, start and end included). That is why `dodge` is the default; `hold` is there because the owner
+  listed it.
 - **Safety.** A creature moved to the end only goes there if someone present is after it, once a round. After a whole
   lap of turns played for creatures set aside (everyone away), the next turn starts as an ordinary one and waits for the
   DM: no endless loop, no stalemate. Death saves are rolled as always. A creature joining the fight sorts the order by
@@ -1574,8 +1592,9 @@ same choices; a stand-in may play the character until the player is back. The SR
   (`stepAway`) and Decline (`stepBack`). Keep it on the existing Edit fold on a phone.
 - **The hint.** When the DM's screen calls a party member's link `lost` (the `{t:"link"}` report, #257), the row
   shows "Pip's connection is lost: set them aside?" with the same Set aside button. It only offers; it never sends.
-- **The player's button.** "Need a break" on the card or the drawer for a character they control, when
-  `S.settings.breaks !== 'off'`: `{ type: 'stepAway', actor }`; while `e.away`: "I'm back" (`stepBack`); while
+- **The player's button.** "Need a break" on the card or the drawer for a character they control, in a fight, when
+  `S.settings.breaks !== 'off'`: `{ type: 'stepAway', actor }`; while `e.away` with `by: 'player'`: "I'm back"
+  (`stepBack`; with `by: 'dm'` show "Set aside by the DM" and no button); while
   `e.away.asked`: "Asked the DM..." with a Cancel (`stepBack`). Never shown in solo unless the DM wants it (solo is the DM).
 - **The stand-in.** In `idled()` (app.js) the DM's screen runs `aiStep` for the current creature when it is an NPC; run it
   too when `awayHow(S, cur) === 'standIn'` (exported from `engine.js`), with the same `dm-auto` box.

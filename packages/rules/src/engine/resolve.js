@@ -137,6 +137,8 @@ export function endEncounter(s, ev, result) {
     delete e.cond.dodging; delete e.cond.disengaged; e.reactionUsed = false;
     if (up(e)) delete e.cond.prone;                       // nothing stops you standing once the fight is over
   }
+  // Stepping away is for a fight: whoever was set aside, or asked to be, is back when it ends.
+  for (const e of Object.values(s.entities)) if (e.away) { delete e.away; ev.push({ type: 'back', id: e.id, why: 'fightOver' }); }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round, fight: s.encounter.id });
   fightOver(s, ev);
   concludeFight(s, ev, result, s.encounter, fighters(s), tryLand);      // XP and loot for a fight won or ended (rewards.js)
