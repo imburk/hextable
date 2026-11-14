@@ -10,7 +10,7 @@ What is known to be missing is in [DEBT.md](DEBT.md); designs are in [specs](spe
 - **SRD content as data.** 339 spells, 329 monsters, 24 map objects, 17 feats and 75 magic items, each at an honest tier (`npm run content`). Multiattack, recharge, conditions, Concentration, Temporary Hit Points, areas and zones that last.
 - **Characters.** Twelve classes entered to level 20, build from class and level, levelling, multiclassing, feats, magic items with attunement, short rests and Hit Dice. Class features built for levels 1 to 6 of every class, and to level 15 for Paladin, Cleric, Druid, Sorcerer and Bard. Import from Fantasy Grounds.
 - **Reactions.** Shield, Uncanny Dodge, Deflect Attacks, Counterspell and opportunity attacks, by standing instruction or a prompt.
-- **Maps.** Levels, height, walls, doors, regions, objects and traps, creature sizes; five stock maps; a map editor with tracing and Universal VTT import.
+- **Maps.** Levels, height, walls, doors, regions, objects and traps, creature sizes; six stock maps (five on hexes, one on squares); a map editor with tracing and Universal VTT import.
 - **Sharing.** Handouts, private notes, table files, export of a table with its files.
 - **DM tools.** Undo and redo, rewind to the start of a fight or rest, a chronicle, a marching order and followers, defeat and rewards at the end of a fight.
 - **Two renderers.** The default view and a Three.js one at parity, with the Three.js library vendored.
@@ -36,6 +36,6 @@ In this order:
 - Persistent world across sessions
 - AI DM and AI characters reading the timeline
 - Portable characters: a character file with a signed history and a level meter, joined to a table by the DM's choice ([spec](specs/portable-characters.md)); its pure parts (jobs P1 and P2) can start any time, the rest after milestone 2
-- Square grid: maps on squares beside hexes, through one geometry interface ([spec](specs/square-grid.md), option B recommended, the owner to choose); its first jobs (S0 to S3) change no behaviour and can start any time
+- Square grid: maps on squares beside hexes, through one geometry interface ([spec](specs/square-grid.md), option B recommended, the owner to choose); its first jobs (S0 to S3) change no behaviour and can start any time; the lobby now offers the starter valley on squares or hexes and there is one square stock map (S12, #269)
 - Homebrew packs per table, a plain-language reader and a spell builder an AI can drive ([spec](specs/homebrew.md)); the pure parts (jobs B1 to B4) can start any time, the table and client jobs after milestone 2
 - The official service for online play (monikers, official character records, a lobby, reputation, anonymous statistics, AI stand-ins), a separate project: founding spec, interface draft and how the two leads work together in [service](service/FOUNDING.md) (#254)
