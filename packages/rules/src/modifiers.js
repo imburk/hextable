@@ -163,7 +163,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
       // `onFail`: dice added only after the roll failed (Bardic Inspiration, Peerless Skill); the
-      // roll's maker decides (engine.js, rescue), so nothing is added or used up here.
+      // roll's maker decides (engine/rolls.js, rescue), so nothing is added or used up here.
       if (m.onFail) { out.rescue.push({ value, name: src.name, ...(src.part ? { part: src.part } : {}), ...(m.cost ? { cost: m.cost } : {}) }); continue; }
       if (m.uses && src.part) out.used.push(src.part);         // one use: the roll that takes it ends it (durations.useUp)
       if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
