@@ -100,7 +100,12 @@ async function squareEditor(browser, url, label, opts) {
       const tapPoint = async (p, dx = 1, dy = -1) => {
         const s = await screen(p), top = await panelTop();
         if (!s || s.y < 4 || s.y > top - 4 || s.x < 4 || s.x > vw - 4) throw new Error(`the point ${p} is not on the map above the editor (${JSON.stringify(s)})`);
-        await tap(s.x + dx, s.y + dy); await sleep(120);
+        await tap(s.x + dx, s.y + dy); await sleep(300);
+      };
+      // A tap that must show its effect: a pointer tap now and then does not reach the page, so if `fn` is not true a moment after, tap once more.
+      const tapWait = async (p, fn, arg, dx = 1, dy = -1) => {
+        await tapPoint(p, dx, dy);
+        try { await wait(page, fn, arg, 1500); } catch { await tapPoint(p, dx, dy); await wait(page, fn, arg, 6000); }
       };
       const tool = (t) => page.click(`#ed-tools [data-tool="${t}"]`);
       const twice = async (sel) => { await page.click(sel); await page.click(sel); };
@@ -183,7 +188,7 @@ async function squareEditor(browser, url, label, opts) {
       await run.do('trace the room with the Wall tool: points snap to the square corners', async () => {
         await frame(...middle(7, 6), DIST);
         const room = [[6, 7], [6, 9], [10, 9], [10, 4], [6, 4], [6, 6]];         // a room of 4 by 5 squares, with the gap for the door on its west side (a phone shows no more)
-        for (const [i, j] of room) await tapPoint(corner(i, j));
+        for (const [n, [i, j]] of room.entries()) await tapWait(corner(i, j), (len) => window.hextable.ED.traceLine.length === len, n + 1);
         await tapPoint(corner(6, 6), 0, 0);           // the last point again ends the line
         await wait(page, () => window.hextable.state.map.walls.length === 5);
         const want = room.map(([i, j]) => corner(i, j)), walls = (await map()).walls;
@@ -194,7 +199,8 @@ async function squareEditor(browser, url, label, opts) {
       });
       await run.do('trace the door across the gap: it stands on a square side (edge), not on a free line', async () => {
         await page.click('#ed-tmodes [data-tmode="door"]');
-        await tapPoint(corner(6, 6)); await tapPoint(corner(6, 7));
+        await tapWait(corner(6, 6), () => window.hextable.ED.traceLine.length === 1);
+        await tapPoint(corner(6, 7));
         await wait(page, () => window.hextable.state.map.objects.length === 1);
         const d = (await map()).objects[0], c = cellAt(5, 6);
         if (d.seg || d.edge !== 0 || d.at.q !== c.q || d.at.r !== c.r) throw new Error(`the door is ${JSON.stringify(d)}; wanted edge 0 of ${c.q},${c.r}`);
@@ -204,16 +210,15 @@ async function squareEditor(browser, url, label, opts) {
         if ((await ev(() => document.querySelector('#ed-brush [data-b="1"]').textContent)) !== '3 by 3') throw new Error('the brush is not labelled in squares');
         await page.click('#ed-brush [data-b="1"]');
         await frame(...middle(16, 8), DIST);
-        const m = middle(16, 8), s = await screen(m); await tap(s.x, s.y);
-        await wait(page, () => Object.values(window.hextable.state.map.levels[0].tiles).filter((t) => t.t === 'forest').length === 9);
+        await tapWait(middle(16, 8), () => Object.values(window.hextable.state.map.levels[0].tiles).filter((t) => t.t === 'forest').length === 9, null, 0, 0);
         await page.click('#ed-brush [data-b="0"]');
         await tool('height'); await page.click('#ed-hmode [data-hm="up"]');
         await frame(...middle(7, 6), DIST);
         const top = cellAt(9, 7), foot = cellAt(6, 4);
-        for (let k = 0; k < 3; k++) await tapPoint(middle(9, 7), 0, 0);
-        await wait(page, (c) => window.hextable.state.map.levels[0].tiles[`${c.q},${c.r}`]?.h === 7.5, top);
+        for (let k = 1; k <= 3; k++) await tapWait(middle(9, 7), ([c, h]) => window.hextable.state.map.levels[0].tiles[`${c.q},${c.r}`]?.h === h, [top, 2.5 * k], 0, 0);
         await page.click('#ed-hmode [data-hm="stairs"]');
-        await tapPoint(middle(6, 4), 0, 0); await tapPoint(middle(9, 7), 0, 0);
+        await tapWait(middle(6, 4), () => !!window.hextable.ED.pending, null, 0, 0);
+        await tapPoint(middle(9, 7), 0, 0);
         await wait(page, (c) => window.hextable.state.map.levels[0].tiles[`${c.q + 1},${c.r + 1}`]?.h === 2.5, foot, 8000);
         const t = (await lvl()).tiles, steps = [1, 2].map((n) => t[`${foot.q + n},${foot.r + n}`]?.h);
         if (steps.join() !== '2.5,5') throw new Error(`the diagonal steps are ${steps}`);
