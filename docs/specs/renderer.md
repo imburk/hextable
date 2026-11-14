@@ -483,8 +483,12 @@ version, where each file came from, and its SHA-256. The build copies them to
 
 ### Where models come from
 
-Every model in the repo must have a licence that allows redistribution in an
-MIT project, and a line in `packages/client/assets/models/LICENSES.md`. The
+Every model in the repo must have a licence that allows redistribution in a
+public AGPL-3.0-or-later project: permanently free, CC0 preferred, CC-BY
+acceptable with a credit line; nothing non-commercial, share-alike or GPL, and
+no Mixamo (owner's decision, 13 November 2026). Each model gets a line in
+`packages/client/assets/models/LICENSES.md`. AI-generated models (Tripo) fill
+the gaps the free sources leave. The
 SRD rule applies to models too: no creature from outside the SRD, under any
 name. These sources are **candidates to verify**, not facts; each licence is
 checked on the source's own page for the exact pack before anything is
