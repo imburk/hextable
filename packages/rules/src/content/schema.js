@@ -1134,7 +1134,9 @@ function lintFeatDef(e, say) {
 // A magic item (SRD "Magic Items"): what it is, whether it needs Attunement and from whom, where it must
 // be worn or held for its magic, the mundane item it is made from, its bonus, and what it grants while
 // active (worn or held, and attuned if it needs it). `activate` describes its uses, run by the `use` action with
-// `item` (engine/features.js, E18): effect steps on the effect runner; a spell cast from it goes to the DM.
+// `item` (engine/features.js, E18): effect steps on the effect runner; a spell cast from it goes through the
+// cast path (engine/casting.js, castFromItem; #284), `upTo` the highest level extra charges raise it to (one
+// charge a level past the use's own) and `self` that it targets only its user.
 // Design: docs/specs/rules-expansion.md, "Magic items" amendment.
 export const ITEM_CATEGORIES = ['armor', 'potion', 'ring', 'rod', 'scroll', 'staff', 'wand', 'weapon', 'wondrous'];
 export const RARITIES = ['common', 'uncommon', 'rare', 'very-rare', 'legendary', 'artifact', 'varies'];
@@ -1177,20 +1179,22 @@ function lintItem(e, say, ctx = {}) {
     if (!Array.isArray(e.activate) || !e.activate.length) say('activate is a list of uses');
     else for (const u of e.activate) {
       const us = (m) => say(`activate: ${m}`);
-      if (!u || typeof u !== 'object' || !Object.keys(u).every((k) => ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'dc', 'effects'].includes(k))) { us('a use is { name?, time, cost?, consumed?, spell?, level?, dc?, effects? }'); continue; }
+      if (!u || typeof u !== 'object' || !Object.keys(u).every((k) => ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'].includes(k))) { us('a use is { name?, time, cost?, consumed?, spell?, level?, upTo?, self?, dc?, effects? }'); continue; }
       if (!ACTION_TIMES.includes(u.time)) us(`time is one of ${ACTION_TIMES.join(', ')}`);
       if (u.cost !== undefined && !(isInt(u.cost) && u.cost > 0 && e.charges)) us('cost is charges, on an item with charges');
       if (u.consumed !== undefined && u.consumed !== true) us('consumed is true or left out');
       if (u.spell !== undefined && !(ID.test(u.spell) && (!ctx.spells || ctx.spells.has(u.spell)))) us(`spell "${u.spell}" is not in the pack`);
       if (u.level !== undefined && !(isInt(u.level) && u.level >= 1 && u.level <= 9 && u.spell)) us('level is a spell level, with a spell');
+      if (u.upTo !== undefined && !(isInt(u.upTo) && u.upTo > (u.level ?? 1) && u.upTo <= 9 && u.spell && u.cost)) us('upTo is a higher spell level that more charges reach, with a spell and a cost');
+      if (u.self !== undefined && !(u.self === true && u.spell)) us('self is true, with a spell');
       if (u.dc !== undefined && !(isInt(u.dc) && u.dc >= 5 && u.dc <= 30 && u.spell)) us('dc is a save DC, with a spell');
       if ((u.spell === undefined) === (u.effects === undefined)) us('a use casts a spell or has effects');
       if (u.effects !== undefined) lintSteps(u.effects, us);
       if (u.name !== undefined && !isText(u.name)) us('name is text');
     }
   }
-  // A use whose steps the engine runs (a potion's healing) is something it applies; a spell cast from an item is not, yet.
-  const runs = (e.activate ?? []).some((u) => Array.isArray(u?.effects) && u.effects.some((st) => st && !('manual' in st)));
+  // A use whose steps the engine runs (a potion's healing) or a spell it casts (#284) is something it applies.
+  const runs = (e.activate ?? []).some((u) => u?.spell || (Array.isArray(u?.effects) && u.effects.some((st) => st && !('manual' in st))));
   const gives = e.grants || e.bonus || e.base || e.wear === 'shield' || runs;
   if (e.tier === 'auto' && !gives) say('marked auto but gives nothing the engine applies');
   if (e.tier === 'manual' && (e.grants || e.bonus)) say('marked manual but gives something');

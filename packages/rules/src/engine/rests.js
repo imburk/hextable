@@ -10,6 +10,42 @@ import { ent, fail, featOf, mod } from './shared.js';
 import { heal } from './rolls.js';
 import { newProblems, remake, tryLand } from './sheets.js';
 
+// ---------- dawn (DEBT C14, #284) ----------
+// The world clock counts minutes from midnight of the first day (scenario.js starts it at 08:00); dawn is
+// taken as 06:00 each day. Whenever a rest or advanceTime carries the clock past one or more dawns, every
+// magic item on a built character's sheet with `charges.regain` regains that roll of charges for each dawn,
+// up to its most (SRD item descriptions: "regains 1d6 + 1 expended charges daily at dawn"). An item with
+// charges and no `regain` (the Chime of Opening's ten uses) gets none back. The clock moving in a fight
+// (rounds) is not watched, and "once a dawn" uses are not tracked; the DM is told of those
+// held (a `manual` for the DM alone).
+export const DAWN = 6 * 60;
+export const dawnsBetween = (from, to) => Math.max(0, Math.floor((to - DAWN) / 1440) - Math.floor((from - DAWN) / 1440));
+function dawn(s, from, ev) {
+  const n = dawnsBetween(from, s.clock);
+  if (!n) return;
+  const daily = [];
+  for (const e of Object.values(s.entities)) {
+    for (const x of Array.isArray(e.sheet?.items) ? e.sheet.items : []) {
+      const def = CONTENT.items[x?.item];
+      if (!def) continue;
+      if (/once a dawn|until the next dawn/i.test(def.text) && !def.charges) daily.push(`${e.name}'s ${itemName(def, x)}`);
+      const c = def.charges;
+      if (!c?.regain || x.charges === undefined || x.charges >= c.max) continue;
+      const was = x.charges, rolls = [];
+      for (let i = 0; i < n && x.charges < c.max; i++) {
+        const r = roll(s, c.regain);
+        rolls.push(r);
+        x.charges = Math.min(c.max, x.charges + r.total);
+      }
+      const now = x.charges;
+      ev.push({ type: 'recharged', id: e.id, key: x.id, item: itemName(def, x), pack: def.id, gained: now - was, charges: now, max: c.max,
+        dice: c.regain, rolls: rolls.map((r) => r.total) });
+    }
+  }
+  if (daily.length) ev.push({ type: 'manual', actor: null, name: 'Dawn', partial: true,
+    text: `Dawn${n > 1 ? ` (${n} of them)` : ''}: uses that come back once a dawn are the DM's to restore, as the engine does not track them: ${daily.join(', ')}.` });
+}
+
 export const handlers = {
   rest(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call a rest.');
@@ -42,8 +78,10 @@ export const handlers = {
       if (ex && (ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
       else if (ex) { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
     }
+    const from = s.clock;
     s.clock += 480;
     ev.push({ type: 'rest' });
+    dawn(s, from, ev);
     tick(s, ev);
   },
   // SRD Short Rest: an hour. { type: 'shortRest', ids?, spend?: { id: n }, recover?: { id: [slot levels] } }
@@ -144,16 +182,20 @@ export const handlers = {
       remake(s, e, derive(sheet).record, sheet, ev);
       ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}) });
     }
+    const from = s.clock;
     s.clock += 60;
     ev.push({ type: 'rest', short: true });
+    dawn(s, from, ev);
     tick(s, ev);
   },
   advanceTime(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can advance time.');
     !s.encounter || fail('Time moves in rounds during a fight.');
     a.minutes > 0 || fail('Time only moves forward.');
+    const from = s.clock;
     s.clock += a.minutes;
     ev.push({ type: 'time', minutes: a.minutes });
+    dawn(s, from, ev);
     tick(s, ev);
   },
   chronicle(s, a, ctx, ev) {
