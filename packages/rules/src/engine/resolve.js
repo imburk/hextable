@@ -364,6 +364,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   if (!hit) studied(s, e, t, ev);
   else afterHit(s, e, t, ev);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
+  if (hit && s.encounter && !e.object) s.encounter.flags[`hit:${e.id}:${t.id}`] = true;     // a feature that follows a hit this turn (Hurl Through Hell)
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };
 }

@@ -6,7 +6,7 @@ import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
 import { FT, gap, landing, overlapAt, unseenAt } from '../space.js';
-import { canSee, hiddenFrom } from '../sight.js';
+import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, castAbilOf, control, ent, fail, featOf, ft, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
@@ -157,6 +157,15 @@ function metamagicFor(s, e, sp, a, slot) {
 }
 const nice = (id) => id[0].toUpperCase() + id.slice(1);
 
+// Repelling Blast (`repel: { spell, feet }`): `a.repel` is how far (5 or 10 feet, up to `feet`) each
+// Large or smaller creature the spell hits with an attack roll is pushed straight away; left out, none.
+function repelFor(e, sp, a) {
+  if (a.repel === undefined) return 0;
+  const f = (e.feats ?? []).find((x) => x.repel?.spell === sp.id) || fail(`${e.name} can't push anything with ${sp.name}.`);
+  (Number.isInteger(a.repel) && a.repel > 0 && a.repel % 5 === 0 && a.repel <= f.repel.feet) || fail(`${f.name} pushes up to ${f.repel.feet} ft, in steps of 5.`);
+  return a.repel;
+}
+
 // ---------- the Evoker (#232) ----------
 // Empowered Evocation (`empowered: { school, list, ability }`): a spell of that school on that class's
 // list adds the ability's modifier to one of its damage rolls. `a.empower` is false to go without, or
@@ -217,11 +226,18 @@ export const handlers = {
     // for one of its uses. A feature that names its spells (`freeCast.spells`: Magic Initiate's level 1
     // spell) casts one of them at its own level and casting time, with no slot, for one of its uses.
     const via = a.via !== undefined ? (featOf(e, a.via)?.freeCast ? featOf(e, a.via) : fail(`${e.name} has no feature that casts spells that way.`)) : null;
+    // Since #232 (Eldritch Invocations, Contact Patron): `atWill`, no uses spent; `self`, only on its
+    // caster; `dark`, only while the caster is in Dim Light or Darkness (One with Shadows); `time`, cast
+    // in that time instead of its own (Pact of the Chain: a Magic action); `sureSave`, the caster
+    // succeeds on the spell's own saves (Contact Patron); `maxTemp`, Temporary Hit Point dice at their
+    // highest (Fiendish Vigor).
     if (via) {
       const fc = via.freeCast;
       (sp && (fc.spells ? fc.spells.includes(a.spell) : (sp.def.classes ?? []).includes(fc.list) && sp.level <= fc.maxLevel)) || fail(`${via.name} can't cast that spell.`);
-      (e.uses[via.id] ?? 0) > 0 || fail(`${e.name} has no uses of ${via.name} left.`);
+      (fc.atWill || (e.uses[via.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${via.name} left.`);
       a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
+      if (fc.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${via.name} casts ${sp.name} on ${e.name} only.`);
+      if (fc.dark) lightAt(s, e.pos) !== 'bright' || fail(`${via.name} works only while ${e.name} is in Dim Light or Darkness.`);
     } else (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
@@ -231,7 +247,7 @@ export const handlers = {
     !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
-    const asAction = !!via?.freeCast.list;                // Divine Intervention: the spell is the feature's Magic action
+    const asAction = !!via?.freeCast.list || via?.freeCast.time === 'action';      // Divine Intervention, Pact of the Chain: the spell is a Magic action
     if (!sp.turn && s.encounter && !asAction) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
     let time = asAction ? 'action' : sp.time;
 
@@ -247,7 +263,9 @@ export const handlers = {
     // Who or what it is aimed at. A spell aimed at creatures takes `target` (one) or `targets`.
     const slot = sp.level > 0 ? (a.slot ?? sp.level) : 0;
     const mm = metamagicFor(s, e, sp, a, slot);
-    const range = mm.range ?? sp.range;
+    // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
+    const spear = (e.feats ?? []).reduce((n, f) => n + (f.spellRange?.spell === a.spell ? f.spellRange.add : 0), 0);
+    const range = typeof (mm.range ?? sp.range) === 'number' && spear ? (mm.range ?? sp.range) + spear : mm.range ?? sp.range;
     const most = targetCount(sp.def, e.level, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
@@ -263,6 +281,7 @@ export const handlers = {
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
     const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
     const evo = evokerFor(e, sp, a, slot, via, targets);
+    const repel = repelFor(e, sp, a);
 
     // What it costs.
     if (sp.level > 0 && !via) {
@@ -286,7 +305,7 @@ export const handlers = {
       if (slotted) s.encounter.flags.slot = true;
     }
     if (slotted) e.slots[slot]--;
-    if (via) e.uses[via.id]--;
+    if (via && !via.freeCast.atWill) e.uses[via.id]--;
     if (mm.cost) e.uses[mm.pool] -= mm.cost;
     if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
     if (mm.list.length) ev.push({ type: 'std', id: e.id, action: `Metamagic: ${mm.names.join(', ')}` });
@@ -307,6 +326,8 @@ export const handlers = {
     // What it does: run its effect steps.
     const st = spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, e.level, slot);
     if (pick) chooseIn(steps, pick.of, a.choice);
+    // Repelling Blast: a hit with the spell's attack pushes a Large or smaller target so many feet away.
+    if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}) });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
@@ -358,7 +379,8 @@ export const handlers = {
       steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
-        ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}) },
+        ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
+        spell: sp.id, ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared,

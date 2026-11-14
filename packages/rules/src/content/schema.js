@@ -48,7 +48,9 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
   // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).
   'check.proficient',
   // The attack is an Opportunity Attack (Escape the Horde).
-  'attack.opportunity'];
+  'attack.opportunity',
+  // The target is not a Fiend (Hurl Through Hell's damage).
+  'target.notFiend'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
@@ -133,6 +135,8 @@ function lintModifier(m, say) {
   // of one name, only one applies to a roll (and only that one is used up).
   if (m.except !== undefined && !(m.except === 'source' && m.on === 'attack.received')) say('`except` is "source", on attack.received');
   if (m.stack !== undefined && m.stack !== false) say('`stack` is false or left out');
+  // `spell`: it holds only for that spell's damage (Agonizing Blast).
+  if (m.spell !== undefined && !(ID.test(m.spell) && m.on === 'damage.dealt')) say('`spell` names a spell, on damage.dealt');
   lintWhen(m.when, say);
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
@@ -631,7 +635,9 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   // A modifier an attacker gets against the creature it hit, to the end of the turn (Multiattack Defense); another
   // creature hurt by a mark's extra damage (Superior Hunter's Prey); Concentration on a spell that damage does not
   // break (Relentless Hunter); Exhaustion lowered by a Short Rest (Tireless).
-  'afterHit', 'markSpread', 'steadfast', 'restExhaustion'];
+  'afterHit', 'markSpread', 'steadfast', 'restExhaustion',
+  // A spell's range made longer (Eldritch Spear) and a push on its hits (Repelling Blast).
+  'spellRange', 'repel'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -699,7 +705,11 @@ function lintGrants(g, cls, say) {
   }
   if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    // `after: 'hit'`: used on a creature its creature hit with an attack roll this turn, once a turn; `orSlot`: with
+    // its uses spent, a Pact Magic spell slot restores one (Hurl Through Hell).
+    if (a?.after !== undefined && !(a.after === 'hit' && a.target?.creature)) say('action after is "hit", on a creature');
+    if (a?.orSlot !== undefined && !(a.orSlot === true)) say('action orSlot is true or left out');
     // `acts`: the feature's action also takes these actions (Patient Defense with a Focus Point: Disengage and Dodge).
     if (a?.acts !== undefined && !(Array.isArray(a.acts) && a.acts.length && allOf(['dash', 'disengage', 'dodge'])(a.acts) && new Set(a.acts).size === a.acts.length && a.target?.self)) say('action acts lists dash, disengage or dodge, on the creature itself');
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
@@ -937,13 +947,23 @@ function lintGrants(g, cls, say) {
   if (g.markSpread !== undefined && !(g.markSpread && ID.test(g.markSpread.spell ?? '') && isInt(g.markSpread.range) && g.markSpread.range > 0 && g.markSpread.range % 5 === 0 && Object.keys(g.markSpread).length === 2)) say('markSpread is { spell, range }');
   // `steadfast: { spell }`: taking damage does not make it save to keep Concentration on that spell (Relentless Hunter).
   if (g.steadfast !== undefined && !(g.steadfast && ID.test(g.steadfast.spell ?? '') && Object.keys(g.steadfast).length === 1)) say('steadfast is { spell }');
+  // `spellRange: { spell, perLevel }`: that spell's range is longer by so many feet per class level (Eldritch Spear).
+  if (g.spellRange !== undefined && !(g.spellRange && ID.test(g.spellRange.spell ?? '') && isInt(g.spellRange.perLevel) && g.spellRange.perLevel > 0 && Object.keys(g.spellRange).length === 2)) say('spellRange is { spell, perLevel }');
+  // `repel: { spell, feet }`: a Large or smaller creature that spell hits with an attack roll may be pushed up to
+  // `feet` straight away (`cast` with `repel`: Repelling Blast).
+  if (g.repel !== undefined && !(g.repel && ID.test(g.repel.spell ?? '') && isInt(g.repel.feet) && g.repel.feet > 0 && g.repel.feet % 5 === 0 && Object.keys(g.repel).length === 2)) say('repel is { spell, feet }');
   // `restExhaustion: 'short'`: each Short Rest it finishes lowers its Exhaustion by 1 (Tireless).
   if (g.restExhaustion !== undefined && g.restExhaustion !== 'short') say('restExhaustion is "short"');
   if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
+// A freeCast of named spells may also say (#232): `atWill` (no uses), `self` (on its caster only), `dark` (only in
+// Dim Light or Darkness), `sureSave` (its caster succeeds on the spell's saves), `maxTemp` (Temporary Hit Point
+// dice at their highest) and `time: 'action'` (cast as a Magic action whatever its casting time).
+const FREE_CAST_FLAGS = ['atWill', 'self', 'dark', 'sureSave', 'maxTemp'];
 const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
-  || (Object.keys(x).length === 1 && Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))));
+  || (Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))
+    && Object.keys(x).every((k) => k === 'spells' || (FREE_CAST_FLAGS.includes(k) && x[k] === true) || (k === 'time' && x[k] === 'action'))));
 function lintFeature(f, cls, say, ids) {
   const sub = (m) => say(`feature ${f?.id}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
@@ -969,19 +989,28 @@ function lintFeature(f, cls, say, ids) {
   // (derive.js, sheet `feats`); the feature grants nothing itself.
   if (f.feat !== undefined && !(f.feat === 'any' && f.grants === undefined && f.options === undefined && f.uses === undefined)) sub('feat is "any", on a feature that grants nothing else');
   // `pick`: so many different options are chosen (Metamagic: 2), as a list; otherwise one.
-  if (f.pick !== undefined && !(isInt(f.pick) && f.pick >= 2 && Array.isArray(f.options) && f.pick < f.options.length)) sub('pick is how many options are chosen, 2 or more and fewer than there are');
+  // Or a column of the class table (Eldritch Invocations: `{ column: 'invocations' }`), each level's count below the options'.
+  if (f.pick !== undefined && !(Array.isArray(f.options) && (isInt(f.pick) ? f.pick >= 2 && f.pick < f.options.length
+    : f.pick && Object.keys(f.pick).length === 1 && Array.isArray(cls.table?.[f.pick.column]) && cls.table[f.pick.column].every((n) => n === null || (isInt(n) && n < f.options.length))))) sub('pick is how many options are chosen (2 or more and fewer than there are), or { column }');
   if (f.options !== undefined) {
     if (!Array.isArray(f.options) || f.options.length < 2) sub('options lists two or more choices');
     else for (const o of f.options) {
       const os = (m) => sub(`option ${o?.id}: ${m}`);
       if (!ID.test(o?.id ?? '') || !isText(o.name) || !isText(o.text) || !TIERS.includes(o.tier)) os('needs an id, a name, text and a tier');
       if (o?.grants !== undefined) lintGrants(o.grants, cls, os);
+      // `requires` (#232): a class level, another option of this feature, or a spell the character knows (an Eldritch
+      // Invocation's prerequisite). `uses`: the option's own uses, as a feature's (Gift of the Depths' Water Breathing).
+      if (o?.requires !== undefined && !(o.requires && typeof o.requires === 'object' && Object.keys(o.requires).length && Object.keys(o.requires).every((k) => ['level', 'option', 'spell'].includes(k))
+        && (o.requires.level === undefined || (isInt(o.requires.level) && o.requires.level >= 1 && o.requires.level <= LEVELS))
+        && (o.requires.option === undefined || f.options.some((x) => x?.id === o.requires.option && x !== o)) && (o.requires.spell === undefined || ID.test(o.requires.spell)))) os('requires gives a level, another option of the feature, or a spell');
+      if (o?.uses !== undefined && !(o.uses && isInt(o.uses.max) && o.uses.max > 0 && RESTS.includes(o.uses.recharge) && Object.keys(o.uses).length === 2)) os('uses is { max, recharge }');
+      if (o?.grants?.freeCast && !o.uses && !o.grants.freeCast.atWill) os('a freeCast needs uses, or atWill');
       // `feat`: the option is that feat (a Fighting Style feat); it grants what the feat grants (lintPack checks it is one).
       if (o?.feat !== undefined && !(o.feat === o.id && o.grants === undefined)) os('an option that is a feat has the feat\'s id and no grants of its own');
     }
   }
   // A feature that only adds steps to another's (`with`: Sear Undead in Turn Undead) grants nothing of its own.
-  if (f.grants?.freeCast && !f.uses) sub('a freeCast needs uses');
+  if (f.grants?.freeCast && !f.uses && !f.grants.freeCast.atWill) sub('a freeCast needs uses, or atWill');
   // A feature whose whole effect is an aura's range growing at its level (Aura Expansion) grants nothing itself.
   if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !f.feat && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id) && !byLevelAt(cls).has(f.level)) sub('marked auto but grants nothing');
   // A manual feature may still have its cost enforced: an action whose only steps are manual.
@@ -1241,7 +1270,7 @@ const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach'
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
-  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion'];
+  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion', 'spellRange', 'repel'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1271,7 +1300,7 @@ function lintFeat(f, say) {
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
   }
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
-  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && f.uses)) sub('its freeCast is { list, maxLevel } or { spells }, with uses.');
+  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && (f.uses || f.freeCast.atWill))) sub('its freeCast is { list, maxLevel } or { spells }, with uses or atWill.');
   if (f.metamagic !== undefined && !(f.metamagic && typeof f.metamagic.id === 'string' && isInt(f.metamagic.cost) && f.metamagic.cost > 0 && f.metamagic.cost <= 10 && ID.test(f.metamagic.pool ?? ''))) sub('its metamagic is { id, cost, pool }.');
   if (f.metamagicMax !== undefined && !(f.metamagicMax && isInt(f.metamagicMax.n) && f.metamagicMax.n >= 2 && f.metamagicMax.n <= 3 && ID.test(f.metamagicMax.while ?? ''))) sub('its metamagicMax is { n, while }.');
   if (f.exchange !== undefined && !(f.uses && f.exchange && ['costs', 'minLevel'].every((k) => f.exchange[k] && Object.values(f.exchange[k]).every((v) => isInt(v) && v > 0)))) sub('its exchange is { costs, minLevel }, with uses.');
@@ -1304,6 +1333,8 @@ function lintFeat(f, say) {
   if (f.markSpread !== undefined && !(f.markSpread && ID.test(f.markSpread.spell ?? '') && isInt(f.markSpread.range) && f.markSpread.range > 0 && f.markSpread.range <= 300)) sub('its markSpread is { spell, range }.');
   if (f.steadfast !== undefined && !(f.steadfast && ID.test(f.steadfast.spell ?? ''))) sub('its steadfast is { spell }.');
   if (f.restExhaustion !== undefined && f.restExhaustion !== 'short') sub('its restExhaustion is "short".');
+  if (f.spellRange !== undefined && !(f.spellRange && ID.test(f.spellRange.spell ?? '') && isInt(f.spellRange.add) && f.spellRange.add > 0 && f.spellRange.add <= 600)) sub('its spellRange is { spell, add }.');
+  if (f.repel !== undefined && !(f.repel && ID.test(f.repel.spell ?? '') && isInt(f.repel.feet) && f.repel.feet > 0 && f.repel.feet <= 30)) sub('its repel is { spell, feet }.');
   if (f.empowered !== undefined && !(f.empowered && SCHOOLS.includes(f.empowered.school) && ID.test(f.empowered.list ?? '') && ABILITIES.includes(f.empowered.ability))) sub('its empowered is { school, list, ability }.');
   if (f.overchannel !== undefined && !(f.overchannel && ID.test(f.overchannel.list ?? '') && isInt(f.overchannel.maxSlot) && f.overchannel.maxSlot >= 1 && f.overchannel.maxSlot <= 9 && [4, 6, 8, 10, 12].includes(f.overchannel.die))) sub('its overchannel is { list, maxSlot, die }.');
   if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');

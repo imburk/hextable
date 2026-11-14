@@ -154,6 +154,6 @@ test("Overchannel is refused for a cantrip, a slot above 5, a spell with no dama
   const s = ready(14);
   ok(cast(s, { spell: "fireball", hex: { q: 6, r: 0 }, overchannel: true }));
   ok(apply(s, { type: "endEncounter" }, DM));
-  ok(apply(s, { type: "setSheet", id: "hero", sheet: wiz(14) }, DM));
+  ok(apply(s, { type: "setSheet", actor: "hero", sheet: wiz(14) }, DM));
   assert.equal(s.entities.hero.uses.overchannel, 1);
 });

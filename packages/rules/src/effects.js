@@ -9,7 +9,7 @@
 // ask a player about a reaction (engine.js, apply, which also holds the react handler) is put back whole and run again from its start
 // with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
-import { BRANCHES, STEPS } from './content/schema.js';
+import { BRANCHES, SIZES, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
 import { useUp } from './durations.js';
 
@@ -311,6 +311,11 @@ function exec(s, ev, kit, f, step, at) {
     if (dc === undefined) return handOver(`${f.src.name} calls for a ${step.save.toUpperCase()} save with no DC entered. The DM applies it.`);
     kit.renew?.(s, e, t);                                               // making an enemy save keeps a Rage going
     // Careful Spell: a creature its caster protects succeeds, and takes nothing where it would take half.
+    // `sure`: creatures that succeed on this effect's saves without rolling (Contact Patron: its caster).
+    if (f.src.sure?.includes(t.id)) {
+      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, sure: true });
+      return step.half ? branch('onFail', { half: true }) : branch('onSuccess', { half: false });
+    }
     if (f.src.careful?.includes(t.id)) {
       ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
       return step.half ? undefined : branch('onSuccess', { half: false });
@@ -371,7 +376,7 @@ function exec(s, ev, kit, f, step, at) {
     const cut = f.cut;
     if (cut?.less !== undefined) delete f.cut;                             // a reduction is taken off the attack's damage once
     const wasUp = !t.dead && t.hp > 0, wasAlive = !t.dead;
-    kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
+    kit.damage(s, t, kit.dealt(s, e, t, parts, { hit: !!f.hit, weapon: !!f.weapon, cantrip: !!f.src.cantrip, ...(f.src.spell ? { spellId: f.src.spell } : {}) }, !!f.crit), null, ev, { crit: !!f.crit, ...(cut ? { cut } : {}) });
     // What this damage does to a creature it brought to 0 Hit Points (`onZero`) or killed
     // (`onKill`), whatever the save did to the amount. The stack runs the last pushed first.
     for (const [name, now] of [['onKill', wasAlive && t.dead], ['onZero', wasUp && t.hp <= 0]]) {
@@ -395,7 +400,8 @@ function exec(s, ev, kit, f, step, at) {
     return;
   }
   if (kind === 'heal' || kind === 'tempHp') {
-    const r = roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
+    // `src.maxTemp`: Temporary Hit Point dice at their highest, none rolled (Fiendish Vigor).
+    const r = kind === 'tempHp' && f.src.maxTemp ? maxRoll(step[kind], false) : roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
     const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"
     return kind === 'heal' ? kit.heal(s, t, n, ev, rolled) : kit.tempHp(s, t, n, ev, f, rolled);
   }
@@ -413,7 +419,8 @@ function exec(s, ev, kit, f, step, at) {
     return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
   if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
-  if (kind === 'move') return kit.push(s, t, step.move, step.dir, e.pos, ev);
+  // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).
+  if (kind === 'move') return step.largest && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(step.largest) ? undefined : kit.push(s, t, step.move, step.dir, e.pos, ev);
   if (kind === 'set' || kind === 'reveal') {
     if (kind === 'reveal' && step.reveal === 'target') return kit.reveal(s, t, ev);
     if (kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev)) return;

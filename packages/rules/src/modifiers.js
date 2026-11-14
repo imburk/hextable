@@ -61,6 +61,7 @@ export function judge(tag, sit, s) {
     case 'attack.str': return sit.str === undefined ? null : sit.str;              // an attack using Strength (Rage, Reckless Attack)
     case 'attack.spell': return sit.spell === undefined ? null : sit.spell;        // the attack roll of a spell (Innate Sorcery)
     case 'spell.cantrip': return sit.cantrip === undefined ? null : sit.cantrip;   // damage from a cantrip (Potent Spellcasting)
+    case 'target.notFiend': return t ? (t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) !== 'fiend' : null;   // Hurl Through Hell
     case 'attack.opportunity': return sit.opportunity === undefined ? null : sit.opportunity;   // an Opportunity Attack (Escape the Horde)
     case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
@@ -165,6 +166,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
     for (const m of src.modifiers) {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
+      if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
       if (!inScope(m, sit)) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
       if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }
