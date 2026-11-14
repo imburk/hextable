@@ -1,8 +1,8 @@
 
-import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
 
 // ---------- armed class features ----------
-// Stunning Strike on the action bar (packages/client/app.js, features.js): arm it, then tap a creature. A monk
+// Stunning Strike, a row of the Features tab (packages/client/actionpanel.js, features.js): arm it, then tap a creature. A monk
 // is added beside a goblin and the fight started; `touch` taps with a finger. Arm and cancel sends nothing; arm and
 // tap a creature out of reach is sent and refused by the engine, spending nothing; arm and tap the goblin sends it.
 async function armed(browser, url, label, opts) {
@@ -12,7 +12,7 @@ async function armed(browser, url, label, opts) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
-      const btn = () => page.locator('#actions button:has-text("Stunning Strike")');
+      const btn = () => page.locator('#ap-features [data-row="feat:stunning-strike"]');
       const snap = () => state(page, (S, i) => ({ tl: S.timeline.length, focus: S.entities[i]?.uses?.['monks-focus'], hint: document.getElementById('hint-text')?.textContent }), lo);
       const tapEntity = async (id) => {
         await page.evaluate(async (i) => {          // put it in the middle of the map, clear of the panels
@@ -68,6 +68,7 @@ async function armed(browser, url, label, opts) {
           const m = (p, q) => ({ q: (p.q + q.q) / 2, r: (p.r + q.r) / 2 });
           const w = H.toWorld(m(S.entities[a[1]].pos, S.entities[a[0]].pos)); R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
         }, [far, lo]);
+        await panelTab(page, 'features');
         await btn().waitFor({ state: 'visible', timeout: 5000 });
       });
 

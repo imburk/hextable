@@ -75,11 +75,19 @@ export const waitShown = (page, sel, on = true, timeout = 5000) =>
   wait(page, ([s, want]) => { const e = document.querySelector(s); return (!!e && !e.hidden && e.getClientRects().length > 0) === want; }, [sel, on], timeout);
 
 export async function open(page, url) {
-  // Until T4a gives every button of the action bar a row in its own tab (docs/specs/table-ui.md, T3), these passes drive the bar: they keep it open.
-  await page.addInitScript(() => { if (localStorage.getItem('hextable.panelTab') === null) localStorage.setItem('hextable.panelTab', '"all"'); });
   await page.goto(url);
   await waitShown(page, '#lobby');
 }
+// Open a tab of the action panel by tapping it, and wait until its rows are on screen. The ids: explore, attacks, bonus, move, features, reactions, and `all` (the spell buttons, until T4b).
+export async function panelTab(page, id) {
+  const tab = `#ap-tab-${id}`, pane = id === 'all' ? '#ap-all' : `#ap-${id}`;
+  await waitShown(page, tab, true, 8000);
+  if ((await page.getAttribute(tab, 'aria-selected')) !== 'true') await page.click(tab);
+  await wait(page, (t) => document.querySelector(t)?.getAttribute('aria-selected') === 'true', tab);
+  await waitShown(page, pane, true, 8000);
+}
+// A row of an open tab by its visible name: `#ap-<tab> [data-row]` with that text. Greyed rows are rows too.
+export const rowOf = (tab, text) => `#ap-${tab} [data-row]:has-text("${text}")`;
 export async function playSolo(page) {
   await page.click('#lobby-solo');
   await wait(page, () => window.hextable?.state?.entities);

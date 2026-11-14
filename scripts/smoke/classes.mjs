@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { scenario, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab } from './lib.mjs';
+import { scenario, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -21,7 +21,9 @@ async function classes(browser, url, label, opts) {
       };
       const uses = (n, f) => state(page, (S, a) => S.entities[a[0]].uses[a[1]], [ids[n], f]);
       const pick = async (n) => { await closePanels(page); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
-      const bar = async (text) => { await pick(text.who); await tap(page, `#actions button:has-text("${text.btn}")`); };
+      // The Features tab holds a row for each class feature; the spell buttons and Metamagic are still in the tab with id `all` (T4b's).
+      const feat = async (name) => { await panelTab(page, 'features'); await tap(page, `#ap-features [data-row]:has-text("${name}")`); };
+      const spellsTab = async () => { await panelTab(page, 'all'); };
       const tapCreature = async (target) => {
         await settle(page, target);
         const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
@@ -43,7 +45,7 @@ async function classes(browser, url, label, opts) {
 
       await run.do('the cleric offers Divine Spark with a chooser of its three modes', async () => {
         await pick('Cleo');
-        await tap(page, '#actions button:has-text("Divine Spark")');
+        await feat('Divine Spark');
         await waitShown(page, '#cp .cp-card');
         const modes = await page.$$eval('#cp .cp-mode', (b) => b.map((x) => x.dataset.mode));
         if (modes.join() !== 'heal,radiant,necrotic') throw new Error(`modes: ${modes}`);
@@ -59,7 +61,7 @@ async function classes(browser, url, label, opts) {
           const target = what === 'an ally' ? ids.Dru : await state(page, (S) => Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden).id);
           if (what !== 'an ally') await page.evaluate(([f, c]) => { const h = window.hextable; const S = h.state, e = S.entities[c]; h.act({ type: 'place', actor: f, to: { q: e.pos.q + 1, r: e.pos.r - 1 } }); }, [target, ids.Cleo]);
           const before = await uses('Cleo', 'channel-divinity'), tl = await state(page, (S) => S.timeline.length);
-          await pick('Cleo'); await tap(page, '#actions button:has-text("Divine Spark")');
+          await pick('Cleo'); await feat('Divine Spark');
           await tap(page, `#cp .cp-mode[data-mode="${mode}"]`);
           await wait(page, () => window.hextable.mode.kind === 'feature');
           const m = await page.evaluate(() => window.hextable.mode.extra?.mode); if (m !== mode) throw new Error(`armed with mode ${m}`);
@@ -74,7 +76,7 @@ async function classes(browser, url, label, opts) {
 
       await run.do('the druid takes a form from the list the engine offers, and the card and the sheet say so', async () => {
         await pick('Dru');
-        await tap(page, '#actions button:has-text("Wild Shape")');
+        await feat('Wild Shape');
         await waitShown(page, '#cp .cp-card');
         const forms = await page.$$eval('#cp-form option', (o) => o.map((x) => x.value));
         const bad = await page.evaluate(async (f) => { const { CONTENT } = await import('./shared/content/index.js'); return f.filter((id) => CONTENT.monsters[id].type !== 'beast' || CONTENT.monsters[id].cr > 1); }, forms);
@@ -96,20 +98,22 @@ async function classes(browser, url, label, opts) {
 
       await run.do('a refusal is shown in the panel with the choice kept; a form is changed and left from the bar', async () => {
         await pick('Dru');
-        await tap(page, '#actions button:has-text("Wild Shape")'); await page.selectOption('#cp-form', 'brown-bear'); await tap(page, '#cp-use');
+        await feat('Wild Shape'); await page.selectOption('#cp-form', 'brown-bear'); await tap(page, '#cp-use');
         await waitShown(page, '#cp-err');
         if (!/room/.test(await page.$eval('#cp-err', (x) => x.textContent))) throw new Error('the engine\'s refusal is not in the panel');
         if ((await page.$eval('#cp-form', (x) => x.value)) !== 'brown-bear') throw new Error('the choice was not kept');
         await page.selectOption('#cp-form', 'boar'); await tap(page, '#cp-use');
         await wait(page, (i) => (window.hextable.state.entities[i].form?.block ?? window.hextable.state.entities[i].form) === 'boar', ids.Dru);
         await pick('Dru');
-        if (!/Boar/.test(await page.$eval('#actions', (x) => x.textContent))) throw new Error('the bar does not say the druid is a boar');
-        if (!(await page.$$eval('#actions button', (b) => b.some((x) => /Gore|Tusk/i.test(x.textContent))))) throw new Error('the bar shows no attack of the form');
-        await tap(page, '#actions button:has-text("Wild Shape")');
+        await panelTab(page, 'features');
+        if (!/Boar/.test(await page.$eval('#ap-features', (x) => x.textContent))) throw new Error('the Features tab does not say the druid is a boar');
+        if (!/Boar/.test(await page.$eval('#c-res', (x) => x.textContent))) throw new Error('the status line does not say the druid is a boar');
+        if (!(await state(page, (S, i) => S.entities[i].attacks.some((a) => /Gore|Tusk/i.test(a.name)), ids.Dru))) throw new Error('the creature has no attack of the form');       // Attacks is a fight tab; the fight smoke below lists them
+        await feat('Wild Shape');
         if (!/Boar/.test(await page.$eval('#cp-form-now', (x) => x.textContent))) throw new Error('the panel does not say which form');
         await page.selectOption('#cp-form', 'panther'); await tap(page, '#cp-use');
         await wait(page, (i) => (window.hextable.state.entities[i].form?.block ?? window.hextable.state.entities[i].form) === 'panther', ids.Dru);
-        await pick('Dru'); await tap(page, '#actions button:has-text("Wild Shape")'); await tap(page, '#cp-leave');
+        await pick('Dru'); await feat('Wild Shape'); await tap(page, '#cp-leave');
         await wait(page, (i) => !window.hextable.state.entities[i].form, ids.Dru);
       });
 
@@ -126,7 +130,7 @@ async function classes(browser, url, label, opts) {
         }
         const before = await uses('Sorsha', 'font-of-magic');
         await pick('Sorsha');
-        await tap(page, '#actions button:has-text("Metamagic")');
+        await spellsTab(); await tap(page, '#actions button:has-text("Metamagic")');
         await waitShown(page, '#cp .cp-card');
         const opts = await page.$$eval('#cp [data-meta]', (b) => b.map((x) => x.dataset.meta));
         if (opts.join() !== 'careful,quickened,heightened,transmuted') throw new Error(`the options known: ${opts}`);
@@ -153,8 +157,8 @@ async function classes(browser, url, label, opts) {
         await page.evaluate(() => { if (window.hextable.state.encounter) window.hextable.act({ type: 'endEncounter' }); });       // the last cast may already have won it (the dice are not fixed)
         await wait(page, () => !window.hextable.state.encounter && window.hextable.waiting === 0, null, 25000);
         await pick('Sorsha');
-        await page.waitForSelector('#actions button:has-text("Font of Magic")', { timeout: 20000 });
-        await tap(page, '#actions button:has-text("Font of Magic")');
+        await panelTab(page, 'features'); await page.waitForSelector('#ap-features [data-row]:has-text("Font of Magic")', { timeout: 20000 });
+        await feat('Font of Magic');
         await waitShown(page, '#cp .cp-card');
         await tap(page, '#cp [data-how="spend"]'); await tap(page, '#cp [data-level="3"]');
         await tap(page, '#cp-use');
@@ -165,7 +169,7 @@ async function classes(browser, url, label, opts) {
         await tap(page, '#cp-use');
         await wait(page, ([i, n]) => window.hextable.state.entities[i].slots[3] === n + 1, [ids.Sorsha, slots]);
         if (await uses('Sorsha', 'font-of-magic') !== pts - 5) throw new Error('a level 3 slot should cost 5 points');
-        await pick('Sorsha'); await tap(page, '#actions button:has-text("Font of Magic")');
+        await pick('Sorsha'); await feat('Font of Magic');
         await tap(page, '#cp [data-how="spend"]'); await tap(page, '#cp [data-level="1"]'); await tap(page, '#cp-use');
         await wait(page, ([i, n]) => window.hextable.state.entities[i].uses['font-of-magic'] === n + 1, [ids.Sorsha, pts - 5]);
       });
@@ -184,7 +188,7 @@ async function classes(browser, url, label, opts) {
 
       await run.do('Lay On Hands: a refused condition shows in the panel, then the pool pays for the Hit Points', async () => {
         await pick('Pala');
-        await tap(page, '#actions button:has-text("Lay On Hands")');
+        await feat('Lay On Hands');
         await waitShown(page, '#cp .cp-card');
         await page.fill('#cp-amount', '5');
         await tap(page, '#cp [data-cure="poisoned"]');
@@ -200,7 +204,7 @@ async function classes(browser, url, label, opts) {
 
       await run.do('Divine Intervention: the cleric picks a spell from the list and casts it with no slot', async () => {
         await pick('Cleo');
-        await tap(page, '#actions button:has-text("Divine Intervention")');
+        await feat('Divine Intervention');
         await waitShown(page, '#cp .cp-card');
         const spells = await page.$$eval('#cp-spell option', (o) => o.map((x) => x.value));
         if (spells.length < 5 || !spells.includes('cure-wounds')) throw new Error(`the list: ${spells}`);
@@ -216,7 +220,7 @@ async function classes(browser, url, label, opts) {
       await run.do('Bardic Inspiration: arm it and tap an ally', async () => {
         await pick('Bardo');
         const before = await uses('Bardo', 'bardic-inspiration');
-        await tap(page, '#actions button:has-text("Bardic Inspiration")');
+        await feat('Bardic Inspiration');
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapCreature(ids.Pala);
         await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['bardic-inspiration'] === b - 1, [ids.Bardo, before], 25000);

@@ -428,19 +428,27 @@ export function initActionPanel(ctx) {
     const m = moveBudget(S, e); if (!m) return '';
     return `<div class="ap-speed"><span>Speed left <b>${m.left} ft</b>${m.max > m.left ? ` of ${m.max}` : ''}</span><span class="ap-meter" role="presentation"><i style="width:${m.max ? Math.round((m.left / m.max) * 100) : 0}%"></i></span></div>${m.prone ? '<p class="ap-why-line">Prone. You stand at the start of your turn, using half your Speed.</p>' : ''}`;
   };
-  // Only whole rows show in the compact pane: its height is cut back to the last row that fits, and a fade says there is more below.
+  // Only whole rows show in the compact pane: its height is cut back to the last row that fits, and a line under it says how many more are below.
+  const cue = document.createElement('button'); cue.type = 'button'; cue.id = 'ap-cue'; cue.hidden = true; body.append(cue);
+  cue.onclick = () => { raised = true; ctx.render(); };
+  const rowsOf = (el) => [...el.querySelectorAll('.ap-row, .ap-more > summary')];
+  function cueFor(el) {
+    const box = el.getBoundingClientRect(), hidden = el.hidden ? 0 : rowsOf(el).filter((it) => it.getBoundingClientRect().bottom > box.bottom + 1).length;
+    cue.hidden = !hidden; cue.textContent = hidden ? `▾ ${hidden} more: scroll or tap for more room` : '';
+  }
   function fit(el) {
     el.style.maxHeight = '';
-    const cap = parseFloat(getComputedStyle(el).maxHeight);
-    const items = [...el.querySelectorAll('.ap-row, .ap-more > summary')];
-    if (!(cap > 0) || !items.length || el.scrollHeight <= cap + 1) { el.removeAttribute('data-more'); return; }
-    const top = el.getBoundingClientRect().top - el.scrollTop;
-    let h = 0;
-    for (const it of items) { const bottom = it.getBoundingClientRect().bottom - top; if (bottom <= cap + 1 || !h) h = Math.max(h, bottom); }
-    el.style.maxHeight = `${Math.ceil(h)}px`;
-    el.toggleAttribute('data-more', el.scrollHeight > h + 1 && el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+    const cap = parseFloat(getComputedStyle(el).maxHeight), items = rowsOf(el);
+    if (cap > 0 && items.length && el.scrollHeight > cap + 1) {
+      const top = el.getBoundingClientRect().top - el.scrollTop;
+      let h = 0;
+      for (const it of items) { const bottom = it.getBoundingClientRect().bottom - top; if (bottom <= cap + 1 || !h) h = Math.max(h, bottom); }
+      el.style.maxHeight = `${Math.ceil(h)}px`;
+    }
+    cueFor(el);
   }
-  for (const id of [...LISTS, 'reactions', 'down']) panes[id].addEventListener('scroll', () => { const el = panes[id]; el.toggleAttribute('data-more', el.scrollTop + el.clientHeight < el.scrollHeight - 2); }, { passive: true });
+  for (const id of [...LISTS, 'reactions', 'down']) panes[id].addEventListener('scroll', () => cueFor(panes[id]), { passive: true });
+
   const exploreHtml = (list) => `<div class="ap-grid">${list.filter((r) => r.grid).map(rowHtml).join('')}</div>${list.some((r) => !r.grid) ? `<details class="ap-more"${moreOpen ? ' open' : ''}><summary>More</summary><div class="ap-list">${list.filter((r) => !r.grid).map(rowHtml).join('')}</div></details>` : ''}`;
 
   function reactionsPane(S, e, r) {
@@ -510,7 +518,7 @@ export function initActionPanel(ctx) {
       setHtml(tabsEl, tabsNow.map((t, i) => {
         const off = t.id === 'reactions' && !t.ok && !t.pending;
         return `<button type="button" role="tab" id="ap-tab-${t.id}" data-tab="${t.id}" aria-selected="${t.id === tab}" aria-controls="ap-${t.id}" tabindex="${t.id === tab ? 0 : -1}" class="${off ? 'off ' : ''}${t.pending ? 'pulse' : ''}"${off ? ' aria-disabled="true"' : ''}${i < 6 ? ` aria-keyshortcuts="${i + 1}"` : ''}>${esc(t.label)}${t.pending ? '<i class="sr-only"> (a question is waiting)</i>' : ''}</button>`;
-      }).join('') + (tab !== 'all' && tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body">${raised ? 'Less' : 'More room'}</button>` : ''));
+      }).join('') + (tab !== 'all' && tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body" aria-label="${raised ? 'Less room' : 'More room'}" title="${raised ? 'Less room' : 'More room'}">${raised ? '▾' : '▴'}</button>` : ''));
 
       // the panes: only the open one is shown
       for (const [id, el] of Object.entries(panes)) el.hidden = id !== tab;
@@ -529,10 +537,10 @@ export function initActionPanel(ctx) {
       if (tab === 'down') downPane(S, e);
       body.hidden = !tabsNow.length;
       card.dataset.tab = tab ?? '';
-      if (panes[tab] && tab !== 'all' && !panes[tab].hidden) fit(panes[tab]);
       card.dataset.situation = ctxNow.situation;
       card.toggleAttribute('data-raised', raised && tab !== 'all');
       card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
+      if (panes[tab] && tab !== 'all' && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
       return tab;
     },
     get tab() { return sel.tab ?? card.dataset.tab; },

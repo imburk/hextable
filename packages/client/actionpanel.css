@@ -5,9 +5,7 @@
 #ap-how p { margin: 4px 0 0; color: var(--muted); } #ap-how .row { margin: 8px 0 0; } #ap-how button { min-height: 44px; }
 
 #ap-body { min-height: 0; }
-#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down { max-height: 132px; overflow-y: auto; overscroll-behavior: contain; scroll-snap-type: y proximity; }
-:is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down)[data-more] { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); }
-.ap-row, .ap-more > summary { scroll-snap-align: start; }
+#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down { max-height: 132px; overflow-y: auto; overscroll-behavior: contain; }
 #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(132px, calc(55vh - 200px)); }
 #card[data-collapsed] #ap-body { display: none; }
 .ap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -28,17 +26,17 @@
 #ap-reactions small { display: block; color: var(--muted); }
 
 #ap-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-#ap-tabs button { flex: 1 0 auto; min-width: 64px; min-height: 48px; padding: 4px 10px; }
+#ap-tabs button { flex: 1 1 auto; min-width: 0; min-height: 48px; padding: 4px 6px; white-space: nowrap; }
 #ap-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #ap-tabs button.off { opacity: .5; }
-#ap-tabs button#ap-grip { flex: none; background: transparent; }
+#ap-tabs button#ap-grip { flex: none; min-width: 44px; background: transparent; }
 #ap-tabs button.pulse { border-color: var(--accent); animation: ap-pulse .9s ease-in-out infinite alternate; }
 @keyframes ap-pulse { to { background: var(--accent); color: var(--accent-ink); } }
 @media (prefers-reduced-motion: reduce) { #ap-tabs button.pulse { animation: none; background: var(--accent); color: var(--accent-ink); } }
 
 @media (min-width: 900px) {
   :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features) .ap-list { grid-template-columns: 1fr 1fr; }
-  #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(132px, calc(40vh - 150px)); }
+  #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(184px, calc(40vh - 130px)); }
 }
 
 /* The card is a grid; its rows must not grow to the width of the bar of buttons, which scrolls sideways inside it. */
@@ -49,3 +47,6 @@
 button.ap-row.off { opacity: 1; border-style: dashed; }
 .ap-row.off .ap-top, .ap-row.off .ap-s, .ap-row.off .ap-pips { opacity: .55; }
 
+
+/* Under a pane with more rows than fit: how many are below. */
+#ap-cue { width: 100%; min-height: 28px; margin-top: 4px; padding: 0 8px; font-size: 12px; color: var(--muted); background: transparent; border-style: dashed; }
