@@ -20,6 +20,7 @@ import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices } from './classes.js';
+import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
@@ -115,7 +116,8 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const uses = usesFor(S, e).map((u) => row({ id: `use:${u.object}:${u.verb}`, kind: 'use', label: u.label,
     sub: `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, why: u.why, send: { type: 'use', actor: e.id, object: u.object, verb: u.verb } }));
   const objects = [...uses.filter((u) => !u.why), ...uses.filter((u) => u.why)];
-  // 2. Following. "Lead the party" is the DM's (`partyFollow` is DM only): a player is not shown it.
+  // 2. Following. "Lead the party" is for whoever controls `e` (a player for their own creature, the DM for anyone; this panel is only ever
+  // drawn for a creature the viewer controls), and "Formation..." while someone follows `e` (formation.js).
   const follows = [];
   if (!inFight(S, e.id) && e.side === 'party') {
     const leader = e.follow && S.entities[e.follow];
@@ -125,7 +127,11 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
       follows.push(row({ id: 'follow', kind: 'follow', armed, label: armed ? 'Follow nearest' : 'Follow', sub: armed ? (near ? `${near.name} · or tap someone` : 'Tap a party member') : 'Walk behind someone',
         why: near ? '' : 'Nobody else in the party to follow.', send: near ? { type: 'follow', actor: e.id, leader: near.id } : null }));
     }
-    if (dm && !enc) follows.push(row({ id: 'lead', kind: 'send', label: 'Lead the party', sub: 'Everyone follows; then tap where to go', send: { type: 'partyFollow', leader: e.id } }));
+    if (!enc) {
+      const why = formationWhy(S, e, { dm: true, mine: true });
+      if (leads(S, e)) follows.push(row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
+      follows.push(row({ id: 'lead', kind: 'lead', label: 'Lead the party', sub: 'Everyone follows; then pick how', why, send: { type: 'partyFollow', leader: e.id } }));
+    }
   }
   // 3. Hurt: the healing this creature can do now, as shortcuts to its rows in Spells and Features, and the DM's rests.
   const aid = [];
@@ -588,6 +594,8 @@ export function initActionPanel(ctx) {
     if (r.why) return ctx.toast(r.why);
     switch (r.kind) {
       case 'send': case 'use': return ctx.act(r.send);
+      case 'lead': return ctx.lead ? ctx.lead(e) : ctx.act(r.send);
+      case 'formation': return ctx.formation?.(e);
       case 'item': {
         // A potion can be given to someone within reach: ask whom, unless there is only the drinker. Anything else is sent as it is.
         if (r.armed) return ctx.armItem(e, r, null, true);                                        // armed: a tap puts it down

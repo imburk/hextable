@@ -1736,3 +1736,31 @@ following, which stays as it was.
   stand", or "Places behind Pip were changed" with slots. A follower dropped stays the existing "couldn't keep up".
 - **Moves.** Nothing new to draw: followers' `moved` events come as before (in the order they walk).
 
+
+### E22: formations, client (PR for #304)
+
+The popup of "For the client job" above, built. Files: `packages/client/formation.js` (pure helpers, then the popup), `formation.css`, `app.js`
+(wiring, `describe`, the DM's marching order), `actionpanel.js` (two Explore rows). Test: `packages/client/test/formation.test.js`; smoke pass
+`SMOKE_ONLY=formation` (hexes and squares, 1280x800 and 390x844 with touch).
+
+- **Rows.** `lead` (Lead the party) is offered to whoever controls the selected party creature outside a fight, not only the DM: the panel is only ever
+  drawn for a creature the viewer controls, so the "not theirs" reason only appears in the DM's marching-order list (`formationWhy`). `formation`
+  (Formation...) appears while someone follows the creature. Greyed with the spec's reasons: a fight, alone, "isn't leading anyone".
+- **Flow.** Lead sends `partyFollow { leader }` and sets `pendingLead`; the popup opens from `refresh()` once the table (solo or server) shows followers.
+  A refusal clears it (`T.on.error`). Preset buttons change the draft only; OK sends `formation { shape }` for a preset picked, or
+  `formation { slots }` (every follower's place) after a hand edit, or nothing when nothing changed ("Done"). Cancel and Escape and a tap outside send
+  nothing; Lead has already captured the party as it stands, so Cancel keeps it. The preset shown as chosen is `formation.shape`; a `custom` shape
+  shows none chosen.
+- **Who is offered.** `followersOf`: party, alive, not hidden, `follow === leader`, in marching order: the engine's own list for a slot. A token appears only
+  for those. The leader is a fixed token at the front, and no cell ahead of it or on it can be dropped on. Presets are drawn from `presetSlots`, held and
+  custom from `formation.slots` (a follower with none is shown in the first free place at the back), the column single file.
+  "Keep as they stand" when the leader keeps no held shape yet cannot be drawn by the client (the capture is the engine's): the popup says the party stays as it
+  stands, and OK sends `shape: 'held'` for it.
+- **Board.** One grid of the grid's kind: hexagons or rounded squares, rows behind the leader (4 to 12), columns each side (3 to 12). Tokens are drawn
+  at their true place, so a held place at a half step sits between cells; a drop lands on a whole cell (half steps are not offered by hand). Drag by pointer
+  (mouse or touch; `touch-action: none` on a token), or tap a token and then a cell. A token dropped on another's cell swaps with it. Wide: a card;
+  at 600 px or less: a bottom sheet with 44 px+ targets.
+- **Ghosts.** While the popup is open the places are added to the renderer's `hl.move` (the highlight both renderers already draw), by the cell nearest each
+  place in the leader's frame (`formation.face`). Before the leader has walked there is no `face` and so no ghosts. They are the move colour, not fainter.
+- **Log.** `describe` reads the `formation` event as "The party walks behind Pip two abreast..." or "Places behind Pip were changed."
+- **Not done.** No `index.html` change was allowed, so the popup builds its own element and injects its stylesheet link. No half steps by hand.

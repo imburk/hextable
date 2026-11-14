@@ -18,6 +18,7 @@ import { createTracker } from './tracker.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
 import { initActionPanel } from './actionpanel.js';
+import { initFormation, formationWhy, leads, whyNoFormation, followersOf } from './formation.js';
 import { initDrawer } from './drawer.js';
 import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
@@ -138,6 +139,7 @@ function preview(e, a) {
   if (!dice.length) dice.push(20);
   return { dice: dice.slice(0, MAX_DICE), what, sub };
 }
+const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
 let flick = null, closeTray = null, armed = null;
 function act(action) {
   if (skipping()) return;
@@ -312,6 +314,7 @@ function words(ev) {
     case 'attuned': return [ev.failed ? `${n(ev.id)} couldn't ${ev.end ? 'end the Attunement to' : 'attune to'} ${ev.item}: ${ev.failed}` : `${n(ev.id)} ${ev.end ? 'is no longer attuned to' : 'is now attuned to'} ${ev.item}.`];
     case 'light': return [ev.bright || ev.dim ? `${n(ev.id)} carries ${ev.name ? `a ${ev.name.toLowerCase()}` : 'a light'}.` : `${n(ev.id)}'s light goes out.`];
     case 'follow': return [ev.leader ? `${n(ev.id)} follows ${n(ev.leader)}.` : ev.why ? `${n(ev.id)} couldn't keep up with ${n(ev.was)} and stops following.` : `${n(ev.id)} stops following ${n(ev.was)}.`];
+    case 'formation': return [ev.shape === 'custom' ? `Places behind ${n(ev.id)} were changed.` : `The party walks behind ${n(ev.id)} ${SHAPE_WORDS[ev.shape] ?? 'in a formation'}.`];
     case 'marchingOrder': return [`Marching order: ${ev.order.map(n).join(', ')}.`];
     case 'rewound': return [`The DM took the table back to ${ev.to === 'rest' ? 'the last rest' : 'the start of the fight'}.`, 'head'];
     case 'conclusion': return [logLine(ev, name), 'head'];
@@ -549,9 +552,12 @@ function refresh() {
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   showPick();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
+  if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
   R.setHighlights(ED.on ? ED.marks() : hl);
   sizeDock();
   ED.sync();
+  FM.sync();
+  if (pendingLead && S.entities[pendingLead] && followersOf(S, pendingLead).length) { const id = pendingLead; pendingLead = null; FM.open(id); }
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet-body').innerHTML = '<p class="note">Select one of the characters to see its sheet.</p>'; }
@@ -680,6 +686,15 @@ function renderMarch() {
       b.setAttribute('aria-label', `Move ${x.name} ${aria}`);
       b.disabled = !party[i + d];
       b.onclick = () => { const order = party.map((p) => p.id); [order[i], order[i + d]] = [order[i + d], order[i]]; act({ type: 'marchingOrder', order }); };
+      li.append(b);
+    }
+    // The formation control: for the DM on anyone. "Lead..." gathers the party behind them first, "Formation..." arranges those following.
+    if (isDM()) {
+      const leading = leads(S, x), why = formationWhy(S, x, { dm: true, mine: true });
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'fm-march'; b.textContent = leading ? 'Formation…' : 'Lead…';
+      b.setAttribute('aria-label', `${leading ? 'Formation behind' : 'Lead the party with'} ${x.name}`);
+      b.disabled = !!why; b.title = why;
+      b.onclick = () => (leading ? formationFor(x) : lead(x));
       li.append(b);
     }
     list.append(li);
@@ -915,11 +930,16 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
-  castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
+  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
   openFeature: (e, id) => CLS.openFeature(e, id), openAttack: (e, id) => CLS.openAttack(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
   fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
+// The formation popup (formation.js): Lead sends `partyFollow`, and the popup opens once the table says someone follows (`pendingLead`).
+let pendingLead = null;
+const FM = initFormation({ state: () => S, act, isDM, mine, refresh: () => refresh() });
+const lead = (e) => { pendingLead = e.id; act({ type: 'partyFollow', leader: e.id }); };
+const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { dm: isDM(), mine: mine(e) }) || 'Nobody can be placed yet.'); };
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
@@ -956,7 +976,7 @@ function start(transport, map = null) {
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);
       if (lastMove && Date.now() - lastMove.at < 4000) window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: lastMove.hex }));
     } else toast(msg);
-    lastMove = null; };
+    pendingLead = null; lastMove = null; };
   T.on.lobby = () => S && refresh();
   T.on.link = () => DOT.render();
   T.on.links = () => { if (S) { tracker.render(); DOT.render(); } };

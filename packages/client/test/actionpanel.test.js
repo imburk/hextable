@@ -94,10 +94,10 @@ test('Explore: a door that can be opened comes first; Search is in the top four 
   assert.ok(ids(rows).indexOf('search') <= 3);
 });
 
-test('Explore: Follow for a player, Lead the party for the DM only', () => {
+test('Explore: Follow, and Lead the party for whoever controls the creature (formations, #304)', () => {
   const s = newGame(7), e = s.entities.fighter;
   assert.ok(ids(rankExplore(s, e, { dm: false })).includes('follow'));
-  assert.ok(!ids(rankExplore(s, e, { dm: false })).includes('lead'));
+  assert.ok(ids(rankExplore(s, e, { dm: false })).includes('lead'), 'a player may lead with their own creature');
   assert.ok(ids(rankExplore(s, e, { dm: true })).includes('lead'));
   e.follow = 'rogue';
   assert.ok(ids(rankExplore(s, e)).includes('stopFollow')); assert.ok(!ids(rankExplore(s, e)).includes('follow'));
