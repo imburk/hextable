@@ -7,10 +7,9 @@
 // position, bounds (two points), rotation, closed, freestanding, and `image` is a base64 PNG or WEBP.
 // A square is 5 feet, so every coordinate is multiplied by 5.
 //
-// Two grids (docs/specs/square-grid.md, Decision 9, task S11). `options.grid: 'square'` lays the file on
+// Two grids (docs/specs/square-grid.md, Decision 9, task S11). Without `options.grid` (or with `'square'`) the importer lays the file on
 // squares, the grid it was drawn on: one square of the map is one square of the picture, with nothing for
-// the DM to align. `'hex'` (what a call without the option gets, so that older callers and their tests keep
-// their result) is the hex import as it was, lights not read.
+// the DM to align; it is the default. `options.grid: 'hex'` is the hex import as it was, lights not read.
 //
 // On squares a grid line of the file is the side of a square: the map's squares are centred on multiples of
 // 5 feet (their corners on 2.5 + 5k), so every point of the file is moved half a square (2.5 ft) north and
@@ -142,7 +141,7 @@ function read(json, options) {
   for (const list of lineLists) for (const line of list) if (Array.isArray(line)) pointCount += line.length;
   if (pointCount > LIMIT.points) fail(`This file has more than ${LIMIT.points} wall points.`);
   if ((doc.portals?.length ?? 0) > LIMIT.portals) fail(`This file has more than ${LIMIT.portals} doors.`);
-  if (options.grid === 'square') return readSquares(doc, res, options);
+  if (options.grid !== 'hex') return readSquares(doc, res, options);
   const G = HEX;
 
   const notes = [];

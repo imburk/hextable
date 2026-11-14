@@ -100,7 +100,7 @@ async function squareEditor(browser, url, label, opts) {
       };
       const tapPoint = async (p, dx = 1, dy = -1) => {
         const s = await screen(p), top = await panelTop();
-        if (!s || s.y < 4 || s.y > top - 4 || s.x < 4 || s.x > vw - 4) throw new Error(`the point ${p} is not on the map above the editor (${JSON.stringify(s)})`);
+        if (!s || s.y < 4 || s.y > top - 4 || s.x < 4 || s.x > vw - 4) throw new Error(`the point ${p} is not on the map above the editor (${JSON.stringify(s)}; panel top ${top}, camera ${JSON.stringify(await ev(() => { const c = window.hextable.R.cam; return [c.x, c.z, c.dist, c.yaw, c.pitch, innerHeight]; }))})`);
         await tap(s.x + dx, s.y + dy); await sleep(300);
       };
       // A tap that must show its effect: a pointer tap now and then does not reach the page, so if `fn` is not true a moment after, tap once more.

@@ -28,7 +28,7 @@ const HINTS = {
   props: 'Tap a door or thing to set its state, name, key, DCs and links.',
   start: 'Tap the hex where the party starts.',
   level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
-  file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls, doors and lights, on squares or on hexes.',
+  file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
 };
 // What differs on squares: the words (hex, hexes) are the grid's own, and a few hints say something else.
 const SQUARE_HINTS = {

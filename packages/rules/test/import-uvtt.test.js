@@ -16,7 +16,7 @@ const inside = (h) => { const [x, y] = center(h); return x < 40 && x > 10 && y >
 const reach = (s, id) => [...moveOptions(s, s.entities[id]).values()].map((n) => n.h);
 
 function play(json) {
-  const { map } = importUvtt(json);
+  const { map } = importUvtt(json, { grid: "hex" });
   const s = newGame(4);
   const r = apply(s, { type: "loadMap", map }, DM);
   assert.ok(r.ok, r.error);
@@ -27,7 +27,7 @@ function play(json) {
 }
 
 test("the imported map passes the linter and the engine loads it", () => {
-  const { map, notes, image } = importUvtt(fixture());
+  const { map, notes, image } = importUvtt(fixture(), { grid: "hex" });
   assert.deepEqual(lintMap(map), []);
   assert.ok(Array.isArray(notes) && notes.every((n) => typeof n === "string"));
   assert.ok(image.url.startsWith("data:image/png;base64,"));
@@ -38,7 +38,7 @@ test("the imported map passes the linter and the engine loads it", () => {
 });
 
 test("walls are in feet: one square is five feet", () => {
-  const { map } = importUvtt(fixture());
+  const { map } = importUvtt(fixture(), { grid: "hex" });
   const w = map.walls.filter((x) => x.kind === "wall");
   assert.equal(w.length, 5);
   assert.deepEqual(w[0], { id: "w1", level: "ground", a: [40, 10], b: [40, 5], kind: "wall" });
@@ -48,7 +48,7 @@ test("walls are in feet: one square is five feet", () => {
 });
 
 test("a portal becomes a door in its state, on a hex that exists", () => {
-  const { map } = importUvtt(fixture());
+  const { map } = importUvtt(fixture(), { grid: "hex" });
   assert.equal(map.objects.length, 1);
   const [d] = map.objects;
   assert.equal(d.def, "door-wooden");
@@ -57,7 +57,7 @@ test("a portal becomes a door in its state, on a hex that exists", () => {
   assert.ok(map.levels[0].tiles[H.col(d.at)]);
   assert.ok(Math.hypot(center(d.at)[0] - 40, center(d.at)[1] - 15) <= 5);
   const j = fixture(); j.portals[0].closed = false;
-  assert.equal(importUvtt(j).map.objects[0].state, "open");
+  assert.equal(importUvtt(j, { grid: "hex" }).map.objects[0].state, "open");
 });
 
 test("nobody walks through the imported wall; the open door lets them out", () => {
@@ -72,7 +72,7 @@ test("nobody walks through the imported wall; the open door lets them out", () =
 });
 
 test("notes say what was read and what was left out", () => {
-  const { notes } = importUvtt(fixture());
+  const { notes } = importUvtt(fixture(), { grid: "hex" });
   const all = notes.join(" ");
   assert.match(all, /5 wall segments/);
   assert.match(all, /1 door/);
@@ -85,13 +85,13 @@ test("too many walls are merged along straight runs, and reported if still too m
   j.objects_line_of_sight = [];
   const line = []; for (let i = 0; i <= MAP_LIMITS.walls + 10; i++) line.push({ x: i * 0.01, y: 1 });
   j.line_of_sight = [line];
-  const r = importUvtt(j, {});
+  const r = importUvtt(j, { grid: "hex" });
   assert.equal(r.map.walls.length, 1);
   assert.deepEqual(lintMap(r.map), []);
   assert.match(r.notes.join(" "), /joined/);
   const zig = []; for (let i = 0; i <= MAP_LIMITS.walls + 10; i++) zig.push({ x: i * 0.01, y: i % 2 });
   j.line_of_sight = [zig];
-  const z = importUvtt(j);
+  const z = importUvtt(j, { grid: "hex" });
   assert.match(z.notes.join(" "), /still more than the limit/);
 });
 
@@ -202,19 +202,18 @@ test("squares: a wall stops walking and sight, and the doors do what the file sa
   assert.equal(inSight(open.map, here, { q: 8, r: 3, z: 0 }), true, "an open door should let sight through");
 });
 
-test("squares: the hex option gives the hex import, and a call with no option still does", () => {
-  const same = JSON.stringify(importUvtt(fixture(), { grid: "hex" }));
-  assert.equal(same, JSON.stringify(importUvtt(fixture())));
+test("squares: no option gives squares, the hex option gives the hex import", () => {
   const hx = importUvtt(fixture(), { grid: "hex" });
   assert.equal(hx.map.grid, "hex");
   assert.deepEqual(hx.map.walls[0], { id: "w1", level: "ground", a: [40, 10], b: [40, 5], kind: "wall" });
   assert.match(hx.notes.join(" "), /never line up/);
-  const sq = importUvtt(fixture(), SQ);
+  const sq = importUvtt(fixture());
   assert.equal(sq.map.grid, "square");
+  assert.equal(JSON.stringify(sq), JSON.stringify(importUvtt(fixture(), SQ)));
   assert.deepEqual(sq.map.walls[0].a, [37.5, 7.5]);
   assert.deepEqual(lintMap(sq.map), []);
-  assert.equal(importUvtt(fixture(), { grid: "nonsense" }).map.grid, "hex");
-  assert.equal(importUvtt(fixture(), null).map.grid, "hex");
+  assert.equal(importUvtt(fixture(), { grid: "nonsense" }).map.grid, "square");
+  assert.equal(importUvtt(fixture(), null).map.grid, "square");
 });
 
 test("squares: a picture that is not the size the file says is reported, and so is an origin off the grid", () => {
