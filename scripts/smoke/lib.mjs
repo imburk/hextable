@@ -95,7 +95,8 @@ export const tapAt = (page, touch, x, y) => (touch ? page.touchscreen.tap(x, y) 
 export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl', [x, y]);
 // The drawer holds every panel (docs/specs/table-ui.md, Decision 2): open it on a tab, close it.
 export const TAB_BUTTON = { handouts: '#btn-handouts' };
-export const closeMenu = async (page) => { if (await shown(page, '#drawer')) { await page.click('#drawer-close'); await waitShown(page, '#drawer', false); } };
+// The drawer can be closing by itself (a fight starting closes it) when we look: then its close button is already gone, and what we want is that it ends hidden.
+export const closeMenu = async (page) => { if (await shown(page, '#drawer')) { await page.click('#drawer-close', { timeout: 3000 }).catch(() => {}); await waitShown(page, '#drawer', false); } };
 export const closePanels = closeMenu;
 export const openTab = async (page, tab) => {
   if (!(await shown(page, '#drawer'))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
