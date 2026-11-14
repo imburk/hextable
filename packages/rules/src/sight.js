@@ -139,9 +139,12 @@ export function coverOf(s, from, target, others = []) {
 // corners of its space (a little inside, as for sight). Each line finds one of:
 //   'clear' : nothing that stops movement on it;
 //   'holed' : stopped only by something that can be seen or shot through: a wall kind that blocks
-//             movement and not sight (a window, a rail), a thing in a state that blocks movement
-//             and not sight (a lowered portcullis), or a thing that fills its square (a statue, a
-//             crate: it blocks movement and not sight, so it is never Total);
+//             movement and not sight (a window, a rail), or a thing in a state that blocks movement
+//             and not sight (a lowered portcullis);
+//   'filled': stopped only by a thing that fills its square (a chest, a crate, a statue). The map
+//             says nothing of how tall or wide such a thing is, so it is never taken to cover a
+//             target fully: it gives at most Half Cover (review of #262, M1). A pillar that does
+//             fill its square is drawn as walls round it, and is solid;
 //   'solid' : stopped by something that blocks movement and sight (a wall, a shut door) or a floor.
 // A curtain blocks sight and not movement: it is no cover (an attack through it is at a target it
 // cannot see, which the engine already handles).
@@ -190,7 +193,7 @@ function lineFinds(map, B, G, p, zp, q, zq) {
     const boxes = filled(map, B, G);
     for (const l of map.levels) {
       if (Math.max(zp, zq) + EYE < l.z || Math.min(zp, zq) + EYE >= l.z + WALL_HEIGHT) continue;
-      if ((boxes.get(l.id) ?? []).some((b) => throughBox(p, q, b))) { v = 'holed'; break; }
+      if ((boxes.get(l.id) ?? []).some((b) => throughBox(p, q, b))) { v = 'filled'; break; }
     }
   }
   had.at.set(k, v);
@@ -202,6 +205,13 @@ function spaceOf(G, body) {
   const x0 = Math.min(...xs) - INSET, x1 = Math.max(...xs) + INSET, y0 = Math.min(...ys) - INSET, y1 = Math.max(...ys) + INSET;
   return { mid: [(x0 + x1) / 2, (y0 + y1) / 2], corners: [[x1, y1], [x0, y1], [x0, y0], [x1, y0]], z: body[0].z ?? 0, at: body[0] };
 }
+// The degree of cover the owner's table gives from what the centre line and the corner lines find
+// ('clear', 'holed' or 'solid').
+function tableDegree(centre, corners) {
+  if (centre === 'solid') return corners.every((v) => v === 'solid') ? 'total' : 'threeQuarters';   // round it, askew
+  if (centre === 'holed') return corners.some((v) => v === 'clear') ? 'half' : 'threeQuarters';     // through it
+  return corners.every((v) => v === 'clear') ? 'none' : 'half';
+}
 // The degree of cover a space has from one point (the centre of one of the attacker's squares), by
 // the walls and things in the way: the table of the owner's rule (#240).
 function fromPoint(map, B, G, o, sp) {
@@ -212,19 +222,22 @@ function fromPoint(map, B, G, o, sp) {
     const v = lineFinds(map, B, G, p, zp, k, sp.z);
     return v !== 'solid' && lineFinds(map, B, G, sp.mid, sp.z, k, sp.z) === 'solid' ? 'solid' : v;
   });
-  let degree;
-  if (centre === 'solid') degree = corners.every((v) => v === 'solid') ? 'total' : 'threeQuarters';   // round it, askew
-  else if (centre === 'holed') degree = corners.some((v) => v === 'clear') ? 'half' : 'threeQuarters'; // through it
-  else degree = corners.every((v) => v === 'clear') ? 'none' : 'half';
+  // A thing that fills its square adds at most Half: the table read with it as clear, or with it
+  // as a hole but no more than Half, whichever is more.
+  const as = (v, f) => (v === 'filled' ? f : v);
+  const without = tableDegree(as(centre, 'clear'), corners.map((v) => as(v, 'clear')));
+  const withIt = RANK[tableDegree(as(centre, 'holed'), corners.map((v) => as(v, 'holed')))] > 0 ? 'half' : 'none';
+  const degree = RANK[withIt] > RANK[without] ? withIt : without;
   return { degree, p, q: sp.mid, z: Math.min(zp, sp.z) };
 }
 // Is a creature standing on the line from p to q (its squares, a little inside, crossed by it)?
 function creatureOn(s, G, from, target, others, line) {
   for (const c of others) {
     if (c === from || c === target || c.dead || (c.id && (c.id === from.id || c.id === target.id)) || Math.abs(c.pos.z - line.z) >= FT * 2) continue;
-    // A creature standing where the line starts (on an effect's point of origin) covers nobody.
+    // A creature standing where the line starts (on an effect's point of origin, or a Tiny one
+    // sharing the attacker's square) or where it ends (a Tiny one sharing the target's) covers nobody.
     const boxes = footprint(c, c.pos, G).map((f) => { const [x, y] = G.center(f); return [x - INSET, y - INSET, x + INSET, y + INSET]; });
-    if (boxes.some((b) => throughBox(line.p, line.p, b))) continue;
+    if (boxes.some((b) => throughBox(line.p, line.p, b) || throughBox(line.q, line.q, b))) continue;
     if (boxes.some((b) => throughBox(line.p, line.q, b))) return true;
   }
   return false;
@@ -241,7 +254,9 @@ function obstacleCover(s, from, target, others) {
   let best = Math.min(...seen.map((v) => RANK[v.degree]));
   // Total Cover is the same both ways: if any square of the target has a line to the attacker's
   // middle or a corner of its space, part of each is in view of the other, and it is Three-Quarters.
-  if (best === RANK.total && from.pos && target.pos && Math.min(...wallCover(s, target, from).map((v) => RANK[v.degree])) < RANK.total) best = RANK.threeQuarters;
+  // An effect's point of origin is taken as one square for the way back (review of #262, L3), so
+  // Total agrees with whether the area reaches the target (`clear`, either way round).
+  if (best === RANK.total && target.pos && Math.min(...wallCover(s, target, from.pos ? from : { pos: from }).map((v) => RANK[v.degree])) < RANK.total) best = RANK.threeQuarters;
   if (best === RANK.total) return 'total';
   if (rules.cover === 'off') return 'none';
   // Another creature on the line gives Half Cover; the most protective degree applies, so it only

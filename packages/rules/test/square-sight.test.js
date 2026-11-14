@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
-import { apply, ACTION_TYPES, current, moveOptions, SETTINGS } from "../src/engine.js";
+import { apply, ACTION_TYPES, clear, current, moveOptions, SETTINGS } from "../src/engine.js";
 import { gridOf, SQUARE, col, parse } from "../src/grid.js";
 import * as H from "../src/hex.js";
 import { lintMap, newMap } from "../src/map.js";
@@ -63,7 +63,7 @@ test("the table rule squareCover: obstacle (the default) or corners, with words 
 // ---------- cover by the owner's rule ----------
 // The room's squares are 5 ft; a square's centre is at 5q, 5r. In the pictures A is the attacker,
 // T the target, # a wall, o a statue (it fills its square: blocks movement, not sight), = a window.
-test("owner's rule: open ground is no cover; a pillar beside the line is Half; a pillar in front of the target is Three-Quarters", () => {
+test("owner's rule: open ground is no cover; a statue beside the line or in front of the target is Half; a walled pillar in front is Three-Quarters", () => {
   const s = room();
   assert.equal(coverOf(s, P(1, 1), P(5, 1)), "none");
   //   . . A . .        the statue at 10,3 is beside the line from 8,1 to 10,5: the middle of T is
@@ -73,12 +73,12 @@ test("owner's rule: open ground is no cover; a pillar beside the line is Half; a
   //   . . . . T
   assert.equal(coverOf(s, P(8, 1), P(10, 5)), "half");
   assert.equal(coverOf(s, P(8, 1), P(11, 5)), "half");
-  //   A                straight in front, the statue covers T's middle and every corner, but it has
-  //   .                room round it (it does not fill a wall's space): Three-Quarters, never Total.
-  //   o
+  //   A                straight in front, the statue is on T's middle line and every corner line, but
+  //   .                the map does not say it is as tall and wide as T: a thing that fills its
+  //   o                square gives at most Half (review of #262, M1).
   //   .
   //   T
-  assert.equal(coverOf(s, P(10, 1), P(10, 5)), "threeQuarters");
+  assert.equal(coverOf(s, P(10, 1), P(10, 5)), "half");
   // A walled pillar (solid) beside the line is Half too; right in front with T showing round it, Three-Quarters.
   const w = room({ edit: (m) => { m.objects = m.objects.filter((o) => o.id !== "pillar"); pillarOfWalls(10, 3)(m); } });
   assert.equal(coverOf(w, P(8, 1), P(10, 5)), "half");
@@ -139,6 +139,72 @@ test("owner's rule: another creature on the line is Half; the most protective de
   const w = room(), t = spawn(w, 4, 8), mid = spawn(w, 2, 7);
   assert.equal(coverOf(w, P(0, 6), t, Object.values(w.entities)), "threeQuarters");
   assert.ok(Object.values(w.entities).includes(mid));
+});
+
+test("M1: a chest, a crate or a statue gives at most Half Cover, at any distance, and nobody Hides behind one in plain view", () => {
+  for (const def of ["chest", "crate", "statue"]) {
+    //   A A A . o . T    the thing at 5,4 is on every line from the party to the goblin at 7,4.
+    const s = room({ edit: (m) => { m.objects.push({ id: "box", def, level: "ground", at: { q: 5, r: 4 }, state: def === "chest" ? "closed" : "standing" }); } });
+    [["fighter", 1, 4], ["rogue", 2, 4], ["cleric", 3, 4], ["wizard", 0, 4]].forEach(([id, q, r]) => { s.entities[id].pos = at(q, r); });
+    const g = spawn(s, 7, 4);
+    for (const id of ["fighter", "rogue", "cleric", "wizard"]) assert.equal(coverOf(s, s.entities[id], g), "half", `${def} from ${id}`);
+    assert.equal(coverOf(s, P(4, 4), P(6, 4)), "half", `${def}, close`);
+    const before = JSON.stringify(s), r = apply(s, { type: "hide", actor: g.id }, DM);
+    assert.equal(r.ok, false, `${def}: the goblin hid behind it`);
+    assert.equal(JSON.stringify(s), before);
+    // Behind a thing and a window at once, the window's Three-Quarters stands.
+    const w = room({ edit: (m) => { m.objects.push({ id: "box", def, level: "ground", at: { q: 5, r: 4 }, state: def === "chest" ? "closed" : "standing" }); m.walls.push({ id: "win", level: "ground", a: [32.5, -2.5], b: [32.5, 72.5], kind: "window" }); } });
+    assert.equal(coverOf(w, P(3, 4), P(7, 4)), "threeQuarters");
+  }
+});
+
+test("the parts of the rule a test must pin: floors, the creature on the line, a corner behind a wall in the target's own square", () => {
+  // A floor between levels: a loft 10 ft up over 5..8 by 5..8. From under it to on it: Total, both ways.
+  const loft = room({ edit: (m) => { const tiles = {}; for (let q = 5; q <= 8; q++) for (let r = 5; r <= 8; r++) tiles[`${q},${r}`] = { t: "stone" }; m.levels.push({ id: "loft", name: "Loft", z: 10, tiles }); } });
+  assert.equal(coverOf(loft, P(6, 6), P(6, 6, 10)), "total");
+  assert.equal(coverOf(loft, P(6, 6, 10), P(6, 6)), "total");
+  assert.equal(coverOf(loft, P(2, 2), P(3, 3)), "none", "and nothing between two places on the ground");
+  // The creature on the line: up to 10 ft above or below the lower end it counts; higher, or dead, it does not.
+  for (const [z, dead, want] of [[0, false, "half"], [5, false, "half"], [10, false, "none"], [15, false, "none"], [0, true, "none"]]) {
+    const s = room(), mid = spawn(s, 3, 1), far = spawn(s, 6, 1);
+    mid.pos.z = z; if (dead) mid.dead = true;
+    assert.equal(coverOf(s, s.entities.fighter, far, Object.values(s.entities)), want, `a creature ${z} ft up${dead ? ", dead" : ""}`);
+  }
+  // A short wall through the target's own square (a map traced off the grid): from the north, the
+  // lines reach its two east corners, but they are on the far side of the wall from its middle.
+  const cut = room({ edit: wallAt("wall", [26, 23], [26, 28]) });
+  assert.equal(coverOf(cut, P(5, 0), P(5, 5)), "half");
+  assert.equal(coverOf(room(), P(5, 0), P(5, 5)), "none");
+  // The four-corner count's bands: 4 corners none, 3 and 2 Half, 1 Three-Quarters, 0 Total (the stub wall).
+  const c = room({ cover: "corners" });
+  for (const [a, t, n, want] of [[[0, 3], [3, 4], 4, "none"], [[0, 4], [4, 10], 3, "half"], [[0, 3], [4, 10], 2, "half"], [[0, 3], [3, 6], 1, "threeQuarters"], [[0, 3], [3, 7], 0, "total"]]) {
+    const A = at(...a), T = at(...t);
+    assert.equal(Math.max(sightline(c.map, A, T).corners, sightline(c.map, T, A).corners), n, `${a} -> ${t}`);
+    assert.equal(coverOf(c, { pos: A }, { pos: T }), want, `${n} corners`);
+  }
+});
+
+test("L1, L3: a Tiny creature sharing either end's square covers nobody; Total from an effect's point agrees with whether the area reaches", () => {
+  const s = room(), far = spawn(s, 6, 1), tinyT = spawn(s, 6, 3, "rat"), tinyA = spawn(s, 1, 3, "rat");
+  assert.equal(tinyT.size, "tiny");
+  tinyT.pos = at(6, 1); tinyA.pos = at(1, 1);                   // Tiny creatures share a square (SRD 1913)
+  assert.equal(coverOf(s, s.entities.fighter, far, Object.values(s.entities)), "none", "rats sharing the fighter's and the goblin's squares");
+  // From a point an effect starts at, Total only where no line reaches the target from that
+  // point's square either way, as `clear` judges an area (sight.js inSight).
+  const pick = chooser(262);
+  let totals = 0;
+  for (let n = 0; n < 30; n++) {
+    const walls = Array.from({ length: 6 }, (_, i) => randomWall(pick, i));
+    const r = room({ edit: (m) => { m.walls.push(...walls); } });
+    for (let k = 0; k < 40; k++) {
+      const o = at(pick(15), pick(15)), t = at(pick(15), pick(15));
+      if (col(o) === col(t)) continue;
+      const total = coverOf(r, o, { pos: t }) === "total";
+      if (total) totals++;
+      assert.equal(total, !clear(r, o, t), `origin ${col(o)}, target ${col(t)}`);
+    }
+  }
+  assert.ok(totals > 20, `${totals} Totals`);
 });
 
 test("cover in play: +2 and +5 to Armor Class and to Dexterity saves; Total refuses the attack; the table rule cover off leaves only Total", () => {
