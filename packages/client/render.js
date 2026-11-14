@@ -4,7 +4,7 @@
 // a glTF model presenter or an animated one replaces makePawn() without touching the
 // engine, because the engine only ever emits events ("moved", "attack", "damage").
 // Zero dependencies: plain WebGL, so it runs on phones with no install and no CDN.
-import * as H from './shared/hex.js';
+import { HEX, gridOf, col as cellCol, key as cellKey, parse as cellParse } from './shared/grid.js';
 import { allTiles, footprint, ground, shown, surfaces, under } from './shared/space.js';
 
 const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };      // how much bigger a pawn is drawn
@@ -30,9 +30,9 @@ export function zoneHexes(state, fx) {
   const z = fx.zone; if (!z) return null;
   if (z.follows) {
     const c = state.entities[z.follows]; if (!c || c.dead) return null;
-    return { at: c.pos.z ?? 0, hexes: H.range(c.pos, z.area.size / 5) };
+    return { at: c.pos.z ?? 0, hexes: gridOf(state.map).range(c.pos, z.area.size / 5) };
   }
-  return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => H.parse(k)) };
+  return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => cellParse(k)) };
 }
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
@@ -122,8 +122,14 @@ function model(x, y, z, yaw, tilt, sc = 1) {
 }
 
 // ---------- mesh building ----------
+// A cell's outline in drawing units, as offsets from its centre, from the grid's own corners (`G.corners`): a unit cell has radius 1 on
+// hexes. The same outline serves every cell of a map, so it is worked out once per grid.
+const SHAPES = new WeakMap();
+const shapeOf = (G) => { let o = SHAPES.get(G); if (!o) SHAPES.set(G, (o = G.corners({ q: 0, r: 0 }).map(([x, y]) => [x * UNIT, y * UNIT]))); return o; };
+// The unit vector from a cell's centre through the middle of its side `i` (side i runs from corner i to corner i + 1).
+const sideAt = (shape, i) => { const a = shape[i], b = shape[(i + 1) % shape.length], x = a[0] + b[0], z = a[1] + b[1], n = Math.hypot(x, z); return [x / n, z / n]; };
 class Builder {
-  constructor() { this.d = []; }
+  constructor(G = HEX) { this.d = []; this.shape = shapeOf(G); }
   tri(a, b, c, col) {
     const n = norm(cross(sub(b, a), sub(c, a)));
     for (const p of [a, b, c]) this.d.push(p[0], p[1], p[2], n[0], n[1], n[2], col[0], col[1], col[2], col[3] ?? 1);
@@ -159,10 +165,12 @@ class Builder {
       v(o[j], edge); v(o[k], edge); v(n[k], dark); v(o[j], edge); v(n[k], dark); v(n[j], dark);      // soft rim
     }
   }
+  // The outline of a cell at radius r (1 is the cell's own edge), height y.
+  cellRing(cx, cz, r, y) { return this.shape.map(([dx, dz]) => [cx + r * dx, y, cz + r * dz]); }
   flatHex(cx, cz, y, r0, r1, col) {            // disc (r0 = 0) or ring on the ground plane
-    const o = this.ring(cx, cz, r1, y, 6, Math.PI / 6), i = r0 ? this.ring(cx, cz, r0, y, 6, Math.PI / 6) : null;
-    for (let k = 0; k < 6; k++) {
-      const j = (k + 1) % 6;
+    const o = this.cellRing(cx, cz, r1, y), i = r0 ? this.cellRing(cx, cz, r0, y) : null, n = o.length;
+    for (let k = 0; k < n; k++) {
+      const j = (k + 1) % n;
       if (i) this.quad(o[j], o[k], i[k], i[j], col); else this.tri(o[j], o[k], [cx, y, cz], col);
     }
   }
@@ -259,6 +267,7 @@ export class Renderer {
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
     this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null };
+    this.G = HEX;                             // the grid the map is drawn on (gridOf(map) once there is one)
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;   // px of screen bottom covered by UI
     this.onTap = () => {}; this.onHover = () => {};
     this.onPoint = null;                      // when set, a tap reports its screen point here instead of picking (the map editor)
@@ -291,7 +300,7 @@ export class Renderer {
     const snap = !!opt.instant || !prev || prev.map.id !== state.map.id || events.some((e) => e.type === 'map' || e.type === 'mapEdit' || e.type === 'undone' || e.type === 'redone');
     const idsOf = (type) => new Set(events.filter((e) => e.type === type && e.id !== undefined).map((e) => e.id));
     if (snap) this.#finish(false);
-    this.state = state;
+    this.state = state; this.G = gridOf(state.map);
     const want = lightAt(state.clock ?? 480);
     this.tod = { goal: want, now: this.tod?.now ?? want };                // eases to the new hour, so resting through the night is a slow turn of the light
     this.#syncEdge(events, snap, now);
@@ -415,10 +424,10 @@ export class Renderer {
     for (const ev of events) { const v = ev.type === 'region' && this.veils.get(ev.region); if (v && !v.tw) v.tw = { from: 1, to: 0, t0: now, dur: SECS.region }; }
   }
   #makeVeil(r, now) {
-    const lv = this.state.map.levels.find((l) => l.id === r.level), b = new Builder(), mesh = new Mesh(this.gl);
+    const lv = this.state.map.levels.find((l) => l.id === r.level), b = new Builder(this.G), mesh = new Mesh(this.gl);
     for (const k of r.hexes ?? []) {
       const t = lv?.tiles[k]; if (!t) continue;
-      const h = H.parse(k), w = H.toWorld(h);
+      const h = cellParse(k), w = this.G.toWorld(h);
       b.flatHex(w.x, w.z, surfY(lv.z + (t.h ?? 0), t) + 0.05, 0, 1.02, [...VEIL, 1]);
     }
     mesh.set(b);
@@ -458,7 +467,7 @@ export class Renderer {
   // empty space (the map editor). Null if the point looks at the sky.
   planeHex(px, py, feet = 0) {
     const p = this.#plane(px, py, feet);
-    return p && H.fromWorld(p[0], p[1]);
+    return p && this.G.fromWorld(p[0], p[1]);
   }
   // The same, as a point in map feet (x east, y south): for tapping on a level's picture.
   planePoint(px, py, feet = 0) {
@@ -529,14 +538,14 @@ export class Renderer {
   }
 
   // ---------- building ----------
-  #stand(h) { const w = H.toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(this.state.map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
+  #stand(h) { const w = this.G.toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(this.state.map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
 
   // Where a creature's pawn stands when its own hex is `pos`: the middle of the hexes it fills.
   #spot(e, pos) {
     const base = this.#stand(pos), parts = footprint(e ?? {}, pos);
     if (parts.length === 1) return base;
     let x = 0, z = 0;
-    for (const f of parts) { const w = H.toWorld(f); x += w.x; z += w.z; }
+    for (const f of parts) { const w = this.G.toWorld(f); x += w.x; z += w.z; }
     return { x: x / parts.length, y: base.y, z: z / parts.length };
   }
 
@@ -582,7 +591,7 @@ export class Renderer {
   }
 
   #buildTerrain() {
-    const b = new Builder(), sb = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, R = Math.PI / 6, sh = th.shadow ?? { a: 0.4 };
+    const b = new Builder(this.G), sb = new Builder(), th = this.theme, map = this.state.map, enc = this.state.encounter, sh = th.shadow ?? { a: 0.4 };
     const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > this.ceiling;      // a floor above whoever is being followed
     // Rooms, not hexes (theme flag `floors: 'rooms'`, docs/specs/renderer.md): on a level with walls or regions, the
     // tiles at one height are drawn as one flat floor with one edge round it, and the hexes as a faint grid. Rooms that
@@ -598,12 +607,12 @@ export class Renderer {
     const tintOf = (lv, key, base) => {
       let c = base.slice();
       if (enc && !enc.arena[key]) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
-      if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (lv.tiles[key]?.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+      if (!shown(map, lv.id, { ...cellParse(key), z: lv.z + (lv.tiles[key]?.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
       const f = seenShade(lv.id, key);
       return f === 1 ? c : c.map((v) => v * f);
     };
     // A level with a picture that has arrived is floored by the picture: its hexes are only a faint outline.
-    const gb = new Builder(), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
+    const gb = new Builder(this.G), pictured = new Set(map.levels.filter((l) => this.hasPicture(l.id) && !hid(l.id)).map((l) => l.id));
     this.pics = []; const pv = [];
     for (const l of map.levels) {
       if (!pictured.has(l.id)) continue;
@@ -615,25 +624,25 @@ export class Renderer {
     for (const h of allTiles(map)) {
       if (h.z > this.ceiling) continue;
       if (pictured.has(h.level.id)) {
-        const w = H.toWorld(h), inFight = enc && enc.arena[H.col(h)];
+        const w = this.G.toWorld(h), inFight = enc && enc.arena[cellCol(h)];
         gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
         continue;
       }
       if (caves.has(h.level.id)) continue;                                // a cave is all drawn below
-      const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
+      const t = h.tile, w = this.G.toWorld(h), locked = enc && !enc.arena[cellCol(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
       const lowest = surfaces(map, h)[0].z === h.z;                      // the bottom of a column is a pillar; a floor above it is a slab
       const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;              // a room's floor is one even colour, not a patchwork
       let c = th.tiles[t.t].map((v) => v * j);
       if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
       if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
-      const f = seenShade(h.level.id, H.col(h));
+      const f = seenShade(h.level.id, cellCol(h));
       if (f !== 1) c = c.map((v) => v * f);
       const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
       if (!room) {
         b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
         b.flatHex(w.x, w.z, y, 0.86, 1, rim);
-        const top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
-        for (let i = 0; i < 6; i++) { const n = (i + 1) % 6; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
+        const top = b.cellRing(w.x, w.z, 1, y), bot = b.cellRing(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB);
+        for (let i = 0; i < top.length; i++) { const n = (i + 1) % top.length; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
       }
       if (t.t === 'forest') {
         const tc = locked ? shade(th.tree, 0.45) : [...th.tree, 1];
@@ -653,14 +662,14 @@ export class Renderer {
       for (const pa of fl.patches) {
         const y = pa.top * UNIT;
         for (const cell of pa.cells) {
-          const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = H.parse(key), hz = lv.z + (t.h ?? 0);
+          const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = cellParse(key), hz = lv.z + (t.h ?? 0);
           let c = th.tiles[t.t].slice();
           if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
           if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
           const f = seenShade(lv.id, key);
           if (f !== 1) c = c.map((v) => v * f);
           const inArena = enc && !locked, grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
-          const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955);       // the floor reaches the hex's edge; the grid is a thin, faint line inside it (stronger in a fight's area)
+          const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955, this.G);       // the floor reaches the hex's edge; the grid is a thin, faint line inside it (stronger in a fight's area)
           const fan = (poly, col) => { const m = wpt(centroidOf(poly), y); for (let i = 0; i < poly.length; i++) b.tri(wpt(poly[(i + 1) % poly.length], y), wpt(poly[i], y), m, col); };
           if (inner) fan(inner, [...c, 1]);
           for (const r of rim) fan(r, grid);
@@ -671,7 +680,7 @@ export class Renderer {
           const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
           let c = th.tiles[t.t].slice();
           if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
-          if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+          if (!shown(map, lv.id, { ...cellParse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
           const f = seenShade(lv.id, key);
           if (f !== 1) c = c.map((v) => v * f);
           const low = e.lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, bot = e.kind === 'drop' ? Math.min(low, e.toTop * UNIT) : low;
@@ -692,7 +701,7 @@ export class Renderer {
   // by default, rooms look only) the walls between the camera and a room are low and capped dark, and the rest stand at
   // full height (docs/specs/renderer.md, decision 1); without it every wall is low, as it was.
   #buildWalls(force = false) {
-    const b = new Builder(), th = this.theme, map = this.state.map;
+    const b = new Builder(this.G), th = this.theme, map = this.state.map;
     let cut = this.#cutSet();
     const cutting = cut !== null, high = (id) => cutting && this.floorData.some((f) => f.id === id), sig = cut ? [...cut].sort().join() : '';
     this.cutYaw = this.cam.yaw;
@@ -723,7 +732,7 @@ export class Renderer {
       if (hid(o.level)) continue;
       const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;       // only the DM is ever sent an unseen one
       if (!seg) {                                                       // a thing in a hex: a marker on the floor, and a post if it is in the way or a lever
-        const w = H.toWorld(o.at), y = this.#stand({ q: o.at.q, r: o.at.r, z: (map.levels.find((l) => l.id === o.level)?.z ?? 0) + (map.levels.find((l) => l.id === o.level)?.tiles[H.col(o.at)]?.h ?? 0) }).y + 0.02;
+        const w = this.G.toWorld(o.at), y = this.#stand({ q: o.at.q, r: o.at.r, z: (map.levels.find((l) => l.id === o.level)?.z ?? 0) + (map.levels.find((l) => l.id === o.level)?.tiles[cellCol(o.at)]?.h ?? 0) }).y + 0.02;
         const trap = !!objectDef(o)?.triggers?.some((t) => t.effects), col = trap ? [0.75, 0.2, 0.18] : [0.8, 0.68, 0.3];
         b.flatHex(w.x, w.z, y, 0.34, 0.5, [...col, unseen ? 0.45 : 1]);
         if (o.def === 'pit-trap' && o.state === 'open') b.flatHex(w.x, w.z, y + 0.005, 0, 0.6, [0.05, 0.05, 0.06, 1]);
@@ -793,19 +802,19 @@ export class Renderer {
   }
   // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
   #buildEdge() {
-    const eb = new Builder(), map = this.state.map, enc = this.state.encounter, th = this.theme;
+    const eb = new Builder(this.G), map = this.state.map, enc = this.state.encounter, th = this.theme;
     if (enc) {
       const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
       const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
       let ys = 0, ny = 0;
       for (const h of allTiles(map)) {
-        if (h.z > this.ceiling || !enc.arena[H.col(h)]) continue;
-        const w = H.toWorld(h), y = surfY(h.z, h.tile) + 0.03, R = Math.PI / 6;
+        if (h.z > this.ceiling || !enc.arena[cellCol(h)]) continue;
+        const w = this.G.toWorld(h), y = surfY(h.z, h.tile) + 0.03;
         ys += y; ny++; this.edgeBase = ys / ny;
-        const top = eb.ring(w.x, w.z, 1.02, y, 6, R), inner = eb.ring(w.x, w.z, 0.86, y, 6, R);
-        for (let i = 0; i < 6; i++) {
-          const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
-          if (enc.arena[H.col(out)]) continue;                                        // inside the area on that side: no edge
+        const top = eb.cellRing(w.x, w.z, 1.02, y), inner = eb.cellRing(w.x, w.z, 0.86, y);
+        for (let i = 0; i < top.length; i++) {
+          const n = (i + 1) % top.length, [sx, sz] = sideAt(eb.shape, i), out = this.G.fromWorld(w.x + sx * 1.8, w.z + sz * 1.8);
+          if (enc.arena[cellCol(out)]) continue;                                        // inside the area on that side: no edge
           const lo = [...glow, 0.85], hi = [...glow, 0];
           quad2(top[i], top[n], [top[n][0], y + tall, top[n][2]], [top[i][0], y + tall, top[i][2]], lo, lo, hi, hi);
           quad2(inner[i], inner[n], top[n], top[i], [...glow, 0.35], [...glow, 0.35], [...glow.map((v) => v * 0.5 + 0.5), 1], [...glow.map((v) => v * 0.5 + 0.5), 1]);       // a bright line on the floor
@@ -829,14 +838,14 @@ export class Renderer {
   #makeBlob() { const b = new Builder(), sh = this.theme.shadow ?? { a: 0.4 }; b.blob(0, 0, 0, 1, sh.a, sh); this.blobMesh.set(b); }
 
   #buildOverlay() {
-    const b = new Builder(), s = this.state, hl = this.hl, c = this.theme.hl;
-    const top = (k) => this.#stand(H.parse(k)).y + 0.03;
-    const at = (k) => H.toWorld(H.parse(k));
+    const b = new Builder(this.G), s = this.state, hl = this.hl, c = this.theme.hl;
+    const top = (k) => this.#stand(cellParse(k)).y + 0.03;
+    const at = (k) => this.G.toWorld(cellParse(k));
     for (const fx of s.effects ?? []) {            // lasting zones, under everything else: a soft patch, fainter toward its outer edge
       const zh = zoneHexes(s, fx); if (!zh?.hexes.length) continue;
-      const t = zoneType(fx.zone.steps), rgb = this.theme.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(H.col));
+      const t = zoneType(fx.zone.steps), rgb = this.theme.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(cellCol));
       for (const h of zh.hexes) {
-        const w = H.toWorld(h), y = this.#stand({ q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = H.neighbors(h).some((n) => !have.has(H.col(n)));
+        const w = this.G.toWorld(h), y = this.#stand({ q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = this.G.neighbors(h).some((n) => !have.has(cellCol(n)));
         b.flatHex(w.x, w.z, y, 0, rim ? 0.8 : 1.02, [...rgb, 0.3]);
         if (rim) b.flatHex(w.x, w.z, y, 0.8, 0.98, [...rgb, 0.12]);
       }
@@ -844,10 +853,10 @@ export class Renderer {
     for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
     for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
     // Whatever is in the air has a mark on the floor beneath it.
-    for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = H.toWorld(e.pos); b.flatHex(w.x, w.z, this.#stand({ q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
+    for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = this.G.toWorld(e.pos); b.flatHex(w.x, w.z, this.#stand({ q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
     const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
       const e = s.entities[id]; if (!e) return;
-      for (const f of footprint(e)) { const k = H.key(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }      // every hex it fills
+      for (const f of footprint(e)) { const k = cellKey(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }      // every hex it fills
     };
     for (const id of hl.targets) ringOn(id, c.target);
     for (const id of hl.allies) ringOn(id, c.ally);
@@ -1065,7 +1074,7 @@ export class Renderer {
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
       for (const [id, a] of acts) if (y > a.y && y < a.y + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < 0.5 * (a.k ?? 1)) return { id, hex: this.state.entities[id].pos };
-      const h = H.fromWorld(x, z), column = surfaces(this.state.map, h);
+      const h = this.G.fromWorld(x, z), column = surfaces(this.state.map, h);
       for (let i = column.length - 1; i >= 0; i--) {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;               // above this floor, or under it in the room below
