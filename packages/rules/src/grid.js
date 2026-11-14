@@ -252,6 +252,93 @@ export const SQUARE = Object.freeze({
   col: H.col, key: H.key, parse: H.parse, reachable: H.reachable, pathTo: H.pathTo,
 });
 
+// ---------- areas of effect on squares (task S7) ----------
+// Which squares an area covers (docs/specs/square-grid.md, Decision 6 and the S7 build notes). The
+// owner's rule: a square is in an area when its centre is inside the real shape. For a Sphere, a
+// Cylinder and an Emanation the table rule `areaFill` may instead count squares as the SRD counts
+// range (1826-1829): `fill` is 'round' (centres inside, the default) or 'grid' (counted).
+//
+// Worked in half-squares (2.5 ft), where every point used here is whole numbers: a square's centre
+// is (2q, 2r), its corners odd, and the middle of a creature's space (a corner of squares when it
+// is 2 by 2 or 4 by 4) whole too. Every test is then whole-number arithmetic on exact values, so no
+// tolerance decides a square on the edge and turning or mirroring an aim turns or mirrors the area
+// exactly. A point is [x, y]; a creature's space is the box { q0, r0, q1, r1 } of its squares.
+export const boxOf = (cells) => ({ q0: Math.min(...cells.map((c) => c.q)), r0: Math.min(...cells.map((c) => c.r)), q1: Math.max(...cells.map((c) => c.q)), r1: Math.max(...cells.map((c) => c.r)) });
+// The middle of a box of squares, in half-squares.
+export const boxMiddle = (b) => [b.q0 + b.q1, b.r0 + b.r1];
+const inBox = (b, h) => h.q >= b.q0 && h.q <= b.q1 && h.r >= b.r0 && h.r <= b.r1;
+// The squares of a Sphere or a Cylinder's base of radius `n` squares centred on square `c`.
+export function squareDisc(c, n, fill) {
+  return fill === 'grid' ? sqRange(c, n) : sqRange(c, n).filter((h) => (h.q - c.q) ** 2 + (h.r - c.r) ** 2 <= n * n);
+}
+// The squares of an Emanation `n` squares out from a creature's space (the box `b`), which is not in
+// it: 'round', those whose centres are within 5n feet of the space in a straight line; 'grid', those
+// within n squares of it counted as range is.
+export function squareAround(b, n, fill) {
+  const out = [];
+  for (let q = b.q0 - n; q <= b.q1 + n; q++) for (let r = b.r0 - n; r <= b.r1 + n; r++) {
+    const h = { q, r };
+    if (inBox(b, h)) continue;
+    if (fill === 'grid') { out.push(h); continue; }
+    const ex = Math.max(0, 2 * b.q0 - 1 - 2 * q, 2 * q - 2 * b.q1 - 1), ey = Math.max(0, 2 * b.r0 - 1 - 2 * r, 2 * r - 2 * b.r1 - 1);
+    if (ex * ex + ey * ey <= 4 * n * n) out.push(h);
+  }
+  return out;
+}
+// The squares round point `p` (half-squares) that a shape reaching `reach` half-squares from it may
+// touch.
+const around = (p, reach) => sqRange({ q: Math.floor(p[0] / 2), r: Math.floor(p[1] / 2) }, Math.ceil(reach / 2) + 1);
+// A Cone from point `p` toward the centre of square `aim`, `len` feet long: the squares whose centres
+// lie inside it (as wide at each point as that point is far from `p`, SRD 33026-33039), leaving out
+// the squares of `skip` (the box of the space it starts from: its point of origin is not in it).
+// Empty if `aim`'s centre is `p`.
+export function squareCone(p, aim, len, skip) {
+  const dx = 2 * aim.q - p[0], dy = 2 * aim.r - p[1], dd = dx * dx + dy * dy, L = len / (FT / 2);
+  if (!dd) return [];
+  return around(p, L * 1.2).filter((h) => {
+    if (skip && inBox(skip, h)) return false;
+    const vx = 2 * h.q - p[0], vy = 2 * h.r - p[1], a = vx * dx + vy * dy, c = vx * dy - vy * dx;
+    return a > 0 && 4 * c * c <= a * a && a * a <= L * L * dd;
+  });
+}
+// A straight strip from point `p` toward the centre of square `aim`: the squares whose centres lie
+// beyond the edge of the box `from` (where the aim leaves it), at most `len` feet past that edge,
+// and no more than `half` feet to either side of the middle line (a centre exactly on a side counts
+// on one side only, the left of the aim, as `band` does). A Line, and the length of a Cube's side.
+// Empty if `aim`'s centre is `p`.
+export function squareStrip(p, aim, from, len, half) {
+  const dx = 2 * aim.q - p[0], dy = 2 * aim.r - p[1], dd = dx * dx + dy * dy, L = len / (FT / 2), w = half / (FT / 2);
+  if (!dd) return [];
+  // The edge: the furthest corner of the box along the aim (times the aim's length, whole numbers).
+  const edge = Math.max(...[2 * from.q0 - 1, 2 * from.q1 + 1].flatMap((x) => [2 * from.r0 - 1, 2 * from.r1 + 1].map((y) => (x - p[0]) * dx + (y - p[1]) * dy)));
+  return around(p, L + w + Math.sqrt(edge * edge / dd) + 2).filter((h) => {
+    const vx = 2 * h.q - p[0], vy = 2 * h.r - p[1], a = vx * dx + vy * dy - edge, c = vx * dy - vy * dx;
+    return a > 0 && a * a <= L * L * dd && (c * c < w * w * dd || (c * c === w * w * dd && c > 0));
+  });
+}
+// How far along the aim from `p` a square's centre is, in feet (for a tilted Line's height).
+export function squareAlong(p, aim, h) {
+  const dx = 2 * aim.q - p[0], dy = 2 * aim.r - p[1], dd = dx * dx + dy * dy;
+  return dd ? ((2 * h.q - p[0]) * dx + (2 * h.r - p[1]) * dy) / Math.sqrt(dd) * (FT / 2) : 0;
+}
+// A Cube on squares stands square to the grid, `n` squares a side. `from` is the point (half-squares)
+// it is thrown from and `toward` the direction it goes, [dx, dy]; `fits(b)` says whether a block
+// (a box) may be used. Of the blocks that may, the one whose middle lies at the smallest angle to
+// `toward` from `from` (the first, in a fixed order, if two tie). Null if none may.
+export function squareBlock(from, toward, n, q0, q1, r0, r1, fits) {
+  let best = null, bestA = 0, bestN = 1;
+  const [tx, ty] = toward;
+  for (let q = q0; q <= q1; q++) for (let r = r0; r <= r1; r++) {
+    const b = { q0: q, r0: r, q1: q + n - 1, r1: r + n - 1 };
+    if (!fits(b)) continue;
+    const [mx, my] = boxMiddle(b), wx = mx - from[0], wy = my - from[1], ww = wx * wx + wy * wy, a = wx * tx + wy * ty;
+    // The cosine of the angle is a / √(ww · |toward|²): compare a·|a| / ww exactly, as whole numbers.
+    const better = !best || (ww === 0 ? bestN !== 0 : bestN === 0 ? false : a * Math.abs(a) * bestN > bestA * Math.abs(bestA) * ww);
+    if (better) { best = b; bestA = a; bestN = ww; }
+  }
+  return best && sqRange({ q: best.q0, r: best.r0 }, n - 1).filter((h) => inBox(best, h));
+}
+
 // The grid a map is drawn on (Decision 1): squares if the map says so, hexes otherwise (every map
 // before format 2 is a hex map). The linter refuses square maps until task S6, so no map in play
 // is square yet.

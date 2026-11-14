@@ -13,10 +13,10 @@
 // A zone that goes off while another effect is half resolved (a creature pushed into it by a
 // Thunderwave) waits in `s.zoneQueue` until that one is done, so the effect stack is never run
 // from inside itself. Design: docs/specs/rules-expansion.md, build notes.
-import { gridOf, col } from './grid.js';
+import { gridOf, col, boxOf, squareAround } from './grid.js';
 import { begin, run } from './effects.js';
 import { effectsOf, turnKey } from './durations.js';
-import { FT, footprint, gap, sizeOf } from './space.js';
+import { FT, footprint, gap, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
 
@@ -24,7 +24,22 @@ export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
 export function holds(s, fx, t) {
   const z = fx.zone;
   if (!t || t.dead || z.spare.includes(t.id)) return false;
-  const n = z.area.size / FT;
+  const n = z.area.size / FT, G = gridOf(s.map);
+  // On squares (docs/specs/square-grid.md, S7): an Emanation is laid out afresh round its creature's
+  // whole space by the table rule `areaFill`, as engine/world.js lays it out when it is cast, and a
+  // creature is in a zone by any of its squares; heights as on hexes, from the zone's origin.
+  if (G.kind === 'square') {
+    if (z.follows) {
+      const c = s.entities[z.follows];
+      if (!c || c.dead || c.id === t.id) return false;
+      const keys = new Set(squareAround(boxOf(footprint(c, c.pos, G)), n, s.settings?.areaFill ?? 'round').map(col));
+      return footprint(t, t.pos, G).some((f) => keys.has(col(f))) && rise(t.pos.z - c.pos.z) <= n;
+    }
+    if (z.area.shape === 'sphere') {
+      const keys = new Set(z.hexes);
+      return footprint(t, t.pos, G).some((f) => keys.has(col(f))) && rise(t.pos.z - z.origin.z) <= n;
+    }
+  }
   if (z.follows) {
     const c = s.entities[z.follows];
     if (!c || c.dead || c.id === t.id) return false;
