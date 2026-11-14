@@ -38,11 +38,13 @@ async function solo(browser, url, label, opts) {
         if (!(await marked(page))) throw new Error('one tap threw the game away');
         if (!/again/i.test(await text(page, '#menu-new'))) throw new Error('the button did not ask for a second tap');
         await page.click('#menu-new');
+        await waitShown(page, '#drawer', false);                 // confirming closes the menu: the map is what was asked for
         await wait(page, (m) => !JSON.stringify(window.hextable.state).includes(m), MARK);
       });
       await run.do('an unconfirmed tap runs out and the game stays', async () => {
         await page.evaluate((m) => window.hextable.act({ type: 'chronicle', title: m }), MARK);
-        await openTab(page, 'dm');
+        await waitShown(page, '#drawer', false);
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
         await page.click('#dm-new');
         await sleep(3400);
         if (/again/i.test(await text(page, '#dm-new'))) throw new Error('the button stayed armed');
