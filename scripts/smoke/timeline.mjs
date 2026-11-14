@@ -64,6 +64,9 @@ async function pacing(browser, url, label, opts) {
         await page.evaluate(() => { window.hextable.dice.show = 'off'; });        // the dice are not what this pass is about
         if ((await page.evaluate(() => window.hextable.pace())) !== 'wait') throw new Error('the pace is not wait');
         await openTab(page, 'log');
+        // On a phone the drawer is a modal that covers the map and takes Escape (it closes first). The log was only looked at: put the
+        // drawer away, or the steps below tap a scrim instead of the map and press Escape at the drawer (the cause of "Escape did not skip").
+        await closeMenu(page);
       });
       let ids;
       await run.do('a goblin hits: attack, damage and the fall play in order before the controls wake', async () => {
@@ -94,7 +97,13 @@ async function pacing(browser, url, label, opts) {
         const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter.turn]));
         const pt = await page.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.kind === 'pc'); const p = h.R.screenOf({ q: e.pos.q + 2, r: e.pos.r, z: e.pos.z }); return p; });
         await sleep(60);
-        const canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : { x: opts.viewport.width / 2, y: 120 };
+        // The point must be bare map. The old fallback (the middle, 120 px down) lands on the turn-order strip on a phone, and a tap there
+        // opens the drawer: it skipped as it should, but the open drawer then took the next step's Escape (it closes first).
+        let canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : null;
+        for (let y = 60; !canvasPt && y < opts.viewport.height - 20; y += 30) {
+          for (let x = 20; !canvasPt && x < opts.viewport.width - 20; x += 30) if (await onCanvas(page, x, y)) canvasPt = { x, y };
+        }
+        if (!canvasPt) throw new Error('no bare map to tap');
         // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
         for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
@@ -103,6 +112,9 @@ async function pacing(browser, url, label, opts) {
       });
       await run.do('Escape skips too, and a button tap skips without acting', async () => {
         await calm(page);
+        // A tap on a character can open its sheet, and on a phone the drawer is a modal that takes Escape and closes first (as it
+        // should: drawer.js). This step is about Escape with nothing open over the map, so the drawer is put away first.
+        await closeMenu(page);
         await page.evaluate(([pc, foe]) => window.hextable.act({ type: 'endTurn', actor: window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id }), [ids.pc, ids.foe]);
         if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
         await page.keyboard.press('Escape');
