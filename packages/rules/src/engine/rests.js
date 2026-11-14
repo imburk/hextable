@@ -109,6 +109,12 @@ export const handlers = {
       }
       if (e.features?.secondWind && !e.feats) e.uses.secondWind = Math.min(e.features.secondWind, (e.uses.secondWind ?? 0) + 1);   // SRD: one use back
       if (e.pact) e.slots = { ...e.slotsMax };
+      // Tireless: Exhaustion, if any, decreases by 1.
+      const ex = e.cond.exhaustion;
+      if (ex && (e.feats ?? []).some((f) => f.restExhaustion === 'short')) {
+        if ((ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: ex.level }); }
+        else { delete e.cond.exhaustion; ev.push({ type: 'condEnd', id: e.id, cond: 'exhaustion' }); }
+      }
     }
     for (const { e, f, levels } of plans) {
       e.uses[f.id]--;

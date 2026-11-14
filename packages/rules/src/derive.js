@@ -490,7 +490,9 @@ export function derive(sheet) {
     for (const k of ['evasion', 'surfaces']) if (g[k]) out[k] = true;
     if (g.selfCure) out.selfCure = { conditions: [...g.selfCure.conditions] };
     if (g.fleet) out.fleet = { ...g.fleet };
-    for (const k of ['empowered', 'overchannel']) if (g[k]) out[k] = { ...g[k] };      // since #232: the Evoker
+    for (const k of ['empowered', 'overchannel', 'markSpread', 'steadfast']) if (g[k]) out[k] = { ...g[k] };      // since #232: the Evoker, the Hunter
+    if (g.afterHit) out.afterHit = structuredClone(g.afterHit);
+    if (g.restExhaustion) out.restExhaustion = g.restExhaustion;
     if (g.cunning) out.cunning = { ...(g.cunning.max ? { max: g.cunning.max } : {}), ...(g.cunning.options ? { options: g.cunning.options.map((o) => ({ ...o, ...(o.effects ? { effects: bake(o.effects) } : {}) })) } : {}) };
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);

@@ -184,6 +184,8 @@ export function advanceTurn(s, ev) {
 export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null, pierce = false } = {}) {
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
+  // A Reaction that gives Resistance to the damage being taken (Superior Hunter's Defense): the type it resists now.
+  const braced = pierce ? null : braceAgainst(s, t, parts, m, ev);
   const dying = t.hp <= 0, before = t.hp;
   // Amounts added to or taken off the damage (the Resistance cantrip's 1d4) come first, then
   // Resistance and Vulnerability (SRD "Order of Application"). Each applies once to the
@@ -208,7 +210,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
-    const resisted = !pierce && applies(m.resist, t.resist), vulnerable = applies(m.vulnerable, t.vuln);
+    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
     if (!pierce && applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
@@ -243,6 +245,55 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     ev.push({ type: 'down', id: t.id });
   } else { t.dead = true; ev.push({ type: 'died', id: t.id }); }
   concentrationLost(s, ev, t, `${t.name} went down`);
+}
+
+// A feature reaction `{ on: 'damaged', resist: true }` (Superior Hunter's Defense): when its creature
+// takes damage it may take its Reaction for Resistance to that damage, and to any other of that type
+// until the end of the current turn (a part that ends then, `ends.who`). Not for a type it already
+// resists or is immune to; damage of several types at once is the player's pick, so the DM is told and
+// nothing is spent. Its instruction decides (always, never, or ask its player). Returns the type, or null.
+function braceAgainst(s, t, parts, m, ev) {
+  if (t.object || !canReact(t)) return null;
+  const r = reactionsOf(t).find((x) => x.kind === 'feature' && x.on === 'damaged' && x.reaction.resist);
+  if (!r) return null;
+  const w = instruction(t, r);
+  if (w === 'never') return null;
+  const has = (list, own, ty) => list === true || list.includes(ty) || (own ?? []).includes(ty);
+  const types = [...new Set(parts.filter((p) => p.amount > 0).map((p) => p.type))].filter((ty) => !has(m.resist, t.resist, ty) && !has(m.immune, t.immune, ty));
+  if (!types.length) return null;
+  if (types.length > 1) {
+    ev.push({ type: 'manual', actor: t.id, name: r.name, partial: true, text: `${t.name} takes ${types.join(' and ')} damage at once. ${r.name} gives Resistance to one type the player picks; if taken, the DM applies it and marks the Reaction used.` });
+    return null;
+  }
+  if (w === 'ask') {
+    const a = ask(s, t, { trigger: 'damaged', dtype: types[0] }, [{ reaction: r.id, name: r.name }]);
+    if (a === null) { tellDM(t, r, `${t.name} takes ${types[0]} damage.`, ev); return null; }
+    if (a.take !== r.id) return null;
+  }
+  t.reactionUsed = true;
+  ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'damaged', dtype: types[0] });
+  if (s.encounter) {
+    const fx = startEffect(s, { name: r.name, spell: null, source: t.id, conc: false, duration: 'special' });
+    fx.bound = true;
+    fx.parts.push({ target: t.id, modifier: { on: 'damage.taken', op: 'resist', types: [types[0]] }, ends: { on: 'turnEnd', who: current(s) } });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: t.id, conc: false, lasts: 'until the end of the current turn', targets: [t.id] });
+  }
+  return types[0];
+}
+
+// When a creature hits one with `afterHit` (Multiattack Defense) with an attack roll, the attacker gets
+// that modifier against it until the end of the current turn, once a turn.
+function afterHit(s, e, t, ev) {
+  if (!s.encounter || e.object || t.object) return;
+  for (const f of t.feats ?? []) {
+    if (!f.afterHit) continue;
+    const now = current(s);
+    if (effectsOf(s).some((fx) => fx.feature === f.id && fx.source === t.id && fx.parts.some((p) => !p.ended && p.target === e.id && p.ends?.who === now))) continue;
+    const fx = startEffect(s, { name: f.name, spell: null, source: t.id, conc: false, duration: 'special' });
+    Object.assign(fx, { bound: true, feature: f.id });
+    fx.parts.push({ target: e.id, modifier: structuredClone(f.afterHit.modifier), against: t.id, ends: { on: 'turnEnd', who: now } });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: t.id, conc: false, lasts: 'until the end of the current turn', targets: [e.id] });
+  }
 }
 
 // A creature with `relentless` (Relentless Rage) has dropped to 0 Hit Points while the feature it
@@ -281,7 +332,7 @@ function studied(s, e, t, ev) {
 // `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
 // `keepHidden`: the attack does not end its hiding yet (Stealth Attack; resolveAttack decides).
 function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = false } = {}) {
-  let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, atk);
+  let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
   if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
   if (!keepHidden) unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
@@ -311,6 +362,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
     dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
   if (!hit) studied(s, e, t, ev);
+  else afterHit(s, e, t, ev);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };

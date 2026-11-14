@@ -46,7 +46,9 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
   // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
   'target.fought',
   // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).
-  'check.proficient'];
+  'check.proficient',
+  // The attack is an Opportunity Attack (Escape the Horde).
+  'attack.opportunity'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
@@ -625,7 +627,11 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   'cunning', 'attune',
   // Since the casters' levels 7 to 15 (#232): an ability modifier added to one damage roll of a school's spells
   // (Empowered Evocation), and maximum damage at a growing cost (Overchannel).
-  'empowered', 'overchannel'];
+  'empowered', 'overchannel',
+  // A modifier an attacker gets against the creature it hit, to the end of the turn (Multiattack Defense); another
+  // creature hurt by a mark's extra damage (Superior Hunter's Prey); Concentration on a spell that damage does not
+  // break (Relentless Hunter); Exhaustion lowered by a Short Rest (Tireless).
+  'afterHit', 'markSpread', 'steadfast', 'restExhaustion'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -757,6 +763,9 @@ function lintGrants(g, cls, say) {
       if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range % 5 === 0 && Object.keys(r).length === 3)) say('a saveFailed reaction is { on, conditions, range }');
     // Or `{ on: 'damaged', attack: 'melee', within }`: it takes damage from a hostile creature within
     // `within` feet, and makes one melee attack against it (Retaliation).
+    } else if (r?.on === 'damaged' && r.resist !== undefined) {
+      // Or `{ on: 'damaged', resist: true }`: it takes damage, and gains Resistance to that type to the end of the turn (Superior Hunter's Defense).
+      if (!(r.resist === true && Object.keys(r).length === 2)) say('a damaged reaction that resists is { on, resist: true }');
     } else if (r?.on === 'damaged') {
       if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within % 5 === 0 && Object.keys(r).length === 3)) say('a damaged reaction is { on, attack: "melee", within }');
     } else if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
@@ -916,6 +925,20 @@ function lintGrants(g, cls, say) {
   // takes `die`s of Necrotic damage per slot level, one more each time, ignoring Resistance and Immunity.
   if (g.overchannel !== undefined && !(g.overchannel && ID.test(g.overchannel.list ?? '') && isInt(g.overchannel.maxSlot) && g.overchannel.maxSlot >= 1 && g.overchannel.maxSlot <= 9
     && [4, 6, 8, 10, 12].includes(g.overchannel.die) && Object.keys(g.overchannel).length === 3)) say('overchannel is { list, maxSlot, die }');
+  // `afterHit: { modifier }`: a creature that hits it with an attack roll gets this modifier (on attack.roll), against
+  // it only, until the end of the current turn (Multiattack Defense).
+  if (g.afterHit !== undefined) {
+    if (!(g.afterHit && g.afterHit.modifier && Object.keys(g.afterHit).length === 1)) say('afterHit is { modifier }');
+    else { lintModifier(g.afterHit.modifier, say); if (g.afterHit.modifier.on !== 'attack.roll') say('afterHit gives a modifier on attack.roll'); }
+  }
+  // `markSpread: { spell, range }`: once a turn, when its attack damages a creature its `spell` marks (a modifier
+  // the spell put on its caster against that creature), it may deal the mark's extra damage to another creature it
+  // can see within `range` feet of the first (`attack` with `prey`: Superior Hunter's Prey).
+  if (g.markSpread !== undefined && !(g.markSpread && ID.test(g.markSpread.spell ?? '') && isInt(g.markSpread.range) && g.markSpread.range > 0 && g.markSpread.range % 5 === 0 && Object.keys(g.markSpread).length === 2)) say('markSpread is { spell, range }');
+  // `steadfast: { spell }`: taking damage does not make it save to keep Concentration on that spell (Relentless Hunter).
+  if (g.steadfast !== undefined && !(g.steadfast && ID.test(g.steadfast.spell ?? '') && Object.keys(g.steadfast).length === 1)) say('steadfast is { spell }');
+  // `restExhaustion: 'short'`: each Short Rest it finishes lowers its Exhaustion by 1 (Tireless).
+  if (g.restExhaustion !== undefined && g.restExhaustion !== 'short') say('restExhaustion is "short"');
   if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
@@ -1218,7 +1241,7 @@ const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach'
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
-  'empowered', 'overchannel'];
+  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1277,6 +1300,10 @@ function lintFeat(f, say) {
     else for (const o of x.options ?? []) if (o.effects) lintSteps(o.effects, sub);
   }
   if (f.selfCure !== undefined && !(f.selfCure && allOf(CONDITIONS)(f.selfCure.conditions) && f.selfCure.conditions.length)) sub('its selfCure is { conditions }.');
+  if (f.afterHit !== undefined) { if (!(f.afterHit && f.afterHit.modifier?.on === 'attack.roll')) sub('its afterHit is { modifier } on attack.roll.'); else lintModifier(f.afterHit.modifier, sub); }
+  if (f.markSpread !== undefined && !(f.markSpread && ID.test(f.markSpread.spell ?? '') && isInt(f.markSpread.range) && f.markSpread.range > 0 && f.markSpread.range <= 300)) sub('its markSpread is { spell, range }.');
+  if (f.steadfast !== undefined && !(f.steadfast && ID.test(f.steadfast.spell ?? ''))) sub('its steadfast is { spell }.');
+  if (f.restExhaustion !== undefined && f.restExhaustion !== 'short') sub('its restExhaustion is "short".');
   if (f.empowered !== undefined && !(f.empowered && SCHOOLS.includes(f.empowered.school) && ID.test(f.empowered.list ?? '') && ABILITIES.includes(f.empowered.ability))) sub('its empowered is { school, list, ability }.');
   if (f.overchannel !== undefined && !(f.overchannel && ID.test(f.overchannel.list ?? '') && isInt(f.overchannel.maxSlot) && f.overchannel.maxSlot >= 1 && f.overchannel.maxSlot <= 9 && [4, 6, 8, 10, 12].includes(f.overchannel.die))) sub('its overchannel is { list, maxSlot, die }.');
   if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');
@@ -1286,6 +1313,8 @@ function lintFeat(f, say) {
   if (f.reaction?.on === 'saveFailed') {
     const r = f.reaction;
     if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range <= 300)) sub('its saveFailed reaction is { on, conditions, range }.');
+  } else if (f.reaction?.on === 'damaged' && f.reaction.resist !== undefined) {
+    if (!(f.reaction.resist === true && Object.keys(f.reaction).length === 2)) sub('its damaged reaction that resists is { on, resist: true }.');
   } else if (f.reaction?.on === 'damaged') {
     const r = f.reaction;
     if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within <= 30 && Object.keys(r).length === 3)) sub('its damaged reaction is { on, attack: "melee", within }.');

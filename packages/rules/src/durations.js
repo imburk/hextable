@@ -91,7 +91,9 @@ export function roundStarted(s, ev) {
   tick(s, ev);
 }
 
-const whose = (fx, p) => (p.ends.of === 'source' ? fx.source : p.target);
+// `who`: the creature whose turn it was when the part was made ("until the end of the current turn":
+// Multiattack Defense, Superior Hunter's Defense).
+const whose = (fx, p) => (p.ends.of === 'source' ? fx.source : p.ends.who ?? p.target);
 
 function boundary(s, ev, e, kit, when) {
   const enc = s.encounter, now = turnKey(s);
@@ -164,7 +166,8 @@ export function breakConcentration(s, ev, id, why) {
 }
 // Damage to someone concentrating: a Constitution save, DC 10 or half the damage if higher, at most 30.
 export function concentrationCheck(s, ev, t, amount, kit) {
-  const held = concentrating(s, t.id);
+  // Relentless Hunter (`steadfast: { spell }`): damage can't break Concentration on that spell.
+  const held = concentrating(s, t.id).filter((fx) => !(t.feats ?? []).some((f) => f.steadfast && f.steadfast.spell === fx.spell));
   if (!held.length || amount <= 0) return;
   const dc = Math.min(30, Math.max(10, Math.floor(amount / 2)));
   const { used, ...sv } = kit.savingThrow(s, t, 'con', dc, 'concentration');
