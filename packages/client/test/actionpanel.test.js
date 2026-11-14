@@ -12,7 +12,9 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, gearRows, lightRow, potionTargets } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { reactionsHtml } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
+const { chooserButtons, kindOf, strikeChoices, payFor, optionWhy } = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
@@ -461,4 +463,156 @@ test('items: an item spell is armed from its row (not greyed for lacking a targe
   const r = ok(apply(s, { ...by['item:i2:0'].send, targets: ['m1', 'm1', 'm2', 'm2'], level: 2 }, DMCTX));
   assert.equal(s.entities[id].sheet.items.find((x) => x.id === 'i2').charges, 5, 'level 2 costs 2 charges');
   assert.ok(r.events.some((x) => x.type === 'cast'));
+});
+
+
+// ---------- the martial classes, levels 7 to 15 (#230, DEBT T19) ----------
+const BARB = { name: 'Ur', class: 'barbarian', level: 14, subclass: 'berserker', abilities: { str: 18, dex: 14, con: 16, int: 8, wis: 12, cha: 10 }, skills: ['athletics', 'survival', 'perception'], weapons: ['greataxe', 'shortbow'] };
+const ROGUE = { name: 'Sly', class: 'rogue', level: 14, subclass: 'thief', abilities: { ...A, dex: 18 }, skills: ['stealth', 'perception', 'acrobatics', 'deception'], expertise: ['stealth', 'perception', 'acrobatics', 'deception'], weapons: ['rapier', 'shortbow', 'club'] };
+const MONK = { name: 'Lo', class: 'monk', level: 15, subclass: 'open-hand', abilities: { str: 10, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, skills: ['acrobatics', 'insight'], weapons: ['quarterstaff'] };
+const FIGHTER = { name: 'Fi', class: 'fighter', level: 13, subclass: 'champion', abilities: A, skills: ['athletics', 'perception'], weapons: ['longsword'] };
+function martial(sheet) {
+  const s = hero(sheet);
+  for (const id of Object.keys(s.entities)) if (id !== 'hero') delete s.entities[id];
+  const g = ok(apply(s, { type: 'spawn', monster: 'goblin-warrior', at: { q: 1, r: 0 } }, DM)).events[0].id;
+  s.entities[g].hp = s.entities[g].maxHp = 500;
+  ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM));
+  turnOf(s, 'hero');
+  return s;
+}
+
+test('Brutal Strike: a row after each Strength attack that can take it, greyed with the engine\'s words until Reckless Attack, and the options are the record\'s', () => {
+  const s = martial(BARB), e = s.entities.hero;
+  const rows = attackRows(s, e);
+  assert.deepEqual(ids(rows), ['atk:greataxe', 'strike:greataxe', 'atk:shortbow'], 'the shortbow is a Dexterity attack: no row');
+  assert.match(rows[1].why, /Brutal Strike needs Reckless Attack this turn/);
+  assert.match(rows[1].label, /Greataxe with Brutal Strike/);
+  const ch = strikeChoices(s, e, e.attacks[0]);
+  assert.deepEqual(ch.brutal.options.map((o) => o.id), ['forceful-blow', 'hamstring-blow', 'staggering-blow', 'sundering-blow'], 'level 14: the two improved options too');
+  assert.equal(ch.brutal.dice, '1d10');
+  assert.equal(ch.cunning, null);
+  ok(apply(s, { type: 'feature', actor: 'hero', feature: 'reckless-attack' }, DM));
+  const after = attackRows(s, e).find((r) => r.id === 'strike:greataxe');
+  assert.equal(after.why, '');
+  // what the card sends is what the engine takes
+  const foe = Object.keys(s.entities).find((i) => i !== 'hero');
+  const r = ok(apply(s, { type: 'attack', actor: 'hero', target: foe, attack: 'greataxe', brutal: 'staggering-blow' }, DM));
+  assert.ok(r.events.some((x) => x.type === 'attack'));
+  assert.match(attackRows(s, e).find((x) => x.id === 'strike:greataxe').why, /already used Brutal Strike this turn/);
+});
+
+test('Brutal Strike: not on another creature\'s turn, and the attack row\'s own reason comes first', () => {
+  const s = martial(BARB);
+  ok(apply(s, { type: 'endTurn', actor: 'hero' }, DM));
+  const row = attackRows(s, s.entities.hero).find((r) => r.id === 'strike:greataxe');
+  assert.ok(row.why, 'greyed');
+  assert.equal(row.why, attackRows(s, s.entities.hero).find((r) => r.id === 'atk:greataxe').why, "the turn's reason, as the attack row");
+  assert.equal(strikeChoices(s, s.entities.hero, s.entities.hero.attacks[0]).brutal.why, "Brutal Strike is used on Ur's turn.");
+});
+
+test('Brutal Strike: the armed row is the strike row, and the plain row is not armed with it', () => {
+  const s = martial(BARB), e = s.entities.hero;
+  ok(apply(s, { type: 'feature', actor: 'hero', feature: 'reckless-attack' }, DM));
+  const plain = attackRows(s, e, { mode: { kind: 'attack', id: 'greataxe' } });
+  assert.equal(plain[0].armed, true); assert.equal(plain[1].armed, false);
+  const withExtra = attackRows(s, e, { mode: { kind: 'attack', id: 'greataxe', extra: { brutal: 'forceful-blow' }, label: 'Forceful Blow' } });
+  assert.equal(withExtra[0].armed, false); assert.equal(withExtra[1].armed, true);
+});
+
+test('Cunning Strike: a row for a Finesse or Ranged attack, dice from the Sneak Attack, the gear and hiding greyed with the engine\'s words', () => {
+  const s = martial(ROGUE), e = s.entities.hero;
+  const rows = attackRows(s, e), by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.ok(by['strike:rapier'] && by['strike:shortbow'], 'rapier (Finesse) and shortbow (Ranged)');
+  assert.equal(by['strike:club'], undefined, 'a club is neither');
+  assert.equal(by['strike:rapier'].why, '');
+  const ch = strikeChoices(s, e, e.attacks.find((a) => a.id === 'rapier')).cunning;
+  assert.equal(ch.dice, 7); assert.equal(ch.max, 2, 'two effects from level 11');
+  assert.deepEqual(ch.options.map((o) => [o.id, o.cost]), [['poison', 1], ['trip', 1], ['withdraw', 1], ['stealth-attack', 1], ['daze', 2], ['knock-out', 6], ['obscure', 3]]);
+  const o = (id) => ch.options.find((x) => x.id === id);
+  assert.match(optionWhy(e, o('poison')), /needs a Poisoner's Kit/);
+  assert.match(optionWhy(e, o('stealth-attack')), /made while hidden/);
+  assert.equal(optionWhy(e, o('trip')), '');
+  e.gear = ["Poisoner's Kit"]; e.hiding = { dc: 15 };
+  assert.equal(optionWhy(e, o('poison')), ''); assert.equal(optionWhy(e, o('stealth-attack')), '');
+});
+
+test('Cunning Strike: what the card sends is taken, and a second attack the same turn is greyed', () => {
+  const s = martial(ROGUE), e = s.entities.hero, foe = Object.keys(s.entities).find((i) => i !== 'hero');
+  e.gear = ["Poisoner's Kit"];
+  const r = ok(apply(s, { type: 'attack', actor: 'hero', target: foe, attack: 'rapier', cunning: ['poison', 'trip'] }, DM));
+  assert.ok(r.events.some((x) => x.type === 'attack'));
+  if (s.encounter.flags[`sneak:hero`]) assert.match(attackRows(s, e).find((x) => x.id === 'strike:rapier').why, /already dealt Sneak Attack this turn/);
+});
+
+test('Cunning Strike: a rogue with one Sneak Attack die has none to spend', () => {
+  const s = martial({ ...ROGUE, level: 1, subclass: undefined, expertise: ['stealth', 'perception'] });
+  const e = s.entities.hero;
+  assert.equal(strikeChoices(s, e, e.attacks.find((a) => a.id === 'rapier')), null, 'no Cunning Strike before level 5');
+});
+
+test('Intimidating Presence: a chooser of creatures (targets), paid from Rage when its own use is spent', () => {
+  const s = martial(BARB), e = s.entities.hero, f = e.feats.find((x) => x.id === 'intimidating-presence');
+  assert.equal(kindOf(f), 'targets');
+  let b = chooserButtons(s, e).find((x) => x.feature === 'intimidating-presence');
+  assert.ok(b && b.kind === 'targets' && b.time === 'bonus' && b.why === '');
+  assert.deepEqual(ids(featureRows(s, e)).filter((i) => i === 'feat:intimidating-presence'), ['feat:intimidating-presence'], 'one row');
+  assert.equal(featureRows(s, e).find((r) => r.id === 'feat:intimidating-presence').kind, 'chooser');
+  e.uses['intimidating-presence'] = 0;
+  assert.equal(payFor(e, f).rage, true);
+  b = chooserButtons(s, e).find((x) => x.feature === 'intimidating-presence');
+  assert.equal(b.why, '', 'Rage pays for it');
+  assert.match(b.sub, /paid from Rage/);
+  e.uses.rage = 0;
+  assert.match(chooserButtons(s, e).find((x) => x.feature === 'intimidating-presence').why, /no uses of Intimidating Presence left/);
+  // what the card sends is taken
+  e.uses.rage = 2;
+  const foe = Object.keys(s.entities).find((i) => i !== 'hero');
+  const r = ok(apply(s, { type: 'feature', actor: 'hero', feature: 'intimidating-presence', targets: [foe] }, DM));
+  assert.ok(r.events.some((x) => x.type === 'save' && x.id === foe));
+  assert.equal(e.uses.rage, 1, 'a use of Rage paid for it');
+});
+
+test('Patient Defense and Step of the Wind: the Focus Point rows say what they spend and do, and grey when the points are gone', () => {
+  const s = martial(MONK), e = s.entities.hero;
+  const rows = panelFeatureRows(s, e), by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.match(by['feat:patient-defense'].sub, /Spend 1 Focus Points?: Disengage and Dodge/);
+  assert.match(by['feat:step-of-the-wind'].sub, /Disengage and Dash/);
+  assert.equal(by['feat:patient-defense'].why, ''); assert.equal(by['feat:patient-defense'].time, 'bonus');
+  assert.ok(by['feat:patient-defense'].pips.max >= 1, 'the pool is shown');
+  e.uses['monks-focus'] = 0;
+  const grey = panelFeatureRows(s, e).find((r) => r.id === 'feat:step-of-the-wind');
+  assert.match(grey.why, /no uses of Monk's Focus left/);
+  // the free versions stay Bonus Action rows of Disengage and Dash
+  const bonus = bonusRows(s, e).rows;
+  assert.ok(bonus.some((r) => r.id === 'disengage-bonus') && bonus.some((r) => r.id === 'dash-bonus'));
+  assert.ok(bonus.some((r) => r.id === 'feat:patient-defense'), 'the Focus Point version is a Bonus row too');
+});
+
+test('Reactions: the free instructions are listed apart, say they do nothing until set, and do not make the Reaction usable', () => {
+  const s = martial(FIGHTER), e = s.entities.hero;
+  const html = reactionsHtml(s, e, { panel: true });
+  assert.match(html, /data-rx-group="free"/); assert.match(html, /not Reactions/); assert.match(html, /Does nothing until set to Always/);
+  assert.match(html, /data-rx-set="indomitable"/);
+  assert.ok(html.indexOf('data-rx-group="free"') < html.indexOf('data-rx-set="indomitable"'), 'the heading comes first');
+  const real = html.slice(0, html.indexOf('data-rx-group="free"'));
+  assert.doesNotMatch(real, /data-rx-set="indomitable"/);
+  const st = reactionState(s, e);
+  assert.equal(st.ok, true, 'the fighter\'s Opportunity Attack is a real Reaction');
+  assert.equal(st.free, 1);
+  // a creature with nothing but free instructions has no Reaction, and says so, but its tab still has them
+  e.attacks = []; e.actions = undefined;
+  assert.equal(reactionState(s, e).ok, false); assert.match(reactionState(s, e).why, /has no reactions/); assert.equal(reactionState(s, e).free, 1);
+  const none = reactionsHtml(s, e, { panel: true });
+  assert.match(none, /data-rx-set="indomitable"/); assert.doesNotMatch(none, /rx-status/, 'no "Reaction this round" line without one');
+  // the instruction is sent as before
+  ok(apply(s, { type: 'reactions', actor: 'hero', set: { indomitable: 'always' } }, DM));
+  assert.match(reactionsHtml(s, e, { panel: true }), /<option value="always" selected>/);
+});
+
+test('Features: a feature that works through a standing instruction says what it is set to, and that it is not a Reaction', () => {
+  const s = martial(FIGHTER), e = s.entities.hero;
+  const row = panelFeatureRows(s, e).find((r) => r.id === 'feat:indomitable');
+  assert.equal(row.chip, 'Not a Reaction'); assert.match(row.sub, /Never/); assert.match(row.sub, /does nothing until set to Always/i);
+  ok(apply(s, { type: 'reactions', actor: 'hero', set: { indomitable: 'always' } }, DM));
+  assert.match(panelFeatureRows(s, e).find((r) => r.id === 'feat:indomitable').sub, /Always/);
 });
