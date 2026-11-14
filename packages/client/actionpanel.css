@@ -5,8 +5,8 @@
 #ap-how p { margin: 4px 0 0; color: var(--muted); } #ap-how .row { margin: 8px 0 0; } #ap-how button { min-height: 44px; }
 
 #ap-body { min-height: 0; }
-#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down { max-height: 132px; overflow-y: auto; overscroll-behavior: contain; }
-#card[data-raised] :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(132px, calc(55vh - 200px)); }
+#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items, #ap-reactions, #ap-down { max-height: 132px; overflow-y: auto; overscroll-behavior: contain; }
+#card[data-raised] :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items, #ap-reactions, #ap-down) { max-height: max(132px, calc(55vh - 200px)); }
 #card[data-collapsed] #ap-body { display: none; }
 .ap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ap-list { display: grid; gap: 6px; margin-top: 6px; }
@@ -35,13 +35,13 @@
 @media (prefers-reduced-motion: reduce) { #ap-tabs button.pulse { animation: none; background: var(--accent); color: var(--accent-ink); } }
 
 @media (min-width: 900px) {
-  :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features) .ap-list { grid-template-columns: 1fr 1fr; }
-  #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-reactions, #ap-down) { max-height: max(184px, calc(40vh - 130px)); }
+  :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items) .ap-list { grid-template-columns: 1fr 1fr; }
+  #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items, #ap-reactions, #ap-down) { max-height: max(184px, calc(40vh - 130px)); }
 }
 
 /* The card is a grid; its rows must not grow to the width of the bar of buttons, which scrolls sideways inside it. */
 #card { grid-template-columns: minmax(0, 1fr); }
-#ap-body, #ap-spells { min-width: 0; }
+#ap-body, #ap-spells, #ap-items { min-width: 0; }
 
 /* A greyed row keeps its reason at full strength: only the name and the numbers fade, so the words can be read without a hover. */
 button.ap-row.off { opacity: 1; border-style: dashed; }
@@ -65,3 +65,14 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 .ap-head { margin: 8px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .ap-head:first-child { margin-top: 0; }
 @media (min-width: 900px) { .ap-head { grid-column: 1 / -1; } #card[data-raised] #ap-spells { max-height: max(184px, calc(40vh - 130px)); } }
+
+/* The Items tab: gear with its equip and attune buttons, and whom a potion is given to. */
+.ap-row.ap-gear { border-style: solid; background: var(--panel-2); gap: 4px; }
+.ap-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.ap-acts button { min-height: 44px; padding: 4px 12px; }
+.ap-acts button.off { border-style: dashed; opacity: .7; }
+.ap-gear small.ap-why { color: var(--ink); font-size: 12px; }
+.ap-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: var(--radius); }
+.ap-pick span { font-size: 13px; color: var(--muted); }
+.ap-pick button { min-height: 44px; padding: 4px 12px; }
+@media (min-width: 900px) { .ap-pick { grid-column: 1 / -1; } }
