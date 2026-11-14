@@ -4,6 +4,7 @@ import { makeEntity } from './engine.js';
 import { MONSTERS, PREGENS } from './content/index.js';
 import { VERSION } from './migrate.js';
 import { newMap } from './map.js';
+import { HEX, SQUARE } from './grid.js';
 
 const hash = (q, r, seed) => {
   let h = (q * 374761393 + r * 668265263 + seed * 2147483647) | 0;
@@ -11,7 +12,8 @@ const hash = (q, r, seed) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-export function newGame(seed = 7) {
+export function newGame(seed = 7, opts = {}) {
+  if (opts?.grid === 'square') return squareValley(newGame(seed));
   const tiles = {};
   const smooth = (h) => (hash(h.q, h.r, seed) + H.neighbors(h).reduce((a, n) => a + hash(n.q, n.r, seed), 0)) / 7;
   for (const h of H.range({ q: 0, r: 0 }, 13)) {
@@ -43,5 +45,36 @@ export function newGame(seed = 7) {
     { t: 0, type: 'chronicle', title: 'The old watchtower falls', text: 'A generation ago the watchtower north of the valley was abandoned. Its dead do not rest.', tags: ['ruin', 'history'] },
     { t: 7 * 60, type: 'chronicle', title: 'Goblins raid the east road', text: 'A goblin band with a tamed wolf took a merchant cart at dawn and camped east of the pond.', tags: ['goblins'] },
   );
+  return s;
+}
+
+// The same valley on squares (docs/specs/square-grid.md, Decision 7 and row S12). It is made from the
+// hex valley of the same seed, so it is the same place: every square takes the terrain that lies under
+// its centre on the hex valley, and every creature stands on the square that holds its hex's centre
+// (the next free one if two would share). The heroes, the foes, their numbers, the clock, the settings
+// and the chronicle are the hex valley's own, and the dice are the same seed. The hex valley itself is
+// not touched: `newGame(seed)` is what it always was.
+function squareValley(hexGame) {
+  const s = hexGame, hexTiles = s.map.levels[0].tiles, tiles = {};
+  const R = 14;                                                 // the valley is 13 hexes (65 ft) from its middle
+  for (let q = -R; q <= R; q++) for (let r = -R; r <= R; r++) {
+    const [x, y] = SQUARE.center({ q, r }), t = hexTiles[H.col(HEX.cell(x, y))];
+    if (t) tiles[`${q},${r}`] = { t: t.t, lift: t.lift };
+  }
+  const taken = new Set();
+  const squareOf = (pos) => {
+    const [x, y] = HEX.center(pos), want = SQUARE.cell(x, y);
+    const near = [want, ...SQUARE.range(want, 2).sort((a, b) => SQUARE.dist(want, a) - SQUARE.dist(want, b) || Math.hypot(a.q - x / 5, a.r - y / 5) - Math.hypot(b.q - x / 5, b.r - y / 5))];
+    const at = near.find((c) => tiles[`${c.q},${c.r}`] && !taken.has(`${c.q},${c.r}`));
+    taken.add(`${at.q},${at.r}`);
+    return at;
+  };
+  for (const e of Object.values(s.entities)) {                  // in the order the hex valley placed them, heroes first
+    const at = squareOf(e.pos);
+    e.pos = { q: at.q, r: at.r, z: 0 };
+    tiles[`${at.q},${at.r}`] = { t: 'grass', lift: 0.6 };       // the same trampled ground the hex valley gives each creature
+  }
+  const start = s.entities.fighter.pos;
+  s.map = newMap({ id: 'valley-squares', name: 'The valley', grid: 'square', levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: start.q, r: start.r }] });
   return s;
 }

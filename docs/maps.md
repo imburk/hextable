@@ -1,6 +1,6 @@
 # Stock maps
 
-Five ready-made places the DM can start on. Each is a plain map document
+Six ready-made places the DM can start on: five on hexes and one on squares. Each is a plain map document
 ([spec](specs/maps-and-objects.md)) with rooms to reveal, doors, light and a start for a
 party of five. No monsters are placed: they are blank stages. The layouts are our own.
 
@@ -24,15 +24,18 @@ creatures of the old place stay behind, and it works in solo and at a table. It 
 | `forest-road` | The Old Road | 1 level | A road through the woods, a clearing on each side of the bend, boulders for cover, an overturned cart, a stream with banks and a stone bridge. Forest hexes are Difficult Terrain. |
 | `keep` | Greywatch | 2 levels | An approach, a gatehouse (portcullis and door), a courtyard with a well and a stable, and a keep of hall, kitchen, locked larder and guard room. A stair in the hall climbs to a stair head, the lord's chamber, a study and a balcony over the yard (railed). |
 
-Every map is 20 to 40 hexes across, so it plays on a phone. `packages/rules/test/stock-maps.test.js`
+| `undercroft` | Thornwick Undercroft | 1 level, **squares** | Seven rooms (entry hall, reading room, armory, feast hall with pillars, a shrine with a pool, a hidden cache, a strongroom) joined by corridors **5 ft** (one square) and **10 ft** (two squares) wide: a closed door, a portcullis, a locked vault door (iron) and a secret panel behind the weapon racks. Dim, with a bright feast hall and reading room and a dark shrine, cache and strongroom. |
+
+Every map is 20 to 40 hexes (or squares) across, so it plays on a phone. `packages/rules/test/stock-maps.test.js`
 lints each one, checks the starts can be stood on, that every room can be reached from the start
 once the doors are open (locked, secret and portcullis included), and that the engine loads it.
 
 ## Where they live
 
 `packages/rules/src/content/maps/`: one `.js` file per map holding `export default { ...map document }`
-(data only, no functions), and `index.js`, which lists them for the editor as `STOCK_MAPS`
-(`{ id, name, text, map }`). They sit beside the other content so the build copies them to
+(data only, no functions), and `index.js`, which lists them as `STOCK_MAPS` (the five hex maps),
+`SQUARE_STOCK_MAPS` (the one on squares) and `ALL_STOCK_MAPS` (both, which the lobby and the DM panel offer;
+`{ id, name, text, map }`). They sit beside the other content so the build copies them to
 `dist/shared/content/maps/` with the rules, and the editor imports them from `./shared/...`.
 They are `.js` rather than `.json` because the browser cannot import JSON without import attributes.
 
@@ -49,6 +52,35 @@ They are `.js` rather than `.json` because the browser cannot import JSON withou
 3. Add the import and an entry to `packages/rules/src/content/maps/index.js` and the id to
    `KINDS` in the test.
 4. `npm test`, then look at it in the browser (the editor shows walls and doors) at both sizes.
+
+### Drawing a map on squares
+
+Start the builder with the grid: `new Builder(id, name, SQUARES)`. Everything else is the same, with squares in
+place of hexes: `rect(c0, r0, c1, r1, spec)` fills columns and rows (column to the east, row to the south, both
+whole numbers; there is no half-square shift), `hex(c, r, spec)` paints one square, `region`, `door`, `arch`,
+`edges`, `outer`, `thing`, `stairs` and `start` work as before. `disc`, `line` and `path` are for hexes only.
+The sides of a square are E, N, W, S (0 to 3); `open(c, r, 'E')` leaves no wall on that side. A few things
+that differ from hexes:
+
+- **No offset rows, no diagonal walls.** Every wall runs along a square side, and walls are drawn where a `walled`
+  square meets nothing or a square of another room, so a room next to a corridor needs no thickness: the wall is the
+  line between them. Give every room and corridor its own `region`.
+- **A corridor 5 ft wide is one square wide, 10 ft is two.** Make each corridor a region of its own (a one-square-wide
+  strip of `rect`) so it is a named room that is revealed when the party opens the door to it, and say its width in
+  its name. Two abreast fit in 10 ft; in 5 ft the party goes in single file and cannot pass each other.
+- **A door stands on one side, 5 ft.** `door(roomA, roomB)` puts it on one of the sides where the two rooms touch
+  (use `near: [column, row]` to choose which). A 10 ft corridor therefore takes an `arch` (no wall between), or a
+  door on one of its two squares and an `arch` on the other if you want a half-blocked way.
+- **Things that fill a square** (a pillar, a statue, a crate) fill it wholly: a 5 ft passage with one in it is shut.
+  Pillars of `t: 'rock'` do the same.
+- **The map starts at 0,0** at its north-west corner (the builder moves it), so a map is 36 columns by 25 rows when it
+  says so.
+
+`node scripts/gen-maps.mjs --ascii` prints a square map one letter per room, `#` for rock and `~` for water.
+Squares of 5 ft count a diagonal step as one square (docs/specs/square-grid.md), so a room 7 squares across is 35 ft.
+The test for a square map is `packages/rules/test/stock-maps-square.test.js`: it lints it, checks the size
+(20 to 40 squares across), the corridor widths, that doors are on square sides, that the starts can be stood on, and
+that every room can be reached once the doors are open.
 
 A map made some other way (the editor's Export, or a file from another tool) can be added the same
 way: put its document in `export default` in a new file and list it in `index.js`.
