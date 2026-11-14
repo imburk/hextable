@@ -9,7 +9,7 @@
 import { Renderer } from './render.js';
 
 // Methods, then properties, of the interface. Properties are read or set from outside; callbacks are set by the app.
-export const METHODS = ['setState', 'settle', 'setTheme', 'setCeiling', 'setHighlights', 'focus', 'rotate', 'zoom', 'floater', 'planeHex', 'planePoint', 'screenOf', 'screenPoint', 'screenAxes', 'zonesAt', 'hasPicture', 'setPins', 'setBars', 'stats', 'dispose'];
+export const METHODS = ['setState', 'settle', 'setTheme', 'setCeiling', 'setHighlights', 'focus', 'rotate', 'zoom', 'floater', 'planeHex', 'planePoint', 'screenOf', 'screenPoint', 'screenAxes', 'cameraAngles', 'zonesAt', 'hasPicture', 'setPins', 'setBars', 'stats', 'dispose'];
 export const PROPS = ['inset', 'onTap', 'onHover', 'onPoint', 'onDrag', 'onPicture', 'assetUrl'];
 export const MEMBERS = [...METHODS, ...PROPS];
 export const KINDS = ['gl', 'none', 'three'];
@@ -44,6 +44,7 @@ export class EmptyRenderer {
   screenOf() { return null; }
   screenPoint() { return null; }
   screenAxes() { return { right: [1, 0], up: [0, -1] }; }
+  cameraAngles() { return { yaw: 0, pitch: 0.95 }; }
   zonesAt() { return []; }
   hasPicture() { return false; }
   setPins() {}
@@ -98,6 +99,7 @@ export class LazyThree {
   screenOf(...a) { return this.inner ? this.inner.screenOf(...a) : null; }
   screenPoint(...a) { return this.inner ? this.inner.screenPoint(...a) : null; }
   screenAxes() { return this.inner ? this.inner.screenAxes() : { right: [1, 0], up: [0, -1] }; }
+  cameraAngles() { return this.inner ? this.inner.cameraAngles() : { yaw: 0.5, pitch: 0.95 }; }
   zonesAt(...a) { return this.inner ? this.inner.zonesAt(...a) : []; }
   hasPicture(...a) { return this.inner ? this.inner.hasPicture(...a) : false; }
   stats() { return this.inner ? this.inner.stats() : { frameMs: 0, quality: 0, pixelRatio: 1, drawCalls: 0 }; }

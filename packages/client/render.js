@@ -474,6 +474,8 @@ export class Renderer {
     return [C.eye[0] + d[0] * t, C.eye[2] + d[2] * t];
   }
   // Which way is screen-right and screen-up on the ground, as unit vectors in map feet: for nudging a picture.
+  // The camera's turn about the board and its height above it (radians), read-only: the dice lie in the board's plane as seen from here.
+  cameraAngles() { return { yaw: this.cam.yaw, pitch: this.cam.pitch }; }
   screenAxes() {
     const C = this.C ?? this.#camera(), u = (a) => { const l = Math.hypot(a[0], a[2]) || 1; return [a[0] / l, a[2] / l]; };
     return { right: u(C.r), up: u(C.f) };
