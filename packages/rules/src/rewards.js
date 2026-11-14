@@ -37,7 +37,7 @@ function share(s, c) {
   for (const id of c.party) if (!c.xp.fixed.includes(id)) c.xp.per[id] = alive.includes(id) ? Math.max(0, each) : 0;
 }
 
-// At the end of a fight (engine.js, endEncounter), before the fight is cleared. `who` is the fight's
+// At the end of a fight (engine/resolve.js, endEncounter), before the fight is cleared. `who` is the fight's
 // creatures; `enc` the fight.
 export function concludeFight(s, ev, result, enc, who, land = null) {
   if (result !== 'victory' && result !== 'ended') return;
@@ -55,7 +55,7 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
 
 // Publish: shares into `xp`, assigned loot into `gear`, the record into the timeline.
 // A loot line that names a magic item of the pack (`item`) lands on a built character's sheet as that item, through
-// `land` (engine.js); a character typed in by hand, or a sheet that cannot take it, gets its name in `gear`.
+// `land` (engine/sheets.js, landItem); a character typed in by hand, or a sheet that cannot take it, gets its name in `gear`.
 function publish(s, ev, land = null) {
   const c = s.conclusion;
   // Who the party knew of, now: the published record names only those (view.js shapes it per viewer).

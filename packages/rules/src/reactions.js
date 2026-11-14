@@ -2,7 +2,7 @@
 // prompts).
 //
 // A creature has one Reaction a round: spent when it is used, back at the start of its own turn
-// (engine.js, advanceTurn), and not usable while it is Incapacitated or down. What it can react
+// (engine/resolve.js, advanceTurn), and not usable while it is Incapacitated or down. What it can react
 // with is worked out here from its record: the Opportunity Attack (any creature with a melee
 // attack), spells whose data has a `reaction` trigger, built features that grant one, and a pack
 // monster's traits that carry one (Parry).
@@ -12,7 +12,7 @@
 // engine reads it at the trigger. `always`, `never` and `miss` resolve inside the action that set
 // the trigger off. `ask` stops that action for a creature a player controls: the engine keeps it
 // waiting in the game state (`pending`), tells that player (view.js, viewPrompt), and carries on
-// when the player or the DM answers with the `react` action (engine.js). For one of the DM's own
+// when the player or the DM answers with the `react` action (engine.js, the react handler). For one of the DM's own
 // creatures `ask` hands the moment to the DM with a `manual` event and nothing waits, so monster
 // turns and the AI never stop on themselves. An instruction is private to the creature's
 // controller and the DM (view.js strips it from what everyone else is sent).
