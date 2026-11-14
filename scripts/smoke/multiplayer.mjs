@@ -75,7 +75,7 @@ async function multiplayer(browser, url) {
         }
         const sent = await host.evaluate(async ([p, f]) => {
           const S = window.hextable.state;
-          if (S.encounter.order[S.encounter.turn].id !== f) return 'not its turn';
+          if (S.encounter.order[S.encounter.turn].id !== f) return `not its turn (it is ${S.encounter.order[S.encounter.turn].id}'s; the foe has ${S.entities[f]?.hp} HP, dead: ${!!S.entities[f]?.dead})`;
           const def = S.entities[f].actions?.find((a) => JSON.stringify(a.effects ?? []).includes('"melee"'));
           window.hextable.act(def ? { type: 'act', actor: f, action: def.id, target: p } : { type: 'attack', actor: f, target: p, attack: S.entities[f].attacks[0].id });
           return 'sent';

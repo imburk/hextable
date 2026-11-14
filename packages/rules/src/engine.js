@@ -38,14 +38,7 @@ export { opportunityAttack };
 
 // Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
 // type is defined in one module only: if two defined it, the later spread would win silently.
-const handlers = {
-  ...movement,
-  ...attacks,
-  ...casting,
-  ...features,
-  ...characters,
-  ...rests,
-  ...dm,
+const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, {
   // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
   // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
   // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
@@ -69,10 +62,25 @@ const handlers = {
     Object.assign(RUN, { action, ctx: was, answers: [...answers, answer], i: 0 });
     dispatch(s, action, was, ev);
   },
-};
+}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'engine']);
+
+// Builds the table of handlers, a Map keyed by action type: a lookup can then never find what every
+// object has (`toString`, `constructor`, `__proto__`). Throws, naming both modules, if two modules
+// define the same action type, so the later one cannot win silently.
+export function buildHandlers(modules, names = modules.map((_, i) => `module ${i}`)) {
+  const table = new Map(), from = new Map();
+  modules.forEach((m, i) => {
+    for (const [type, h] of Object.entries(m)) {
+      if (table.has(type)) throw new Error(`Action "${type}" is defined in both ${from.get(type)} and ${names[i]}; an action type belongs to one module.`);
+      table.set(type, h);
+      from.set(type, names[i]);
+    }
+  });
+  return table;
+}
 
 // Every action type the engine handles (history.js is tested to have a label for each).
-export const ACTION_TYPES = Object.keys(handlers);
+export const ACTION_TYPES = [...handlers.keys()];
 
 // Whatever has nothing under it and no way to stay up, falls. Run after every action, so that a
 // flyer knocked Prone, a floor that gives way and a creature set down in mid-air all come out the same.
@@ -121,7 +129,10 @@ function dispatch(s, action, ctx, ev) {
       }
     }
   }
-  const h = handlers[action.type] || fail(`Unknown action: ${action.type}`);
+  // Only a string type that is in the table is an action; anything else (no action, no type, a type
+  // that is not a string, `toString`) is refused as unknown.
+  const type = action?.type;
+  const h = (typeof type === 'string' && handlers.get(type)) || fail(`Unknown action: ${typeof type === 'object' && type !== null ? 'not a name' : typeof type === 'symbol' ? type.toString() : String(type)}`);
   // While an action waits for a reaction, nothing that could change how it comes out may happen.
   if (s.pending && !WHILE_WAITING.has(action.type)) fail('The table is waiting for a reaction to be answered.');
   h(s, action, ctx, ev);

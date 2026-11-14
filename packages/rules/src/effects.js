@@ -6,7 +6,7 @@
 // Resolution is a stack of frames kept in the game state (state.stack), not a chain of
 // function calls. Every loop counter and every "which branch am I in" lives in a frame as
 // plain data, and the stack is always empty again when apply() returns. An action that stops to
-// ask a player about a reaction (engine.js, apply) is put back whole and run again from its start
+// ask a player about a reaction (engine.js, apply, which also holds the react handler) is put back whole and run again from its start
 // with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
 import { BRANCHES, STEPS } from './content/schema.js';
@@ -14,7 +14,7 @@ import { roll } from './rng.js';
 import { useUp } from './durations.js';
 
 export const stepKind = (step) => STEPS.find((k) => k in step);
-// Area shapes the engine can lay out on hexes (engine.js, layout()).
+// Area shapes the engine can lay out on hexes (engine/world.js, layout()).
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
 // Can the engine aim this area? A sphere or cylinder needs somewhere within range to go off
 // (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
@@ -364,7 +364,7 @@ function exec(s, ev, kit, f, step, at) {
     return;
   }
   // The spell that set this reaction off fails (Counterspell). Only a reaction to a spell being
-  // cast has one to stop (engine.js, castReaction marks its source `counters`).
+  // cast has one to stop (engine/resolve.js, castReaction marks its source `counters`).
   if (kind === 'counter') {
     if (!f.src.counters) return handOver(`${f.src.name} would stop a spell, but no spell is being cast for the engine to stop. The DM applies it.`);
     f.src.countered = true;
