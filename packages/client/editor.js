@@ -130,7 +130,7 @@ export class Editor {
     for (const b of $('ed-terrain').children) b.classList.toggle('sel', b.dataset.t === this.terrain);
     for (const b of $('ed-kinds').children) b.classList.toggle('sel', b.dataset.k === this.kind);
     for (const b of $('ed-brush').children) { b.classList.toggle('sel', +b.dataset.b === this.brush); b.textContent = kind === 'square' ? ['1 square', '3 by 3'][+b.dataset.b] : ['1 hex', '7 hexes'][+b.dataset.b]; }
-    $('ed-grid').textContent = kind === 'square' ? 'on squares' : 'on hexes';
+    $('ed-grid').textContent = kind === 'square' ? 'Grid: squares' : 'Grid: hexes';
     $('ed-gridnote').textContent = `This map is on ${kind === 'square' ? 'squares' : 'hexes'}, and the editor keeps it so. For the other grid, start a new map.`;
     for (const p of $('ed-opts').children) p.hidden = !p.dataset.for.split(' ').includes(this.tool);
     $('ed-notes').hidden = this.tool !== 'file' || !this.uvtt;
@@ -703,7 +703,7 @@ export class Editor {
         <button type="button" id="ed-ppsqok">Use</button><button type="button" id="ed-lines">Find the lines</button></div>
       <div class="ed-row" data-for="level" id="ed-bgnudge"><span>Nudge</span>
         <button type="button" data-nudge="left" aria-label="Nudge left">&larr;</button><button type="button" data-nudge="up" aria-label="Nudge up">&uarr;</button><button type="button" data-nudge="down" aria-label="Nudge down">&darr;</button><button type="button" data-nudge="right" aria-label="Nudge right">&rarr;</button>
-        <select id="ed-nudgestep" aria-label="How far"><option value="1">1 ft</option><option value="5">5 ft</option><option value="0.25">3 in</option><option value="0.05">1/2 in</option></select>
+        <select id="ed-nudgestep" aria-label="How far"><option value="1">1 ft</option><option value="5">5 ft</option><option value="0.25">3 in</option><option value="0.05">0.05 ft</option></select>
         <button type="button" id="ed-clearbg">Clear background</button></div>`);
     $('ed-setbg').onclick = () => $('ed-bgfile').click();
     $('ed-bgfile').onchange = async (ev) => {
@@ -1022,7 +1022,8 @@ export class Editor {
     const bar = $('editor');
     const objs = Object.values(CONTENT.objects).map((o) => `<option value="${esc(o.id)}">${esc(o.name)}${o.kind === 'door' ? ' (on an edge)' : ''}</option>`).join('');
     bar.innerHTML = `
-      <div class="ed-head"><strong>Editor</strong><small id="ed-grid"></small><select id="ed-level" aria-label="Level being edited"></select><button type="button" id="ed-undo" disabled>Undo</button><button type="button" id="ed-done">Done</button></div>
+      <div class="ed-head"><strong>Map editor</strong><select id="ed-level" aria-label="Level being edited"></select><button type="button" id="ed-undo" disabled>Undo</button><button type="button" id="ed-done">Done</button></div>
+      <p class="ed-sub" id="ed-grid"></p>
       <div class="ed-row" id="ed-tools">${Object.entries(TOOLS).map(([k, t]) => `<button type="button" data-tool="${k}">${t}</button>`).join('')}</div>
       <div id="ed-opts">
         <div class="ed-row" data-for="paint" id="ed-terrain">${Object.keys(TILES).map((t) => `<button type="button" data-t="${t}"><i class="sw sw-${t}"></i>${t[0].toUpperCase()}${t.slice(1)}</button>`).join('')}</div>
