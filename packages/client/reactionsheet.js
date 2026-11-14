@@ -18,15 +18,17 @@ export function reactionRows(S, e) {
   return reactionsOf(e).map((r) => ({ ...r, now: instruction(at, r) }));
 }
 
-export function reactionsHtml(S, e) {
+// `panel`: drawn in the action panel (ids are prefixed, so the sheet's own copy keeps its ids, and it has no heading or long note).
+export function reactionsHtml(S, e, { panel = false } = {}) {
   const rows = reactionRows(S, e);
   if (!rows.length) return '';
   const fight = !!S.encounter && inFight(S, e.id);
   const status = fight ? `<p class="note rx-status" data-rx-status="${e.reactionUsed ? 'spent' : 'ready'}">Reaction this round: <b>${e.reactionUsed ? 'spent' : canReact(e) ? 'ready' : 'not available'}</b></p>` : '';
   const body = rows.map((r) => `<div class="rx" data-rx="${esc(r.id)}">
-      <label for="rx-${esc(r.id)}"><b>${esc(r.name)}</b><small>${esc([TRIGGER[r.on] ?? '', COST[r.kind]].filter(Boolean).join(' · '))}</small></label>
-      <select id="rx-${esc(r.id)}" data-rx-set="${esc(r.id)}">${r.options.map((o) => `<option value="${o}"${o === r.now ? ' selected' : ''}>${esc(WHEN[o] ?? o)}${o === r.dflt ? ' (default)' : ''}</option>`).join('')}</select>
+      <label for="${panel ? 'ap-' : ''}rx-${esc(r.id)}"><b>${esc(r.name)}</b><small>${esc([TRIGGER[r.on] ?? '', COST[r.kind]].filter(Boolean).join(' · '))}</small></label>
+      <select id="${panel ? 'ap-' : ''}rx-${esc(r.id)}" data-rx-set="${esc(r.id)}">${r.options.map((o) => `<option value="${o}"${o === r.now ? ' selected' : ''}>${esc(WHEN[o] ?? o)}${o === r.dflt ? ' (default)' : ''}</option>`).join('')}</select>
     </div>`).join('');
+  if (panel) return `<section id="ap-rx">${status}${body}</section>`;
   return `<section id="sheet-reactions"><h3>Reactions</h3>${status}${body}<p class="note">Standing instructions: the engine follows them when the moment comes, even on someone else's turn. Only you and the DM see them.</p></section>`;
 }
 

@@ -75,6 +75,8 @@ export const waitShown = (page, sel, on = true, timeout = 5000) =>
   wait(page, ([s, want]) => { const e = document.querySelector(s); return (!!e && !e.hidden && e.getClientRects().length > 0) === want; }, [sel, on], timeout);
 
 export async function open(page, url) {
+  // Until T4a gives every button of the action bar a row in its own tab (docs/specs/table-ui.md, T3), these passes drive the bar: they keep it open.
+  await page.addInitScript(() => { if (localStorage.getItem('hextable.panelTab') === null) localStorage.setItem('hextable.panelTab', '"all"'); });
   await page.goto(url);
   await waitShown(page, '#lobby');
 }
