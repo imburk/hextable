@@ -916,7 +916,7 @@ const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skip
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- the splash ----------
 // The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to

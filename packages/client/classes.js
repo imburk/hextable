@@ -286,17 +286,18 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     st.picked = st.picked.filter((id) => all.some((m) => m.x.id === id && reach(m)));
     const draw = () => show(targetsPanel(e, f));
     const foes = all.filter((m) => m.x.side !== e.side && reach(m)).slice(0, most).map((m) => m.x.id);
-    const rows = all.map((m) => {
-      const on = st.picked.includes(m.x.id), off = !reach(m) || (!on && st.picked.length >= most);
+    const near = all.filter(reach), beyond = all.length - near.length;       // those beyond reach are a count, not rows: the card stays short on a phone
+    const rows = near.map((m) => {
+      const on = st.picked.includes(m.x.id), off = !on && st.picked.length >= most;
       return h('label', { class: `cp-check cp-opt${off ? ' off' : ''}`, 'data-target': m.x.id },
         h('input', { type: 'checkbox', 'data-pick': m.x.id, checked: on, disabled: off && !on, onchange: (ev) => { st.picked = ev.target.checked ? [...st.picked, m.x.id] : st.picked.filter((i) => i !== m.x.id); draw(); } }),
-        h('span', {}, h('b', { text: m.x.side === e.side ? `${m.x.name} (ally)` : m.x.name }), ` · ${m.d} ft`, h('small', { text: !reach(m) ? `Beyond ${far} ft.` : '' })));
+        h('span', {}, h('b', { text: m.x.side === e.side ? `${m.x.name} (ally)` : m.x.name }), ` · ${m.d} ft`, h('small', { text: off ? `Up to ${most} creatures.` : '' })));
     });
     return {
       key: `${e.id}:${f.id}`, title: f.name,
-      note: `${TIME[a.time]}. ${p.own ? `${usesLeft(e, f)} left` : ''}${p.rage ? `; with none left, a use of ${nice(a.orCost.resource)} pays for it (${p.have} left)` : ''}. Creatures of your choice within ${far} feet, up to ${most}. ${f.text}`,
+      note: `${[TIME[a.time], p.own ? `${usesLeft(e, f)} left` : '', p.rage ? `none left, so a use of ${nice(a.orCost.resource)} pays for it (${p.have} left)` : ''].filter(Boolean).join(' · ')}. ${f.text}`,
       body: [h('div', { class: 'cp-row cp-quick' }, h('button', { type: 'button', id: 'cp-foes', text: 'All foes in range', onclick: () => { st.picked = foes; draw(); } }), h('button', { type: 'button', id: 'cp-none', text: 'None', onclick: () => { st.picked = []; draw(); } })),
-        h('div', { class: 'cp-f', role: 'group', 'aria-label': 'Targets' }, ...(rows.length ? rows : [h('p', { class: 'cp-note', text: 'Nobody else is here.' })]))],
+        h('div', { class: 'cp-f', role: 'group', 'aria-label': 'Targets' }, ...(rows.length ? rows : [h('p', { class: 'cp-note', text: `Nobody else is within ${far} feet.` })]), beyond ? h('p', { class: 'cp-note', 'data-beyond': beyond, text: `${beyond} more ${beyond === 1 ? 'is' : 'are'} beyond ${far} feet.` }) : null)],
       buttons: [{ label: st.picked.length ? `Use ${f.name} on ${st.picked.length}` : `Use ${f.name}`, primary: true, id: 'cp-use', send: () => (st.picked.length ? { type: 'feature', actor: e.id, feature: f.id, targets: [...st.picked] } : (show(targetsPanel(e, f), 'Choose at least one creature.'), null)) }],
       reopen: () => targetsPanel(e, f),
     };
@@ -316,7 +317,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
       const b = ch.brutal;
       body.push(h('div', { class: 'cp-f', 'data-part': 'brutal' }, h('span', { text: `${b.name}: give up Advantage from Reckless Attack for ${b.dice} more damage and one effect` }),
         b.why ? h('p', { class: 'cp-note cp-why', text: b.why }) : null,
-        h('div', { class: 'cp-levels', role: 'group', 'aria-label': b.name }, ...b.options.map((o) => h('button', { type: 'button', 'data-brutal': o.id, 'aria-pressed': st.brutal === o.id, disabled: !!b.why, text: o.name,
+        h('div', { class: 'cp-levels', role: 'group', 'aria-label': b.name }, ...b.options.map((o) => h('button', { type: 'button', 'data-brutal': o.id, 'aria-pressed': String(st.brutal === o.id), disabled: !!b.why, text: o.name,
           onclick: () => { st.brutal = st.brutal === o.id ? null : o.id; draw(); } })))));
     }
     if (ch.cunning) {
@@ -328,7 +329,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
           const why = c.why || gear || (!on && st.cunning.length >= c.max ? `Only ${c.max === 1 ? 'one effect' : `${c.max} effects`} an attack.` : !on && left < 1 ? `Costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}; one must stay to deal Sneak Attack.` : '');
           return h('label', { class: `cp-check cp-opt${why && !on ? ' off' : ''}`, 'data-cunning': o.id },
             h('input', { type: 'checkbox', checked: on, disabled: !!why && !on, onchange: (ev) => { st.cunning = ev.target.checked ? [...st.cunning, o.id] : st.cunning.filter((i) => i !== o.id); draw(); } }),
-            h('span', {}, h('b', { text: o.name }), ` · costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}`, h('small', { text: why || optionNeeds(o).join('. ') || '' }), why && optionNeeds(o).length ? h('small', { text: optionNeeds(o).join('. ') }) : null));
+            h('span', {}, h('b', { text: o.name }), ` · costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}`, h('small', { text: why || optionNeeds(o).join('. ') })));
         })));
     }
     const names = [st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
