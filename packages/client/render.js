@@ -8,7 +8,9 @@ import { HEX, gridOf, col as cellCol, key as cellKey, parse as cellParse } from 
 import { allTiles, footprint, ground, shown, surfaces, under } from './shared/space.js';
 
 const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };      // how much bigger a pawn is drawn
-const girth = (e) => GIRTH[e?.size] ?? 1;
+// On squares a Large creature fills 2 by 2 squares, Huge 3 by 3, Gargantuan 4 by 4 (SRD 1893-1943), so its base is drawn wider to fill them.
+const GIRTH_SQUARE = { ...GIRTH, large: 2, huge: 3, gargantuan: 4 };
+const girth = (e, G = HEX) => (G.kind === 'square' ? GIRTH_SQUARE : GIRTH)[e?.size] ?? 1;
 import { barriers, objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
 import { createGovernor, pixelLevels } from './governor.js';
@@ -331,7 +333,7 @@ export class Renderer {
       }
       a.unseen = !!e.hidden;
       if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
-      const key = `${e.dead}|${e.side}|${e.size}`; a.k = girth(e);
+      const key = `${e.dead}|${e.side}|${e.size}|${this.G.kind}`; a.k = girth(e, this.G);
       if (key !== a.key) {
         const dies = !calm && a.key !== '' && e.dead && a.wasDead === false;      // a death falls and fades: the living pawn fades into the fallen one
         if (dies) { const gm = new Mesh(this.gl); gm.set(this.#makePawn({ ...e, dead: false })); a.dying?.mesh.free(); a.dying = { mesh: gm, t0: now, dur: SECS.fall }; }
@@ -366,7 +368,7 @@ export class Renderer {
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {            // anything teleported or out of sync
-      const a = this.actors.get(e.id), w = this.#stand(e.pos);
+      const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : this.#spot(e, e.pos);      // on hexes a big creature is put at its own hex here, as it always was; on squares at the middle of the squares it fills
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
       const yy = this.#spot(e, e.pos).y;
       if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
@@ -400,7 +402,7 @@ export class Renderer {
   #syncDoors(events, snap, now) {
     const map = this.state.map, live = new Set();
     for (const o of map.objects) {
-      if (!objectSegment(o)) continue;
+      if (!objectSegment(o, this.G)) continue;
       live.add(o.id);
       const goal = objectBlocks(o, 'move') ? 0 : 1;
       let d = this.doors.get(o.id);
@@ -730,7 +732,7 @@ export class Renderer {
     for (const w of map.walls) if (!hid(w.level)) run(w.kind, w.level, `w:${w.id}`, w.a, w.b);
     for (const o of map.objects) {
       if (hid(o.level)) continue;
-      const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;       // only the DM is ever sent an unseen one
+      const seg = objectSegment(o, this.G), unseen = !!objectDef(o)?.states[o.state]?.hidden;       // only the DM is ever sent an unseen one
       if (!seg) {                                                       // a thing in a hex: a marker on the floor, and a post if it is in the way or a lever
         const w = this.G.toWorld(o.at), y = this.#stand({ q: o.at.q, r: o.at.r, z: (map.levels.find((l) => l.id === o.level)?.z ?? 0) + (map.levels.find((l) => l.id === o.level)?.tiles[cellCol(o.at)]?.h ?? 0) }).y + 0.02;
         const trap = !!objectDef(o)?.triggers?.some((t) => t.effects), col = trap ? [0.75, 0.2, 0.18] : [0.8, 0.68, 0.3];
@@ -888,7 +890,7 @@ export class Renderer {
     const base = [...th.sides[e.side] || th.sides.foe, 1];
     let body = e.look?.color ? [...hexToRgb(e.look.color), 1] : [...th.foeBody, 1];
     if (e.dead) body = [0.4, 0.4, 0.4, 1];
-    const k = girth(e);
+    const k = girth(e, this.G);
     b.lathe(0, 0, 0, p.profile.map(([r, y]) => [r * k, y * k]), p.sides, p.sides === 4 ? Math.PI / 4 : 0, (seg) => (seg < 2 ? base : body));
     return b;
   }

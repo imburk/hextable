@@ -47,6 +47,7 @@ const REGISTRY = {
   actionpanel: ['actionpanel'],
   paneltabs: ['paneltabs'],
   link: ['link'],
+  square: ['square'],
 };
 
 const only = process.env.SMOKE_ONLY;

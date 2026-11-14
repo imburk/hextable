@@ -300,3 +300,65 @@ test('rock tiles are outlined with the same pushed points as the floor edge, and
 // Is the point inside the polygon (any shape): the winding number.
 const winding = (poly, [x, y]) => { let w = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], c = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]); if (a[1] <= y) { if (b[1] > y && c > 0) w++; } else if (b[1] <= y && c < 0) w--; } return w; };
 const H_parse = (k) => { const [q, r] = k.split(',').map(Number); return { q, r }; };
+
+// ---------- squares (S9a): the grid interface's corners and cell, through floors ----------
+const { SQUARE, gridOf } = await import(pathToFileURL(join(tmp, 'shared/grid.js')).href);
+const { squareRoom } = await import(pathToFileURL(join(here, '../../rules/test/fixtures/square-room.js')).href);
+
+test('squares: a cell is a 5 foot square on its centre, in increasing angle, and a point is in the cell it falls in', () => {
+  const p = F.hexPoly({ q: 3, r: 2 }, SQUARE);
+  assert.equal(p.length, 4);
+  assert.ok(near(F.polyArea(p), 25, 1e-9) && p.every((v) => near(Math.abs(v[0] - 15), 2.5) && near(Math.abs(v[1] - 10), 2.5)));
+  assert.deepEqual(p, SQUARE.corners({ q: 3, r: 2 }), 'the interface\'s own corners, which are exact');
+  assert.deepEqual(F.hexAt(12.4, 12.4, SQUARE), { q: 2, r: 2 });
+  assert.deepEqual(F.hexAt(12.6, 12.4, SQUARE), { q: 3, r: 2 });
+  assert.deepEqual(F.hexAt(0, 0, SQUARE), { q: 0, r: 0 });
+  // Hexes are as they were: the default grid and an explicit hex grid give the same polygon.
+  assert.deepEqual(F.hexPoly({ q: 4, r: -3 }), F.hexPoly({ q: 4, r: -3 }, gridOf({ grid: 'hex' })));
+});
+
+test('squares: the square room is floored by whole squares, no gaps and no overlap, and stops at its walls', () => {
+  const map = squareRoom(), fl = F.buildFloors(map), cells = cellsOf(fl);
+  const tiles = Object.keys(map.levels[0].tiles).length;
+  assert.equal(cells.length, tiles, 'one cell to a tile');
+  assert.ok(cells.every((c) => c.poly.length === 4 && near(F.polyArea(c.poly), 25, 1e-9)), 'each a whole square');
+  assert.ok(near(area(cells), tiles * 25, 1e-6));
+  for (const [x, y] of [[0, 0], [37.5, 37.5], [2.4, 72.4], [72.4, 2.4], [92, 17.5], [110, 50], [35.2, 5.1]]) {
+    const n = cells.filter((c) => pointIn([c], x, y)).length;
+    assert.ok(n >= 1, `(${x}, ${y}) is floor`);
+  }
+  for (const [x, y] of [[-3, 10], [10, -3], [75, 30], [100, 30], [100, 60], [75, 74]]) assert.ok(!pointIn(cells, x, y), `(${x}, ${y}) is outside`);
+  assert.equal(cells.find((c) => c.hex === '12,12').terrain, 'rock');
+});
+
+test('squares: a wall along the sides of squares cuts nothing, and a door stands on its side of the square', () => {
+  const map = squareRoom(), fl = F.buildFloors(map).levels[0];
+  assert.ok(fl.patches.every((p) => p.cells.every((c) => !c.fill)), 'no piece of picture: every cell is a tile');
+  const door = fl.walls.find((w) => w.key === 'o:door');
+  assert.ok(door && near(door.a[0], 92.5) && near(door.b[0], 92.5) && near(Math.abs(door.a[1] - door.b[1]), 5), 'the east side of 18,10');
+  const stub = fl.walls.find((w) => w.key === 'w:stub');
+  assert.deepEqual([stub.a, stub.b], [[12.5, 27.5], [12.5, 37.5]]);
+  assert.ok(stub.floor.left && stub.floor.right, 'floor on both sides of the stub');
+  const north = fl.walls.find((w) => w.key === 'w:north');
+  assert.ok(north.floor.right !== north.floor.left, 'floor on one side only of the room\'s north wall');
+});
+
+test('squares: the grid line is a thin strip inside each square, as it is inside a hex', () => {
+  const cell = F.buildFloors(squareRoom()).levels[0].patches[0].cells[0], k = 0.9;
+  const { inner, rim } = F.cellParts(cell, k, SQUARE);
+  assert.ok(near(F.polyArea(inner), 25 * k * k, 1e-9), 'the floor, a square scaled by k');
+  assert.equal(rim.length, 4);
+  assert.ok(near(area(rim.map((poly) => ({ poly }))), 25 - 25 * k * k, 1e-9), 'four strips make up the rest');
+  assert.equal(F.cellParts(cell, 1, SQUARE).rim.length, 0);
+});
+
+test('squares: a level of rock with open squares is a cave: rock tiles make a closed outline of four sides each', () => {
+  const m = mk({ ...block(0, 5, 0, 5, 'rock'), ...block(2, 3, 2, 3, 'stone') }, [], { grid: 'square' });
+  assert.ok(F.isCave(m, 'ground'));
+  const fl = F.buildFloors(m, { levels: ['ground'], caves: ['ground'] }).levels[0], cave = F.caveOf(m, fl);
+  assert.equal(fl.patches.length, 1);
+  assert.equal(cellsOf({ levels: [fl] }).length, 4);
+  assert.equal(cave.rock.length, 32);
+  assert.ok(cave.rock.every((r) => r.ring.length === 12), 'four sides of three pieces');
+  assert.ok(cave.chains.every((c) => c.points.length >= 12));
+});
