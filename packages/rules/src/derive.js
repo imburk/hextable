@@ -210,6 +210,9 @@ export function amount(x, c, level, abil, pb = proficiencyFor(level)) {
   if (x?.byLevel !== undefined) { const at = Object.keys(x.byLevel).map(Number).filter((l) => l <= level).sort((a, b) => b - a)[0]; return at === undefined ? null : x.byLevel[at]; }
   return x;
 }
+// How many options a feature with `pick` takes at a class level: a number, or by the class table (Eldritch
+// Invocations, `{ column: 'invocations' }`). For the build screen too.
+export const pickFor = (f, c, level) => (typeof f.pick === 'number' ? f.pick : amount(f.pick, c, level, {}) ?? 0);
 const isAmount = (v) => !!v && typeof v === 'object' && ['column', 'mod', 'perLevel', 'byLevel', 'prof'].some((k) => v[k] !== undefined);
 // A class feature's modifiers and steps with their numbers put in.
 function bakeAt(list, c, level, abil, pb = proficiencyFor(level)) {
@@ -490,6 +493,11 @@ export function derive(sheet) {
     for (const k of ['evasion', 'surfaces']) if (g[k]) out[k] = true;
     if (g.selfCure) out.selfCure = { conditions: [...g.selfCure.conditions] };
     if (g.fleet) out.fleet = { ...g.fleet };
+    for (const k of ['empowered', 'overchannel', 'markSpread', 'steadfast']) if (g[k]) out[k] = { ...g[k] };      // since #232: the Evoker, the Hunter
+    if (g.afterHit) out.afterHit = structuredClone(g.afterHit);
+    if (g.restExhaustion) out.restExhaustion = g.restExhaustion;
+    if (g.spellRange) out.spellRange = { spell: g.spellRange.spell, add: g.spellRange.perLevel * level };     // Eldritch Spear: 30 feet a Warlock level
+    if (g.repel) out.repel = { ...g.repel };
     if (g.cunning) out.cunning = { ...(g.cunning.max ? { max: g.cunning.max } : {}), ...(g.cunning.options ? { options: g.cunning.options.map((o) => ({ ...o, ...(o.effects ? { effects: bake(o.effects) } : {}) })) } : {}) };
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
@@ -634,8 +642,17 @@ export function validate(sheet) {
     if (f.pick) {
       if (pick === undefined) continue;
       const list = typeof pick === 'string' ? [pick] : pick;          // one option may be named alone
-      if (!(Array.isArray(list) && list.length <= f.pick && new Set(list).size === list.length)) say(`Choose up to ${f.pick} different options for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
-      else for (const p of list) if (!f.options.some((o) => o.id === p)) say(`${f.name} has no option "${p}".`);
+      const most = pickFor(f, x.cls.c, x.cls.level);                  // a number, or by the class table (Eldritch Invocations)
+      if (!(Array.isArray(list) && list.length <= most && new Set(list).size === list.length)) say(`Choose up to ${most} different options for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
+      else for (const p of list) {
+        const o = f.options.find((y) => y.id === p);
+        if (!o) { say(`${f.name} has no option "${p}".`); continue; }
+        // An option's prerequisite (#232): a class level, another option taken with it, a spell known.
+        const q = o.requires;
+        if (q?.level !== undefined && x.cls.level < q.level) say(`${o.name} needs ${x.cls.c.name} level ${q.level}.`);
+        if (q?.option !== undefined && !list.includes(q.option)) say(`${o.name} needs ${f.options.find((y) => y.id === q.option)?.name ?? q.option}.`);
+        if (q?.spell !== undefined && !(x.cls.spells ?? []).includes(q.spell)) say(`${o.name} needs ${CONTENT.spells[q.spell]?.name ?? q.spell} among the ${x.cls.c.name}'s spells.`);
+      }
     } else if (pick === undefined) say(`Choose an option for ${f.name}: ${f.options.map((o) => o.name).join(', ')}.`);
     else if (!f.options.some((o) => o.id === pick)) say(`${f.name} has no option "${pick}".`);
   }

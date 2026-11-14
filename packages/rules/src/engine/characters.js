@@ -9,7 +9,7 @@ import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
 import { control, ent, fail, inFight, living } from './shared.js';
 import { fitsOn, joinEncounter, lookAround } from './world.js';
-import { donned, landItem, makeEntity, remake, resheet } from './sheets.js';
+import { donned, landItem, makeEntity, newProblems, remake, resheet } from './sheets.js';
 
 export const handlers = {
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
@@ -196,7 +196,7 @@ export const handlers = {
       }
       sheet.attuning = { item: x.id, ...(a.end ? { end: true } : {}) };
     }
-    const problems = validate(sheet);
+    const problems = newProblems(e.sheet, sheet);
     problems.length === 0 || fail(problems[0]);
     e.sheet = sheet;
     ev.push({ type: 'attuning', id: e.id, ...(sheet.attuning ? { key: sheet.attuning.item, item: itemName(CONTENT.items[sheet.items.find((y) => y.id === sheet.attuning.item).item], sheet.items.find((y) => y.id === sheet.attuning.item)), ...(sheet.attuning.end ? { end: true } : {}) } : { cleared: true }) });

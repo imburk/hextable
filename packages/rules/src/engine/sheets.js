@@ -41,8 +41,11 @@ const featureUses = (t) => Object.fromEntries((t.feats ?? []).filter((f) => f.us
 // everything before it changes anything.
 // A built character's sheet changed by an item (given, worn, attuned): checked whole, then the character is made
 // again from it. Refused, nothing changes.
+// A problem the sheet already had before the change (a choice a later version of the rules added: Fiendish
+// Resilience on a warlock saved before #232) does not stop a change that has nothing to do with it.
+export const newProblems = (before, sheet) => { const had = new Set(before ? validate(before) : []); return validate(sheet).filter((p) => !had.has(p)); };
 export function resheet(s, e, sheet, ev) {
-  const problems = validate(sheet);
+  const problems = newProblems(e.sheet, sheet);
   problems.length === 0 || fail(`That can't be done. ${problems[0]}`);
   remake(s, e, derive(sheet).record, sheet, ev);
 }
@@ -82,6 +85,7 @@ export function remake(s, e, record, sheet, ev) {
     const was = featOf(e, f.id);
     if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
     if (f.relentless && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];      // Relentless Rage's uses since the last rest
+    if (f.overchannel && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];     // Overchannel's uses since the last Long Rest
   }
   if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
   // Hit Dice of several sizes: what was spent of each size stays spent.

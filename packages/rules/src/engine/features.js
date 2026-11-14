@@ -199,7 +199,14 @@ export const handlers = {
     // `orCost`: with none of its own uses left, it may be paid for from another pool instead
     // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
     if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
-    if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.`);
+    // `orSlot` (Hurl Through Hell): with its use spent, a Pact Magic slot of the level `a.slot` names restores it.
+    let slotPaid = null;
+    if (act.orSlot && a.slot !== undefined) {
+      (e.uses[res] ?? 0) < n || fail(`${e.name} has a use of ${f.name} left; a spell slot restores it only once it is spent.`);
+      (e.pact && Number.isInteger(a.slot) && (e.slots?.[a.slot] ?? 0) > 0) || fail(`${e.name} has no Pact Magic slot of level ${a.slot} to spend.`);
+      slotPaid = a.slot; res = null;
+    } else if (a.slot !== undefined) fail(`${f.name} is not paid for with a spell slot.`);
+    if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.${act.orSlot && e.pact ? ' A Pact Magic slot can restore it: name the slot.' : ''}`);
     // Fleet Step: Step of the Wind right after another Bonus Action, without one of its own.
     const free = time === 'bonus' && fighting && fleetFree(s, e, f.id);
     if (time && fighting) need(s, e, free ? null : time);
@@ -235,6 +242,12 @@ export const handlers = {
     const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
     const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, a);
     if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    // `after: 'hit'` (Hurl Through Hell): on a creature this one hit with an attack roll this turn, once a turn.
+    if (act.after === 'hit') {
+      fighting || fail(`${f.name} follows a hit in a fight.`);
+      for (const t of aimed.targets ?? []) enc.flags[`hit:${e.id}:${t.id}`] || fail(`${f.name} follows a hit: ${e.name} has not hit ${t.name} with an attack roll this turn.`);
+      !enc.flags[`after:${f.id}:${e.id}`] || fail(`${e.name} has already used ${f.name} this turn.`);
+    }
     // A die handed to another creature to spend later (Bardic Inspiration: "A creature can have only one
     // Bardic Inspiration die at a time"): not to one that still holds one from this feature, whoever gave it.
     const gives = act.duration && (act.effects ?? []).some((st) => st.modifier?.uses !== undefined);
@@ -246,6 +259,8 @@ export const handlers = {
     // Paid for: from here it happens.
     if (time && fighting) { if (free) enc.flags[`fleet:${e.id}`] = true; else enc.budget[time]--; if (time === 'bonus') enc.flags[`used:${f.id}:${e.id}`] = true; }
     if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
+    if (slotPaid !== null) { e.slots[slotPaid]--; ev.push({ type: 'std', id: e.id, action: `${f.name}: restored with a level ${slotPaid} Pact Magic slot` }); }
+    if (act.after === 'hit') enc.flags[`after:${f.id}:${e.id}`] = true;
     if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
     if (act.pool) {
       ev.push({ type: 'std', id: e.id, action: f.name });

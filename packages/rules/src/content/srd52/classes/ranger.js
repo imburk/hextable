@@ -245,9 +245,9 @@ export const ranger = {
       "id": "favored-enemy",
       "name": "Favored Enemy",
       "level": 1,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Hunter's Mark is always prepared (applied); casting it without a slot, so many times per Long Rest (see the table), is the DM's.",
+      "text": "Hunter's Mark is always prepared, and you can cast it without a spell slot (cast with via favored-enemy) so many times per Long Rest (the Favored Enemy column).",
       "uses": {
         "max": {
           "column": "favored-enemy"
@@ -257,7 +257,12 @@ export const ranger = {
       "grants": {
         "spells": [
           "hunters-mark"
-        ]
+        ],
+        "freeCast": {
+          "spells": [
+            "hunters-mark"
+          ]
+        }
       }
     },
     {
@@ -403,9 +408,9 @@ export const ranger = {
       "id": "tireless",
       "name": "Tireless",
       "level": 10,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "As a Magic action, gain 1d8 + Wisdom modifier Temporary Hit Points, Wisdom modifier times per Long Rest (applied); a Short Rest lowers Exhaustion by 1 (the DM applies that).",
+      "text": "As a Magic action, gain 1d8 + Wisdom modifier Temporary Hit Points, Wisdom modifier times per Long Rest; each Short Rest you finish lowers your Exhaustion by 1.",
       "uses": {
         "max": {
           "mod": "wis",
@@ -422,19 +427,26 @@ export const ranger = {
           "effects": [
             {
               "tempHp": "1d8",
-              "addMod": true
+              "addMod": "wis",
+              "atLeast": 1
             }
           ]
-        }
+        },
+        "restExhaustion": "short"
       }
     },
     {
       "id": "relentless-hunter",
       "name": "Relentless Hunter",
       "level": 13,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Taking damage can't break your Concentration on Hunter's Mark. The DM applies it."
+      "text": "Taking damage never makes you save to keep Concentration on Hunter's Mark.",
+      "grants": {
+        "steadfast": {
+          "spell": "hunters-mark"
+        }
+      }
     },
     {
       "id": "natures-veil",
@@ -547,21 +559,40 @@ export const ranger = {
         "id": "defensive-tactics",
         "name": "Defensive Tactics",
         "level": 7,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "Choose Escape the Horde or Multiattack Defense; change on a rest.",
+        "text": "Choose Escape the Horde or Multiattack Defense on the sheet; after a Short or Long Rest you may change it there.",
         "options": [
           {
             "id": "escape-the-horde",
             "name": "Escape the Horde",
-            "tier": "manual",
-            "text": "Opportunity Attacks against you have Disadvantage."
+            "tier": "auto",
+            "text": "Opportunity Attacks against you have Disadvantage.",
+            "grants": {
+              "modifiers": [
+                {
+                  "on": "attack.received",
+                  "op": "disadvantage",
+                  "when": [
+                    "attack.opportunity"
+                  ]
+                }
+              ]
+            }
           },
           {
             "id": "multiattack-defense",
             "name": "Multiattack Defense",
-            "tier": "manual",
-            "text": "A creature that hits you has Disadvantage on its other attacks against you this turn."
+            "tier": "auto",
+            "text": "A creature that hits you with an attack roll has Disadvantage on its other attack rolls against you for the rest of the turn.",
+            "grants": {
+              "afterHit": {
+                "modifier": {
+                  "on": "attack.roll",
+                  "op": "disadvantage"
+                }
+              }
+            }
           }
         ]
       },
@@ -569,17 +600,29 @@ export const ranger = {
         "id": "superior-hunters-prey",
         "name": "Superior Hunter's Prey",
         "level": 11,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
-        "text": "Once a turn, Hunter's Mark's extra damage can also hit another creature within 30 feet of the marked one."
+        "text": "Once a turn, when your attack (the attack action with prey) damages the creature your Hunter's Mark marks, the mark's extra damage also hits another creature you can see within 30 feet of it. Damage dealt some other way (a spell's) is the DM's to spread.",
+        "grants": {
+          "markSpread": {
+            "spell": "hunters-mark",
+            "range": 30
+          }
+        }
       },
       {
         "id": "superior-hunters-defense",
         "name": "Superior Hunter's Defense",
         "level": 15,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "When you take damage, use your Reaction for Resistance to that type this turn. Reactions are not prompted yet."
+        "text": "When you take damage, you can take a Reaction for Resistance to that damage and any more of its type until the end of the turn (by standing instruction: always, never or ask). Damage of several types at once goes to the DM, as you pick the type.",
+        "grants": {
+          "reaction": {
+            "on": "damaged",
+            "resist": true
+          }
+        }
       }
     ]
   }

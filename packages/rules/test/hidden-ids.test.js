@@ -177,3 +177,25 @@ test("a map object is sent by an allow list, and where a ladder leads only once 
   assert.ok(!JSON.stringify(view(s, P)).includes("SECRET-zq"));
   assert.equal(view(s, DM).map.objects.find((o) => o.id === "ladder").plot, "SECRET-zq", "the DM has all of it");
 });
+
+// Review of #232, M2 and L5: a lasting effect's part that ends with a hidden creature's turn (`ends.who`: Superior
+// Hunter's Defense, Multiattack Defense) and a fight's flags that name one (`hit:<attacker>:<target>`, `attacked:<id>`)
+// are sent to players without its id; the DM's view keeps everything.
+test("a hidden creature's id does not reach players through an effect part's `ends.who` or the fight's flags", async () => {
+  const { view } = await import("../src/view.js");
+  const { s, hidden: [ogre] } = base(true);
+  const fx = startEffect(s, { name: "Superior Hunter's Defense", spell: null, source: "wizard", conc: false, duration: "special" });
+  fx.bound = true;
+  fx.parts.push({ target: "wizard", modifier: { on: "damage.taken", op: "resist", types: ["fire"] }, ends: { on: "turnEnd", who: ogre } });
+  s.encounter.flags[`hit:${ogre}:wizard`] = true;
+  s.encounter.flags[`attacked:${ogre}`] = true;
+  s.encounter.flags["hit:wizard:cleric"] = true;
+  assert.ok(!["hidden"].includes(current(s)) && current(s) !== ogre, "an open creature's turn");
+  const pv = view(s, P);
+  assert.ok(!JSON.stringify(pv).includes(`"${ogre}"`) && !JSON.stringify(pv).includes(`:${ogre}`), "no trace of the hidden ogre");
+  assert.equal(pv.effects.find((x) => x.id === fx.id).parts[0].ends.on, "turnEnd");
+  assert.ok(pv.encounter.flags["hit:wizard:cleric"], "flags about known creatures stay");
+  const dv = view(s, DM);
+  assert.equal(dv.effects.find((x) => x.id === fx.id).parts[0].ends.who, ogre);
+  assert.ok(dv.encounter.flags[`hit:${ogre}:wizard`] && dv.encounter.flags[`attacked:${ogre}`]);
+});
