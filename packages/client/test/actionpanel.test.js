@@ -12,9 +12,12 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
+const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+const { makeEntity } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
+const { featureRows } = await import(pathToFileURL(join(tmp, 'features.js')));
 
 const DM = { role: 'dm', userId: 'dm' };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -27,13 +30,13 @@ function fight() {
   return s;
 }
 
-test('exploring: Explore first, then Spells, Features, Items; the shell draws Explore and All', () => {
+test('exploring: Explore first, then Spells, Features, Items; the shell draws Explore, the spell tab (id all) and Features', () => {
   const s = newGame(7), c = panelContext(s, s.entities.cleric);
   assert.equal(c.situation, 'explore'); assert.equal(c.default, 'explore');
   assert.deepEqual(c.tabs.map((t) => t.id), ['explore', 'spells', 'features', 'items']);
-  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['explore', 'all']);
+  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['explore', 'all', 'features']);
+  assert.deepEqual(visibleTabs(c, { spells: false, features: false }).map((t) => t.id), ['explore'], 'a tab with nothing in it is not drawn');
   assert.equal(defaultTab(c, visibleTabs(c)), 'explore');
-  assert.equal(defaultTab(c, visibleTabs(c), { pref: 'all' }), 'all');
   assert.equal(defaultTab(c, visibleTabs(c), { pref: 'remember', last: { explore: 'all' } }), 'all');
 });
 
@@ -42,11 +45,13 @@ test('in a fight: on your turn Attacks (Spells with no attack), on another\'s Re
   const mine = panelContext(s, cur, { dm: true });
   assert.equal(mine.situation, 'turn'); assert.deepEqual(mine.tabs.map((t) => t.id), ['attacks', 'spells', 'bonus', 'move', 'features', 'items']);
   assert.equal(mine.default, cur.attacks?.length || cur.actions?.length ? 'attacks' : 'spells');
-  assert.deepEqual(visibleTabs(mine).map((t) => t.id), ['all']);
+  assert.deepEqual(visibleTabs(mine).map((t) => t.id), ['attacks', 'all', 'bonus', 'move', 'features']);
+  assert.deepEqual(visibleTabs(mine, { spells: false, attacks: false, features: false }).map((t) => t.id), ['bonus', 'move']);
+  assert.equal(defaultTab(mine, visibleTabs(mine, { attacks: false })), 'all', 'no attack: the spells are the default');
   const waiting = Object.values(s.entities).find((e) => e.kind === 'pc' && e.id !== cur.id && s.encounter.order.some((o) => o.id === e.id));
   const c = panelContext(s, waiting, { dm: true });
   assert.equal(c.situation, 'wait'); assert.deepEqual(c.tabs.map((t) => t.id), ['reactions', 'spells', 'features', 'items']);
-  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['reactions', 'all']);
+  assert.deepEqual(visibleTabs(c).map((t) => t.id), ['reactions', 'all', 'features']);
 });
 
 test('Reactions is greyed with a reason when there is none to take, active and pulsing with a question waiting', () => {
@@ -142,4 +147,96 @@ test('how a pill ends: a lasting effect, concentration, a condition, dying', () 
   assert.match(howItEnds(s, e, 'dying').lines[0], /1✓ 0✗/);
   const html = statusHtml(s, e, { mine: true, full: true });
   assert.match(html, /data-how="fx:fx1"/); assert.match(html, /data-how="cond:prone"/); assert.match(html, /Dying 1✓ 0✗/);
+});
+
+// ---------- T4a: the Attacks, Bonus, Move and Features tabs ----------
+const hero = (sheet, at = { q: 0, r: 0, z: 0 }) => { const s = newGame(7); s.entities.hero = makeEntity(derive(sheet).record, { id: 'hero', kind: 'pc', side: 'party', pos: at, owner: 'u1' }); return s; };
+const A = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 10 };
+const fighter = (level = 5) => ({ name: 'Tor', class: 'fighter', level, abilities: A, skills: ['athletics', 'perception'], weapons: ['longsword'] });
+const turnOf = (s, id) => { for (let i = 0; i < 20 && current(s) !== id; i++) ok(apply(s, { type: 'endTurn', actor: current(s) }, DM)); assert.equal(current(s), id); };
+const inFightAs = (s, id) => { ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM)); turnOf(s, id); return s.entities[id]; };
+const whys = (rows) => rows.filter((r) => r.why);
+
+test('Attacks: a character\'s attacks with bonus, damage and reach; greyed with the engine\'s words once the action is spent', () => {
+  const s = newGame(7), e = inFightAs(s, 'fighter');
+  let rows = attackRows(s, e);
+  assert.deepEqual(ids(rows), e.attacks.map((a) => `atk:${a.id}`));
+  assert.match(rows[0].sub, /^\+\d+ to hit · .+ · reach 5 ft$/); assert.equal(rows[0].why, ''); assert.equal(rows[0].chip, 'Action');
+  assert.deepEqual(rows[0].mode, { kind: 'attack', id: e.attacks[0].id });
+  assert.equal(attackRows(s, e, { mode: rows[0].mode })[0].armed, true);
+  s.encounter.budget.action = 0;
+  rows = attackRows(s, e);
+  assert.match(rows[0].why, /already used an action/);
+  const other = s.entities[Object.keys(s.entities).find((k) => k !== e.id && s.entities[k].kind === 'pc')];
+  assert.match(attackRows(s, other)[0].why, /isn't .+ turn/, 'on another\'s turn every row says so');
+});
+
+test('Attacks: a monster lists its actions, Multiattack, recharge and uses a day; the arming rows carry the mode they set', () => {
+  const s = newGame(7), foe = Object.values(s.entities).find((e) => e.side === 'foe' && e.actions?.length);
+  ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM)); turnOf(s, foe.id);
+  const rows = attackRows(s, foe);
+  assert.deepEqual(ids(rows), foe.actions.map((a) => `act:${a.id}`));
+  for (const r of rows) assert.ok(['send', 'arm'].includes(r.kind) && (r.kind === 'send' ? r.send.type === 'act' : r.mode.kind === 'action'));
+  const spent = { ...foe, spent: { [foe.actions[0].id]: true }, actions: foe.actions.map((a, i) => (i ? a : { ...a, recharge: [5, 6] })) };
+  assert.match(attackRows(s, spent)[0].why, /has not recharged/);
+  assert.match(attackRows(s, spent)[0].sub, /recharge 5–6/);
+});
+
+test('Move: Dash, Disengage, Dodge, Hide, Search and the objects in reach, each with its cost and its reason; the meter is the speed left', () => {
+  const s = newGame(7), e = inFightAs(s, 'fighter');
+  door(s, e.pos); const rows = moveRows(s, e);
+  assert.deepEqual(ids(rows).slice(0, 5), ['dash', 'disengage', 'dodge', 'hide', 'search']);
+  assert.ok(ids(rows).some((x) => x.startsWith('use:door')));
+  assert.equal(rows.find((r) => r.id === 'dash').chip, 'Action'); assert.equal(whys(rows).filter((r) => r.id !== 'hide').length, 0);
+  assert.deepEqual(moveBudget(s, e), { left: 30, max: 30, prone: false });
+  ok(apply(s, { type: 'dash', actor: e.id }, DM));
+  assert.deepEqual(moveBudget(s, e), { left: 60, max: 60, prone: false });
+  const spent = moveRows(s, e);
+  for (const id of ['dash', 'disengage', 'dodge', 'search']) assert.match(spent.find((r) => r.id === id).why, /already used an action/);
+  assert.ok(spent.find((r) => r.id.startsWith('use:door')).chip, 'an object row names its cost');
+  assert.equal(moveBudget(newGame(7), e), null, 'no budget outside a fight');
+  const fly = moveRows(s, e, { fly: { aloft: true, alt: 0 } });
+  assert.equal(fly.find((r) => r.id === 'fly-up').delta, 5); assert.match(fly.find((r) => r.id === 'fly-down').why, /as low as it goes/);
+  assert.equal(moveRows(s, e, { fly: { aloft: true, alt: 10 } }).find((r) => r.id === 'fly-down').why, '');
+});
+
+test('Bonus: the Bonus Action things from every kind, and the reason when there is none left', () => {
+  const s = hero({ ...fighter(2) }), e = inFightAs(s, 'hero');
+  let b = bonusRows(s, e);
+  assert.equal(b.available, true);
+  assert.ok(ids(b.rows).includes('feat:second-wind'), ids(b.rows).join());
+  assert.ok(b.rows.every((r) => r.time === 'bonus'));
+  s.encounter.budget.bonus = 0;
+  b = bonusRows(s, e);
+  assert.equal(b.available, false); assert.match(b.why, /already used a Bonus Action/);
+  assert.ok(b.rows.length && b.rows.every((r) => r.why), 'each row is greyed with the reason');
+  // A wizard with a Bonus Action spell lists it; Nimble Escape and Cunning Action make the standard actions Bonus Actions.
+  const w = newGame(7); w.entities.wizard.spells.push('misty-step');
+  const we = inFightAs(w, 'wizard');
+  assert.ok(ids(bonusRows(w, we).rows).includes('spell:misty-step'));
+  const r = hero({ name: 'Ro', class: 'rogue', level: 2, abilities: { ...A, dex: 16 }, skills: ['stealth', 'perception', 'acrobatics', 'sleight-of-hand'], expertise: ['stealth', 'acrobatics'], weapons: ['shortsword'] });
+  const re = inFightAs(r, 'hero');
+  assert.deepEqual(ids(bonusRows(r, re).rows).sort(), ['dash-bonus', 'disengage-bonus', 'hide-bonus']);
+  assert.equal(bonusRows(r, re).rows.find((x) => x.id === 'dash-bonus').send.bonus, true);
+});
+
+test('Features: pips from what is left, how it comes back, a reason when none is left or it is not your turn', () => {
+  const s = hero(fighter(5)), e = s.entities.hero;
+  let rows = featureRows(s, e);
+  const sw = rows.find((r) => r.id === 'feat:second-wind');
+  assert.ok(sw, ids(rows).join());
+  assert.equal(sw.chip, 'Bonus'); assert.ok(sw.pips.max >= 1 && sw.pips.left === sw.pips.max); assert.match(sw.pips.text, /^Back on a (Short|Long) Rest/);
+  e.uses['second-wind'] = 0;
+  assert.match(featureRows(s, e).find((r) => r.id === 'feat:second-wind').why, /no uses of Second Wind left/);
+  const f = inFightAs(s, 'rogue'); void f;
+  for (const r of featureRows(s, e).filter((x) => x.kind !== 'none')) assert.match(r.why, /isn't Tor's turn|no uses|full/, `${r.id}: ${r.why}`);
+  assert.deepEqual(tabRows(s, e, 'features').map((r) => r.id), featureRows(s, e).map((r) => r.id));
+});
+
+test('Features: a chooser feature has a row that opens its card, with its pool as pips; a feature with uses and no button is listed without one', () => {
+  const s = hero({ name: 'Pal', class: 'paladin', level: 5, subclass: 'devotion', abilities: { ...A, cha: 14 }, skills: ['athletics', 'religion'], weapons: ['longsword'] });
+  const rows = featureRows(s, s.entities.hero), loh = rows.find((r) => r.id === 'feat:lay-on-hands');
+  assert.ok(loh, ids(rows).join());
+  assert.equal(loh.kind, 'chooser'); assert.equal(loh.feature, 'lay-on-hands'); assert.equal(loh.pips.unit, 'HP'); assert.equal(loh.pips.left, loh.pips.max);
+  for (const r of rows) if (r.kind === 'none') assert.ok(r.sub, `${r.id} says why it has no button`);
 });
