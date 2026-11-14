@@ -20,6 +20,7 @@ import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices } from './classes.js';
+import { shownName } from './tracker.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -51,7 +52,7 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   const fight = !!S.encounter && inFight(S, e.id);
   if (!fight) return { situation: 'explore', tabs: ['explore', 'spells', 'features', 'items'].map((id) => tab(id)), default: 'explore' };
   if (current(S) === e.id) {
-    const armed = !!(e.attacks?.length || e.actions?.length);
+    const armed = attackRows(S, e).length > 0;
     return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed ? 'attacks' : 'spells' };
   }
   const r = reactionState(S, e, { dm });
@@ -230,7 +231,9 @@ export function attackRows(S, e, { mode = null } = {}) {
   const b = S.encounter?.budget, mineTurn = !!b && current(S) === e.id, rows = [];
   if (e.actions) {
     for (const def of e.actions) {
-      const p = actionProfile(def), armed = armedBy(mode, 'action', def.id), time = p.time === 'bonus' ? 'bonus' : 'action';
+      const p = actionProfile(def);
+      if (e.bond?.noAttack && (def.multiattack || p.roll === 'melee' || p.roll === 'ranged')) continue;      // a familiar can't attack: the engine would refuse the row (companions.md, Decision 1)
+      const armed = armedBy(mode, 'action', def.id), time = p.time === 'bonus' ? 'bonus' : 'action';
       const pooled = mineTurn && !!b.attacks && fromPool(b, def.id);
       const why = (pooled ? blocked(S, e, null) : blocked(S, e, time)) || actionSpent(e, def) || (def.multiattack && !S.encounter ? `${def.name} is for a fight. Use one of its attacks to start one.` : '');
       const reach = p.reach ? `reach ${p.reach} ft` : p.range ? `range ${p.range[0]}/${p.range[1]} ft` : '';
@@ -242,7 +245,7 @@ export function attackRows(S, e, { mode = null } = {}) {
     }
     return rows;
   }
-  for (const a of e.attacks ?? []) {
+  for (const a of e.bond?.noAttack ? [] : e.attacks ?? []) {
     const armed = armedBy(mode, 'attack', a.id), flurry = !!b?.bonusAttacks && b.bonusAttacks.with === a.id && b.bonusAttacks.left > 0;
     const bonusTime = !flurry && a.time === 'bonus', pooled = mineTurn && !flurry && !bonusTime && !!b.attacks && fromPool(b, a.id);
     const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
@@ -819,8 +822,8 @@ export function initActionPanel(ctx) {
       const S = ctx.state(), enc = S.encounter, cur = current(S);
       card.hidden = !e;
       if (!e) { tabsEl.hidden = true; return; }
-      $('c-name').textContent = e.name;
-      $('c-sub').textContent = e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
+      $('c-name').textContent = shownName(S, e);
+      $('c-sub').textContent = e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
       $('c-hp').querySelector('i').style.width = `${ctx.hpFraction(e) * 100}%`;
       const showNumbers = full && (my || e.side === 'party');
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
@@ -828,6 +831,14 @@ export function initActionPanel(ctx) {
       $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
       $('btn-sheet').hidden = !showNumbers;
       $('btn-end').hidden = !(my && enc && cur === e.id);
+      // A companion's player may hand its turns to the engine's companion brain (companions.md, Decision 9): { type: 'companion', actor, auto }.
+      let letIt = $('btn-let');
+      if (!letIt) {
+        letIt = document.createElement('label'); letIt.id = 'btn-let'; letIt.className = 'check'; letIt.style.cssText = 'margin:0;white-space:nowrap;font-size:.85em'; letIt.innerHTML = '<input type="checkbox"> Let it act';
+        letIt.querySelector('input').onchange = (ev) => { const id = letIt.dataset.id; if (id) ctx.act({ type: 'companion', actor: id, auto: ev.target.checked }); };
+        $('btn-sheet').parentElement.prepend(letIt);
+      }
+      letIt.hidden = !(my && e.bond); letIt.dataset.id = e.id; letIt.querySelector('input').checked = !!e.bond?.auto;
       const myTurn = !!enc && cur === e.id && up(e);
       $('c-res').innerHTML = statusHtml(S, e, { mine: my, full, formLabel: ctx.formLabel(e), budget: myTurn && full ? ctx.budget(e) : null });
       renderHow(S, e);
@@ -835,7 +846,7 @@ export function initActionPanel(ctx) {
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
       const fly = ctx.flyInfo(e);
-      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: !!(e.attacks?.length || e.actions?.length), features: featureRows(S, e).length > 0, items: itemRows(S, e, { dm }).any };
+      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: attackRows(S, e).length > 0, features: featureRows(S, e).length > 0, items: itemRows(S, e, { dm }).any };
       tabsNow = visibleTabs(ctxNow, has);
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;

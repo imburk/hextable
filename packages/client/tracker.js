@@ -7,6 +7,7 @@ import { inFight, clockText, FT } from './shared/engine.js';
 import { under } from './shared/space.js';
 import { conditionName } from './shared/modifiers.js';
 import { hpFraction } from './render.js';
+import { MONSTERS } from './shared/content/index.js';
 import { rowDotHTML } from './linkdot.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,17 +23,25 @@ export function trackerRows(S, { dm = false } = {}) {
   return [...all.filter((e) => e.side === 'party'), ...(dm ? all.filter((e) => e.hidden && e.side !== 'party') : [])].map((e) => ({ e, now: false }));
 }
 
+// What a creature is called on screen. A companion the viewer was sent the bond of (the party's own) reads as its master's: "Brenna's wolf".
+// A creature the DM gave a name of its own ("Fang") keeps it after the master's name; one still called by its monster's name drops to lower case.
+export function shownName(S, e) {
+  const m = e?.bond ? S?.entities?.[e.bond.to] : null;
+  if (!m || e.name.startsWith(m.name)) return e?.name ?? '';
+  return `${m.name}'s ${MONSTERS[e.tpl]?.name === e.name ? e.name.toLowerCase() : e.name}`;
+}
+
 // What the header says about the turn: "Tor's turn", "Something moves unseen", or nothing (the table says nothing of an unseen turn).
 export function turnLine(S) {
   const enc = S?.encounter; if (!enc) return '';
   const o = enc.order[enc.turn];
-  return !o ? '' : o.someone ? 'Something moves unseen' : S.entities[o.id] ? `${S.entities[o.id].name}'s turn` : '';
+  return !o ? '' : o.someone ? 'Something moves unseen' : S.entities[o.id] ? `${shownName(S, S.entities[o.id])}'s turn` : '';
 }
 
 // One row. `opts`: { dm, mine(e), ticked: Set } . The same function draws every viewer's row; what differs is what the state holds.
 export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new Set(), link = () => null } = {}) {
   if (item.unseen) return `<li class="tr-ghost${item.now ? ' now' : ''}" data-side="unseen"${item.now ? ' aria-current="step"' : ''}><span class="tr-init"></span><span class="tr-main"><span class="tr-name">Something moves unseen</span></span></li>`;
-  const { e, now, init } = item, enc = S.encounter;
+  const { e, now, init } = item, enc = S.encounter, nm = shownName(S, e);
   const full = !!e.abil && typeof e.maxHp === 'number', numbers = full && (mine(e) || e.side === 'party');
   const word = e.health ?? (e.dead ? 'dead' : typeof e.maxHp === 'number' ? (e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy') : null);
   const dying = full && e.kind === 'pc' && !e.dead && e.hp <= 0 && e.death;
@@ -54,11 +63,11 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
   const out = e.dead || (typeof e.hp === 'number' ? e.hp <= 0 : word === 'down');
   const ctl = (dm ? `${typeof e.maxHp === 'number' ? '<button type="button" data-do="dmg" aria-label="Damage by the typed amount">\u2212</button><button type="button" data-do="heal" aria-label="Heal by the typed amount">+</button>' : ''}` +
       `${enc && now ? '<button type="button" data-do="skip">Skip turn</button>' : ''}${e.hidden ? '<button type="button" data-do="reveal">Reveal</button>' : ''}` : '') +
-    (e.abil ? `<button type="button" data-do="sheet" aria-label="Sheet: ${esc(e.name)}">Sheet</button>` : '');
+    (e.abil ? `<button type="button" data-do="sheet" aria-label="Sheet: ${esc(nm)}">Sheet</button>` : '');
   return `<li data-id="${esc(e.id)}" data-side="${esc(e.side)}" class="${now ? 'now' : ''} ${out ? 'out' : ''}"${now ? ' aria-current="step"' : ''}>
-      ${dm && typeof e.maxHp === 'number' ? `<input type="checkbox" class="tr-tick" aria-label="Select ${esc(e.name)}" ${ticked.has(e.id) ? 'checked' : ''}>` : '<span class="tr-nobox"></span>'}
+      ${dm && typeof e.maxHp === 'number' ? `<input type="checkbox" class="tr-tick" aria-label="Select ${esc(nm)}" ${ticked.has(e.id) ? 'checked' : ''}>` : '<span class="tr-nobox"></span>'}
       <span class="tr-init">${init !== undefined ? init : ''}</span>
-      <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(e.name)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>
+      <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(nm)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>
         <span class="tr-hp"><span class="bar"><i style="width:${hpFraction(e) * 100}%"></i></span><span>${esc(hp)}</span></span>
         ${tags.length || conds.length || fx.length ? `<span class="tr-tags">${[...tags, ...conds, ...fx].map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}</button>${ctl ? `<span class="tr-ctl">${ctl}</span>` : ''}</li>`;
 }

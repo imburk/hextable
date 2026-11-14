@@ -4,7 +4,7 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
-import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
@@ -14,7 +14,7 @@ import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './render.js';
 import { createRenderer, rendererKind } from './renderer.js';
-import { createTracker } from './tracker.js';
+import { createTracker, shownName } from './tracker.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
 import { initActionPanel } from './actionpanel.js';
@@ -94,8 +94,11 @@ const syncPlaying = () => { const on = TL.pace === 'wait' && TL.busy(); $('pace-
 $('pace-wait').onclick = () => TL.skip();
 
 const isDM = () => T?.you?.role === 'dm';
-const mine = (e) => !!e && (isDM() || e.owner === T.you.userId);
-const name = (id) => S.entities[id]?.name ?? 'Someone';
+// Whose creature it is: its own player's, or for a companion its master's player (the rules' own ownerOf, companions.md Decision 1).
+const mine = (e) => !!e && (isDM() || ownerOf(S, e) === T.you.userId);
+// A creature's name in the log. One that has left the state (a companion that vanished) is still called what it was, by the name seen last.
+const known = new Map();
+const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? 'Someone');
 
 function toast(msg, info = false) {
   const el = $('toast');
@@ -276,6 +279,13 @@ function words(ev) {
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
     case 'spawned': return [`${n(ev.id)} appears.`];
+    case 'bonded': return [`${n(ev.id)} is now ${n(ev.to)}'s ${ev.kind}${ev.side ? ` and fights on the ${ev.side}'s side` : ''}.`];
+    case 'unbonded': return [`${n(ev.id)} is no longer ${ev.from !== undefined ? `${n(ev.from)}'s` : 'anyone\'s'} companion.`];
+    case 'companion': return [`${n(ev.id)} ${ev.auto ? 'acts on its own now' : 'waits for its player\'s orders'}.`];
+    case 'vanished': {
+      const w = { hp0: 'drops to 0 Hit Points and vanishes', master: 'vanishes: its master is gone', leash: 'strays too far and vanishes', dismissed: 'is dismissed' }[ev.why] ?? 'vanishes';
+      return [`${ev.name && !known.has(ev.id) ? ev.name : n(ev.id)} ${w}.`, ev.why === 'hp0' ? 'bad' : ''];
+    }
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
     case 'check': {
@@ -364,7 +374,10 @@ function beat(ev, ctx) {
 // ---------- state updates ----------
 function onUpdate(state, events, fresh) {
   const first = !S || fresh;
+  if (first) known.clear();
+  for (const e of Object.values(S?.entities ?? {})) known.set(e.id, shownName(S, e));      // what a creature that vanishes in these events was called
   S = state;
+  for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
   TL.setPace(pace());
   if (first) {
     LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); DF.fresh(); CC.fresh(); D.reset();
@@ -390,7 +403,9 @@ function onUpdate(state, events, fresh) {
   // Undo and redo take the table back, and a question waiting for an answer must not sit behind queued beats: both show at once.
   const urgent = !!(S.prompt || S.pending);
   snapping = first || tookBack || urgent;
-  TL.push(S, events, { first, fresh: first, flush: tookBack || urgent, instant: tookBack || urgent });
+  // A companion that vanished fades like a creature removed: the renderer reads that event (the engine sends `vanished` for it).
+  const beats = events.flatMap((ev) => (ev.type === 'vanished' ? [ev, { type: 'removed', id: ev.id }] : [ev]));
+  TL.push(S, beats, { first, fresh: first, flush: tookBack || urgent, instant: tookBack || urgent });
   snapping = false;
   syncPlaying();
 }
@@ -481,19 +496,20 @@ function refresh() {
   $('order').innerHTML = enc ? enc.order.map((o, i) => {
     if (o.someone) return `<li data-side="unseen" class="${i === enc.turn ? 'now' : ''}">Someone unseen</li>`;
     const x = S.entities[o.id]; if (!x) return '';
-    return `<li data-side="${x.side}" class="${o.id === cur ? 'now' : ''} ${up(x) ? '' : 'out'}">${esc(x.name)}</li>`;
+    return `<li data-side="${x.side}" class="${o.id === cur ? 'now' : ''} ${up(x) ? '' : 'out'}">${esc(shownName(S, x))}</li>`;
   }).join('') : '';
   $('order').querySelector('.now')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 
   // character chips
   const party = $('party'); party.textContent = '';
   const hasChar = Object.values(S.entities).some((x) => x.owner === T.you.userId);
-  for (const x of Object.values(S.entities).filter((x) => x.kind === 'pc')) {
-    const claimable = !isDM() && !hasChar && !x.owner;
+  // A player's chips are their character and its companions ("Brenna's wolf"); the DM picks a companion on the map or in the tracker.
+  for (const x of Object.values(S.entities).filter((x) => x.kind === 'pc' || (x.bond && !isDM() && !x.dead))) {
+    const claimable = x.kind === 'pc' && !isDM() && !hasChar && !x.owner;
     if (!mine(x) && !claimable) continue;
     const b = document.createElement('button');
     b.type = 'button'; b.className = `${x.id === selId ? 'sel' : ''} ${x.id === cur ? 'now' : ''}`;
-    b.innerHTML = `<i style="background:${esc(x.look?.color || '#888')}"></i>${claimable ? 'Play as ' : ''}${esc(x.name)}`;
+    b.innerHTML = `<i style="background:${esc(x.look?.color || '#888')}"></i>${claimable ? 'Play as ' : ''}${esc(shownName(S, x))}`;
     b.onclick = () => { if (claimable) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name }); select(x.id); R.focus(x.id); refresh(); };
     party.append(b);
   }
@@ -629,6 +645,7 @@ function renderDM() {
   $('dm-hide').textContent = picked?.hidden ? 'Reveal selected' : 'Hide selected';
   $('dm-size').disabled = !picked; if (picked) $('dm-size').value = picked.size ?? 'medium';
   $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
+  syncBond(picked);
   QE.sync(S, selId);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
@@ -753,7 +770,7 @@ R.onTap = ({ hex, id }) => {
   }
   if (tapped) {
     const myTurn = e && mine(e) && S.encounter && current(S) === e.id;
-    if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead) {         // tap an enemy on your turn: attack with whatever reaches
+    if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead && !e.bond?.noAttack) {         // tap an enemy on your turn: attack with whatever reaches
       const d = gap(S, e.pos, tapped.pos) * FT;
       if (e.actions) {             // a monster: the first of its attacks that reaches, from what a Multiattack left if it did
         const b = S.encounter.budget;
@@ -843,6 +860,32 @@ $('dm-cover').onchange = (ev) => act({ type: 'setting', key: 'cover', value: ev.
 $('dm-creature-cover').onchange = (ev) => act({ type: 'setting', key: 'creatureCover', value: ev.target.checked ? 'on' : 'off' });
 $('dm-climb').onchange = (ev) => act({ type: 'setting', key: 'climbing', value: ev.target.checked ? 'on' : 'off' });
 $('dm-size').onchange = (ev) => { if (S.entities[selId]) act({ type: 'setSize', actor: selId, size: ev.target.value }); };
+// The DM's Bond control (companions.md, Decision 1): bind the selected creature to a master as a familiar, steed, pet and so on, or free it.
+// The engine says no in its own words (a player's character, a creature already bound, a master that is a companion), and those words reach the DM as a toast.
+const bondRow = document.createElement('div');
+bondRow.className = 'row'; bondRow.id = 'dm-bond-row';
+bondRow.innerHTML = `<select id="dm-bond-to" aria-label="Master of the selected creature"></select>
+  <select id="dm-bond-kind" aria-label="What the companion is">${BOND_KINDS.map((k) => `<option value="${k}">${k[0].toUpperCase()}${k.slice(1)}</option>`).join('')}</select>
+  <label class="check"><input type="checkbox" id="dm-bond-noattack"> Can't attack</label>
+  <button type="button" id="dm-bond" disabled>Bond selected</button><button type="button" id="dm-bond-free" disabled>Free selected</button>`;
+$('dm-fly').parentElement.after(bondRow);
+let bondSig = '';
+function syncBond(picked) {
+  const masters = Object.values(S.entities).filter((x) => x.id !== picked?.id && !x.dead && !x.bond && !x.hidden);
+  const sig = masters.map((x) => `${x.id}:${x.name}`).join('|');
+  const sel = $('dm-bond-to');
+  if (sig !== bondSig) { const keep = sel.value; bondSig = sig; sel.innerHTML = masters.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join(''); if (masters.some((x) => x.id === keep)) sel.value = keep; }
+  const bound = !!picked?.bond;
+  $('dm-bond').disabled = !picked || bound || picked.kind === 'pc' || !masters.length;
+  $('dm-bond-free').disabled = !bound;
+  bondRow.title = bound ? `${picked.name} is ${S.entities[picked.bond.to]?.name ?? 'someone'}'s ${picked.bond.kind}.` : '';
+  bondRow.dataset.bond = bound ? picked.bond.to : '';
+}
+$('dm-bond').onclick = () => {
+  const e = S.entities[selId], to = $('dm-bond-to').value;
+  if (e && to) act({ type: 'bond', actor: e.id, to, kind: $('dm-bond-kind').value, ...($('dm-bond-noattack').checked ? { noAttack: true } : {}) });
+};
+$('dm-bond-free').onclick = () => { const e = S.entities[selId]; if (e?.bond) act({ type: 'bond', actor: e.id, to: null }); };
 $('dm-fly').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setSpeed', actor: e.id, mode: 'fly', feet: e.speeds?.fly ? 0 : 60 }); };
 $('dm-engage-range').onchange = (ev) => act({ type: 'setting', key: 'engageRange', value: +ev.target.value });
 $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', value: ev.target.value });
