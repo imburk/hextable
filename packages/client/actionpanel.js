@@ -351,12 +351,13 @@ export function initActionPanel(ctx) {
 
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
+      const legacy = pref() === 'all';
       tabsNow = visibleTabs(ctxNow);
+      if (legacy && tabsNow.some((t) => t.id === 'all')) tabsNow = tabsNow.filter((t) => t.id === 'all');       // the preference "always the full bar": no tabs, today's card
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
       if (sel.key !== key) sel = { key, tab: null };
       const tab = tabsNow.some((t) => t.id === sel.tab) ? sel.tab : defaultTab(ctxNow, tabsNow, { pref: pref(), last: last() });
-      const legacy = pref() === 'all';
 
       // the tabs
       tabsEl.hidden = tabsNow.length < 2;
