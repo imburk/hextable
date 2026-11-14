@@ -4,6 +4,7 @@
 import * as H from '../hex.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
+import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
@@ -185,7 +186,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   // A Reaction that gives Resistance to the damage being taken (Superior Hunter's Defense): the type it resists now.
-  const braced = pierce ? null : braceAgainst(s, t, parts, m, ev);
+  const braced = pierce || raw ? null : braceAgainst(s, t, parts, m, ev);     // not a DM setting Hit Points (`raw`)
   const dying = t.hp <= 0, before = t.hp;
   // Amounts added to or taken off the damage (the Resistance cantrip's 1d4) come first, then
   // Resistance and Vulnerability (SRD "Order of Application"). Each applies once to the
@@ -259,7 +260,10 @@ function braceAgainst(s, t, parts, m, ev) {
   const w = instruction(t, r);
   if (w === 'never') return null;
   const has = (list, own, ty) => list === true || list.includes(ty) || (own ?? []).includes(ty);
-  const types = [...new Set(parts.filter((p) => p.amount > 0).map((p) => p.type))].filter((ty) => !has(m.resist, t.resist, ty) && !has(m.immune, t.immune, ty));
+  // Only damage of a type (the DM's untyped damage is none), and not a type it already resists or is immune to.
+  const all = [...new Set(parts.filter((p) => p.amount > 0).map((p) => p.type))];
+  if (!all.length || !all.every((ty) => DAMAGE_TYPES.includes(ty))) return null;
+  const types = all.filter((ty) => !has(m.resist, t.resist, ty) && !has(m.immune, t.immune, ty));
   if (!types.length) return null;
   if (types.length > 1) {
     ev.push({ type: 'manual', actor: t.id, name: r.name, partial: true, text: `${t.name} takes ${types.join(' and ')} damage at once. ${r.name} gives Resistance to one type the player picks; if taken, the DM applies it and marks the Reaction used.` });

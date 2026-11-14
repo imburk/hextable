@@ -1183,6 +1183,17 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     on the mark), Eldritch Invocations (Warlock 1: the invocations gained at 7 to 15 are what it gives).
   - *Not built*: the pact weapon and the invocations that need it, Devil's Sight, Pact of the Tome, familiars, a second copy
     of a repeatable invocation for the same cantrip or of Lessons of the First Ones (DEBT C16).
+  - *Review fixes (#234)*: Superior Hunter's Defense answers only damage of a damage type, and not the DM setting Hit
+    Points (`raw`); outside a fight there is no turn, so it resists only the damage that set it off (no lasting part), and its
+    Reaction stays spent until the creature's next turn in a fight, as any Reaction taken outside one. Empowered Evocation is
+    not added unasked when the roll also catches a creature not hostile to the caster (the caster included): the DM is told,
+    and `empower` adds it; nor for an Evocation spell whose damage the engine does not roll as it is cast (a zone's later
+    damage, a manual spell's dice): the DM is told. A sheet change made by an item (`give`, `equip`, `attune`, attuning at a
+    rest) is refused only for a problem the sheet did not already have (`newProblems`, sheets.js), so a warlock saved before
+    #232 without its new choices still takes items; `setSheet` and `levelUp` ask for them. Players' views leave out a part's
+    `ends.who` and a fight's flags that name a creature hidden from the party; a reaction question carries `dtype`. True
+    Strike's Agonizing and Repelling Blast are entered, `manual` (the engine does not resolve True Strike). The build
+    screen reads `pick` through `pickFor`.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and

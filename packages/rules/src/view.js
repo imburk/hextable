@@ -94,7 +94,8 @@ function viewEncounter(state) {
     // Attacks a Multiattack or Extra Attack left (`budget.attacks`) go with the rest, and only then.
     budget: activeOpen ? structuredClone(enc.budget) : { move: 0, action: 0, bonus: 0 },
     // What an unseen creature has done with its turn is not theirs to know either.
-    flags: activeHidden ? {} : { ...enc.flags },
+    // A flag that names a creature the party does not know of (`hit:<attacker>:<target>`, `attacked:<id>`) is left out.
+    flags: activeHidden ? {} : Object.fromEntries(Object.entries(enc.flags).filter(([k]) => !k.split(':').some((x) => state.entities[x] && classify(state, x) === 'hidden'))),
     order,
   };
 }
@@ -137,7 +138,8 @@ export function viewPrompt(state, viewer) {
   if (!t || typeof viewer?.userId !== 'string' || t.owner !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
   const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => pick(o, ['reaction', 'name', 'slots', 'ac'])) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
-  for (const k of ['attack', 'total', 'ac', 'crit', 'spell']) if (q[k] !== undefined) out[k] = q[k];
+  // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
+  for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype']) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
 }
 
@@ -297,7 +299,8 @@ function viewEffects(state) {
     const parts = [];
     for (const p of fx.parts) {
       const c = classify(state, p.target);
-      if (c === 'open') parts.push(structuredClone(p));
+      // `ends.who` (the creature whose turn the part ends with) is left out when that creature is hidden from the party.
+      if (c === 'open') { const q = structuredClone(p); if (q.ends?.who !== undefined && classify(state, q.ends.who) === 'hidden') delete q.ends.who; parts.push(q); }
       else if (c === 'seen' && p.cond && conditionDef(p.cond)?.visible) parts.push({ target: p.target, cond: p.cond, ...(p.ended ? { ended: true } : {}) });
     }
     out.push({ id: fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), conc: fx.conc, lasts: fx.lasts,

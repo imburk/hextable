@@ -157,3 +157,23 @@ test("Overchannel is refused for a cantrip, a slot above 5, a spell with no dama
   ok(apply(s, { type: "setSheet", actor: "hero", sheet: wiz(14) }, DM));
   assert.equal(s.entities.hero.uses.overchannel, 1);
 });
+
+test("Empowered Evocation is not added unasked when the roll also hits a creature not hostile to the caster; the player may still send it", () => {
+  const s = ready(10);
+  s.entities.m2.side = "party";
+  const r = ok(cast(s, { spell: "fireball", hex: { q: 6, r: 0 } }));
+  assert.ok(!notes(r).some((t) => /Empowered/.test(t)), "nothing added");
+  assert.ok(manuals(r).some((t) => /Empowered Evocation: .*not hostile/.test(t)), "the DM is told the player decides");
+  const t = ready(10);
+  t.entities.m2.side = "party";
+  assert.ok(notes(ok(cast(t, { spell: "fireball", hex: { q: 6, r: 0 }, empower: 0 }))).includes("Empowered Evocation: +4 damage"), "asked for, it is added");
+});
+
+test("Empowered Evocation on an Evocation spell whose damage the engine does not roll: the DM is told", () => {
+  const s = field(10);
+  s.entities.hero.spells.push("wall-of-fire");
+  const r = ok(cast(s, { spell: "wall-of-fire" }));
+  assert.ok(manuals(r).some((t) => /Empowered Evocation: .*does not roll/.test(t)));
+  s.entities.hero.slots[4] = 3;
+  assert.ok(!manuals(ok(cast(s, { spell: "wall-of-fire", empower: false }))).some((t) => /Empowered Evocation/.test(t)), "declined: nothing said");
+});

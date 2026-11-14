@@ -254,6 +254,16 @@ export const warlock = {
           }
         },
         {
+          "id": "agonizing-blast-true-strike",
+          "name": "Agonizing Blast (True Strike)",
+          "tier": "manual",
+          "text": "Add your Charisma modifier to True Strike's damage. Needs Warlock level 2 and the cantrip. True Strike is the DM's (the engine does not resolve it), so this is too.",
+          "requires": {
+            "level": 2,
+            "spell": "true-strike"
+          }
+        },
+        {
           "id": "ascendant-step",
           "name": "Ascendant Step",
           "tier": "auto",
@@ -600,6 +610,16 @@ export const warlock = {
               "spell": "poison-spray",
               "feet": 10
             }
+          }
+        },
+        {
+          "id": "repelling-blast-true-strike",
+          "name": "Repelling Blast (True Strike)",
+          "tier": "manual",
+          "text": "When True Strike hits a Large or smaller creature, you can push it up to 10 feet straight away. Needs Warlock level 2 and the cantrip. True Strike is the DM's (the engine does not resolve it), so this is too.",
+          "requires": {
+            "level": 2,
+            "spell": "true-strike"
           }
         },
         {

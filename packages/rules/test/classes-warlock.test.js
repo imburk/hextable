@@ -60,6 +60,9 @@ test("the warlock's features at levels 7 to 15 appear at their levels; invocatio
   assert.ok(validate(wl(12, ["lifedrinker"])).some((p) => /needs Pact of the Blade/.test(p)));
   assert.deepEqual(validate(wl(12, ["pact-of-the-blade", "thirsting-blade", "devouring-blade", "lifedrinker"])), []);
   assert.ok(validate(wl(9, ["agonizing-blast-poison-spray"])).some((p) => /Poison Spray among/.test(p)));
+  // True Strike is a Warlock cantrip that attacks and deals damage (review L2): its Agonizing and Repelling Blast are entered, manual.
+  assert.ok(validate(wl(5, ["agonizing-blast-true-strike"])).some((p) => /True Strike among/.test(p)));
+  assert.equal(derive(wl(5, ["repelling-blast-true-strike"], { spells: ["true-strike", "eldritch-blast", "hex"] })).record.feats.find((f) => f.id === "eldritch-invocations-repelling-blast-true-strike").tier, "manual");
   // The manual ones are on the record, marked so.
   assert.equal(derive(wl(12, ["pact-of-the-blade", "lifedrinker"])).record.feats.find((f) => f.id === "eldritch-invocations-lifedrinker").tier, "manual");
   // Ability Score Improvement at 8 and 12.
@@ -308,10 +311,25 @@ test("a version 20 table saved before #232 loads and plays; its ranger, warlock 
   ok(apply(s, { type: "cast", actor: R, spell: "hunters-mark", target: G }, DM));
   assert.equal(ok(apply(s, { type: "harm", actor: R, amount: 10 }, DM)).events.filter((x) => x.type === "concentration").length, 0, "Relentless Hunter");
   ok(apply(s, { type: "endEncounter" }, DM));
-  // The old warlock sheet has no Fiendish Resilience or Mystic Arcanum chosen: the DM is told to choose, and nothing changes.
+  // The old warlock sheet has no Fiendish Resilience or Mystic Arcanum chosen. What has nothing to do with them works
+  // (review M3): giving it items, wearing one, attuning at a rest.
+  ok(apply(s, { type: "give", actor: W, item: "potion-of-healing" }, DM));
+  ok(apply(s, { type: "give", actor: W, item: "ring-of-protection" }, DM));
+  const ring = s.entities[W].sheet.items.find((x) => x.item === "ring-of-protection").id;
+  ok(apply(s, { type: "equip", actor: W, item: ring }, DM));
+  ok(apply(s, { type: "attune", actor: W, item: ring }, DM));
+  const att = ok(apply(s, { type: "shortRest" }, DM)).events.find((x) => x.type === "attuned" && x.id === W);
+  assert.ok(att && !att.failed, att?.failed);
+  assert.equal(s.entities[W].sheet.choices?.["fiendish-resilience"], undefined, "nothing chosen for the player");
+  // Making it again from the sheet, or a level up, needs the new choices: the DM is told which, and nothing changes.
   const before = structuredClone(s.entities[W]);
   no(apply(s, { type: "setSheet", actor: W, sheet: s.entities[W].sheet }, DM), /Choose an option for Fiendish Resilience/);
+  no(apply(s, { type: "levelUp", actor: W, sheet: { ...s.entities[W].sheet, level: 15 } }, DM), /Choose an option for Fiendish Resilience/);
   assert.deepEqual(s.entities[W], before);
+  const up = { ...s.entities[W].sheet, level: 15, choices: { "fiendish-resilience": "cold", "mystic-arcanum": "eyebite", "mystic-arcanum-7": "plane-shift", "mystic-arcanum-8": "glibness", "eldritch-invocations": ["eldritch-mind"] } };
+  const lv = structuredClone(s);
+  ok(apply(lv, { type: "levelUp", actor: W, sheet: up }, DM));
+  assert.deepEqual(lv.entities[W].resist, ["cold"]);
   const sheet = { ...s.entities[W].sheet, choices: { "fiendish-resilience": "fire", "mystic-arcanum": "eyebite", "mystic-arcanum-7": "plane-shift", "eldritch-invocations": ["eldritch-mind"] } };
   ok(apply(s, { type: "setSheet", actor: W, sheet }, DM));
   assert.deepEqual(s.entities[W].resist, ["fire"]);

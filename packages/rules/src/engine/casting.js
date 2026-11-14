@@ -9,7 +9,7 @@ import { FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, castAbilOf, control, ent, fail, featOf, ft, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
+import { able, ask, castAbilOf, control, ent, fail, featOf, ft, hostile, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
 import { aimArea, creatures, reveal, roomAt, showPlace, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter } from './resolve.js';
@@ -177,6 +177,8 @@ function repelFor(e, sp, a) {
 // last Long Rest are counted in `uses[feature id]`, and from the second the caster takes so many of
 // `die` per slot level in Necrotic damage, one more each time, ignoring Resistance and Immunity.
 // Returns { empower?, told?, overchannel? }, checked before anything is spent.
+// A spell whose text gives dice of damage the engine does not roll (Wall of Fire, Delayed Blast Fireball).
+const damageText = (def) => { const t = JSON.stringify(def); return /\b\d+d\d+\b/.test(t) && /\bdamage\b/i.test(t); };
 function evokerFor(e, sp, a, slot, via, targets) {
   const out = {};
   (a.empower === undefined || a.empower === false || (Number.isInteger(a.empower) && a.empower >= 0 && a.empower < 20)) || fail('empower is false, or which damage roll it adds to (0 for the first).');
@@ -190,10 +192,16 @@ function evokerFor(e, sp, a, slot, via, targets) {
     (sp.def.school === ef.empowered.school && onList(ef.empowered.list)) || fail(`${ef.name} is for ${nice(ef.empowered.list)} spells of the ${nice(ef.empowered.school)} school.`);
     paths.length || fail(`${sp.name} deals no damage for ${ef.name} to add to.`);
   }
-  if (ef && a.empower !== false && sp.def.school === ef.empowered.school && onList(ef.empowered.list) && paths.length) {
+  // A spell of the school whose damage the engine does not roll (Wall of Fire): the DM is told, as the player may add it.
+  if (ef && a.empower !== false && sp.def.school === ef.empowered.school && onList(ef.empowered.list) && (paths.length ? sp.def.zone && !sp.def.zone.atCast : damageText(sp.def)) && mod(e.abil[ef.empowered.ability] ?? 10) > 0)
+    out.told = `${ef.name}: ${e.name} may add ${mod(e.abil[ef.empowered.ability] ?? 10)} to one damage roll of ${sp.name}. The engine does not roll that damage as the spell is cast, so the DM adds it if the player wants.`;
+  if (ef && a.empower !== false && sp.def.school === ef.empowered.school && onList(ef.empowered.list) && paths.length && !out.told) {
     const add = mod(e.abil[ef.empowered.ability] ?? 10), rays = !!sp.repeat && targets.length > 1;
+    // A creature it catches that is not hostile to the caster (an ally in the Fireball): the player decides, not the engine.
+    const friend = targets.some((t) => !hostile(e, t));      // the caster in its own area too
     if (add > 0) {
       if (a.empower === undefined && (paths.length > 1 || rays)) out.told = `${ef.name}: ${e.name} may add ${add} to one damage roll of ${sp.name}. It makes several, so the player picks one and the DM adds it (or send empower with the roll).`;
+      else if (a.empower === undefined && friend) out.told = `${ef.name}: ${e.name} may add ${add} to the damage roll of ${sp.name}, which also catches a creature not hostile to ${e.name}. The engine adds nothing unasked: the player decides (send empower 0), or the DM adds it.`;
       else if (rays) {
         paths.length === 1 || fail(`${ef.name}: the DM adds it to ${sp.name}; the engine picks no roll of a spell with several rays and several damage steps.`);
         (a.empower ?? 0) < targets.length || fail(`${sp.name} has ${targets.length} rays or darts here; empower names one, from 0.`);

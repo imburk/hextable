@@ -41,8 +41,11 @@ const featureUses = (t) => Object.fromEntries((t.feats ?? []).filter((f) => f.us
 // everything before it changes anything.
 // A built character's sheet changed by an item (given, worn, attuned): checked whole, then the character is made
 // again from it. Refused, nothing changes.
+// A problem the sheet already had before the change (a choice a later version of the rules added: Fiendish
+// Resilience on a warlock saved before #232) does not stop a change that has nothing to do with it.
+export const newProblems = (before, sheet) => { const had = new Set(before ? validate(before) : []); return validate(sheet).filter((p) => !had.has(p)); };
 export function resheet(s, e, sheet, ev) {
-  const problems = validate(sheet);
+  const problems = newProblems(e.sheet, sheet);
   problems.length === 0 || fail(`That can't be done. ${problems[0]}`);
   remake(s, e, derive(sheet).record, sheet, ev);
 }

@@ -9,6 +9,7 @@ import { derive, featChoices, validate } from "../src/derive.js";
 import { lintRecord } from "../src/content/schema.js";
 import { SPELLS as BOOK } from "../src/content/index.js";
 import { newGame } from "../src/scenario.js";
+import { view, viewPrompt } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -239,6 +240,40 @@ test("Superior Hunter's Defense: damage of two types at once goes to the DM and 
     if (!attacks(r)[0].hit) continue;
     assert.ok(r.events.some((x) => x.type === "manual" && /slashing and fire/.test(x.text)), "the DM is told");
     assert.ok(!e.reactionUsed);
+    return;
+  }
+  assert.fail("no seed");
+});
+
+test("Superior Hunter's Defense: not for the DM setting Hit Points, nor for untyped damage (review M1)", () => {
+  const s = ready(15), e = s.entities.hero;
+  ok(apply(s, { type: "setHp", actor: "hero", hp: 200 }, DM));
+  assert.equal(e.hp, 200); assert.ok(!e.reactionUsed);
+  ok(apply(s, { type: "harm", actor: "hero", amount: 30 }, DM));
+  assert.equal(e.hp, 170); assert.ok(!e.reactionUsed);
+  ok(apply(s, { type: "harm", actor: "hero", amount: 30, dtype: "fire" }, DM));
+  assert.equal(e.hp, 155, "typed damage still");
+});
+
+test("Superior Hunter's Defense asked of its player: the question carries the damage type (review M4); a hidden attacker's turn is not named in the player's effects (M2)", () => {
+  for (let seed = 1; seed < 200; seed++) {
+    const s = ready(15, undefined, seed, "ape");
+    s.entities.hero.owner = "u1";
+    ok(act(s, { type: "reactions", set: { "superior-hunters-defense": "ask" } }));
+    turnOf(s, s.m1);
+    ok(apply(s, { type: "act", actor: s.m1, action: "multiattack" }, DM));
+    const r = ok(apply(s, { type: "attack", actor: s.m1, target: "hero", attack: "fist" }, DM));
+    if (!s.pending) { assert.ok(!r.events.some((x) => x.type === "attack" && x.hit)); continue; }
+    const P = { role: "player", userId: "u1" };
+    assert.equal(viewPrompt(s, P).dtype, "bludgeoning");
+    assert.equal(viewPrompt(s, P).trigger, "damaged");
+    // Taken while the ape, hidden from the party, has its turn: the part that ends with that turn does not name it.
+    s.entities[s.m1].hidden = true;
+    ok(apply(s, { type: "react", prompt: s.pending.n, take: "superior-hunters-defense" }, P));
+    const part = (v) => v.effects.find((fx) => fx.name === "Superior Hunter's Defense").parts[0];
+    assert.equal(part(view(s, P)).ends.who, undefined, "not sent to the player");
+    assert.equal(part(view(s, DM)).ends.who, s.m1, "the DM's view keeps it");
+    assert.ok(!JSON.stringify(view(s, P)).includes(`"${s.m1}"`), "the hidden ape's id is nowhere in the player's view");
     return;
   }
   assert.fail("no seed");

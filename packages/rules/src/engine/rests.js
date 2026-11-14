@@ -5,10 +5,10 @@ import { CONTENT, SPELLS } from '../content/index.js';
 import { lintRecord } from '../content/schema.js';
 import { tick } from '../durations.js';
 import { rewardActions } from '../rewards.js';
-import { attuneProblem, derive, itemName, validate } from '../derive.js';
+import { attuneProblem, derive, itemName } from '../derive.js';
 import { ent, fail, featOf, mod } from './shared.js';
 import { heal } from './rolls.js';
-import { remake, tryLand } from './sheets.js';
+import { newProblems, remake, tryLand } from './sheets.js';
 
 export const handlers = {
   rest(s, a, ctx, ev) {
@@ -139,7 +139,7 @@ export const handlers = {
       const def = CONTENT.items[x.item], name = itemName(def, x);
       if (at.end) delete x.attuned; else x.attuned = true;
       const why = e.hp <= 0 ? `${e.name} is at 0 Hit Points.` : e.form ? `${e.name} is in a form.` : (at.end ? null : attuneProblem(sheet, def))
-        ?? validate(sheet)[0] ?? lintRecord(derive(sheet).record, { spells: SPELLS })[0] ?? null;
+        ?? newProblems(e.sheet, sheet)[0] ?? lintRecord(derive(sheet).record, { spells: SPELLS })[0] ?? null;
       if (why) { delete e.sheet.attuning; ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}), failed: why }); continue; }
       remake(s, e, derive(sheet).record, sheet, ev);
       ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}) });
