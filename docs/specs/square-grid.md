@@ -345,7 +345,11 @@ The map document gains `grid` and renames `hexFeet`:
   - `real` (default, a table rule): a side step 5 ft, a diagonal 5 x √2 ft, times whatever
     doubles a step (Difficult Terrain, climbing, crawling, a creature's space). A creature with any
     movement left may enter one more square; that step uses up the rest (one bonus at most, since
-    nothing is left after it). Straight runs come out as by the SRD.
+    nothing is left after it). The bonus is only for an ordinary step into a neighbouring square on
+    the same footing (on foot over no more than an ordinary rise, Difficult Terrain included, or
+    flying level): a step whose cost counts height (stairs steep enough to be Difficult, a climb, a
+    ladder, flying up or down) is paid in full, so with 5 ft left nobody scales a 30-ft face.
+    Straight runs come out as by the SRD.
   - `srd`: every diagonal 5 ft (SRD 1817-1823).
   - `alternate`: every second diagonal in a turn 10 ft, counted through the turn
     (`encounter.budget.diagonals`, 0 or 1, absent meaning 0). Not in the SRD 5.2.1; the setting's
@@ -593,9 +597,16 @@ map.
   Costs are sums of whole feet and multiples of 5√2: two routes of equal length can differ in the
   last bit, two of different length differ by far more than the tolerance. Only `+`, `-`, `*` and
   the constant `Math.SQRT2` are used (no `Math.hypot`), so every engine gets the same bits.
-- **The bonus square** under `real` applies to any step (walking, climbing, a ladder, flying): the
-  step's cost is capped at what is left. With a whole Speed and no diagonal, nothing is ever left
-  over, so straight runs are the SRD's.
+- **The bonus square** under `real` (review of #255, M1): a step marked `level` (on foot with a
+  rise of no more than `STEP_FREE`, or flying level) may cost more than is left and is capped at
+  what is left; any other step must be paid in full. With a whole Speed and no diagonal, nothing
+  is ever left over, so straight runs are the SRD's. A flyer's diagonal that also rises 5 ft costs
+  a diagonal's length, as a rising flight step costs 5 ft on hexes (the vertical part is not
+  charged; review L3, kept).
+- **Forced movement** (review M2, L2): on squares a push spends its feet by the diagonal rule with
+  no last square on the remainder (Thunderwave's 10 ft is one diagonal square under `real`, two
+  under `srd`), and every part of a big creature must cross no wall and pass no corner, as when it
+  walks. On hexes a push is as it was.
 - **Corners.** A wall or shut door touching the corner already blocks the centre-to-centre line
   (`crosses` counts touching). `cornerFree` checks the two squares beside the step: blocked if the
   surface there at the walker's height is impassable (rock, deep water) or holds something solid,
@@ -603,9 +614,15 @@ map.
   feature. Every part of a big creature obeys it; so does a push and a flyer.
 - **Reach and range** are `space.js` `measure(s, G)`, whole-number arithmetic (an integer square
   root), used by `gap` and `apartAt`; `apartAt` now takes the map's grid when none is given.
-- **The `G` default** is not removed from `shapeOf`, `footprint` and `overlapAt`: their callers
-  outside S6's files (sight, zones, casting, features, characters, sheets, the renderers) do not
-  pass a grid yet; `docs/DEBT.md` T21 lists them. Every caller in S6's files passes it.
+- **The grid at every caller** (review H1, H2): every call of `shapeOf`, `footprint` and
+  `overlapAt` in `packages/rules/src` and `packages/client` passes `gridOf(map)` (sight, zones,
+  casting, features, characters, sheets, and seven lines of the renderers). A test in
+  `square-moving.test.js` reads those sources and fails on a call with the grid left out. The
+  `= HEX` default itself stays in `space.js` for the existing hex tests that call these functions
+  directly (changing them was out of bounds); no source file relies on it. `apartAt` takes the
+  map's grid when none is given.
+- **`loadMap`** refuses a map it cannot copy (a function inside) with "It is not a map document."
+  (review L1).
 - **E8** ends every terrain effect and every zone that does not follow a creature on any map
   change, hex maps included (the one deliberate change on hexes). **`loadMap`** runs `migrateMap`
   on the map it is sent before linting it.
