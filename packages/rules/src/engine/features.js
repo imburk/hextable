@@ -122,17 +122,21 @@ function initiativeFeatures(s, ev) {
 // (Search uses it for what it can see only dimly); it is not part of what is shown.
 function abilityCheck(s, e, what, dimToo = false) {
   const ability = what.ability ?? SKILLS[what.skill];
-  const m = modifiers(s, e, 'check', { target: e, ability, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
+  // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
+  const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
+  const m = modifiers(s, e, 'check', { target: e, ability, proficient, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
-  const r1 = die(s, 20), r2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  // Reliable Talent: each d20 under its `floor` counts as it.
+  const lift = (d) => (d !== null && m.floor !== null ? Math.max(d, m.floor) : d), raw1 = die(s, 20), raw2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  const r1 = lift(raw1), r2 = lift(raw2), floored = m.floor !== null && (raw1 < m.floor || (raw2 !== null && raw2 < m.floor));
   const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
   const more = rollDice(s, m.dice);
   if (m.used.length) useUp(s, [], m.used);
-  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(r1, mode === 'normal' ? null : r2, r), ...more.dice], ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(r1, mode === 'normal' ? null : r2, r), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
     ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

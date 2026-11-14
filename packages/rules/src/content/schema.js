@@ -36,13 +36,17 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20',
   // `opportunity`: whether the creature can make Opportunity Attacks (`autoFail`: it can't; Staggering Blow).
   'opportunity'];
-export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
+export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
+  // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
+  'floor'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
   'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
   // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
-  'target.fought'];
+  'target.fought',
+  // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).
+  'check.proficient'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
@@ -120,6 +124,7 @@ function lintModifier(m, say) {
   if (m.onFail !== undefined && !(m.onFail === true && m.op === 'add' && ['d20', 'attack.roll', 'save'].includes(m.on))) say('`onFail` is true, on an add to d20, attack.roll or save');
   if (m.cost !== undefined && !(m.onFail === true && ID.test(m.cost))) say('`cost` names a feature, with onFail');
   if (m.on === 'd20' && !m.onFail) say('the d20 hook is for onFail dice');
+  if (m.op === 'floor' && !(m.on === 'check' && isInt(m.value) && m.value >= 2 && m.value <= 20)) say('`floor` is on check, with a d20 value');
   if (m.on === 'opportunity' && m.op !== 'autoFail') say('the opportunity hook takes autoFail (no Opportunity Attacks)');
   // `except: 'source'`: on a modifier a creature puts on another, it does not hold for rolls the
   // source itself makes (Sundering Blow: "another creature"). `stack: false`: of several modifiers
@@ -224,6 +229,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
         // `by: 'source'` on `damaged`: only damage from the source or its allies ends it (Charm Monster).
         if (ends?.by !== undefined && !(ends.by === 'source' && ends.on === 'damaged')) say('`ends.by` is "source", on an ending `on: "damaged"`');
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
+        // `orDamaged: true`: it also ends when its creature takes any damage (Knock Out: a repeated save, or damage).
+        if (ends?.orDamaged !== undefined && !(ends.orDamaged === true && ends.on === 'save')) say('`ends.orDamaged` is true, on an ending on a save');
       }
     }
     if (kind === 'modifier') {
@@ -612,7 +619,10 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   // Evasion; moving along walls and across water (Acrobatic Movement); conditions ended at the end of
   // its turns (Self-Restoration); another feature's reaction against any damage type (Deflect Energy);
   // another feature used without a Bonus Action after a different one (Fleet Step).
-  'evasion', 'surfaces', 'selfCure', 'allTypes', 'fleet'];
+  'evasion', 'surfaces', 'selfCure', 'allTypes', 'fleet',
+  // Sneak Attack dice traded for effects (Cunning Strike and the features that add to it), and how many
+  // magic items it may be attuned to (Use Magic Device).
+  'cunning', 'attune'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -869,6 +879,33 @@ function lintGrants(g, cls, say) {
   // `fleet: { of }`: after a Bonus Action that is not that feature, the creature may use it without
   // spending a Bonus Action, once a turn (Fleet Step with Step of the Wind).
   if (g.fleet !== undefined && !(g.fleet && ID.test(g.fleet.of ?? '') && Object.keys(g.fleet).length === 1)) say('fleet is { of: feature id }');
+  // `cunning`: when its Sneak Attack deals damage, the creature may give up Sneak Attack dice (`cost`
+  // each) for effects on the target after the damage (Cunning Strike), up to `max` effects (1 unless a
+  // feature says 2: Improved Cunning Strike). An option is { id, name, cost, effects?, duration?,
+  // needs?, size?, keepHidden? }: `duration`, a lasting effect for its steps (Poison's minute);
+  // `needs`, gear it must carry (a Poisoner's Kit); `size`, the largest target it works on (Trip);
+  // `keepHidden`, the attack does not end its hiding if it ends its turn behind Three-Quarters or Total
+  // Cover from every enemy (Stealth Attack). A save step's `dc` may be an ability: 8 + Proficiency + it.
+  if (g.cunning !== undefined) {
+    const x = g.cunning;
+    if (!(x && typeof x === 'object' && Object.keys(x).every((k) => ['max', 'options'].includes(k)) && (x.max !== undefined || x.options !== undefined))) say('cunning is { max?, options? }');
+    else {
+      if (x.max !== undefined && !(isInt(x.max) && x.max >= 1 && x.max <= 3)) say('cunning.max is 1 to 3');
+      if (x.options !== undefined) {
+        if (!(Array.isArray(x.options) && x.options.length)) say('cunning.options lists options');
+        else for (const o of x.options) {
+          if (!(o && ID.test(o.id ?? '') && isText(o.name) && isInt(o.cost) && o.cost >= 1 && o.cost <= 10 && Object.keys(o).every((k) => ['id', 'name', 'cost', 'effects', 'duration', 'needs', 'size', 'keepHidden'].includes(k)))) { say('a cunning option is { id, name, cost, effects?, duration?, needs?, size?, keepHidden? }'); continue; }
+          if (o.effects === undefined && !o.keepHidden) say(`cunning option ${o.id} has effects or keepHidden`);
+          if (o.effects !== undefined) lintSteps(bakeValues(o.effects, cls, say), say);
+          if (o.duration !== undefined && !isDuration(o.duration)) say('a cunning option\'s duration is a duration');
+          if (o.needs !== undefined && !ID.test(o.needs)) say('a cunning option\'s needs names gear');
+          if (o.size !== undefined && !SIZES.includes(o.size)) say('a cunning option\'s size is a size');
+          if (o.keepHidden !== undefined && o.keepHidden !== true) say('keepHidden is true');
+        }
+      }
+    }
+  }
+  if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
 const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
@@ -1169,7 +1206,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
-  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet'];
+  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1222,6 +1259,11 @@ function lintFeat(f, say) {
   if (f.initiative !== undefined && !(f.initiative && ID.test(f.initiative.regain ?? '') && (f.initiative.upTo === undefined || isInt(f.initiative.upTo))
     && (f.initiative.heal === undefined || isDice(f.initiative.heal)) && (f.initiative.unless === undefined || ID.test(f.initiative.unless)))) sub('its initiative is { regain, upTo?, heal?, unless? }.');
   for (const k of ['evasion', 'surfaces']) if (f[k] !== undefined && f[k] !== true) sub(`its ${k} is true.`);
+  if (f.cunning !== undefined) {
+    const x = f.cunning;
+    if (!(x && (x.max === undefined || (isInt(x.max) && x.max >= 1 && x.max <= 3)) && (x.options === undefined || (Array.isArray(x.options) && x.options.length <= 10 && x.options.every((o) => o && ID.test(o.id ?? '') && isText(o.name) && isInt(o.cost)))))) sub('its cunning is { max?, options? }.');
+    else for (const o of x.options ?? []) if (o.effects) lintSteps(o.effects, sub);
+  }
   if (f.selfCure !== undefined && !(f.selfCure && allOf(CONDITIONS)(f.selfCure.conditions) && f.selfCure.conditions.length)) sub('its selfCure is { conditions }.');
   if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');
   if (f.action?.acts !== undefined && !(Array.isArray(f.action.acts) && allOf(['dash', 'disengage', 'dodge'])(f.action.acts))) sub('its action acts lists dash, disengage or dodge.');

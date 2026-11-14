@@ -5,9 +5,11 @@ import { turnEnded } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { turnInZones } from '../zones.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, featOf, ft, inFight, need, up, walled } from './shared.js';
+import { able, control, current, ent, fail, featOf, ft, hostile, inFight, living, need, up, walled } from './shared.js';
 import { cure, rollMode } from './rolls.js';
-import { aimAction, showPlace } from './world.js';
+import { aimAction, showPlace, unhide } from './world.js';
+import { SIZES } from '../content/schema.js';
+import { coverOf } from '../sight.js';
 import { advanceTurn, checkEnd, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
 
 function checkRange(s, e, t, atk) {
@@ -90,6 +92,31 @@ function brutalFor(s, e, t, atk, id) {
   return { ...structuredClone(o), dice: base.brutal.dice };
 }
 
+// Cunning Strike (`cunning` on a built character's features): Cunning Strike effects for this attack,
+// each named once, at most as many as its features allow, on an attack that can deal Sneak Attack on a
+// turn it has not yet, with Sneak Attack dice enough to pay for them, the gear they need, a target of
+// the size they need, and (Stealth Attack) made while hidden. Returns the options, or refuses.
+const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function cunningFor(s, e, t, atk, list) {
+  const fs = (e.feats ?? []).filter((f) => f.cunning), options = fs.flatMap((f) => f.cunning.options ?? []);
+  options.length || fail(`${e.name} has no Cunning Strike.`);
+  const max = Math.max(1, ...fs.map((f) => f.cunning.max ?? 1));
+  (Array.isArray(list) && list.length && list.every((x) => typeof x === 'string') && new Set(list).size === list.length) || fail('Name the Cunning Strike effects, each once.');
+  list.length <= max || fail(`${e.name} can add ${max === 1 ? 'one Cunning Strike effect' : `${max} Cunning Strike effects`} to an attack.`);
+  const chosen = list.map((id) => structuredClone(options.find((o) => o.id === id) ?? fail(`Choose Cunning Strike effects from: ${options.map((o) => o.name).join(', ')}.`)));
+  const m = /^(\d+)d\d+$/.exec(e.features?.sneak ?? '');
+  (m && !atk.spell && (atk.finesse || atk.type === 'ranged')) || fail('Cunning Strike goes with Sneak Attack, which needs a Finesse or Ranged weapon.');
+  !s.encounter.flags[`sneak:${e.id}`] || fail(`${e.name} has already dealt Sneak Attack this turn.`);
+  const cost = chosen.reduce((n, o) => n + o.cost, 0);
+  cost <= +m[1] || fail(`Those effects cost ${cost} Sneak Attack dice; ${e.name}'s Sneak Attack is ${e.features.sneak}.`);
+  for (const o of chosen) {
+    if (o.needs) e.gear?.some((g) => slug(g) === o.needs) || fail(`${o.name} needs ${o.needs === 'poisoners-kit' ? "a Poisoner's Kit" : o.needs} on ${e.name}'s person.`);
+    if (o.size) SIZES.indexOf(t.size ?? 'medium') <= SIZES.indexOf(o.size) || fail(`${o.name} works on a creature of ${o.size[0].toUpperCase() + o.size.slice(1)} size or smaller.`);
+    if (o.keepHidden) e.hiding || fail(`${o.name} is for an attack made while hidden.`);
+  }
+  return chosen;
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -98,7 +125,7 @@ export const handlers = {
     const e = ent(s, a.actor), t = ent(s, a.target); control(e, ctx);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
-      a.brutal === undefined || fail(`Brutal Strike is made with a weapon or an Unarmed Strike.`);
+      (a.brutal === undefined && a.cunning === undefined) || fail(`Brutal Strike and Cunning Strike are made with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
       return takeAction(s, e, def, { target: a.target }, ev);
@@ -120,6 +147,7 @@ export const handlers = {
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
+    const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
     if (flurry) { if (--b.bonusAttacks.left <= 0) delete b.bonusAttacks; }
     else if (bonusTime) b.bonus--;
     else if (pooled) fromPool(b, atk.id, true);
@@ -129,7 +157,7 @@ export const handlers = {
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
     }
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
-    resolveAttack(s, e, t, atk, ev, {}, { brutal });
+    resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
     checkEnd(s, ev);
   },
 
@@ -174,6 +202,9 @@ export const handlers = {
     const e = ent(s, a.actor); control(e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
     delete e.cond.disengaged;
+    // Stealth Attack: still hidden after its attack only if it ends the turn behind Three-Quarters or
+    // Total Cover from every enemy that is up.
+    if (s.encounter.flags[`stealth:${e.id}`] && e.hiding && living(s).some((o) => up(o) && hostile(o, e) && !['threeQuarters', 'total'].includes(coverOf(s, o, e)))) unhide(s, e, ev, 'attack');
     // Self-Restoration: one of these conditions ends on it at the end of each of its turns (the first it has).
     for (const f of e.feats ?? []) {
       const c = f.selfCure?.conditions.find((x) => e.cond[x]);

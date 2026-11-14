@@ -4,7 +4,7 @@
 import * as H from '../hex.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
-import { begin, run, scaleSteps, sharedRolls } from '../effects.js';
+import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
 import { concludeFight } from '../rewards.js';
@@ -278,10 +278,11 @@ function studied(s, e, t, ev) {
 
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 // `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
-function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false } = {}) {
+// `keepHidden`: the attack does not end its hiding yet (Stealth Attack; resolveAttack decides).
+function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = false } = {}) {
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, atk);
   if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
-  unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
+  if (!keepHidden) unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
   const nat = mode === 'adv' ? Math.max(r1, r2) : mode === 'dis' ? Math.min(r1, r2) : r1;
   const more = rollDice(s, dice);
@@ -453,40 +454,62 @@ function strikeBack(s, t, e, r, ev, why) {
 // hand-entered characters). Spells resolve through effect steps instead.
 // `brutal`: a Brutal Strike option chosen for this attack ({ id, name, dice, effects, unique? },
 // attacks.js, brutalFor): Advantage is given up, and a hit deals `dice` more and then runs the option.
-export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null } = {}) {
-  const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra, { forgo: !!brutal });
-  if (!hit) return;
+// `cunning`: Cunning Strike options chosen for this attack (attacks.js, cunningFor): their cost in Sneak
+// Attack dice is taken off before the dice are rolled, and their steps run after the damage, only if
+// Sneak Attack is dealt. One that keeps its creature hidden (Stealth Attack) holds off the attack's
+// unhiding to the end of the turn (attacks.js, endTurn); if it is not paid for, the attack unhides it.
+export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cunning = null } = {}) {
+  const keepHidden = !!e.hiding && !!cunning?.some((o) => o.keepHidden);
+  const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra, { forgo: !!brutal, keepHidden });
+  if (!hit) { if (keepHidden) unhide(s, e, ev, 'attack'); return; }
   const rs = [roll(s, atk.damage, { crit })];
   const notes = [];
   if (brutal) { rs.push(roll(s, brutal.dice, { crit })); notes.push(`Brutal Strike: ${brutal.name}`); }
   if (atk.bonusOnAdv && mode === 'adv') rs.push(roll(s, atk.bonusOnAdv, { crit }));
   const sneakKey = `sneak:${e.id}`;
+  let paid = null;
   if (e.features.sneak && !atk.spell && (atk.finesse || atk.type === 'ranged') && !s.encounter?.flags[sneakKey] && mode !== 'dis') {
     const flank = living(s).some((o) => o.id !== e.id && up(o) && !incapacitated(o) && hostile(o, t) && apart(s, o, t) <= 1);     // an ally who is not Incapacitated
     if (mode === 'adv' || flank) {
-      rs.push(roll(s, e.features.sneak, { crit }));
+      // Cunning Strike: the dice its effects cost are taken off before the roll.
+      const cost = (cunning ?? []).reduce((a, o) => a + o.cost, 0), m = /^(\d+)d(\d+)$/.exec(e.features.sneak);
+      if (!cost) rs.push(roll(s, e.features.sneak, { crit }));
+      else if (m && +m[1] > cost) rs.push(roll(s, `${+m[1] - cost}d${m[2]}`, { crit }));
       if (s.encounter) s.encounter.flags[sneakKey] = true;
-      notes.push('Sneak Attack');
+      notes.push('Sneak Attack', ...(cunning ?? []).map((o) => `Cunning Strike: ${o.name}`));
+      paid = cunning;
     }
   }
+  if (cunning && !paid) notes.push('No Sneak Attack, so no Cunning Strike');
+  if (keepHidden) { if (paid && s.encounter) s.encounter.flags[`stealth:${e.id}`] = true; else unhide(s, e, ev, 'attack'); }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
   const r = together(...rs);
   damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
   if (brutal && !t.dead) strikeEffect(s, e, t, brutal, ev);
+  for (const o of paid ?? []) if (o.effects && !t.dead) strikeEffect(s, e, t, o, ev);
 }
 
 // What a choice made for a hit does to its target after the damage (a Brutal Strike option): its
 // steps, on a lasting effect bound to its parts when they have an ending. `unique`: an earlier one
 // of the same option on that target, from anyone, ends first ("only the most recent one").
-export function strikeEffect(s, e, t, o, ev, src = {}) {
+// With `duration` (a Cunning Strike's Poison), its steps hang on a lasting effect of that length, dropped
+// if they put nothing on the target. The DC of a save that ends what it did is its own save's.
+export function strikeEffect(s, e, t, o, ev) {
   if (o.unique) for (const fx of [...effectsOf(s)]) if (fx.option === o.id && fx.parts.some((p) => p.target === t.id && !p.ended)) endEffect(s, ev, fx, `a new ${o.name}`);
-  const steps = structuredClone(o.effects), fx = boundEffect(s, o.name, e.id, steps);
+  const steps = structuredClone(o.effects);
+  let fx = null, dc;
+  walkSteps(steps, (x) => { if (dc === undefined && 'save' in x && typeof x.dc === 'number') dc = x.dc; });
+  if (o.duration) {
+    fx = startEffect(s, { name: o.name, spell: null, source: e.id, conc: false, duration: o.duration });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: fx.lasts, targets: [t.id] });
+  } else fx = boundEffect(s, o.name, e.id, steps);
   if (fx) fx.option = o.id;
   const depth = s.stack?.length ?? 0;
-  begin(s, { steps, actor: e.id, targets: [t.id], src: { name: o.name, ...src, ...(fx ? { fx: fx.id } : {}) } });
+  begin(s, { steps, actor: e.id, targets: [t.id], src: { name: o.name, ...(dc !== undefined ? { dc } : {}), ...(fx ? { fx: fx.id } : {}) } });
   if (depth) run(s, ev, KIT, depth); else resolve(s, ev);
-  if (fx) settle(s, ev, fx, [t]);
+  if (fx?.bound) settle(s, ev, fx, [t]);
+  else if (fx && !fx.parts.length) endEffect(s, ev, fx, 'it took no hold');
 }
 
 // Run an action's effect steps against its targets. Costs are the caller's. `tag` marks the

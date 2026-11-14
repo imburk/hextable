@@ -192,9 +192,65 @@ export const rogue = {
       "id": "cunning-strike",
       "name": "Cunning Strike",
       "level": 5,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "When you deal Sneak Attack damage, give up Sneak Attack dice for Poison, Trip or Withdraw (save DC 8 + Dexterity modifier + Proficiency Bonus). The engine cannot take that choice; the DM applies it."
+      "text": "When your Sneak Attack deals damage, give up Sneak Attack dice for one effect (`cunning` on the attack; the dice come off before the roll, the effect follows the damage; save DC 8 + Dexterity modifier + Proficiency Bonus): Poison (1d6, needs a Poisoner's Kit: Constitution save or Poisoned for 1 minute, repeating the save at the end of each of its turns), Trip (1d6, Large or smaller: Dexterity save or Prone) or Withdraw (1d6: your move of up to half your Speed without Opportunity Attacks is the DM's).",
+      "grants": {
+        "cunning": {
+          "options": [
+            {
+              "id": "poison",
+              "name": "Poison",
+              "cost": 1,
+              "needs": "poisoners-kit",
+              "duration": "1 minute",
+              "effects": [
+                {
+                  "save": "con",
+                  "dc": "dex",
+                  "onFail": [
+                    {
+                      "condition": "poisoned",
+                      "ends": {
+                        "on": "save",
+                        "save": "con",
+                        "at": "turnEnd"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "trip",
+              "name": "Trip",
+              "cost": 1,
+              "size": "large",
+              "effects": [
+                {
+                  "save": "dex",
+                  "dc": "dex",
+                  "onFail": [
+                    {
+                      "condition": "prone"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "withdraw",
+              "name": "Withdraw",
+              "cost": 1,
+              "effects": [
+                {
+                  "manual": "Withdraw: right after the attack the rogue may move up to half its Speed without provoking Opportunity Attacks. The DM moves it."
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "id": "uncanny-dodge",
@@ -204,7 +260,11 @@ export const rogue = {
       "checked": true,
       "text": "When an attacker you can see hits you with an attack roll, use your Reaction to halve the attack's damage (round down). Taken by standing instruction.",
       "grants": {
-        "reaction": { "on": "hit", "seen": true, "cut": "half" }
+        "reaction": {
+          "on": "hit",
+          "seen": true,
+          "cut": "half"
+        }
       }
     },
     {
@@ -222,33 +282,117 @@ export const rogue = {
       "id": "evasion",
       "name": "Evasion",
       "level": 7,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "On a Dexterity save for half damage, take none on a success and half on a failure, unless Incapacitated. The DM applies it."
+      "text": "On a Dexterity save against an effect that does half damage on a success, take none on a success and half on a failure, unless you are Incapacitated.",
+      "grants": {
+        "evasion": true
+      }
     },
     {
       "id": "reliable-talent",
       "name": "Reliable Talent",
       "level": 7,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "On an ability check using a skill or tool you are proficient in, a d20 roll of 9 or lower counts as 10. The DM applies it."
+      "text": "On an ability check that uses one of your skill or tool proficiencies, a d20 roll of 9 or lower counts as a 10.",
+      "grants": {
+        "modifiers": [
+          {
+            "on": "check",
+            "op": "floor",
+            "value": 10,
+            "when": [
+              "check.proficient"
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "improved-cunning-strike",
       "name": "Improved Cunning Strike",
       "level": 11,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Use up to two Cunning Strike effects at once."
+      "text": "Use up to two Cunning Strike effects on one Sneak Attack, paying the dice for each.",
+      "grants": {
+        "cunning": {
+          "max": 2
+        }
+      }
     },
     {
       "id": "devious-strikes",
       "name": "Devious Strikes",
       "level": 14,
-      "tier": "manual",
+      "tier": "assist",
       "checked": true,
-      "text": "Adds Daze, Knock Out and Obscure to Cunning Strike."
+      "text": "More Cunning Strike effects: Daze (2d6: Constitution save, or on its next turn it can only move, take an action or take a Bonus Action; that limit is the DM's), Knock Out (6d6: Constitution save or Unconscious for 1 minute or until it takes damage, repeating the save at the end of each of its turns) and Obscure (3d6: Dexterity save or Blinded until the end of its next turn).",
+      "grants": {
+        "cunning": {
+          "options": [
+            {
+              "id": "daze",
+              "name": "Daze",
+              "cost": 2,
+              "effects": [
+                {
+                  "save": "con",
+                  "dc": "dex",
+                  "onFail": [
+                    {
+                      "manual": "Daze: on its next turn the target can do only one of these: move, take an action, or take a Bonus Action. The DM applies it."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "knock-out",
+              "name": "Knock Out",
+              "cost": 6,
+              "duration": "1 minute",
+              "effects": [
+                {
+                  "save": "con",
+                  "dc": "dex",
+                  "onFail": [
+                    {
+                      "condition": "unconscious",
+                      "ends": {
+                        "on": "save",
+                        "save": "con",
+                        "at": "turnEnd",
+                        "orDamaged": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "obscure",
+              "name": "Obscure",
+              "cost": 3,
+              "effects": [
+                {
+                  "save": "dex",
+                  "dc": "dex",
+                  "onFail": [
+                    {
+                      "condition": "blinded",
+                      "ends": {
+                        "on": "turnEnd"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
     },
     {
       "id": "slippery-mind",
@@ -326,17 +470,32 @@ export const rogue = {
         "id": "supreme-sneak",
         "name": "Supreme Sneak",
         "level": 9,
-        "tier": "manual",
+        "tier": "auto",
         "checked": true,
-        "text": "Cunning Strike option Stealth Attack: an attack while hidden need not end the Invisible condition if you end the turn behind cover."
+        "text": "A Cunning Strike option, Stealth Attack (1d6): an attack made while hidden does not end your hiding if you end the turn behind Three-Quarters or Total Cover from every enemy.",
+        "grants": {
+          "cunning": {
+            "options": [
+              {
+                "id": "stealth-attack",
+                "name": "Stealth Attack",
+                "cost": 1,
+                "keepHidden": true
+              }
+            ]
+          }
+        }
       },
       {
         "id": "use-magic-device",
         "name": "Use Magic Device",
         "level": 13,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
-        "text": "Attune to four magic items, sometimes keep charges, and use Spell Scrolls."
+        "text": "Attune to up to four magic items (applied). Charges: a roll of 6 on a d6 spends none; Spell Scrolls: any, with Intelligence, cantrips and level 1 reliably, higher ones after an Intelligence (Arcana) check against 10 + the spell's level. Using items is not built yet, so those two are the DM's.",
+        "grants": {
+          "attune": 4
+        }
       },
       {
         "id": "thiefs-reflexes",

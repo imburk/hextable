@@ -157,6 +157,8 @@ export function featuresOf(sheet) {
 // Attunement it needs, it gives only what its mundane item gives. `attuning: { item, end? }` is the item the
 // character will spend its next Short Rest attuning to, or ending its Attunement to (engine.js, shortRest).
 export const ATTUNE_MAX = 3;
+// How many magic items this character may be attuned to: three, or more with a feature that says so (Use Magic Device: four).
+export const attuneMax = (sheet) => Math.max(ATTUNE_MAX, ...classFeatures(sheet).map((x) => x.f.grants?.attune ?? 0));
 export const ORBIT_MAX = 3;
 export function heldItems(sheet) {
   if (!Array.isArray(sheet?.items)) return [];
@@ -488,6 +490,7 @@ export function derive(sheet) {
     for (const k of ['evasion', 'surfaces']) if (g[k]) out[k] = true;
     if (g.selfCure) out.selfCure = { conditions: [...g.selfCure.conditions] };
     if (g.fleet) out.fleet = { ...g.fleet };
+    if (g.cunning) out.cunning = { ...(g.cunning.max ? { max: g.cunning.max } : {}), ...(g.cunning.options ? { options: g.cunning.options.map((o) => ({ ...o, ...(o.effects ? { effects: bake(o.effects) } : {}) })) } : {}) };
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
     if (g.critOn) critOn = Math.min(critOn, g.critOn);
@@ -835,7 +838,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
   const WORDS = { feet: 'pair of footwear', hands: 'pair of gloves or gauntlets', wrists: 'pair of bracers', armour: 'suit of armour', head: 'item of headwear', cloak: 'cloak', shield: 'Shield' };
   for (const [k, list] of Object.entries(worn)) if (WEAR_ONE.includes(k) && list.length > 1) say(`One ${WORDS[k]} at a time: ${list.join(' and ')}.`);
   if ((worn.orbit ?? []).length > ORBIT_MAX) say(`Up to ${ORBIT_MAX} Ioun Stones orbit a head at once.`);
-  if (attuned.length > ATTUNE_MAX) say(`A creature is attuned to ${ATTUNE_MAX} magic items at most; ${attuned.length} are marked attuned.`);
+  if (attuned.length > attuneMax(sheet)) say(`A creature is attuned to ${attuneMax(sheet)} magic items at most; ${attuned.length} are marked attuned.`);
   const twice = attuned.find((id, i) => attuned.indexOf(id) !== i);
   if (twice) say(`Attuned to two copies of ${CONTENT.items[twice].name}: one at most.`);
   // The item it will spend its next Short Rest attuning to, or ending its Attunement to.
