@@ -1,11 +1,11 @@
 // Where things are (engine.js): flying and fitting, where a creature can move, regions shown and
 // objects set, hidden creatures revealed, joining a fight, finding hidden things, aiming areas and
 // choosing creatures, and the party walking in marching order.
-import { HEX, gridOf, col, key, pathTo, reachable } from '../grid.js';
+import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile } from '../effects.js';
-import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
+import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule } from '../vision.js';
@@ -452,6 +452,7 @@ export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 // `origin` is where it goes off; `high(t)` says whether creature `t` is within its height.
 function layout(s, e, area, range, aim) {
   const n = area.size / FT, shape = area.shape, G = gridOf(s.map);
+  if (G.kind === 'square') return squareLayout(s, e, area, range, aim);
   if (shape === 'emanation') return { hexes: G.range(e.pos, n).filter((h) => key(h) !== key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
   if (!aim) return null;
   const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
@@ -483,6 +484,63 @@ function layout(s, e, area, range, aim) {
   }
   return null;
 }
+
+// Areas on squares (docs/specs/square-grid.md, Decision 6 and the S7 build notes): a square is in an
+// area when its centre is inside the real shape; for a Sphere, a Cylinder and an Emanation the table
+// rule `areaFill` may count squares as range is counted instead. What starts from the creature
+// starts from its whole space, so a Large or bigger caster is measured from all its squares:
+//   cone      its point of origin is the middle of the caster's space (a Medium caster's own square's
+//             centre), toward the centre of the square aimed at; the caster's space is not in it.
+//   line      from the edge of the caster's space where the aim leaves it, `size` feet long and
+//             `width` wide, along the line from the middle of its space to the square aimed at.
+//   cube      square to the grid, `size` feet a side. From Self: outside the caster's space and
+//             touching it, the block that lies most nearly toward the aim. With a range: the block
+//             that has the square aimed at on its side and lies most nearly away from the caster.
+//   sphere, cylinder   centred on the centre of the square aimed at, which is in it.
+//   emanation the squares round the caster's space, which is not in it.
+// Heights are as on hexes (within `size` up or down, or the shape's own height). `high(t, f)` takes
+// the square `f` of `t` that is in the area, so a big creature counts by the part that is in it;
+// `from` are the squares a wall must not stand between: the caster's own for what starts from it.
+export const AREA_FILLS = ['round', 'grid'];
+function squareLayout(s, e, area, range, aim) {
+  const n = area.size / FT, shape = area.shape, fill = s.settings?.areaFill ?? 'round', G = gridOf(s.map);
+  const own = footprint(e, e.pos, G), box = boxOf(own), mid = boxMiddle(box);
+  const within = (o) => (t) => rise(t.pos.z - o.z) <= n;
+  if (shape === 'emanation') return { hexes: squareAround(box, n, fill), origin: e.pos, high: within(e.pos), from: own };
+  if (!aim) return null;
+  const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
+  const aimed = 2 * aim.q !== mid[0] || 2 * aim.r !== mid[1];
+  if (shape === 'cone') return aimed ? { hexes: squareCone(mid, aim, area.size, box), origin: e.pos, high: within(e.pos), from: own } : null;
+  if (shape === 'sphere' || shape === 'cylinder') {
+    const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
+    const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : within(origin);
+    return { hexes: squareDisc(aim, n, fill), origin, high, from: [origin] };
+  }
+  if (shape === 'line') {
+    if (range > 0 || !aimed) return null;
+    const flat = squareAlong(mid, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
+    const length = area.size / Math.hypot(1, slope), half = (area.width ?? FT) / 2;
+    const high = (t, f) => { const z = e.pos.z + slope * squareAlong(mid, aim, f); return z + half > t.pos.z && z - half < t.pos.z + sizeOf(t).height; };
+    return { hexes: squareStrip(mid, aim, box, length, half), origin: e.pos, high, from: own };
+  }
+  if (shape === 'cube') {
+    const size = area.size, side = size / FT;
+    if (!Number.isInteger(side) || side < 1) return null;
+    if (!(range > 0)) {
+      if (!aimed) return null;
+      const base = e.pos.z, touches = (b) => b.q0 <= box.q1 + 1 && b.q1 >= box.q0 - 1 && b.r0 <= box.r1 + 1 && b.r1 >= box.r0 - 1;
+      const apart = (b) => b.q0 > box.q1 || b.q1 < box.q0 || b.r0 > box.r1 || b.r1 < box.r0;
+      const hexes = squareBlock(mid, [2 * aim.q - mid[0], 2 * aim.r - mid[1]], side, box.q0 - side, box.q1 + 1, box.r0 - side, box.r1 + 1, (b) => touches(b) && apart(b));
+      return hexes && { hexes, origin: e.pos, high: (t) => t.pos.z < base + size && t.pos.z + sizeOf(t).height > base, from: own };
+    }
+    const at = [2 * aim.q, 2 * aim.r], away = aimed ? [at[0] - mid[0], at[1] - mid[1]] : [1, 0];
+    const onSide = (b) => aim.q === b.q0 || aim.q === b.q1 || aim.r === b.r0 || aim.r === b.r1;
+    const origin = { q: aim.q, r: aim.r, z: aimZ };
+    const hexes = squareBlock(at, away, side, aim.q - side + 1, aim.q, aim.r - side + 1, aim.r, onSide);
+    return hexes && { hexes, origin, high: (t) => t.pos.z < aimZ + size && t.pos.z + sizeOf(t).height > aimZ, from: [origin] };
+  }
+  return null;
+}
 // The range an area is aimed within: a spell's range, or an action's `area.range`.
 const areaRange = (sp) => (typeof sp.range === 'number' ? sp.range : sp.area?.range ?? 0);
 
@@ -501,12 +559,16 @@ export function aimArea(s, e, name, area, range, hex) {
   if (fromSelf) (hex && gridOf(s.map).dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
   else if (shape !== 'emanation') {
     hex || fail(`Pick where ${name} goes off.`);
-    const d = gap(s, hex.z !== undefined ? hex : landing(s.map, hex, e.pos.z) ?? hex, e.pos);
+    const at = hex.z !== undefined ? hex : landing(s.map, hex, e.pos.z) ?? hex, G = gridOf(s.map);
+    // On squares range is counted from the nearest of the caster's squares (SRD 1826-1829).
+    const d = G.kind === 'square' ? Math.min(...footprint(e, e.pos, G).map((f) => gap(s, at, f))) : gap(s, at, e.pos);
     if (d * FT > range) fail(`That is ${ft(d)} away. ${name} reaches ${range} ft.`);
   }
   const l = layout(s, e, area, range, hex) || fail(`The engine cannot lay out ${name} there.`);
   const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(key)), origin = l.origin, G = gridOf(s.map);
-  const targets = living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f))) && l.high(t) && footprint(t, t.pos, G).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
+  const targets = G.kind === 'square'
+    ? living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f)) && l.high(t, f)) && footprint(t, t.pos, G).some((f) => l.from.some((o) => clear(s, o, f))))
+    : living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f))) && l.high(t) && footprint(t, t.pos, G).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
   return { targets, hexes, origin: origin === e.pos ? null : origin };
 }
 

@@ -13,7 +13,7 @@ import { SIGHT_RULES } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, ent, fail, inFight, living, up } from './shared.js';
-import { airspace, DIAGONALS, fitsOn, joinEncounter, lookAround, objectName, objectOf, reveal, revealRegion, setObject, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, DIAGONALS, fitsOn, joinEncounter, lookAround, objectName, objectOf, reveal, revealRegion, setObject, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { checkEnd, damage, endEncounter, startEncounter } from './resolve.js';
@@ -264,9 +264,10 @@ export const handlers = {
 
 // Table rules the DM can switch, and what each may be set to.
 export const SETTINGS = { sight: SIGHT_RULES,
-  // Square maps only (docs/specs/square-grid.md): how a diagonal step is counted, and how reach and
-  // range are measured. Absent means the first value. What each means is SETTING_TEXT, below.
-  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
+  // Square maps only (docs/specs/square-grid.md): how a diagonal step is counted, how reach and
+  // range are measured, and which squares a Sphere, Cylinder or Emanation covers. Absent means the
+  // first value. What each means is SETTING_TEXT, below.
+  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
   // Square maps only: how cover is judged (sight.js SQUARE_COVERS, words in SQUARE_COVER_TEXT); absent means the first.
@@ -281,6 +282,10 @@ export const SETTING_TEXT = {
   squareRange: {
     real: 'Reach and range are measured centre to centre for real and rounded down to a whole 5 ft (the default): the 8 squares around a creature are within 5 ft, three squares diagonally are 20 ft. A table rule, not the SRD count.',
     srd: 'Reach and range count squares as the SRD does: a diagonal counts as one square, like a side.',
+  },
+  areaFill: {
+    round: 'A square is in a Sphere, Cylinder or Emanation when its centre is inside the real shape (the default): a 20-ft Sphere covers 49 squares. Cones, Lines and Cubes always go by centres inside the shape. A table rule; the SRD does not say which squares an area covers.',
+    grid: 'A Sphere, Cylinder or Emanation covers every square within its size counted as the SRD counts range, a diagonal like a side: a 20-ft Sphere covers 81 squares (a 9 by 9 block). Cones, Lines and Cubes still go by centres inside the shape. A table rule.',
   },
 };
 

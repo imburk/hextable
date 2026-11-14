@@ -1,7 +1,7 @@
 # Spec: square grid
 
 Status: agreed. Issue #240; the owner's answers of 14 November are recorded under "The owner's
-answers" below and in the decisions they change. Built so far: S0 to S6.
+answers" below and in the decisions they change. Built so far: S0 to S7.
 
 The owner asked on 13 November: "can we pivot to squares?" He brought four
 published battle maps, all drawn on a square grid. `maps-and-objects.md`
@@ -387,31 +387,50 @@ The map document gains `grid` and renames `hexFeet`:
 ### Decision 6: areas on squares
 
 The SRD defines the shapes and says nothing about which squares they cover.
-Hextable already says "a cell is in an area if its centre is" for cones,
-lines and cubes; squares keep that and make one choice explicit.
+The owner's rule (answer 3): **a square is in an area when its centre is
+inside the real shape**. Where the SRD says where a shape starts, the engine
+follows it; where it is silent, the plain reading is taken and named as a
+choice below (S7 build notes give the counts).
 
-- **Cone**: the squares whose centres lie inside the SRD cone, as wide at
-  each point as it is far from the origin (33026-33039), out to its length
-  measured along the aim; the origin's square is out. Measured: a 15-ft cone
-  covers 7 squares aimed east and 6 aimed diagonally; 30 ft, 24 and 20. The
-  hex cone stays the 60° wedge it is today (15 ft: 7 hexes).
-- **Line and Cube**: today's `band` and `along`, which already work in feet
-  from cell centres; on squares they use `G.center` and `G.range`.
-- **Sphere, Cylinder, Emanation**: a table rule `areaFill`, square maps only:
-  - `round` (proposed default): the squares whose centres lie within the
-    radius in a straight line, as the SRD's shapes "extend in straight lines"
-    (32671, 34195). A 20-ft Sphere covers 49 squares (1,225 sq ft against the
-    sphere's 1,257).
-  - `grid`: the squares within the radius counted as range is counted
-    (1826-1829). A 20-ft Sphere covers 81 squares (2,025 sq ft, 61% more
-    than the sphere), but "within 15 feet" means one thing for a target and
-    an area.
-  Neither is SRD. **The owner chose `round`** (answer 3: a square is in an area when its centre is
-  inside the real shape); whether `grid` is kept as a value of `areaFill` is S7's to settle with the
-  lead. On hexes nothing changes
-  (hex counting is already close to round: 61 hexes for 20 ft).
-- Areas keep their heights (`maps-and-objects.md`, M6 build note) and walls
-  still shelter what is behind them.
+- **Cone** (33029-33039): the squares whose centres lie inside a cone as wide
+  at each point as it is far from the point of origin, out to its length along
+  the aim; the point of origin is not in it, so the caster's space is out. The
+  SRD does not say where on the creature a Self cone's point of origin is:
+  the middle of the caster's space (a Medium caster's square's centre, as on
+  hexes). Measured: a 15-ft cone covers 7 squares aimed along a side and 6
+  diagonally; 30 ft, 24 and 20. The hex cone stays the 60° wedge it is today.
+- **Line** (33767-33772): from the edge of the caster's space where the aim
+  leaves it (the SRD does not say; on hexes the engine already starts a line at
+  the edge of the caster's space), `size` feet long and `width` wide along the
+  line from the middle of the space to the square aimed at. A Lightning Bolt
+  aimed diagonally is one square wide and 14 long (100 ft of diagonal).
+- **Cube** (33096-33102): **square to the grid**, `size` feet a side, so every
+  square is wholly in or wholly out. The SRD puts the point of origin "anywhere
+  on a face" and says nothing of which way a Cube faces; on squares it faces
+  the grid. From Self: the block that touches the caster's space without
+  overlapping it and lies most nearly toward the aim (aimed diagonally, the 3
+  by 3 off the caster's corner). With a range: the block with the square aimed
+  at on one of its sides that lies most nearly away from the caster. (A Cube
+  turned to the aim, as on hexes, catches only 5 squares of a 15-ft Cube aimed
+  diagonally under the centre rule.)
+- **Sphere, Cylinder** (34195-34199, 33112-33118): centred on the centre of
+  the square aimed at, which is in it. **Emanation** (33377-33385): extends
+  from the creature, so it is measured from the caster's whole space (a Large
+  caster's four squares), and the space itself is out. For these three the
+  table rule `areaFill`, square maps only:
+  - `round` (the default, the owner's answer 3): the squares whose centres lie
+    within the radius in a straight line (of the point, or of the creature's
+    space). A 20-ft Sphere covers 49 squares (1,225 sq ft against the
+    sphere's 1,257); a Medium creature's 15-ft Emanation 44.
+  - `grid`: the squares within the radius counted as the SRD counts range
+    (1826-1829), a diagonal like a side, whatever `squareRange` says. A 20-ft
+    Sphere covers 81 squares (2,025 sq ft, 61% more than the sphere), a 15-ft
+    Emanation 48.
+  Neither is SRD. On hexes nothing changes (hex counting is already close to
+  round: 61 hexes for 20 ft).
+- A Large or bigger creature is in an area if any of its squares is.
+- Areas keep their heights as on hexes (`maps-and-objects.md`, M6 build note)
+  and walls still shelter what is behind them, by the same test as on hexes.
 
 ### Decision 7: sight and cover on squares
 
@@ -699,6 +718,56 @@ map.
   on hexes, `sight.md` S1); a rail is as tall as a wall for every line; a thing filling a square is
   as tall as a wall for cover; on a Large or bigger target, a part seen through a gap that reaches
   neither the centre nor an outer corner is Total. `docs/DEBT.md` T22.
+
+### Build notes: S7 (#258)
+
+- **Where.** `engine/world.js` `layout` hands a square map to `squareLayout`; hex maps run the code
+  of before, unchanged (the 39 seeded hex fights end in identical states, events and views). The
+  cell geometry is in `grid.js` as plain exports beside the interface (`squareDisc`, `squareAround`,
+  `squareCone`, `squareStrip`, `squareBlock`, `boxOf`), because `zones.js` needs the Emanation too;
+  the interface members are not changed (`SQUARE.cone` and `SQUARE.band` stay as S5 made them).
+- **Exact arithmetic.** Points are worked in half-squares (2.5 ft): every square centre, corner and
+  the middle of any creature's space is whole numbers there, and every test is whole-number
+  arithmetic (a cone's "width = distance" is `4·cross² ≤ along²`; a Line's ends are compared
+  squared). No tolerance decides a square on the edge, so turning an aim by 90° or mirroring it
+  turns or mirrors the area exactly (tested over every aim within 7 squares). Two things are not
+  mirror-free, by their nature: a centre exactly on a Line's side counts on the left of the aim
+  only (as `band` on hexes), which can only happen for an even width in squares or from the corner
+  middle of a Large caster; and a Cube's block, when two blocks lie at exactly the same angle to
+  the aim (an even-sized Cube aimed straight, or an aim exactly between), is the first in a fixed
+  order (west to east, north to south).
+- **Origins, as the client is told them.** A Sphere or Cylinder: the square aimed at, centre of
+  the shape at that square's centre (the cast's `origin`; 49 squares for 20 ft says so: a corner
+  origin would give 52). A Self shape (Cone, Line, Self Cube, Emanation) has no `origin` in what
+  `aimArea` returns, as on hexes; it starts from the caster's space as described in Decision 6. A
+  placed Cube: the square aimed at. The cells a client highlights (`areaHexes`, run on the view)
+  are the cells the cast lays out (tested for every shape).
+- **Range** to the point of a Sphere, Cylinder or placed Cube is counted from the nearest of the
+  caster's squares by `measure` (on hexes, from its position, as before).
+- **Heights** are the hex tests: within `size` up or down of the origin for a Sphere, Cone and
+  Emanation (the vertical part of `gap`, so a big creature counts by any square that is in); a
+  Cylinder's and a Cube's own height; a tilted Line by the height at the square of the creature
+  that is in it.
+- **Walls**: a creature is caught only if a line reaches one of its squares from the point of
+  origin past everything solid (`clear`, sight.js `inSight`, either way round), as on hexes. For a
+  shape that starts from the caster, from any of the caster's squares. A wall does not take squares
+  out of the area itself (the highlight), as on hexes.
+- **The caster**: out of its own Cone, Line, Self Cube and Emanation (their point of origin or
+  origin creature is not in them, 33038, 33101, 33384, 33771), in a Sphere or Cylinder or placed
+  Cube it stands in (34198, 33117), unless the area says `exceptCaster`.
+- **Zones** (`zones.js` `holds`): on squares an Emanation that moves with its creature is laid out
+  afresh round its whole space by `areaFill`; a Sphere zone holds a creature by any square in it
+  and the height test above. A zone's squares are never sent to players.
+- **What players are sent.** A cast's cells reach players through `viewEvents`, which under the
+  `los` and `light` rules sends only cells on the player's map (tested on squares). Under `rooms`
+  it sends them all, on hexes as on squares: cells of an unrevealed region can be seen in a cast
+  that reaches into it (DEBT P26; view.js is the sight lane's).
+- **Counts** (pinned in `square-areas.test.js`). Spheres and Cylinders, radius 5/10/15/20/30/40/60
+  ft: `round` 5, 13, 29, 49, 113, 197, 441; `grid` 9, 25, 49, 81, 169, 289, 625. Emanations of
+  10/15/20/30 ft from a Medium creature: `round` 20, 44, 68, 136; `grid` 24, 48, 80, 168; from a
+  Large one, `round` 28, 56, 84, 160; from a Huge one 36, 68, 100, 184. Cones of 15/30/60/90 ft
+  (along a side / diagonal): 7/6, 24/20, 84/72, 180/168. Lines 5 ft wide of 15/30/60/100 ft:
+  3/2, 6/4, 12/8, 20/14; 10 ft wide of 60/90 ft: 24/24, 36/37. Cubes: n by n squares, always.
 
 ## Out of scope
 
