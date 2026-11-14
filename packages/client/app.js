@@ -1,7 +1,7 @@
 // The table UI: selection, action bar, character sheet, log, DM tools, lobby.
 // It asks the engine what is legal (to grey things out and explain why) and sends
 // intents through the transport. It never changes game state itself.
-import { key as cellKey, col as cellCol } from './shared/grid.js';
+import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
@@ -71,6 +71,7 @@ const played = [];          // the last beats played on this device with their t
 const TL = createTimeline({
   clock: () => performance.now() / 1000,
   pace: pace(),
+  gridOf: (st) => gridOf(st?.map),
   onBeat: (ev, ctx) => beat(ev, ctx),
   onShow: (state, events) => { if (S) R.setState(state, events, { instant: TL.pace === 'instant' || snapping }); },
   onDone: (u) => { if (S && u.meta.first && selId) R.focus(selId, true); },

@@ -7,7 +7,9 @@
 // play, the *shown* state stays behind the true state: a creature's hit points, death, place and conditions change when the
 // beat that is about them plays, not when the update arrives. When the queue is empty the shown state is the true state.
 //
-//   const tl = createTimeline({ clock, pace, speed, onBeat, onShow, onDone, onIdle })
+//   const tl = createTimeline({ clock, pace, speed, gridOf, onBeat, onShow, onDone, onIdle })
+//   gridOf(state)                  the grid of the state's map (shared/grid.js `gridOf(state.map)`); its `dist` says whether a
+//                                  target is next to the attacker. Without it distances are hex distances.
 //   tl.push(state, events, meta?)  queue an update. meta: { fresh, instant, flush } (see below), kept for onDone
 //   tl.tick()                      play what is due; the caller calls it often (a timer or a frame)
 //   tl.skip()                      finish every queued beat at once (a tap, Escape, a hidden tab coming back)
@@ -49,15 +51,16 @@ const DUR = {
 const STEP = 0.18, WALK_MAX = 2, FORCED = 0.25, MELEE = 0.6, RANGED = 0.8, GESTURE = 0.4, AREA = 0.5;
 const AFTER_ATTACK = new Set(['damage', 'down', 'died', 'cond', 'condEnd', 'tempHp', 'concentration', 'save']);
 const AFTER_CAST = new Set(['save', 'damage', 'heal', 'down', 'died', 'cond', 'condEnd', 'tempHp', 'concentration', 'effectStart', 'effectEnd', 'size', 'speed']);
-const hexDist = (a, b) => { const dq = a.q - b.q, dr = a.r - b.r; return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2; };
+// How many cells apart two positions are, when no grid is given: the hex count the timeline has always used.
+const HEXES = { dist: (a, b) => { const dq = a.q - b.q, dr = a.r - b.r; return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2; } };
 
-// How long an event takes on its own.
-export function durationOf(ev, state) {
+// How long an event takes on its own. `G` is the map's grid (anything with `dist(a, b)`); the default is hexes.
+export function durationOf(ev, state, G = HEXES) {
   switch (ev.type) {
     case 'moved': return ev.forced ? FORCED : Math.min(WALK_MAX, STEP * (ev.path?.length ?? 0));
     case 'attack': {
       const a = state?.entities?.[ev.actor]?.pos, t = state?.entities?.[ev.target]?.pos;
-      return a && t && hexDist(a, t) > 1 ? RANGED : MELEE;      // from where they stand: a far target is shot at
+      return a && t && G.dist(a, t) > 1 ? RANGED : MELEE;      // from where they stand: a far target is shot at
     }
     case 'cast': return GESTURE + (ev.hexes?.length ? AREA : 0);
     case 'save': return ev.success ? 0.3 : 0;                    // "Saved" floats; a failure shows nothing of its own
@@ -68,16 +71,16 @@ export function durationOf(ev, state) {
 
 // The beats of one update. Returns { items: [{ ev, at }], total } with `at` in seconds from the start of the update, in order.
 // Events that belong together share a beat: they start together, or the followers start as the lead's strike ends.
-export function planBeats(events, state) {
+export function planBeats(events, state, G = HEXES) {
   const slots = [];
   for (let i = 0; i < events.length; i++) {
-    const lead = events[i], dur = durationOf(lead, state), slot = { dur, fixed: lead.type === 'moved', members: [[lead, 0]] };
+    const lead = events[i], dur = durationOf(lead, state, G), slot = { dur, fixed: lead.type === 'moved', members: [[lead, 0]] };
     const follows = lead.type === 'attack' ? AFTER_ATTACK : lead.type === 'cast' ? AFTER_CAST : null;
     if (follows) {
       let tail = 0;
       while (i + 1 < events.length && follows.has(events[i + 1].type)) {
         const f = events[++i];
-        slot.members.push([f, dur]); tail = Math.max(tail, durationOf(f, state));
+        slot.members.push([f, dur]); tail = Math.max(tail, durationOf(f, state, G));
       }
       slot.dur = dur + tail;
     }
@@ -114,7 +117,7 @@ const aboutOf = (ev) => {
   }
 };
 
-export function createTimeline({ clock = () => Date.now() / 1000, pace = 'wait', speed = 1, onBeat, onShow, onDone, onIdle } = {}) {
+export function createTimeline({ clock = () => Date.now() / 1000, pace = 'wait', speed = 1, gridOf = () => HEXES, onBeat, onShow, onDone, onIdle } = {}) {
   let queue = [], cur = null, last = clock(), serial = 0, dirty = false, lastAfter = null, lastState = null, waiters = [];
   let fired = [];
 
@@ -205,7 +208,7 @@ export function createTimeline({ clock = () => Date.now() / 1000, pace = 'wait',
   const tl = {
     push(state, events = [], meta = {}) {
       const after = snapOf(state), instant = pace === 'instant' || !!meta.fresh || !!meta.instant;
-      const plan = instant ? { items: (events ?? []).map((ev) => ({ ev, at: 0 })), total: 0 } : planBeats(events ?? [], state);
+      const plan = instant ? { items: (events ?? []).map((ev) => ({ ev, at: 0 })), total: 0 } : planBeats(events ?? [], state, gridOf(state) ?? HEXES);
       const u = { id: ++serial, state, events, meta, instant, before: meta.fresh ? null : lastAfter, after, now: {}, items: plan.items.map((it) => ({ ...it, done: false })), total: plan.total, local: 0 };
       lastAfter = after;
       if (pace === 'instant' || meta.fresh || meta.flush) flushAll();
