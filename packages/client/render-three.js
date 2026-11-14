@@ -6,7 +6,7 @@
 // grade, a tint per draw), so the pictures agree. Picking is still the hex-column march (Decision 8): only the camera ray is Three's.
 // No glTF here (R12) and no real shadows (blobs only).
 import * as THREE from './vendor/three/three.module.js';
-import * as H from './shared/hex.js';
+import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { createGovernor, pixelLevels } from './governor.js';
@@ -101,6 +101,7 @@ export class ThreeRenderer {
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
     this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null };
+    this.G = HEX;                             // the grid the map is drawn on (gridOf(map) once there is one)
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;
     this.onTap = () => {}; this.onHover = () => {}; this.onPoint = null; this.onDrag = null;
     this.#input();
@@ -129,7 +130,7 @@ export class ThreeRenderer {
     const snap = !!opt.instant || !prev || prev.map.id !== state.map.id || events.some((e) => e.type === 'map' || e.type === 'mapEdit' || e.type === 'undone' || e.type === 'redone');
     const idsOf = (type) => new Set(events.filter((e) => e.type === type && e.id !== undefined).map((e) => e.id));
     if (snap) this.#finish(false);
-    this.state = state;
+    this.state = state; this.G = gridOf(state.map);
     const want = lightAt(state.clock ?? 480);
     this.tod = { goal: want, now: this.tod?.now ?? want };
     this.#syncEdge(events, snap, now);
@@ -279,7 +280,7 @@ export class ThreeRenderer {
     const end = a.way.length ? a.way[a.way.length - 1] : a;
     if (snap) { this.cam.x = end.x; this.cam.z = end.z; this.cam.goal = null; } else this.cam.goal = { x: end.x, z: end.z };
   }
-  planeHex(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && H.fromWorld(p[0], p[1]); }
+  planeHex(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && this.G.fromWorld(p[0], p[1]); }
   planePoint(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && [p[0] / UNIT, p[1] / UNIT]; }
   #plane(px, py, feet) {
     const C = this.C; if (!C) return null;
@@ -562,7 +563,7 @@ export class ThreeRenderer {
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
       for (const [id, a] of acts) if (y > a.y && y < a.y + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < 0.5 * (a.k ?? 1)) return { id, hex: this.state.entities[id].pos };
-      const h = H.fromWorld(x, z), column = surfaces(this.state.map, h);
+      const h = this.G.fromWorld(x, z), column = surfaces(this.state.map, h);
       for (let i = column.length - 1; i >= 0; i--) {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;

@@ -19,9 +19,9 @@
 // side walls leave of a hex). Where walls meet at a point inside a hex (a bend, a corner) each arm's line is
 // carried on through the hex too, so the hex falls apart into convex wedges; the wedges the wall does not
 // separate are joined again into one patch. A wall that ends in the open inside a hex (a dead end) does not cut.
-import * as H from './shared/hex.js';
+import { HEX, gridOf, col as cellCol, parse as cellParse } from './shared/grid.js';
 import { FT, surfaces, regionAt } from './shared/space.js';
-import { WALL_KINDS, center, objectSegment } from './shared/walls.js';
+import { WALL_KINDS, objectSegment } from './shared/walls.js';
 
 const S3 = Math.sqrt(3);
 export const UNIT = S3 / FT;                       // drawing units per foot (the renderer's scale)
@@ -42,13 +42,17 @@ const pkey = (p) => `${Math.round(p[0] / TOL)},${Math.round(p[1] / TOL)}`;
 export const polyArea = (p) => p.reduce((s, a, i) => s + cross2(a, p[(i + 1) % p.length]), 0) / 2;
 const centroid = (p) => [p.reduce((s, a) => s + a[0], 0) / p.length, p.reduce((s, a) => s + a[1], 0) / p.length];
 
-// A hex as a polygon in map feet.
-export function hexPoly(h) {
-  const [cx, cy] = center(h);
+// A cell as a polygon in map feet. Kept as floors' own working, not `G.corners`: the interface writes its angles as (π/180)(30 + 60i)
+// (as sight.js does), these as π/6 + kπ/3, which differ in the last bit for about one coordinate in ten (up to 1.4e-14 feet). The
+// floors are clipped against those corners and against each other's, so the working stays as it was until a row that changes it on
+// purpose (S9a, which gives the grid a corner list that floors can use). Hexes only, as the six in the loop say.
+export function hexPoly(h, G = HEX) {
+  const [cx, cy] = G.center(h);
   return [0, 1, 2, 3, 4, 5].map((k) => { const a = Math.PI / 6 + (k * Math.PI) / 3; return [cx + HEX_RADIUS * Math.cos(a), cy + HEX_RADIUS * Math.sin(a)]; });
 }
-// The hex a point in map feet is in.
-export const hexAt = (x, y) => H.fromWorld(x * UNIT, y * UNIT);
+// The cell a point in map feet is in. Not `G.cell`: that is fromWorld(x, y, 5/√3), a different float path from this one (x·UNIT, y·UNIT),
+// and the two disagree on about 1 point in 170 near cell edges, where floors asks (cut lines run along hex sides). Kept as it was.
+export const hexAt = (x, y, G = HEX) => G.fromWorld(x * UNIT, y * UNIT);
 
 const tidy = (poly) => {                            // drop repeated points
   const out = [];
@@ -176,6 +180,7 @@ export function buildFloors(map, { levels, caves = [] } = {}) {
 }
 
 function floorOfLevel(map, level, cave = false) {
+  const G = gridOf(map);
   const tiles = cave ? Object.fromEntries(Object.entries(level.tiles).filter(([, t]) => t.t !== 'rock')) : level.tiles;
   const lines = cutLines(map, level.id), index = new LineIndex(lines);
   // Hexes a cutting line passes close to, with the lines near each.
@@ -183,22 +188,22 @@ function floorOfLevel(map, level, cave = false) {
   lines.forEach((s, i) => {
     const len = len2(sub2(s[1], s[0])), steps = Math.max(1, Math.ceil(len / 1.5));
     for (let k = 0; k <= steps; k++) {
-      const x = s[0][0] + ((s[1][0] - s[0][0]) * k) / steps, y = s[0][1] + ((s[1][1] - s[0][1]) * k) / steps, c = hexAt(x, y);
-      for (const h of [c, ...H.neighbors(c)]) { const key = H.col(h); if (!near.has(key)) near.set(key, new Set()); near.get(key).add(i); }
+      const x = s[0][0] + ((s[1][0] - s[0][0]) * k) / steps, y = s[0][1] + ((s[1][1] - s[0][1]) * k) / steps, c = hexAt(x, y, G);
+      for (const h of [c, ...G.neighbors(c)]) { const key = cellCol(h); if (!near.has(key)) near.set(key, new Set()); near.get(key).add(i); }
     }
   });
   // Bends and corners: the lines there, carried on through the point, also cut the hexes it lies in.
   const carry = bends(lines), carryNear = new Map();
-  carry.forEach((c, i) => { const h = hexAt(c.at[0], c.at[1]); for (const n of [h, ...H.neighbors(h)]) { const key = H.col(n); if (!carryNear.has(key)) carryNear.set(key, []); carryNear.get(key).push(i); } });
+  carry.forEach((c, i) => { const h = hexAt(c.at[0], c.at[1], G); for (const n of [h, ...G.neighbors(h)]) { const key = cellCol(n); if (!carryNear.has(key)) carryNear.set(key, []); carryNear.get(key).push(i); } });
   // 1. Pieces.
   const pieces = [];                                       // { at, poly, owner (tile key or null), own (the piece that holds the tile's centre) }
   const byAt = new Map();
   const add = (p) => { pieces.push(p); if (!byAt.has(p.at)) byAt.set(p.at, []); byAt.get(p.at).push(p); };
   for (const k of new Set([...Object.keys(tiles), ...near.keys(), ...carryNear.keys()])) {
-    const h = H.parse(k), tile = tiles[k], mine = near.get(k) ?? [], ext = (carryNear.get(k) ?? []).map((i) => carry[i]);
+    const h = cellParse(k), tile = tiles[k], mine = near.get(k) ?? [], ext = (carryNear.get(k) ?? []).map((i) => carry[i]);
     // Cut the hex by every wall that crosses a piece from side to side (a piece is what is left after the cuts so far),
     // and by the carried-on lines of bends inside a piece, until nothing more cuts.
-    const todo = [hexPoly(h)], parts = [];
+    const todo = [hexPoly(h, G)], parts = [];
     while (todo.length) {
       const poly = todo.pop();
       let cut = null;
@@ -214,7 +219,7 @@ function floorOfLevel(map, level, cave = false) {
       if (cut) todo.push(cut[1], cut[0]); else parts.push(poly);
     }
     if (!tile && parts.length < 2) continue;               // no floor, and no wall to fill it up to
-    const c = center(h);
+    const c = G.center(h);
     let own = null;
     if (tile) { own = parts.find((p) => inside(p, c)) ?? parts.reduce((m, p) => (polyArea(p) > polyArea(m) ? p : m)); }
     for (const part of parts) {
@@ -226,7 +231,7 @@ function floorOfLevel(map, level, cave = false) {
   // Contacts: where two pieces' edges lie along one another (they are opposite ways round), and whether a wall is on the line.
   const contacts = new Map(pieces.map((p) => [p, []]));
   for (const p of pieces) {
-    const around = [p.at, ...H.neighbors(H.parse(p.at)).map(H.col)];
+    const around = [p.at, ...G.neighbors(cellParse(p.at)).map(cellCol)];
     const others = around.flatMap((k) => byAt.get(k) ?? []).filter((o) => o !== p);
     for (let i = 0; i < p.poly.length; i++) {
       const a = p.poly[i], b = p.poly[(i + 1) % p.poly.length], d = sub2(b, a), l = len2(d);
@@ -252,12 +257,12 @@ function floorOfLevel(map, level, cave = false) {
   }
   const live = pieces.filter((p) => p.owner);
   const cells = live.map((p, n) => {
-    const tile = tiles[p.owner], z = level.z + (tile.h ?? 0), region = regionAt(map, level.id, H.parse(p.owner))?.id ?? null;
+    const tile = tiles[p.owner], z = level.z + (tile.h ?? 0), region = regionAt(map, level.id, cellParse(p.owner))?.id ?? null;
     return { n, hex: p.owner, at: p.at, fill: p.at !== p.owner, poly: p.poly, z, lift: tile.lift, top: z + (tile.lift ?? 0.6) / UNIT, terrain: tile.t, region, piece: p };
   });
   const cellOf = new Map(cells.map((c) => [c.piece, c]));
   const lowestAt = new Map();
-  const lowest = (key) => { if (!lowestAt.has(key)) lowestAt.set(key, surfaces(map, H.parse(key))[0]?.level === level); return lowestAt.get(key); };
+  const lowest = (key) => { if (!lowestAt.has(key)) lowestAt.set(key, surfaces(map, cellParse(key))[0]?.level === level); return lowestAt.get(key); };
   // 3 and 4. Across every edge: what is there, and which cells are one patch.
   const parent = cells.map((_, i) => i), find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const edges = new Map(cells.map((c) => [c, []]));
@@ -317,12 +322,12 @@ function inset(outline) {
 // The ring of a hex, `k` of the way out, cut up for a cell: { inner, rim }. The floor is `inner` in one colour,
 // and `rim` is the strips of the hex's border in the grid's colour (a thin line round every hex). A cell that is
 // only a piece of picture (fill) has no rim; with k >= 1 the grid is not drawn at all.
-export function cellParts(cell, k) {
+export function cellParts(cell, k, G = HEX) {
   if (cell.fill || k >= 1) return { inner: cell.poly, rim: [] };
-  const h = H.parse(cell.at), c = center(h), hex = hexPoly(h), small = hex.map((p) => [c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]);
+  const h = cellParse(cell.at), c = G.center(h), hex = hexPoly(h, G), small = hex.map((p) => [c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]);
   const rim = [];
-  for (let i = 0; i < 6; i++) {
-    const n = (i + 1) % 6, strip = clipConvex([hex[i], hex[n], small[n], small[i]], cell.poly);
+  for (let i = 0; i < hex.length; i++) {
+    const n = (i + 1) % hex.length, strip = clipConvex([hex[i], hex[n], small[n], small[i]], cell.poly);
     if (strip) rim.push(strip);
   }
   return { inner: clipConvex(cell.poly, small), rim };
@@ -349,9 +354,9 @@ function posts(map, level) {
 // Every drawn wall segment, and every door's line, as data for the cut-away: where it is, which way it faces, and whether there is floor
 // on each side of it. n is the left-hand unit normal of a to b; floor.left and floor.right say if a point just off each side is floor.
 function faces(map, level, patches) {
-  const cellsAt = new Map();
+  const G = gridOf(map), cellsAt = new Map();
   for (const p of patches) for (const c of p.cells) { if (!cellsAt.has(c.at)) cellsAt.set(c.at, []); cellsAt.get(c.at).push(c); }
-  const floorAt = (pt) => { const h = hexAt(pt[0], pt[1]); return [h, ...H.neighbors(h)].some((n) => (cellsAt.get(H.col(n)) ?? []).some((c) => inside(c.poly, pt))); };
+  const floorAt = (pt) => { const h = hexAt(pt[0], pt[1], G); return [h, ...G.neighbors(h)].some((n) => (cellsAt.get(cellCol(n)) ?? []).some((c) => inside(c.poly, pt))); };
   const one = (key, id, kind, a, b) => {
     const d = sub2(b, a), l = len2(d) || 1, n = [-d[1] / l, d[0] / l], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], off = 0.75;
     return { key, id, kind, a, b, mid, n, floor: { left: floorAt([mid[0] + n[0] * off, mid[1] + n[1] * off]), right: floorAt([mid[0] - n[0] * off, mid[1] - n[1] * off]) } };
@@ -424,18 +429,19 @@ export const cavePush = (p, seed) => CAVE_PUSH * (0.15 + 0.85 * (0.65 * valueNoi
 //     sides beside lower rock, { at, to }, where it needs a face down to that height. `at` is the index in `ring` where the side starts, CAVE_SPLIT points a side.
 //   chain points carry `top`, the height of the rock beside them, feet.
 export function caveOf(map, fl) {
+  const G = gridOf(map);
   const level = map.levels.find((l) => l.id === fl.id), seed = caveSeed(map, level.id);
   let high = 0;
   const open = [];                                         // the open edges of every patch, as pieces of one hex side each
   const floorTop = new Map();                              // open tile -> the height of its floor, feet
-  for (const pa of fl.patches) { high = Math.max(high, pa.top); for (const c of pa.cells) floorTop.set(c.hex, pa.top); for (const e of pa.outline) if (e.kind === 'open') open.push({ a: e.a, b: e.b, hex: e.hex, z: pa.top, across: H.col(H.neighbors(H.parse(e.hex))[sideOf(H.parse(e.hex), e.a, e.b)]) }); }
+  for (const pa of fl.patches) { high = Math.max(high, pa.top); for (const c of pa.cells) floorTop.set(c.hex, pa.top); for (const e of pa.outline) if (e.kind === 'open') open.push({ a: e.a, b: e.b, hex: e.hex, z: pa.top, across: cellCol(G.neighbors(cellParse(e.hex))[sideOf(cellParse(e.hex), e.a, e.b, G)]) }); }
   // How high each rock tile stands: CAVE_WALL above the nearest open floor (the higher one if two are as near), so rock
   // over a ledge is higher than rock over the cave floor. Walked out from the open tiles one step at a time.
   const rockTop = new Map();
   for (let ring = [...floorTop.entries()]; ring.length;) {
     const next = new Map();
-    for (const [k, top] of ring) for (const nb of H.neighbors(H.parse(k))) {
-      const nk = H.col(nb);
+    for (const [k, top] of ring) for (const nb of G.neighbors(cellParse(k))) {
+      const nk = cellCol(nb);
       if (level.tiles[nk]?.t !== 'rock' || rockTop.has(nk)) continue;
       next.set(nk, Math.max(next.get(nk) ?? -Infinity, top));
     }
@@ -484,9 +490,9 @@ export function caveOf(map, fl) {
   const rock = [];
   for (const k of Object.keys(level.tiles)) {
     if (level.tiles[k].t !== 'rock') continue;
-    const h = H.parse(k), hex = hexPoly(h), ring = [], bare = [], steps = [], top = rockTop.get(k) + CAVE_WALL;
-    for (let i = 0; i < 6; i++) {
-      const a = hex[i], b = hex[(i + 1) % 6], across = H.neighbors(h)[sideOf(h, a, b)], ak = H.col(across);
+    const h = cellParse(k), hex = hexPoly(h, G), ring = [], bare = [], steps = [], top = rockTop.get(k) + CAVE_WALL;
+    for (let i = 0; i < hex.length; i++) {
+      const a = hex[i], b = hex[(i + 1) % hex.length], across = G.neighbors(h)[sideOf(h, a, b, G)], ak = cellCol(across);
       if (!level.tiles[ak]) bare.push(ring.length);
       else if (level.tiles[ak].t === 'rock' && rockTop.get(ak) < rockTop.get(k) - 1e-6) steps.push({ at: ring.length, to: rockTop.get(ak) + CAVE_WALL });
       for (let j = 0; j < CAVE_SPLIT; j++) { const p = [a[0] + ((b[0] - a[0]) * j) / CAVE_SPLIT, a[1] + ((b[1] - a[1]) * j) / CAVE_SPLIT]; ring.push(pushed.get(pkey(p)) ?? p); }
@@ -495,10 +501,10 @@ export function caveOf(map, fl) {
   }
   return { id: level.id, seed, chains: out, rock };
 }
-// Which neighbour (an index into H.neighbors) lies across the side a-b of a hex.
-function sideOf(h, a, b) {
-  const c = center(h), m = [(a[0] + b[0]) / 2 - c[0], (a[1] + b[1]) / 2 - c[1]];
+// Which neighbour (an index into G.neighbors) lies across the side a-b of a cell.
+function sideOf(h, a, b, G) {
+  const c = G.center(h), m = [(a[0] + b[0]) / 2 - c[0], (a[1] + b[1]) / 2 - c[1]];
   let best = 0, bd = -Infinity;
-  H.neighbors(h).forEach((n, i) => { const cn = center(n), d = dot2([cn[0] - c[0], cn[1] - c[1]], m); if (d > bd) { bd = d; best = i; } });
+  G.neighbors(h).forEach((n, i) => { const cn = G.center(n), d = dot2([cn[0] - c[0], cn[1] - c[1]], m); if (d > bd) { bd = d; best = i; } });
   return best;
 }

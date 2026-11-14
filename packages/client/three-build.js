@@ -1,7 +1,7 @@
 // What the Three.js renderer draws, as plain arrays (docs/specs/renderer.md, R11). Pure: no Three.js, no DOM, so it can be tested in Node.
 // A Builder collects triangles as 10 floats a vertex (position, normal, colour with alpha), which render-three.js turns into one
 // BufferGeometry per kind. The shapes follow render.js's (the reference for what is drawn) and the geometry comes from floors.js.
-import * as H from './shared/hex.js';
+import { HEX, gridOf, col as cellCol, key as cellKey, parse as cellParse } from './shared/grid.js';
 import { allTiles, footprint, ground, shown, surfaces, under } from './shared/space.js';
 import { objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
@@ -52,8 +52,14 @@ export function tileSig(map) {
   return n;
 }
 
+// A cell's outline in drawing units, as offsets from its centre, from the grid's own corners (`G.corners`): a unit cell has radius 1 on
+// hexes. The same outline serves every cell of a map, so it is worked out once per grid.
+const SHAPES = new WeakMap();
+const shapeOf = (G) => { let o = SHAPES.get(G); if (!o) SHAPES.set(G, (o = G.corners({ q: 0, r: 0 }).map(([x, y]) => [x * UNIT, y * UNIT]))); return o; };
+// The unit vector from a cell's centre through the middle of its side `i` (side i runs from corner i to corner i + 1).
+const sideAt = (shape, i) => { const a = shape[i], b = shape[(i + 1) % shape.length], x = a[0] + b[0], z = a[1] + b[1], n = Math.hypot(x, z); return [x / n, z / n]; };
 export class Builder {
-  constructor() { this.d = []; }
+  constructor(G = HEX) { this.d = []; this.shape = shapeOf(G); }
   get count() { return this.d.length / 10; }
   tri(a, b, c, col) {
     const n = norm(cross(sub(b, a), sub(c, a)));
@@ -87,10 +93,12 @@ export class Builder {
       v(o[j], edge); v(o[k], edge); v(n[k], dark); v(o[j], edge); v(n[k], dark); v(n[j], dark);
     }
   }
+  // The outline of a cell at radius r (1 is the cell's own edge), height y.
+  cellRing(cx, cz, r, y) { return this.shape.map(([dx, dz]) => [cx + r * dx, y, cz + r * dz]); }
   flatHex(cx, cz, y, r0, r1, col) {
-    const o = this.ring(cx, cz, r1, y, 6, Math.PI / 6), i = r0 ? this.ring(cx, cz, r0, y, 6, Math.PI / 6) : null;
-    for (let k = 0; k < 6; k++) {
-      const j = (k + 1) % 6;
+    const o = this.cellRing(cx, cz, r1, y), i = r0 ? this.cellRing(cx, cz, r0, y) : null, n = o.length;
+    for (let k = 0; k < n; k++) {
+      const j = (k + 1) % n;
       if (i) this.quad(o[j], o[k], i[k], i[j], col); else this.tri(o[j], o[k], [cx, y, cz], col);
     }
   }
@@ -107,12 +115,12 @@ export class Builder {
 }
 
 // Where something stands on a hex (drawing units), and the middle of the hexes a creature fills.
-export function stand(map, h) { const w = H.toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
+export function stand(map, h) { const w = gridOf(map).toWorld(h), z = h.z ?? 0; return { x: w.x, y: surfY(z, ground(map, { q: h.q, r: h.r, z })?.tile), z: w.z }; }
 export function spot(map, e, pos) {
   const base = stand(map, pos), parts = footprint(e ?? {}, pos);
   if (parts.length === 1) return base;
   let x = 0, z = 0;
-  for (const f of parts) { const w = H.toWorld(f); x += w.x; z += w.z; }
+  for (const f of parts) { const w = gridOf(map).toWorld(f); x += w.x; z += w.z; }
   return { x: x / parts.length, y: base.y, z: z / parts.length };
 }
 
@@ -129,10 +137,10 @@ export function makeBlob(th) { const b = new Builder(), sh = th.shadow ?? { a: 0
 
 const VEIL = [0.04, 0.05, 0.09];
 export function makeVeil(map, r) {
-  const lv = map.levels.find((l) => l.id === r.level), b = new Builder();
+  const G = gridOf(map), lv = map.levels.find((l) => l.id === r.level), b = new Builder(G);
   for (const k of r.hexes ?? []) {
     const t = lv?.tiles[k]; if (!t) continue;
-    const w = H.toWorld(H.parse(k));
+    const w = G.toWorld(cellParse(k));
     b.flatHex(w.x, w.z, surfY(lv.z + (t.h ?? 0), t) + 0.05, 0, 1.02, [...VEIL, 1]);
   }
   return b;
@@ -142,7 +150,7 @@ export function makeVeil(map, r) {
 // `hasPicture(levelId)` says whether a level's picture has arrived. Returns the builders, the floors (for walls and the cut-away) and
 // the pictures to draw ({ asset, x0, x1, z0, z1, y }).
 export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture = () => false }) {
-  const b = new Builder(), sb = new Builder(), gb = new Builder(), R = Math.PI / 6, sh = th.shadow ?? { a: 0.4 };
+  const G = gridOf(map), b = new Builder(G), sb = new Builder(), gb = new Builder(G), sh = th.shadow ?? { a: 0.4 };
   const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > ceiling;
   const caves = th.floors === 'rooms' && th.caves ? new Set(caveLevels(map)) : new Set();
   const rooms = th.floors === 'rooms' ? new Set([...map.levels.filter((l) => map.walls.some((w) => w.level === l.id) || map.regions.some((r) => r.level === l.id)).map((l) => l.id), ...caves]) : new Set();
@@ -151,7 +159,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
   const tintOf = (lv, key, base) => {
     let c = base.slice();
     if (enc && !enc.arena[key]) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
-    if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (lv.tiles[key]?.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+    if (!shown(map, lv.id, { ...cellParse(key), z: lv.z + (lv.tiles[key]?.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
     const f = seenShade(lv.id, key);
     return f === 1 ? c : c.map((v) => v * f);
   };
@@ -164,24 +172,24 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
   for (const h of allTiles(map)) {
     if (h.z > ceiling) continue;
     if (pictured.has(h.level.id)) {
-      const w = H.toWorld(h), inFight = enc && enc.arena[H.col(h)];
+      const w = G.toWorld(h), inFight = enc && enc.arena[cellCol(h)];
       gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
       continue;
     }
     if (caves.has(h.level.id)) continue;
-    const t = h.tile, w = H.toWorld(h), locked = enc && !enc.arena[H.col(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
+    const t = h.tile, w = G.toWorld(h), locked = enc && !enc.arena[cellCol(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
     const lowest = surfaces(map, h)[0].z === h.z;
     const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;
     let c = th.tiles[t.t].map((v) => v * j);
     if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
     if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
-    const f = seenShade(h.level.id, H.col(h));
+    const f = seenShade(h.level.id, cellCol(h));
     if (f !== 1) c = c.map((v) => v * f);
     const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
     if (!room) {
       b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
       b.flatHex(w.x, w.z, y, 0.86, 1, rim);
-      const top = b.ring(w.x, w.z, 1, y, 6, R), bot = b.ring(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, 6, R);
+      const top = b.cellRing(w.x, w.z, 1, y), bot = b.cellRing(w.x, w.z, 1, lowest ? Math.min(-1.5, y - 1.5) : y - SLAB);
       for (let i = 0; i < 6; i++) { const n = (i + 1) % 6; b.quad(top[i], top[n], bot[n], bot[i], shade(c, th.side)); }
     }
     if (t.t === 'forest') {
@@ -201,14 +209,14 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     for (const pa of fl.patches) {
       const y = pa.top * UNIT;
       for (const cell of pa.cells) {
-        const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = H.parse(key), hz = lv.z + (t.h ?? 0);
+        const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = cellParse(key), hz = lv.z + (t.h ?? 0);
         let c = th.tiles[t.t].slice();
         if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
         if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
         if (f !== 1) c = c.map((v) => v * f);
         const inArena = enc && !locked, grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
-        const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955);
+        const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955, G);
         const fan = (poly, col) => { const m = wpt(centroidOf(poly), y); for (let i = 0; i < poly.length; i++) b.tri(wpt(poly[(i + 1) % poly.length], y), wpt(poly[i], y), m, col); };
         if (inner) fan(inner, [...c, 1]);
         for (const r of rim) fan(r, grid);
@@ -219,7 +227,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
         const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
         let c = th.tiles[t.t].slice();
         if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
-        if (!shown(map, lv.id, { ...H.parse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
+        if (!shown(map, lv.id, { ...cellParse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
         if (f !== 1) c = c.map((v) => v * f);
         const low = e.lowest ? Math.min(-1.5, y - 1.5) : y - SLAB, bot = e.kind === 'drop' ? Math.min(low, e.toTop * UNIT) : low;
@@ -270,7 +278,7 @@ export function cutSetFor(th, floorData, yaw) {
 // Walls, doors and the things standing in hexes. `cut` is the set from cutSetFor (or null), `doors` maps an object id to its drawn state
 // ({ v: 0 shut .. 1 open, tw }). Returns the builder and the info a swinging door is drawn from.
 export function buildWalls({ map, theme: th, ceiling, floorData, cut: cutIn, doors }) {
-  const b = new Builder(), doorInfo = new Map();
+  const G = gridOf(map), b = new Builder(G), doorInfo = new Map();
   const cutting = cutIn !== null, high = (id) => cutting && floorData.some((f) => f.id === id), cut = cutIn ?? new Set();
   const hid = (levelId) => (map.levels.find((l) => l.id === levelId)?.z ?? 0) > ceiling;
   const col = { wall: th.wall ?? [0.44, 0.42, 0.4], window: th.wallWindow ?? [0.55, 0.62, 0.68], curtain: th.curtain ?? [0.38, 0.3, 0.45] };
@@ -295,7 +303,7 @@ export function buildWalls({ map, theme: th, ceiling, floorData, cut: cutIn, doo
     if (hid(o.level)) continue;
     const seg = objectSegment(o), unseen = !!objectDef(o)?.states[o.state]?.hidden;
     if (!seg) {
-      const lv = map.levels.find((l) => l.id === o.level), w = H.toWorld(o.at), y = stand(map, { q: o.at.q, r: o.at.r, z: (lv?.z ?? 0) + (lv?.tiles[H.col(o.at)]?.h ?? 0) }).y + 0.02;
+      const lv = map.levels.find((l) => l.id === o.level), w = G.toWorld(o.at), y = stand(map, { q: o.at.q, r: o.at.r, z: (lv?.z ?? 0) + (lv?.tiles[cellCol(o.at)]?.h ?? 0) }).y + 0.02;
       const trap = !!objectDef(o)?.triggers?.some((t) => t.effects), c = trap ? [0.75, 0.2, 0.18] : [0.8, 0.68, 0.3];
       b.flatHex(w.x, w.z, y, 0.34, 0.5, [...c, unseen ? 0.45 : 1]);
       if (o.def === 'pit-trap' && o.state === 'open') b.flatHex(w.x, w.z, y + 0.005, 0, 0.6, [0.05, 0.05, 0.06, 1]);
@@ -323,20 +331,20 @@ export function swingDoor(b, info, f) {
 
 // The glowing curtain round the arena of a fight. `base` is the mean height it grows from.
 export function buildEdge({ map, enc, theme: th, ceiling }) {
-  const eb = new Builder();
+  const G = gridOf(map), eb = new Builder(G);
   let base = 0;
   if (enc) {
     const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
     const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
     let ys = 0, ny = 0;
     for (const h of allTiles(map)) {
-      if (h.z > ceiling || !enc.arena[H.col(h)]) continue;
-      const w = H.toWorld(h), y = surfY(h.z, h.tile) + 0.03, R = Math.PI / 6;
+      if (h.z > ceiling || !enc.arena[cellCol(h)]) continue;
+      const w = G.toWorld(h), y = surfY(h.z, h.tile) + 0.03;
       ys += y; ny++; base = ys / ny;
-      const top = eb.ring(w.x, w.z, 1.02, y, 6, R), inner = eb.ring(w.x, w.z, 0.86, y, 6, R);
-      for (let i = 0; i < 6; i++) {
-        const n = (i + 1) % 6, a = R + ((i + 0.5) * Math.PI) / 3, out = H.fromWorld(w.x + Math.cos(a) * 1.8, w.z + Math.sin(a) * 1.8);
-        if (enc.arena[H.col(out)]) continue;
+      const top = eb.cellRing(w.x, w.z, 1.02, y), inner = eb.cellRing(w.x, w.z, 0.86, y);
+      for (let i = 0; i < top.length; i++) {
+        const n = (i + 1) % top.length, [sx, sz] = sideAt(eb.shape, i), out = G.fromWorld(w.x + sx * 1.8, w.z + sz * 1.8);
+        if (enc.arena[cellCol(out)]) continue;
         const lo = [...glow, 0.85], hi = [...glow, 0];
         quad2(top[i], top[n], [top[n][0], y + tall, top[n][2]], [top[i][0], y + tall, top[i][2]], lo, lo, hi, hi);
         quad2(inner[i], inner[n], top[n], top[i], [...glow, 0.35], [...glow, 0.35], [...glow.map((x) => x * 0.5 + 0.5), 1], [...glow.map((x) => x * 0.5 + 0.5), 1]);
@@ -348,24 +356,24 @@ export function buildEdge({ map, enc, theme: th, ceiling }) {
 
 // Highlights, lasting zones, the marks under fliers, rings, the editor's pins and the bars across steps a wall stops.
 export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bars = [], barZ = 0 }) {
-  const b = new Builder(), c = th.hl;
-  const top = (k) => stand(s.map, H.parse(k)).y + 0.03;
-  const at = (k) => H.toWorld(H.parse(k));
+  const G = gridOf(s.map), b = new Builder(G), c = th.hl;
+  const top = (k) => stand(s.map, cellParse(k)).y + 0.03;
+  const at = (k) => G.toWorld(cellParse(k));
   for (const fx of s.effects ?? []) {
     const zh = zoneHexes(s, fx); if (!zh?.hexes.length) continue;
-    const t = zoneType(fx.zone.steps), rgb = th.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(H.col));
+    const t = zoneType(fx.zone.steps), rgb = th.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(cellCol));
     for (const h of zh.hexes) {
-      const w = H.toWorld(h), y = stand(s.map, { q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = H.neighbors(h).some((n) => !have.has(H.col(n)));
+      const w = G.toWorld(h), y = stand(s.map, { q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = G.neighbors(h).some((n) => !have.has(cellCol(n)));
       b.flatHex(w.x, w.z, y, 0, rim ? 0.8 : 1.02, [...rgb, 0.3]);
       if (rim) b.flatHex(w.x, w.z, y, 0.8, 0.98, [...rgb, 0.12]);
     }
   }
   for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
   for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
-  for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = H.toWorld(e.pos); b.flatHex(w.x, w.z, stand(s.map, { q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
+  for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = G.toWorld(e.pos); b.flatHex(w.x, w.z, stand(s.map, { q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
   const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
     const e = s.entities[id]; if (!e) return;
-    for (const f of footprint(e)) { const k = H.key(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }
+    for (const f of footprint(e)) { const k = cellKey(f), w = at(k); b.flatHex(w.x, w.z, top(k) + 0.02, r0, r1, col); }
   };
   for (const id of hl.targets) ringOn(id, c.target);
   for (const id of hl.allies) ringOn(id, c.ally);
