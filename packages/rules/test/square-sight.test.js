@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
 import { apply, ACTION_TYPES, clear, current, moveOptions, SETTINGS } from "../src/engine.js";
-import { gridOf, SQUARE, col, parse } from "../src/grid.js";
+import { gridOf, HEX, SQUARE, col, parse } from "../src/grid.js";
 import * as H from "../src/hex.js";
 import { lintMap, newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
@@ -25,6 +25,8 @@ const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const at = (q, r, z = 0) => ({ q, r, z });
 const P = (q, r, z = 0) => ({ pos: at(q, r, z) });           // a Medium body standing on a square, for coverOf
 const REACH = SQUARE.cornerReach + 0.02;
+const BOX = 2.5 + 0.02;                                          // view.js SQUARE_CLIP: a sent piece lies in a sent square, and a hair round it
+const inBox = (c, w) => [w.a, w.b].every((p) => Math.abs(p[0] - c[0]) <= BOX + 1e-9 && Math.abs(p[1] - c[1]) <= BOX + 1e-9);
 
 // The square room (fixture) with the valley's party in it, away along the south wall, and no
 // monsters. `edit` changes the map before it is loaded.
@@ -465,7 +467,9 @@ function nothingBeyond(s, who = PAT) {
   const { v, text } = sentTo(s, who), pv = partyView(s);
   const centres = tileCentres(v), sentCols = new Set(v.map.levels.flatMap((l) => Object.keys(l.tiles)));
   for (const k of sentCols) assert.ok(s.map.seen.tiles.ground.includes(k), `tile ${k} sent, never made out`);
-  for (const w of v.map.walls) assert.ok(centres.some((t) => t.level === w.level && distToSegment(t.c, [w.a, w.b]) <= REACH + 1e-9), `wall piece ${JSON.stringify(w)} beside no sent tile`);
+  // A piece may run over several sent squares: each end lies in the box of one.
+  for (const w of v.map.walls) for (const p of [w.a, w.b]) assert.ok(centres.some((t) => t.level === w.level && inBox(t.c, { a: p, b: p })), `wall piece ${JSON.stringify(w)} reaches beyond the sent squares`);
+  for (const w of v.map.walls) assert.ok(w.a[0] < w.b[0] || (w.a[0] === w.b[0] && w.a[1] <= w.b[1]), `wall piece ${JSON.stringify(w)} runs backwards`);
   for (const o of v.map.objects) { const src = s.map.objects.find((x) => x.id === o.id); assert.ok(objectHexes(src, SQUARE).some((h) => sentCols.has(col(h))), `${o.id} sent, touching no sent tile`); }
   for (const e of Object.values(s.entities)) if (e.side !== "party") assert.equal(!!v.entities[e.id], pv.creatures.has(e.id), `${e.name}: sent ${!!v.entities[e.id]}, seen ${pv.creatures.has(e.id)}`);
   for (const r of v.map.regions) for (const k of r.hexes) assert.ok(sentCols.has(k), `region ${r.id} names ${k}, not sent`);
@@ -529,13 +533,28 @@ test("views on squares: at a corner where two walls meet, and through the meetin
 });
 
 test("views on squares: a wall is sent only where it runs beside a shown square, a corner's reach of it", () => {
-  // The wall piece beside one square is that square's whole side (and a hair more): the reach is the
-  // square's corner, 5/√2 ft from its centre, not the hex's 5/√3.
-  const pieces = clipWall({ id: "w", level: "g", kind: "wall", a: [-20, 2.5], b: [20, 2.5] }, [[0, 0]], REACH);
+  // The wall piece beside one square is that square's whole side (and a hair more): on squares the
+  // piece is what lies in the square, half a side and 0.02 ft each way (view.js SQUARE_CLIP).
+  const pieces = clipWall({ id: "w", level: "g", kind: "wall", a: [-20, 2.5], b: [20, 2.5] }, [[0, 0]], REACH, BOX);
   assert.equal(pieces.length, 1);
-  assert.ok(pieces[0].a[0] <= -2.5 && pieces[0].b[0] >= 2.5 && pieces[0].a[0] > -2.6 && pieces[0].b[0] < 2.6, JSON.stringify(pieces));
+  assert.ok(Math.abs(pieces[0].a[0] + BOX) < 1e-9 && Math.abs(pieces[0].b[0] - BOX) < 1e-9, JSON.stringify(pieces));
   // A wall one square away (beside a square not shown) is not sent at all.
-  assert.deepEqual(clipWall({ id: "w", level: "g", kind: "wall", a: [-20, 7.5], b: [20, 7.5] }, [[0, 0]], REACH), []);
+  assert.deepEqual(clipWall({ id: "w", level: "g", kind: "wall", a: [-20, 7.5], b: [20, 7.5] }, [[0, 0]], REACH, BOX), []);
+  // L2: a wall from the middle of a shown square's side on into the square beyond is sent only a
+  // hair in (by a circle through the corners it went 1.06 ft in).
+  const into = clipWall({ id: "w", level: "g", kind: "wall", a: [2.5, 0], b: [20, 0] }, [[0, 0]], REACH, BOX);
+  assert.equal(into.length, 1);
+  assert.ok(into[0].b[0] <= BOX + 1e-9, JSON.stringify(into));
+  // And through the view, on a map with such a wall: square 5,1 shown, the wall from 27.5,5 east.
+  const off = room({ edit: (m) => { m.levels[0].light = "dark"; m.walls.push({ id: "spur", level: "ground", a: [27.5, 5], b: [45, 5], kind: "wall" }); } });
+  for (const id of ["rogue", "cleric", "wizard"]) delete off.entities[id];
+  ok(apply(off, { type: "setting", key: "sight", value: "light" }, DM));
+  ok(apply(off, { type: "setLight", actor: "fighter", item: "candle" }, DM));
+  ok(apply(off, { type: "place", actor: "fighter", to: at(3, 1) }, DM));
+  const ov = view(off, PAT), shown = Object.keys(ov.map.levels[0].tiles);
+  assert.ok(shown.includes("5,1") && !shown.includes("6,1"), shown.join(" "));
+  const spur = ov.map.walls.filter((w) => w.a[1] === 5 && w.b[1] === 5);
+  assert.ok(spur.length === 1 && Math.max(spur[0].a[0], spur[0].b[0]) <= 27.5 + 0.02 + 1e-9, JSON.stringify(spur));
   // In play: under the light rule the fighter alone in the dark room, with a candle, is sent the
   // walls round what it has made out and nothing of the far walls.
   const s = room({ edit: (m) => { m.levels[0].light = "dark"; } });
@@ -550,8 +569,78 @@ test("views on squares: a wall is sent only where it runs beside a shown square,
   const top = sent.map(parse).filter((h) => h.r === 0).map((h) => h.q), east = Math.max(...top);
   // The north wall is sent along the whole side of every sent square on row 0, and stops within a hair of the last one.
   assert.ok(north.some((w) => Math.min(w.a[0], w.b[0]) <= -2.5 + 1e-9 && Math.max(w.a[0], w.b[0]) >= 5 * east + 2.5 - 1e-9), JSON.stringify({ north, top }));
-  assert.ok(north.every((w) => Math.max(w.a[0], w.b[0]) < 5 * east + 2.6), JSON.stringify(north));
+  assert.ok(north.every((w) => Math.max(w.a[0], w.b[0]) <= 5 * east + BOX + 1e-9), JSON.stringify(north));
   assert.equal(v.map.walls.some((w) => w.a[0] === 72.5 || w.a[1] === 72.5), false, "nothing of the east or south walls");
+});
+
+// M2 (review of #262): a secret door is sent as a wall, and nothing about it tells it from one:
+// not its ends' order, not its place in the list, not its id. On both grids, under every rule.
+function secretOrWall({ grid, secret, reversed, rule }) {
+  let map;
+  if (grid === "square") {
+    map = squareRoom();
+    // The north wall drawn west to east with a gap on the north side of 4,0; behind it a closet (region, unrevealed).
+    map.walls = map.walls.filter((w) => w.id !== "north");
+    map.walls.push({ id: "north-w", level: "ground", a: [-2.5, -2.5], b: [17.5, -2.5], kind: "wall" }, { id: "north-e", level: "ground", a: [22.5, -2.5], b: [72.5, -2.5], kind: "wall" },
+      { id: "c-w", level: "ground", a: [12.5, -12.5], b: [12.5, -2.5], kind: "wall" }, { id: "c-n", level: "ground", a: [12.5, -12.5], b: [27.5, -12.5], kind: "wall" }, { id: "c-e", level: "ground", a: [27.5, -12.5], b: [27.5, -2.5], kind: "wall" });
+    for (const q of [3, 4, 5]) for (const r of [-2, -1]) map.levels[0].tiles[`${q},${r}`] = { t: "stone" };
+    map.regions.push({ id: "closet", name: "Closet", level: "ground", hexes: ["3,-2", "4,-2", "5,-2", "3,-1", "4,-1", "5,-1"] });
+    const seg = SQUARE.edgeSegment({ q: 4, r: 0 }, 1);
+    if (secret) map.objects.push({ id: "sd", def: "secret-door", level: "ground", at: { q: 4, r: 0 }, edge: 1, state: "secret" });
+    else map.walls.push({ id: "gap", level: "ground", a: reversed ? seg[1] : seg[0], b: reversed ? seg[0] : seg[1], kind: "wall" });
+  } else {
+    const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 5).map((h) => [H.col(h), { t: "stone" }]));
+    const seg = HEX.edgeSegment({ q: 0, r: 0 }, 0), x = seg[0][0];
+    map = newMap({ id: "h", name: "Hex", starts: [{ q: -3, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }],
+      walls: [{ id: "n", level: "ground", a: [x, -100], b: [x, Math.min(seg[0][1], seg[1][1])], kind: "wall" }, { id: "s", level: "ground", a: [x, Math.max(seg[0][1], seg[1][1])], b: [x, 100], kind: "wall" },
+        ...(secret ? [] : [{ id: "gap", level: "ground", a: reversed ? seg[1] : seg[0], b: reversed ? seg[0] : seg[1], kind: "wall" }])],
+      objects: secret ? [{ id: "sd", def: "secret-door", level: "ground", at: { q: 0, r: 0 }, edge: 0, state: "secret" }] : [],
+      regions: [{ id: "east", name: "East", level: "ground", hexes: Object.keys(tiles).filter((k) => HEX.center(H.parse(k))[0] > x) }] });
+  }
+  const s = newGame(5);
+  ok(apply(s, { type: "loadMap", map }, DM));
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  ok(apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, PAT));
+  const start = grid === "square" ? [[1, 2], [0, 3], [1, 3], [2, 3]] : [[-3, 0], [-4, 1], [-4, 0], [-3, -1]];
+  ["fighter", "rogue", "cleric", "wizard"].forEach((id, i) => { s.entities[id].pos = at(...start[i]); });
+  if (rule !== "rooms") ok(apply(s, { type: "setting", key: "sight", value: rule }, DM));
+  ok(apply(s, { type: "advanceTime", minutes: 1 }, DM));
+  return s;
+}
+test("M2: a secret door's wall piece is the same as a wall's in every field and in the order of the list, on hexes and on squares", () => {
+  for (const grid of ["hex", "square"]) for (const rule of ["rooms", "los", "light"]) {
+    const door = view(secretOrWall({ grid, secret: true, rule }), PAT).map;
+    for (const reversed of [false, true]) {
+      const wall = view(secretOrWall({ grid, secret: false, reversed, rule }), PAT).map;
+      assert.deepEqual(door.walls, wall.walls, `${grid}, ${rule}, a wall drawn ${reversed ? "backwards" : "forwards"}`);
+      assert.deepEqual(door, wall, `${grid}, ${rule}: the whole map sent`);
+    }
+    for (const w of door.walls) assert.ok(w.a[0] < w.b[0] || (w.a[0] === w.b[0] && w.a[1] <= w.b[1]), `${grid}: ${JSON.stringify(w)}`);
+  }
+});
+
+test("P26: under the rooms rule an area's cells inside a region not yet revealed are not sent, on hexes too", () => {
+  const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "stone" }]));
+  const map = newMap({ id: "h", name: "Hex", starts: [{ q: -5, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }],
+    regions: [{ id: "far", name: "Far side", level: "ground", hexes: Object.keys(tiles).filter((k) => H.parse(k).q >= 3) }] });
+  const s = newGame(5);
+  ok(apply(s, { type: "loadMap", map }, DM));
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  const w = s.entities.wizard;
+  w.owner = "pat"; w.spells.push("fireball"); w.slots[3] = 1; w.slotsMax = { ...w.slotsMax, 3: 1 };
+  ["fighter", "rogue", "cleric"].forEach((id, i) => { s.entities[id].pos = at(-5, i - 1); });
+  w.pos = at(-4, 0);
+  assert.equal(s.map.regions[0].revealed, undefined);
+  spawn(s, -2, 4);                                              // someone to fight, so the fight goes on
+  ok(apply(s, { type: "startEncounter", center: { q: -4, r: 0 }, radius: 6 }, DM));
+  turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "fireball", hex: { q: 1, r: 0 } }, PAT));
+  const all = r.events.find((e) => e.type === "cast").hexes, known = new Set(Object.keys(view(s, PAT).map.levels[0].tiles));
+  assert.ok(all.some((h) => h.q >= 3), "the Fireball reaches into the far side");
+  const sent = viewEvents(r.events, s, PAT).find((e) => e.type === "cast").hexes;
+  assert.ok(sent.length > 0 && sent.every((h) => known.has(H.col(h))), JSON.stringify(sent));
+  assert.equal(sent.length, all.filter((h) => known.has(H.col(h))).length);
+  assert.equal(viewEvents(r.events, s, DM).find((e) => e.type === "cast").hexes.length, all.length, "the DM gets them all");
 });
 
 test("views on squares under los: regions revealed by a line of sight, the secret door as wall, found and then shown", () => {
@@ -708,7 +797,7 @@ function playChecked(seed, steps, startRule) {
       if (o.rule === "rooms") continue;
       const centres = tileCentres(v), sentCols = new Set(v.map.levels.flatMap((l) => Object.keys(l.tiles)));
       for (const l of v.map.levels) for (const k in l.tiles) if (o.rule === "light") assert.ok(placesEver.has(`${l.id}|${k}`), `seed ${seed}: tile ${k} sent unseen`);
-      for (const w of v.map.walls) assert.ok(centres.some((t) => t.level === w.level && distToSegment(t.c, [w.a, w.b]) <= REACH + 1e-9), `seed ${seed}: a wall piece beside no sent square`);
+      for (const w of v.map.walls) for (const p of [w.a, w.b]) assert.ok(centres.some((t) => t.level === w.level && inBox(t.c, { a: p, b: p })), `seed ${seed}: a wall piece reaches beyond the sent squares`);
       for (const ob of v.map.objects) assert.ok(wasSeen.get(ob.id)?.has(ob.state), `seed ${seed}: ${ob.id} sent as ${ob.state}, never seen so`);
       for (const ev of evs) {
         for (const h of ev.hexes ?? []) assert.ok(sentCols.has(col(h)), `seed ${seed}: ${ev.type} names ${col(h)}, not sent`);
