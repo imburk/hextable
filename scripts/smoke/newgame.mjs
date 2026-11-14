@@ -133,9 +133,92 @@ async function table(browser, url) {
   });
 }
 
+// ---------- the valley on squares or on hexes (docs/specs/square-grid.md, row S12, issue #269) ----------
+// The lobby asks "Valley on squares" or "Valley on hexes" with the starting map (only while that is the starter valley), one tap, and
+// the device remembers the last one. Solo and a hosted table both start on the grid chosen; Continue keeps a saved game's own grid.
+const gridOf = (page) => page.evaluate(() => window.hextable.state?.map?.grid);
+const picked = (page) => page.evaluate(() => [...document.getElementsByName('lobby-grid')].find((r) => r.checked)?.value);
+async function valley(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
+      await run.do('the lobby offers squares first, hexes picked on a first visit, and one tap changes it', async () => {
+        await open(page, url);
+        const labels = await page.$$eval('#lobby-grid label', (l) => l.map((x) => x.textContent.trim()));
+        if (labels.join('|') !== 'Valley on squares|Valley on hexes') throw new Error(`choices: ${labels}`);
+        if ((await picked(page)) !== 'hex') throw new Error('hexes are not the first-visit choice');
+        if (!(await inView(page, '#lobby-grid label:first-child'))) throw new Error('the choice is out of view');
+        await tap('#lobby-grid label:first-child');
+        if ((await picked(page)) !== 'square') throw new Error('one tap did not pick squares');
+      });
+      await run.do('the choice is asked only for the starter valley', async () => {
+        await page.selectOption('#lobby-map', 'undercroft');
+        if (await shown(page, '#lobby-grid')) throw new Error('the grid choice stays up with a stock map chosen');
+        await page.selectOption('#lobby-map', '');
+        if (!(await shown(page, '#lobby-grid'))) throw new Error('the grid choice did not come back');
+      });
+      await run.do('solo starts the valley on squares, with the same heroes and foes', async () => {
+        await playSolo(page);
+        if ((await gridOf(page)) !== 'square') throw new Error(`grid ${await gridOf(page)}`);
+        const ids = await page.evaluate(() => Object.keys(window.hextable.state.entities).join());
+        if (ids !== 'fighter,rogue,cleric,wizard,m1,m2,m3,m4,m5,m6') throw new Error(ids);
+        await page.evaluate((m) => window.hextable.act({ type: 'chronicle', title: m }), MARK);     // a solo game is saved by its first act
+        await wait(page, (m) => JSON.stringify(window.hextable.state).includes(m), MARK);
+      });
+      await run.do('the device remembers it; New game from the lobby starts on the grid chosen; Continue keeps a saved game its own grid', async () => {
+        await page.reload(); await waitShown(page, '#lobby');
+        if ((await picked(page)) !== 'square') throw new Error('the last choice was not remembered');
+        await tap('#lobby-grid label:last-child');
+        await page.click('#lobby-new'); await page.click('#lobby-new');
+        await wait(page, () => window.hextable?.state?.entities);
+        if ((await gridOf(page)) !== 'hex') throw new Error(`grid ${await gridOf(page)} after choosing hexes`);
+        await page.evaluate((m) => window.hextable.act({ type: 'chronicle', title: m }), MARK);     // saved by its first act
+        await wait(page, (m) => JSON.stringify(window.hextable.state).includes(m), MARK);
+        await page.reload(); await waitShown(page, '#lobby');
+        if ((await picked(page)) !== 'hex') throw new Error('hexes were not remembered');
+        await tap('#lobby-grid label:first-child');
+        await page.click('#lobby-solo');                           // Continue: the saved game keeps its own grid
+        await wait(page, () => window.hextable?.state?.entities);
+        if ((await gridOf(page)) !== 'hex') throw new Error('Continue changed the saved game\'s grid');
+      });
+      await run.do('a solo game starts on the square stock map chosen in the lobby, and a hero walks through its door', async () => {
+        await page.evaluate(() => localStorage.removeItem('hextable.solo'));
+        await page.reload(); await waitShown(page, '#lobby');
+        const names = await page.$$eval('#lobby-map option', (o) => o.map((x) => x.textContent));
+        if (!names.some((n) => /Thornwick Undercroft \(squares\)/.test(n)) || !names.some((n) => /Copper Kettle \(tavern, hexes\)/.test(n))) throw new Error(`names: ${names}`);
+        await page.selectOption('#lobby-map', 'undercroft');
+        await page.click('#lobby-solo');
+        await wait(page, () => window.hextable?.state?.map?.id === 'undercroft');
+        if ((await gridOf(page)) !== 'square') throw new Error('the stock map is not on squares');
+        const act = (a) => page.evaluate((x) => window.hextable.act(x), a);
+        const at = () => page.evaluate(() => JSON.stringify(window.hextable.state.entities.fighter.pos));
+        await act({ type: 'move', actor: 'fighter', to: { q: 3, r: 18, z: 0 } });
+        await wait(page, () => window.hextable.state.entities.fighter.pos.r === 18);
+        await act({ type: 'use', actor: 'fighter', object: 'o1', verb: 'open' });
+        await wait(page, () => window.hextable.state.map.objects.find((o) => o.id === 'o1').state === 'open');
+        await act({ type: 'move', actor: 'fighter', to: { q: 3, r: 15, z: 0 } });
+        await wait(page, () => window.hextable.state.entities.fighter.pos.r === 15);
+        if (!/"r":15/.test(await at())) throw new Error(`the hero is at ${await at()}`);
+      });
+      await run.do('a hosted table starts on the grid chosen', async () => {
+        await page.reload(); await waitShown(page, '#lobby');
+        if ((await picked(page)) !== 'square') throw new Error('square not remembered');
+        await page.click('#lobby-host');
+        await wait(page, () => window.hextable?.state?.entities && document.querySelector('#dm-table code')?.textContent.length === 6);
+        if ((await gridOf(page)) !== 'square') throw new Error(`table grid ${await gridOf(page)}`);
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=newgame.
 export default async function (browser, url) {
   await solo(browser, url, 'new game at 1280x800', { viewport: { width: 1280, height: 800 } });
   await solo(browser, url, 'new game at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await table(browser, url);
+  await valley(browser, url, 'valley on squares or hexes at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await valley(browser, url, 'valley on squares or hexes at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }

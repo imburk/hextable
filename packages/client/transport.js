@@ -28,10 +28,14 @@ export function downloadTable(table) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+// The valley's options for a grid: squares if asked, otherwise nothing (the hex valley, as always).
+const valleyOptions = (grid) => (grid === 'square' ? { grid: 'square' } : undefined);
+
 // Solo: the engine runs here and you are the DM and every hero.
-export function localTransport({ timelineCap = TIMELINE_CAP } = {}) {
+// `grid` is the grid a NEW game's valley is on ('square', or anything else for hexes); a saved game keeps its own.
+export function localTransport({ timelineCap = TIMELINE_CAP, grid } = {}) {
   let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
-  if (!state || state.version !== VERSION) state = newGame((Math.random() * 1e9) | 0);
+  if (!state || state.version !== VERSION) state = newGame((Math.random() * 1e9) | 0, valleyOptions(grid));
   capTimeline(state.timeline, timelineCap);       // a game saved before the cap, or under a larger one
   // The undo history lives in this tab only: a reload starts it afresh. The pins for rewind (the start of
   // the last fight, the last rest) are kept in this browser beside the game, since the history is not;
@@ -84,7 +88,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP } = {}) {
       try { files = await t.assets.pack({ first: assetRefs(state) }); } catch { /* this browser keeps no files: the export has the game only */ }
       return { code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state), assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit };
     },
-    reset() { state = newGame((Math.random() * 1e9) | 0); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
+    reset({ grid: g = grid } = {}) { state = newGame((Math.random() * 1e9) | 0, valleyOptions(g)); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
   };
   return t;
 }

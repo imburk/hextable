@@ -191,12 +191,13 @@ test("SQUARE has every member HEX has, in the same order, and is never what a pl
   // no longer refuses a square map (square-moving.test.js plays one).
   const { lintMap } = await import("../src/map.js");
   const { STOCK_MAPS } = await import("../src/content/maps/index.js");
-  for (const m of [newGame(1).map, ...STOCK_MAPS.map((x) => x.map)]) {
+  for (const m of [newGame(1).map, ...STOCK_MAPS.map((x) => x.map).filter((x) => x.grid === "hex")]) {
     assert.equal(gridOf(m), HEX, m.id);
     // Read as squares, a hex map is wrong only where a door stands on hex edge 4 or 5.
     const problems = lintMap({ ...structuredClone(m), grid: "square" });
     assert.ok(problems.every((p) => /^Object "[^"]+" has an edge that is not 0 to 3\.$/.test(p)), `${m.id}: ${problems.join(" ")}`);
   }
+  for (const m of STOCK_MAPS.map((x) => x.map).filter((x) => x.grid === "square")) assert.equal(gridOf(m), SQ, m.id);
   assert.equal(gridOf({ grid: "hex" }), HEX);
   assert.equal(gridOf({}), HEX);
   assert.equal(gridOf(null), HEX);

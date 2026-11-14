@@ -15,6 +15,8 @@ export const PACE_NAME = { wait: 'wait for each beat', flow: 'flow (act while it
 // The tag the import writes on its chronicle entry, so the sheet can find it again.
 export const IMPORT_TAG = 'fg-import';
 
+// The lobby's last choice of grid for the starter valley, kept on the device.
+export const GRID_KEY = 'hextable.valleyGrid';
 export const stockMap = (id) => STOCK_MAPS.find((m) => m.id === id);
 export const loadStock = (id) => { const m = stockMap(id); return m ? { type: 'loadMap', map: structuredClone(m.map) } : null; };
 
@@ -31,6 +33,15 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-pace').innerHTML = PACES.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
   $('dm-stock').innerHTML = opts;
   $('lobby-map').innerHTML = `<option value="">The starter valley</option>${opts}`;
+  // The starter valley comes on squares or on hexes (squares listed first); the choice is asked only while "The starter valley" is
+  // the starting map, and the device remembers the last one. Nothing remembered: hexes, as the valley has always been.
+  const grids = [...document.getElementsByName('lobby-grid')];
+  const last = (() => { try { return localStorage.getItem(GRID_KEY); } catch { return null; } })();
+  for (const r of grids) r.checked = r.value === (last === 'square' ? 'square' : 'hex');
+  const showGrid = () => { $('lobby-grid').hidden = $('lobby-map').value !== ''; };
+  $('lobby-map').addEventListener('change', showGrid); showGrid();
+  for (const r of grids) r.addEventListener('change', () => { try { localStorage.setItem(GRID_KEY, valleyGrid()); } catch { /* storage unavailable */ } });
+  function valleyGrid() { return grids.find((r) => r.checked)?.value === 'square' ? 'square' : 'hex'; }
   const text = () => { $('dm-stock-text').textContent = stockMap($('dm-stock').value)?.text ?? ''; };
   $('dm-stock').onchange = () => { disarm(); text(); };
   text();
@@ -70,5 +81,9 @@ export function initTableControls({ act, getState, isDM, toast }) {
     },
     // The lobby's chosen map: the action to send once the new table's first state has arrived, or null.
     lobbyChoice: () => loadStock($('lobby-map').value),
+    // The grid for a new game's valley: what the device remembers as the last choice (the lobby's buttons hold it),
+    // and for a new game from the lobby, hexes if a stock map was chosen (the valley is only where that map is loaded).
+    valleyGrid,
+    lobbyGrid: () => ($('lobby-map').value === '' ? valleyGrid() : 'hex'),
   };
 }

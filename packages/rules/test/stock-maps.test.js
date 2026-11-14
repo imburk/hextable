@@ -13,7 +13,9 @@ import { barriers, center, objectDef } from "../src/walls.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
-const KINDS = ["tavern", "dungeon", "cave", "forest-road", "keep"];
+const KINDS = ["tavern", "dungeon", "cave", "forest-road", "keep", "undercroft"];
+// The five hex maps get every check below; the map on squares has its own in stock-maps-square.test.js.
+const HEX_MAPS = STOCK_MAPS.filter((m) => m.map.grid === "hex");
 
 // Where a creature can stand: a tile of walkable terrain with nothing solid on it.
 const standable = (map, level, k) => {
@@ -46,12 +48,12 @@ function walk(map, from) {
   return seen;
 }
 
-test("there are five stock maps with the ids the docs list", () => {
+test("there are six stock maps (five on hexes, one on squares) with the ids the docs list", () => {
   assert.deepEqual(STOCK_MAPS.map((m) => m.id), KINDS);
   for (const m of STOCK_MAPS) { assert.equal(m.map.id, m.id); assert.ok(m.name && m.text); }
 });
 
-for (const { id, map } of STOCK_MAPS) {
+for (const { id, map } of HEX_MAPS) {
   test(`${id}: a clean map document of plain data, with no creatures, of a size that plays on a phone`, () => {
     assert.deepEqual(lintMap(map), []);
     assert.deepEqual(JSON.parse(JSON.stringify(map)), map, "only data: no functions, no undefined");
