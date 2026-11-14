@@ -1,6 +1,6 @@
 // Space: where things can stand. A map is a stack of levels, each a sheet of hexes at a base
 // height in feet. A position is { q, r, z } with z in feet. Design: docs/specs/maps-and-objects.md
-import * as H from './hex.js';
+import { HEX, gridOf, col, parse } from './grid.js';
 import { SIZES } from './content/sizes.js';
 
 export const FT = 5;            // feet per hex
@@ -9,14 +9,14 @@ export const STEP_MAX = 5;      // up to this it is Difficult Terrain; more need
 
 // Every surface in a hex column, lowest first: [{ level, tile, z }].
 export function surfaces(map, h) {
-  const k = H.col(h), out = [];
+  const k = col(h), out = [];
   for (const level of map.levels) {
     const tile = level.tiles[k];
     if (tile) out.push({ level, tile, z: level.z + (tile.h ?? 0) });
   }
   return out.sort((a, b) => a.z - b.z);
 }
-export const hasColumn = (map, h) => map.levels.some((l) => l.tiles[H.col(h)]);
+export const hasColumn = (map, h) => map.levels.some((l) => l.tiles[col(h)]);
 
 // The surface a position stands on, or null if it is in the air (or off the map).
 export const ground = (map, pos) => surfaces(map, pos).find((sf) => sf.z === (pos.z ?? 0)) ?? null;
@@ -33,7 +33,7 @@ export function landing(map, hex, hint = 0) {
 // Every tile of the map with where it is: [{ q, r, z, tile, level }].
 export function allTiles(map) {
   const out = [];
-  for (const level of map.levels) for (const k in level.tiles) { const h = H.parse(k), tile = level.tiles[k]; out.push({ q: h.q, r: h.r, z: level.z + (tile.h ?? 0), tile, level }); }
+  for (const level of map.levels) for (const k in level.tiles) { const h = parse(k), tile = level.tiles[k]; out.push({ q: h.q, r: h.r, z: level.z + (tile.h ?? 0), tile, level }); }
   return out;
 }
 
@@ -56,7 +56,7 @@ export function regionAt(map, levelId, h) {
     for (const r of map.regions) for (const k of r.hexes) had.at.set(`${r.level}|${k}`, r);
     regionIndex.set(map, had);
   }
-  return had.at.get(`${levelId}|${H.col(h)}`) ?? null;
+  return had.at.get(`${levelId}|${col(h)}`) ?? null;
 }
 // May players be sent this hex of this level?
 export const shown = (map, levelId, h) => { const r = regionAt(map, levelId, h); return !r || !!r.revealed; };
@@ -72,7 +72,7 @@ export const rise = (dz) => Math.floor((Math.abs(dz) + 2.49) / FT);
 // Distance between two positions in hexes, counting height. How the two combine is a table rule
 // (settings.vertical): 'max' counts a diagonal as one, 'sum' adds them, 'true' measures the straight line.
 export function gap(s, a, b) {
-  const h = H.dist(a, b), v = rise((a.z ?? 0) - (b.z ?? 0)), rule = s?.settings?.vertical ?? 'max';
+  const h = gridOf(s?.map).dist(a, b), v = rise((a.z ?? 0) - (b.z ?? 0)), rule = s?.settings?.vertical ?? 'max';
   return rule === 'sum' ? h + v : rule === 'true' ? Math.round(Math.hypot(h, v)) : Math.max(h, v);
 }
 // How high a wall stands above the floor of its level, and how tall a creature is, in feet.
@@ -80,32 +80,31 @@ export const WALL_HEIGHT = 10, HEADROOM = 5;
 
 // ---------- size ----------
 // A creature fills a footprint of hexes, anchored on the hex of its position, and stands so high.
-const TRIANGLE = [[0, 0], [1, 0], [0, 1]];
-const SHAPES = { 1: [[0, 0]], 3: TRIANGLE, 7: [[0, 0], ...H.DIRS] };
-SHAPES[12] = [...new Map(TRIANGLE.flatMap(([q, r]) => [[q, r], ...H.DIRS.map(([dq, dr]) => [q + dq, r + dr])]).map((o) => [`${o}`, o])).values()];
+// The shape is the grid's (`G.footprint`); `G` is the map's grid, hexes if not given
+// (docs/specs/square-grid.md, Decision 1: S6 makes it required).
 export const sizeOf = (e) => SIZES[e?.size] ?? SIZES.medium;
-export const shapeOf = (e) => SHAPES[sizeOf(e).hexes];
+export const shapeOf = (e, G = HEX) => G.footprint(e?.size);
 // The hexes a creature fills when it stands at `pos` (its own position if none is given).
-export const footprint = (e, pos = e.pos) => shapeOf(e).map(([dq, dr]) => ({ q: pos.q + dq, r: pos.r + dr, z: pos.z ?? 0 }));
+export const footprint = (e, pos = e.pos, G = HEX) => shapeOf(e, G).map(([dq, dr]) => ({ q: pos.q + dq, r: pos.r + dr, z: pos.z ?? 0 }));
 // Would two creatures be in each other's space, one at `pa` and the other at `pb`?
-export function overlapAt(a, pa, b, pb) {
+export function overlapAt(a, pa, b, pb, G = HEX) {
   const za = pa.z ?? 0, zb = pb.z ?? 0;
   if (za >= zb + sizeOf(b).height || zb >= za + sizeOf(a).height) return false;
-  const sa = shapeOf(a), sb = shapeOf(b);
+  const sa = shapeOf(a, G), sb = shapeOf(b, G);
   if (sa.length === 1 && sb.length === 1) return pa.q === pb.q && pa.r === pb.r;
   return sa.some(([aq, ar]) => sb.some(([bq, br]) => pa.q + aq === pb.q + bq && pa.r + ar === pb.r + br));
 }
 // Distance in hexes between two creatures, one at `pa` and the other at `pb`: between the nearest
 // parts of them, across and up, combined by the table rule for height.
-export function apartAt(s, a, pa, b, pb) {
-  const sa = shapeOf(a), sb = shapeOf(b);
+export function apartAt(s, a, pa, b, pb, G = HEX) {
+  const sa = shapeOf(a, G), sb = shapeOf(b, G);
   let h = Infinity;
-  if (sa.length === 1 && sb.length === 1) h = H.dist(pa, pb);
-  else for (const [aq, ar] of sa) for (const [bq, br] of sb) h = Math.min(h, H.dist({ q: pa.q + aq, r: pa.r + ar }, { q: pb.q + bq, r: pb.r + br }));
+  if (sa.length === 1 && sb.length === 1) h = G.dist(pa, pb);
+  else for (const [aq, ar] of sa) for (const [bq, br] of sb) h = Math.min(h, G.dist({ q: pa.q + aq, r: pa.r + ar }, { q: pb.q + bq, r: pb.r + br }));
   const za = pa.z ?? 0, zb = pb.z ?? 0;
   // The lower creature reaches up by its own height: only what lies above its head counts.
   const v = rise(zb >= za ? Math.max(0, zb - (za + sizeOf(a).height - FT)) : Math.max(0, za - (zb + sizeOf(b).height - FT)));
   const rule = s?.settings?.vertical ?? 'max';
   return rule === 'sum' ? h + v : rule === 'true' ? Math.round(Math.hypot(h, v)) : Math.max(h, v);
 }
-export const apart = (s, a, b) => apartAt(s, a, a.pos, b, b.pos);
+export const apart = (s, a, b) => apartAt(s, a, a.pos, b, b.pos, gridOf(s?.map));

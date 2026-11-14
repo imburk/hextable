@@ -1,6 +1,6 @@
 // The map document: one self-contained JSON description of a place. A table's game state holds
 // its own copy. Design: docs/specs/maps-and-objects.md
-import * as H from './hex.js';
+import { col } from './grid.js';
 import { TILES } from './content/terrain.js';
 import { CONTENT } from './content/index.js';
 import { WALL_KINDS } from './walls.js';
@@ -99,7 +99,7 @@ export function lintMap(doc, extra = []) {
     const def = Object.hasOwn(CONTENT.objects, o.def) ? CONTENT.objects[o.def] : null, level = doc.levels.find((l) => l.id === o.level);
     if (!def) { bad.push(`Object "${o.id}" is of unknown kind "${o.def}".`); continue; }
     if (!level) { bad.push(`Object "${o.id}" is on a level that does not exist.`); continue; }
-    if (!o.at || !Number.isInteger(o.at.q) || !Number.isInteger(o.at.r) || !level.tiles[H.col(o.at)]) bad.push(`Object "${o.id}" is not on a hex of its level.`);
+    if (!o.at || !Number.isInteger(o.at.q) || !Number.isInteger(o.at.r) || !level.tiles[col(o.at)]) bad.push(`Object "${o.id}" is not on a hex of its level.`);
     if (!Object.hasOwn(def.states, o.state)) bad.push(`Object "${o.id}" is in a state its kind does not have: "${o.state}".`);
     if (o.edge !== undefined && !(Number.isInteger(o.edge) && o.edge >= 0 && o.edge < 6)) bad.push(`Object "${o.id}" has an edge that is not 0 to 5.`);
     if (o.seg !== undefined && !(o.seg && point(o.seg.a) && point(o.seg.b))) bad.push(`Object "${o.id}" has a line that is not two points.`);
@@ -113,7 +113,7 @@ export function lintMap(doc, extra = []) {
       else if (!Object.hasOwn(def.states, l.when) || !Object.hasOwn(odef.states, l.sets)) bad.push(`Object "${o.id}" has a link naming a state that does not exist.`);
     }
     if (o.links !== undefined && !Array.isArray(o.links)) bad.push(`Object "${o.id}": links must be a list.`);
-    if (o.to !== undefined && !(def.connects && o.to && Number.isInteger(o.to.q) && Number.isInteger(o.to.r) && doc.levels.some((l) => l.tiles?.[H.col(o.to)]))) bad.push(`Object "${o.id}" leads to a place that is not on the map, or is not something that joins places.`);
+    if (o.to !== undefined && !(def.connects && o.to && Number.isInteger(o.to.q) && Number.isInteger(o.to.r) && doc.levels.some((l) => l.tiles?.[col(o.to)]))) bad.push(`Object "${o.id}" leads to a place that is not on the map, or is not something that joins places.`);
     if (def.connects && o.to === undefined) bad.push(`Object "${o.id}" joins two places and needs \`to\`.`);
     if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
   }
@@ -158,10 +158,10 @@ export const EDITS = {
   tile(map, { level, at, tile }) {
     const l = map.levels.find((x) => x.id === level);
     if (!l || !at) return 'A tile needs a level and a hex.';
-    if (tile) l.tiles[H.col(at)] = structuredClone(tile);
+    if (tile) l.tiles[col(at)] = structuredClone(tile);
     else {
-      delete l.tiles[H.col(at)];
-      for (const r of map.regions) if (r.level === level) r.hexes = r.hexes.filter((k) => k !== H.col(at));
+      delete l.tiles[col(at)];
+      for (const r of map.regions) if (r.level === level) r.hexes = r.hexes.filter((k) => k !== col(at));
       map.regions = map.regions.filter((r) => r.hexes.length);
     }
   },

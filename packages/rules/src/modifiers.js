@@ -6,7 +6,6 @@
 // gets back the total and the reasons, which is what the log shows.
 // Design: docs/specs/rules-expansion.md, decision 3.
 import { CONTENT } from './content/index.js';
-import * as H from './hex.js';
 import { apart, FT } from './space.js';
 import { canSee, coverOf } from './sight.js';
 
