@@ -799,6 +799,7 @@ $('dm-start').onclick = () => { closeDM(); setMode({ kind: 'encounter' }); };
 $('dm-end').onclick = () => act({ type: 'endEncounter' });
 $('dm-place').onclick = () => { if (!selId) return toast('Select a creature first.'); closeDM(); setMode({ kind: 'place' }); };
 const SR = initShortRest({ host: $('dm-rest-all'), act, getState: () => S });
+$('dm-short-rest').addEventListener('click', () => CLS.restRows($('dm-short-box')));       // Arcane Recovery and Natural Recovery rows (classes.js), after the box is drawn
 $('dm-rest').onclick = () => act({ type: 'rest' });
 $('dm-rest-all').onclick = () => act({ type: 'rest', ids: Object.values(S.entities).filter((e) => !e.dead).map((e) => e.id) });
 // Conditions: pick one, then put it on the selected creature or take it off.

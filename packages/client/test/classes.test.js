@@ -127,3 +127,26 @@ test('free casts: Armor of Shadows is cast on the caster only (target: the caste
   const m = e.feats.find((x) => x.id === 'mystic-arcanum-circle-of-death');
   assert.equal(C.freeSub(m, 1), 'Cast free · 1 left');
 });
+
+test('Arcane Recovery on the Short Rest: spent slots up to level 5 and half the level, as `recover` takes them', () => {
+  const s = hero(WIZ), e = s.entities.hero;
+  assert.equal(C.recoverOf(e).rows.length, 0, 'nothing spent: nothing to recover');
+  e.slots[1] -= 2; e.slots[3] -= 1; e.slots[6] -= 1;
+  const r = C.recoverOf(e);
+  assert.equal(r.most, 7); assert.deepEqual(r.rows, [{ level: 1, spent: 2 }, { level: 3, spent: 1 }], 'level 6 is over the feature\'s limit');
+  const levels = C.recoverLevels(r, { 1: 2, 3: 1 });
+  assert.deepEqual(levels, [1, 1, 3]);
+  assert.deepEqual(C.recoverLevels(r, { 1: 9, 3: 9 }), [1, 1, 3], 'no more than is spent');
+  assert.deepEqual(C.recoverLevels({ ...r, most: 2 }, { 1: 2, 3: 1 }), [1, 1], 'no more than half the level in all');
+  const before = { 1: e.slots[1], 3: e.slots[3] };
+  ok(apply(s, { type: 'shortRest', ids: ['hero'], recover: { hero: levels } }, DM));
+  assert.equal(e.slots[1], before[1] + 2); assert.equal(e.slots[3], before[3] + 1);
+  assert.equal(C.recoverOf(e), null, 'once a Long Rest: the use is spent');
+});
+
+test('Natural Recovery: the druid has the same row', () => {
+  const s = hero({ name: 'Dru', class: 'druid', level: 14, subclass: 'land', abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 18, cha: 10 }, skills: ['nature', 'perception'], spells: [] }), e = s.entities.hero;
+  e.slots[2] -= 1;
+  const r = C.recoverOf(e);
+  assert.equal(r.f.name, 'Natural Recovery'); assert.deepEqual(r.rows, [{ level: 2, spent: 1 }]);
+});

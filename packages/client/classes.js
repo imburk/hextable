@@ -158,6 +158,23 @@ export function preyCandidates(st, e, f) {
     .sort((a, b) => (a.x.side === e.side) - (b.x.side === e.side) || a.d - b.d);
 }
 
+// ---------- Arcane Recovery and Natural Recovery (C10): slots back on a Short Rest ----------
+// `recover: { max }` on a feature with a use left: at the Short Rest the DM names the slots it brings back, of level `max` or lower, of a combined level of half the
+// character's level (rounded up). Sent as `shortRest { recover: { id: [levels] } }`. The engine checks again and says why it refuses.
+export function recoverOf(e) {
+  const f = (e.feats ?? []).find((x) => x.recover && (e.uses?.[x.id] ?? 0) > 0);
+  if (!f) return null;
+  const rows = Object.keys(e.slotsMax ?? {}).map(Number).filter((l) => l >= 1 && l <= f.recover.max).sort((a, b) => a - b)
+    .map((l) => ({ level: l, spent: (e.slotsMax[l] ?? 0) - (e.slots?.[l] ?? 0) })).filter((r) => r.spent > 0);
+  return { f, most: Math.ceil((e.level ?? 1) / 2), rows };
+}
+// The levels chosen, as the action takes them: `picks` is { level: count }; a count over what is spent, or a total over the most, is cut back (the screen never lets one be set).
+export function recoverLevels(r, picks) {
+  const out = []; let total = 0;
+  for (const { level, spent } of [...r.rows].reverse()) for (let i = 0; i < Math.min(picks[level] ?? 0, spent); i++) if (total + level <= r.most) { out.push(level); total += level; }
+  return out.sort((a, b) => a - b);
+}
+
 // What pays for a use of a feature: its own uses, or, with none left, the pool its `orCost` names (Intimidating Presence: a use of Rage).
 export function payFor(e, f) {
   const a = f.action ?? {}, n = a.cost?.n ?? 1, own = !!f.uses, left = own ? e.uses?.[f.id] ?? 0 : null;
@@ -634,12 +651,47 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   function setPending(p) { pend = p; }
   // A cast is sent with what was chosen for it: Metamagic, or the feature that casts it.
   function decorate(action) {
+    if (action.type === 'shortRest' && action.recover === undefined) return restAction(action);
     if (action.type !== 'cast' || !pend || pend.actor !== action.actor || pend.spell !== action.spell) return action;
     const out = { ...action, ...structuredClone(pend.extra) };
     last = { action: out, spec: null, pend };
     return out;
   }
   const chosenFor = (e, spellId) => (pend && pend.actor === e.id && pend.spell === spellId ? pend : null);
+
+  // ---------- the DM's Short Rest: Arcane Recovery and Natural Recovery ----------
+  // features.js draws the Short Rest box; this adds a row for each member who has a recovery with a use left (app.js calls `restRows` after the box is drawn), and
+  // `decorate` adds `recover` to the `shortRest` action from what was chosen.
+  let rest = {};                                    // { creature id: { level: count } }
+  function restRows(box) {
+    rest = {};
+    const go = box.querySelector('#dm-short-go');
+    if (!go) return;
+    for (const e of Object.values(S().entities).filter((x) => x.side === 'party' && !x.dead)) {
+      const r = recoverOf(e);
+      if (!r) continue;
+      const picks = (rest[e.id] = {}), part = h('fieldset', { class: 'cp-rest', 'data-recover': e.id });
+      const sum = h('p', { class: 'note cp-rest-sum', 'aria-live': 'polite' });
+      const total = () => recoverLevels(r, picks).reduce((n, l) => n + l, 0);
+      const draw = () => { sum.textContent = `${total()} of ${r.most} levels chosen`; for (const row of part.querySelectorAll('[data-level]')) { const l = +row.dataset.level; row.querySelector('output').textContent = picks[l] ?? 0; } };
+      part.append(h('legend', { text: `${e.name}: ${r.f.name}` }), h('p', { class: 'note', text: `Slots back, none above level ${r.f.recover.max}, of a combined level up to ${r.most}. Once a Long Rest.` }));
+      if (!r.rows.length) part.append(h('p', { class: 'note', text: `${e.name} has spent no slot of level ${r.f.recover.max} or lower.` }));
+      for (const { level, spent } of r.rows) {
+        const row = h('div', { class: 'cp-rest-row', 'data-level': level }), out = h('output', { text: '0', 'aria-label': `Level ${level} slots to recover` });
+        const step = (d) => { const n = Math.max(0, Math.min(spent, (picks[level] ?? 0) + d)); if (d > 0 && total() + level > r.most) return; picks[level] = n; draw(); };
+        row.append(h('span', { text: `Level ${level} (${spent} spent)` }), h('button', { type: 'button', 'data-step': -1, 'aria-label': `One fewer level ${level} slot`, text: '-', onclick: () => step(-1) }), out,
+          h('button', { type: 'button', 'data-step': 1, 'aria-label': `One more level ${level} slot`, text: '+', onclick: () => step(1) }));
+        part.append(row);
+      }
+      part.append(sum); draw();
+      go.before(part);
+    }
+  }
+  const restAction = (action) => {
+    const recover = {};
+    for (const [id, picks] of Object.entries(rest)) { const e = S().entities[id], r = e && recoverOf(e), levels = r ? recoverLevels(r, picks) : []; if (levels.length) recover[id] = levels; }
+    return Object.keys(recover).length ? { ...action, recover } : action;
+  };
 
   // ---------- the buttons of the action bar ----------
   const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel })[kindOf(f)](e, f);
@@ -672,7 +724,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   }
 
   return {
-    buttons, decorate, bindSheet,
+    buttons, decorate, bindSheet, restRows,
     // Opens the strike options of an attack (the Attacks tab's Brutal Strike and Cunning Strike rows).
     openAttack(e, id) { const a = (e.attacks ?? []).find((x) => x.id === id); if (a && strikeChoices(S(), e, a)) show(strikePanel(e, a)); },
     // Self-Restoration: at the end of a turn with more than one of its conditions, ask which ends. Returns true if it asked (the turn is not ended yet).

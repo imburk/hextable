@@ -4,7 +4,7 @@
 // character) or `levelUp`, and the engine checks the sheet again.
 import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
-import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor } from './shared/derive.js';
+import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices } from './shared/derive.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -12,7 +12,7 @@ const nice = (id) => cap(id.replace(/-/g, ' '));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const DEFAULT_COLOR = '#3a7d44';
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
-const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear'];
+const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning'];
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
 function el(tag, props = {}, ...kids) {
@@ -29,6 +29,24 @@ const toggle = (list, v, on) => { const i = list.indexOf(v); if (on && i < 0) li
 // How many options a feature that picks from a list takes at this level: a number (Metamagic), or by the class
 // table (Eldritch Invocations, `pick: { column }`). `x` is an entry of featuresOf().
 export const pickLimit = (x) => pickFor(x.f, x.cls.c, x.cls.level);
+
+// Why an option of a pick list cannot be ticked yet ('' if it can): its `requires` (#232), `{ level?, option?, spell? }`, read as validate reads it. `mine` is what is ticked in
+// the list, `spells` the spells chosen on the sheet. The engine checks again; this only says why in words.
+export function optionWhy(x, o, mine, spells) {
+  const q = o.requires;
+  if (!q) return '';
+  if (q.level !== undefined && x.cls.level < q.level) return `Needs ${x.cls.c.name} level ${q.level}.`;
+  if (q.option !== undefined && !mine.includes(q.option)) return `Needs ${x.f.options.find((y) => y.id === q.option)?.name ?? q.option}.`;
+  if (q.spell !== undefined && !spells.includes(q.spell)) return `Needs ${CONTENT.spells[q.spell]?.name ?? q.spell} among the spells.`;
+  return '';
+}
+
+// The abilities of a feat's ability points, as the sheet takes them: `first` gets +2, or +1 with `second` (which gets +1 too); a feat of one point gives it to `first`.
+export function featPoints(inc, first, second) {
+  if (!inc || !first) return undefined;
+  if (inc.points === 1) return { [first]: 1 };
+  return second && second !== first ? { [first]: 1, [second]: 1 } : { [first]: 2 };
+}
 
 // How a feature's uses read: "3 uses, all back on a Long Rest (1 on a Short Rest)".
 export function usesText(u) {
@@ -50,7 +68,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   function fresh(cls = classIds[0]) {
     const c = CONTENT.classes[cls];
     return { name: '', class: cls, subclass: undefined, level: 1, abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, abilText: null,
-      skills: [], expertise: [], choices: {}, armour: null, shield: false, weapons: [], spells: [], color: DEFAULT_COLOR, keep: {}, c };
+      skills: [], expertise: [], choices: {}, feats: [], armour: null, shield: false, weapons: [], spells: [], color: DEFAULT_COLOR, keep: {}, c };
   }
   // The sheet the engine takes: choices only, nothing empty.
   function sheet() {
@@ -58,6 +76,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     if (b.subclass) s.subclass = b.subclass;
     if (b.expertise.length) s.expertise = [...b.expertise];
     if (Object.keys(b.choices).length) s.choices = { ...b.choices };
+    if (b.feats.length) s.feats = structuredClone(b.feats);
     if (b.armour) s.armour = b.armour;
     if (b.shield) s.shield = true;
     if (b.weapons.length) s.weapons = [...b.weapons];
@@ -69,7 +88,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   function fromSheet(s) {
     const x = fresh(s.class);
     Object.assign(x, { name: s.name ?? '', subclass: s.subclass, level: s.level, abilities: { ...x.abilities, ...s.abilities }, skills: [...(s.skills ?? [])],
-      expertise: [...(s.expertise ?? [])], choices: { ...(s.choices ?? {}) }, armour: s.armour ?? null, shield: !!s.shield, weapons: [...(s.weapons ?? [])],
+      expertise: [...(s.expertise ?? [])], choices: { ...(s.choices ?? {}) }, feats: structuredClone(s.feats ?? []), armour: s.armour ?? null, shield: !!s.shield, weapons: [...(s.weapons ?? [])],
       spells: [...(s.spells ?? [])], color: s.look?.color ?? DEFAULT_COLOR });
     for (const k of KEEP) if (s[k] !== undefined) x.keep[k] = structuredClone(s[k]);
     return x;
@@ -115,7 +134,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     parts.push(el('section', {}, el('h3', { text: 'Who' }), el('div', { class: 'qe-grid qe-2' },
       el('label', { class: 'qe-f wide' }, el('span', { text: 'Name' }), name),
       sel('Class', 'class', classIds.map((id) => [id, CONTENT.classes[id].name]), b.class, (v) => {
-        const keep = { name: b.name, color: b.color, abilities: b.abilities, level: b.level, keep: b.keep };
+        const keep = { name: b.name, color: b.color, abilities: b.abilities, level: b.level, keep: b.keep };   // a new class starts with no feats
         b = Object.assign(fresh(v), keep); autoSubclass(); build();
       }, locked || mode === 'edit'),
       sel('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
@@ -136,7 +155,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
         el('small', { class: 'note', text: c.saves.includes(a) ? 'Save proficiency' : '' })));
     }
     parts.push(el('section', {}, el('h3', { text: 'Ability scores' }), ab,
-      el('p', { class: 'note', text: 'Enter each score as it stands after background and feats. Features that raise a score (Primal Champion) are added for you.' })));
+      el('p', { class: 'note', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion).' })));
 
     // Features that ask for a choice
     const asks = L.feats.filter((x) => x.f.options && !x.option);
@@ -144,16 +163,21 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     const pickList = (x) => {
       const mine = Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id] : [], taken = asks.filter((y) => y !== x && y.f.pick).flatMap((y) => b.choices[y.f.id] ?? []);
       return el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, el('h4', { text: `${x.f.name}: choose up to ${pickLimit(x)}` }),
+        el('p', { class: 'note', id: `count-${x.f.id}`, text: `${mine.length} of ${pickLimit(x)} chosen` }),
         ...x.f.options.map((o) => {
-          const on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id));
-          return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
+          const need = optionWhy(x, o, mine, b.spells), on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id) || !!need);
+          return el('label', { class: 'check qe-tick', 'data-option': o.id }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
             onchange: (ev) => { const next = ev.target.checked ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } }),
-            el('span', { text: o.name + (taken.includes(o.id) ? ' (chosen above)' : '') }));
+            el('span', {}, o.name + (taken.includes(o.id) ? ' (chosen above)' : ''), need || (on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)) ? el('small', { class: 'note', text: ` ${need || optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)}` }) : null));
         }));
     };
     if (asks.length) parts.push(el('section', {}, el('h3', { text: 'Choices' }), ...asks.map((x) => x.f.pick ? pickList(x) : el('div', {},
       sel(x.f.name, `choice-${x.f.id}`, [['', 'Choose…'], ...x.f.options.map((o) => [o.id, o.name])], b.choices[x.f.id] ?? '', (v) => { if (v) b.choices[x.f.id] = v; else delete b.choices[x.f.id]; build(); }),
       b.choices[x.f.id] ? el('p', { class: 'note', text: x.f.options.find((o) => o.id === b.choices[x.f.id])?.text ?? '' }) : null))));
+
+    // Feats: Ability Score Improvement places, the origin feats (the engine's `featChoices` says what each place offers)
+    const feats = featsSection();
+    if (feats) parts.push(feats);
 
     // Skills
     const picked = b.skills.length, full = picked >= L.skills;
@@ -201,6 +225,64 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     update();
     panel.scrollTop = scroll;
     if (focus && focus !== 'qb-name' && !/^qb-abil/.test(focus)) document.getElementById(focus)?.focus({ preventScroll: true });
+  }
+
+  // ---------- feats (C13): `sheet.feats` is [{ id, at, abilities?, skills?, list?, ability?, spells? }]; the places and what each offers are `featChoices` ----------
+  function featsSection() {
+    const slots = featChoices(sheet());
+    if (!slots.length) return null;
+    const setEntry = (at, f) => { const i = b.feats.findIndex((x) => x.at === at); if (i >= 0) b.feats.splice(i, 1); if (f) b.feats.push(f); };
+    const pickOne = (id, label, options, value, onchange) => {
+      const sl = el('select', { id }, ...options.map(([v, t]) => el('option', { value: v, text: t })));
+      sl.value = value ?? ''; sl.onchange = () => onchange(sl.value);
+      return el('label', { class: 'qe-f' }, el('span', { text: label }), sl);
+    };
+    const sec = el('section', { id: 'qb-feats-pick' }, el('h3', { text: 'Feats' }),
+      el('p', { class: 'note', text: 'Ability scores above are the scores before these feats: a feat that raises one adds its points for you.' }));
+    for (const sl of slots) {
+      const def = sl.taken ? CONTENT.feats[sl.taken.id] : null, key = sl.at.replace(/[^a-z0-9]+/gi, '-');
+      const ids = new Set(sl.offer); if (sl.taken && !ids.has(sl.taken.id)) ids.add(sl.taken.id);
+      const box = el('div', { class: 'qb-pick', id: `feat-${key}`, 'data-at': sl.at }, pickOne(`feat-${key}-id`, `${sl.name}: ${sl.category === 'origin' ? 'an Origin feat' : 'a feat'}`,
+        [['', 'None'], ...[...ids].map((id) => [id, CONTENT.feats[id].name])], sl.taken?.id, (v) => { setEntry(sl.at, v ? { id: v, at: sl.at } : null); build(); }));
+      if (def) {
+        const t = sl.taken, put = (patch) => { const next = { ...t, ...patch }; for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]; setEntry(sl.at, next); };
+        box.append(el('p', { class: 'note', text: def.text ?? '' }));
+        const inc = def.increase;
+        if (inc) {
+          const [first, second] = Object.keys(t.abilities ?? {}), two = inc.points === 2 && Object.keys(t.abilities ?? {}).length === 1 && Object.values(t.abilities)[0] === 2;
+          const opts = (none) => [['', none], ...inc.from.map((a) => [a, ABIL_NAME[a]])];
+          box.append(el('div', { class: 'qe-grid qe-2' },
+            pickOne(`feat-${key}-a1`, inc.points === 2 ? 'Ability score (+2, or +1 with a second)' : 'Ability score (+1)', opts('Choose…'), first, (v) => { put({ abilities: featPoints(inc, v, two ? undefined : second) }); build(); }),
+            inc.points === 2 ? pickOne(`feat-${key}-a2`, 'Second ability score (+1 each)', opts('None: +2 to the first'), two ? '' : second, (v) => { put({ abilities: featPoints(inc, first, v) }); build(); }) : null));
+        }
+        if (def.proficiencies) {
+          const n = def.proficiencies.n, mine = t.skills ?? [];
+          box.append(el('h4', { text: `Skills: ${mine.length} of ${n}` }), el('div', { class: 'qe-skills' }, ...Object.keys(SKILLS).map((k) => {
+            const on = mine.includes(k), had = b.skills.includes(k);
+            return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `feat-${key}-skill-${k}`, checked: on, disabled: !on && (had || mine.length >= n),
+              onchange: (ev) => { const next = ev.target.checked ? [...mine, k] : mine.filter((i) => i !== k); put({ skills: next.length ? next : undefined }); build(); } }), el('span', { text: `${nice(k)}${had ? ' (already proficient)' : ''}` }));
+          })));
+        }
+        const sp = def.spellPick;
+        if (sp) {
+          const spells = t.spells ?? [], list = t.list, pool = list ? Object.values(CONTENT.spells).filter((x) => x.classes.includes(list)) : [];
+          box.append(el('div', { class: 'qe-grid qe-2' },
+            pickOne(`feat-${key}-list`, 'Spell list', [['', 'Choose…'], ...sp.lists.map((l) => [l, nice(l)])], list, (v) => { put({ list: v || undefined, spells: undefined }); build(); }),
+            pickOne(`feat-${key}-ability`, 'Spellcasting ability', [['', 'Choose…'], ...sp.abilities.map((a) => [a, ABIL_NAME[a]])], t.ability, (v) => { put({ ability: v || undefined }); build(); })));
+          for (const [lv, most, name] of [[0, sp.cantrips, 'Cantrips'], [1, sp.level1, 'Level 1 spells']]) {
+            if (!most) continue;
+            const here = spells.filter((id) => CONTENT.spells[id]?.level === lv);
+            box.append(el('h4', { text: `${name}: ${here.length} of ${most}` }), !list ? el('p', { class: 'note', text: 'Choose a spell list first.' }) : el('div', { class: 'qe-ticks' }, ...pool.filter((x) => x.level === lv).sort((a, z) => a.name.localeCompare(z.name)).map((x) => {
+              const on = spells.includes(x.id);
+              return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `feat-${key}-spell-${x.id}`, checked: on, disabled: !on && here.length >= most,
+                onchange: (ev) => { const next = ev.target.checked ? [...spells, x.id] : spells.filter((i) => i !== x.id); put({ spells: next.length ? next : undefined }); build(); } }), el('span', { text: x.name }));
+            })));
+          }
+        }
+      }
+      sec.append(box);
+    }
+    return sec;
   }
 
   function spellsSection(L) {
