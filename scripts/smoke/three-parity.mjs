@@ -53,6 +53,7 @@ async function threeParity(browser, url, label, opts) {
     try {
       for (const kind of ['gl', 'three']) {
         const ctx = await browser.newContext(opts); ctxs.push(ctx);
+        await ctx.addInitScript(() => { try { localStorage.setItem('hextable.arenaEdge', JSON.stringify('edge')); } catch { /* storage unavailable */ } });      // these passes look for the glowing edge (#305: the default look has none)
         await ctx.addInitScript(() => { let s = 12345; Math.random = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; });      // the valley's trees are drawn from a random seed per game
         const page = await ctx.newPage(); run.watch(page, ` (${kind})`); pages[kind] = page;
       }
@@ -134,6 +135,7 @@ async function threeParity(browser, url, label, opts) {
   });
   await scenario(`${label}: the game plays on the Three.js renderer`, async (run) => {
     const touch = !!opts.hasTouch, ctx = await browser.newContext(opts);
+        await ctx.addInitScript(() => { try { localStorage.setItem('hextable.arenaEdge', JSON.stringify('edge')); } catch { /* storage unavailable */ } });      // these passes look for the glowing edge (#305: the default look has none)
     try {
       const page = await ctx.newPage(); run.watch(page);
       await run.do('load with ?renderer=three and tap a character across the map', async () => {

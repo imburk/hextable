@@ -11,8 +11,9 @@ import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
+import { restamp } from './durations.js';
 
-export const VERSION = 21;
+export const VERSION = 22;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -108,6 +109,14 @@ export function migrate(state) {
   // `migrateMap` above (run on every load since version 3) gives a format 1 map `grid: 'hex'` and
   // renames `hexFeet` to `cellFeet`. Nothing else changes: every position, key, region, arena and
   // area is a hex one already, and plays as it did.
+  // Version 22: a turn is named by its fight, its round and whose turn it is, no longer by its place in the
+  // order (durations.js, turnKey; stepping away, #300). The stamps of the fight going on (when a lasting
+  // effect's part was made, when a zone last worked on each creature) are named by the creature at that
+  // place in the order as it stands. Stamps of other fights are never compared again and are left.
+  for (const fx of Array.isArray(state.effects) ? state.effects : []) {
+    for (const p of Array.isArray(fx?.parts) ? fx.parts : []) if (p && p.born !== undefined) p.born = restamp(state.encounter, p.born);
+    if (fx?.zone?.last && typeof fx.zone.last === 'object') for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(state.encounter, fx.zone.last[k]);
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

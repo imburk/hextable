@@ -1,15 +1,14 @@
 // The action panel (docs/specs/table-ui.md, Decision 6, task T3): the card at the foot of the screen. Its head (name, Sheet, End turn),
 // Hit Point bar and status line (with a small card on how each condition or lasting effect ends), and tabs chosen by what the
 // table is doing, `panelContext(S, e)`. Built here: Explore (outside a fight, ranked by `rankExplore`), Attacks, Spells, Bonus, Move,
-// Features, Items (gear, a Use row for each use of an item, the light), Reactions (on another's turn) and Down. Giving and dropping
-// items waits for the engine (E17).
+// Features, Items (gear, a Use row for each use of an item, Give... and Drop, what lies on the ground in reach, the light), Reactions (on another's turn) and Down.
 //
 // The top of this file is pure: it reads a state (a full state or a player's view) and the engine's own helpers, and returns
 // plain data, so a test can drive it with no page. `initActionPanel` below is the only part that touches the page. Nothing here
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile } from './shared/effects.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
 import { LIGHTS } from './shared/content/lights.js';
@@ -393,7 +392,7 @@ export function gearRows(S, e) {
       else acts.push({ id: `attune:${x.id}`, label: 'Attune', send: { type: 'attune', actor: e.id, item: x.id },
         why: fighting ? `${e.name} can't attune to an item in the middle of a fight.` : attuneProblem(sheet, def) || (attunedNow >= attuneMax(sheet) ? `${e.name} is attuned to ${attuneMax(sheet)} items already: end one first.` : '') });
     }
-    return { id: `gear:${x.id}`, key: x.id, label: name, sub: state.join(' · '), acts, pack: def.id };
+    return { id: `gear:${x.id}`, key: x.id, label: name, sub: state.join(' · '), acts, pack: def.id, held: x.equipped === true };
   });
 }
 
@@ -427,7 +426,36 @@ export function itemRows(S, e, { dm = false, mode = null } = {}) {
   const uses = [...all.filter((r) => !r.why), ...all.filter((r) => r.why)];
   const gear = gearRows(S, e), also = (e.gear ?? []).filter((g) => typeof g === 'string' && g);
   const carried = gear.length > 0 || also.length > 0 || !!e.light;
-  return { uses, gear, also, light: carried ? lightRow(S, e, { dm }) : null, any: carried };
+  // E17: Give... and Drop on each thing carried, and what lies on the ground in reach. The engine's lists and its reasons (`passTargets`, `interactionOf`, `pickUpsFor`).
+  const hand = handRows(S, e, { dm });
+  for (const g of gear) g.acts.push(...hand.actsFor(g.key, g.held));
+  for (const g of gear) if (g.held) g.note = TAKE_OFF;
+  const names = [];
+  for (const n of also) { const t = names.find((x) => x.label === n); if (t) t.count++; else names.push({ id: `name:${n}`, label: n, count: 1, acts: hand.actsFor(n, false), note: '' }); }
+  return { uses, gear, also, names, light: carried ? lightRow(S, e, { dm }) : null, targets: hand.targets, time: hand.time, ground: hand.ground, any: carried || hand.ground.length > 0 };
+}
+
+// What a creature can do with what it carries and what lies by it (E17). `targets`: the creatures it can hand something to, as `passTargets` gives them (a player's state holds only the ones the
+// party knows of; one that is hidden is left out for anyone but the DM besides); `time`: what the next object interaction costs. `actsFor(item, held)`: the Give... and Drop buttons of a thing carried
+// (`item` is a sheet key or a name in `gear`, as the engine takes it); a worn or held thing has none, it says "take it off first". `ground`: the piles in reach, a button for each thing on them
+// and, outside a fight, Take all; for the DM the piles dropped unseen too, marked `unseen`.
+const TAKE_OFF = 'Take it off first.';
+const TIME_WORDS = { free: 'Free: the first thing you handle this turn.', action: 'Uses your action.' };
+export function handRows(S, e, { dm = false } = {}) {
+  if (!e) return { targets: [], time: null, ground: [], actsFor: () => [] };
+  const { why, time } = interactionOf(S, e), fighting = !!S.encounter && inFight(S, e.id);
+  const targets = passTargets(S, e).filter((t) => dm || !S.entities[t.id]?.hidden).map((t) => ({ id: t.id, name: t.name, why: t.why, time: t.time }));
+  const ready = targets.some((t) => !t.why);
+  const actsFor = (item, held) => (held ? [] : [
+    { id: `give:${item}`, label: 'Give...', give: { item }, why: why || (targets.length ? (ready ? '' : targets.find((t) => t.why)?.why ?? '') : 'Nobody is within 5 feet.'), time },
+    { id: `drop:${item}`, label: 'Drop', why, time, send: { type: 'drop', actor: e.id, item } },
+  ]);
+  const ground = pickUpsFor(S, e, { dm }).map((p) => ({
+    id: `pile:${p.object}`, object: p.object, label: p.name, unseen: p.unseen === true, why: p.why, time: p.time,
+    things: p.items.map((x) => ({ id: `pick:${p.object}:${x.id}`, label: x.name, why: p.why, send: { type: 'pickUp', actor: e.id, object: p.object, item: x.id } })),
+    all: !fighting && p.items.length > 1 ? { id: `pick:${p.object}`, label: 'Take all', why: p.why, send: { type: 'pickUp', actor: e.id, object: p.object } } : null,
+  }));
+  return { targets, time, ground, actsFor };
 }
 
 // The rows of the tab `id` for `e` ('' for a tab with none). One place for the shell and the tests.
@@ -513,6 +541,7 @@ export function initActionPanel(ctx) {
   const panes = { items: itemsEl, explore: $('ap-explore'), attacks: $('ap-attacks'), spells: spellsEl, bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down') };
   const LISTS = ['explore', 'attacks', 'spells', 'bonus', 'move', 'features'];
   let picking = null;                                    // the Items row whose potion is being given: { id, actor }
+  let giving = null;                                     // the Give... button whose list of creatures is open: { id (of the act), actor }
   // The Spells tab's sort (kept on this device) and filters (kept while the page is open, not between sessions).
   const sortNow = () => (SPELL_SORTS[prefs.get('hextable.spellSort')] ? prefs.get('hextable.spellSort') : 'level');
   let filters = noFilters(), filtersOpen = false, refocus = null;
@@ -609,10 +638,25 @@ export function initActionPanel(ctx) {
       if (r.aimed) return ctx.armItem(e, r, level, false);
       return ctx.act(level > r.level ? { ...r.send, level } : r.send);
     }
+    const to = ev.target.closest('[data-give-to], [data-give-cancel]');
+    if (to) {
+      const a = giving && giving.actor === e?.id && (rowsBy.itemsGear ?? []).find((x) => x.id === giving.id);
+      if (!e || ctx.skipping()) return;
+      if (to.dataset.giveCancel !== undefined || !a) { giving = null; return ctx.render(); }
+      const t = (rowsBy.itemsTargets ?? []).find((x) => x.id === to.dataset.giveTo);         // only a creature the engine offered; a greyed one says why
+      if (!t) { giving = null; return ctx.render(); }
+      if (t.why) return ctx.toast(t.why);
+      giving = null; ctx.act({ type: 'pass', actor: e.id, item: a.give.item, to: t.id });
+      return ctx.render();
+    }
     const g = ev.target.closest('[data-gact]');
     if (g) {
       const a = (rowsBy.itemsGear ?? []).find((x) => x.id === g.dataset.gact);
-      if (a && e && !ctx.skipping()) { if (a.why) return ctx.toast(a.why); ctx.act(a.send); }
+      if (a && e && !ctx.skipping()) {
+        if (a.why) return ctx.toast(a.why);
+        if (a.give) { giving = giving?.id === a.id ? null : { id: a.id, actor: e.id }; picking = null; return ctx.render(); }
+        giving = null; ctx.act(a.send);
+      }
       return;
     }
     const b = ev.target.closest('[data-row]'); if (!b) return;
@@ -702,17 +746,29 @@ export function initActionPanel(ctx) {
     const it = itemRows(S, e, { dm, mode });
     if (picking && (picking.actor !== e.id || !it.uses.some((r) => r.id === picking.id && !r.why && (r.targets.length || r.upTo > r.level)))) picking = null;
     const lightList = it.light ? [it.light] : [];
-    rowsBy.items = [...it.uses, ...lightList]; rowsBy.itemsGear = it.gear.flatMap((g) => g.acts);
+    const groundActs = it.ground.flatMap((p) => [...p.things, ...(p.all ? [p.all] : [])]);
+    const acts = [...it.gear.flatMap((g) => g.acts), ...it.names.flatMap((n) => n.acts), ...groundActs];
+    rowsBy.items = [...it.uses, ...lightList]; rowsBy.itemsGear = acts; rowsBy.itemsTargets = it.targets;
+    if (giving && (giving.actor !== e.id || !acts.some((a) => a.id === giving.id && a.give && !a.why))) giving = null;
     const levels = (r) => `<div class="ap-pick" role="group" aria-label="Cast at which level?"><span>Cast at level</span>${Array.from({ length: r.upTo - r.level + 1 }, (_, i) => r.level + i).map((l) =>
       `<button type="button" data-lvl="${l}">${l}${l > r.level ? ` (${r.cost + l - r.level} charges)` : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
     const picker = (r) => r.upTo > r.level && !r.targets.length ? levels(r) : `<div class="ap-pick" role="group" aria-label="Who is it for?"><span>Give it to</span><button type="button" data-pick="self">${esc(e.name)}</button>${
       r.targets.map((t) => `<button type="button" data-pick="${esc(t.id)}">${esc(t.name)}${t.down ? ' (down)' : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
+    const wid = (a) => `ap-w-${esc(a.id).replace(/[^\w-]/g, '_')}`;
+    const btn = (a, did = wid(a)) => `<button type="button" data-gact="${esc(a.id)}" aria-disabled="${a.why ? 'true' : 'false'}"${a.why ? ` aria-describedby="${did}" class="off"` : ''}${a.give ? ` aria-expanded="${giving?.id === a.id}"` : ''}>${esc(a.label)}</button>`;
+    const why = (list) => list.filter((a) => a.why).map((a) => `<small class="ap-why" id="${wid(a)}">${esc(a.why)}</small>`).join('');
+    const timeLine = it.time && TIME_WORDS[it.time] ? `<small class="ap-s">${esc(TIME_WORDS[it.time])}</small>` : '';
+    const givePick = (a) => giving?.id === a.id ? `<div class="ap-pick" role="group" aria-label="Who gets it?"><span>Hand it to</span>${it.targets.map((t) =>
+      `<button type="button" data-give-to="${esc(t.id)}" aria-disabled="${t.why ? 'true' : 'false'}"${t.why ? ' class="off"' : ''}>${esc(t.name)}${t.why ? `<small class="ap-why"> ${esc(t.why)}</small>` : ''}</button>`).join('')}<button type="button" data-give-cancel>Cancel</button></div>` : '';
+    const carriedRow = (key, label, sub, list, note) => `<div class="ap-row ap-gear info" data-gear="${esc(key)}"><span class="ap-top"><span class="ap-t">${esc(label)}</span></span>${sub ? `<small class="ap-s">${esc(sub)}</small>` : ''}${
+      list.length ? `<span class="ap-acts">${list.map(btn).join('')}</span>${timeLine}${why(list)}${list.map(givePick).join('')}` : ''}${note ? `<small class="ap-why">${esc(note)}</small>` : ''}</div>`;
     const uses = it.uses.map((r) => { const on = picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r) : ''); }).join('');
-    const gear = it.gear.map((g) => `<div class="ap-row ap-gear info" data-gear="${esc(g.key)}"><span class="ap-top"><span class="ap-t">${esc(g.label)}</span></span>${g.sub ? `<small class="ap-s">${esc(g.sub)}</small>` : ''}${
-      g.acts.length ? `<span class="ap-acts">${g.acts.map((a) => `<button type="button" data-gact="${esc(a.id)}" aria-disabled="${a.why ? 'true' : 'false'}"${a.why ? ` aria-describedby="ap-w-${esc(a.id).replace(/[^\w-]/g, '_')}"` : ''}${a.why ? ' class="off"' : ''}>${esc(a.label)}</button>`).join('')}</span>${
-        g.acts.filter((a) => a.why).map((a) => `<small class="ap-why" id="ap-w-${esc(a.id).replace(/[^\w-]/g, '_')}">${esc(a.why)}</small>`).join('')}` : ''}</div>`).join('');
-    const also = it.also.length ? `<div class="ap-row ap-gear info"><span class="ap-top"><span class="ap-t">Also carried</span></span><small class="ap-s">${esc(it.also.join(', '))}</small></div>` : '';
-    setHtml(panes.items, `${it.uses.length ? `<h4 class="ap-head">Use</h4><div class="ap-list">${uses}</div>` : ''}${gear || also ? `<h4 class="ap-head">Carried</h4><div class="ap-list">${gear}${also}</div>` : ''}${
+    const gear = it.gear.map((g) => carriedRow(g.key, g.label, g.sub, g.acts, g.note)).join('');
+    const names = it.names.map((n) => carriedRow(n.id, n.label, n.count > 1 ? `x${n.count}` : '', n.acts, '')).join('');
+    const ground = it.ground.map((p) => `<div class="ap-row ap-gear info" data-pile="${esc(p.object)}"><span class="ap-top"><span class="ap-t">${esc(p.label)}</span>${p.unseen ? '<span class="ap-chip">Not seen by the players</span>' : ''}</span>${
+      p.things.map((x) => `<span class="ap-line"><span>${esc(x.label)}</span>${btn({ ...x, label: 'Pick up' }, wid(p.things[0]))}</span>`).join('')}${p.all ? `<span class="ap-acts">${btn(p.all, wid(p.things[0]))}</span>` : ''}${timeLine}${why(p.things.slice(0, 1))}</div>`).join('');
+    setHtml(panes.items, `${it.uses.length ? `<h4 class="ap-head">Use</h4><div class="ap-list">${uses}</div>` : ''}${gear || names ? `<h4 class="ap-head">Carried</h4><div class="ap-list">${gear}${names}</div>` : ''}${
+      ground ? `<h4 class="ap-head">On the ground here</h4><div class="ap-list">${ground}</div>` : ''}${
       lightList.length ? `<h4 class="ap-head">Light</h4><div class="ap-list">${lightList.map(rowHtml).join('')}</div>` : ''}${!it.any ? '<p class="ap-why-line">Nothing carried.</p>' : ''}`);
   }
 
@@ -808,7 +864,7 @@ export function initActionPanel(ctx) {
       card.toggleAttribute('data-raised', raised);
       card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
       if (panes[tab] && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
-      if (tab === 'items' && picking) panes.items.querySelector('.ap-pick')?.scrollIntoView({ block: 'nearest' });       // the chooser must be on screen, not below the fold
+      if (tab === 'items' && (picking || giving)) panes.items.querySelector('.ap-pick')?.scrollIntoView({ block: 'nearest' });       // the chooser must be on screen, not below the fold
       return tab;
     },
     get tab() { return sel.tab ?? card.dataset.tab; },
