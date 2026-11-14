@@ -20,9 +20,10 @@
 //   variant    "damageType" | "spell": chosen for each item (the sheet's `type` or `spell`); "chosen" in a
 //              modifier's damage types is that type
 //   charges    { max, regain? }: charges, and the dice of them regained at dawn
-//   activate   what using it does, for a later "use an item" action (docs/specs/table-ui.md, E18):
-//              [{ name?, time, cost?, consumed?, spell?, level?, dc?, effects? }]. Nothing runs it yet: the DM
-//              applies it, so an item whose only magic is here is `manual`.
+//   activate   what using it does, run by the `use` action with `item` (docs/specs/table-ui.md, E18):
+//              [{ name?, time, cost?, consumed?, spell?, level?, dc?, effects? }]. The engine spends the time,
+//              the charges and a consumed item, and runs `effects` on the effect runner; a spell cast from an
+//              item goes to the DM with its numbers, so an item whose only magic is a spell is still `manual`.
 export const items = [
   // ---------- weapons ----------
   { id: "weapon-plus-1", name: "Weapon, +1", category: "weapon", rarity: "uncommon", wear: "weapon", base: { weapon: "any" }, bonus: 1, tier: "auto", source: "SRD 5.2.1", checked: true,
@@ -197,19 +198,19 @@ export const items = [
     activate: [{ time: "action", spell: "magic-missile", level: 1, cost: 1 }] },
 
   // ---------- potions and scrolls ----------
-  { id: "potion-of-healing", name: "Potion of Healing", category: "potion", rarity: "common", wear: "carried", tier: "manual", source: "SRD 5.2.1", checked: true,
+  { id: "potion-of-healing", name: "Potion of Healing", category: "potion", rarity: "common", wear: "carried", tier: "auto", source: "SRD 5.2.1", checked: true,
     text: "Drink it (a Bonus Action, or give it to another) to regain 2d4 + 2 Hit Points.",
     activate: [{ time: "bonus", consumed: true, effects: [{ heal: "2d4+2" }] }] },
-  { id: "potion-of-healing-greater", name: "Potion of Healing (greater)", category: "potion", rarity: "uncommon", wear: "carried", tier: "manual", source: "SRD 5.2.1", checked: true,
+  { id: "potion-of-healing-greater", name: "Potion of Healing (greater)", category: "potion", rarity: "uncommon", wear: "carried", tier: "auto", source: "SRD 5.2.1", checked: true,
     text: "Drink it to regain 4d4 + 4 Hit Points.",
     activate: [{ time: "bonus", consumed: true, effects: [{ heal: "4d4+4" }] }] },
-  { id: "potion-of-healing-superior", name: "Potion of Healing (superior)", category: "potion", rarity: "rare", wear: "carried", tier: "manual", source: "SRD 5.2.1", checked: true,
+  { id: "potion-of-healing-superior", name: "Potion of Healing (superior)", category: "potion", rarity: "rare", wear: "carried", tier: "auto", source: "SRD 5.2.1", checked: true,
     text: "Drink it to regain 8d4 + 8 Hit Points.",
     activate: [{ time: "bonus", consumed: true, effects: [{ heal: "8d4+8" }] }] },
-  { id: "potion-of-healing-supreme", name: "Potion of Healing (supreme)", category: "potion", rarity: "very-rare", wear: "carried", tier: "manual", source: "SRD 5.2.1", checked: true,
+  { id: "potion-of-healing-supreme", name: "Potion of Healing (supreme)", category: "potion", rarity: "very-rare", wear: "carried", tier: "auto", source: "SRD 5.2.1", checked: true,
     text: "Drink it to regain 10d4 + 20 Hit Points.",
     activate: [{ time: "bonus", consumed: true, effects: [{ heal: "10d4+20" }] }] },
-  { id: "potion-of-heroism", name: "Potion of Heroism", category: "potion", rarity: "rare", wear: "carried", tier: "manual", source: "SRD 5.2.1", checked: true,
+  { id: "potion-of-heroism", name: "Potion of Heroism", category: "potion", rarity: "rare", wear: "carried", tier: "assist", source: "SRD 5.2.1", checked: true,
     text: "Drink it for 10 Temporary Hit Points for 1 hour, and the effect of Bless for the same hour with no Concentration.",
     activate: [{ time: "bonus", consumed: true, effects: [{ tempHp: "+10" }, { manual: "The drinker is under the effect of Bless for 1 hour, with no Concentration." }] }] },
   { id: "potion-of-giant-strength-hill", name: "Potion of Giant Strength (hill)", category: "potion", rarity: "uncommon", wear: "carried", tier: "manual", source: "SRD 5.2.1", checked: true,
