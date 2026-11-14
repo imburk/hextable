@@ -737,6 +737,8 @@ export const byMarch = (a, b) => (a.march ?? Infinity) - (b.march ?? Infinity);
 export function unfollow(s, e, ev, why = null) {
   const leader = e.follow;
   delete e.follow;
+  const sl = s.entities[leader]?.formation?.slots;                     // its place in a held or custom formation goes with it (#303)
+  if (sl) delete sl[e.id];
   ev.push({ type: 'follow', id: e.id, leader: null, was: leader, ...(why ? { why } : {}) });
 }
 

@@ -12,7 +12,7 @@ import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
 import { restamp } from './durations.js';
-import { validFormation } from './engine.js';
+import { validFormation } from './engine/world.js';
 
 export const VERSION = 22;
 

@@ -1649,7 +1649,8 @@ following, which stays as it was.
   `validFormation`); the walking in `engine/movement.js` (`formation`, called by `march`).
 - **No state version bump.** The field is absent on every saved table, and a leader without one walks its followers
   as the column, as they always walked; `migrate` drops a `formation` that is not whole (idempotent, no version of its
-  own, as #300 did for `away`). A bump would also have changed the server test that pins version 22, which this job
+  own, as #300 did for `away`; `migrate.js` imports the check from `engine/world.js`, not `engine.js`, and
+  `test/imports.test.js` fails on any new import cycle). A bump would also have changed the server test that pins version 22, which this job
   may not touch.
 - **The frame.** The leader faces the grid direction of its last step that went somewhere on the map (6 on hexes,
   8 on squares). On squares a diagonal frame is the square frame turned, so `back: 1` is one diagonal step and the
@@ -1665,7 +1666,16 @@ following, which stays as it was.
   follower whose place is still held by another (a swap) takes the best place free then. If **any** has none (a
   corridor, a door, a crowd), nobody is laid out: the column takes them all, in marching order along the leader's
   trail, with today's keep-up and "couldn't keep up" rules unchanged. The next walk with room brings the shape back.
-  Followers of followers, and followers with no slot, walk as the column after the formation.
+  Followers of followers, and followers with no slot, walk as the column after the formation. A follower who is
+  down, cannot move (Speed 0, Grappled) or cannot get up beside the leader is left out of the layout and walks (or is
+  dropped as not keeping up) in the column after the others, who keep their places (review of #310).
+- **Where a careful walker does not stop (review of #310).** A place is never on a trap the party knows of (an
+  object whose state is not hidden, with a trigger that would go off on entering it or coming near it: a spotted
+  pit, as `moveOptions` already keeps every way off one), nor inside a lasting zone whose maker the party knows of
+  (Web, Spirit Guardians, Moonbeam: one cast by a creature hidden from them is not counted), unless the follower is
+  in it already. Deep water and rock are never places (their tiles cannot be stood on). Difficult Terrain is a place
+  like any other. A trap or zone the party does not know of plays no part in the choice, so the shape never gives
+  one away; it goes off on a follower's walk as on any walk.
 - **Capture.** `partyFollow` without a shape, for a leader with no formation, captures where everyone stands, facing
   away from the middle of those following (one standing ahead is taken as beside the leader). A held shape that is
   single file (every `side` 0) is walked as the column, by the trail in marching order: a party lined up in a
@@ -1695,6 +1705,10 @@ following, which stays as it was.
   holds stops beside it and finds it (`revealed`, then `found` as for a move onto it), and the others end where they
   would have. Walking itself (traps, noticing, lookouts, fights starting) is the same `walk` every move uses; the leader
   still walks first, and a follower is never laid out ahead of it.
+- **Places forgotten.** A follower who stops following loses its place in a held or custom formation (`unfollow`);
+  one dead or gone, or no longer following, is dropped from `slots` when the leader next walks.
+- **Accepted (review of #310).** A party-side creature the DM hid that stands on a slot's place changes the shape
+  without a word (the follower takes another place), as a plain `move` onto that cell says "occupied".
 - **Fight start.** Unchanged: `catchUp` brings everyone up as before (followers are set down, not walked).
 - **Also in this PR.** `joinEncounter` (world.js) renames stamps still in the old index form before it re-sorts the
   order, as `settleOrder` does (review of #306); a test in `step-away.test.js`.

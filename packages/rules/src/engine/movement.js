@@ -1,8 +1,8 @@
 // Movement actions (engine.js): move, dash, stand, disengage, and walking together (follow,
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
 import { gridOf, col, key } from '../grid.js';
-import { apart, apartAt, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
-import { entered, snapshot } from '../zones.js';
+import { apart, apartAt, concealed, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
+import { entered, holds, snapshot, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
@@ -200,6 +200,7 @@ const ORIGIN = { q: 0, r: 0 };
 function formation(s, leader, walked, pending, ev) {
   const G = gridOf(s.map), B = barriers(s.map);
   const members = pending.filter((x) => x.follow === leader.id && x.side === 'party' && !(s.encounter && inFight(s, x.id)));
+  pruneSlots(s, leader);
   const slots = slotsFor(leader, members);
   if (!slots) return [];
   const face = walkFace(G, walked) ?? leader.formation.face ?? 0;
@@ -228,7 +229,11 @@ function formation(s, leader, walked, pending, ev) {
   const joined = (h) => (theirs.get(col(h)) ?? Infinity) <= 2 * FT * (G.dist(leader.pos, h) + KEEP_UP);
   const ahead = (h) => { const w = G.toWorld(h); return ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu; };
   const water = (h) => ground(s.map, h)?.tile.t === 'water';
-  const inSlot = members.filter((x) => slots[x.id]);
+  // One who is down, cannot move or cannot get up beside the leader is left to the column after the
+  // others (whose rules drop it as not keeping up); the rest keep their places.
+  const reaches = new Map(members.map((x) => [x.id, moveOptions(s, x)]));
+  const walks = (x) => up(x) && [...reaches.get(x.id).values()].some((v) => apartAt(s, leader, leader.pos, x, v.h) <= 1);
+  const inSlot = members.filter((x) => slots[x.id] && walks(x));
   const movers = new Set(pending.map((x) => x.id));
   // The best place for `f` among those `test` allows, nearest its slot.
   const placeFor = (f, spots, test) => {
@@ -236,7 +241,7 @@ function formation(s, leader, walked, pending, ev) {
     let best = null, bestKey = null;
     for (const sp of spots) {
       const w = G.toWorld(sp.h), d = Math.hypot(w.x - T.x, w.z - T.z) / cell, fwd = ahead(sp.h);
-      if (fwd > 0.5 + 1e-9 || !joined(sp.h) || !test(sp, d)) continue;
+      if (fwd > 0.5 + 1e-9 || !joined(sp.h) || (!sp.here && peril(s, f, sp.h)) || !test(sp, d)) continue;
       const rank = [d, fwd, Math.abs(sp.h.z - f.pos.z), sp.cost];
       if (!best || less(rank, bestKey)) { best = sp; bestKey = rank; }
     }
@@ -245,8 +250,7 @@ function formation(s, leader, walked, pending, ev) {
   const spotsOf = (f, reach) => [{ h: f.pos, cost: 0, here: true }, ...[...reach.values()].filter((v) => key(v.h) !== key(f.pos)), ...besideLurk(reach)];
   const plan = [], claimed = [];
   for (const f of inSlot) {
-    if (!up(f)) return [];
-    const reach = moveOptions(s, f);
+    const reach = reaches.get(f.id);
     // What stands still while they walk: everyone but those still to walk and those the party does not know of.
     const still = living(s).filter((o) => o.id !== f.id && !movers.has(o.id) && !unseenBy(s, o, f));
     const free = (h) => !still.some((o) => overlapAt(o, o.pos, f, h, G)) && !claimed.some(([c, ch]) => overlapAt(c, ch, f, h, G));
@@ -284,6 +288,28 @@ function formation(s, leader, walked, pending, ev) {
   }
   return done;
 }
+// Would a careful walker stop here? Not on a trap the party knows of that goes off on stepping there or
+// coming near (as moveOptions keeps every way off a spotted trap), nor where a lasting zone the party
+// knows of (its maker is not hidden from them) would take it in: Web, Spirit Guardians, Moonbeam. A
+// trap or zone the party does not know of plays no part: it springs on a walk as on any walk.
+function peril(s, f, h) {
+  const G = gridOf(s.map), far = measure(s, G), parts = footprint(f, h, G);
+  for (const o of s.map.objects) {
+    const def = objectDef(o);
+    if (!def.triggers?.length || def.states[o.state]?.hidden || Math.abs(objectZ(s, o) - h.z) > STEP_MAX) continue;
+    const near = Math.min(...parts.map((x) => far(x, o.at)));
+    if (def.triggers.some((t) => t.effects && t.from.includes(o.state) && (t.who !== 'party' || f.side === 'party') && (t.on === 'enter' ? near === 0 : t.on !== 'leave' && near * FT <= t.feet))) return true;
+  }
+  const there = { ...f, pos: h };
+  const known = (o) => !!o && (o.side === 'party' || (!concealed(s.map, o) && (sightRule(s) === 'rooms' || !unknown(s, o))));       // as view.js classifies it
+  return zonesOf(s).some((fx) => known(s.entities[fx.source]) && (fx.zone.on ?? []).length > 0 && holds(s, fx, there) && !holds(s, fx, f));
+}
+// A held or custom formation forgets the places of those no longer following its leader, or gone.
+function pruneSlots(s, leader) {
+  const sl = leader.formation?.slots;
+  if (sl) for (const id of Object.keys(sl)) { const x = s.entities[id]; if (!x || x.dead || x.follow !== leader.id) delete sl[id]; }
+}
+
 // The slots of `followers` as they stand around `leader`, the shape the party is in. Facing as the
 // leader's formation last faced, or (a new one) away from the middle of those following.
 function capture(s, leader, followers, fresh) {

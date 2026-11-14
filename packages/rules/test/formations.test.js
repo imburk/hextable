@@ -13,6 +13,7 @@ import { overlapAt, footprint } from "../src/space.js";
 import { view, viewEvents } from "../src/view.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { captureSlots, frameOf, slotOf } from "../src/engine/world.js";
+import { holds } from "../src/zones.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -318,4 +319,102 @@ test("players are sent a formation's places only for the party", () => {
   assert.equal(view(s, DM).entities.fighter.formation.slots[g].back, 1);
   const ev = viewEvents([{ type: "formation", id: "fighter", shape: "held", slots: s.entities.fighter.formation.slots }], s, PAT);
   assert.deepEqual(Object.keys(ev[0].slots).sort(), ["cleric", "rogue", "wizard"]);
+});
+
+// ---------- review of #310: what a careful walker does not stop on ----------
+// Both grids: the party two abreast, walking east 8 cells. `edit` changes the map or the state
+// before the walk; the plain walk says where everyone would have ended.
+// A spell cast outside a fight starts one: cast it on the caster's turn, then end the fight (the zone outlasts it).
+function castInFight(s, a) {
+  const p = s.entities[a.actor].pos, foe = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: p.q - 3, r: p.r + 3 } }, DM)).events[0].id;
+  ok(apply(s, { type: "startEncounter", center: p, radius: 12 }, DM));
+  for (let i = 0; i < 20 && current(s) !== a.actor; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  ok(apply(s, a, DM));
+  ok(apply(s, { type: "endEncounter" }, DM));
+  delete s.entities[foe];                                                      // out of the way: it was only there for the fight
+}
+const GRIDS = [["hex", field, 0], ["square", squareField, 8]];
+function walkOver(make, o, edit = () => {}, far = false) {
+  const s = game(make(), [["fighter", o, o], ["rogue", o - 1, o], ["cleric", o - 2, o], ["wizard", o - 3, o]]);
+  ok(apply(s, { type: "partyFollow", leader: "fighter", shape: "pairs" }, DM));
+  if (far) ok(apply(s, { type: "formation", leader: "fighter", slots: { wizard: { back: 2, side: 4 } } }, DM));   // well clear of the leader's way
+  edit(s);
+  const r = ok(apply(s, { type: "move", actor: "fighter", to: { q: o + 8, r: o } }, DM));
+  return { s, r };
+}
+for (const [grid, make, o] of GRIDS) {
+  const plain = walkOver(make, o).s;
+  const followers = ["rogue", "cleric", "wizard"];
+
+  test(`a spotted trap where a slot lands is not stood on; one not found is no part of the choice (${grid})`, () => {
+    for (const id of followers) {
+      const spot = at(plain, id);
+      const trap = (state) => (s) => { s.map.objects.push({ id: "pit", def: "pit-trap", level: "ground", at: spot, state }); s.settings.passiveFind = "off"; };
+      const { s, r } = walkOver(make, o, trap("found"));
+      assert.ok(!r.events.some((e) => e.type === "triggered"), `${id}'s place: nobody springs the spotted pit`);
+      for (const x of PARTY) assert.notDeepEqual(at(s, x), spot, `${x} is not on the pit`);
+      for (const x of followers) assert.equal(s.entities[x].follow, "fighter");
+      apartAll(s);
+      // Covered (not found): everyone goes where they would have, and it springs as on any walk. (Not
+      // on the leader's own way, where the leader springs it first.)
+      if (spot.r === o) continue;
+      const hid = walkOver(make, o, trap("hidden"));
+      for (const x of PARTY) assert.deepEqual(at(hid.s, x), at(plain, x), `${x}, hidden pit at ${id}'s place`);
+      assert.ok(hid.r.events.some((e) => e.type === "triggered" && e.id === id));
+    }
+  });
+
+  test(`deep water is never a place, and difficult ground is walked as any other (${grid})`, () => {
+    const water = walkOver(make, o, (s) => { s.map.levels[0].tiles[H.col(at(plain, "rogue"))] = { t: "water" }; s.map.levels[0].tiles[H.col(at(plain, "wizard"))] = { t: "water" }; });
+    for (const x of PARTY) assert.notEqual(water.s.map.levels[0].tiles[H.col(at(water.s, x))].t, "water", `${x} is not in the water`);
+    for (const x of followers) assert.equal(water.s.entities[x].follow, "fighter");
+    apartAll(water.s);
+    const rough = walkOver(make, o, (s) => { for (const t of Object.values(s.map.levels[0].tiles)) t.t = "forest"; });
+    for (const x of followers) assert.deepEqual(at(rough.s, x), at(plain, x), `${x} keeps its place on difficult ground`);
+  });
+
+  test(`a Web the party knows of is not stood in; Spirit Guardians round one who stays behind is kept out of (${grid})`, () => {
+    const farPlain = walkOver(make, o, () => {}, true).s, spot = at(farPlain, "wizard");
+    assert.ok(Math.abs(spot.r - o) >= 4, JSON.stringify(spot));
+    const { s, r } = walkOver(make, o, (s) => {
+      const w = s.entities.rogue; w.spells.push("web"); w.slots = { ...w.slots, 2: 1 }; w.slotsMax = { ...w.slotsMax, 2: 1 };
+      castInFight(s, { type: "cast", actor: "rogue", spell: "web", hex: spot });
+    }, true);
+    const web = s.effects.find((fx) => fx.zone);
+    assert.ok(web, "the web is there");
+    assert.ok(holds(s, web, { ...s.entities.wizard, pos: { ...spot, z: 0 } }), "the wizard's place is in the web");
+    for (const x of PARTY) assert.ok(!holds(s, web, s.entities[x]), `${x} is not in the web`);
+    assert.ok(!r.events.some((e) => e.type === "save"), "nobody had to save against it");
+    for (const x of followers) assert.equal(s.entities[x].follow, "fighter");
+
+    const sg = walkOver(make, o, (s) => {
+      const c = s.entities.cleric; c.spells.push("spirit-guardians"); c.slots = { ...c.slots, 3: 1 }; c.slotsMax = { ...c.slotsMax, 3: 1 };
+      ok(apply(s, { type: "follow", actor: "cleric", leader: null }, DM));
+      c.pos = { q: spot.q + 1, r: spot.r, z: 0 };
+      castInFight(s, { type: "cast", actor: "cleric", spell: "spirit-guardians", slot: 3, choice: "radiant", spare: [] });
+    }, true);
+    const g = sg.s.effects.find((fx) => fx.zone);
+    assert.ok(g, "the guardians are there");
+    assert.ok(holds(sg.s, g, { ...sg.s.entities.wizard, pos: { ...spot, z: 0 } }), "the wizard's place is in the guardians' reach");
+    for (const x of ["fighter", "rogue", "wizard"]) assert.ok(!holds(sg.s, g, sg.s.entities[x]), `${x} is kept out of the guardians`);
+    assert.equal(sg.s.entities.wizard.follow, "fighter");
+  });
+
+  test(`one who is down or cannot move stays put; the others keep their places (${grid})`, () => {
+    for (const stop of [(s) => { s.entities.cleric.hp = 0; }, (s) => { s.entities.cleric.cond.grappled = {}; s.entities.cleric.speed = 0; }]) {
+      const { s } = walkOver(make, o, stop);
+      assert.notDeepEqual(at(s, "cleric"), at(plain, "cleric"), "the cleric did not walk");
+      for (const x of ["rogue", "wizard"]) assert.deepEqual(at(s, x), at(plain, x), `${x} kept its slot`);
+    }
+  });
+}
+
+test("a follower who stops following, or dies, loses its place in a held formation", () => {
+  const s = game(field(), [["fighter", 0, 0], ["rogue", -1, 1], ["cleric", -1, 0], ["wizard", -2, 1]]);
+  ok(apply(s, { type: "partyFollow", leader: "fighter" }, DM));
+  ok(apply(s, { type: "follow", actor: "rogue", leader: null }, DM));
+  assert.deepEqual(Object.keys(s.entities.fighter.formation.slots).sort(), ["cleric", "wizard"]);
+  s.entities.wizard.dead = true;
+  ok(apply(s, { type: "move", actor: "fighter", to: { q: 6, r: 0 } }, DM));
+  assert.deepEqual(Object.keys(s.entities.fighter.formation.slots), ["cleric"]);
 });
