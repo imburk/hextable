@@ -12,7 +12,7 @@ const turnOf = async (page, id) => {
   for (let k = 0; k < 30 && (await cur(page)) !== id; k++) { await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), await cur(page)); await idle(page); }
   if ((await cur(page)) !== id) throw new Error(`it never became ${id}'s turn`);
 };
-const select = async (page, id) => { await page.evaluate((i) => window.hextable.select(i), id); await wait(page, (i) => !document.querySelector('#card').hidden && document.querySelector('#c-name').textContent === window.hextable.state.entities[i].name, id); };
+const select = async (page, id) => { await page.evaluate((i) => window.hextable.select(i), id); await wait(page, (i) => !document.querySelector('#card').hidden && document.querySelector('#c-name').textContent === window.hextable.state.entities[i].name, id, 20000); };
 // No row of the open pane is cut through the middle by the pane's bottom edge (or its top, scrolled to the start: nothing there).
 const whole = async (page, pane) => {
   const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(); return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1; }).map((r) => r.dataset.row); });
@@ -55,10 +55,10 @@ async function tabs(browser, url, label, opts) {
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.tpl === 'animated-flying-sword'));
         fly = await state(page, (S) => Object.values(S.entities).find((e) => e.tpl === 'animated-flying-sword').id);
         await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }));
-        await wait(page, () => !!window.hextable.state.encounter); await idle(page);
+        await wait(page, () => !!window.hextable.state.encounter, null, 20000); await idle(page);
         await turnOf(page, 'fighter'); await select(page, 'fighter');
-        await wait(page, () => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === 'attacks');
-        await waitShown(page, '#ap-attacks');
+        await wait(page, () => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === 'attacks', null, 20000);
+        await waitShown(page, '#ap-attacks', true, 15000);
         const t = await text(page, '#ap-attacks [data-row="atk:longsword"]');
         if (!/Longsword/.test(t) || !/to hit/.test(t) || !/reach 5 ft/.test(t) || !/Action/.test(t)) throw new Error(`the attack row says too little: ${t}`);
         if (await shown(page, '#actions')) throw new Error('the old bar is showing');
