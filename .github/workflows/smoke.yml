@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pass: [base, drawer, three, pinch, newgame, actionpanel, paneltabs]
+        pass: [base, drawer, three, pinch, newgame, actionpanel, dice, paneltabs]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

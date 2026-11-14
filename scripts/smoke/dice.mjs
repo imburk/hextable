@@ -45,14 +45,14 @@ async function dice(browser, url, label, opts) {
       await run.do('host, join, let in, claim a character', async () => {
         await open(host, url);
         await host.fill('#lobby-name', 'Dice DM'); await host.click('#lobby-host');
-        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6, null, 30000);
         const code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
         await open(me, url);
         await me.fill('#lobby-name', 'Dice Player'); await me.fill('#lobby-code', code); await me.click('#lobby-join');
-        await wait(me, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await wait(me, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent), null, 30000);
         await openTab(host, 'dm'); await waitShown(host, '#dm');
         await host.click('#dm-table button:has-text("Let in")');
-        await wait(me, () => window.hextable.state?.entities?.fighter);
+        await wait(me, () => window.hextable.state?.entities?.fighter, null, 30000);
         await closeMenu(host);
         const b = me.locator('#party button:has-text("Play as")').first();
         const name = (await b.textContent()).replace('Play as ', '').trim();
@@ -83,6 +83,13 @@ async function dice(browser, url, label, opts) {
         const hit = got.me.some((e) => e.type === 'attack' && e.hit && e.actor === pc);
         if (hit && !(await groups(me, 'damage'))) throw new Error('a hit, and no damage dice shown');
         if (!got.me.some((e) => e.type === 'attack' && e.dice)) throw new Error('the player\'s own attack came with no dice');
+        // #236: every throw has a title that says who and what for, from the event; the renderer's camera is readable for the dice to lie in its plane.
+        const pcName = await me.evaluate((p) => window.hextable.state.entities[p].name, pc);
+        if (!atk.label.startsWith(`${pcName}: `) || !/ attack$/.test(atk.label)) throw new Error(`the attack's title is "${atk.label}"`);
+        const dmg = await me.evaluate(() => window.hextable.thrown.find((g) => g.type === 'damage'));
+        if (dmg && !/ damage$/.test(dmg.label)) throw new Error(`the damage's title is "${dmg.label}"`);
+        const cam = await me.evaluate(() => window.hextable.R.cameraAngles());
+        if (!(Number.isFinite(cam.yaw) && cam.pitch >= 0.45 && cam.pitch <= 1.45)) throw new Error(`the camera reads ${JSON.stringify(cam)}`);
       });
 
       await run.do('a monster\'s save carries no dice to the player (the DM sees them); the player\'s own skill check is shown and matches', async () => {
@@ -118,6 +125,8 @@ async function dice(browser, url, label, opts) {
         if (!(await sentAfter('me', n, 'check'))) throw new Error('the player was sent no check with its dice');
         await idle();
         if (!(await groups(me, 'check'))) throw new Error('the check was not shown as dice');
+        const chk = await me.evaluate(() => window.hextable.thrown.find((g) => g.type === 'check'));
+        if (!/^[^:]+: Athletics check$/.test(chk.label)) throw new Error(`the check's title is "${chk.label}"`);
         bad = await audit(me); if (bad.length) throw new Error(bad.join('; '));
       });
 

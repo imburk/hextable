@@ -1260,6 +1260,6 @@ What was settled while building, where it differs from the text above, and what 
   The "more room" button is a small arrow at the end of the strip (it has a label for a screen reader) so five tabs fit at 390 px. Raised: 55 % of the screen on a phone; on a wide screen
   `max(184px, 40vh - 130px)`, since 40 % of the screen minus the head and the tabs left no more rows than compact.
 - **From the martial-class pull request (#230).** Rows come from the record, so Patient Defense, Step of the Wind, Stunning Strike, Flurry of Blows, Wholeness of Body and Rage appear with what the engine
-  already exposes. Not in the panel yet (DEBT T18): the Brutal Strike and Cunning Strike choices on an attack, Intimidating Presence's targets, Self-Restoration's `cure`, the `free` standing instructions on
+  already exposes. Not in the panel yet (DEBT T19): the Brutal Strike and Cunning Strike choices on an attack, Intimidating Presence's targets, Self-Restoration's `cure`, the `free` standing instructions on
   Reactions, and the new events.
 - **Not verified.** A real finger; a screen reader on the new rows; the three themes beyond Classic; objects in reach and a prone creature in a browser (the unit tests cover the rows; the send is the old one).

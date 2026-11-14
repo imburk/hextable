@@ -28,7 +28,7 @@ import { initHandouts } from './handouts.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
 import { initClasses, formOf, formName } from './classes.js';
-import { createDice, MAX_DICE } from './dice.js';
+import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { objectDef } from './shared/walls.js';
 import { initTableControls, importLine } from './tablecontrols.js';
@@ -93,7 +93,7 @@ function toast(msg, info = false) {
 function setMode(m) { mode = m; refresh(); }
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
 R.onPicture = () => { if (ED.on) refresh(); };
-const DICE = createDice($('dice'), prefs);
+const DICE = createDice($('dice'), prefs, () => R.cameraAngles());
 
 // ---------- dice: who throws, and what is thrown (docs/specs/dice.md) ----------
 // Under the table rule diceThrow 'throw' an action that rolls is armed, a tray shows its dice,
@@ -145,9 +145,10 @@ function act(action) {
 // action (a save, an opportunity attack) are thrown on the roller's behalf and say whose they are.
 function throwsOf(state, events) {
   const nm = (id) => state.entities[id]?.name ?? 'Someone', groups = [];
-  let actor = null;
+  let actor = null, src = null;                 // src: the attack, spell or action under way, for titles (dice.js)
   const behalf = (who) => (state.settings?.diceThrow === 'throw' && who && who !== actor && state.entities[who]?.side === 'party' ? ' (thrown for them)' : '');
   for (const ev of events) {
+    const was = src; src = nextSource(src, ev);
     if (ev.type === 'attack' && !ev.opportunity || ev.type === 'cast' || ev.type === 'act') actor = ev.actor ?? actor;
     if (ev.type === 'encounterStart') {
       const ds = ev.order.filter((o) => o.dice).flatMap((o) => o.dice.map((d) => ({ ...d, color: colorOf(state, o.id) })));
@@ -156,18 +157,18 @@ function throwsOf(state, events) {
     }
     if (!ev.dice?.length) continue;
     const who = ev.type === 'attack' ? ev.actor : ['damage', 'heal', 'tempHp'].includes(ev.type) ? (ev.by !== undefined ? ev.by : actor) : ev.id;
-    const g = { type: ev.type, side: state.entities[who]?.side ?? null, dice: ev.dice, color: colorOf(state, who), from: state.entities[who]?.side === 'party' ? 'bottom' : 'top', label: who ? nm(who) : 'The dice' };
+    const g = { type: ev.type, side: state.entities[who]?.side ?? null, dice: ev.dice, color: colorOf(state, who), from: state.entities[who]?.side === 'party' ? 'bottom' : 'top', label: titleOf(ev, state, was, isDM()) || 'The dice' };
     switch (ev.type) {
-      case 'attack': g.label += `${ev.opportunity ? ' · Opportunity Attack' : ''} · ${ev.name}${behalf(ev.opportunity ? who : null)}`; g.sub = `${ev.total}${ev.ac !== undefined ? ` vs AC ${ev.ac}` : ''} · ${ev.crit ? 'Critical hit!' : ev.hit ? 'Hit' : 'Miss'}`; g.mark = ev.crit ? 'crit' : ev.nat === 1 ? 'fumble' : null; break;
-      case 'damage': g.label += ' · damage'; g.sub = `${ev.rolled ?? ev.amount} ${ev.dtype}`; g.key = JSON.stringify([ev.dice, ev.bonus, ev.dtype]); g.to = nm(ev.target); break;
-      case 'heal': g.label += ' · healing'; g.sub = `${ev.rolled ?? ev.amount} Hit Points`; g.key = JSON.stringify([ev.dice, ev.bonus, 'heal']); g.to = nm(ev.target); break;
-      case 'tempHp': g.label += ' · Temporary Hit Points'; g.sub = `${ev.rolled ?? ev.amount}`; break;
-      case 'save': g.label += ` · ${ev.abil.toUpperCase()} save${behalf(who)}`; g.sub = `${ev.total}${ev.dc !== undefined ? ` vs DC ${ev.dc}` : ''} · ${ev.success ? 'Saved' : 'Failed'}`; break;
-      case 'concentration': g.label += ` · Concentration${behalf(who)}`; g.sub = `${ev.total} vs DC ${ev.dc} · ${ev.success ? 'Held' : 'Lost'}`; break;
-      case 'check': g.label += ` · ${ev.search ? 'Search' : ev.hide ? 'Hide' : (ev.skill ?? ev.ability).replace(/-/g, ' ')}`; g.sub = `${ev.total}`; break;
-      case 'deathSave': g.label += ` · Death Save${behalf(who)}`; g.sub = `${ev.roll}`; g.mark = ev.roll === 20 ? 'crit' : ev.roll === 1 ? 'fumble' : null; break;
-      case 'recharge': g.label += ` · ${ev.name}`; g.sub = ev.ready ? 'recharged' : 'not yet'; break;
-      case 'joined': g.label += ' · Initiative'; g.sub = `${ev.init}`; break;
+      case 'attack': g.label += behalf(ev.opportunity ? who : null); g.sub = `${ev.total}${ev.ac !== undefined ? ` vs AC ${ev.ac}` : ''} · ${ev.crit ? 'Critical hit!' : ev.hit ? 'Hit' : 'Miss'}`; g.mark = ev.crit ? 'crit' : ev.nat === 1 ? 'fumble' : null; break;
+      case 'damage': g.sub = `${ev.rolled ?? ev.amount} ${ev.dtype}`; g.key = JSON.stringify([ev.dice, ev.bonus, ev.dtype]); g.to = nm(ev.target); break;
+      case 'heal': g.sub = `${ev.rolled ?? ev.amount} Hit Points`; g.key = JSON.stringify([ev.dice, ev.bonus, 'heal']); g.to = nm(ev.target); break;
+      case 'tempHp': g.sub = `${ev.rolled ?? ev.amount}`; break;
+      case 'save': g.label += behalf(who); g.sub = `${ev.total}${ev.dc !== undefined ? ` vs DC ${ev.dc}` : ''} · ${ev.success ? 'Saved' : 'Failed'}`; break;
+      case 'concentration': g.label += behalf(who); g.sub = `${ev.total} vs DC ${ev.dc} · ${ev.success ? 'Held' : 'Lost'}`; break;
+      case 'check': g.sub = `${ev.total}`; break;
+      case 'deathSave': g.label += behalf(who); g.sub = `${ev.roll}`; g.mark = ev.roll === 20 ? 'crit' : ev.roll === 1 ? 'fumble' : null; break;
+      case 'recharge': g.sub = ev.ready ? 'recharged' : 'not yet'; break;
+      case 'joined': g.sub = `${ev.init}`; break;
       default: g.sub = '';
     }
     const last = groups.at(-1);
