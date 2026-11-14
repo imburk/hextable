@@ -288,13 +288,18 @@ function words(ev) {
     case 'fell': return [`${n(ev.id)} falls ${ev.feet} ft.`];
     case 'size': return [`${n(ev.id)} is now ${ev.size[0].toUpperCase()}${ev.size.slice(1)}.`];
     case 'speed': return [ev.feet ? `${n(ev.id)} now has a ${ev.mode === 'walk' ? '' : `${ev.mode[0].toUpperCase()}${ev.mode.slice(1)} `}Speed of ${ev.feet} ft.` : `${n(ev.id)} no longer has a ${ev.mode} speed.`];
-    case 'object': return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
+    case 'object':
+      // A pile of dropped things (E17): never what is on it; the `gear` event names the thing for those who may know it.
+      if (ev.verb === 'drop') return [`${n(ev.actor)} ${ev.placed ? 'leaves a pile on the ground' : 'adds to the pile on the ground'}.`];
+      if (ev.verb === 'pickup') return [ev.gone ? 'The pile on the ground is gone.' : `${n(ev.actor)} takes something from the pile on the ground.`];
+      return [ev.actor ? `${n(ev.actor)}: the ${ev.name.toLowerCase()} is now ${ev.stateName}.` : `The ${ev.name.toLowerCase()} is now ${ev.stateName}.`];
     case 'gear': {
       const other = ev.with !== undefined && S.entities[ev.with] ? n(ev.with) : null;      // who it went to or came from, if the viewer was told
-      if (ev.why === 'pass' && other) return [ev.taken ? `${n(ev.id)} hands ${ev.item} to ${other}.` : `${n(ev.id)} receives ${ev.item} from ${other}.`];
-      if (ev.why === 'drop') return [`${n(ev.id)} drops ${ev.item}.`];
-      if (ev.why === 'pickup') return [`${n(ev.id)} picks up ${ev.item}.`];
-      return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}.` : `${n(ev.id)} receives ${ev.item}.`];
+      const off = ev.unattuned ? ' (no longer attuned)' : '';
+      if (ev.why === 'pass' && other) return [ev.taken ? `${n(ev.id)} gave ${other} ${ev.item}${off}.` : `${n(ev.id)} received ${ev.item} from ${other}.`];
+      if (ev.why === 'drop') return [`${n(ev.id)} dropped ${ev.item}${off}.`];
+      if (ev.why === 'pickup') return [`${n(ev.id)} picked up ${ev.item}.`];
+      return [ev.taken ? `${n(ev.id)} no longer has ${ev.item}${off}.` : `${n(ev.id)} receives ${ev.item}.`];
     }
     case 'revealed': return [`${n(ev.id)} comes into view!`, 'head'];
     case 'concealed': return [`${n(ev.id)} is now hidden from the players.`];

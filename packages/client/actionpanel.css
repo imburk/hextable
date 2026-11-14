@@ -81,3 +81,9 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 #ap-reactions .rx-group, #sheet-reactions .rx-group { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--line); }
 .rx-head { margin: 4px 0 2px; font-size: 14px; color: var(--muted); }
 .rx-group .note { margin: 0 0 6px; }
+/* E17: what lies on the ground in reach, a line for each thing with its own Pick up */
+.ap-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ap-line button { min-height: 44px; padding: 4px 12px; }
+.ap-line button.off { border-style: dashed; opacity: .7; }
+.ap-pick button small.ap-why { display: block; font-size: 11px; }
+.ap-pick button.off { border-style: dashed; opacity: .7; }

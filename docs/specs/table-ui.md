@@ -1517,6 +1517,21 @@ What was settled while building, where it differs from Decision 5, and what was 
 - **Log** (`logview.js` already reads `why`/`with`): "Brenna gave Tavin Rope", "Brenna dropped Rope",
   "Tavin picked up the Wand of Magic Missiles"; `unattuned` adds "(no longer attuned)".
 
+### Items between creatures in the Items tab (PR for #301)
+
+What was settled while building, and what was left. The engine side is E17 (#290, "For the client job").
+
+- **Files.** `actionpanel.js` (pure: `handRows`, and `itemRows` now carries `names`, `targets`, `time`, `ground`; the page code draws them), `actionpanel.css`, `app.js` (`describe` only), `logview.js` (`kindOf`), tests in `packages/client/test/`, `SMOKE_ONLY=items` (new steps; screenshots in `/tmp/items-give/`).
+- **Give... and Drop** are buttons on every gear row (a magic item, by its sheet key) and on each name carried (a hand-typed creature's `gear`, or kit; one row for each name, `x2` for two of it, sent as the string). Give... opens a chooser under the row (`#ap-items [data-give-to]`) that lists exactly `passTargets(S, e)`; a creature with a `why` is a greyed button with the engine's reason on it, and a tap on it toasts the reason and sends nothing.
+  A tap on a name sends `pass { actor, item, to }` only if that id is still in the engine's list at that moment. Nobody within 5 ft: Give... is greyed "Nobody is within 5 feet." (the client's own words, as the engine has no creature to name). `interactionOf`'s `why` greys both buttons ("It isn't Orla's turn."), and in a fight a line says "Free: the first thing you handle this turn." or "Uses your action.".
+- **Held or worn.** A magic item with `equipped` has no Give or Drop; the row says "Take it off first." (its Put away or Take off button is the way, as before).
+- **Hidden information.** The list is the engine's own on the state the client holds, which for a player is the view: a creature the party does not know of is not in it. As a second guard a creature marked `hidden` is dropped from the list for anyone who is not the DM. `pickUpsFor` gets `{ dm: true }` only on the DM's screen; there a pile dropped unseen is marked "Not seen by the players" and is a pile of its own.
+- **Pick up.** "On the ground here" in the Items tab, one card for each pile in reach: a line for each thing with Pick up (`pickUp { actor, object, item }`), and Take all (no `item`) only outside a fight and only for a pile of two or more. The tab is drawn for a creature that carries nothing when a pile is in reach (`any`).
+- **The map.** Nothing was needed: `render.js` and `three-build.js` already draw any object in a hex that has no edge as a small floor marker, so a pile appears in both renderers. It is not a heap of its own, and a second (marked) pile in a cell is the same marker. Reported, not patched.
+- **Log.** `gear`: "Orla gave Pip Rope.", "Pip received Rope from Orla.", "Orla dropped Rope.", "Orla picked up Rope.", with " (no longer attuned)" when `unattuned`. `object` with a `verb` (a pile): "Orla leaves a pile on the ground.", "adds to the pile", "takes something from the pile", "The pile on the ground is gone." (never what is on it); in the log these are Loot and trades, as `gear` is.
+- **Not verified.** A real finger; a screen reader; a player's own table (the smoke is solo as the DM: the player's view filter is covered by a unit test on `view()` only); the DM's marked second pile in a browser; Take all in a browser (unit test only); the themes beyond Classic; a creature that is not the party's holding the chooser.
+- **Left out.** Fast Hands; dropping a held weapon in a fight; a heap drawn in the renderers; picking up from the map by tapping the pile (the Items tab is the way in).
+
 ### E20: stepping away, engine (PR for #300)
 
 From the owner's first comment on #246 (13 November): the DM can push someone down the turn order to cover a

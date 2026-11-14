@@ -5,8 +5,9 @@ import { scenario, settle, tapAt, onCanvas, wait, state, waitShown, open, playSo
 // Solo as the DM at 1280x800 and at 390x844 with touch. A built fighter carries two Potions of Healing, a Wand of Magic Missiles and a Staff of Striking (a hand-typed
 // creature holds names only). The Items tab lists a Use row for each use with the engine's reason when it is greyed, the gear with Wield and Attune, and the light.
 // A potion asks whom it is for when someone is within 5 ft and heals them; the wand cannot be used until it is held, then spends a charge; Attune is chosen for the next
-// Short Rest; Light a torch is the DM's; in a fight the gear buttons are greyed with the engine's words and a tap on one sends nothing. Screenshots go to /tmp/items-tab/.
+// Short Rest; Light a torch is the DM's; in a fight the gear buttons are greyed with the engine's words and a tap on one sends nothing. Screenshots go to /tmp/items-tab/. The E17 steps (Drop, Pick up, Give..., #301) leave theirs in /tmp/items-give/.
 const SHOTS = '/tmp/items-tab';
+const GIVE = '/tmp/items-give';                // the E17 steps' screenshots (Give..., Drop, Pick up)
 const ITEMS = [{ id: 'i1', item: 'potion-of-healing' }, { id: 'i2', item: 'potion-of-healing' }, { id: 'i3', item: 'wand-of-magic-missiles' }, { id: 'i4', item: 'staff-of-striking' }];
 const SHEET = { name: 'Orla', class: 'fighter', level: 5, subclass: 'champion', abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 }, skills: ['athletics', 'perception'],
   choices: { 'fighting-style': 'defense' }, weapons: ['longbow'], items: ITEMS };
@@ -21,9 +22,10 @@ async function items(browser, url, label, opts, tag) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
-      mkdirSync(SHOTS, { recursive: true });
+      mkdirSync(SHOTS, { recursive: true }); mkdirSync(GIVE, { recursive: true });
       const tap = (sel, force = false) => (touch ? page.locator(sel).tap({ force }) : page.click(sel, { force }));      // a greyed row is aria-disabled, which the driver counts as not enabled: forced
       const shot = (name) => page.screenshot({ path: `${SHOTS}/${tag}-${name}.png` });
+      const shotG = (name) => page.screenshot({ path: `${GIVE}/${tag}-${name}.png` });
       const hero = () => state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Orla').id);
       const sheetOf = async () => state(page, (S) => { const e = Object.values(S.entities).find((x) => x.name === 'Orla'); return { hp: e.hp, items: e.sheet.items, attuning: e.sheet.attuning ?? null, light: e.light ?? null }; });
       const turnOf = async (id) => {
@@ -117,6 +119,38 @@ async function items(browser, url, label, opts, tag) {
         for (const re of [/uses Potion of Healing: Drink on /, /readies Wand of Magic Missiles/, /will attune to Staff of Striking at the next Short Rest/]) if (!re.test(log)) throw new Error(`the log lacks ${re}: ${log.replace(/\s+/g, " ").slice(-700)}`);
       });
 
+      await run.do('Drop the staff: a pile lies in her hex and the tab lists it under "On the ground here"; Pick up takes it back; Give... lists the rogue, Cancel sends nothing', async () => {
+        const staff = () => state(page, (S) => (Object.values(S.entities).find((e) => e.name === 'Orla').sheet.items.find((x) => x.item === 'staff-of-striking') ?? {}).id ?? null);
+        const k0 = await staff();
+        if (!k0) throw new Error('no staff');
+        await tap(`#ap-items [data-gact="drop:${k0}"]`);
+        await wait(page, () => window.hextable.state.map.objects.some((o) => o.def === 'pile'));
+        await waitShown(page, '#ap-items [data-pile]');
+        if (!/Staff of Striking/.test(await text(page, '#ap-items [data-pile]'))) throw new Error(`pile: ${await text(page, '#ap-items [data-pile]')}`);
+        if ((await staff()) !== null) throw new Error('the staff is still on the sheet');
+        await raise(); await shotG('1-pile');
+        await tap('#ap-items [data-pile] [data-gact^="pick:"]');
+        await wait(page, () => !window.hextable.state.map.objects.some((o) => o.def === 'pile'));
+        await wait(page, () => !!Object.values(window.hextable.state.entities).find((e) => e.name === 'Orla').sheet.items.find((x) => x.item === 'staff-of-striking'));
+        await waitShown(page, '#ap-items [data-pile]', false);
+        const k1 = await staff();
+        await tap(`#ap-items [data-gact="give:${k1}"]`);
+        await waitShown(page, '#ap-items [data-give-to="rogue"]');
+        await shotG('2-give');
+        const before = JSON.stringify((await sheetOf()).items);
+        await tap('#ap-items [data-give-cancel]');
+        await waitShown(page, '#ap-items [data-give-to]', false);
+        if (JSON.stringify((await sheetOf()).items) !== before) throw new Error('Cancel changed the sheet');
+      });
+
+      await run.do('the log tells of the drop, the pile and the pick up', async () => {
+        await page.evaluate(() => window.hextable.drawer.open('log'));
+        await waitShown(page, '#log-list');
+        const log = await page.textContent('#log-list');
+        await closePanels(page);
+        for (const re of [/Orla dropped Staff of Striking/, /leaves a pile on the ground/, /Orla picked up Staff of Striking/, /pile on the ground is gone/]) if (!re.test(log)) throw new Error(`the log lacks ${re}: ${log.replace(/\s+/g, ' ').slice(-700)}`);
+      });
+
       await run.do('in a fight, out of turn: every use is greyed "It isn\'t Orla\'s turn", the gear buttons are greyed with the engine\'s words and a tap sends nothing', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }));
         await wait(page, () => !!window.hextable.state.encounter);
@@ -126,10 +160,12 @@ async function items(browser, url, label, opts, tag) {
         await page.evaluate((i) => window.hextable.select(i), id);                      // the card follows the turn
         await wait(page, () => document.querySelector('#c-name').textContent === 'Orla' && document.querySelector('#card').dataset.situation === 'wait');
         await panelTab(page, 'items');
-        await wait(page, () => document.querySelector('#ap-items [data-gact="equip:i4"]')?.getAttribute('aria-disabled') === 'true');
+        await wait(page, () => document.querySelector('#ap-items [data-gact="equip:i3"]')?.getAttribute('aria-disabled') === 'true');
+        const gv = await page.$$eval('#ap-items [data-gact^="give:"], #ap-items [data-gact^="drop:"]', (b) => b.map((x) => [x.getAttribute('aria-disabled'), x.getAttribute('aria-describedby')]));
+        if (!gv.length || gv.some(([off, d]) => off !== 'true' || !d)) throw new Error(`Give and Drop are not greyed out of turn: ${JSON.stringify(gv)}`);
         if (!/in the middle of a fight/.test(await text(page, '#ap-items')) || !/It isn't Orla's turn/.test(await text(page, '#ap-items [data-row="item:i2:0"]'))) throw new Error(`no reasons on screen: ${await text(page, '#ap-items')}`);
         const before = JSON.stringify((await sheetOf()).items);
-        await tap('#ap-items [data-gact="equip:i4"]', true);
+        await tap('#ap-items [data-gact="equip:i3"]', true);
         await waitShown(page, '#toast');
         if (!/in the middle of a fight/.test(await text(page, '#toast'))) throw new Error(`toast: ${await text(page, '#toast')}`);
         if (JSON.stringify((await sheetOf()).items) !== before) throw new Error('a greyed button changed the sheet');
@@ -177,6 +213,30 @@ async function items(browser, url, label, opts, tag) {
         if (!cast) throw new Error('no cast from the wand in the timeline');
         await page.evaluate((i) => window.hextable.select(i), id);
         await wait(page, () => /5 \/ 7/.test(document.querySelector('#ap-items [data-row="item:i3:0"]')?.textContent ?? ''));
+      });
+
+      await run.do('in the fight, on her turn: the first handling is free (the tab says so); Give... hands the staff to the rogue; the held wand has no Give or Drop and says to take it off first', async () => {
+        const id = await hero(), key = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Orla').sheet.items.find((x) => x.item === 'staff-of-striking').id);
+        await page.evaluate((i) => window.hextable.select(i), id);
+        await wait(page, () => document.querySelector('#c-name').textContent === 'Orla' && document.querySelector('#card').dataset.situation === 'turn');
+        await panelTab(page, 'items');
+        await waitShown(page, `#ap-items [data-gact="give:${key}"]`);
+        if (!/Free/.test(await text(page, '#ap-items'))) throw new Error(`no time on screen: ${await text(page, '#ap-items')}`);
+        if (!/Take it off first/.test(await text(page, '#ap-items [data-gear="i3"]')) || (await page.$('#ap-items [data-gear="i3"] [data-gact^="give:"]'))) throw new Error('the held wand offers Give or Drop');
+        await tap(`#ap-items [data-gact="give:${key}"]`);
+        await waitShown(page, '#ap-items [data-give-to="rogue"]');
+        await raise(); await shotG('3-fight-give');
+        await tap('#ap-items [data-give-to="rogue"]');
+        await wait(page, () => window.hextable.state.entities.rogue.gear.includes('Staff of Striking'));
+        await idle(page);
+        const left = await sheetOf();
+        if (left.items.some((x) => x.item === 'staff-of-striking')) throw new Error('the staff is still on her sheet');
+        await wait(page, () => !document.querySelector('#ap-items [data-gact^="give:"]'));
+        await page.evaluate(() => window.hextable.drawer.open('log'));
+        await waitShown(page, '#log-list');
+        const log = await page.textContent('#log-list');
+        await closePanels(page);
+        if (!/Orla gave .* Staff of Striking/.test(log)) throw new Error(`the log lacks the gift: ${log.replace(/\s+/g, ' ').slice(-500)}`);
       });
     } finally { await ctx.close(); }
   });
