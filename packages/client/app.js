@@ -249,8 +249,10 @@ function words(ev) {
     case 'recharge': return [`${n(ev.id)} rolls ${ev.roll} for ${ev.name}: ${ev.ready ? 'ready again' : 'not yet'}.`];
     case 'save': {
       const cv = behind(ev.cover);       // half or three-quarters cover helps a Dexterity save
-      if (!('roll' in ev)) return [`${n(ev.id)} makes a ${ev.abil.toUpperCase()} save${ev.dc === undefined ? '' : ` against DC ${ev.dc}`}${cv}. ${ev.success ? 'Saved.' : 'Failed.'}`];
-      return [`${n(ev.id)} ${ev.roll ? `rolls a ${ev.abil.toUpperCase()} save: ${ev.total} vs DC ${ev.dc}${cv}.` : `automatically fails the ${ev.abil.toUpperCase()} save.`} ${ev.success ? 'Saved.' : 'Failed.'}`];
+      // A failed save rolled again for a use of a feature (Indomitable, Disciplined Survivor): `reroll` is { name, was, add? } (`true` for a plain reroll, Countercharm).
+      const again = ev.reroll && typeof ev.reroll === 'object' ? ` ${ev.reroll.name}: rolled again, the first roll was ${ev.reroll.was}${ev.reroll.add ? ` and ${signed(ev.reroll.add)} is added` : ''}.` : ev.reroll ? ' Rolled again.' : '';
+      if (!('roll' in ev)) return [`${n(ev.id)} makes a ${ev.abil.toUpperCase()} save${ev.dc === undefined ? '' : ` against DC ${ev.dc}`}${cv}. ${ev.success ? 'Saved.' : 'Failed.'}${again}`];
+      return [`${n(ev.id)} ${ev.roll ? `rolls a ${ev.abil.toUpperCase()} save: ${ev.total} vs DC ${ev.dc}${cv}.` : `automatically fails the ${ev.abil.toUpperCase()} save.`} ${ev.success ? 'Saved.' : 'Failed.'}${again}`];
     }
     case 'down': return [`${n(ev.id)} drops to 0 Hit Points and is dying.`, 'bad'];
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
@@ -277,7 +279,9 @@ function words(ev) {
       const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
       const how = ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : '';
       const end = ev.search ? (ev.found ? ` and finds ${ev.found === 1 ? 'something' : `${ev.found} things`}.` : ' and finds nothing.') : ev.success === true ? ' Success.' : ev.success === false ? ' Failed.' : '';
-      return [`${n(ev.id)} ${what}${how}: ${ev.total}${ev.dc !== undefined ? ` vs DC ${ev.dc}` : ''}${ev.search ? '' : '.'}${end}`];
+      // Reliable Talent and the like: `floor` is { name, value, was }; the dice show the real face, the d20 counted as `value`.
+      const floor = ev.floor ? ` ${ev.floor.name}: the d20 showed ${ev.floor.was} and counts as ${ev.floor.value}.` : '';
+      return [`${n(ev.id)} ${what}${how}: ${ev.total}${ev.dc !== undefined ? ` vs DC ${ev.dc}` : ''}${ev.search ? '' : '.'}${end}${floor}`];
     }
     case 'noticed': return [`${n(ev.id)} notices a ${ev.name.toLowerCase()}.`];
     case 'triggered': return [`${n(ev.id)} sets off a ${ev.name.toLowerCase()}!`];
@@ -501,7 +505,7 @@ function refresh() {
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
-        hint = hl.targets.length ? `${a.name}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
+        hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
@@ -706,7 +710,7 @@ R.onTap = ({ hex, id }) => {
     if (tapped && tapped.id !== selId && tapped.side === 'party') return act({ type: 'follow', actor: selId, leader: tapped.id });
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
-  if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id }) : setMode(MOVE);
+  if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
     if (mode.area) { mode.aim = hex; return refresh(); }
@@ -753,7 +757,7 @@ R.onTap = ({ hex, id }) => {
 R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
-$('btn-end').onclick = () => act({ type: 'endTurn', actor: selId });
+$('btn-end').onclick = () => { if (CLS.askCure(S.entities[selId])) return; act({ type: 'endTurn', actor: selId }); };       // Self-Restoration with a choice asks first
 $('hint-cancel').onclick = () => setMode(MOVE);
 $('hint-go').onclick = () => {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
@@ -899,19 +903,20 @@ function syncCards() {
 // Class features that need a choice first (classes.js): Divine Spark's mode, a Wild Shape form, Metamagic...
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
+  armAttack: (m) => setMode({ kind: 'attack', ...m }),
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
-  openFeature: (e, id) => CLS.openFeature(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  openFeature: (e, id) => CLS.openFeature(e, id), openAttack: (e, id) => CLS.openAttack(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
   fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
 // ---------- the splash ----------
 // The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to

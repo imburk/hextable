@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { martial } from './paneltabs.mjs';
 import { scenario, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
@@ -247,4 +248,5 @@ async function classes(browser, url, label, opts) {
 export default async function (browser, url) {
   await classes(browser, url, 'class controls at 1280x800', { viewport: { width: 1280, height: 800 } });
   await classes(browser, url, 'class controls at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await martial(browser, url, 'martial classes in the action panel at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });     // the steps are in paneltabs.mjs
 }

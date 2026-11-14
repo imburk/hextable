@@ -13,13 +13,14 @@ import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hidePr
 import { actionProfile } from './shared/effects.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
 import { LIGHTS } from './shared/content/lights.js';
-import { reactionsOf, canReact } from './shared/reactions.js';
+import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
 import { SPELLS, MONSTERS } from './shared/content/index.js';
 import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
-import { reactionsHtml, bindReactions } from './reactionsheet.js';
-import { featureRows, CHIP } from './features.js';
+import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
+import { featureRows as baseFeatureRows, CHIP } from './features.js';
+import { strikeChoices } from './classes.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
@@ -34,8 +35,10 @@ export const BUILT = new Set(['explore', 'reactions', 'down', 'attacks', 'spells
 export function reactionState(S, e, { dm = false } = {}) {
   const q = dm ? S.pending?.ask : S.prompt;
   const pending = !!q && !q.waiting && q.reactor === e.id;
-  const why = !reactionsOf(e).length ? `${e.name} has no reactions.` : e.reactionUsed ? 'Reaction used this round.' : !canReact(e) ? `${e.name} can't take a reaction now.` : '';
-  return { ok: !why, why, pending };
+  // A `free` instruction (Persistent Rage, Indomitable...) is not a Reaction: it does not make the Reaction usable, but it is on this tab (`free` counts them).
+  const real = reactionsOf(e).filter((r) => r.kind !== 'free'), free = reactionsOf(e).length - real.length;
+  const why = !real.length ? `${e.name} has no reactions.` : e.reactionUsed ? 'Reaction used this round.' : !canReact(e) ? `${e.name} can't take a reaction now.` : '';
+  return { ok: !why, why, pending, free };
 }
 
 // The panel is a function of the state and the selected creature. `mine`: the viewer controls `e` (the DM controls all).
@@ -52,7 +55,7 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
     return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed ? 'attacks' : 'spells' };
   }
   const r = reactionState(S, e, { dm });
-  return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
+  return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending, free: r.free } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
 }
 
 // The tabs the shell draws: the built ones in the spec's order. `has` says which tabs have anything in them: Attacks, Spells, Features and Items are left out when
@@ -175,6 +178,41 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   return list.map((r, i) => ({ ...r, grid: i < 4 }));
 }
 
+// ---------- what the martial classes added (#230, DEBT T19) ----------
+// The Features rows of features.js, with three things the record says and that file does not: the Focus Point versions of Patient Defense and Step of the Wind (a feature
+// with `action.acts` paid from another feature's pool: what it spends and what it does, greyed when the pool is empty), a feature that works through a standing instruction
+// (Persistent Rage, Indomitable...: what it is set to now, and that it does nothing until set), and a use that another pool can pay for (Intimidating Presence).
+const ACT_NAME = { dash: 'Dash', disengage: 'Disengage', dodge: 'Dodge', hide: 'Hide', search: 'Search' };
+export function featureRows(S, e, { mode = null } = {}) {
+  const rows = baseFeatureRows(S, e, { mode }), free = reactionRows(S, e).filter((r) => r.kind === 'free');
+  return rows.map((r) => {
+    const f = (e.feats ?? []).find((x) => `feat:${x.id}` === r.id);
+    if (!f) return r;
+    const a = f.action, fr = free.find((x) => x.id === f.id);
+    if (fr && r.kind === 'none') {
+      return { ...r, chip: 'Not a Reaction', sub: `Standing instruction: ${WHEN[fr.now] ?? fr.now}${fr.now === 'always' ? '' : '. Does nothing until set to Always'}. Set it on the Sheet or the Reactions tab` };
+    }
+    if (a?.acts && a.cost?.resource && !f.uses) {
+      const pool = (e.feats ?? []).find((x) => x.id === a.cost.resource), n = a.cost.n ?? 1, left = e.uses?.[a.cost.resource] ?? 0;
+      const sub = `Spend ${n} ${/focus/i.test(pool?.name ?? '') ? 'Focus Point' : pool?.name ?? 'point'}${n === 1 ? '' : 's'}: ${a.acts.map((x) => ACT_NAME[x] ?? x).join(' and ')}. The free version is a Bonus Action row of its own`;
+      return { ...r, sub, why: r.why || (left < n ? `${e.name} has no uses of ${pool?.name ?? a.cost.resource} left.` : '') };
+    }
+    return r;
+  });
+}
+
+// Brutal Strike and Cunning Strike (`attack.brutal`, `attack.cunning`): the row after an attack that can take them. It opens the card of classes.js where the choice is made and the
+// attack armed with it; `why` is the attack's own reason, else the choices' reasons when none can be made now.
+function strikeRow(S, e, a, base, mode) {
+  const ch = strikeChoices(S, e, a);
+  if (!ch) return null;
+  const what = ch.brutal && ch.cunning ? `${ch.brutal.name} or ${ch.cunning.name}` : (ch.brutal ?? ch.cunning).name;
+  const bits = [ch.brutal ? `${ch.brutal.dice} more damage and an effect, no Advantage` : '', ch.cunning ? `${ch.cunning.dice} dice of Sneak Attack${ch.cunning.dice ? ' for effects' : ''}` : ''].filter(Boolean);
+  const offered = [ch.brutal, ch.cunning].filter(Boolean), stuck = offered.every((o) => o.why);
+  return { id: `strike:${a.id}`, kind: 'strike', attack: a.id, label: `${a.name} with ${what}`, sub: bits.join(' · '), chip: base.chip, time: base.time, armed: armedBy(mode, 'attack', a.id) && !!mode.extra,
+    why: base.why || (stuck ? offered[0].why : '') };
+}
+
 // ---------- the Attacks, Bonus, Move and Features tabs (T4a) ----------
 // Each returns rows of one shape: { id, kind, label, sub, why, chip, time, armed, ... }. `kind` says what a tap does: `send` (an action to send, `send`), `arm`
 // (set the mode `mode`; a tap on the armed row puts it down again), `spell` (cast `spell`, or arm it), `chooser` (open the card of `feature`), `fly` (`delta` feet
@@ -204,8 +242,11 @@ export function attackRows(S, e, { mode = null } = {}) {
     const bonusTime = !flurry && a.time === 'bonus', pooled = mineTurn && !flurry && !bonusTime && !!b.attacks && fromPool(b, a.id);
     const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
     const reach = a.type === 'melee' ? `reach ${a.reach ?? 5} ft` : a.range ? `range ${a.range[0]}/${a.range[1]} ft` : '';
-    rows.push({ id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
-      chip: flurry ? 'Flurry' : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } });
+    const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
+      chip: flurry ? 'Flurry' : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
+    rows.push(row);
+    const strike = strikeRow(S, e, a, row, mode);
+    if (strike) rows.push(strike);
   }
   return rows;
 }
@@ -525,6 +566,7 @@ export function initActionPanel(ctx) {
         return r.aimed ? ctx.armItem(e, r, null, false) : ctx.act(r.send);
       }
       case 'arm': return ctx.setMode(r.armed ? ctx.move : r.mode);
+      case 'strike': return ctx.openAttack(e, r.attack);
       case 'spell': return ctx.castSpell(e, r.spell, r.armed);
       case 'meta': return ctx.metamagic?.(e)?.onClick();
       case 'chooser': return ctx.openFeature(e, r.feature);
@@ -739,7 +781,7 @@ export function initActionPanel(ctx) {
       // the tabs
       tabsEl.hidden = tabsNow.length < 2;
       setHtml(tabsEl, tabsNow.map((t, i) => {
-        const off = t.id === 'reactions' && !t.ok && !t.pending;
+        const off = t.id === 'reactions' && !t.ok && !t.pending && !t.free;
         return `<button type="button" role="tab" id="ap-tab-${t.id}" data-tab="${t.id}" aria-selected="${t.id === tab}" aria-controls="ap-${t.id}" tabindex="${t.id === tab ? 0 : -1}" class="${off ? 'off ' : ''}${t.pending ? 'pulse' : ''}"${off ? ' aria-disabled="true"' : ''}${i < 6 ? ` aria-keyshortcuts="${i + 1}"` : ''}>${esc(t.label)}${t.pending ? '<i class="sr-only"> (a question is waiting)</i>' : ''}</button>`;
       }).join('') + (tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body" aria-label="${raised ? 'Less room' : 'More room'}" title="${raised ? 'Less room' : 'More room'}">${raised ? '▾' : '▴'}</button>` : ''));
 

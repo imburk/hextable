@@ -16,6 +16,9 @@
 .cp-check input { flex: none; width: 20px; height: 20px; min-height: 0; margin-top: 2px; accent-color: var(--accent); }
 .cp-check small { display: block; color: var(--muted); font-size: 13px; }
 .cp-opt.off { opacity: .6; }
+.cp-quick { margin-bottom: 10px; } .cp-quick button { flex: 1; min-height: 44px; }
+.cp-why { color: var(--ink); font-weight: 600; margin: 0 0 6px; }
+.cp-levels button:disabled { opacity: .55; }
 .cp-go { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; } .cp-go button { flex: 1 1 120px; min-height: 48px; }
 .cp-card .cp-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 .cp-err { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radius); background: var(--bad); color: #fff; font-weight: 600; }
