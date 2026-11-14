@@ -76,7 +76,7 @@ test("the linter says what is wrong with a map", () => {
   bad((m) => { m.levels[0].z = "high"; }, "no height");
   bad((m) => { m.starts = [{ q: 99, r: 99 }]; }, "nothing to stand on");
   bad((m) => { m.levels = []; }, "no levels");
-  bad((m) => { m.hexFeet = 10; }, "5 feet");
+  bad((m) => { m.cellFeet = 10; }, "5 feet");
 });
 
 test("loading a map sets the party down at its start and leaves the old place's creatures behind", () => {

@@ -249,7 +249,7 @@ test("migration 19 to 20: a saved table loads unchanged; an attuning naming no i
   s.version = 19;
   const before = structuredClone(s.entities);
   migrate(s);
-  assert.equal(s.version, VERSION); assert.equal(VERSION, 20);
+  assert.equal(s.version, VERSION); assert.equal(VERSION, 21);
   assert.deepEqual(s.entities, before);
   s.entities.hero.sheet.attuning = { item: "i9" };
   s.version = 19;
