@@ -8,6 +8,14 @@ import { barriers } from '../walls.js';
 import { derive, validate } from '../derive.js';
 import { fail, featOf, living, RuleError } from './shared.js';
 import { fitsOn } from './world.js';
+import { effectsOf, endEffect } from '../durations.js';
+
+// A creature now in Heavy armor (its sheet or record changed) ends what it can't keep up in it: a
+// feature's lasting effect whose action is `unless: 'heavy'` (Rage: "it ends early if you don Heavy armor").
+export function donned(s, e, ev) {
+  if (e.armour !== 'heavy') return;
+  for (const fx of [...effectsOf(s)]) if (fx.source === e.id && fx.feature && featOf(e, fx.feature)?.action?.unless === 'heavy') endEffect(s, ev, fx, `${e.name} donned Heavy armor`);
+}
 
 export function makeEntity(tpl, over = {}) {
   const t = structuredClone(tpl);
@@ -73,6 +81,7 @@ export function remake(s, e, record, sheet, ev) {
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);
     if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
+    if (f.relentless && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];      // Relentless Rage's uses since the last rest
   }
   if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
   // Hit Dice of several sizes: what was spent of each size stays spent.
@@ -87,5 +96,6 @@ export function remake(s, e, record, sheet, ev) {
   fresh.sheet = sheet;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });
+  donned(s, fresh, ev);
 }
 

@@ -4,14 +4,15 @@ import * as H from '../hex.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTER_ACTIONS, MONSTERS } from '../content/index.js';
 import { ABILITIES, SKILLS } from '../content/schema.js';
-import { begin, sharedRolls } from '../effects.js';
+import { begin, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
 import { apart, FT, ground, overlapAt, STEP_MAX } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
 import { barriers, center, distToSegment, objectDef, objectSegment } from '../walls.js';
-import { conditionName, conditionPhrase, incapacitatedBy, modifiers } from '../modifiers.js';
-import { able, actTime, control, current, ent, fail, featOf, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
+import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
+import { able, actTime, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
+import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, objectName, objectOf, objectShown, SEARCH_FEET, setObject, unhide } from './world.js';
 import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, objectEffects, resolve } from './resolve.js';
@@ -76,6 +77,7 @@ const spotter = (s, e) => living(s).find((o) => up(o) && hostile(o, e) && canSee
 // found it, and with the table rule passiveFind 'all' so has one whose passive Perception meets
 // its DC and that has it in view; Lightly Obscured (Dim Light) costs that 5.
 export function watch(s, ev) {
+  initiativeFeatures(s, ev);
   for (const h of living(s)) {
     if (!h.hiding) continue;
     for (const o of living(s)) {
@@ -87,21 +89,56 @@ export function watch(s, ev) {
     }
   }
 }
+// After an action in which creatures rolled Initiative (a fight began, or they joined one): their
+// features used on rolling Initiative (`initiative`: Persistent Rage, Uncanny Metabolism, Perfect
+// Focus). Each gives back uses of the feature it names (all, or `upTo` so many) and, with `heal`,
+// Hit Points. One with uses of its own spends one, only when it gives something back, and only by its
+// standing instruction (reactions.js: `always`, the default, or `never`). `unless`: not if that one
+// was used now. Those with uses go first.
+function initiativeFeatures(s, ev) {
+  const ids = [];
+  for (const x of ev) { if (x.type === 'encounterStart') ids.push(...x.order.map((o) => o.id)); else if (x.type === 'joined') ids.push(x.id); }
+  for (const id of ids) {
+    const e = s.entities[id];
+    if (!e?.feats || e.dead) continue;
+    const used = new Set(), mine = reactionsOf(e);
+    for (const f of e.feats.filter((x) => x.initiative).sort((a, b) => !!b.uses - !!a.uses)) {
+      const x = f.initiative, pool = featOf(e, x.regain);
+      if (!pool?.uses || (x.unless && used.has(x.unless))) continue;
+      if (f.uses && ((e.uses[f.id] ?? 0) < 1 || instruction(e, mine.find((r) => r.id === f.id)) === 'never')) continue;
+      const have = e.uses[pool.id] ?? 0, to = Math.max(have, Math.min(pool.uses.max, x.upTo ?? pool.uses.max));
+      const hurt = !!x.heal && !e.dead && e.hp < e.maxHp;
+      if (to <= have && !hurt) continue;                                 // nothing to give back: the use is kept
+      e.uses[pool.id] = to;
+      if (f.uses) e.uses[f.id]--;
+      used.add(f.id);
+      ev.push({ type: 'std', id: e.id, action: `${f.name}: ${pool.name} ${to - have ? `+${to - have} (${to})` : 'already full'}` });
+      if (hurt) { const r = roll(s, x.heal); heal(s, e, Math.min(r.total, e.maxHp - Math.max(0, e.hp)), ev, { ...r, by: e.id }); }
+    }
+  }
+}
+
 // `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
 // (Search uses it for what it can see only dimly); it is not part of what is shown.
 function abilityCheck(s, e, what, dimToo = false) {
   const ability = what.ability ?? SKILLS[what.skill];
-  const m = modifiers(s, e, 'check', { target: e, ability, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
+  // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
+  const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
+  const m = modifiers(s, e, 'check', { target: e, ability, proficient, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
-  const r1 = die(s, 20), r2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  // Reliable Talent: each d20 under its `floor` counts as it.
+  const lift = (d) => (d !== null && m.floor !== null ? Math.max(d, m.floor) : d), raw1 = die(s, 20), raw2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  const r1 = lift(raw1), r2 = lift(raw2), floored = m.floor !== null && (raw1 < m.floor || (raw2 !== null && raw2 < m.floor));
   const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
   const more = rollDice(s, m.dice);
   if (m.used.length) useUp(s, [], m.used);
-  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(r1, mode === 'normal' ? null : r2, r), ...more.dice], ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+  // The dice are the faces rolled; `roll` is the d20 as it counts, and `floor.was` what it showed.
+  const shown = pickOf(mode) === r1 ? raw1 : raw2;
+  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
     ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -134,6 +171,8 @@ export const handlers = {
     if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
     // A feature that casts a spell (Divine Intervention) is used by casting: `cast` with `via`.
     (!f.freeCast || f.action) || fail(`${f.name} casts a spell: cast the spell through it (cast with via "${f.id}").`);
+    // A feature used on rolling Initiative (Persistent Rage) is spent then, never by hand.
+    (!f.initiative || f.action) || fail(`${f.name} is used when ${e.name} rolls Initiative.`);
     const act = f.action ?? (f.uses ? { time: 'free', target: { self: true }, effects: [{ manual: `${f.name}: ${f.text}` }] } : null);
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
@@ -142,10 +181,14 @@ export const handlers = {
     if (act.form && (a.form !== undefined || e.form)) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
+    // A feature that only takes other actions (Patient Defense below level 10) does nothing outside a fight.
+    if (act.acts && !fighting && !(act.effects ?? []).length) fail(`${f.name} only matters in a fight.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
     const live = act.renew ? effectsOf(s).find((fx) => fx.source === e.id && fx.feature === f.id) : null;
     if (live) {
       fighting || fail(`${e.name}'s ${f.name} is already going.`);
+      // Persistent Rage: it lasts without being extended, so there is nothing to extend.
+      live.parts.some((p) => !p.ended && p.ends?.on === 'turnEnd') || fail(`${e.name}'s ${f.name} is already going, and lasts without being extended.`);
       need(s, e, time);
       enc.budget[time]--;
       const now = turnKey(s);
@@ -157,7 +200,9 @@ export const handlers = {
     // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
     if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
     if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.`);
-    if (time && fighting) need(s, e, time);
+    // Fleet Step: Step of the Wind right after another Bonus Action, without one of its own.
+    const free = time === 'bonus' && fighting && fleetFree(s, e, f.id);
+    if (time && fighting) need(s, e, free ? null : time);
     if ((act.gain || act.firstAttack) && !(fighting && current(s) === e.id)) fail(`${f.name} is used on ${e.name}'s turn in a fight.`);
     if (act.firstAttack) {
       !enc.flags[`attacked:${e.id}`] || fail(`${f.name} is decided before the first attack roll of the turn.`);
@@ -199,7 +244,7 @@ export const handlers = {
     }
 
     // Paid for: from here it happens.
-    if (time && fighting) enc.budget[time]--;
+    if (time && fighting) { if (free) enc.flags[`fleet:${e.id}`] = true; else enc.budget[time]--; if (time === 'bonus') enc.flags[`used:${f.id}:${e.id}`] = true; }
     if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
     if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
     if (act.pool) {
@@ -215,18 +260,36 @@ export const handlers = {
       enc.budget.bonusAttacks = { with: act.gain.attacks.with, left: act.gain.attacks.n };
       return ev.push({ type: 'std', id: e.id, action: f.name });
     }
+    // Movement that comes with starting this feature in a fight (Instinctive Pounce with Rage): half its Speed.
+    const pounce = fighting && (e.feats ?? []).find((x) => x.moveWith?.of === f.id);
+    const feet = pounce ? Math.floor(speedOf(s, e) / 2 / FT) * FT : 0;
+    if (feet > 0) {                                                     // at Speed 0 there is nothing to add or to say
+      enc.budget.move += feet;
+      ev.push({ type: 'std', id: e.id, action: `${pounce.name} (${feet} ft)` });
+    }
     if (act.noSpells) breakConcentration(s, ev, e.id, `${e.name} entered ${f.name}`);
+    // Actions the feature's action also takes (Patient Defense: Disengage and Dodge; Step of the Wind: Disengage and Dash).
+    if (fighting) for (const x of act.acts ?? []) {
+      if (x === 'dodge') e.cond.dodging = {};
+      else if (x === 'disengage') e.cond.disengaged = {};
+      else if (x === 'dash') { enc.budget.move += speedOf(s, e); enc.budget.dashes = (enc.budget.dashes | 0) + 1; }
+    }
     const steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects)), targets = aimed.targets;
+    if (!steps.length) return ev.push({ type: 'std', id: e.id, action: f.name });     // nothing more (Patient Defense below level 10)
     let fx = null;
     if (act.duration && act.duration !== 'instant') {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
-      Object.assign(fx, { feature: f.id, ...(act.renew ? { renew: true } : {}), ...(act.noSpells ? { noSpells: true } : {}), ...(act.endsWhenIncapacitated ? { fragile: true } : {}) });
+      Object.assign(fx, { feature: f.id, ...(act.renew ? { renew: true } : {}), ...(act.noSpells ? { noSpells: true } : {}), ...(act.endsWhenIncapacitated ? { fragile: true } : act.endsOn ? { fragile: act.endsOn } : {}) });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: fx.lasts, targets: (targets ?? []).map((t) => t.id) });
     } else fx = boundEffect(s, f.name, e.id, steps);
     if (!('attack' in steps[0])) ev.push({ type: 'std', id: e.id, action: f.name });
     const st = e.castAbil ? spellStats(e, s) : null;
+    // A feature's own save DC (Intimidating Presence: 8 + Strength + Proficiency) is also the DC of a
+    // save that ends what it did; a feature whose save has none uses the spell save DC.
+    let own;
+    walkSteps(steps, (x) => { if (own === undefined && 'save' in x && typeof x.dc === 'number') own = x.dc; });
     begin(s, { steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
-      src: { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) },
+      src: { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) },
       // Damage an area feature deals is rolled once for everyone in it (Sear Undead), as a spell's is.
       shared: aimed.hexes ? sharedRolls(s, steps) : null });
     resolve(s, ev);

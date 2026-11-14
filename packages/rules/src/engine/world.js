@@ -71,6 +71,10 @@ export function moveOptions(s, e) {
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
   const onHazard = (levelId, h) => (big ? footprint(e, h) : [h]).some((f) => hazards.has(`${levelId}|${H.col(f)}`));
+  // Acrobatic Movement (`surfaces`): with no armour or Shield, across water without falling in. It may
+  // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
+  // climbed as anyone climbs (the maps have heights, not wall faces).
+  const acrobat = !!e.feats?.some((f) => f.surfaces) && (e.armour ?? 'none') === 'none' && !e.shield, wet = new Set();
   const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
@@ -92,9 +96,10 @@ export function moveOptions(s, e) {
         if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
         const column = columnOf(n);
         for (const sf of column) {
-          const dz = sf.z - from.z, up_ = Math.abs(dz), terrain = TILES[sf.tile.t].cost;
+          const dz = sf.z - from.z, up_ = Math.abs(dz), water = acrobat && sf.tile.t === 'water', terrain = water ? 1 : TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
+          if (water) wet.add(H.key(h));
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
           if (blocks(h)) continue;
@@ -145,7 +150,7 @@ export function moveOptions(s, e) {
   const share = sizeOf(e).shares;
   for (const [k, v] of reach) {
     const there = others.filter((o) => overlapAt(o, o.pos, e, v.h));
-    v.canStop = k !== start && (!there.length || (!!share && there.length < share && there.every((o) => sizeOf(o).shares)));
+    v.canStop = k !== start && !wet.has(k) && (!there.length || (!!share && there.length < share && there.every((o) => sizeOf(o).shares)));
   }
   return reach;
 }

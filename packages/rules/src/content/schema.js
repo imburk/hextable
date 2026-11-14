@@ -33,14 +33,20 @@ export const REMAINS = ['frozen-statue', 'dust'];
 // Where a modifier can attach.
 export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage.dealt', 'damage.taken', 'ac', 'speed', 'initiative',
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
-  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20'];
-export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit'];
+  'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20',
+  // `opportunity`: whether the creature can make Opportunity Attacks (`autoFail`: it can't; Staggering Blow).
+  'opportunity'];
+export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
+  // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
+  'floor'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
   'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
   // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
-  'target.fought'];
+  'target.fought',
+  // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).
+  'check.proficient'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];
@@ -118,6 +124,13 @@ function lintModifier(m, say) {
   if (m.onFail !== undefined && !(m.onFail === true && m.op === 'add' && ['d20', 'attack.roll', 'save'].includes(m.on))) say('`onFail` is true, on an add to d20, attack.roll or save');
   if (m.cost !== undefined && !(m.onFail === true && ID.test(m.cost))) say('`cost` names a feature, with onFail');
   if (m.on === 'd20' && !m.onFail) say('the d20 hook is for onFail dice');
+  if (m.op === 'floor' && !(m.on === 'check' && isInt(m.value) && m.value >= 2 && m.value <= 20)) say('`floor` is on check, with a d20 value');
+  if (m.on === 'opportunity' && m.op !== 'autoFail') say('the opportunity hook takes autoFail (no Opportunity Attacks)');
+  // `except: 'source'`: on a modifier a creature puts on another, it does not hold for rolls the
+  // source itself makes (Sundering Blow: "another creature"). `stack: false`: of several modifiers
+  // of one name, only one applies to a roll (and only that one is used up).
+  if (m.except !== undefined && !(m.except === 'source' && m.on === 'attack.received')) say('`except` is "source", on attack.received');
+  if (m.stack !== undefined && m.stack !== false) say('`stack` is false or left out');
   lintWhen(m.when, say);
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
@@ -216,6 +229,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
         // `by: 'source'` on `damaged`: only damage from the source or its allies ends it (Charm Monster).
         if (ends?.by !== undefined && !(ends.by === 'source' && ends.on === 'damaged')) say('`ends.by` is "source", on an ending `on: "damaged"`');
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
+        // `orDamaged: true`: it also ends when its creature takes any damage (Knock Out: a repeated save, or damage).
+        if (ends?.orDamaged !== undefined && !(ends.orDamaged === true && ends.on === 'save')) say('`ends.orDamaged` is true, on an ending on a save');
       }
     }
     if (kind === 'modifier') {
@@ -592,7 +607,22 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   // Since the magic items (#189): a score that becomes a number unless already as high (Amulet of Health), a bonus to
   // Armor Class while wearing no armour and holding no Shield (Bracers of Defense), a sense gained or its range increased
   // (Goggles of Night).
-  'setAbility', 'bareAc', 'senseRange'];
+  'setAbility', 'bareAc', 'senseRange',
+  // Since the martial classes' levels 7 to 15 (#224): movement with another feature's action (Instinctive Pounce), a
+  // choice on a hit (Brutal Strike), staying up at 0 Hit Points (Relentless Rage), something done on rolling Initiative
+  // (Persistent Rage, Uncanny Metabolism, Perfect Focus), and another feature's lasting effect that needs no renewing
+  // (Persistent Rage).
+  'moveWith', 'brutal', 'relentless', 'initiative', 'persist',
+  // A failed saving throw rolled again for a use of a feature (Indomitable, Disciplined Survivor), and
+  // what a missed attack roll gives against that target (Studied Attacks).
+  'reroll', 'missed',
+  // Evasion; moving along walls and across water (Acrobatic Movement); conditions ended at the end of
+  // its turns (Self-Restoration); another feature's reaction against any damage type (Deflect Energy);
+  // another feature used without a Bonus Action after a different one (Fleet Step).
+  'evasion', 'surfaces', 'selfCure', 'allTypes', 'fleet',
+  // Sneak Attack dice traded for effects (Cunning Strike and the features that add to it), and how many
+  // magic items it may be attuned to (Use Magic Device).
+  'cunning', 'attune'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -660,7 +690,9 @@ function lintGrants(g, cls, say) {
   }
   if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    // `acts`: the feature's action also takes these actions (Patient Defense with a Focus Point: Disengage and Dodge).
+    if (a?.acts !== undefined && !(Array.isArray(a.acts) && a.acts.length && allOf(['dash', 'disengage', 'dodge'])(a.acts) && new Set(a.acts).size === a.acts.length && a.target?.self)) say('action acts lists dash, disengage or dodge, on the creature itself');
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
     if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
     if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
@@ -720,6 +752,10 @@ function lintGrants(g, cls, say) {
     // an effect that would apply one of these conditions, and the save is rolled again with Advantage (Countercharm).
     if (r?.on === 'saveFailed') {
       if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range % 5 === 0 && Object.keys(r).length === 3)) say('a saveFailed reaction is { on, conditions, range }');
+    // Or `{ on: 'damaged', attack: 'melee', within }`: it takes damage from a hostile creature within
+    // `within` feet, and makes one melee attack against it (Retaliation).
+    } else if (r?.on === 'damaged') {
+      if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within % 5 === 0 && Object.keys(r).length === 3)) say('a damaged reaction is { on, attack: "melee", within }');
     } else if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
     else {
       if (r.on !== 'hit') say('reaction.on is "hit" (a feature that cuts the damage of a hit)');
@@ -767,6 +803,110 @@ function lintGrants(g, cls, say) {
   if (g.conditionImmune !== undefined && !(allOf(CONDITIONS)(g.conditionImmune) && g.conditionImmune.length)) say('conditionImmune lists conditions');
   if (g.spellLists !== undefined && !(Array.isArray(g.spellLists) && g.spellLists.length && g.spellLists.every((x) => ID.test(x)))) say('spellLists names classes whose spell lists it opens');
   if (g.critOn !== undefined && !(isInt(g.critOn) && g.critOn >= 15 && g.critOn <= 19)) say('critOn is the lowest d20 roll that is a Critical Hit');
+  // `moveWith: { of }`: starting that feature's lasting effect with its action (not extending it) also
+  // gives up to half the creature's Speed of movement in that turn (Instinctive Pounce with Rage).
+  if (g.moveWith !== undefined && !(g.moveWith && ID.test(g.moveWith.of ?? '') && Object.keys(g.moveWith).length === 1)) say('moveWith is { of: feature id }');
+  // `brutal`: once on its turn, after using the feature `after` that turn (Reckless Attack), the
+  // creature gives up Advantage on one Strength attack roll that has no Disadvantage; on a hit it deals
+  // `dice` more of the attack's type and one of `options` happens to the target (Brutal Strike; a
+  // later feature adds options). An option is { id, name, effects, unique? }; `unique`: a target has
+  // only the most recent one.
+  if (g.brutal !== undefined) {
+    const b = g.brutal;
+    if (!b || typeof b !== 'object' || Array.isArray(b) || !Object.keys(b).every((k) => ['after', 'dice', 'options'].includes(k))) say('brutal is { after?, dice?, options }');
+    else {
+      if (b.after !== undefined && !ID.test(b.after)) say('brutal.after names a feature');
+      if (b.dice !== undefined && !isDice(b.dice)) say('brutal.dice is dice');
+      if ((b.after === undefined) !== (b.dice === undefined)) say('brutal gives after and dice together (the feature itself), or neither (more options)');
+      if (!(Array.isArray(b.options) && b.options.length)) say('brutal.options lists options');
+      else for (const o of b.options) {
+        if (!(o && ID.test(o.id ?? '') && isText(o.name) && Object.keys(o).every((k) => ['id', 'name', 'effects', 'unique'].includes(k)))) { say('a brutal option is { id, name, effects, unique? }'); continue; }
+        if (o.unique !== undefined && o.unique !== true) say('a brutal option\'s unique is true or left out');
+        lintSteps(bakeValues(o.effects, cls, say), say);
+      }
+    }
+  }
+  // `relentless`: dropping to 0 Hit Points without dying outright while the feature `while` has its
+  // effect going, the creature makes a Constitution save, DC `dc` and `step` more for each earlier use
+  // since its last rest; on a success its Hit Points become `hp` (Relentless Rage).
+  if (g.relentless !== undefined) {
+    const r = g.relentless;
+    if (!(r && ID.test(r.while ?? '') && isInt(r.dc) && r.dc > 0 && isInt(r.step) && r.step >= 0 && r.hp !== undefined && Object.keys(r).length === 4)) say('relentless is { while, dc, step, hp }');
+    else lintAmount(r.hp, cls, say, 'relentless.hp');
+  }
+  // `initiative`: when the creature rolls Initiative, the feature named in `regain` gets back all its
+  // uses (or, with `upTo`, as many as make it that many), and with `heal` the creature regains that
+  // many Hit Points (`addLevel`: plus its class level). With uses of its own, it spends one, and only
+  // when it gives something back. `unless`: not if that other feature was used on this roll.
+  if (g.initiative !== undefined) {
+    const x = g.initiative;
+    if (!(x && ID.test(x.regain ?? '') && Object.keys(x).every((k) => ['regain', 'upTo', 'heal', 'addLevel', 'unless'].includes(k)))) say('initiative is { regain, upTo?, heal?, addLevel?, unless? }');
+    else {
+      if (x.upTo !== undefined && !(isInt(x.upTo) && x.upTo > 0)) say('initiative.upTo is a whole number');
+      if (x.heal !== undefined) lintAmount(x.heal, cls, say, 'initiative.heal', true);
+      if (x.addLevel !== undefined && !(x.addLevel === true && x.heal !== undefined)) say('initiative.addLevel is true, with heal');
+      if (x.unless !== undefined && !ID.test(x.unless)) say('initiative.unless names a feature');
+    }
+  }
+  // `persist: { of, endsOn }`: that feature's lasting effect lasts its whole duration without being
+  // extended, and ends early only when its creature has the condition `endsOn` (Persistent Rage).
+  // `reroll: { cost, add? }`: when the creature fails a saving throw, it rolls it again, adding `add`
+  // (an amount: Indomitable's Fighter level), for one use of the feature `cost`, and must use the new
+  // roll. Taken by standing instruction (reactions.js, `always` or `never`) where the new roll could succeed.
+  if (g.reroll !== undefined) {
+    if (!(g.reroll && ID.test(g.reroll.cost ?? '') && Object.keys(g.reroll).every((k) => ['cost', 'add'].includes(k)))) say('reroll is { cost, add? }');
+    else if (g.reroll.add !== undefined) lintAmount(g.reroll.add, cls, say, 'reroll.add');
+  }
+  // `missed: { modifier, ends }`: when the creature misses with an attack roll, it gains this modifier,
+  // against that target only, until `ends` (Studied Attacks: Advantage on its next attack roll, to the
+  // end of its next turn).
+  if (g.missed !== undefined) {
+    const x = g.missed;
+    if (!(x && x.modifier && x.ends && Object.keys(x).length === 2 && ['turnStart', 'turnEnd'].includes(x.ends.on) && Object.keys(x.ends).length === 1)) say('missed is { modifier, ends: { on: turnStart | turnEnd } }');
+    else { lintModifier(x.modifier, say); if (!x.modifier.on.startsWith('attack.roll')) say('missed gives a modifier on attack.roll'); }
+  }
+  // `evasion: true`: an effect that lets it make a Dexterity save for half damage does none on a
+  // success and half on a failure, while it is not Incapacitated (Evasion).
+  if (g.evasion !== undefined && g.evasion !== true) say('evasion is true');
+  // `surfaces: true`: while it wears no armour and holds no Shield, it moves across water without
+  // falling in, and may not stop there (Acrobatic Movement; vertical surfaces are the DM's).
+  if (g.surfaces !== undefined && g.surfaces !== true) say('surfaces is true');
+  // `selfCure: { conditions }`: at the end of each of its turns, one of these conditions it has ends
+  // (the first of the list it has: Self-Restoration).
+  if (g.selfCure !== undefined && !(g.selfCure && allOf(CONDITIONS)(g.selfCure.conditions) && g.selfCure.conditions.length && Object.keys(g.selfCure).length === 1)) say('selfCure is { conditions }');
+  // `allTypes: { of }`: that feature's reaction is taken against an attack of any damage type (Deflect Energy).
+  if (g.allTypes !== undefined && !(g.allTypes && ID.test(g.allTypes.of ?? '') && Object.keys(g.allTypes).length === 1)) say('allTypes is { of: feature id }');
+  // `fleet: { of }`: after a Bonus Action that is not that feature, the creature may use it without
+  // spending a Bonus Action, once a turn (Fleet Step with Step of the Wind).
+  if (g.fleet !== undefined && !(g.fleet && ID.test(g.fleet.of ?? '') && Object.keys(g.fleet).length === 1)) say('fleet is { of: feature id }');
+  // `cunning`: when its Sneak Attack deals damage, the creature may give up Sneak Attack dice (`cost`
+  // each) for effects on the target after the damage (Cunning Strike), up to `max` effects (1 unless a
+  // feature says 2: Improved Cunning Strike). An option is { id, name, cost, effects?, duration?,
+  // needs?, size?, keepHidden? }: `duration`, a lasting effect for its steps (Poison's minute);
+  // `needs`, gear it must carry (a Poisoner's Kit); `size`, the largest target it works on (Trip);
+  // `keepHidden`, the attack does not end its hiding if it ends its turn behind Three-Quarters or Total
+  // Cover from every enemy (Stealth Attack). A save step's `dc` may be an ability: 8 + Proficiency + it.
+  if (g.cunning !== undefined) {
+    const x = g.cunning;
+    if (!(x && typeof x === 'object' && Object.keys(x).every((k) => ['max', 'options'].includes(k)) && (x.max !== undefined || x.options !== undefined))) say('cunning is { max?, options? }');
+    else {
+      if (x.max !== undefined && !(isInt(x.max) && x.max >= 1 && x.max <= 3)) say('cunning.max is 1 to 3');
+      if (x.options !== undefined) {
+        if (!(Array.isArray(x.options) && x.options.length)) say('cunning.options lists options');
+        else for (const o of x.options) {
+          if (!(o && ID.test(o.id ?? '') && isText(o.name) && isInt(o.cost) && o.cost >= 1 && o.cost <= 10 && Object.keys(o).every((k) => ['id', 'name', 'cost', 'effects', 'duration', 'needs', 'size', 'keepHidden'].includes(k)))) { say('a cunning option is { id, name, cost, effects?, duration?, needs?, size?, keepHidden? }'); continue; }
+          if (o.effects === undefined && !o.keepHidden) say(`cunning option ${o.id} has effects or keepHidden`);
+          if (o.effects !== undefined) lintSteps(bakeValues(o.effects, cls, say), say);
+          if (o.duration !== undefined && !isDuration(o.duration)) say('a cunning option\'s duration is a duration');
+          if (o.needs !== undefined && !ID.test(o.needs)) say('a cunning option\'s needs names gear');
+          if (o.size !== undefined && !SIZES.includes(o.size)) say('a cunning option\'s size is a size');
+          if (o.keepHidden !== undefined && o.keepHidden !== true) say('keepHidden is true');
+        }
+      }
+    }
+  }
+  if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
+  if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
 const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
   || (Object.keys(x).length === 1 && Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))));
@@ -1065,7 +1205,8 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
-const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore'];
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
+  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1084,7 +1225,8 @@ function lintFeat(f, say) {
         && (fm.tempHp === undefined || (isInt(fm.tempHp) && fm.tempHp >= 0 && fm.tempHp <= 100)))) sub('its form is { types, maxCr, fly, hours, tempHp? }.');
     } else if (!a.gain && !a.pool) {
       lintTarget(a.target, sub);
-      if (a.modes === undefined) lintSteps(a.effects, sub);
+      // An action that takes other actions may have no steps left for this character (Patient Defense below level 10).
+      if (a.modes === undefined) { if (!(a.acts && Array.isArray(a.effects) && !a.effects.length)) lintSteps(a.effects, sub); }
       else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects }.');
       else for (const m of a.modes) lintSteps(m.effects, sub);
     }
@@ -1106,9 +1248,33 @@ function lintFeat(f, say) {
       && (au.immune === undefined || (allOf(CONDITIONS)(au.immune) && au.immune.length)) && (au.modifiers === undefined || (Array.isArray(au.modifiers) && au.modifiers.length <= 10)))) sub('its aura is { range, modifiers?, immune? }.');
     else for (const m of au.modifiers ?? []) lintModifier(m, sub);
   }
+  if (f.moveWith !== undefined && !(f.moveWith && ID.test(f.moveWith.of ?? ''))) sub('its moveWith is { of }.');
+  if (f.brutal !== undefined) {
+    const b = f.brutal;
+    if (!(b && (b.dice === undefined || isDice(b.dice)) && (b.after === undefined || ID.test(b.after)) && Array.isArray(b.options) && b.options.length && b.options.length <= 10
+      && b.options.every((o) => o && ID.test(o.id ?? '') && isText(o.name)))) sub('its brutal is { after?, dice?, options }.');
+    else for (const o of b.options) lintSteps(o.effects, sub);
+  }
+  if (f.relentless !== undefined && !(f.relentless && ID.test(f.relentless.while ?? '') && isInt(f.relentless.dc) && isInt(f.relentless.step) && isInt(f.relentless.hp) && f.relentless.hp > 0 && f.relentless.hp <= 100)) sub('its relentless is { while, dc, step, hp }.');
+  if (f.initiative !== undefined && !(f.initiative && ID.test(f.initiative.regain ?? '') && (f.initiative.upTo === undefined || isInt(f.initiative.upTo))
+    && (f.initiative.heal === undefined || isDice(f.initiative.heal)) && (f.initiative.unless === undefined || ID.test(f.initiative.unless)))) sub('its initiative is { regain, upTo?, heal?, unless? }.');
+  for (const k of ['evasion', 'surfaces']) if (f[k] !== undefined && f[k] !== true) sub(`its ${k} is true.`);
+  if (f.cunning !== undefined) {
+    const x = f.cunning;
+    if (!(x && (x.max === undefined || (isInt(x.max) && x.max >= 1 && x.max <= 3)) && (x.options === undefined || (Array.isArray(x.options) && x.options.length <= 10 && x.options.every((o) => o && ID.test(o.id ?? '') && isText(o.name) && isInt(o.cost)))))) sub('its cunning is { max?, options? }.');
+    else for (const o of x.options ?? []) if (o.effects) lintSteps(o.effects, sub);
+  }
+  if (f.selfCure !== undefined && !(f.selfCure && allOf(CONDITIONS)(f.selfCure.conditions) && f.selfCure.conditions.length)) sub('its selfCure is { conditions }.');
+  if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');
+  if (f.action?.acts !== undefined && !(Array.isArray(f.action.acts) && allOf(['dash', 'disengage', 'dodge'])(f.action.acts))) sub('its action acts lists dash, disengage or dodge.');
+  if (f.reroll !== undefined && !(f.reroll && ID.test(f.reroll.cost ?? '') && (f.reroll.add === undefined || (isInt(f.reroll.add) && f.reroll.add >= 0 && f.reroll.add <= 30)))) sub('its reroll is { cost, add? }.');
+  if (f.missed !== undefined) { if (!(f.missed && f.missed.modifier && ['turnStart', 'turnEnd'].includes(f.missed.ends?.on))) sub('its missed is { modifier, ends }.'); else lintModifier(f.missed.modifier, sub); }
   if (f.reaction?.on === 'saveFailed') {
     const r = f.reaction;
     if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range <= 300)) sub('its saveFailed reaction is { on, conditions, range }.');
+  } else if (f.reaction?.on === 'damaged') {
+    const r = f.reaction;
+    if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within <= 30 && Object.keys(r).length === 3)) sub('its damaged reaction is { on, attack: "melee", within }.');
   } else if (f.reaction !== undefined) {
     const r = f.reaction;
     if (!(r && r.on === 'hit' && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))

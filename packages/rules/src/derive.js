@@ -47,7 +47,7 @@ export const levelOf = (sheet) => classesOf(sheet).reduce((n, k) => n + k.level,
 // Ability Score Improvement) is played under the class's id in front ("bard-spellcasting"), and so
 // are what the class's own features say of it (a cost in its uses, `with`), so each keeps its own
 // uses and choices. The first class's ids are never changed.
-const REFS = ['resource', 'of', 'with', 'while', 'pool', 'cost'];
+const REFS = ['resource', 'of', 'with', 'while', 'pool', 'cost', 'after', 'regain', 'unless'];
 function relabel(x, map) {
   if (Array.isArray(x)) return x.map((y) => relabel(y, map));
   if (!x || typeof x !== 'object') return x;
@@ -157,6 +157,8 @@ export function featuresOf(sheet) {
 // Attunement it needs, it gives only what its mundane item gives. `attuning: { item, end? }` is the item the
 // character will spend its next Short Rest attuning to, or ending its Attunement to (engine/rests.js, shortRest).
 export const ATTUNE_MAX = 3;
+// How many magic items this character may be attuned to: three, or more with a feature that says so (Use Magic Device: four).
+export const attuneMax = (sheet) => Math.max(ATTUNE_MAX, ...classFeatures(sheet).map((x) => x.f.grants?.attune ?? 0));
 export const ORBIT_MAX = 3;
 export function heldItems(sheet) {
   if (!Array.isArray(sheet?.items)) return [];
@@ -474,6 +476,21 @@ export function derive(sheet) {
       if (r.cut?.add) { r.cut = { dice: dice(r.cut.dice, r.cut.add.reduce((n, x) => n + amount(x, c, level, abil), 0)) }; }
       out.reaction = r;
     }
+    // Since #224: movement with another feature's action, Brutal Strike's options, Relentless Rage's
+    // Hit Points, and what happens on rolling Initiative, with their class numbers put in.
+    if (g.moveWith) out.moveWith = { ...g.moveWith };
+    if (g.brutal) out.brutal = { ...(g.brutal.after ? { after: g.brutal.after, dice: g.brutal.dice } : {}), options: g.brutal.options.map((o) => ({ ...o, effects: bake(o.effects) })) };
+    if (g.relentless) out.relentless = { ...g.relentless, hp: amount(g.relentless.hp, c, level, abil) };
+    if (g.initiative) {
+      const { addLevel, heal, ...rest } = g.initiative;
+      out.initiative = { ...rest, ...(heal !== undefined ? { heal: addLevel ? dice(amount(heal, c, level, abil), level) : amount(heal, c, level, abil) } : {}) };
+    }
+    if (g.reroll) out.reroll = { cost: g.reroll.cost, ...(g.reroll.add !== undefined ? { add: amount(g.reroll.add, c, level, abil) } : {}) };
+    if (g.missed) out.missed = structuredClone(g.missed);
+    for (const k of ['evasion', 'surfaces']) if (g[k]) out[k] = true;
+    if (g.selfCure) out.selfCure = { conditions: [...g.selfCure.conditions] };
+    if (g.fleet) out.fleet = { ...g.fleet };
+    if (g.cunning) out.cunning = { ...(g.cunning.max ? { max: g.cunning.max } : {}), ...(g.cunning.options ? { options: g.cunning.options.map((o) => ({ ...o, ...(o.effects ? { effects: bake(o.effects) } : {}) })) } : {}) };
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
     if (g.critOn) critOn = Math.min(critOn, g.critOn);
@@ -487,6 +504,21 @@ export function derive(sheet) {
   for (const x of feats) {
     const cu = x.f.grants?.cure, to = cu && feat.find((o) => o.id === cu.of)?.action;
     if (to?.cure) to.cure.conditions = [...new Set([...to.cure.conditions, ...cu.conditions])];
+  }
+
+  // A feature reaction another lets work against any damage type (Deflect Energy on Deflect Attacks).
+  for (const x of feats) {
+    const w = x.f.grants?.allTypes, to = w && feat.find((o) => o.id === w.of)?.reaction;
+    if (to) delete to.types;
+  }
+  // A feature whose lasting effect another makes last without renewing (Persistent Rage on Rage): its
+  // parts no longer end with the turn, and it ends early only on the condition named.
+  for (const x of feats) {
+    const p = x.f.grants?.persist, to = p && feat.find((o) => o.id === p.of)?.action;
+    if (!to) continue;
+    for (const st of to.effects ?? []) if (st.ends?.on === 'turnEnd') delete st.ends;
+    delete to.endsWhenIncapacitated;
+    to.endsOn = p.endsOn;
   }
 
   const named = (k) => (k.subclass === k.c.subclass.id && k.level >= 3 ? `${k.c.name} (${k.c.subclass.name})` : k.c.name);
@@ -806,7 +838,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
   const WORDS = { feet: 'pair of footwear', hands: 'pair of gloves or gauntlets', wrists: 'pair of bracers', armour: 'suit of armour', head: 'item of headwear', cloak: 'cloak', shield: 'Shield' };
   for (const [k, list] of Object.entries(worn)) if (WEAR_ONE.includes(k) && list.length > 1) say(`One ${WORDS[k]} at a time: ${list.join(' and ')}.`);
   if ((worn.orbit ?? []).length > ORBIT_MAX) say(`Up to ${ORBIT_MAX} Ioun Stones orbit a head at once.`);
-  if (attuned.length > ATTUNE_MAX) say(`A creature is attuned to ${ATTUNE_MAX} magic items at most; ${attuned.length} are marked attuned.`);
+  if (attuned.length > attuneMax(sheet)) say(`A creature is attuned to ${attuneMax(sheet)} magic items at most; ${attuned.length} are marked attuned.`);
   const twice = attuned.find((id, i) => attuned.indexOf(id) !== i);
   if (twice) say(`Attuned to two copies of ${CONTENT.items[twice].name}: one at most.`);
   // The item it will spend its next Short Rest attuning to, or ending its Attunement to.

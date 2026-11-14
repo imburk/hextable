@@ -1093,6 +1093,56 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     another's Attunement; curses; identifying (an item is always known); encumbrance; drawing a weapon in a fight;
     Sun Blade's proficiency through Shortswords for a class trained only with Light martial weapons; a Luckstone's +1 on
     Initiative (the engine's Initiative reads its own hook, not ability checks).
+- **Amendment (levels 7 to 15, #224: Barbarian, Fighter, Monk, Rogue). No state version change**, decided after review:
+  what is new in a saved game is optional and read only by the new code (`uses["relentless-rage"]`, a lasting effect's
+  `option`, a part's `except`, `fragile: 'unconscious'`), so a version 20 table loads and plays as it did; its
+  characters keep the records they were saved with until the DM makes them again from their sheets (`setSheet`,
+  `levelUp`), as with #164 (test: `classes-barbarian.test.js`, a version 20 table saved before #224). Each part has a linter rule
+  (`lintGrants`, and `lintFeat` for the record) and a test (`test/classes-barbarian.test.js`, `-fighter`, `-monk`, `-rogue`).
+  - *Grants*: `moveWith { of }` (starting that feature's effect in a fight adds half the Speed to the turn's movement:
+    Instinctive Pounce); `brutal { after?, dice?, options }` (the `attack` action's `brutal: option id`: on its own turn,
+    after `after` that turn, once a turn, a Strength attack with no Disadvantage gives up Advantage; a hit deals `dice`
+    more of its type and runs the option's steps on the target; `unique` keeps only the most recent on a target;
+    a later feature adds options); `relentless { while, dc, step, hp }` (at 0 Hit Points without dying outright while
+    `while` has its effect going, a Constitution save against `dc` plus `step` per use since the last rest, counted in
+    `uses[feature id]` and cleared by either rest: Relentless Rage); `initiative { regain, upTo?, heal?, addLevel?,
+    unless? }` (on rolling Initiative, run after the action in `watch`: uses of `regain` back, all or up to `upTo`,
+    Hit Points with `heal`; with uses of its own only when it gives something back; Persistent Rage, Uncanny
+    Metabolism, Perfect Focus); `persist { of, endsOn: 'unconscious' }` (that feature's effect needs no extending and
+    ends early only on that condition: `fragile: 'unconscious'`); `reroll { cost, add? }` (a failed save rolled again
+    for a use of `cost`, adding `add`, the new roll standing, where it could succeed: Indomitable, Disciplined
+    Survivor); `missed { modifier, ends }` (after a missed attack roll, that modifier against that target: Studied
+    Attacks); `evasion: true`; `surfaces: true` (no armour or Shield: walls as with a Climb Speed equal to Speed, and
+    water crossed but not stopped on, as the engine has no swimming; vertical surfaces are the DM's: Acrobatic Movement); `selfCure { conditions }` (at the end of each of its turns
+    one of these it has ends: the one named in `endTurn`'s `cure`, the only one, or with several and no pick a
+    `manual` event for the DM: Self-Restoration); `allTypes { of }` (that feature's reaction loses its damage types:
+    Deflect Energy); `fleet { of }` (that feature without a Bonus Action after a different Bonus Action, once a turn:
+    Fleet Step); `cunning { max?, options? }` (the `attack` action's `cunning: [option ids]`: Sneak Attack dice given up
+    before the roll, effects after the damage; an option is `{ id, name, cost, effects?, duration?, needs?, size?,
+    keepHidden? }`; Cunning Strike, Improved Cunning Strike, Devious Strikes, Supreme Sneak); `attune: n` (magic items
+    it may be attuned to: Use Magic Device; `attuneMax(sheet)` in derive.js). A feature reaction may be `{ on:
+    'damaged', attack: 'melee', within }` (Retaliation: one melee attack, its first, against a hostile creature within
+    `within` feet that damaged it; instruction always, never or ask).
+  - *Feature actions*: `acts: [dash | disengage | dodge]` (the action also takes these: Patient Defense and Step of the
+    Wind with a Focus Point; refused outside a fight when nothing else would happen). A feature action's save with
+    its own `dc` is the DC of a save that ends what it did (Intimidating Presence).
+  - *Modifiers*: hook `opportunity` (`autoFail`: no Opportunity Attacks: Staggering Blow); op `floor` on `check` (a
+    d20 under it counts as it: Reliable Talent) with tag `check.proficient`; `except: 'source'` on `attack.received`
+    (not for the source's own rolls) and `stack: false` (of several of one name, one applies and is used up: Sundering
+    Blow). `attack.received` adds now count toward the roll (no content used one before). An ending may say
+    `orDamaged: true` beside a save (Knock Out).
+  - *Choices made in advance*: a feature with `initiative` and uses, or with `reroll`, is listed by `reactionsOf` with
+    `kind: 'free'` (it does not spend the Reaction) and options `never` (the default, as for a reaction that spends a
+    slot: Shield) / `always`, set with the `reactions` action. No trigger looks at them; they are read where they apply.
+    Retaliation costs only the Reaction and defaults to `always`, as the Opportunity Attack and Uncanny Dodge do.
+  - Cunning Strike leaves at least one Sneak Attack die ("when you deal Sneak Attack damage"). Rage of any kind ends
+    when its creature's sheet or record puts it in Heavy armour (`donned`, sheets.js). Reliable Talent's check event
+    keeps the real d20 face, with `floor: { name, value, was }`.
+  - *Built below level 7 because a feature here needs it*: Uncanny Metabolism (Monk 2), the Focus Point versions of
+    Patient Defense and Step of the Wind (Monk 2), Cunning Strike (Rogue 5).
+  - *Not built*: Weapon Mastery (so Tactical Master), Heroic Inspiration (so Heroic Warrior), jumping, carrying a
+    creature, moves "straight toward" or "immediately after" (Forceful Blow, Withdraw, Fleet Step's timing), food and
+    drink, using magic items (Use Magic Device's charges and scrolls): each is a `manual` step or the DM's by the text.
 - **What `grants` can say** is a closed list (`GRANTS`): `modifiers`; `action` (a Bonus Action,
   action or free use with a target and effect steps, a `duration` for a lasting one, a `cost` in
   another feature's uses, `gain` of an extra action or attacks, a healing `pool`, `renew` and
