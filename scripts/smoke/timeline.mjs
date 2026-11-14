@@ -111,7 +111,14 @@ async function pacing(browser, url, label, opts) {
         // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
         for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('the tap did not skip');
-        if (before !== (await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn])))) throw new Error('the tap acted as well as skipped');
+        const after = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
+        if (before !== after) {
+          // Say what changed, so a failure on a machine we cannot look at names it.
+          const [b, a] = [JSON.parse(before), JSON.parse(after)], changed = [];
+          for (const id of new Set([...Object.keys(b[0]), ...Object.keys(a[0])])) for (const k of new Set([...Object.keys(b[0][id] ?? {}), ...Object.keys(a[0][id] ?? {})])) if (JSON.stringify(b[0][id]?.[k]) !== JSON.stringify(a[0][id]?.[k])) changed.push(`${id}.${k}: ${JSON.stringify(b[0][id]?.[k])} -> ${JSON.stringify(a[0][id]?.[k])}`);
+          if (b[1] !== a[1]) changed.push(`turn ${b[1]} -> ${a[1]}`);
+          throw new Error(`the tap acted as well as skipped: ${changed.join('; ').slice(0, 600)}`);
+        }
         if (await shown(page, '#pace-wait')) throw new Error('"…" is still showing');
       });
       await run.do('Escape skips too, and a button tap skips without acting', async () => {
