@@ -127,6 +127,14 @@ test("Tireless: a Short Rest lowers Exhaustion by 1 from level 10, and the Magic
   ok(act(s, { type: "feature", feature: "tireless" }));
   assert.ok(e.tempHp >= 1 + 3 && e.tempHp <= 8 + 3, "1d8 + Wisdom modifier");
   assert.equal(e.uses.tireless, 2);
+  // "minimum of 1": with Wisdom 8 a roll of 1 still gives 1, and the uses are at least one.
+  for (let seed = 1; seed < 40; seed++) {
+    const t = field(10), h = t.entities.hero = makeEntity(derive(ranger(10, undefined, { abilities: { ...A, wis: 8 } })).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+    t.rng = seed;
+    assert.equal(h.uses.tireless, 1);
+    ok(act(t, { type: "feature", feature: "tireless" }));
+    assert.ok(h.tempHp >= 1 && h.tempHp <= 7);
+  }
 });
 
 test("Superior Hunter's Prey: the mark's 1d6 Force also hits another creature within 30 feet, once a turn, only on damage to the marked one", () => {

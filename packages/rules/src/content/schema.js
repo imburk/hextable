@@ -222,7 +222,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
     if (kind === 'heal' && !isDice(step.heal)) say(`heal "${step.heal}" is not dice like 2d8`);
     if (kind === 'tempHp' && !isDice(step.tempHp)) say(`tempHp "${step.tempHp}" is not dice like 2d4+4`);
     if ((kind === 'heal' || kind === 'tempHp') && step.addMod !== undefined && step.addMod !== true) say('`addMod` is true or left out');
-    if (kind === 'heal' && step.atLeast !== undefined && !(isInt(step.atLeast) && step.atLeast > 0)) say('`atLeast` is the fewest Hit Points a heal restores');
+    if ((kind === 'heal' || kind === 'tempHp') && step.atLeast !== undefined && !(isInt(step.atLeast) && step.atLeast > 0)) say('`atLeast` is the fewest Hit Points a heal (or Temporary Hit Points a tempHp step: Tireless) gives');
     if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
     // What ends a condition or a modifier on its own: a turn boundary of the target or the source
     // ("until the end of your next turn"), or a repeat save.

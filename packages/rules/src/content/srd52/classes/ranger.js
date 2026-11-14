@@ -427,7 +427,8 @@ export const ranger = {
           "effects": [
             {
               "tempHp": "1d8",
-              "addMod": true
+              "addMod": "wis",
+              "atLeast": 1
             }
           ]
         },
