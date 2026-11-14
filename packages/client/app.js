@@ -36,6 +36,7 @@ import { createTimeline, paceFor } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
 import { initTableControls, importLine, gridWords } from './tablecontrols.js';
+import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 
@@ -891,7 +892,7 @@ function reallyLeave() {
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
-const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid() }); });
+const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
 for (const [id, m] of Object.entries(MONSTERS)) {
@@ -1019,11 +1020,19 @@ function showLobby(msg = '') {
 }
 $('lobby-rejoin').onclick = () => { const sess = savedSession(); if (!sess) return showLobby(); $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', ...sess })); };
 $('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { forgetSession(); showLobby('Table forgotten.'); });
-$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { forgetSolo(); $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice()); });
+// A new solo game starts with the party chosen in the lobby (mycharacters.js); one that cannot be played is said, and nothing starts.
+const MC = initMyCharacters({ twoTap, toast });
+function newSolo() {
+  const { party, problems } = MC.party();
+  if (!party) { $('lobby-party').open = true; $('lobby-msg').textContent = `The party is not ready. ${problems[0]}`; return false; }
+  $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), party }), TC.lobbyChoice());
+  return true;
+}
+$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { if (!MC.party().party) return newSolo(); forgetSolo(); newSolo(); });
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
 $('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName(), grid: TC.lobbyGrid() }), TC.lobbyChoice());
 $('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) start(serverTransport({ t: 'join', code, name: lobbyName() })); else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
-$('lobby-solo').onclick = () => { $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice()); };
+$('lobby-solo').onclick = () => (hasSoloGame() ? ($('lobby').hidden = true, start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice())) : newSolo());
 $('lobby-card').onsubmit = (ev) => ev.preventDefault();
 
 (async () => {

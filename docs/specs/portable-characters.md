@@ -1034,3 +1034,37 @@ has a default, and work proceeds on the default.
     and the meter's figures.* Say if more or less may be public.
 14. **Raising a lower-level character at the table.** *Default: allowed,
     recorded as raised by the DM (`basis: 'dm'`).*
+
+## Build note: My characters and the solo party (#308)
+
+The first slice of P6, built ahead of P1 and P2 with only what the device list and the file need. Decision 1's option C is as written; what
+was settled while building:
+
+- **The file.** `packages/client/mycharacters.js` makes and reads exactly the envelope of Decision 1 (`format`, `v: 1`, `cid`, `sheet`, `born`,
+  `blocks`, `edits`, `keys`, `needs`, `parked`). `blocks`, `keys` and `parked` are written empty and **never read**: a file that carries them
+  is imported without them and a note says so. `born.by: 'table'` is read as `'self'` for the same reason (nothing here can check a signature).
+  `parseFile` refuses, with every reason listed, a file over 96 KB, one that is not JSON, one with a field the envelope does not have, a bad
+  `cid`, a `born` that is not `{ level 1..20, how, by }`, `edits` that are not `{ at: 'YYYY-MM-DD', fields: [names] }`, and a sheet `validate`
+  refuses (which is also what keeps non-SRD content out). The file kept is rebuilt from the parts that were checked. When P2 lands its
+  `characterfile.js` should replace `parseFile`; the tests in `packages/client/test/mycharacters.test.js` are the cases it must keep.
+- **The list.** `localStorage` key `hextable.characters` (the key Decision 1 names), at most 20, each entry a character file. Every entry is
+  read back as a file is, so a hand-edited or damaged value is not shown (and is dropped at the next save; the screen says how many).
+  Every access is in try/catch; a browser that refuses storage still plays (starters) and says why My characters is empty. Same `cid` twice is
+  refused on import (Delete the old one first, or Duplicate); a copy gets a new `cid`.
+- **Edits.** Saving from the build screen, or renaming, adds `{ at: today, fields: [names of the sheet fields that differ] }`, never values,
+  at most 50 kept. `born.level` is the level the character was first saved at and does not change.
+- **Limits** are one object, `LIMITS` in `mycharacters.js`: party 1 to 6, level 1 to 20, 20 saved, 96 KB a file. Each disallowed choice in the
+  lobby says why next to the choice (a starter or a character already in the party, a sheet `validate` refuses, no one chosen, My characters full).
+- **The build screen** is the one panel `buildsheet.js` already makes, opened with `openBuild({ mode: 'mine', sheet?, onSave })`; Save calls
+  `onSave(sheet)`, which returns '' or a reason shown with the other problems. It opens above the lobby (`.over-lobby`). No second panel, no second
+  engine: nothing is sent to `apply()` because no game exists yet.
+- **The party.** `newGame(seed, { party })` in `scenario.js` takes 1 to 6 entries, `{ pregen: id }` (a starter, once at most) or `{ sheet }`
+  (`validate` must pass; a bad party throws and nothing is made). Built heroes are `pc1`..`pc6` and keep their sheet (as `setSheet` keeps it);
+  the starters keep their ids. This was less engine change than a `setSheet` per hero after `newGame`, which could not take the four starters
+  away. Hex and square valleys both place up to six. Without the option the valley is exactly what it was. The lobby remembers the last party
+  (`hextable.party`, `{ count, picks }`) and **Continue** keeps the saved game as it is; **New game** (two taps, in the lobby or in the menu) starts with the remembered party.
+- **Not built, as the issue says:** keys, blocks, servers, the level meter (P7), Import from Fantasy Grounds with no table, species and
+  background (a sheet has no field for them), a multiclass sheet in the build screen (`fromSheet` reads one class: such a character can be listed,
+  exported, imported and played, but its Edit button says it cannot be opened yet).
+- **For a player joining a table later (P8, not built):** the lobby's Join would need a chosen entry from this list sent as an offer; the file is
+  already the shape P5 expects, and `LIMITS` and `pickProblem` can be reused for what a table admits. The server has no `admit` yet (P4).

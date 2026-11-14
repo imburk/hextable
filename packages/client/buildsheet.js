@@ -56,9 +56,17 @@ export function usesText(u) {
   return `${n}, back on a Long Rest${u.short ? ` (${u.short} on a Short Rest)` : ''}`;
 }
 
+// The build screen is one panel for the page. `openBuild` opens it for My characters (mycharacters.js, #308): no game is attached, and
+// Save hands the sheet to `onSave(sheet)`, which returns '' when it kept it or the reason it could not. { mode: 'mine', sheet?, onSave }
+let current = null;
+export function openBuild(o) {
+  if (!current) throw new Error('The build screen is not ready.');
+  current.open(o);
+}
+
 export function initBuild({ act, toast, getState, getSelected, importButton }) {
   const classIds = Object.keys(CONTENT.classes);
-  let b = fresh(), mode = 'add', target = null, base = null, pending = null;
+  let b = fresh(), mode = 'add', target = null, base = null, pending = null, keep = null;       // `keep`: where a sheet goes in 'mine' mode
   const open = new Set(['spells-0']);          // spell groups left open across redraws
   const refs = {};
 
@@ -117,7 +125,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     panel.textContent = '';
     for (const k of Object.keys(refs)) delete refs[k];
     const L = limits(), c = L.c, locked = mode === 'levelup';
-    const title = mode === 'levelup' ? `Level up ${target.name}` : mode === 'edit' ? `Edit ${target.name}` : 'Build from class and level';
+    const title = mode === 'levelup' ? `Level up ${target.name}` : mode === 'edit' ? `Edit ${target.name}` : mode === 'mine' ? (target ? `Edit ${target.name}` : 'New character for My characters') : 'Build from class and level';
     const head = el('div', { class: 'qe-head' }, el('h2', { text: title }), el('button', { type: 'button', class: 'close', id: 'qb-close', text: 'Close', onclick: close }));
     const parts = [head];
     if (mode === 'levelup') parts.push(gainedBox());
@@ -218,7 +226,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     refs.derived = el('section', { id: 'qb-derived', class: 'qb-derived' });
     parts.push(refs.derived);
     refs.problems = el('ul', { class: 'qe-problems', id: 'qb-problems', 'aria-live': 'polite' });
-    const label = mode === 'levelup' ? `Level up to ${b.level}` : mode === 'edit' ? 'Save changes' : 'Add to the table';
+    const label = mode === 'levelup' ? `Level up to ${b.level}` : mode === 'edit' ? 'Save changes' : mode === 'mine' ? 'Save to My characters' : 'Add to the table';
     refs.save = el('button', { type: 'button', id: 'qb-save', class: 'qe-save', text: label, onclick: save });
     parts.push(el('div', { class: 'qe-foot' }, refs.problems, el('div', { class: 'row' }, refs.save, el('button', { type: 'button', id: 'qb-cancel', text: 'Cancel', onclick: close }))));
     panel.append(...parts);
@@ -362,21 +370,29 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   }
 
   function autoSubclass() { if (b.level >= 3 && !b.subclass) b.subclass = b.c.subclass.id; }
-  function close() { panel.hidden = true; pending = null; }
+  function close() { panel.hidden = true; pending = null; keep = null; panel.classList.remove('over-lobby'); }
   function save() {
     const s = sheet();
     if (validate(s).length) return;
+    if (mode === 'mine') {
+      const why = keep?.(s);
+      if (why) { refs.problems.append(el('li', { text: why })); refs.problems.hidden = false; return; }
+      return close();
+    }
     pending = mode === 'add' ? 'spawned' : 'edited'; refs.save.disabled = true;
     setTimeout(() => { if (pending) { pending = null; if (!panel.hidden) update(); } }, 4000);   // the engine said no (its toast is showing): let the DM fix it
     if (mode === 'levelup') act({ type: 'levelUp', actor: target.id, sheet: s });
     else act(mode === 'edit' ? { type: 'setSheet', actor: target.id, sheet: s } : { type: 'setSheet', sheet: s });
   }
 
-  return {
-    // { mode: 'add' } | { mode: 'edit', entity } | { mode: 'levelup', entity }
+  const api = {
+    // { mode: 'add' } | { mode: 'edit', entity } | { mode: 'levelup', entity } | { mode: 'mine', sheet?, onSave }
     open(o = { mode: 'add' }) {
       mode = o.mode; pending = null; target = o.entity ? { id: o.entity.id, name: o.entity.name } : null;
-      if (mode === 'add') b = fresh(); else {
+      keep = mode === 'mine' ? o.onSave : null;
+      panel.classList.toggle('over-lobby', mode === 'mine');             // it opens over the lobby, which is above the usual panels
+      if (mode === 'mine') { b = o.sheet ? fromSheet(o.sheet) : fresh(); target = o.sheet ? { name: o.sheet.name } : null; autoSubclass(); }
+      else if (mode === 'add') b = fresh(); else {
         b = fromSheet(o.entity.sheet);
         if (mode === 'levelup') {
           base = safeDerive(o.entity.sheet)?.record ?? null;
@@ -396,4 +412,6 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     },
     sheetOf: sheet, proficiencyFor,
   };
+  current = api;
+  return api;
 }
