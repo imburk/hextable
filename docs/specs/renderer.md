@@ -533,9 +533,11 @@ seconds, and back up when it stays under 14 ms for 10 seconds.
 
 **What is cut first**, in this order:
 
-1. The pixel ratio, from 2 to 1.5 to 1 (fill rate is usually the limit on a
+1. Real shadows, replaced by today's blob shadows (R15 changed the order of
+   this list: shadows go before the pixel ratio, since a sharp picture matters
+   more on a phone than a soft shadow does).
+2. The pixel ratio, from 2 to 1.5 to 1 (fill rate is usually the limit on a
    phone).
-2. Real shadows, replaced by today's blob shadows.
 3. Point lights from light sources beyond the nearest one.
 4. Particles in spell and trap effects, halved.
 5. Animation of creatures off screen or far away, at a lower rate or paused.
@@ -592,6 +594,7 @@ Ordered so that the first three each give a visible improvement on their own.
 | R12 | Models: theme model packs, glTF loading, size scaling, clips mapped to beats, fallbacks; a starter pack after the owner verifies licences | any agent; licences by the design owner | `render-three.js`, `themes.js`, `assets/models/` | A goblin, a skeleton and the four heroes walk, strike and fall; a Large ogre fills three hexes |
 | R13 | Sight S8: remembered tiles shaded, light per corner, light sources, last-seen markers, "see as the party" | any agent, after sight S7 | the renderer in use | A player can tell what is in view from what is remembered, and a torch lights a cave |
 | R14 | Remove the hand-written renderer | any agent | `render.js`, `app.js` | One renderer remains; every check still passes |
+| R15 | Real shadows on the Three.js renderer: a sun's depth pass, floors that read it, soft edges, off by default on a phone, the governor drops them before the pixel ratio | any agent (renderer) | `render-three.js`, `governor.js`, `settings.js` | A pawn and a wall throw a shadow on the floor on hexes and on squares; a phone starts without them |
 
 R1 to R5 need no library and no engine change beyond one setting. R6 to R9
 can run in parallel after R2. R10 decides the rest.
@@ -806,7 +809,7 @@ can run in parallel after R2. R10 decides the rest.
   the spec's thresholds: a display locked to 60 Hz can never show a median under 14 ms, so the governor would never step up
   there; once it has seen a full window with a median between 14 and 18 ms, it counts a median 12 % over that as recovered
   (18.7 ms on a 60 Hz screen). `frameMs` is the time between frames, as the player sees it, not the renderer's own work. Only the
-  pixel ratio is governed; the rest of the cut list (shadows, lights, particles, decor) has nothing to cut yet.
+  pixel ratio is governed; the rest of the cut list (shadows, lights, particles, decor) has nothing to cut yet. (R15: the Three.js renderer's governor also steps its shadows, first.)
   Checked at 1280x800 and 390x844 with touch, solo, on the valley and the stock dungeon: screenshots before and after are
   identical to the pixel (with `Math.random` fixed, since the valley's trees are drawn from a random seed per game).
   `SMOKE_ONLY=interface`: the page loads with the empty renderer (address flag on a desktop, preference on a phone), a table is
@@ -830,7 +833,7 @@ can run in parallel after R2. R10 decides the rest.
   - At parity: everything in the interface; floors, rooms, cut-away, caves, outdoors, levels above the ceiling, the DM's dimming, sight
     shades, arena, pawns by size, fliers and their mark, blob shadows, labels, bars, floaters, pins, bars across steps, lasting zones, doors,
     falls and Prone, death fade, region fade, spawn, removal and placing fades, the arena rising and sinking, pictures (code only).
-  - Not at parity or not done: no real shadows (optional in the task, left out); no glTF (R12); nothing is drawn until the library has loaded
+  - Not at parity or not done: no real shadows (done in R15, below); no glTF (R12); nothing is drawn until the library has loaded
     (a blank canvas for the first second or two, the first time); a picture floor was written but not exercised by a smoke pass.
   - *Checked* by `SMOKE_ONLY=three-parity` at 1280x800 and 390x844 with touch on the valley (the same map loaded in both pages), the stock
     dungeon and the cave: `screenOf` for 81 hexes, `screenPoint`, `planePoint`, `screenAxes` and the hex picked by a tap at 23 to 26 points
@@ -838,3 +841,38 @@ can run in parallel after R2. R10 decides the rest.
     it (a tap moves a character, a fight starts and the curtain is drawn, a goblin falls, doors swing and close). Frame times (software GL,
     so only comparable): the medians are the same in both, set by the display tick under software GL (desktop dungeon 266.7 ms both, phone dungeon 116.7 ms both), and draw calls are
     equal (11 on the dungeon): the two renderers cost the same here, and neither number says anything about a device.
+- **R15 real shadows** (`three-shadows`, Three.js renderer only; the default renderer is untouched). *How.* Each frame the renderer draws what casts
+  (the walls, the doors, every pawn, a dying creature and a fading ghost: meshes on layer 1) into a depth map seen from the sun, with one override
+  material that writes nothing but depth; the floors (the terrain mesh and a level's picture) read that map in their own shader, under a
+  `SHADOWS` define that exists only while shadows are drawn, so a table without them runs the shader it ran before. The sun is the renderer's one
+  directional light (the same vector the shader lights with). A shadow darkens and cools the floor (`x 0.5, 0.55, 0.72` at full, 85 % strength) and
+  is thrown only onto surfaces that face the sun. *The box.* An orthographic box along the sun. A board that fits in a box of 14 units or more
+  across (or `1.15 x` the camera's distance) is covered whole from its middle; a larger one gets the stretch round the camera's focus, moved in
+  whole texels so shadows do not crawl as the camera pans (`shadowBox`, pure, tested). Map 2048 square, 1024 on a phone. *Edges.* Nine taps, a
+  Poisson disc turned a different way at every pixel (a fine grain instead of banding), about 0.1 unit wide whatever the map's size; the point
+  is moved a texel and a half along the normal and a depth bias of two texels (at least 0.03 unit) keeps a floor from shadowing itself. The
+  floors do not cast, so there is no self-shadowing to tune out. *Cost.* The pass is redrawn only when something that casts has moved, changed
+  its geometry, or the box has moved (a hash of the casters' matrices); a table at rest costs nothing but the floors' extra taps. `stats()` has
+  `shadows`, `shadowMode`, `shadowSize`, `shadowPasses` and `shadowCalls`; `drawCalls` is still the picture's own. *Blobs.* With shadows on, the
+  pawns' blob shadows are not drawn (the real ones replace them); the terrain's own blobs (trees) stay, since trees do not cast. *Setting.*
+  `?shadows=on|off|auto` in the address, then the device preference `hextable.shadows` (`"auto"`, `"on"`, `"off"`), else `auto`. `auto` is on for
+  a computer or a tablet, and off for a phone (a touch screen whose shorter side is under 600 CSS pixels) until the governor sees headroom.
+  `on` is never given up; `off` is never drawn. The Settings tab has a Shadows control (made by `settings.js`, since `index.html` was not in the
+  task); it stores the preference and tells the live renderer with the page event `hextable-shadows`. *The governor* (`governor.js`,
+  `shadowLevels`): the ladder under `auto` is shadows at the best pixel ratio, then no shadows at that ratio, then each lower ratio, so shadows
+  are given up before any pixel ratio, and a screen of ratio 1 (one pixel ratio) still has a step to give. A phone starts one step down and
+  climbs to its shadows under the governor's own rule (the median under 14 ms, or the display's own rate, for 10 s). The default renderer's
+  governor is a list of numbers as before (`ratio` still answers the number).
+  *Checked* with `SMOKE_ONLY=three` (the two new scenarios, at 1280x800 and 390x844 with touch): the default is on for a computer and off for a
+  phone, the Settings control switches it and is stored, the address wins and turns the control off, on the stock dungeon (hexes) and the engine's
+  square room (squares) the picture with shadows differs from the picture without them in 3 to 6 % of the pixels of the map area (a patch of floor,
+  not the screen), and the sun's pass is not redrawn in 1.5 s with nothing moving. Looked at by eye in screenshots on the valley, dungeon and square
+  room, desktop and phone, and on a level with a picture. Frame times (software GL, so only comparable, and the other browser job shares the
+  two cores): shadows on against off, medians over the last 120 frames, desktop valley 433 against 117 ms, dungeon 400 against 100 ms, square room
+  about 50 against 50; phone valley 450 against 117, dungeon 417 against 67 ms, square 17 against 17. A software rasteriser pays for every tap of every
+  pixel, which a GPU does not: nothing here says what a device would do, and none was tried.
+  *Left out.* The floors do not cast (a bridge or a balcony does not shade the level under it); a cut-away wall casts no shadow (it is not drawn);
+  creatures and walls do not receive shadows (a pawn does not shade another pawn's body, a wall's face is lit by its own normal only); light
+  sources (the spec's point lights) cast none; the hour of the day does not move the sun; no cascades (a large board's shadows have the map's
+  resolution round the focus and none beyond the box, fading over the last 7 % of its edge); the renderer has no settings control (only the
+  shadows one).

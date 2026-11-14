@@ -48,6 +48,21 @@ export function initSettings(ctx) {
   $('set-cutaway').onchange = (ev) => { prefs.set('hextable.cutaway', ev.target.checked); ctx.look('cutaway', ev.target.checked); };
   $('set-caves').onchange = (ev) => { prefs.set('hextable.caves', ev.target.checked); ctx.look('caves', ev.target.checked); };
 
+  // Shadows (docs/specs/renderer.md, R15), for the Three.js renderer: it has no place in index.html, so the control is made here. The
+  // renderer hears of a change by the page event `hextable-shadows`; it reads the stored preference itself when it starts.
+  const shadowSet = (() => { try { return new URLSearchParams(location.search).get('shadows'); } catch { return null; } })();
+  const sw = document.createElement('div');
+  sw.innerHTML = '<label class="assign">Shadows <select id="set-shadows"><option value="auto">Automatic</option><option value="on">On</option><option value="off">Off</option></select></label>'
+    + '<p class="note" id="set-shadows-note"></p>';
+  $('set-look-note').before(...sw.children);
+  const shadows = $('set-shadows'), saved = prefs.get('hextable.shadows');
+  shadows.value = ['auto', 'on', 'off'].includes(saved) ? saved : 'auto';
+  shadows.disabled = ['auto', 'on', 'off'].includes(shadowSet);
+  $('set-shadows-note').textContent = shadows.disabled
+    ? 'The address of this page sets the shadows for this visit, so that control is off.'
+    : 'Real shadows are drawn by the Three.js renderer only (?renderer=three). Automatic draws them on a computer or tablet and, on a phone, only once the screen shows it has room; it drops them first if the screen falls behind. On keeps them whatever happens.';
+  shadows.onchange = (ev) => { prefs.set('hextable.shadows', ev.target.value); window.dispatchEvent(new CustomEvent('hextable-shadows', { detail: ev.target.value })); };
+
   // The drawer: which side, and (wide screens) pinned.
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
