@@ -448,15 +448,21 @@ export async function casters(browser, url, label, opts) {
       await step('a fight: Hurl Through Hell is armed from its card and the engine\'s words show when no attack has hit', async () => {
         await closePanels(page);
         await turnOf(ids.Mor);
-        const target = await foeBeside(ids.Mor);
-        await pick('Mor');
-        await feat('Hurl Through Hell');
-        await card('hurl');
-        await shot('hurl');
-        await tap(page, '#cp-use');
-        await waitShown(page, '#hint');
-        await tapCreature(target);
-        await wait(page, () => /follows a hit|not hit/.test(document.querySelector('#toast')?.textContent ?? ''), null, 8000);
+        let said2 = false;
+        for (let k = 0; k < 3 && !said2; k++) {                              // a goblin behind a pawn can be missed by the tap: try another place
+          const target = await foeBeside(ids.Mor);
+          await pick('Mor');
+          await feat('Hurl Through Hell');
+          await card('hurl');
+          if (!k) await shot('hurl');
+          await tap(page, '#cp-use');
+          await waitShown(page, '#hint');
+          await ev(() => { window.__toasts = []; const t = document.getElementById('toast'); new MutationObserver(() => window.__toasts.push(t.textContent)).observe(t, { childList: true, characterData: true, subtree: true, attributes: true }); });
+          await tapCreature(target);
+          said2 = await wait(page, () => window.__toasts.some((x) => /follows a hit|not hit/.test(x)), null, 5000).then(() => true, () => false);   // the engine's words; the toast may be gone before a poll sees it
+          if (!said2) await ev(() => window.hextable.select(window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id));
+        }
+        if (!said2) throw new Error(`the engine did not say why: ${await said()}`);
       });
 
       await step('Superior Hunter\'s Prey: greyed with the engine\'s words until a creature is marked, then the card offers who takes the damage and arms the attack', async () => {
@@ -472,7 +478,7 @@ export async function casters(browser, url, label, opts) {
         if (!mark) throw new Error('the goblin to mark is gone');
         await ev(([a, g]) => window.hextable.act({ type: 'cast', actor: a, spell: 'hunters-mark', target: g }), [ids.Ash, ids.g2]);
         await waiting((a) => window.hextable.state.effects?.some((x) => x.source === a && x.spell === 'hunters-mark'), ids.Ash);
-        await panelTab(page, 'features');
+        await panelTab(page, 'spells'); await sleep(300); await panelTab(page, 'features');
         const now = await text('#ap-features [data-row]:has-text("Superior Hunter")');
         if (/no creature marked/.test(now)) throw new Error(`still greyed: ${now}`);
         await feat('Superior Hunter');
