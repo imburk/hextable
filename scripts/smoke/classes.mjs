@@ -314,7 +314,7 @@ export async function casters(browser, url, label, opts) {
         const before = await state(page, (S) => Object.keys(S.entities));
         const around = await ev((i) => {
           const h = window.hextable, e = h.state.entities[i], me = h.R.screenOf(e.pos);
-          return [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]].map(([dq, dr]) => { const at = { q: e.pos.q + dq, r: e.pos.r + dr }, p = h.R.screenOf({ ...at, z: e.pos.z }); return { at, d: p ? Math.hypot(p.x - me.x, p.y - me.y) - (p.y > innerHeight * 0.55 ? 1000 : 0) - (p.y < 120 ? 1000 : 0) : -9999 }; }).sort((a, b) => b.d - a.d).map((x) => x.at);
+          return [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1], [2, 0], [-2, 0], [0, 2], [0, -2], [2, -2], [-2, 2], [2, -1], [-2, 1], [1, 1], [-1, -1]].map(([dq, dr]) => { const at = { q: e.pos.q + dq, r: e.pos.r + dr }, p = h.R.screenOf({ ...at, z: e.pos.z }); return { at, d: p ? Math.hypot(p.x - me.x, p.y - me.y) - (p.y > innerHeight * 0.55 ? 1000 : 0) - (p.y < 120 ? 1000 : 0) : -9999 }; }).sort((a, b) => b.d - a.d).map((x) => x.at);
         }, who);
         for (const at of around) {
           await ev((a) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at: a }), at);
@@ -449,7 +449,7 @@ export async function casters(browser, url, label, opts) {
         await closePanels(page);
         await turnOf(ids.Mor);
         let said2 = false;
-        for (let k = 0; k < 3 && !said2; k++) {                              // a goblin behind a pawn can be missed by the tap: try another place
+        for (let k = 0; k < 2 && !said2; k++) {                              // a goblin behind a pawn can be missed by the tap: try another place
           const target = await foeBeside(ids.Mor);
           await pick('Mor');
           await feat('Hurl Through Hell');
@@ -562,6 +562,12 @@ export async function casters(browser, url, label, opts) {
 
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=classes.
 export default async function (browser, url) {
+  // SMOKE_CASTERS=1 runs only the caster screens (#302), at both sizes: with the others in one go the pass would pass the 7 minutes this machine allows.
+  if (process.env.SMOKE_CASTERS) {
+    await casters(browser, url, 'caster classes at 1280x800', { viewport: { width: 1280, height: 800 } });
+    await casters(browser, url, 'caster classes at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    return;
+  }
   await classes(browser, url, 'class controls at 1280x800', { viewport: { width: 1280, height: 800 } });
   await classes(browser, url, 'class controls at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await martial(browser, url, 'martial classes in the action panel at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });     // the steps are in paneltabs.mjs
