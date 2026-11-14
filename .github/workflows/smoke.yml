@@ -45,7 +45,7 @@ jobs:
       - name: Run the pass
         run: |
           mkdir -p "$RUNNER_TEMP/smoke-shots"
-          SMOKE_SHOTS="$RUNNER_TEMP/smoke-shots" SMOKE_ONLY=${{ matrix.pass }} npm run smoke
+          SMOKE_VERBOSE=1 SMOKE_SHOTS="$RUNNER_TEMP/smoke-shots" SMOKE_ONLY=${{ matrix.pass }} npm run smoke
       - name: Upload screenshots
         if: failure()
         uses: actions/upload-artifact@v4
