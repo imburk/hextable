@@ -7,9 +7,9 @@ import { ABILITIES, SKILLS } from '../content/schema.js';
 import { begin, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
-import { apart, FT, ground, overlapAt, STEP_MAX } from '../space.js';
+import { apart, footprint, FT, ground, measure, overlapAt, STEP_MAX } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
-import { barriers, distToSegment, objectDef, objectSegment } from '../walls.js';
+import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { able, actTime, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
@@ -18,10 +18,18 @@ import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.
 import { checkEnd, objectEffects, resolve } from './resolve.js';
 
 // Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
+// Everything by the map's grid (review of #262). On squares, a door on a square's side is in reach
+// from either of its two squares or any square next to one, and a thing from its square or next to
+// it, measured by the table rule `squareRange` from any square of the user's space; a traced door
+// (`seg`) within 5 ft of its line, as on hexes. Hex maps as before.
 function nearObject(s, e, o) {
   const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[col(o.at)]?.h ?? 0);
   if (!ground(s.map, e.pos) || Math.abs(e.pos.z - z) > STEP_MAX) return false;
-  const seg = objectSegment(o), G = gridOf(s.map);
+  const G = gridOf(s.map), seg = objectSegment(o, G);
+  if (G.kind === 'square' && !(seg && o.seg)) {
+    const m = measure(s, G), cells = seg ? objectHexes(o, G) : [o.at];
+    return footprint(e, e.pos, G).some((p) => cells.some((h) => m(p, h) <= 1));
+  }
   return seg ? distToSegment(G.center(e.pos), seg) <= FT + 1e-9 : G.dist(e.pos, o.at) <= 1;     // within 5 ft
 }
 const hasKey = (e, key) => e.gear.some((g) => String(g).toLowerCase() === key.toLowerCase());

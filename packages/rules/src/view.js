@@ -207,11 +207,29 @@ export function viewHandouts(state, viewer) {
 // Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
 // those hexes, the objects that touch them, and the regions already revealed. Nothing else: an
 // unrevealed room is simply absent. Built once and kept until the map or what is revealed changes.
-const REACH = HEX.cornerReach + 0.02;             // a hex's corner, in feet from its centre (by the map's grid in S8)
-// The stretches of a wall that lie within REACH of any of these hex centres.
-export function clipWall(w, centres) {
+// A cell's corner, in feet from its centre, and a hair more: `G.cornerReach` of the map's grid
+// (5/√3 on hexes; docs/specs/square-grid.md, E7). On squares the stretch is the part inside the
+// square itself and a hair round it (half a side and 0.02 ft each way), not a circle through its
+// corners, which would reach a foot into the square beyond (review of #262, L2).
+const reachOf = (G) => G.cornerReach + 0.02;
+export const SQUARE_CLIP = 2.5 + 0.02;
+// The stretches of a wall that lie within `reach` of any of these cell centres, or, with
+// `box` set, within `box` feet of one along each axis (a square).
+export function clipWall(w, centres, reach = reachOf(HEX), box = 0) {
+  const REACH = reach;
   const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
   for (const [cx, cy] of centres) {
+    if (box) {                                                     // the segment's part inside the box round this centre
+      let t0 = 0, t1 = 1;
+      for (const [d, v, c] of [[dx, ax, cx], [dy, ay, cy]]) {
+        if (Math.abs(d) < 1e-12) { if (Math.abs(v - c) > box) { t0 = 1; t1 = 0; } continue; }
+        let u0 = (c - box - v) / d, u1 = (c + box - v) / d;
+        if (u0 > u1) [u0, u1] = [u1, u0];
+        t0 = Math.max(t0, u0); t1 = Math.min(t1, u1);
+      }
+      if (t0 <= t1) spans.push([t0, t1]);
+      continue;
+    }
     const fx = ax - cx, fy = ay - cy;
     if (!len2) { if (fx * fx + fy * fy <= REACH * REACH) spans.push([0, 1]); continue; }
     const b = 2 * (fx * dx + fy * dy), disc = b * b - 4 * len2 * (fx * fx + fy * fy - REACH * REACH);
@@ -253,7 +271,11 @@ function shownMap(state) {
     // that nothing about a wall's name or place in the list says which one is not a wall.
     walls: [...map.walls, ...map.objects.filter((o) => objectSegment(o, G) && hiddenNow(o))
       .map((o) => ({ id: o.id, level: o.level, kind: 'wall', a: objectSegment(o, G)[0], b: objectSegment(o, G)[1] }))]
-      .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level)) : []))
+      .flatMap((w) => (centres.has(w.level) ? clipWall(w, centres.get(w.level), reachOf(G), G.kind === 'square' ? SQUARE_CLIP : 0) : []))
+      // Every piece runs from its lower end to its higher one (x, then y), so its direction says
+      // nothing of how it was drawn: a secret door's piece is the grid's, a wall's its drawer's
+      // (review of #262, M2).
+      .map((w) => (w.a[0] > w.b[0] || (w.a[0] === w.b[0] && w.a[1] > w.b[1]) ? { ...w, a: w.b, b: w.a } : w))
       .sort((p, q) => p.a[0] - q.a[0] || p.a[1] - q.a[1] || p.b[0] - q.b[0] || p.b[1] - q.b[1] || (p.kind < q.kind ? -1 : p.kind > q.kind ? 1 : 0))
       .map((w, i) => ({ ...w, id: `w${i}` })),
     // Objects in a hidden state are not sent at all. Of the rest, only the fields named here (an
@@ -339,8 +361,9 @@ export function viewEvents(events, state, viewer) {
   let was = null;
   const cls = (id) => (was?.includes(id) ? 'hidden' : classify(state, id));
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
-  // Hexes named by an area, under the los and light rules, only where they are sent.
-  const hexesOf = (hs) => (!hs ? hs : hs.filter((h) => !byRule || sm.cols.has(col(h))).map((h) => ({ q: h.q, r: h.r })));
+  // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
+  // P26: an area reaching into a region not yet revealed does not show its cells there).
+  const hexesOf = (hs) => (!hs ? hs : hs.filter((h) => sm.cols.has(col(h))).map((h) => ({ q: h.q, r: h.r })));
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
   const out = { push(e) { delete e.unseen; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };

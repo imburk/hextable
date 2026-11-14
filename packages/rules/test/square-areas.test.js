@@ -339,10 +339,9 @@ test("a player is sent no area square it could not otherwise know of, cast or pr
     const v = view(s, PAT), known = new Set(v.map.levels.flatMap((l) => Object.keys(l.tiles)));
     const sent = viewEvents(r.events, s, PAT).filter((e) => e.type === "cast");
     assert.equal(sent.length, 1);
-    // Under 'rooms' view.js sends a cast's cells unfiltered, on hexes as on squares (DEBT P26): left
-    // to the sight lane, which owns view.js. Under los and light nothing unknown is sent.
-    if (sight !== "rooms") for (const h of sent[0].hexes) assert.ok(known.has(col(h)), `${sight}: ${col(h)} is sent with the cast but not on the player's map`);
-    else assert.ok(sent[0].hexes.some((h) => !known.has(col(h))), "rooms: the known gap (DEBT P26) is still there; if this fails, it was fixed: make the check above cover rooms too");
+    // Under every rule nothing unknown is sent (DEBT P26, fixed in #262: under 'rooms' too).
+    for (const h of sent[0].hexes) assert.ok(known.has(col(h)), `${sight}: ${col(h)} is sent with the cast but not on the player's map`);
+    assert.ok(sent[0].hexes.length > 0, `${sight}: the cells the player knows are sent`);
     // The preview a player's client works out from its own view holds only squares of its map.
     for (const h of areaHexes(v, v.entities.wizard, { area: { shape: "sphere", size: 20 }, range: 150 }, { q: 14, r: 4 })) assert.ok(known.has(col(h)), `${sight}: preview ${col(h)}`);
     // A lasting zone's squares are never sent.

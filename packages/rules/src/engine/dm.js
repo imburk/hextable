@@ -10,6 +10,7 @@ import { EDITS, lintMap, migrateMap } from '../map.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
 import { SIGHT_RULES } from '../vision.js';
+import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, ent, fail, inFight, living, up } from './shared.js';
@@ -269,7 +270,9 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // first value. What each means is SETTING_TEXT, below.
   diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
-  conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'] };
+  conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
+  // Square maps only: how cover is judged (sight.js); absent means the first. Words in SETTING_TEXT.
+  squareCover: SQUARE_COVERS };
 // What the square-map settings mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   diagonals: {
@@ -284,6 +287,10 @@ export const SETTING_TEXT = {
   areaFill: {
     round: 'A square is in a Sphere, Cylinder or Emanation when its centre is inside the real shape (the default): a 20-ft Sphere covers 49 squares. Cones, Lines and Cubes always go by centres inside the shape. A table rule; the SRD does not say which squares an area covers.',
     grid: 'A Sphere, Cylinder or Emanation covers every square within its size counted as the SRD counts range, a diagonal like a side: a 20-ft Sphere covers 81 squares (a 9 by 9 block). Cones, Lines and Cubes still go by centres inside the shape. A table rule.',
+  },
+  squareCover: {
+    obstacle: 'Cover by what is in the way (the default): the line to the middle of the target and the lines to its corners. All clear: no cover. The middle clear but a corner hidden, or a creature on the line: Half. The middle behind something solid but part of the target showing round it: Three-Quarters. All of it behind a window, a rail or a lowered grille: Three-Quarters. All of it behind a wall or a shut door: Total. A chest, a crate or a statue gives Half at most. A curtain is no cover; what is behind it cannot be seen. A table rule; the SRD does not say how to judge cover on a grid.',
+    corners: 'Cover by the corners of the target\'s square in view, as on hexes: all four, none; two or three, Half; one, Three-Quarters; none and the middle hidden, Total. Walls and shut doors count, a rail gives Half, windows and things in a square do not count. A table rule.',
   },
 };
 

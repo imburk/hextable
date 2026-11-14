@@ -442,9 +442,9 @@ choice below (S7 build notes give the counts).
   does not fully cover the target; **Three-Quarters Cover**, something that fully covers the
   target but has a hole in it, or is askew of the direction of attack; **Total Cover**, a wall, or
   something bigger than the target, directly between the target and the attack. The lead's
-  reading for the engine (S8 builds it; awaiting the owner's confirmation): "directly between" is
-  the line from the attacker to the target's centre, and what can be seen is the lines to the
-  target's corners (`G.corners`):
+  reading for the engine, **confirmed by the owner** ("yes on the table", #240) and built in S8:
+  "directly between" is the line from the attacker to the centre of the target's space, and what
+  can be seen is the lines to the corners of its space:
 
   | What the lines find | Cover |
   |---|---|
@@ -456,6 +456,10 @@ choice below (S7 build notes give the counts).
 
   The DM can still set cover by hand. The rule does not depend on the grid; using it on hexes too
   is a separate decision (it would change results on existing hex maps and their tests).
+  It is the table rule **`squareCover`**, square maps only: `obstacle` (the default, this table)
+  or `corners` (the four-corner count first proposed here: 4 corners in view none, 2 or 3 Half,
+  1 Three-Quarters, none and the centre hidden Total, judged as hexes judge six). Hex maps ignore
+  the setting. How S8 reads the table, case by case, is in "Build notes: S8".
 - **What players are sent**: `view.js` sends a wall's stretches that lie
   within a cell's corner of a cell they were shown. That radius becomes
   `G.cornerReach` (5/√3 on hexes, 5/√2 on squares). Too small and players
@@ -538,7 +542,7 @@ the order things were added). The test of S0 pins that.
 | E3 | State version 21: the map migrated | state | — | 20 to 21 |
 | E4 | Corner rule on diagonal steps; footprints and arena by `G` | rule | — | no |
 | E5 | Table rule `areaFill: 'round' \| 'grid'` (square maps only; absent means `round`) | setting | in `settings` | no (absent means default) |
-| E6 | Cover from four corners | rule | — | no |
+| E6 | Cover on squares by the owner's rule (Decision 7), table rule `squareCover: 'obstacle' \| 'corners'` (square maps only; absent means `obstacle`) | rule, setting | in `settings` | no (absent means default) |
 | E7 | `view.js` wall pieces by `G.cornerReach` | view | fewer or more wall pieces, by grid | no |
 | E8 | `loadMap` ends lasting areas tied to the old map's cells | rule fix | `effectEnd` events | no |
 | E9 | Engine messages use `G.word` | text | "square" on square maps | no |
@@ -566,7 +570,7 @@ map.
 | S5 | **Square geometry.** `SQUARE` in `grid.js`, every member of the interface table; still refused by the linter. | engine | Opus | `grid.js`, `grid.test.js` | property tests on `SQUARE`: `dist` equals breadth-first steps over `neighbors`; `range(c, n)` is exactly the cells with `dist <= n`; `cell(center(h)) = h`; `corners` are the four at ±2.5 ft; `edgeSegment` is the shared side; `beside` of a diagonal is the two cells it passes; a 15-ft cone is 7 squares east and 6 diagonal; footprints are 1, 4, 9, 16 cells |
 | S6 | **Moving on squares.** The linter accepts `square`; corner rule (E4); footprints, Tiny sharing, the arena, marching, flyers by `G`; the `G` default removed from `space.js`; E8 in `loadMap`; E10 and E11 (#252); `loadMap` migrates a format 1 map. A test fixture `square-room` (a small square map with a corridor, a pillar and a door). | engine | Opus | `map.js`, `space.js`, `engine/world.js`, `engine/movement.js`, `engine/resolve.js`, `engine/dm.js`, `packages/rules/test/fixtures/square-room.js` (new), `packages/rules/test/square-moving.test.js` (new) | with Speed 30 a Medium creature moves 6 squares diagonally in a turn under `diagonals: 'srd'` (SRD 1814-1821), 5 under `real`, 4 under `alternate`; a diagonal past a wall's corner or a pillar is refused and the side route allowed (1824); a Large creature fills 2 by 2 and passes the 10-ft corridor at every offset, not the 5-ft one; a goblin diagonal to the fighter provokes an Opportunity Attack when it walks away (1826-1829, 2075); a fifth Tiny creature cannot share a square (1913); the arena is the 13 by 13 block; loading a square map seats the party and ends the old map's zones; every hex test still passes |
 | S7 | **Areas on squares.** `layout` by `G`; E5 `areaFill` with `round` as default, in `SETTINGS`. | engine | Opus | `engine/world.js`, `engine/dm.js` (`SETTINGS` only), `packages/rules/test/square-areas.test.js` (new) | on `square-room`: a 20-ft Sphere covers 49 squares under `round` and 81 under `grid`; Burning Hands (15-ft cone) catches the creatures on the 7 squares east and not one beside them; Lightning Bolt (100 by 5 ft line) aimed diagonally is one square wide; Thunderwave (15-ft cube from self) is the 3 by 3 in front; a wall still shelters what is behind it; every hex area test still passes |
-| S8 | **Sight, cover and what players are sent on squares.** E6, E7; the vision flood over `G.neighbors`. | engine | Opus | `sight.js`, `vision.js`, `view.js`, `packages/rules/test/square-sight.test.js` (new) | cover from a pillar beside the line is Half and from a wall end Three-Quarters, by the four-corner rule; the property test "over a long random game nothing the party cannot see reaches any player" (`sight-views.test.js`, seed 3) passes on a square map too; a wall is sent only where it runs beside a shown square; **reviewed for hidden information before merge** |
+| S8 | **Sight, cover and what players are sent on squares.** E6, E7; the vision flood over `G.neighbors`. | engine | Opus | `sight.js`, `vision.js`, `view.js`, `engine/dm.js` (`SETTINGS` only), `packages/rules/test/square-sight.test.js` (new) | cover from a pillar beside the line is Half and from a wall end Three-Quarters, by the owner's rule and by the four-corner rule (#259); the property test "over a long random game nothing the party cannot see reaches any player" (`sight-views.test.js`, seed 3) passes on a square map too; a wall is sent only where it runs beside a shown square; **reviewed for hidden information before merge** |
 | S9a | **The default renderer draws squares.** Tile prisms, highlights and rims from `G.corners`, picking by `G.cell`, floors and cut-away, grid overlay, the arena. A smoke pass `square` that loads `square-room`, walks diagonally, aims a cone and checks each tap lands on the square under it. | render | Sonnet | `render.js`, `floors.js`, `packages/client/test/floors.test.js` (new tests only), `scripts/smoke/square.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=square` passes at both sizes with no page errors; squares meet walls with no gaps; every existing smoke pass still passes |
 | S9b | **The Three.js renderer draws squares.** As S9a. Skipped if R14 has removed the hand-written renderer. | render | Sonnet | `three-build.js`, `render-three.js`, `scripts/smoke/three-parity.mjs` (a square map added) | `three-parity` passes on `square-room` and on a hex map |
 | S10 | **The editor on squares.** Grid choice for a new map; brush, walls snapping to square sides and corners, doors on sides, stairs in 8 directions, Fill floor by `G.cellsIn`; Align to the picture's grid. | editor | Sonnet | `editor.js`, `index.html`, `style.css`, `scripts/smoke/maps.mjs` | on a tablet-sized screen a DM makes a square map from a generated square-grid test picture: after Align the picture's lines lie on the square edges within one screen pixel at default zoom; Fill floor and a traced door give a room the party can walk into; the hex editor works as before |
@@ -645,6 +649,109 @@ map.
 - **E8** ends every terrain effect and every zone that does not follow a creature on any map
   change, hex maps included (the one deliberate change on hexes). **`loadMap`** runs `migrateMap`
   on the map it is sent before linting it.
+
+### Build notes: S8 (#259)
+
+- **Cover on squares, `squareCover: 'obstacle'`** (`sight.js` `obstacleCover`). The target's space
+  is its squares; its centre is the middle of them (for a Large creature, the point where its four
+  squares meet) and its corners are the space's four outer corners, a quarter foot inside (as
+  `G.corners(h, 0.9)` for one square). Each line from the attacker finds one of three things:
+  - *clear*: nothing that stops movement;
+  - *holed*: stopped only by something that can be seen and shot through: a wall kind that blocks
+    movement and not sight (`window`, `rail`), or a thing in a state that blocks movement and not
+    sight (a lowered portcullis);
+  - *filled*: stopped only by a thing that fills its square (a chest, a crate, a statue). The map
+    format says nothing of an object's height or width (a thing's definition gives only what it
+    blocks), so none is taken to cover a target fully: such a thing gives **at most Half Cover**
+    (review of #262, M1). A pillar that fills its square is drawn as walls round it, and is solid.
+    Rock tiles stay as on hexes: no cover, no block to sight (DEBT T22);
+  - *solid*: stopped by what blocks movement and sight (a `wall`, a shut or locked door, an
+    undiscovered secret door), or by a floor between levels.
+  A corner on the far side of something solid *inside* the target's own space does not count as
+  seen (as on hexes). Then, with the *filled* lines first read as clear, and again as *holed* but
+  capped at Half, the more protective of the two:
+
+  | Centre line | Corner lines | Cover |
+  |---|---|---|
+  | clear | all clear | none; Half if another creature is on the centre line |
+  | clear | any holed or solid | Half |
+  | holed | any clear | Half (the window or rail does not cover all of it) |
+  | holed | none clear | Three-Quarters (all of it behind something with a hole) |
+  | solid | any not solid | Three-Quarters (it shows round the obstacle: askew) |
+  | solid | all solid | Total |
+
+- **The tension, resolved.** The owner's "something with a hole" is judged against what blocks
+  *movement*: a `window` or a `rail` does not block sight, so a sight test would find nothing there.
+  A **`curtain`** blocks sight and not movement: it is **no cover**. An attack through it is at a
+  target the attacker cannot see, which the engine already handles as before (`canSee` is `'no'`,
+  the attack has Disadvantage); Blindsight past a curtain is unchanged. A target behind a window
+  can therefore be seen and has Three-Quarters Cover, so it may take the Hide action there (the
+  SRD's Hide asks for Three-Quarters or Total Cover).
+- **Creature cover.** Another creature on the line gives Half: the centre line crosses one of its
+  squares (a quarter foot inside), it is not dead, and it stands within 10 ft of the lower end's
+  height. A creature standing where the line starts (on the point an effect starts from, or a Tiny
+  one sharing the attacker's square) or where it ends (a Tiny one sharing the target's) covers
+  nobody (review of #262, L1). It only matters
+  where the walls give none (the most protective degree applies, SRD 1996-2001). `creatureCover:
+  'off'` turns it off as on hexes.
+- **The attacker's point.** A creature attacks from the best of its squares: each square of its
+  space, from the centre; the least cover of them counts (on hexes, "the most exposed pairing").
+  An effect's point of origin is one point, the centre of its cell. **Total is the same both ways**:
+  if the target, from any of its squares, has a line to the attacker's centre or a corner of its
+  space, the cover is Three-Quarters, not Total (a creature that cannot be targeted cannot target
+  back either). An effect's point of origin counts as one square for the way back (review of
+  #262, L3), so Total agrees with whether an area reaches the target (`clear`, either way round).
+- **Effects** are the SRD's (1992-2030): Half +2, Three-Quarters +5 to Armor Class and Dexterity
+  saving throws (`COVER`, read where it was: `resolve.js` attack, `rolls.js` save; neither changed);
+  Total "can't be targeted directly" (`walled`, "There is a wall between ..."). `cover: 'off'` (what
+  the DM sets by hand) leaves only Total, as on hexes.
+- **`squareCover: 'corners'`** is the hex method with four corners (thresholds 4 / 2-3 / 1 / 0),
+  so it counts what hexes count: walls and shut doors, rails as Half on the centre line, windows
+  and things that fill a square not at all.
+- **Seeing on squares** was already through the map's grid (S1, S6): `sightline` lines to
+  `G.corners`, the vision flood over `G.neighbors` to `FLOOD_HEXES` cells by `G.dist` (a search
+  bound, not a rule distance), light by `gap` (the `squareRange` measure), Blindsight by `gap`,
+  regions, reveal, remembered tiles and things by `objectHexes(o, G)`. S8 adds tests for each and
+  fixes one count (`sightline` of a cell with itself said 6 corners on squares too).
+- **Corners and sight.** A line touching a wall counts as blocked (as `crosses` does for moving).
+  So no line of sight passes through a point where two walls meet: two squares diagonal across
+  that point (a cross of walls, or the inside of a room's corner) do not see each other, as a
+  creature cannot step across it. A line may pass *beside* the end of a single wall: a diagonal
+  step past that end is refused (SRD 1824-1825, a movement rule), but one sees round it, and the
+  target has cover from it. Both are tested.
+- **What players are sent (E7).** On squares, a wall piece is the part of the wall inside a shown
+  square and 0.02 ft round it (`SQUARE_CLIP`): the piece beside a shown square is its whole side, a
+  wall beside an unshown square one further is not sent, and a wall running on from a side into an
+  unshown square goes only 0.02 ft in (a circle through the corners went 1.06 ft in: review of
+  #262, L2). Hex maps keep the circle of `G.cornerReach + 0.02` (5/√3).
+- **Every wall piece is sent from its lower end to its higher (x, then y), on both grids** (review
+  of #262, M2). Before, a piece kept the direction it was drawn in and an undiscovered secret door's
+  piece the grid's, so the direction could tell a secret door from a wall. On hexes this changes
+  only pieces of walls drawn right to left (or upward); the stock maps and the valley have none,
+  and their two secret doors already ran forwards.
+- **Area cells under `rooms`** (DEBT P26): a `cast` or `act` event's cells are sent only where the
+  player is sent the tile, under every sight rule (before, under `rooms` they were all sent, so an
+  area reaching into a region not yet revealed showed its cells there). On hexes too.
+- **Doors and things on squares** (review of #262). Every use of `objectSegment` and `objectHexes`
+  passes the map's grid (a source-reading test checks the rules and the client; five client lines
+  in the Three.js files and the editor are listed for their lanes, DEBT T22). A door on a square's
+  side is used from either of its two squares or a square next to one, by `measure` (the
+  `squareRange` rule) from any square of the user's space; a thing from its square or one next to
+  it; a traced door within 5 ft of its line. Search measures to the nearer of a door's squares by
+  `measure`. A thing in a room the party has not been shown answers a player's `use` exactly as an
+  id that does not exist ("No such object.", nothing changes), on both grids.
+- **The words** for `squareCover` are `SETTING_TEXT.squareCover` in `engine/dm.js`, beside the
+  other square settings.
+- **For the owner** (review of #262, L5; not changed): a diagonal neighbour round the tip of a wall
+  end has Three-Quarters Cover (the centre line touches the tip); a big attacker uses its best
+  square, so a Large creature may have a clear shot at a Medium one that has Three-Quarters against
+  it the other way; a rail counts as 10 ft high, so a creature at a rail on the edge of a ledge has
+  Three-Quarters from below. "The DM sets cover by hand" is the table switch `cover: 'off'`, which
+  leaves only Total; there is no per-target override on either grid (L4, DEBT T22).
+- **Not built here:** rock and other impassable tiles still neither block sight nor give cover (as
+  on hexes, `sight.md` S1); a rail is as tall as a wall for every line; on a Large or bigger target,
+  a part seen through a gap that reaches neither the centre nor an outer corner is Total.
+  `docs/DEBT.md` T22.
 
 ### Build notes: S7 (#258)
 
