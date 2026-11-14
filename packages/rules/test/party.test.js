@@ -141,7 +141,7 @@ test("a player can't make someone else's character follow, and a refused follow 
   assert.equal(apply(s, { type: "follow", actor: "fighter", leader: "fighter" }, PAT).ok, false);
   assert.equal(apply(s, { type: "follow", actor: "fighter", leader: null }, PAT).ok, false);                 // not following anyone
   assert.equal(apply(s, { type: "marchingOrder", order: ["rogue", "fighter"] }, PAT).ok, false);
-  assert.equal(apply(s, { type: "partyFollow", leader: "fighter" }, PAT).ok, false);
+  assert.equal(apply(s, { type: "partyFollow", leader: "rogue" }, PAT).error, `${s.entities.rogue.name} isn't yours to control.`);   // a player leads only with their own (#303)
   assert.equal(JSON.stringify(s), before);
   // Their own character they may.
   ok(apply(s, { type: "follow", actor: "fighter", leader: "cleric" }, PAT));

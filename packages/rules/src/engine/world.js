@@ -11,6 +11,7 @@ import { difficultAt, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { itemName } from '../derive.js';
+import { effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
 import { clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, RuleError, unblocked, up, walled } from './shared.js';
 
@@ -492,6 +493,12 @@ export function joinEncounter(s, e, ev) {
   const enc = s.encounter, cur = current(s);
   reveal(s, e, ev);
   e.reactionUsed = false;
+  // A stamp from before state version 22 names a place in the order (durations.js, thisTurn): name it by
+  // its creature before the order is sorted again, as settleOrder (resolve.js) does before a place moves.
+  for (const fx of effectsOf(s)) {
+    for (const p of fx.parts) if (p.born !== undefined) p.born = restamp(enc, p.born);
+    if (fx.zone?.last) for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(enc, fx.zone.last[k]);
+  }
   const faces = {}, slot = rollInit(s, e, faces);
   enc.order.push(slot);
   initiativeSort(enc.order);
@@ -730,6 +737,8 @@ export const byMarch = (a, b) => (a.march ?? Infinity) - (b.march ?? Infinity);
 export function unfollow(s, e, ev, why = null) {
   const leader = e.follow;
   delete e.follow;
+  const sl = s.entities[leader]?.formation?.slots;                     // its place in a held or custom formation goes with it (#303)
+  if (sl) delete sl[e.id];
   ev.push({ type: 'follow', id: e.id, leader: null, was: leader, ...(why ? { why } : {}) });
 }
 
@@ -762,6 +771,99 @@ export function along(trail, h, G = HEX) {
   let d = Infinity, i = 0;
   trail.forEach((p, j) => { const x = G.dist(p, h); if (x < d) { d = x; i = j; } });
   return { d, i };
+}
+
+// ---------- formations (#303) ----------
+// A leader may keep a formation (`e.formation`): where each of those following it walks, as a slot
+// in the leader's frame, `{ back, side }` in cells: `back` behind the leader along the way it faces,
+// `side` to its right (positive) or left. The frame is the grid's direction of the leader's last step
+// (6 on hexes, 8 on squares; on squares a diagonal frame is the square frame turned, so its cells are
+// cells). `shape` is a preset whose slots are dealt in marching order as the party walks (`pairs`,
+// `line`, `wedge`), `column` (no slots: the trail, as it always was), `held` (the shape the party
+// stood in when the leader started leading) or `custom` (slots set by hand). `face` is the direction
+// the leader last faced, an index into the grid's neighbours. Absent: the column.
+export const SHAPES = ['column', 'pairs', 'line', 'wedge'];
+export const SLOT_MAX = 12;                                    // cells: no slot further back or out than this
+const ORIGIN = { q: 0, r: 0 };
+const LINE = [0, 1, -1, 2];
+// The slots a preset gives followers in marching order.
+export function presetSlots(shape, ids) {
+  const out = {};
+  ids.forEach((id, i) => {
+    const k = i + 1;
+    if (shape === 'pairs') out[id] = { back: Math.floor(k / 2), side: k % 2 };
+    else if (shape === 'line') out[id] = { back: Math.floor(k / 4), side: LINE[k % 4] };
+    else if (shape === 'wedge') { const row = Math.floor(i / 2) + 1; out[id] = { back: row, side: i % 2 ? row : -row }; }
+  });
+  return out;
+}
+// The world offset of one step in direction `i` (an index into the grid's neighbours).
+export function faceStep(G, i) {
+  const o = G.toWorld(ORIGIN), n = G.toWorld(G.neighbors(ORIGIN)[i] ?? G.neighbors(ORIGIN)[0]);
+  return { x: n.x - o.x, z: n.z - o.z };
+}
+// The grid direction nearest a world vector, or null for none.
+export function faceOf(G, dx, dz) {
+  if (!dx && !dz) return null;
+  let best = null, most = -Infinity;
+  G.neighbors(ORIGIN).forEach((_, i) => { const u = faceStep(G, i), p = (u.x * dx + u.z * dz) / Math.hypot(u.x, u.z); if (p > most + 1e-9) { most = p; best = i; } });
+  return best;
+}
+// The way a walk faced at its end: its last step that went somewhere on the map (not only up or down).
+export function walkFace(G, walked) {
+  for (let i = walked.length - 1; i > 0; i--) {
+    const a = G.toWorld(walked[i - 1]), b = G.toWorld(walked[i]), f = faceOf(G, b.x - a.x, b.z - a.z);
+    if (f !== null) return f;
+  }
+  return null;
+}
+// The leader's frame: where it stands, the step ahead (`u`) and the step to its right (`v`), in world units.
+export function frameOf(G, pos, face) {
+  const u = faceStep(G, face), w = G.toWorld(pos);
+  return { x: w.x, z: w.z, u, v: { x: -u.z, z: u.x } };
+}
+// Where a slot is, in world units, and where a position is, as a slot (unrounded), in a frame.
+export const slotPoint = (F, sl) => ({ x: F.x - sl.back * F.u.x + sl.side * F.v.x, z: F.z - sl.back * F.u.z + sl.side * F.v.z });
+export function slotOf(G, F, h) {
+  const w = G.toWorld(h), dx = w.x - F.x, dz = w.z - F.z, uu = F.u.x ** 2 + F.u.z ** 2;
+  return { back: -(dx * F.u.x + dz * F.u.z) / uu, side: (dx * F.v.x + dz * F.v.z) / uu };
+}
+const half = (x, lo, hi) => Math.min(hi, Math.max(lo, Math.round(x * 2) / 2)) || 0;
+// The shape these followers stand in around the leader, as slots (to the half cell, never ahead of
+// it: one standing ahead is taken as beside it). The leader faces the way it last walked, else away
+// from the middle of those following.
+export function captureSlots(G, leader, followers, face = null) {
+  if (face === null) {
+    const l = G.toWorld(leader.pos), ws = followers.map((f) => G.toWorld(f.pos));
+    face = ws.length ? faceOf(G, l.x - ws.reduce((a, w) => a + w.x, 0) / ws.length, l.z - ws.reduce((a, w) => a + w.z, 0) / ws.length) : null;
+    face ??= 0;
+  }
+  const F = frameOf(G, leader.pos, face), slots = {};
+  for (const f of followers) { const sl = slotOf(G, F, f.pos); slots[f.id] = { back: half(sl.back, 0, SLOT_MAX), side: half(sl.side, -SLOT_MAX, SLOT_MAX) }; }
+  return { face, slots };
+}
+// A formation as one sent it or a saved game holds it: a known shape, slots of numbers in range, a direction.
+export function validFormation(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
+  if (![...SHAPES, 'held', 'custom'].includes(f.shape)) return false;
+  if (f.face !== undefined && !(Number.isInteger(f.face) && f.face >= 0 && f.face < 8)) return false;
+  if (f.slots === undefined) return f.shape !== 'held' && f.shape !== 'custom';
+  if (!f.slots || typeof f.slots !== 'object' || Array.isArray(f.slots) || SHAPES.includes(f.shape)) return false;
+  return Object.values(f.slots).every(validSlot);
+}
+export const validSlot = (sl) => !!sl && typeof sl === 'object' && !Array.isArray(sl) && Object.keys(sl).length === 2 &&
+  [sl.back, sl.side].every((x) => typeof x === 'number' && Number.isInteger(x * 2)) && sl.back >= 0 && sl.back <= SLOT_MAX && Math.abs(sl.side) <= SLOT_MAX;
+// The slots of those following `leader` directly, by its formation, or null to walk as the column:
+// no formation, the column, or a held shape that is single file (a column already, walked by the trail).
+export function slotsFor(leader, followers) {
+  const f = leader.formation;
+  if (!f || f.shape === 'column') return null;
+  let slots;
+  if (SHAPES.includes(f.shape)) slots = presetSlots(f.shape, followers.map((x) => x.id));
+  else { slots = {}; for (const x of followers) if (f.slots?.[x.id]) slots[x.id] = f.slots[x.id]; }
+  const ids = Object.keys(slots);
+  if (!ids.length || (f.shape === 'held' && ids.every((id) => slots[id].side === 0))) return null;
+  return slots;
 }
 
 // A fight is starting in `arena`. Everyone who was following a party member in it, and is not in

@@ -195,6 +195,9 @@ export function playerView(state) {
       entities[id] = structuredClone(e);
       delete entities[id].reactions;                     // standing instructions are their controller's and the DM's (viewReactions)
       if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
+      // A formation's places are party members' (#303); one for anyone else (a creature since gone, or no longer of the party) is not sent.
+      const slots = entities[id].formation?.slots;
+      if (slots) for (const k of Object.keys(slots)) if (classify(state, k) !== 'open') delete slots[k];
       scrub(entities[id], hidden);
     }
     else if (c === 'seen') entities[id] = seenRecord(e);
@@ -457,6 +460,9 @@ export function viewEvents(events, state, viewer) {
       case 'encounterStart':
         out.push({ type: ev.type, ...(ev.fight !== undefined && { fight: ev.fight, where: ev.where }), center: ev.center, radius: ev.radius,
           order: ev.order.filter((o) => cls(o.id) !== 'hidden').map((o) => (cls(o.id) === 'open' ? { ...o } : { id: o.id })) });
+        break;
+      case 'formation':                                // how the party walks: only ever party members' places, and only theirs are sent
+        out.push({ ...pick(ev, ['type', 'id', 'shape']), ...(ev.slots ? { slots: Object.fromEntries(Object.entries(ev.slots).filter(([id]) => cls(id) === 'open').map(([id, v]) => [id, { ...v }])) } : {}) });
         break;
       case 'joined':
         out.push(cls(ev.id) === 'open' ? { ...ev } : { type: ev.type, id: ev.id });
