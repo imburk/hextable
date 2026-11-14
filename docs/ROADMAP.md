@@ -38,3 +38,4 @@ In this order:
 - Portable characters: a character file with a signed history and a level meter, joined to a table by the DM's choice ([spec](specs/portable-characters.md)); its pure parts (jobs P1 and P2) can start any time, the rest after milestone 2
 - Square grid: maps on squares beside hexes, through one geometry interface ([spec](specs/square-grid.md), option B recommended, the owner to choose); its first jobs (S0 to S3) change no behaviour and can start any time
 - Homebrew packs per table, a plain-language reader and a spell builder an AI can drive ([spec](specs/homebrew.md)); the pure parts (jobs B1 to B4) can start any time, the table and client jobs after milestone 2
+- The official service for online play (monikers, official character records, a lobby, reputation, anonymous statistics, AI stand-ins), a separate project: founding spec, interface draft and how the two leads work together in [service](service/FOUNDING.md) (#254)
