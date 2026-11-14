@@ -1,7 +1,7 @@
 // Where things are (engine.js): flying and fitting, where a creature can move, regions shown and
 // objects set, hidden creatures revealed, joining a fight, finding hidden things, aiming areas and
 // choosing creatures, and the party walking in marching order.
-import * as H from '../hex.js';
+import { HEX, gridOf, col, key, pathTo, reachable } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile } from '../effects.js';
@@ -32,14 +32,14 @@ export function airspace(map, h, column = surfaces(map, h), height = HEADROOM) {
 // footprint needs a floor within a step of that height that can be stood on, and no wall may
 // run between two parts of it. A creature of one hex is checked by its caller.
 export function fitsOn(map, e, h, B) {
-  const shape = shapeOf(e);
+  const shape = shapeOf(e), G = gridOf(map);
   if (shape.length === 1) return true;
   const base = ground(map, h)?.level, parts = footprint(e, h);
   for (const f of parts.slice(1)) {
     const sf = surfaces(map, f).find((x) => Math.abs(x.z - h.z) <= STEP_MAX);
     if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, f)) return false;
   }
-  if (base) for (const f of parts) for (const n of H.neighbors(f)) if (parts.some((p) => p.q === n.q && p.r === n.r) && B.blocked(base.id, f, n)) return false;
+  if (base) for (const f of parts) for (const n of G.neighbors(f)) if (parts.some((p) => p.q === n.q && p.r === n.r) && B.blocked(base.id, f, n)) return false;
   return true;
 }
 // The levels whose walls stand at this height.
@@ -54,7 +54,7 @@ export function moveOptions(s, e) {
   if (!e || !up(e) || (walk === 0 && !flying)) return new Map();
   const enc = s.encounter, fighting = inFight(s, e.id);
   if (fighting && current(s) !== e.id) return new Map();
-  const map = s.map, B = barriers(map), others = living(s).filter((o) => o.id !== e.id);
+  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id);
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
@@ -70,7 +70,7 @@ export function moveOptions(s, e) {
   const big = shapeOf(e).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
-  const onHazard = (levelId, h) => (big ? footprint(e, h) : [h]).some((f) => hazards.has(`${levelId}|${H.col(f)}`));
+  const onHazard = (levelId, h) => (big ? footprint(e, h) : [h]).some((f) => hazards.has(`${levelId}|${col(f)}`));
   // Acrobatic Movement (`surfaces`): with no armour or Shield, across water without falling in. It may
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
@@ -85,21 +85,21 @@ export function moveOptions(s, e) {
   const hazards = new Set();
   for (const o of map.objects) {
     const def = objectDef(o);
-    if (def.triggers?.some((t) => t.on === 'enter' && t.effects && t.from.includes(o.state)) && (e.side !== 'party' || !def.states[o.state].hidden)) hazards.add(`${o.level}|${H.col(o.at)}`);
+    if (def.triggers?.some((t) => t.on === 'enter' && t.effects && t.from.includes(o.state)) && (e.side !== 'party' || !def.states[o.state].hidden)) hazards.add(`${o.level}|${col(o.at)}`);
   }
-  const reach = H.reachable(e.pos, budget, (from) => {
+  const reach = reachable(e.pos, budget, (from) => {
     const out = [], here = ground(map, from)?.level;
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
     if (here && from !== e.pos && onHazard(here.id, from)) return out;
     if (here && walk > 0) {
-      for (const n of H.neighbors(from)) {
-        if (fighting && !enc.arena[H.col(n)]) continue;                     // the arena is locked
+      for (const n of G.neighbors(from)) {
+        if (fighting && !enc.arena[col(n)]) continue;                     // the arena is locked
         const column = columnOf(n);
         for (const sf of column) {
           const dz = sf.z - from.z, up_ = Math.abs(dz), water = acrobat && sf.tile.t === 'water', terrain = water ? 1 : TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
-          if (water) wet.add(H.key(h));
+          if (water) wet.add(key(h));
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
           if (blocks(h)) continue;
@@ -121,23 +121,23 @@ export function moveOptions(s, e) {
       for (const o of map.objects) {
         if (!o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
-        const h = H.key(a) === H.key(from) ? b : b && H.key(b) === H.key(from) ? a : null;
-        if (!h || (fighting && !enc.arena[H.col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
+        const h = key(a) === key(from) ? b : b && key(b) === key(from) ? a : null;
+        if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
         out.push({ h, cost: Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2), max: limit.climb });
       }
     }
     if (flying) {
-      // Through the air: any of the six directions, level, up or down 5 ft, or straight up or down.
-      const around = H.neighbors(from), top = Math.max(tiers.at(-1), ...tiers, e.pos.z) + FLY_CEILING;
-      for (const dz of [0, FT, -FT]) for (let i = dz ? -1 : 0; i < 6; i++) {
+      // Through the air: any of the grid's directions, level, up or down 5 ft, or straight up or down.
+      const around = G.neighbors(from), top = Math.max(tiers.at(-1), ...tiers, e.pos.z) + FLY_CEILING;
+      for (const dz of [0, FT, -FT]) for (let i = dz ? -1 : 0; i < G.DIRS.length; i++) {
         const n = i < 0 ? from : around[i];
-        if (from.z + dz > top || (fighting && !enc.arena[H.col(n)])) continue;
+        if (from.z + dz > top || (fighting && !enc.arena[col(n)])) continue;
         const h = { q: n.q, r: n.r, z: from.z + dz }, column = columnOf(n), room = airspace(map, h, column, tall);
         if (!room || (big && footprint(e, h).some((f, i) => i > 0 && !airspace(map, f, columnOf(f), tall)))) continue;
         // No passing through a floor on the way up or down.
         if (dz > 0 && column.some((sf) => sf.z > from.z && sf.z <= h.z)) continue;
         if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
-        if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${H.col(n)}`)))) continue;
+        if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${col(n)}`)))) continue;
         if (walled_ && n !== from && [from.z, h.z].some((z) => wallsAt(map, z).some((l) => B.blocked(l.id, from, n, z - l.z >= FT ? 'tall' : 'move')))) continue;
         if (blocks(h)) continue;
         out.push({ h, cost: crowded(h) ? 2 * FT : FT, max: limit.fly });
@@ -145,7 +145,7 @@ export function moveOptions(s, e) {
     }
     return out;
   });
-  const start = H.key(e.pos);
+  const start = key(e.pos);
   // Nobody stops in another creature's space, except that a few Tiny ones can share a hex.
   const share = sizeOf(e).shares;
   for (const [k, v] of reach) {
@@ -161,7 +161,7 @@ export function revealRegion(s, r, ev) {
   ev.push({ type: 'region', region: r.id, name: r.name });
   if (!s.encounter) return;
   for (const e of living(s)) {                          // whoever was waiting in there is in the fight now
-    if (e.hidden || inFight(s, e.id) || !s.encounter.arena[H.col(e.pos)]) continue;
+    if (e.hidden || inFight(s, e.id) || !s.encounter.arena[col(e.pos)]) continue;
     const sf = under(s.map, e.pos);
     if (sf && regionAt(s.map, sf.level.id, e.pos) === r) joinEncounter(s, e, ev);
   }
@@ -182,7 +182,7 @@ export function lookAround(s, ev, who = living(s), before = null) {
     const here = e.side === 'party' ? under(s.map, e.pos) : null;
     if (!here) continue;
     note(here.level.id, e.pos);
-    for (const n of H.neighbors(e.pos)) for (const sf of surfaces(s.map, n)) {
+    for (const n of gridOf(s.map).neighbors(e.pos)) for (const sf of surfaces(s.map, n)) {
       if (Math.abs(sf.z - here.z) > STEP_MAX) continue;
       if (B.blocked(here.level.id, e.pos, n, 'sight') || (sf.level !== here.level && B.blocked(sf.level.id, e.pos, n, 'sight'))) continue;
       note(sf.level.id, n);
@@ -199,13 +199,13 @@ export function showPlace(s, e, ev) {
 
 // ---------- objects ----------
 // May players know about this object? It must touch a hex they have been shown.
-export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[H.col(h)] && shown(map, o.level, h));
+export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[col(h)] && shown(map, o.level, h));
 export const objectOf = (s, id, ctx = null) => {
   const o = s.map.objects.find((x) => x.id === id);
   return (o && (!ctx || ctx.role === 'dm' || (sightRule(s) === 'rooms' ? objectShown(s.map, o) : objectKnown(s, o))) && o) || fail('No such object.');
 };
 export const objectName = (o) => o.name ?? objectDef(o).name;
-export const objectZ = (s, o) => { const level = s.map.levels.find((l) => l.id === o.level); return level.z + (level.tiles[H.col(o.at)]?.h ?? 0); };
+export const objectZ = (s, o) => { const level = s.map.levels.find((l) => l.id === o.level); return level.z + (level.tiles[col(o.at)]?.h ?? 0); };
 // Put an object into a state, and whatever it is linked to into theirs. The whole chain is
 // worked out and checked before anything changes.
 export function setObject(s, o, state, ev, by = null, verb = null) {
@@ -219,7 +219,7 @@ export function setObject(s, o, state, ev, by = null, verb = null) {
   }
   for (const [x, st] of plan) {
     if (objectSegment(x) || !objectDef(x).states[st].blocks.includes('move')) continue;
-    !living(s).some((c) => H.col(c.pos) === H.col(x.at) && c.pos.z === objectZ(s, x)) || fail(`Someone is standing where the ${objectName(x).toLowerCase()} would be.`);
+    !living(s).some((c) => col(c.pos) === col(x.at) && c.pos.z === objectZ(s, x)) || fail(`Someone is standing where the ${objectName(x).toLowerCase()} would be.`);
   }
   plan.forEach(([x, st], i) => {
     x.state = st;
@@ -251,7 +251,7 @@ export function objectStep(s, id, of, state, ev) {
 export function roomAt(s, e, to) {
   if (!airspace(s.map, to, undefined, sizeOf(e).height)) return 'Nothing can stand there.';
   if (!fitsOn(s.map, e, to, barriers(s.map))) return `${e.name} does not fit there.`;
-  if (inFight(s, e.id) && footprint(e, to).some((f) => !s.encounter.arena[H.col(f)])) return 'The arena is locked until the fight ends.';
+  if (inFight(s, e.id) && footprint(e, to).some((f) => !s.encounter.arena[col(f)])) return 'The arena is locked until the fight ends.';
   return '';
 }
 
@@ -311,9 +311,9 @@ export const SEARCH_FEET = 15, NOTICE_FEET = 10;
 export function findable(s, e, o, feet) {
   const def = objectDef(o);
   if (!def.states[o.state].hidden || !def.find || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) return false;
-  const level = s.map.levels.find((l) => l.id === o.level);
-  const near = objectHexes(o).filter((h) => level.tiles[H.col(h)] && shown(s.map, o.level, h)).sort((x, y) => H.dist(x, e.pos) - H.dist(y, e.pos))[0];
-  return !!near && H.dist(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[H.col(near)].h ?? 0) });
+  const level = s.map.levels.find((l) => l.id === o.level), G = gridOf(s.map);
+  const near = objectHexes(o).filter((h) => level.tiles[col(h)] && shown(s.map, o.level, h)).sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos))[0];
+  return !!near && G.dist(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) });
 }
 export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 
@@ -331,35 +331,35 @@ export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 //             It rises `size` feet from the ground (or the height) at its point of origin.
 // `origin` is where it goes off; `high(t)` says whether creature `t` is within its height.
 function layout(s, e, area, range, aim) {
-  const n = area.size / FT, shape = area.shape;
-  if (shape === 'emanation') return { hexes: H.range(e.pos, n).filter((h) => H.key(h) !== H.key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
+  const n = area.size / FT, shape = area.shape, G = gridOf(s.map);
+  if (shape === 'emanation') return { hexes: G.range(e.pos, n).filter((h) => key(h) !== key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
   if (!aim) return null;
   const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
-  if (shape === 'cone') return { hexes: H.cone(e.pos, aim, n), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
+  if (shape === 'cone') return { hexes: G.cone(e.pos, aim, n), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
   if (shape === 'sphere' || shape === 'cylinder') {
     const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
     const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : (t) => gap(s, origin, t.pos) <= n;
-    return { hexes: H.range(aim, n), origin, high };
+    return { hexes: G.range(aim, n), origin, high };
   }
-  const front = Math.max(...footprint(e).map((f) => H.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
+  const front = Math.max(...footprint(e).map((f) => G.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
   if (shape === 'line') {
-    if (range > 0 || H.dist(aim, e.pos) === 0) return null;
-    const flat = H.along(e.pos, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
+    if (range > 0 || G.dist(aim, e.pos) === 0) return null;
+    const flat = G.along(e.pos, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
     const length = area.size / Math.hypot(1, slope), half = (area.width ?? FT) / 2;
-    const hexes = H.band(e.pos, aim, front, front + length, half);
-    const high = (t) => { const z = e.pos.z + slope * H.along(e.pos, aim, t.pos); return z + half > t.pos.z && z - half < t.pos.z + sizeOf(t).height; };
+    const hexes = G.band(e.pos, aim, front, front + length, half);
+    const high = (t) => { const z = e.pos.z + slope * G.along(e.pos, aim, t.pos); return z + half > t.pos.z && z - half < t.pos.z + sizeOf(t).height; };
     return { hexes, origin: e.pos, high };
   }
   if (shape === 'cube') {
     const size = area.size, half = size / 2;
     if (!(range > 0)) {
-      if (H.dist(aim, e.pos) === 0) return null;
+      if (G.dist(aim, e.pos) === 0) return null;
       const base = e.pos.z;
-      return { hexes: H.band(e.pos, aim, front, front + size, half), origin: e.pos, high: (t) => t.pos.z < base + size && t.pos.z + sizeOf(t).height > base };
+      return { hexes: G.band(e.pos, aim, front, front + size, half), origin: e.pos, high: (t) => t.pos.z < base + size && t.pos.z + sizeOf(t).height > base };
     }
-    const away = H.dist(aim, e.pos) === 0 ? { q: aim.q + 1, r: aim.r } : { q: 2 * aim.q - e.pos.q, r: 2 * aim.r - e.pos.r };
+    const away = G.dist(aim, e.pos) === 0 ? { q: aim.q + 1, r: aim.r } : { q: 2 * aim.q - e.pos.q, r: 2 * aim.r - e.pos.r };
     const origin = { q: aim.q, r: aim.r, z: aimZ };
-    return { hexes: H.band(aim, away, -FT / 2, size - FT / 2, half), origin, high: (t) => t.pos.z < aimZ + size && t.pos.z + sizeOf(t).height > aimZ };
+    return { hexes: G.band(aim, away, -FT / 2, size - FT / 2, half), origin, high: (t) => t.pos.z < aimZ + size && t.pos.z + sizeOf(t).height > aimZ };
   }
   return null;
 }
@@ -378,15 +378,15 @@ export function areaHexes(s, e, sp, aim) {
 // `origin` is null when the area starts from `e` itself.
 export function aimArea(s, e, name, area, range, hex) {
   const shape = area.shape, fromSelf = shape === 'cone' || shape === 'line' || (shape === 'cube' && !(range > 0));
-  if (fromSelf) (hex && H.dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
+  if (fromSelf) (hex && gridOf(s.map).dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
   else if (shape !== 'emanation') {
     hex || fail(`Pick where ${name} goes off.`);
     const d = gap(s, hex.z !== undefined ? hex : landing(s.map, hex, e.pos.z) ?? hex, e.pos);
     if (d * FT > range) fail(`That is ${ft(d)} away. ${name} reaches ${range} ft.`);
   }
   const l = layout(s, e, area, range, hex) || fail(`The engine cannot lay out ${name} there.`);
-  const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(H.key)), origin = l.origin;
-  const targets = living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t).some((f) => keys.has(H.col(f))) && l.high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
+  const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(key)), origin = l.origin;
+  const targets = living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t).some((f) => keys.has(col(f))) && l.high(t) && footprint(t).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
   return { targets, hexes, origin: origin === e.pos ? null : origin };
 }
 
@@ -473,20 +473,21 @@ export function unfollow(s, e, ev, why = null) {
 // The line a column walks along: the leader's path from where it stands back to where it set
 // off, then on the same way for a while, so that those at the back have somewhere to be.
 // `path` runs from the leader backwards; `away` is a place the line leads away from if the path is one hex.
-export function trailOf(path, away = null) {
+// `G` is the map's grid (hexes if not given), as for `along`.
+export function trailOf(path, away = null, G = HEX) {
   const t = path.map((h) => ({ q: h.q, r: h.r }));
   const a = t.length > 1 ? t.at(-2) : away, b = t.at(-1);
   if (!a) return t;
-  const wa = H.toWorld(a), wb = H.toWorld(b);
+  const wa = G.toWorld(a), wb = G.toWorld(b);
   let dx = wb.x - wa.x, dz = wb.z - wa.z;
   const n = Math.hypot(dx, dz);
   if (!n) return t;
   dx /= n; dz /= n;
   for (let i = 0; i < 12; i++) {
-    const last = t.at(-1), lw = H.toWorld(last);
+    const last = t.at(-1), lw = G.toWorld(last);
     let best = null, most = -Infinity;
-    for (const nb of H.neighbors(last)) {
-      const w = H.toWorld(nb), p = (w.x - lw.x) * dx + (w.z - lw.z) * dz;
+    for (const nb of G.neighbors(last)) {
+      const w = G.toWorld(nb), p = (w.x - lw.x) * dx + (w.z - lw.z) * dz;
       if (p > most + 1e-9) { most = p; best = nb; }
     }
     t.push(best);
@@ -494,9 +495,9 @@ export function trailOf(path, away = null) {
   return t;
 }
 // How far a place is from the trail, and how far back along it.
-export function along(trail, h) {
+export function along(trail, h, G = HEX) {
   let d = Infinity, i = 0;
-  trail.forEach((p, j) => { const x = H.dist(p, h); if (x < d) { d = x; i = j; } });
+  trail.forEach((p, j) => { const x = G.dist(p, h); if (x < d) { d = x; i = j; } });
   return { d, i };
 }
 
@@ -505,7 +506,8 @@ export function along(trail, h) {
 // to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
 // `walked` is { id, path } for a leader whose walk started the fight: the path from where it stands back.
 export function catchUp(s, arena, walked, ev) {
-  const inArena = (e) => !!arena[H.col(e.pos)];
+  const G = gridOf(s.map);
+  const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
   const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e)).sort(byMarch);
   const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
@@ -514,20 +516,20 @@ export function catchUp(s, arena, walked, ev) {
     if (!f) return;
     pending.splice(pending.indexOf(f), 1);
     const leader = s.entities[f.follow];
-    const foe = foes.slice().sort((a, b) => H.dist(a.pos, leader.pos) - H.dist(b.pos, leader.pos))[0];
-    const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null);
+    const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
+    const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
     const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
     let best = null, bestKey = null;
     for (const [k, v] of mine) {
-      if (!v.canStop || !arena[H.col(v.h)]) continue;
+      if (!v.canStop || !arena[col(v.h)]) continue;
       const lc = theirs.get(k)?.cost;
       if (lc === undefined || lc > CATCH_UP) continue;
-      const at = along(trail, v.h), rank = [at.d, at.i, lc, v.cost];
+      const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
       if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
     }
     if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     f.pos = best.v.h;
-    ev.push({ type: 'moved', id: f.id, path: H.pathTo(mine, best.k), caughtUp: true });
+    ev.push({ type: 'moved', id: f.id, path: pathTo(mine, best.k), caughtUp: true });
     lookAround(s, ev, [f]);
     party.add(f.id);
   }

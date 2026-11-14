@@ -6,6 +6,9 @@
 // those modules would compare it with itself.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as H from "../src/hex.js";
 import * as GRID from "../src/grid.js";
 import { HEX, gridOf } from "../src/grid.js";
@@ -151,4 +154,16 @@ test("cellsIn is the UVTT importer's tiling, in the same order", () => {
     assert.deepEqual(HEX.cellsIn(x0 - pad, y0 - pad, x0 + w + pad, y0 + h + pad), oldTiles(x0, y0, x0 + w, y0 + h, pad));
     assert.deepEqual(HEX.cellsIn(x0, y0, x0 + w, y0 + h), oldTiles(x0, y0, x0 + w, y0 + h, 0));
   }
+});
+
+// Task S2: every rules module takes its geometry from grid.js. Only grid.js wraps hex.js, and the
+// valley generator (scenario.js) keeps it, since the valley is a hex map whatever comes later.
+test("hex.js is imported only by grid.js and scenario.js", () => {
+  const src = fileURLToPath(new URL("../src/", import.meta.url));
+  const files = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? files(join(dir, d.name)) : d.name.endsWith(".js") ? [join(dir, d.name)] : []));
+  const importers = files(src)
+    .filter((f) => /\b(?:import|export)\b[^;]*?\bfrom\s*['"][./]*(?:[^'"]*\/)?hex\.js['"]|\bimport\s*\(\s*['"][^'"]*\bhex\.js['"]/.test(readFileSync(f, "utf8")))
+    .map((f) => relative(src, f).split("\\").join("/"))
+    .sort();
+  assert.deepEqual(importers, ["grid.js", "scenario.js"]);
 });

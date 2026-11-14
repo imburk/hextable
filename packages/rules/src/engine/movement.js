@@ -1,6 +1,6 @@
 // Movement actions (engine.js): move, dash, stand, disengage, and walking together (follow,
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
-import * as H from '../hex.js';
+import { gridOf, col, key, pathTo } from '../grid.js';
 import { apart, apartAt, footprint, FT, ground, landing, STEP_MAX, unseenAt } from '../space.js';
 import { entered, snapshot } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
@@ -28,11 +28,12 @@ function threatsAt(s, e, pos) {
 // off. Returns true if something did, which ends the creature's movement there.
 function trip(s, e, prev, ev, before) {
   let fired = false;
+  const G = gridOf(s.map);
   if (!ground(s.map, e.pos)) return false;                             // nothing on the floor notices what is not on it
   for (const o of s.map.objects) {
     const def = objectDef(o);
     if (!def.triggers?.length || Math.abs(objectZ(s, o) - e.pos.z) > STEP_MAX) continue;
-    const nearest = (pos) => Math.min(...footprint(e, pos).map((f) => H.dist(f, o.at)));      // any part of a big creature sets a thing off
+    const nearest = (pos) => Math.min(...footprint(e, pos).map((f) => G.dist(f, o.at)));      // any part of a big creature sets a thing off
     const was = nearest(prev), now = nearest(e.pos);
     const t = def.triggers.find((x) => x.from.includes(o.state) && (x.who !== 'party' || e.side === 'party') &&
       (x.on === 'enter' ? now === 0 && was > 0 : x.on === 'leave' ? was === 0 && now > 0 : now * FT <= x.feet && was * FT > x.feet));
@@ -43,7 +44,7 @@ function trip(s, e, prev, ev, before) {
       fired = true;
     }
     if (t.to && t.to !== o.state) setObject(s, o, t.to, ev);
-    if (t.effects) objectEffects(s, o, t.effects, t.area ? living(s).filter((c) => H.dist(c.pos, o.at) * FT <= t.area && Math.abs(c.pos.z - objectZ(s, o)) <= STEP_MAX) : [e], ev);
+    if (t.effects) objectEffects(s, o, t.effects, t.area ? living(s).filter((c) => gridOf(s.map).dist(c.pos, o.at) * FT <= t.area && Math.abs(c.pos.z - objectZ(s, o)) <= STEP_MAX) : [e], ev);
   }
   return fired;
 }
@@ -73,7 +74,7 @@ function walk(s, e, reach, tk, ev, fighting) {
   const flush = () => { if (seg.length) ev.push({ type: 'moved', id: e.id, path: seg }); seg = []; };
   if (notice(s, e, ev, flush)) return null;
   const range = Math.max(ENGAGE_RANGE, Math.floor((s.settings.engageRange ?? 10) / FT));
-  for (const step of H.pathTo(reach, tk)) {
+  for (const step of pathTo(reach, tk)) {
     if (fighting && s.encounter && !e.cond.disengaged) {
       for (const o of threatsAt(s, e, prev)) {
         if (apartAt(s, o, o.pos, e, step) <= 1) continue;
@@ -101,8 +102,8 @@ function walk(s, e, reach, tk, ev, fighting) {
       }
       if (!up(e)) break;
     }
-    const k = H.key(step);
-    if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(H.key(prev)).cost;
+    const k = key(step);
+    if (fighting && s.encounter) s.encounter.budget.move -= reach.get(k).cost - reach.get(key(prev)).cost;
     const was = e.pos, zonesBefore = snapshot(s);
     e.pos = step; seg.push(step); prev = step; walked.push(step);
     lookAround(s, ev, [e], flush);
@@ -113,8 +114,8 @@ function walk(s, e, reach, tk, ev, fighting) {
     if (fighting) continue;
     // Anything lying in wait this close is spotted, whether or not a fight follows.
     for (const o of living(s)) if (o.hidden && hostile(o, e) && apart(s, o, e) <= ENGAGE_RANGE && unblocked(s, o, e)) { flush(); reveal(s, o, ev); }
-    const free = !living(s).some((o) => o.id !== e.id && H.key(o.pos) === k);
-    if (s.encounter && s.encounter.arena[H.col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
+    const free = !living(s).some((o) => o.id !== e.id && key(o.pos) === k);
+    if (s.encounter && s.encounter.arena[col(step)] && free) { flush(); joinEncounter(s, e, ev); break; }
     // The table's engage distance: the walker stops this far from the first enemy it has a clear line to.
     const foe = !s.encounter && s.settings.autoEngage && free &&
       living(s).find((o) => up(o) && hostile(o, e) && apart(s, o, e) <= range && unblocked(s, o, e) && !unseenAt(s.map, o.pos) && !o.hiding && !e.hiding && !(e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o)));
@@ -135,7 +136,7 @@ const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.
 // following them, walks after it in marching order.
 function march(s, leader, walked, ev) {
   if (leader.side !== 'party') return;
-  const trail = trailOf(walked.slice().reverse());
+  const G = gridOf(s.map), trail = trailOf(walked.slice().reverse(), null, G);
   const moved = new Set([leader.id]);
   let front = leader;
   const pending = living(s).filter((x) => x.follow && x.id !== leader.id).sort(byMarch);
@@ -145,19 +146,19 @@ function march(s, leader, walked, ev) {
     pending.splice(pending.indexOf(f), 1);
     if (s.encounter && inFight(s, f.id)) continue;
     const reach = moveOptions(s, f);
-    const frontI = along(trail, front.pos).i;
+    const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
-    const spots = [{ k: H.key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
+    const spots = [{ k: key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
     let best = null, bestKey = null;
     for (const sp of spots) {
-      const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h);
+      const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h, G);
       const rank = [near <= KEEP_UP ? 0 : 1, at.i > frontI ? 0 : 1, at.d, at.i, near, sp.cost];
       if (!best || less(rank, bestKey)) { best = sp; bestKey = rank; }
     }
     // It can get through if some way it could walk comes up beside the one in front (others in the party do not bar the way).
     const through = [...reach.values()].some((v) => apartAt(s, front, front.pos, f, v.h) <= 1);
     if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
-    if (best.k !== H.key(f.pos)) {
+    if (best.k !== key(f.pos)) {
       const had = !!s.encounter;
       walk(s, f, reach, best.k, ev, false);
       if (!had && s.encounter) return;                   // it walked into a fight: the rest were brought up when it started
@@ -176,25 +177,25 @@ export const handlers = {
     if (fighting && current(s) !== e.id) fail(`It isn't ${e.name}'s turn.`);
     const reach = moveOptions(s, e);
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
-    const column = [...reach.values()].filter((n) => H.col(n.h) === H.col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
+    const column = [...reach.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
     const to = column?.h ?? (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z));
     to || fail("There's nothing there to stand on.");
-    let tk = H.key(to), node = reach.get(tk);
+    let tk = key(to), node = reach.get(tk);
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
     // That is a creature the DM hid (never in a fight) or one hiding from it.
     // Under the los and light rules, for a party member, also one the party cannot see.
-    const lurker = living(s).find((o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e) && H.key(o.pos) === tk);
+    const lurker = living(s).find((o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e) && key(o.pos) === tk);
     if (lurker) {
       if (apart(s, e, lurker) <= 1) return bumped(s, lurker, e, ev);   // already beside it: no move, but it is found
-      const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && H.dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
+      const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && gridOf(s.map).dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
         .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
       if (!beside) fail("Can't get there.");
       tk = beside; node = reach.get(tk);
     }
     if (!node || !node.canStop) {
-      if (fighting && !s.encounter.arena[H.col(to)]) fail("The arena is locked until the fight ends.");
+      if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");
       if (node) fail('That hex is occupied.');
       fail(fighting ? `Too far. ${e.name} has ${s.encounter.budget.move} ft of movement left.` : "Can't get there.");
     }

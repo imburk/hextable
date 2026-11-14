@@ -1,7 +1,7 @@
 // The engine's machinery for what actions do (engine.js): the attack roll, damage, falls, pushes
 // and teleports, reactions that answer them, the kit lent to the effect runner (effects.js), and how
 // a fight starts, passes from turn to turn and ends.
-import * as H from '../hex.js';
+import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
@@ -41,18 +41,18 @@ export function fall(s, t, feet, ev) {
 // Forced movement: shove a creature so many feet straight away from a point, or toward it. It
 // stops at a wall, a drop, or anything in the way. It provokes nothing and sets nothing off.
 function push(s, t, feet, dir, from, ev) {
-  const B = barriers(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = H.toWorld(from);
+  const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
   for (let i = 0; i < Math.floor(feet / FT); i++) {
-    const here = ground(s.map, t.pos), d0 = H.dist(t.pos, from), w = H.toWorld(t.pos);
+    const here = ground(s.map, t.pos), d0 = G.dist(t.pos, from), w = G.toWorld(t.pos);
     if (!here) break;
     let best = null;
-    for (const n of H.neighbors(t.pos)) {
-      if (H.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[H.col(n)])) continue;
+    for (const n of G.neighbors(t.pos)) {
+      if (G.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[col(n)])) continue;
       const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
       if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
       const h = { q: n.q, r: n.r, z: sf.z };
       if (living(s).some((c) => c.id !== t.id && overlapAt(c, c.pos, t, h)) || !fitsOn(s.map, t, h, B)) continue;
-      const nw = H.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
+      const nw = G.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
@@ -67,14 +67,14 @@ function push(s, t, feet, dir, from, ev) {
 // The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
 // runs the step's `blocked` steps instead when it has them.
 function teleport(s, t, step, to, ev) {
-  const taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos));
+  const G = gridOf(s.map), taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos));
   let at = to;
   if (taken(at)) {
     if (step.blocked) return false;
     // Something it did not know of stands there: the nearest unoccupied space instead (the SRD
     // lets it choose; the engine takes the nearest, the first found on each ring).
     at = null;
-    for (let n = 1; n <= 6 && !at; n++) for (const h of H.range(to, n).filter((x) => H.dist(x, to) === n)) {
+    for (let n = 1; n <= 6 && !at; n++) for (const h of G.range(to, n).filter((x) => G.dist(x, to) === n)) {
       const p = landing(s.map, h, to.z);
       if (p && Math.abs(p.z - to.z) <= STEP_MAX && !roomAt(s, t, p) && !taken(p)) { at = p; break; }
     }
@@ -89,22 +89,22 @@ function teleport(s, t, step, to, ev) {
   // it from inside a spell, so the DM is told.
   for (const o of s.map.objects) {
     const def = objectDef(o);
-    if (def.triggers?.some((x) => x.on === 'enter' && x.from.includes(o.state)) && Math.abs(objectZ(s, o) - at.z) <= STEP_MAX && footprint(t).some((f) => H.dist(f, o.at) === 0))
+    if (def.triggers?.some((x) => x.on === 'enter' && x.from.includes(o.state)) && Math.abs(objectZ(s, o) - at.z) <= STEP_MAX && footprint(t).some((f) => G.dist(f, o.at) === 0))
       ev.push({ type: 'manual', actor: t.id, name: objectName(o), partial: true, text: `${t.name} teleported onto ${objectName(o)}. Whether it goes off is the DM's call.` });
   }
   lookAround(s, ev, [t]);
-  if (s.encounter?.arena[H.col(at)] && !inFight(s, t.id) && !t.dead) joinEncounter(s, t, ev);
+  if (s.encounter?.arena[col(at)] && !inFight(s, t.id) && !t.dead) joinEncounter(s, t, ev);
   return true;
 }
 
 // ---------- encounters (joining one, rollInit and fightPlace are in world.js) ----------
 
 export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
-  const arena = {};
-  for (const h of H.range(center, radius)) if (hasColumn(s.map, h)) arena[H.col(h)] = 1;    // a fight locks whole columns, every level
+  const arena = {}, G = gridOf(s.map);
+  for (const h of G.range(center, radius)) if (hasColumn(s.map, h)) arena[col(h)] = 1;    // a fight locks whole columns, every level
   catchUp(s, arena, walked, ev);                         // those walking with the party are with it
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
-  const who = living(s).filter((e) => arena[H.col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
+  const who = living(s).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
   for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
@@ -119,8 +119,8 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
 
 // Start a fight big enough to hold both the attacker and a distant target.
 export function engage(s, e, t, ev, walked = null) {
-  const a = H.toWorld(e.pos), b = H.toWorld(t.pos), d = apart(s, e, t);
-  startEncounter(s, H.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1), walked);
+  const G = gridOf(s.map), a = G.toWorld(e.pos), b = G.toWorld(t.pos), d = apart(s, e, t);
+  startEncounter(s, G.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1), walked);
 }
 
 export function endEncounter(s, ev, result) {

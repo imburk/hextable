@@ -1,6 +1,6 @@
 // Characters and their gear (engine.js): addCharacter, editCharacter, setSheet, levelUp, setSpeed,
 // setSize, give, equip, attune.
-import * as H from '../hex.js';
+import { gridOf, col, parse } from '../grid.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { lintRecord } from '../content/schema.js';
 import { FT, ground, landing, overlapAt, STEP_MAX } from '../space.js';
@@ -31,11 +31,12 @@ export const handlers = {
     problems.length === 0 || fail(`That character can't be added. ${problems[0]}`);
     Object.values(s.entities).filter((e) => e.kind === 'pc').length < 12 || fail('A table holds twelve characters at most.');
     const body = { size: a.record.size ?? 'medium' }, B = barriers(s.map);
-    const near = a.at ?? Object.values(s.entities).find((e) => e.side === 'party' && !e.dead)?.pos ?? s.map.starts[0] ?? H.parse(Object.keys(s.map.levels[0].tiles)[0]);
+    const near = a.at ?? Object.values(s.entities).find((e) => e.side === 'party' && !e.dead)?.pos ?? s.map.starts[0] ?? parse(Object.keys(s.map.levels[0].tiles)[0]);
     const centre = landing(s.map, near, near.z ?? 0) || fail("There's nowhere there to stand.");
     let spot = null;
-    for (let n = 0; n < 8 && !spot; n++) for (const h of H.range(centre, n)) {
-      const p = H.dist(h, centre) === n ? landing(s.map, h, centre.z) : null;
+    const G = gridOf(s.map);
+    for (let n = 0; n < 8 && !spot; n++) for (const h of G.range(centre, n)) {
+      const p = G.dist(h, centre) === n ? landing(s.map, h, centre.z) : null;
       if (!spot && p && Math.abs(p.z - centre.z) <= STEP_MAX && TILES[ground(s.map, p).tile.t].cost < Infinity && !B.solid(ground(s.map, p).level.id, p) &&
           fitsOn(s.map, body, p, B) && !living(s).some((o) => overlapAt(o, o.pos, body, p))) spot = p;
     }
@@ -44,7 +45,7 @@ export const handlers = {
     s.entities[id] = makeEntity(a.record, { id, kind: 'pc', side: 'party', pos: spot });
     ev.push({ type: 'spawned', id });
     lookAround(s, ev, [s.entities[id]]);
-    if (s.encounter?.arena[H.col(spot)]) joinEncounter(s, s.entities[id], ev);
+    if (s.encounter?.arena[col(spot)]) joinEncounter(s, s.entities[id], ev);
   },
   // Replace a character's sheet with a corrected one, keeping who plays it, where it stands and
   // how hurt it is. { type: 'editCharacter', actor, record }
