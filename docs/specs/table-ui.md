@@ -1456,6 +1456,14 @@ What was settled while building, where it differs from Decision 5, and what was 
 - **Helpers for the client** (engine.js): `passTargets(s, e)` → `[{ id, name, why, time }]` (creatures on its side
   within 5 ft), `pickUpsFor(s, e)` → `[{ object, name, items: [{ id, name, pack? }], why, time }]`, `interactionOf(s, e)`
   → `{ why, time: null | 'free' | 'action' }`; `pileContents`, `contentName`, `isPile`.
+- **Review of #291.** (1) A thing dropped by a creature the party does not know of is marked `by` and is not sent,
+  nor named by a player (`openContents`, `pileOpen`; `objectOf` answers "No such object." for a pile with nothing
+  open on it), until the party knows of the dropper or it is gone (`seePiles`, from `watch`). A pile's id is from
+  where it lies (`pile-ground-3_-1`), so it counts no hidden pile. Under los and light a hiding creature's drop seen
+  by the party's own eyes stays marked too: the mark goes with the dropper, not with the cell (simpler, and it
+  never leaks; the cost is a pile shown a little late). (2) `pickUp` is refused through a wall, as `pass` is.
+  (3) The `drop` and `pickUp` events carry `seen` (not sent) when the party saw the pile, so that the gear event's
+  `object` and the pile's `object` event (`gone` too) still reach them after the pile has left the map.
 - **State.** No new state version: piles are map objects, `contents` a field on them; older tables have none.
 - **Left out.** `map.js` does not lint `contents`; a pile remembered under los/light leaves the view when emptied
   unseen (players learn it was taken); Fast Hands; dropping a held weapon in a fight; Attunement kept at a distance;
@@ -1467,9 +1475,10 @@ What was settled while building, where it differs from Decision 5, and what was 
   `time` says "free" or "uses your action". Send `{ type: 'pass', actor: e.id, item, to }`, `item` the sheet key for a
   magic item, else the gear string. An item with `equipped` has no Give or Drop: show "Take it off first".
 - **Drop** on the same rows: `{ type: 'drop', actor, item }`; reason from `interactionOf(S, e).why`.
-- **Pick up**: the Move tab's objects in reach (or the Items tab) from `pickUpsFor(S, e)`: one row per thing,
+- **Pick up**: the Move tab's objects in reach (or the Items tab) from `pickUpsFor(S, e)` (walls already counted): one row per thing,
   `{ type: 'pickUp', actor, object, item: thing.id }`, and outside a fight "Take all" without `item`.
-- **The map** draws a pile (`def: 'pile'`) as a small heap in its cell; its card lists `contents` names
+- **The map** draws a pile (`def: 'pile'`, id `pile-<level>-<q>_<r>`) as a small heap in its cell; an `object` event with
+  `gone` removes it; its card lists `contents` names
   (`contentName`, or `name` / the item's name) when sent, "you can't see what is there now" when not.
 - **Log** (`logview.js` already reads `why`/`with`): "Brenna gave Tavin Rope", "Brenna dropped Rope",
   "Tavin picked up the Wand of Magic Missiles"; `unattuned` adds "(no longer attuned)".

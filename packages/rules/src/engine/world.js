@@ -8,7 +8,7 @@ import { actionProfile } from '../effects.js';
 import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
-import { objectKnown, regionsInSight, sightRule } from '../vision.js';
+import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { itemName } from '../derive.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
@@ -323,7 +323,7 @@ export function showPlace(s, e, ev) {
 export const objectShown = (map, o) => !objectDef(o).states[o.state].hidden && objectHexes(o, gridOf(map)).some((h) => !!map.levels.find((l) => l.id === o.level)?.tiles[col(h)] && shown(map, o.level, h));
 export const objectOf = (s, id, ctx = null) => {
   const o = s.map.objects.find((x) => x.id === id);
-  return (o && (!ctx || ctx.role === 'dm' || (sightRule(s) === 'rooms' ? objectShown(s.map, o) : objectKnown(s, o))) && o) || fail('No such object.');
+  return (o && (!ctx || ctx.role === 'dm' || ((sightRule(s) === 'rooms' ? objectShown(s.map, o) : objectKnown(s, o)) && pileOpen(o))) && o) || fail('No such object.');
 };
 export const objectName = (o) => o.name ?? objectDef(o).name;
 export const objectZ = (s, o) => { const level = s.map.levels.find((l) => l.id === o.level); return level.z + (level.tiles[col(o.at)]?.h ?? 0); };
@@ -372,15 +372,20 @@ export function objectStep(s, id, of, state, ev) {
 // from either of its two squares or any square next to one, and a thing from its square or next to
 // it, measured by the table rule `squareRange` from any square of the user's space; a traced door
 // (`seg`) within 5 ft of its line, as on hexes. Hex maps as before.
+// A thing in a cell is also out of reach behind a wall or a shut door (review of #291: a pile picked up through
+// a wall): the same test as for handing something to a creature (`walled`: not Total Cover), from any part of
+// the user to the thing's cell, unless the user stands on it. A door is on its wall, so that is not asked of one.
 export function nearObject(s, e, o) {
   const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[col(o.at)]?.h ?? 0);
   if (!ground(s.map, e.pos) || Math.abs(e.pos.z - z) > STEP_MAX) return false;
   const G = gridOf(s.map), seg = objectSegment(o, G);
+  let near;
   if (G.kind === 'square' && !(seg && o.seg)) {
     const m = measure(s, G), cells = seg ? objectHexes(o, G) : [o.at];
-    return footprint(e, e.pos, G).some((p) => cells.some((h) => m(p, h) <= 1));
-  }
-  return seg ? distToSegment(G.center(e.pos), seg) <= FT + 1e-9 : G.dist(e.pos, o.at) <= 1;     // within 5 ft
+    near = footprint(e, e.pos, G).some((p) => cells.some((h) => m(p, h) <= 1));
+  } else near = seg ? distToSegment(G.center(e.pos), seg) <= FT + 1e-9 : G.dist(e.pos, o.at) <= 1;     // within 5 ft
+  if (!near || seg || footprint(e, e.pos, G).some((p) => p.q === o.at.q && p.r === o.at.r)) return near;
+  return unblocked(s, e, { size: 'tiny', pos: { q: o.at.q, r: o.at.r, z } });
 }
 
 // ---------- piles: what lies on the ground (E17) ----------
@@ -390,10 +395,10 @@ export function nearObject(s, e, o) {
 // taken by `pickUp`, laid down by the DM with `mapEdit`. The map document's linter (map.js) does not read
 // `contents`, so what is not well formed is left out here, and so never offered, sent or picked up.
 export const PILE_MAX = 40;
-const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges'];
+const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges', 'by'];
 export const isPile = (o) => objectDef(o)?.kind === 'pile';
 const wellFormed = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).every((k) => CONTENT_KEYS.includes(k)) &&
-  typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) &&
+  typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) && (x.by === undefined || typeof x.by === 'string') &&
   (x.item === undefined ? typeof x.name === 'string' && !!x.name.trim() && x.name.length <= 60 && ['base', 'type', 'spell', 'charges'].every((k) => x[k] === undefined)
     : x.name === undefined && typeof x.item === 'string' && Object.hasOwn(CONTENT.items, x.item) &&
       (x.charges === undefined || (Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= (CONTENT.items[x.item].charges?.max ?? -1))));
@@ -401,6 +406,32 @@ export function pileContents(o) {
   if (!isPile(o) || !Array.isArray(o.contents)) return [];
   const seen = new Set();
   return o.contents.filter((x) => wellFormed(x) && !seen.has(x.id) && seen.add(x.id)).slice(0, PILE_MAX);
+}
+// `by` on a thing on a pile: the creature that dropped it while the party did not know of it (review of #291). Players
+// are not sent it, or the pile if nothing else lies there, and can't name it, until `seePiles` takes the mark off:
+// when the party knows of that creature, or it is no longer on the map. The DM sees everything.
+export const openContents = (o) => pileContents(o).filter((x) => x.by === undefined);
+// May players know of this pile? Something on it they may be told of, or nothing on it at all (a pile the DM laid
+// down empty); not one whose only contents were dropped unseen.
+export const pileOpen = (o) => !isPile(o) || openContents(o).length > 0 || !pileContents(o).length;
+// After every action (features.js, watch): marks whose creature the party now knows of, or that is gone, come off.
+export function seePiles(s) {
+  for (const o of s.map.objects) {
+    if (!isPile(o) || !Array.isArray(o.contents)) continue;
+    for (const x of o.contents) {
+      if (!x || typeof x !== 'object' || x.by === undefined) continue;
+      const e = Object.hasOwn(s.entities, x.by) ? s.entities[x.by] : null;
+      if (!e || !unknown(s, e)) delete x.by;
+    }
+  }
+}
+// The id of a new pile: from where it lies (there is one pile to a cell), so that it says nothing of other piles,
+// as a count would (review of #291).
+export function pileId(s, level, h) {
+  const base = `pile-${level}-${h.q}_${h.r}`.replace(/[^A-Za-z0-9_-]/g, '');
+  let id = base, n = 1;
+  while (s.map.objects.some((x) => x.id === id)) id = `${base}-${++n}`;
+  return id;
 }
 // What a thing on the ground is called: its name, or the magic item's ("Spear +1").
 export const contentName = (x) => (x.item !== undefined ? itemName(CONTENT.items[x.item], x) : x.name.trim());

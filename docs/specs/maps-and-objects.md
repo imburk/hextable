@@ -619,12 +619,17 @@ Where the build settled a detail the design left open, or changed it.
   ("Items on the ground", state `lying`). A placed pile carries `contents`: `{ id, name }` for an item known by
   name, or `{ id, item, base?, type?, spell?, charges? }` for a magic item of the pack (a sheet's item entry
   without its key, `equipped` or `attuned`); ids `c1, c2...` within the pile, at most 40 things. The engine
-  makes a pile when something is dropped where there is none (id `pile<n>` from the state's counter) and takes
+  makes a pile when something is dropped where there is none (id `pile-<level>-<q>_<r>`, from where it lies, so it
+  counts nothing a player could not see) and takes
   it off the map when the last thing is picked up. The DM can lay one down with `mapEdit`. `map.js` does not
   lint `contents` (it was not in this job): the engine reads only well-formed entries (`pileContents`,
   engine/world.js) and never offers, sends or picks up the rest. Players are sent `contents` (each thing's `id`,
   `name` or `item` with what names it, never `charges`) only while the pile is in view; a pile remembered under
-  the los and light rules is sent without it. The actions are in `table-ui.md` (E17 build notes).
+  the los and light rules is sent without it. The actions are in `table-ui.md` (E17 build notes) A thing dropped by a creature the
+  party does not know of carries `by` (its id): players are not sent it, nor the pile if nothing else is on it, and
+  can't name it, until the party knows of that creature or it is gone from the map (`seePiles`, run after every
+  action from `watch`). A thing in a cell is out of reach behind a wall or shut door (`nearObject` asks `unblocked`,
+  as `pass` does; review of #291); this holds for every thing in a cell, levers and chests too.
 
 ## Sources
 

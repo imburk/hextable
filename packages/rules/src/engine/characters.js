@@ -6,12 +6,12 @@ import { lintRecord } from '../content/schema.js';
 import { apart, FT, ground, landing, overlapAt, STEP_MAX, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { incapacitatedBy } from '../modifiers.js';
-import { unknown } from '../vision.js';
+import { partyView, sightRule, unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
-import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, pileAt, pileContents, PILE_MAX } from './world.js';
+import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { donned, landItem, makeEntity, newProblems, remake, resheet } from './sheets.js';
 
 export const handlers = {
@@ -296,6 +296,9 @@ const roomFor = (e, things) => {
   const names = things.filter((x) => !(x.spec && e.sheet)).length;
   e.gear.length + names <= GEAR_MAX || fail(`${e.name} carries ${GEAR_MAX} things by name already.`);
 };
+// Does the party see this pile now, and something on it it may know of? Recorded on its events as `seen`, so that they
+// still reach players once the pile has gone from the map (view.js).
+const seesPile = (s, o) => objectShown(s.map, o) && (sightRule(s) === 'rooms' || partyView(s).objects.has(o.id)) && openContents(o).length > 0;
 const gearEv = (id, h, why, more) => ({ type: 'gear', id, item: h.name, ...(h.pack ? { pack: h.pack } : {}), why, ...more });
 // An attuning (the next Short Rest's) that named the item ends with it: said as `attune` with `item: null` says it.
 function leaves(s, e, h, ev) {
@@ -319,8 +322,8 @@ export function passTargets(s, e) {
 export function pickUpsFor(s, e) {
   if (!e) return [];
   const { why, time } = interactionOf(s, e);
-  return s.map.objects.filter((o) => isPile(o) && objectShown(s.map, o) && nearObject(s, e, o) && pileContents(o).length).map((o) => ({
-    object: o.id, name: objectName(o), items: pileContents(o).map((x) => ({ id: x.id, name: contentName(x), ...(x.item !== undefined ? { pack: x.item } : {}) })), why, time,
+  return s.map.objects.filter((o) => isPile(o) && objectShown(s.map, o) && nearObject(s, e, o) && openContents(o).length).map((o) => ({
+    object: o.id, name: objectName(o), items: openContents(o).map((x) => ({ id: x.id, name: contentName(x), ...(x.item !== undefined ? { pack: x.item } : {}) })), why, time,
   }));
 }
 
@@ -373,20 +376,21 @@ Object.assign(handlers, {
     const time = interaction(s, e);
     together(s, ev, [e.id], () => takeOut(s, e.id, h, ev));
     pay(s, time);
+    // Dropped by a creature the party does not know of: players are not told of it until they know who (seePiles).
+    const unseen = unknown(s, e);
     let o = there;
     if (!o) {
-      let id;
-      do id = `pile${++s.seq}`; while (s.map.objects.some((x) => x.id === id));
-      o = { id, def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [] };
+      o = { id: pileId(s, sf.level.id, e.pos), def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [] };
       s.map.objects.push(o);
     }
     if (!Array.isArray(o.contents)) o.contents = [];
     let n = 1;
     while (o.contents.some((x) => x?.id === `c${n}`)) n++;
-    o.contents.push(h.spec ? { id: `c${n}`, ...h.spec } : { id: `c${n}`, name: h.name });
-    ev.push(gearEv(e.id, h, 'drop', { ...(h.key ? { key: h.key } : {}), object: o.id, taken: true, ...(h.attuned ? { unattuned: true } : {}) }));
+    o.contents.push({ id: `c${n}`, ...(h.spec ? h.spec : { name: h.name }), ...(unseen ? { by: e.id } : {}) });
+    const seen = !unseen && seesPile(s, o);
+    ev.push(gearEv(e.id, h, 'drop', { ...(h.key ? { key: h.key } : {}), object: o.id, taken: true, ...(h.attuned ? { unattuned: true } : {}), ...(seen ? { seen: true } : {}) }));
     leaves(s, e, h, ev);
-    ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(there ? {} : { placed: true }) });
+    ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(there ? {} : { placed: true }), ...(seen ? { seen: true } : {}) });
     if (lit) {
       const now = s.entities[e.id];
       delete now.light;
@@ -405,23 +409,26 @@ Object.assign(handlers, {
     const o = objectOf(s, a.object, ctx), name = objectName(o).toLowerCase();
     isPile(o) || fail(`The ${name} is not something to pick up.`);
     nearObject(s, e, o) || fail(`${e.name} is too far from the ${name}.`);
-    const list = pileContents(o);
+    const list = ctx.role === 'dm' ? pileContents(o) : openContents(o);        // a player can't name what was dropped unseen
     list.length || fail('There is nothing there to pick up.');
     let take;
     if (a.item === undefined) {
       (list.length === 1 || !(s.encounter && inFight(s, e.id))) || fail('Name one thing to pick up: in a fight each thing is an object interaction.');
       take = list;
     } else take = [list.find((x) => x.id === a.item) || fail('That is not there.')];
-    const things = take.map((x) => { const { id: _id, ...spec } = x; return { id: x.id, name: contentName(x), ...(x.item !== undefined ? { spec, pack: x.item } : {}) }; });
+    const things = take.map((x) => { const { id: _id, by: _by, ...spec } = x; return { id: x.id, name: contentName(x), ...(x.item !== undefined ? { spec, pack: x.item } : {}) }; });
     roomFor(e, things);
     const time = interaction(s, e);
     const got = together(s, ev, [e.id], () => putIn(s, e.id, things, ev));
     pay(s, time);
+    // Could the party see the pile before this? Then they are told of it even if it is gone after (view.js reads
+    // `seen`, since the pile is no longer on the map to look at).
+    const seen = seesPile(s, o);
     const gone = new Set(take.map((x) => x.id));
     o.contents = o.contents.filter((x) => !(x && gone.has(x.id)));
     const empty = !pileContents(o).length;
-    things.forEach((x, i) => ev.push(gearEv(e.id, x, 'pickup', { ...got[i], object: o.id })));
-    ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'pickup', ...(empty ? { gone: true } : {}) });
+    things.forEach((x, i) => ev.push(gearEv(e.id, x, 'pickup', { ...got[i], object: o.id, ...(empty && seen ? { seen: true } : {}) })));
+    ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'pickup', ...(empty ? { gone: true, ...(seen ? { seen: true } : {}) } : {}) });
     if (empty) {
       s.map.objects.splice(s.map.objects.indexOf(o), 1);
       if (s.map.seen?.objects) delete s.map.seen.objects[o.id];

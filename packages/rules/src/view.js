@@ -17,7 +17,7 @@ import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
-import { isPile, pileContents } from './engine.js';
+import { isPile, openContents, pileOpen } from './engine.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -283,14 +283,17 @@ function shownMap(state) {
     // Objects in a hidden state are not sent at all. Of the rest, only the fields named here (an
     // allow list, so a field added later is not sent until someone decides it may be): never a DC,
     // never what an object is wired to, and where a ladder or stairs lead only once that place is.
-    objects: map.objects.filter((o) => { const st = stateOf(o); return st !== undefined && !stateDef(o, st)?.hidden && objectHexes(o, G).some((h) => has(o.level, h)); })
+    // A pile with nothing on it but what was dropped by a creature the party does not know of is not sent (E17,
+    // review of #291): it would show where that creature is and what it carried.
+    objects: map.objects.filter((o) => { const st = stateOf(o); return st !== undefined && !stateDef(o, st)?.hidden && objectHexes(o, G).some((h) => has(o.level, h)) && pileOpen(o); })
       .map((o) => {
         const out = { id: o.id, def: o.def, level: o.level, at: structuredClone(o.at), state: stateOf(o) };
         for (const k of ['edge', 'seg', 'name', 'key']) if (o[k] !== undefined) out[k] = structuredClone(o[k]);
         if (o.to && levels.some((l) => l.tiles[col(o.to)] && (o.to.z === undefined || l.z === o.to.z))) out.to = structuredClone(o.to);
-        // What lies on a pile (E17), only while it is in view: what each thing is, never its charges. A pile
-        // remembered (under los and light) is sent without it, since what is there may have changed unseen.
-        if (isPile(o) && (rule === 'rooms' || pv.objects.has(o.id))) out.contents = pileContents(o).map((x) => pick(x, ['id', 'name', 'item', 'base', 'type', 'spell']));
+        // What lies on a pile (E17), only while it is in view: what each thing is, never its charges, and never
+        // what was dropped unseen. A pile remembered (under los and light) is sent without it, since what is
+        // there may have changed unseen.
+        if (isPile(o) && (rule === 'rooms' || pv.objects.has(o.id))) out.contents = openContents(o).map((x) => pick(x, ['id', 'name', 'item', 'base', 'type', 'spell']));
         return out;
       }),
     regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: rule === 'light' ? r.hexes.filter((k) => has(r.level, parse(k))) : [...r.hexes], revealed: true })),
@@ -481,7 +484,10 @@ export function viewEvents(events, state, viewer) {
       case 'triggered':
       case 'object':                                   // something on the map changed state or went off, if they can see it
         // Under the los and light rules only while it is in view: one remembered is shown as it was.
-        if (sm.live ? sm.live.has(ev.object) : sm.doc.objects.some((o) => o.id === ev.object)) out.push(structuredClone(ev));
+        // A pile picked up to nothing is gone from the map; `seen` (the engine's) says the party could see it then,
+        // so its lines still reach them, live or read from the record.
+        if (sm.live ? sm.live.has(ev.object) : sm.doc.objects.some((o) => o.id === ev.object)) { const e = structuredClone(ev); delete e.seen; out.push(e); }
+        else if (ev.type === 'object' && ev.seen && !state.map.objects.some((o) => o.id === ev.object)) { const e = structuredClone(ev); delete e.seen; out.push(e); }
         break;
       case 'moved':                                    // under los and light, a creature not theirs is seen only where it is in view
         if (byRule && cls(ev.id) !== 'open') {
@@ -507,7 +513,7 @@ export function viewEvents(events, state, viewer) {
       case 'gear':                                     // an item came or went, for a creature of theirs; who with, if they know of them
         // (E17: `pass`, `drop`, `pickup`); the pile, if they are sent it; whether an Attunement ended with it.
         if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why', 'key', 'pack', 'nameOnly', 'unattuned']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}),
-          ...(ev.object !== undefined && sm.doc.objects.some((o) => o.id === ev.object) ? { object: ev.object } : {}) });
+          ...(ev.object !== undefined && (ev.seen || sm.doc.objects.some((o) => o.id === ev.object)) ? { object: ev.object } : {}) });
         break;
       case 'item':                                     // a magic item used (E18): all of it for one of theirs; for another they see, what it used, never its charges
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'pack', 'use', 'level', 'target', 'charges', 'max', 'consumed']));

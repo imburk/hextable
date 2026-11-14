@@ -13,7 +13,7 @@ import { barriers, objectDef } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
-import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, setObject, unhide } from './world.js';
+import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
 import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
@@ -69,11 +69,12 @@ export function hideProblem(s, e) {
 }
 // An enemy that can see this creature where it stands, not counting its hiding, with less than Three-Quarters Cover.
 const spotter = (s, e) => living(s).find((o) => up(o) && hostile(o, e) && canSee(s, o, e, { ignoreHiding: true }) !== 'no' && !['threeQuarters', 'total'].includes(coverOf(s, o, e))) ?? null;
-// After every action: an enemy that can see a hiding creature anyway (Blindsight, Truesight) has
+// After every action: piles' unseen marks (seePiles), and an enemy that can see a hiding creature anyway (Blindsight, Truesight) has
 // found it, and with the table rule passiveFind 'all' so has one whose passive Perception meets
 // its DC and that has it in view; Lightly Obscured (Dim Light) costs that 5.
 export function watch(s, ev) {
   initiativeFeatures(s, ev);
+  seePiles(s);                                   // things dropped unseen, once the party knows who dropped them (world.js)
   for (const h of living(s)) {
     if (!h.hiding) continue;
     for (const o of living(s)) {

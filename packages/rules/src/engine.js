@@ -24,7 +24,7 @@ import { handlers as dm } from './engine/dm.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
 export { ARENA_RADIUS, blocked, castAbilOf, clear, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, spellStats, unblocked, up } from './engine/shared.js';
-export { aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, PILE_MAX, pileContents, SEARCH_FEET, targetsFor } from './engine/world.js';
+export { aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
 export { checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
