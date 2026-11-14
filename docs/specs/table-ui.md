@@ -1778,3 +1778,15 @@ The popup of "For the client job" above, built. Files: `packages/client/formatio
   place in the leader's frame (`formation.face`). Before the leader has walked there is no `face` and so no ghosts. They are the move colour, not fainter.
 - **Log.** `describe` reads the `formation` event as "The party walks behind Pip two abreast..." or "Places behind Pip were changed."
 - **Not done.** No `index.html` change was allowed, so the popup builds its own element and injects its stylesheet link. No half steps by hand.
+
+### Companions in the client (#318)
+
+Build notes for the client side of companions C1 (`docs/specs/companions.md`; engine #311, #313). Nothing here changes a rule.
+
+- **Control.** `mine(e)` is `isDM() || ownerOf(state, e) === you`, the rules' own `ownerOf`, so a master's player drives a companion. Other "my character" lookups stay on `.owner`: a player still owns one creature.
+- **Name.** A creature the viewer was sent the bond of reads as "Brenna's wolf" (`shownName` in `tracker.js`): the tracker, the card, the turn line, the order strip, the chips and the log. A creature already named after its master ("Brenna's Owl") is left alone. The map's pawn label is not changed yet (DEBT T27).
+- **Chips.** A player's chips are their character and its living companions; the DM picks a companion on the map or in the tracker.
+- **Card.** A "Let it act" checkbox on a bonded creature's card sends `companion { auto }`. A `noAttack` creature has no attack rows, no Attacks tab and no tap-to-attack.
+- **DM panel.** Under Creatures: a master, a kind and "Can't attack" with Bond selected, and Free selected. Refusals are the engine's words.
+- **Log.** `bonded`, `unbonded`, `companion` and `vanished` have lines. The log keeps the last name it saw for each creature, so what is said before a `vanished` still names it. `vanished` is a combat line.
+- **Fade.** For each `vanished` the client adds a `removed` for the same id to what it hands the timeline, so the renderers fade the pawn as for a removal.

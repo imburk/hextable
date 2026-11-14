@@ -18,7 +18,7 @@ export const GAP = 60;           // minutes of world time that end an Exploring 
 const MAX_ENTRIES = 2500;        // the oldest blocks go when the log is longer than this
 
 // ---- what an event is, for the filters ----
-const COMBAT = new Set(['encounterStart', 'encounterEnd', 'turn', 'joined', 'attack', 'damage', 'heal', 'cast', 'act', 'recharge', 'save', 'down', 'died', 'deathSave', 'std', 'cond', 'condEnd', 'effectStart', 'effectEnd', 'concentration', 'stood', 'tempHp', 'fell', 'countered']);
+const COMBAT = new Set(['encounterStart', 'encounterEnd', 'turn', 'joined', 'attack', 'damage', 'heal', 'cast', 'act', 'recharge', 'save', 'down', 'died', 'deathSave', 'std', 'cond', 'condEnd', 'effectStart', 'effectEnd', 'concentration', 'stood', 'tempHp', 'fell', 'countered', 'vanished']);
 const LOOT = new Set(['gear', 'conclusion', 'conclusionSkipped', 'levelReady']);
 const TALK = new Set(['say', 'note', 'privateNote', 'checkAsked']);
 // What players are never sent, or what is the DM's own bookkeeping. A player is sent the undo lines, so those stay in a player's log.
