@@ -4,8 +4,7 @@
 import * as Gr from './shared/grid.js';
 import { TILES } from './shared/content/terrain.js';
 import { CONTENT } from './shared/content/index.js';
-import { WALL_KINDS, barriers, center, edgeSegment, objectHexes, objectSegment } from './shared/walls.js';
-import { FT } from './shared/space.js';
+import { WALL_KINDS, barriers, objectHexes, objectSegment } from './shared/walls.js';
 import { newMap, lintMap, migrateMap } from './shared/map.js';
 import { UvttError, importUvtt } from './shared/import-uvtt.js';
 import { STOCK_MAPS } from './shared/content/maps/index.js';
@@ -31,6 +30,14 @@ const HINTS = {
   level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: set its scale, then trace the walls over it.',
   file: 'Start a blank map or one of the stock maps, save this one to a file, or open one. Import reads a Universal VTT file (.dd2vtt, .df2vtt, .uvtt) from a map maker: its picture, walls and doors.',
 };
+// What differs on squares: the words (hex, hexes) are the grid's own, and a few hints say something else.
+const SQUARE_HINTS = {
+  wall: 'Tap two neighbouring squares to wall the side between them. Do it again to take the wall away. To follow a picture, use Trace.',
+  trace_wall: 'Tap points along a wall on the picture: they snap to the grid\'s corners and sides, and to wall ends already there. Tap the last point again, or Done, to finish the line. Tap the first point to close a room.',
+  trace_door: 'Tap the two ends of a door: along one side of a square, from corner to corner. Leave a gap in the wall for it.',
+  stairs: 'Tap the square at the bottom, then the square at the top, in a straight line: along a row, a column or a diagonal. The tiles between become even steps. They can be on different levels.',
+  level: 'Add a level above or below, or pick which one to edit at the top. A background picture is the floor of its level: Align it to its grid, then trace the walls over it.',
+};
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
 const fresh = (base, taken) => { let id = base, n = 2; while (taken.has(id)) id = `${base}-${n++}`; return id; };
 const same = (p, q) => Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6;
@@ -41,6 +48,8 @@ export class Editor {
   // ctx: { R, act, toast, state(), isDM(), refresh() }
   constructor(ctx) {
     Object.assign(this, ctx);
+    const tell = ctx.toast;
+    this.toast = (m, quiet) => tell(this.say(m), quiet);
     this.on = false;
     this.tool = 'paint'; this.terrain = 'stone'; this.brush = 0; this.kind = 'wall';
     this.def = Object.keys(CONTENT.objects)[0]; this.region = ''; this.levelId = null; this.showAll = false;
@@ -55,6 +64,9 @@ export class Editor {
   }
 
   get S() { return this.state(); }
+  // A sentence in the grid's words: "hex" and "hexes" become "square" and "squares" on a square map.
+  say(text) { const w = this.G.word; return this.G.kind === 'hex' ? text : String(text).replace(/\bhexes\b/g, w.many).replace(/\bhex\b/g, w.one); }
+  hint(key) { return this.say((this.G.kind === 'square' && SQUARE_HINTS[key]) || HINTS[key]); }
   level() {
     const ls = this.S.map.levels;
     return ls.find((l) => l.id === this.levelId) ?? ls.find((l) => l.z === 0) ?? ls[0];
@@ -101,7 +113,8 @@ export class Editor {
     document.body.classList.toggle('editing', this.on);
     $('editor').hidden = !this.on;
     if (!this.on) return;
-    const map = this.S.map, l = this.level();
+    const map = this.S.map, l = this.level(), kind = this.G.kind;
+    if (this.snapFor !== kind) { this.snapFor = kind; this.snap = kind === 'square' ? 'grid' : 1; }       // squares snap to the grid unless the DM rounds by feet instead
     this.levelId = l.id;
     this.#options($('ed-level'), [...map.levels].sort((a, b) => b.z - a.z).map((x) => [x.id, `${x.name} (${x.z} ft)`]), l.id);
     const rooms = map.regions.filter((r) => r.level === l.id);
@@ -116,12 +129,14 @@ export class Editor {
     for (const b of $('ed-tools').children) b.classList.toggle('sel', b.dataset.tool === this.tool);
     for (const b of $('ed-terrain').children) b.classList.toggle('sel', b.dataset.t === this.terrain);
     for (const b of $('ed-kinds').children) b.classList.toggle('sel', b.dataset.k === this.kind);
-    for (const b of $('ed-brush').children) b.classList.toggle('sel', +b.dataset.b === this.brush);
+    for (const b of $('ed-brush').children) { b.classList.toggle('sel', +b.dataset.b === this.brush); b.textContent = kind === 'square' ? ['1 square', '3 by 3'][+b.dataset.b] : ['1 hex', '7 hexes'][+b.dataset.b]; }
+    $('ed-grid').textContent = kind === 'square' ? 'Grid: squares' : 'Grid: hexes';
+    $('ed-gridnote').textContent = `This map is on ${kind === 'square' ? 'squares' : 'hexes'}, and the editor keeps it so. For the other grid, start a new map.`;
     for (const p of $('ed-opts').children) p.hidden = !p.dataset.for.split(' ').includes(this.tool);
     $('ed-notes').hidden = this.tool !== 'file' || !this.uvtt;
     const d = CONTENT.objects[this.def];
     const hint = this.tool === 'object' ? (d.kind === 'door' ? 'door' : d.connects ? 'ladder' : 'thing') : this.tool;
-    $('ed-hint').textContent = this.pending ? (this.tool === 'object' && d.connects ? 'Now tap where it leads.' : 'Now tap a neighbouring hex.') : HINTS[hint];
+    $('ed-hint').textContent = this.pending ? (this.tool === 'object' && d.connects ? 'Now tap where it leads.' : this.say('Now tap a neighbouring hex.')) : this.hint(hint);
     this.#syncMore(room);
     this.#syncBackground(l);
     this.#syncTrace(l);
@@ -144,23 +159,23 @@ export class Editor {
       case 'erase': {
         const gone = new Set(area.map(Gr.col).filter((c) => l.tiles[c]));
         if (!gone.size) return;
-        const ops = map.objects.filter((o) => o.level === l.id && objectHexes(o).some((x) => gone.has(Gr.col(x)))).map((o) => ({ op: 'unobject', id: o.id }));
+        const ops = map.objects.filter((o) => o.level === l.id && objectHexes(o, this.G).some((x) => gone.has(Gr.col(x)))).map((o) => ({ op: 'unobject', id: o.id }));
         const left = (s) => !gone.has(Gr.col(s)) || map.levels.some((x) => x.id !== l.id && x.tiles[Gr.col(s)]);
         if (!map.starts.every(left)) ops.push({ op: 'starts', starts: map.starts.filter(left) });
         for (const c of gone) ops.push({ op: 'tile', level: l.id, at: Gr.parse(c), tile: null });
         return this.edit(ops);
       }
       case 'wall': return this.#pair(h, (a, e) => {
-        const seg = edgeSegment(a, e), had = map.walls.find((w) => w.level === l.id && sameSeg(w, seg));
+        const seg = this.G.edgeSegment(a, e), had = map.walls.find((w) => w.level === l.id && sameSeg(w, seg));
         return [had ? { op: 'unwall', id: had.id } : { op: 'wall', wall: { level: l.id, a: seg[0], b: seg[1], kind: this.kind } }];
       });
       case 'object': {
         const def = CONTENT.objects[this.def];
         if (def.kind === 'door') return this.#pair(h, (a, e) => {
-          const b = { q: a.q + this.G.DIRS[e][0], r: a.r + this.G.DIRS[e][1] }, seg = edgeSegment(a, e);
-          const had = map.objects.find((o) => o.level === l.id && Number.isInteger(o.edge) && sameSeg({ a: edgeSegment(o.at, o.edge)[0], b: edgeSegment(o.at, o.edge)[1] }, seg));
+          const b = { q: a.q + this.G.DIRS[e][0], r: a.r + this.G.DIRS[e][1] }, seg = this.G.edgeSegment(a, e);
+          const had = map.objects.find((o) => o.level === l.id && Number.isInteger(o.edge) && sameSeg({ a: this.G.edgeSegment(o.at, o.edge)[0], b: this.G.edgeSegment(o.at, o.edge)[1] }, seg));
           if (had) return [{ op: 'unobject', id: had.id }];
-          const [at, edge] = l.tiles[Gr.col(a)] || !l.tiles[Gr.col(b)] ? [a, e] : [b, (e + 3) % 6];      // a door stands on a tile of its level
+          const [at, edge] = l.tiles[Gr.col(a)] || !l.tiles[Gr.col(b)] ? [a, e] : [b, this.G.edgeOf(b, a)];      // a door stands on a tile of its level
           return [...map.walls.filter((w) => w.level === l.id && sameSeg(w, seg)).map((w) => ({ op: 'unwall', id: w.id })),
             { op: 'object', object: { def: this.def, level: l.id, at: { q: at.q, r: at.r }, edge } }];
         });
@@ -191,7 +206,7 @@ export class Editor {
       case 'start':
         if (!tile) return this.toast('The party needs a floor to start on.');
         return this.edit([{ op: 'starts', starts: [{ q: h.q, r: h.r, z: l.z + (tile.h ?? 0) }] }]);
-      default: return this.toast(HINTS[this.tool]);
+      default: return this.toast(this.hint(this.tool));
     }
   }
   // A two-tap edit on the edge between neighbouring hexes. make(first, edge) returns the ops.
@@ -213,12 +228,12 @@ export class Editor {
   #wallAround(inside) {
     const l = this.level(), map = this.S.map, ops = [], done = [];
     const taken = (seg) => done.some((s) => sameSeg({ a: s[0], b: s[1] }, seg)) || map.walls.some((w) => w.level === l.id && sameSeg(w, seg)) ||
-      map.objects.some((o) => o.level === l.id && Number.isInteger(o.edge) && sameSeg({ a: edgeSegment(o.at, o.edge)[0], b: edgeSegment(o.at, o.edge)[1] }, seg));
+      map.objects.some((o) => o.level === l.id && Number.isInteger(o.edge) && sameSeg({ a: this.G.edgeSegment(o.at, o.edge)[0], b: this.G.edgeSegment(o.at, o.edge)[1] }, seg));
     for (const c of inside) {
       const h = Gr.parse(c);
-      this.G.DIRS.forEach(([dq, dr], e) => {
+      this.G.DIRS.slice(0, this.G.EDGES).forEach(([dq, dr], e) => {
         if (inside.has(Gr.col({ q: h.q + dq, r: h.r + dr }))) return;
-        const seg = edgeSegment(h, e);
+        const seg = this.G.edgeSegment(h, e);
         if (taken(seg)) return;
         done.push(seg); ops.push({ op: 'wall', wall: { level: l.id, a: seg[0], b: seg[1], kind: this.kind } });
       });
@@ -313,15 +328,15 @@ export class Editor {
     const pl = map.levels.find((x) => x.id === p.level);
     if (!pl || !here(pl, p)) return this.refresh();
     const za = pl.z + (here(pl, p).h ?? 0), zb = l.z + (here(l, h).h ?? 0);
-    const dq = h.q - p.q, dr = h.r - p.r, n = this.G.dist(p, h);
-    if (!(dq === 0 || dr === 0 || dq + dr === 0)) return this.toast('Stairs need a straight line of hexes: along one of the three grid directions.');
+    const run = this.G.straight(p, h), n = this.G.dist(p, h);
+    if (!run) return this.toast(this.G.kind === 'square' ? 'Stairs need a straight line of squares: along a row, a column or a diagonal.' : 'Stairs need a straight line of hexes: along one of the three grid directions.');
     if (n < 2) return this.toast('Pick two hexes with at least one between them.');
     if (za === zb) return this.toast('Both ends are the same height, so there is nothing to climb. Raise the top first.');
     const base = za <= zb ? pl : l, foot = za <= zb ? p : h, ops = [];
     const rounded = (z) => Math.round(z / Editor.STEP) * Editor.STEP;
     let worst = 0, prev = za;
     for (let i = 1; i < n; i++) {
-      const at = { q: p.q + Math.sign(dq) * i, r: p.r + Math.sign(dr) * i }, z = rounded(za + (zb - za) * i / n);
+      const at = run[i], z = rounded(za + (zb - za) * i / n);
       worst = Math.max(worst, Math.abs(z - prev)); prev = z;
       const off = z - base.z, old = base.tiles[Gr.col(at)] ?? { t: here(base, foot).t };
       const tile = { ...old, h: off }; if (!off) delete tile.h;
@@ -336,7 +351,7 @@ export class Editor {
   // ---------- object properties ----------
   #objectsAt(h, l) {
     const k = Gr.col(h);
-    return this.S.map.objects.filter((o) => o.level === l.id && objectHexes(o).some((x) => Gr.col(x) === k));
+    return this.S.map.objects.filter((o) => o.level === l.id && objectHexes(o, this.G).some((x) => Gr.col(x) === k));
   }
   #propsTap(h, l) {
     const P = this.props, map = this.S.map;
@@ -449,10 +464,10 @@ export class Editor {
     $('ed-hread').textContent = t ? `Tile ${this.lastH.q},${this.lastH.r}: ${t.h ?? 0} ft above its level, ${lv.z + (t.h ?? 0)} ft up in all` : 'Height: tap a tile to see it here.';
     if (this.tool !== 'props' && this.props) { this.props = null; $('ed-form').innerHTML = ''; }
     else if (this.props && !this.S.map.objects.some((o) => o.id === this.props.id)) { this.props = null; $('ed-form').innerHTML = ''; }
-    if (this.tool === 'height' && this.hmode === 'stairs') $('ed-hint').textContent = this.pending ? 'Now tap the hex at the top of the stairs.' : HINTS.stairs;
-    else if (this.tool === 'height') $('ed-hint').textContent = HINTS.height;
+    if (this.tool === 'height' && this.hmode === 'stairs') $('ed-hint').textContent = this.pending ? this.say('Now tap the hex at the top of the stairs.') : this.hint('stairs');
+    else if (this.tool === 'height') $('ed-hint').textContent = this.hint('height');
     this.#heightNums();
-    if (this.tool === 'props') $('ed-hint').textContent = this.props?.pick === 'to' ? 'Tap the tile it leads to (change level first if it goes up or down).' : this.props?.pick === 'link' ? 'Tap the other object.' : HINTS.props;
+    if (this.tool === 'props') $('ed-hint').textContent = this.props?.pick === 'to' ? 'Tap the tile it leads to (change level first if it goes up or down).' : this.props?.pick === 'link' ? 'Tap the other object.' : this.hint('props');
   }
 
   // ---------- trace: walls and doors drawn over the picture ----------
@@ -460,7 +475,7 @@ export class Editor {
   #pieces(l) {         // everything on this level that is a line: walls and traced doors
     const map = this.S.map, out = [];
     for (const w of map.walls) if (w.level === l.id) out.push({ type: 'wall', id: w.id, a: w.a, b: w.b, item: w });
-    for (const o of map.objects) { const seg = o.level === l.id && o.seg && objectSegment(o); if (seg) out.push({ type: 'object', id: o.id, a: seg[0], b: seg[1], item: o }); }
+    for (const o of map.objects) { const seg = o.level === l.id && (o.seg || Number.isInteger(o.edge)) && objectSegment(o, this.G); if (seg) out.push({ type: 'object', id: o.id, a: seg[0], b: seg[1], item: o }); }
     return out;
   }
   #px(p, l) { return this.R.screenPoint(p[0], p[1], l.z); }
@@ -471,8 +486,20 @@ export class Editor {
     const ends = [...this.#pieces(l).filter((x) => !skip(x)).flatMap((x) => [x.a, x.b]), ...this.traceLine];
     for (const e of ends) { const s = this.#px(e, l); if (!s) continue; const d = Math.hypot(s.x - px, s.y - py); if (d < bd) { bd = d; best = e; } }
     if (best) return [...best];
-    const k = this.snap || 0.01;
+    if (this.snap === 'grid' && this.G.kind === 'square') return this.#gridSnap(p, l, px, py);
+    const k = Number(this.snap) || 0.01;
     return [Math.round(p[0] / k) * k, Math.round(p[1] / k) * k].map((n) => Math.round(n * 100) / 100);
+  }
+  // On squares: a point near a corner goes to the corner (the grid's lines cross at 2.5 ft plus a multiple of 5);
+  // near a side it goes onto the side's line, and along it to a multiple of 2.5 ft (a corner or the middle of a side);
+  // anywhere else it is rounded to 1 ft.
+  #gridSnap(p, l, px, py) {
+    const g = (v) => 2.5 + 5 * Math.round((v - 2.5) / 5), r2 = (n) => Math.round(n * 100) / 100, far = (q) => { const s = this.#px(q, l); return s ? Math.hypot(s.x - px, s.y - py) : Infinity; };
+    const corner = [g(p[0]), g(p[1])], onX = [g(p[0]), Math.round(p[1] / 2.5) * 2.5], onY = [Math.round(p[0] / 2.5) * 2.5, g(p[1])];
+    if (far(corner) <= 16) return corner;
+    const dx = far([g(p[0]), p[1]]), dy = far([p[0], g(p[1])]);
+    if (Math.min(dx, dy) <= 14) return dx <= dy ? onX : onY;
+    return [r2(Math.round(p[0])), r2(Math.round(p[1]))];
   }
   #traceTap(px, py) {
     const l = this.level();
@@ -499,10 +526,30 @@ export class Editor {
   }
   // The hex a traced door belongs to is the one nearest its middle; it needs a floor tile, so one is added if it is missing.
   #doorAt(mid, l) { const at = this.G.cell(mid[0], mid[1]); return { at: { q: at.q, r: at.r }, tile: l.tiles[Gr.col(at)] ? null : { op: 'tile', level: l.id, at: { q: at.q, r: at.r }, tile: { t: 'stone' } } }; }
+  // What a traced door stands on: on squares, a line that is exactly one side of a square is that side (`edge`, as a door placed by
+  // tapping squares); any other line stays a line (`seg`).
+  #doorPlace(a, b, l) {
+    if (this.G.kind === 'square') {
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], cand = [];
+      if (same([a[0], 0], [b[0], 0])) cand.push({ q: (a[0] - 2.5) / 5, r: Math.round(mid[1] / 5), e: 0 });                 // a line up and down: the east side of the square to its west
+      if (same([0, a[1]], [0, b[1]])) cand.push({ q: Math.round(mid[0] / 5), r: (a[1] - 2.5) / 5, e: 3 });                 // a line across: the south side of the square to its north
+      for (const c of cand) {
+        const at = { q: Math.round(c.q), r: Math.round(c.r) };
+        if (Math.abs(c.q - at.q) > 1e-6 || Math.abs(c.r - at.r) > 1e-6) continue;
+        const side = this.G.edgeSegment(at, c.e);
+        if (!sameSeg({ a: a, b: b }, side)) continue;
+        const to = { q: at.q + this.G.DIRS[c.e][0], r: at.r + this.G.DIRS[c.e][1] }, has = (h) => l.tiles[Gr.col(h)];
+        const [on, edge] = has(at) || !has(to) ? [at, c.e] : [to, this.G.edgeOf(to, at)];       // a door stands on a tile of its level
+        return { at: on, edge, tile: has(on) ? null : { op: 'tile', level: l.id, at: on, tile: { t: 'stone' } } };
+      }
+    }
+    const { at, tile } = this.#doorAt([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], l);
+    return { at, seg: { a, b }, tile };
+  }
   #placeDoor(l, a, b) {
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1) { this.refresh(); return this.toast('A door needs two points at least 1 ft apart.', true); }
-    const { at, tile } = this.#doorAt([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], l);
-    this.edit([...(tile ? [tile] : []), { op: 'object', object: { def: this.tdef, level: l.id, at, seg: { a, b } } }]);
+    const { tile, ...where } = this.#doorPlace(a, b, l);
+    this.edit([...(tile ? [tile] : []), { op: 'object', object: { def: this.tdef, level: l.id, ...where } }]);
   }
   #pickPiece(px, py, l) {
     let best = null, bd = 18;
@@ -552,7 +599,7 @@ export class Editor {
       const a = m.end === 'a' ? d.to : m.a, b = m.end === 'b' ? d.to : m.b;
       if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.5) { this.refresh(); return this.toast('That would make it too short.', true); }
       if (m.type === 'wall') ops.push({ op: 'wall', wall: { ...m.item, a, b } });
-      else { const { at, tile } = this.#doorAt([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], l); if (tile) ops.push(tile); ops.push({ op: 'object', object: { ...m.item, at, seg: { a, b } } }); }
+      else { const { tile, ...where } = this.#doorPlace(a, b, l), { edge, seg, ...rest } = m.item; if (tile) ops.push(tile); ops.push({ op: 'object', object: { ...rest, ...where } }); }
     }
     this.sel = { type: d.members[0].type, id: d.members[0].id };
     this.edit(ops);
@@ -567,15 +614,10 @@ export class Editor {
   #fillFloor() {
     const l = this.level(), img = l.image;
     if (!img) return this.toast('Set a background picture first (Levels tool).');
-    const [ox, oy] = img.origin, [fw, fh] = img.feet, row = (FT * Math.sqrt(3)) / 2, ops = [];
-    for (let r = Math.ceil(oy / row); r * row <= oy + fh; r++) {
-      for (let q = Math.ceil(ox / FT - r / 2); ; q++) {
-        const [cx, cy] = center({ q, r });
-        if (cx > ox + fw) break;
-        if (cx >= ox && cy >= oy && cy <= oy + fh && !l.tiles[Gr.col({ q, r })]) ops.push({ op: 'tile', level: l.id, at: { q, r }, tile: { t: 'stone' } });
-      }
-    }
-    if (!ops.length) return this.toast('Every hex under the picture has a floor already.', true);
+    const [ox, oy] = img.origin, [fw, fh] = img.feet, ops = [], sq = this.G.kind === 'square', m = sq ? 2.5 - 0.01 : 0;
+    // On squares: every square that lies wholly on the picture (its centre is 2.5 ft in from the picture's edge), so a margin round the grid stays bare.
+    for (const { q, r } of this.G.cellsIn(ox + m, oy + m, ox + fw - m, oy + fh - m)) if (!l.tiles[Gr.col({ q, r })]) ops.push({ op: 'tile', level: l.id, at: { q, r }, tile: { t: 'stone' } });
+    if (!ops.length) return this.toast(sq ? 'Every square on the picture has a floor already.' : 'Every hex under the picture has a floor already.', true);
     if (ops.length > 2000) return this.toast(`That needs ${ops.length} hexes and one edit takes at most 2000. Shrink the picture's scale or paint the floor in parts.`);
     this.edit(ops);
     this.toast(`Laid ${ops.length} stone hexes.`, true);
@@ -586,13 +628,13 @@ export class Editor {
       <div class="ed-row" data-for="trace" id="ed-tmodes"><button type="button" data-tmode="wall">Wall</button><button type="button" data-tmode="door">Door</button><button type="button" data-tmode="edit">Edit</button></div>
       <div class="ed-row" data-for="trace" data-tm="door"><select id="ed-tdef" aria-label="Which door">${doors.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select></div>
       <div class="ed-row" data-for="trace" id="ed-tbtns">
-        <select id="ed-snap" aria-label="Round points to" data-tm="wall door"><option value="0">No rounding</option><option value="1" selected>Round to 1 ft</option><option value="2.5">Round to 2.5 ft</option><option value="5">Round to 5 ft</option></select>
+        <select id="ed-snap" aria-label="Round points to" data-tm="wall door"></select>
         <button type="button" id="ed-tdone" data-tm="wall">Done</button><button type="button" id="ed-tback" data-tm="wall door">Back</button>
         <button type="button" id="ed-tdel" data-tm="edit">Delete</button>
         <button type="button" id="ed-fill">Fill floor</button><span id="ed-tread"></span></div>`);
     $('ed-tmodes').onclick = (ev) => { const b = ev.target.closest('[data-tmode]'); if (b) { this.tmode = b.dataset.tmode; this.traceLine = []; this.sel = null; this.refresh(); } };
     $('ed-tdef').onchange = (ev) => { this.tdef = ev.target.value; this.traceLine = []; this.refresh(); };
-    $('ed-snap').onchange = (ev) => { this.snap = Number(ev.target.value); };
+    $('ed-snap').onchange = (ev) => { this.snap = ev.target.value === 'grid' ? 'grid' : Number(ev.target.value); };
     $('ed-tdone').onclick = () => this.#finishLine();
     $('ed-tback').onclick = () => { this.traceLine.pop(); this.refresh(); };
     $('ed-tdel').onclick = () => this.#deleteSelected();
@@ -604,13 +646,15 @@ export class Editor {
       for (const el of $('ed-opts').querySelectorAll('[data-tm]')) el.hidden = !el.dataset.tm.split(' ').includes(this.tmode);
       for (const b of $('ed-tmodes').children) b.classList.toggle('sel', b.dataset.tmode === this.tmode);
       $('ed-tdef').value = this.tdef;
+      const sq = this.G.kind === 'square', rounds = [['0', 'No rounding'], ['1', 'Round to 1 ft'], ['2.5', 'Round to 2.5 ft'], ['5', 'Round to 5 ft']];
+      this.#options($('ed-snap'), sq ? [['grid', 'Snap to the grid'], ...rounds] : rounds, String(this.snap));
       if (this.sel && !this.#selected(l)) this.sel = null;
       $('ed-tdone').disabled = this.traceLine.length < 2; $('ed-tback').disabled = !this.traceLine.length;
       $('ed-tdel').disabled = !this.sel;
       $('ed-fill').disabled = !l.image;
       const x = this.#selected(l);
       $('ed-tread').textContent = x ? `${x.type === 'wall' ? x.item.kind : CONTENT.objects[x.item.def]?.name}, ${Math.round(Math.hypot(x.b[0] - x.a[0], x.b[1] - x.a[1]) * 10) / 10} ft` : '';
-      $('ed-hint').textContent = !l.image ? 'Trace works over a picture. Set one under Levels first.' : this.pending ? $('ed-hint').textContent : HINTS[`trace_${this.tmode}`];
+      $('ed-hint').textContent = !l.image ? 'Trace works over a picture. Set one under Levels first.' : this.pending ? $('ed-hint').textContent : this.hint(`trace_${this.tmode}`);
     }
     // The marks on the floor: the line being drawn or the piece picked; amber bars where a wall stops a step.
     let pins = [];
@@ -629,10 +673,10 @@ export class Editor {
     const B = barriers(map), bars = [];
     for (const k of Object.keys(l.tiles)) {
       const h = Gr.parse(k);
-      for (let e = 0; e < 3; e++) {
+      for (let e = 0; e < this.G.EDGES / 2; e++) {
         const n = { q: h.q + this.G.DIRS[e][0], r: h.r + this.G.DIRS[e][1] };
         if (!l.tiles[Gr.col(n)] || !B.blocked(l.id, h, n, 'move')) continue;
-        bars.push([...center(h), ...center(n)]);
+        bars.push([...this.G.center(h), ...this.G.center(n)]);
       }
     }
     this.barCache = { key, bars };
@@ -651,9 +695,15 @@ export class Editor {
         <span id="ed-scalehint"></span>
         <span id="ed-scaleask" hidden><input id="ed-dist" type="number" inputmode="decimal" min="0.1" step="any" class="feet" aria-label="Distance between the two points in feet" placeholder="feet"> ft
           <button type="button" id="ed-scaleok">Apply</button></span></div>
+      <div class="ed-row" data-for="level" id="ed-bgalign"><button type="button" id="ed-align">Align to grid</button>
+        <span id="ed-alignhint"></span>
+        <span id="ed-alignask" hidden>across <input id="ed-acols" type="number" inputmode="numeric" min="0" step="1" value="1" class="feet" aria-label="Squares between the two points, across"> down <input id="ed-arows" type="number" inputmode="numeric" min="0" step="1" value="1" class="feet" aria-label="Squares between the two points, down">
+          <button type="button" id="ed-alignok">Apply</button></span></div>
+      <div class="ed-row" data-for="level" id="ed-bgpix"><label class="check">Pixels a square <input id="ed-ppsq" type="number" inputmode="decimal" min="4" step="any" class="feet" placeholder="140" aria-label="Pixels across one square of the picture"></label>
+        <button type="button" id="ed-ppsqok">Use</button><button type="button" id="ed-lines">Find the lines</button></div>
       <div class="ed-row" data-for="level" id="ed-bgnudge"><span>Nudge</span>
         <button type="button" data-nudge="left" aria-label="Nudge left">&larr;</button><button type="button" data-nudge="up" aria-label="Nudge up">&uarr;</button><button type="button" data-nudge="down" aria-label="Nudge down">&darr;</button><button type="button" data-nudge="right" aria-label="Nudge right">&rarr;</button>
-        <select id="ed-nudgestep" aria-label="How far"><option value="1">1 ft</option><option value="5">5 ft</option><option value="0.25">3 in</option></select>
+        <select id="ed-nudgestep" aria-label="How far"><option value="1">1 ft</option><option value="5">5 ft</option><option value="0.25">3 in</option><option value="0.05">0.05 ft</option></select>
         <button type="button" id="ed-clearbg">Clear background</button></div>`);
     $('ed-setbg').onclick = () => $('ed-bgfile').click();
     $('ed-bgfile').onchange = async (ev) => {
@@ -666,6 +716,10 @@ export class Editor {
     $('ed-bgpick').onchange = async (ev) => { const id = ev.target.value; ev.target.value = ''; if (id) try { await this.#useAsset(id); } catch (err) { this.toast(err.message); } };
     $('ed-scale').onclick = () => { this.scaling = this.scaling ? null : { pts: [] }; this.pending = null; this.refresh(); };
     $('ed-scaleok').onclick = () => this.#applyScale();
+    $('ed-align').onclick = () => { this.scaling = this.scaling ? null : { pts: [], align: true }; this.pending = null; this.refresh(); };
+    $('ed-alignok').onclick = () => this.#applyAlign();
+    $('ed-ppsqok').onclick = () => this.#applyPixels();
+    $('ed-lines').onclick = () => this.#findLines();
     $('ed-dist').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); this.#applyScale(); } };
     $('ed-bgnudge').onclick = (ev) => { const b = ev.target.closest('[data-nudge]'); if (b) this.#nudge(b.dataset.nudge); };
     $('ed-clearbg').onclick = (ev) => this.#sure(ev.currentTarget, () => { this.scaling = null; this.edit([{ op: 'level', level: { id: this.level().id, image: null } }]); });
@@ -711,6 +765,114 @@ export class Editor {
     this.edit([{ op: 'level', level: { id: l.id, image: { ...img, feet, origin } } }]);
     this.toast(`The picture is now ${feet[0]} by ${feet[1]} ft.`, true);
   }
+  // ---------- align a picture's square grid to the map's ----------
+  // The map's squares have corners at 2.5 ft plus a multiple of 5 (a square is centred on 5q, 5r). Three ways to put a picture's
+  // drawn squares on them: Align (two corners and how many squares apart), Use (pixels to a square) and Find the lines (read the
+  // picture's own lines). Each ends as one `level` edit that sets the picture's `feet` and `origin`.
+  static GRID = (v) => 2.5 + 5 * Math.round((v - 2.5) / 5);
+  #r3 = (n) => Math.round(n * 1000) / 1000;
+  async #pictureData(img, cap = 3000) {
+    const store = this.assets?.();
+    if (!store) throw new Error('There is nowhere to read the picture from.');
+    const el = new Image();
+    el.src = await store.url(img.asset);
+    await el.decode().catch(() => { throw new Error('That picture could not be read.'); });
+    const w0 = el.naturalWidth, h0 = el.naturalHeight, sc = Math.min(1, cap / Math.max(w0, h0)), w = Math.max(1, Math.round(w0 * sc)), h = Math.max(1, Math.round(h0 * sc));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(el, 0, 0, w, h);
+    return { w0, h0, w, h, rgba: g.getImageData(0, 0, w, h).data };
+  }
+  // Where the lines of a grid lie in a picture, given roughly how many pixels a square is across (`want`, within 12%). Looks at
+  // how strongly the picture changes along each row and column, folds that at every period near `want`, and keeps the period and
+  // the place where the lines stack up best. Returns the period and the first line (picture pixels, both axes), or null.
+  static LINES(pic, want) {
+    const { w, h, rgba } = pic, lum = new Float32Array(w * h);
+    for (let i = 0, j = 0; i < lum.length; i++, j += 4) lum[i] = 0.3 * rgba[j] + 0.59 * rgba[j + 1] + 0.11 * rgba[j + 2];
+    const cx = new Float64Array(w), cy = new Float64Array(h);
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      cx[x] += Math.abs(lum[i + 1] - lum[i - 1]); cy[y] += Math.abs(lum[i + w] - lum[i - w]);
+    }
+    const smooth = (c) => { const o = new Float64Array(c.length), k = 2; for (let i = 0; i < c.length; i++) { let t = 0, n = 0; for (let d = -k; d <= k; d++) if (c[i + d] !== undefined) { t += c[i + d]; n++; } o[i] = t / n; } return o; };
+    const axis = (raw) => {
+      const c = smooth(raw), L = c.length, mean = c.reduce((a, b) => a + b, 0) / L;
+      const at = (pos) => { const f = pos - 0.5, i = Math.floor(f); if (i < 0 || i + 1 >= L) return 0; const t = f - i; return c[i] * (1 - t) + c[i + 1] * t; };
+      const score = (p, ph) => { let t = 0, n = 0; for (let x = ph; x < L; x += p) { t += at(x); n++; } return n ? t / n : 0; };
+      let best = { s: -1 };
+      for (let p = want * 0.88; p <= want * 1.12; p += Math.max(0.05, want * 0.0007)) for (let ph = 0; ph < p; ph += 0.5) { const s = score(p, ph); if (s > best.s) best = { s, p, ph }; }
+      const c0 = best;
+      for (let p = c0.p - 0.15; p <= c0.p + 0.15; p += 0.01) for (let ph = c0.ph - 0.6; ph <= c0.ph + 0.6; ph += 0.05) { const q = ((ph % p) + p) % p, s = score(p, q); if (s > best.s) best = { s, p, ph: q }; }
+      return { ...best, ratio: best.s / (mean || 1) };
+    };
+    const X = axis(cx), Y = axis(cy);
+    if (X.ratio < 2 || Y.ratio < 2 || Math.abs(X.p - Y.p) > 0.01 * Math.max(X.p, Y.p)) return null;       // no clear lines, or two different spacings
+    return { p: (X.p + Y.p) / 2, x: X.ph, y: Y.ph, ratio: Math.min(X.ratio, Y.ratio) };
+  }
+  // The picture with its scale set so a square of the picture is a square of the map, and its first lines moved onto the nearest
+  // lines of the map. `pxPerSquare` is in the picture's own pixels; `line` is where a vertical and a horizontal line are.
+  #fitted(img, pic, pxPerSquare, line) {
+    const f = 5 / pxPerSquare, feet = [pic.w0 * f, pic.h0 * f];
+    const near = (o, ph) => Editor.GRID(o + ph * f) - ph * f;          // the origin that puts the picture's line at `ph` on the grid, nearest to where the picture is
+    return { ...img, feet: feet.map(this.#r3), origin: [this.#r3(near(img.origin[0], line[0])), this.#r3(near(img.origin[1], line[1]))] };
+  }
+  async #applyAlign() {
+    const l = this.level(), img = l.image, pts = this.scaling?.pts ?? [];
+    if (!img || pts.length < 2 || this.busy) return;
+    const [p, q] = pts, cols = Number($('ed-acols').value), rows = Number($('ed-arows').value), dx = Math.abs(q[0] - p[0]), dy = Math.abs(q[1] - p[1]);
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 0 || rows < 0 || cols + rows === 0) return this.toast('Type how many squares apart the two corners are, across and down: whole numbers.');
+    if ((cols && dx < 1) || (rows && dy < 1) || (!cols && dx > 2.5) || (!rows && dy > 2.5)) return this.toast('The counts do not fit the two corners you tapped. Tap the corners again.');
+    if (cols && rows && Math.abs((5 * cols) / dx / ((5 * rows) / dy) - 1) > 0.2) return this.toast('Across and down do not agree with the picture: check the counts, or tap the corners again.');
+    const k = (5 * (cols + rows)) / ((cols ? dx : 0) + (rows ? dy : 0));
+    const feet = img.feet.map((n) => n * k);
+    if (feet.some((n) => !(n >= 5 && n <= 100000))) return this.toast('That would make the picture too big or too small.');
+    // After the scale the first tap is still where it was; it is a corner, so it goes onto the nearest corner of the map.
+    let next = { ...img, feet: feet.map(this.#r3), origin: [0, 1].map((c) => this.#r3(p[c] + (img.origin[c] - p[c]) * k + Editor.GRID(p[c]) - p[c])) }, said = 'Aligned by the two corners.';
+    this.busy = true; this.refresh();
+    try { const r = await this.#refine(next); if (r) { next = r.img; said = r.said; } else said += ' The picture\'s own lines were not clear enough to fit finer: nudge it if it is off.'; }
+    catch (err) { said += ` (${err.message})`; }
+    finally { this.busy = false; }
+    this.scaling = null;
+    this.edit([{ op: 'level', level: { id: l.id, image: next } }]);
+    this.toast(said, true);
+  }
+  // Reads the picture's lines near its current scale and fits to them: { img, said } or null.
+  async #refine(img) {
+    const pic = await this.#pictureData(img), want = pic.w / (img.feet[0] / 5);        // pixels (of the read copy) a square is now
+    const L = Editor.LINES(pic, want);
+    if (!L) return null;
+    const back = pic.w0 / pic.w, ppsq = L.p * back;
+    return { img: this.#fitted(img, pic, ppsq, [L.x * back, L.y * back]), said: `Aligned to the picture's lines: ${Math.round(ppsq * 100) / 100} pixels a square.` };
+  }
+  async #findLines() {
+    const l = this.level(), img = l.image;
+    if (!img || this.busy) return;
+    this.busy = true; this.refresh();
+    try {
+      const r = await this.#refine(img);
+      if (!r) return this.toast('Could not find clear grid lines near this scale. Use Align to grid, or type the pixels a square, then nudge.');
+      this.edit([{ op: 'level', level: { id: l.id, image: r.img } }]);
+      this.toast(r.said, true);
+    } catch (err) { this.toast(err.message); }
+    finally { this.busy = false; this.refresh(); }
+  }
+  // The pixels a square takes in the picture are known (a map maker says "140 pixels to a square"): the scale is then exact.
+  async #applyPixels() {
+    const l = this.level(), img = l.image, ppsq = Number($('ed-ppsq').value);
+    if (!img || this.busy) return;
+    if (!(ppsq >= 4 && ppsq <= 2000)) return this.toast('Type how many pixels across one square is in the picture, 4 or more.');
+    this.busy = true; this.refresh();
+    try {
+      const pic = await this.#pictureData(img, 64), f = 5 / ppsq, feet = [pic.w0 * f, pic.h0 * f];
+      if (feet.some((n) => !(n >= 5 && n <= 100000))) throw new Error('That would make the picture too big or too small.');
+      // The picture's middle stays where it is; Find the lines or the nudge buttons then put the lines on the squares.
+      const mid = [0, 1].map((c) => img.origin[c] + img.feet[c] / 2);
+      let next = { ...img, feet: feet.map(this.#r3), origin: [0, 1].map((c) => this.#r3(mid[c] - feet[c] / 2)) }, said = `Scale set: ${ppsq} pixels a square.`;
+      try { const r = await this.#refine(next); if (r) { next = r.img; said = r.said; } else said += ' Use Find the lines or nudge the picture onto the squares.'; } catch { /* the scale is set; the lines are for the DM */ }
+      this.edit([{ op: 'level', level: { id: l.id, image: next } }]);
+      this.toast(said, true);
+    } catch (err) { this.toast(err.message); }
+    finally { this.busy = false; this.refresh(); }
+  }
   #nudge(dir) {
     const l = this.level(), img = l.image;
     if (!img) return;
@@ -722,22 +884,30 @@ export class Editor {
     const img = l.image;
     $('ed-bgstate').textContent = img ? `Picture ${img.feet[0]} by ${img.feet[1]} ft${this.R.hasPicture(l.id) ? '' : ' (not loaded)'}` : 'No background picture.';
     $('ed-setbg').textContent = img ? 'Change background' : 'Set background';
-    for (const id of ['ed-scale', 'ed-clearbg']) $(id).disabled = !img;
+    const sq = this.G.kind === 'square';
+    $('ed-bgscale').hidden = sq || this.tool !== 'level'; $('ed-bgalign').hidden = $('ed-bgpix').hidden = !sq || this.tool !== 'level';       // squares are aligned to the picture's grid; hexes are scaled by a distance
+    for (const id of ['ed-scale', 'ed-clearbg', 'ed-align', 'ed-ppsqok', 'ed-lines']) $(id).disabled = !img || (this.busy && id !== 'ed-clearbg');
+    $('ed-align').classList.toggle('sel', !!this.scaling?.align); $('ed-scale').classList.toggle('sel', !!this.scaling && !this.scaling.align);
     for (const b of $('ed-bgnudge').querySelectorAll('[data-nudge]')) b.disabled = !img;
     if (!img) this.scaling = null;
-    $('ed-scale').classList.toggle('sel', !!this.scaling);
-    const n = this.scaling?.pts.length ?? 0;
-    $('ed-scalehint').textContent = this.scaling ? (n < 2 ? `Tap ${n ? 'the second' : 'the first'} point of a distance you know.` : 'Type the distance between them.') : '';
-    $('ed-scaleask').hidden = n < 2;
-    if (this.tool === 'level' && this.scaling) $('ed-hint').textContent = n < 2 ? 'Tap two points on the picture that are a known distance apart (the ends of a 30 ft room, say).' : 'Now type how many feet apart they are, and Apply.';
+    const n = this.scaling?.pts.length ?? 0, al = !!this.scaling?.align;
+    $('ed-scalehint').textContent = this.scaling && !al ? (n < 2 ? `Tap ${n ? 'the second' : 'the first'} point of a distance you know.` : 'Type the distance between them.') : '';
+    $('ed-scaleask').hidden = n < 2 || al;
+    $('ed-alignhint').textContent = al ? (n < 2 ? `Tap ${n ? 'the second' : 'the first'} corner.` : 'Type how many squares apart they are.') : '';
+    $('ed-alignask').hidden = n < 2 || !al;
+    if (this.tool === 'level' && this.scaling) $('ed-hint').textContent = al
+      ? (n < 2 ? 'Tap a corner of a square on the picture, where two of its lines cross. Then tap another corner as far from it as you can (the far end of the grid is best).' : 'Type how many squares apart the corners are, across and down, and Apply. The editor then fits its squares to the picture.')
+      : (n < 2 ? 'Tap two points on the picture that are a known distance apart (the ends of a 30 ft room, say).' : 'Now type how many feet apart they are, and Apply.');
+    else if (this.tool === 'level' && sq && img) $('ed-hint').textContent = 'Align to grid: tap two corners of the picture\'s squares. Or type its pixels a square and Use, then Find the lines. Nudge to finish by eye.';
   }
 
   // ---------- map files ----------
-  blank() {
-    const tiles = {};
-    for (const h of Gr.HEX.range({ q: 0, r: 0 }, 3)) tiles[Gr.col(h)] = { t: 'stone' };
-    this.levelId = 'ground'; this.region = ''; this.pending = null;
-    this.act({ type: 'loadMap', map: newMap({ id: 'new-map', name: 'New map', levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: 0, r: 0, z: 0 }] }) });
+  // A blank map on the grid the DM picked: 7 hexes across, or a block of 7 by 7 squares.
+  blank(grid = 'hex') {
+    const tiles = {}, G = Gr.gridOf({ grid });
+    for (const h of grid === 'square' ? G.cellsIn(-15, -15, 15, 15) : G.range({ q: 0, r: 0 }, 3)) tiles[Gr.col(h)] = { t: 'stone' };
+    this.levelId = 'ground'; this.region = ''; this.pending = null; this.sel = null; this.traceLine = [];
+    this.act({ type: 'loadMap', map: newMap({ id: 'new-map', name: 'New map', grid, levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], starts: [{ q: 0, r: 0, z: 0 }] }) });
     this.refresh();
   }
   // Play on one of the stock maps (content/maps): the same `loadMap` action as any other map.
@@ -853,6 +1023,7 @@ export class Editor {
     const objs = Object.values(CONTENT.objects).map((o) => `<option value="${esc(o.id)}">${esc(o.name)}${o.kind === 'door' ? ' (on an edge)' : ''}</option>`).join('');
     bar.innerHTML = `
       <div class="ed-head"><strong>Map editor</strong><select id="ed-level" aria-label="Level being edited"></select><button type="button" id="ed-undo" disabled>Undo</button><button type="button" id="ed-done">Done</button></div>
+      <p class="ed-sub" id="ed-grid"></p>
       <div class="ed-row" id="ed-tools">${Object.entries(TOOLS).map(([k, t]) => `<button type="button" data-tool="${k}">${t}</button>`).join('')}</div>
       <div id="ed-opts">
         <div class="ed-row" data-for="paint" id="ed-terrain">${Object.keys(TILES).map((t) => `<button type="button" data-t="${t}"><i class="sw sw-${t}"></i>${t[0].toUpperCase()}${t.slice(1)}</button>`).join('')}</div>
@@ -866,10 +1037,11 @@ export class Editor {
         <form class="ed-row" data-for="level" id="ed-addlevel"><input id="ed-lname" maxlength="40" placeholder="New level name" autocomplete="off"><input id="ed-lfeet" type="number" step="5" value="10" aria-label="Height in feet" class="feet"><button type="submit">Add level</button></form>
         <div class="ed-row" data-for="level"><label class="check">Light <select id="ed-llight" aria-label="Light on this level"><option value="bright">Bright (daylight, a lit hall)</option><option value="dim">Dim (dusk, moonlight)</option><option value="dark">Dark (a cave at night)</option></select></label></div>
         <div class="ed-row" data-for="level"><button type="button" id="ed-unlevel">Delete this level</button><label class="check"><input type="checkbox" id="ed-all"> Show levels above</label></div>
-        <div class="ed-row" data-for="file"><button type="button" id="ed-new">New blank map</button><button type="button" id="ed-export">Export map</button><button type="button" id="ed-import">Import map</button><input type="file" id="ed-file" accept=".json,application/json" hidden>
+        <div class="ed-row" data-for="file"><button type="button" id="ed-new-square">New square map</button><button type="button" id="ed-new-hex">New hex map</button><button type="button" id="ed-export">Export map</button><button type="button" id="ed-import">Import map</button><input type="file" id="ed-file" accept=".json,application/json" hidden>
           <button type="button" id="ed-uvtt">Import Universal VTT</button><input type="file" id="ed-uvttfile" accept=".dd2vtt,.df2vtt,.uvtt,.json" hidden></div>
         <div class="ed-row" data-for="file"><select id="ed-stock" aria-label="Stock map">${STOCK_MAPS.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select><button type="button" id="ed-stockgo">Start on this map</button></div>
         <p class="ed-sub" data-for="file" id="ed-stocktext"></p>
+        <p class="ed-sub" data-for="file" id="ed-gridnote"></p>
         <div class="ed-notes" data-for="file" id="ed-notes" hidden></div>
       </div>
       <p id="ed-hint"></p>`;
@@ -911,7 +1083,7 @@ export class Editor {
     };
     $('ed-unlevel').onclick = (ev) => this.#sure(ev.currentTarget, () => { const id = this.level().id; this.levelId = null; this.edit([{ op: 'unlevel', id }]); });
     $('ed-all').onchange = (ev) => { this.showAll = ev.target.checked; again(); };
-    $('ed-new').onclick = (ev) => this.#sure(ev.currentTarget, () => this.blank());
+    for (const g of ['square', 'hex']) $(`ed-new-${g}`).onclick = (ev) => this.#sure(ev.currentTarget, () => this.blank(g));
     const stockText = () => { $('ed-stocktext').textContent = STOCK_MAPS.find((m) => m.id === $('ed-stock').value)?.text ?? ''; };
     $('ed-stock').onchange = stockText; stockText();
     $('ed-stockgo').onclick = (ev) => this.#sure(ev.currentTarget, () => this.stock($('ed-stock').value));
