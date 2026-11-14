@@ -277,10 +277,27 @@ export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = nul
   // A monster's stat block gives its save outright (`saveBonus`); anyone else adds Proficiency to the modifier for a saving throw they are proficient in.
   const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
   let total = r + base + m.add + more.total;
+  // A failed save rolled again for a use of a feature (`reroll`: Indomitable adds the Fighter level;
+  // Disciplined Survivor for a Focus Point), by its standing instruction, where the new roll could
+  // succeed. The new d20 (or two, with Advantage or Disadvantage) stands; other dice are kept.
+  let again = null, faces = d20Faces(r1, r2, r);
+  if (ev && total < dc) {
+    const mine = reactionsOf(t);
+    const f = (t.feats ?? []).find((x) => x.reroll && (t.uses?.[x.reroll.cost] ?? 0) > 0 && instruction(t, mine.find((y) => y.id === x.id)) !== 'never'
+      && 20 + base + m.add + more.total + (x.reroll.add ?? 0) >= dc);
+    if (f) {
+      t.uses[f.reroll.cost]--;
+      const n1 = die(s, 20), n2 = mode === 'normal' ? null : die(s, 20), n = mode === 'adv' ? Math.max(n1, n2) : mode === 'dis' ? Math.min(n1, n2) : n1, add = f.reroll.add ?? 0;
+      again = { name: f.name, was: r, ...(add ? { add } : {}), n, rolls: n2 === null ? null : [n1, n2] };
+      total = n + base + m.add + more.total + add;
+      faces = d20Faces(n1, n2, n);
+    }
+  }
   // A die that may turn a failure (Bardic Inspiration), with `ev` to say what was spent.
   const lift = ev && total < dc ? rescue(s, t, 'save', dc - total, ev) : null;
   if (lift) total += lift.add;
-  return { roll: r, total, success: total >= dc, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), dice: [...d20Faces(r1, r2, r), ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
+  const { n: rolled = r, rolls: rolledTwo = r2 === null ? null : [r1, r2], ...rerolled } = again ?? {};
+  return { roll: rolled, total, success: total >= dc, ...(again ? { reroll: rerolled } : {}), ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), dice: [...faces, ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(rolledTwo === null ? {} : { rolls: rolledTwo, mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
 // ---------- ability checks ----------

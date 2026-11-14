@@ -483,6 +483,8 @@ export function derive(sheet) {
       const { addLevel, heal, ...rest } = g.initiative;
       out.initiative = { ...rest, ...(heal !== undefined ? { heal: addLevel ? dice(amount(heal, c, level, abil), level) : amount(heal, c, level, abil) } : {}) };
     }
+    if (g.reroll) out.reroll = { cost: g.reroll.cost, ...(g.reroll.add !== undefined ? { add: amount(g.reroll.add, c, level, abil) } : {}) };
+    if (g.missed) out.missed = structuredClone(g.missed);
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);
     if (g.critOn) critOn = Math.min(critOn, g.critOn);

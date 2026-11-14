@@ -605,7 +605,10 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   // choice on a hit (Brutal Strike), staying up at 0 Hit Points (Relentless Rage), something done on rolling Initiative
   // (Persistent Rage, Uncanny Metabolism, Perfect Focus), and another feature's lasting effect that needs no renewing
   // (Persistent Rage).
-  'moveWith', 'brutal', 'relentless', 'initiative', 'persist'];
+  'moveWith', 'brutal', 'relentless', 'initiative', 'persist',
+  // A failed saving throw rolled again for a use of a feature (Indomitable, Disciplined Survivor), and
+  // what a missed attack roll gives against that target (Studied Attacks).
+  'reroll', 'missed'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -831,6 +834,21 @@ function lintGrants(g, cls, say) {
   }
   // `persist: { of, endsOn }`: that feature's lasting effect lasts its whole duration without being
   // extended, and ends early only when its creature has the condition `endsOn` (Persistent Rage).
+  // `reroll: { cost, add? }`: when the creature fails a saving throw, it rolls it again, adding `add`
+  // (an amount: Indomitable's Fighter level), for one use of the feature `cost`, and must use the new
+  // roll. Taken by standing instruction (reactions.js, `always` or `never`) where the new roll could succeed.
+  if (g.reroll !== undefined) {
+    if (!(g.reroll && ID.test(g.reroll.cost ?? '') && Object.keys(g.reroll).every((k) => ['cost', 'add'].includes(k)))) say('reroll is { cost, add? }');
+    else if (g.reroll.add !== undefined) lintAmount(g.reroll.add, cls, say, 'reroll.add');
+  }
+  // `missed: { modifier, ends }`: when the creature misses with an attack roll, it gains this modifier,
+  // against that target only, until `ends` (Studied Attacks: Advantage on its next attack roll, to the
+  // end of its next turn).
+  if (g.missed !== undefined) {
+    const x = g.missed;
+    if (!(x && x.modifier && x.ends && Object.keys(x).length === 2 && ['turnStart', 'turnEnd'].includes(x.ends.on) && Object.keys(x.ends).length === 1)) say('missed is { modifier, ends: { on: turnStart | turnEnd } }');
+    else { lintModifier(x.modifier, say); if (!x.modifier.on.startsWith('attack.roll')) say('missed gives a modifier on attack.roll'); }
+  }
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
 const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
@@ -1131,7 +1149,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
-  'moveWith', 'brutal', 'relentless', 'initiative'];
+  'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1182,6 +1200,8 @@ function lintFeat(f, say) {
   if (f.relentless !== undefined && !(f.relentless && ID.test(f.relentless.while ?? '') && isInt(f.relentless.dc) && isInt(f.relentless.step) && isInt(f.relentless.hp) && f.relentless.hp > 0 && f.relentless.hp <= 100)) sub('its relentless is { while, dc, step, hp }.');
   if (f.initiative !== undefined && !(f.initiative && ID.test(f.initiative.regain ?? '') && (f.initiative.upTo === undefined || isInt(f.initiative.upTo))
     && (f.initiative.heal === undefined || isDice(f.initiative.heal)) && (f.initiative.unless === undefined || ID.test(f.initiative.unless)))) sub('its initiative is { regain, upTo?, heal?, unless? }.');
+  if (f.reroll !== undefined && !(f.reroll && ID.test(f.reroll.cost ?? '') && (f.reroll.add === undefined || (isInt(f.reroll.add) && f.reroll.add >= 0 && f.reroll.add <= 30)))) sub('its reroll is { cost, add? }.');
+  if (f.missed !== undefined) { if (!(f.missed && f.missed.modifier && ['turnStart', 'turnEnd'].includes(f.missed.ends?.on))) sub('its missed is { modifier, ends }.'); else lintModifier(f.missed.modifier, sub); }
   if (f.reaction?.on === 'saveFailed') {
     const r = f.reaction;
     if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range <= 300)) sub('its saveFailed reaction is { on, conditions, range }.');

@@ -77,6 +77,8 @@ export function reactionsOf(e) {
   // Initiative (Persistent Rage, Uncanny Metabolism) is taken by instruction, `always` or `never`.
   // `free`: it does not spend the Reaction, and no trigger above looks at it.
   for (const f of e.feats ?? []) if (f.initiative && f.uses) out.push({ id: f.id, name: f.name, kind: 'free', on: 'initiative', options: ['never', 'always'], dflt: 'always' });
+  // A failed save rolled again for a use (Indomitable, Disciplined Survivor), likewise.
+  for (const f of e.feats ?? []) if (f.reroll) out.push({ id: f.id, name: f.name, kind: 'free', on: 'reroll', options: ['never', 'always'], dflt: 'always' });
   for (const f of e.feats ?? []) {
     if (!f.reaction) continue;
     // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.

@@ -5,7 +5,7 @@ import * as H from '../hex.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { SPELLS, TILES } from '../content/index.js';
 import { begin, run, scaleSteps, sharedRolls } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, ROUND, roundStarted, startEffect, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, unseenAt } from '../space.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
@@ -262,6 +262,20 @@ function relentless(s, t, ev) {
   ev.push({ type: 'heal', target: t.id, amount: t.hp, hp: t.hp });
 }
 
+// A creature that missed with an attack roll and has `missed` (Studied Attacks) gains its modifier
+// against that target, on a lasting effect bound to it, until `ends` (in a fight: there are no turns
+// outside one, and an attack roll starts one).
+function studied(s, e, t, ev) {
+  if (!s.encounter || e.object) return;
+  for (const f of e.feats ?? []) {
+    if (!f.missed) continue;
+    const fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: 'special' });
+    fx.bound = true;
+    fx.parts.push({ target: e.id, modifier: structuredClone(f.missed.modifier), against: t.id, ends: { ...f.missed.ends }, born: turnKey(s) });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until its parts end', targets: [e.id] });
+  }
+}
+
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 // `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
 function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false } = {}) {
@@ -294,6 +308,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false } = {}) {
     total: nat + bonus + lifted, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
+  if (!hit) studied(s, e, t, ev);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };
