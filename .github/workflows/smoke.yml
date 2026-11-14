@@ -1,0 +1,61 @@
+name: Smoke
+
+# Browser smoke passes (scripts/smoke.mjs) in headless Chromium with SwiftShader.
+# One matrix entry per pass name. Names must be keys of REGISTRY in scripts/smoke.mjs.
+# To add a pass: append its name to `matrix.pass` below.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'packages/client/**'
+      - 'packages/rules/src/**'
+      - 'packages/server/src/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: smoke (${{ matrix.pass }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        pass: [base, drawer, three, pinch]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # An unknown SMOKE_ONLY name exits 1 in scripts/smoke.mjs before anything else runs,
+      # so this fails fast, before the browser install.
+      - name: Check the pass name is in the registry
+        run: SMOKE_ONLY=${{ matrix.pass }} node -e "process.exit(0)" && node -e "
+          const src = require('fs').readFileSync('scripts/smoke.mjs', 'utf8');
+          const reg = src.slice(src.indexOf('const REGISTRY'), src.indexOf('};', src.indexOf('const REGISTRY')));
+          const name = process.env.PASS;
+          if (!new RegExp('^\\\\s*(' + name + '|\\'' + name + '\\'):', 'm').test(reg)) { console.error('pass ' + name + ' is not in REGISTRY'); process.exit(1); }
+          "
+        env:
+          PASS: ${{ matrix.pass }}
+      - run: npm i -g playwright
+      - run: npx playwright install --with-deps chromium
+      # scripts/smoke.mjs skips with exit 0 when playwright is not found; in CI that would be a false green.
+      - name: Check playwright is found
+        run: node -e "require(require('child_process').execSync('npm root -g').toString().trim() + '/playwright')"
+      - name: Run the pass
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke-shots"
+          SMOKE_SHOTS="$RUNNER_TEMP/smoke-shots" SMOKE_ONLY=${{ matrix.pass }} npm run smoke
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.pass }}
+          path: ${{ runner.temp }}/smoke-shots
+          if-no-files-found: ignore
