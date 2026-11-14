@@ -252,3 +252,176 @@ for (const grid of [null, "square"]) {
     assert.ok(s.entities[x], "a Short Rest is not a Long Rest");
   });
 }
+
+// ---------- hidden information: twin runs, bonded against unbonded ----------
+
+// What players get of a run: every action's events, the view after each, the record, and the counter.
+function seenBy(s, results) {
+  return [U1, U2].map((u) => ({ ev: results.map((r) => json(viewEvents(r.events, s, u))), view: json(view(s, u)), tl: json(viewEvents(s.timeline, s, u)) }));
+}
+const hide = (s, id) => ok(apply(s, { type: "reveal", actor: id, hidden: true }, DM));
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+
+  test(`a foe's after companion whose hidden master is not in the fight: players get just what an unbonded creature gives${on}`, () => {
+    const run = (bonded) => {
+      const s = table(grid), f = s.entities.fighter, out = [];
+      const mage = spawn(s, "goblin-warrior", spot(s, s.entities.m5.pos, 0, 1), "Hidden Mage");
+      hide(s, mage);
+      const pet = spawn(s, "wolf", spot(s, f.pos, 1, 2), "Grey Pet");
+      if (bonded) bond(s, pet, mage, { turn: "after", kind: "summon" });
+      out.push(ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM)));
+      assert.ok(!ids(s).includes(mage) && ids(s).includes(pet));
+      for (let i = 0; i < 3 * ids(s).length && s.encounter; i++) {
+        if (i === 4) out.push(ok(apply(s, { type: "move", actor: mage, to: spot(s, s.entities.m5.pos, 2, 1) }, DM)));
+        out.push(endTurn(s));
+      }
+      return { s, seen: seenBy(s, out), seq: s.seq, dm: out.flatMap((r) => r.events) };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.seen, B.seen);
+    assert.equal(A.seq, B.seq);
+    assert.ok(A.dm.some((e) => e.type === "manual" && e.partial && /rolls its own Initiative/.test(e.text)), "the DM is told why it rolled");
+    assert.ok(!B.dm.some((e) => /rolls its own Initiative/.test(e.text ?? "")));
+  });
+
+  test(`a hidden companion that vanishes at its hidden master's Long Rest: players get what an unbonded one gives, and the husk is no one's${on} (#313 L2)`, () => {
+    const run = (bonded) => {
+      const s = table(grid);
+      const mage = spawn(s, "goblin-warrior", spot(s, s.entities.m5.pos, 0, 1), "Hidden Mage");
+      const imp = spawn(s, "wolf", spot(s, s.entities.m5.pos, 1, 2), "Hidden Imp");
+      if (bonded) { bond(s, imp, mage, { kind: "familiar" }); s.entities[imp].bond.ends = ["longRest"]; }
+      hide(s, mage); hide(s, imp);
+      const r = ok(apply(s, { type: "rest", ids: [mage, imp] }, DM));
+      const t = ok(apply(s, { type: "advanceTime", minutes: 30 }, DM));
+      return { s, mage, imp, r, seen: seenBy(s, [r, t]), seq: s.seq };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.seen, B.seen);
+    assert.equal(A.seq, B.seq);
+    const husk = A.s.entities[A.imp];
+    assert.ok(husk.dead && husk.hidden && husk.vanished === "rest");
+    assert.equal(husk.bond, undefined, "the husk keeps no bond");
+    // So it does not count toward its master's companions: the master can itself be bonded now.
+    const other = spawn(A.s, "goblin-warrior", spot(A.s, A.s.entities.m1.pos, 0), "Boss");
+    bond(A.s, A.mage, other);
+    // And a master with BOND_MAX husks is not full.
+    assert.ok(BOND_MAX > 1);
+  });
+
+  test(`a hidden summon whose hidden master's effect ends: players get what an unbonded creature gives${on}`, () => {
+    const run = (bonded) => {
+      const s = table(grid);
+      const mage = spawn(s, "goblin-warrior", spot(s, s.entities.m5.pos, 0, 1), "Hidden Mage");
+      const spirit = spawn(s, "wolf", spot(s, s.entities.m5.pos, 1, 2), "Hidden Spirit");
+      if (bonded) bond(s, spirit, mage, { kind: "summon", turn: "after" });
+      hide(s, mage); hide(s, spirit);
+      const fx = startEffect(s, { name: "Summon Thing", spell: null, source: mage, conc: true, duration: "1 hour" });
+      fx.parts.push({ target: spirit, summon: true }, { target: "fighter", cond: "frightened" });
+      s.entities.fighter.cond.frightened = { source: mage, effect: fx.id };
+      if (bonded) s.entities[spirit].bond.fx = fx.id;
+      const r = ok(apply(s, { type: "endEffect", effect: fx.id }, DM));
+      const t = ok(apply(s, { type: "advanceTime", minutes: 30 }, DM));
+      return { s, spirit, r, seen: seenBy(s, [r, t]), seq: s.seq };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.seen, B.seen);
+    assert.equal(A.seq, B.seq);
+    assert.ok(A.r.events.some((e) => e.type === "vanished" && e.why === "ended"), "it did vanish");
+    assert.ok(A.s.entities[A.spirit].dead && A.s.entities[A.spirit].vanished === "ended");
+    assert.ok(!json(A.seen).includes(A.spirit), "no id of it reaches a player");
+  });
+}
+
+test("why an effect ended is not told in words that name a creature it was on that players do not know of (#313 L1)", async () => {
+  const s = table(), w = spawn(s, "wolf", spot(s, s.entities.m1.pos, 0), "Zorblax");
+  const fx = startEffect(s, { name: "Hex", spell: null, source: "wizard", conc: true, duration: "1 hour" });
+  fx.parts.push({ target: w, cond: "poisoned" }, { target: "fighter", cond: "prone" });
+  s.entities[w].cond.poisoned = { source: "wizard", effect: fx.id }; s.entities.fighter.cond.prone = { effect: fx.id };
+  hide(s, w);
+  const r = ok(apply(s, { type: "remove", actor: w }, DM));
+  const end = viewEvents(r.events, s, U1).find((e) => e.type === "effectEnd");
+  assert.ok(end, "the end is told: it was on the fighter");
+  assert.equal(end.source, "wizard");
+  assert.ok(!json(viewEvents(r.events, s, U1)).includes("Zorblax"), "the hidden creature is not named");
+  assert.equal(end.why, "it ended");
+  assert.deepEqual(end.targets, ["fighter"]);
+  // Words that name nobody they do not know of are kept; the DM gets them all.
+  const ev = [{ type: "effectEnd", fx: "fx9", name: "Hex", source: "wizard", targets: ["fighter", "m1"], why: "its time ran out" }];
+  hide(s, "m1");
+  assert.equal(viewEvents(ev, s, U1)[0].why, "its time ran out");
+  assert.equal(viewEvents([{ ...ev[0], why: "Goblin Warrior 1 took damage" }], s, U1)[0].why, "it ended");
+  assert.equal(viewEvents([{ ...ev[0], why: "Goblin Warrior 1 took damage" }], s, DM)[0].why, "Goblin Warrior 1 took damage");
+});
+
+for (const grid of [null, "square"]) {
+  test(`undo and redo give back exactly what the order and a summon's end did, and the same actions replay the same${grid ? " (squares)" : " (hexes)"}`, () => {
+    const build = () => {
+      const s = table(grid), f = s.entities.fighter;
+      const a = spawn(s, "wolf", spot(s, f.pos, 0, 2), "Hound A"), b = spawn(s, "wolf", spot(s, s.entities.m5.pos, 0, 1), "Hound B");
+      for (const id of [a, b]) bond(s, id, "fighter", { turn: "after", kind: "summon" });
+      const fx = startEffect(s, { name: "Summon Thing", spell: null, source: "fighter", conc: true, duration: "1 hour" });
+      fx.parts.push({ target: a, summon: true }); s.entities[a].bond.fx = fx.id;
+      spawn(s, "goblin-warrior", spot(s, f.pos, 5), "Gob");
+      return { s, a, b, fx: fx.id, near: spot(s, f.pos, 7) };
+    };
+    const { s, b, fx, near } = build();
+    const acts = [
+      { type: "startEncounter", center: s.entities.fighter.pos, radius: 6 },
+      { type: "endTurn", actor: null }, { type: "endTurn", actor: null },
+      { type: "move", actor: b, to: near },
+      { type: "endTurn", actor: null },
+      { type: "endEffect", effect: fx },
+      { type: "endTurn", actor: null }, { type: "endTurn", actor: null }, { type: "endTurn", actor: null },
+    ];
+    const h = createHistory(), states = [json(s)], done = [];
+    for (const a0 of acts) {
+      const a = a0.type === "endTurn" ? { ...a0, actor: current(s) } : a0;
+      const before = mark(s), r = ok(apply(s, a, DM));
+      h.record(before, s, describeStep(a, r.events, before, s));
+      done.push(a); states.push(json(s));
+    }
+    for (let i = acts.length - 1; i >= 0; i--) { h.undo(s); assert.equal(json(s), states[i], `undo ${i}`); }
+    for (let i = 1; i <= acts.length; i++) { h.redo(s); assert.equal(json(s), states[i], `redo ${i}`); }
+    const again = build().s;
+    for (const a of done) ok(apply(again, a, DM));
+    assert.equal(json(again), states.at(-1), "replayed, the same");
+  });
+}
+
+for (const grid of [null, "square"]) {
+  test(`a master joining after its companion has had its turn: the companion moves behind it at the next round, not twice in one${grid ? " (squares)" : " (hexes)"}`, () => {
+    const s = table(grid), f = s.entities.fighter;
+    const w = spawn(s, "wolf", spot(s, f.pos, 0), "Hound");
+    bond(s, w, "fighter", { turn: "after" });
+    s.entities[w].initBonus = 60;                                        // first in every round
+    s.entities.fighter.initBonus = -60;                                  // last when it comes
+    ok(apply(s, { type: "move", actor: "fighter", to: spot(s, s.entities.m5.pos, 1) }, DM));
+    spawn(s, "goblin-warrior", spot(s, s.entities.rogue.pos, 4), "Gob");
+    const all = [...ok(apply(s, { type: "startEncounter", center: s.entities.rogue.pos, radius: 4 }, DM)).events];
+    assert.equal(ids(s)[0], w);
+    all.push(...endTurn(s).events);                                       // its turn is had
+    const round = s.encounter.round;
+    all.push(...ok(apply(s, { type: "move", actor: "fighter", to: spot(s, s.entities.rogue.pos, 2) }, DM)).events);
+    assert.ok(!s.encounter.order.find((o) => o.id === w).after, "not now: it would act twice this round");
+    assert.equal(ids(s)[0], w);
+    for (let i = 0; i < 12 && s.encounter.round === round; i++) all.push(...endTurn(s).events);
+    behindMaster(s, "fighter", [w]);
+    const by = turnsOf(all);
+    assert.deepEqual(by[round].filter((x) => x === w), [w], "one turn in the round the master joined");
+    for (let i = 0; i < ids(s).length; i++) all.push(...endTurn(s).events);
+    const next = turnsOf(all)[round + 1];
+    assert.equal(next[next.indexOf("fighter") + 1], w, "then straight after its master");
+    // Bonded while it is its own turn: it stays put for now.
+    const s2 = table(grid), p = spawn(s2, "wolf", spot(s2, s2.entities.fighter.pos, 0), "Pup");
+    bond(s2, p, "fighter"); s2.entities[p].initBonus = 60;
+    spawn(s2, "goblin-warrior", spot(s2, s2.entities.fighter.pos, 5), "Gob");
+    ok(apply(s2, { type: "startEncounter", center: s2.entities.fighter.pos, radius: 6 }, DM));
+    assert.equal(current(s2), p);
+    const before = ids(s2);
+    bond(s2, p, null); bond(s2, p, "fighter", { turn: "after" });
+    assert.deepEqual(ids(s2), before, "the creature whose turn it is stays where it is");
+    assert.equal(current(s2), p);
+  });
+}
