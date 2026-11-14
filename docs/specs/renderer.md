@@ -876,3 +876,40 @@ can run in parallel after R2. R10 decides the rest.
   sources (the spec's point lights) cast none; the hour of the day does not move the sun; no cascades (a large board's shadows have the map's
   resolution round the focus and none beyond the box, fading over the last 7 % of its edge); the renderer has no settings control (only the
   shadows one).
+
+### Arena edge (#305, render agent)
+
+*Decision (owner and lead, 14 Nov).* A fight is still one accelerated state for everyone, but the owner liked "here is the battle area" because in
+a living world something goes on outside it (see `travel.md`, the concurrent places). So the **lighting change stays** (everything outside the
+arena is dimmed and desaturated: `tintOf` and the `locked` colours in `render.js`, the same in `three-build.js`) and the **glowing edge goes by
+default**: the tall light wall, the bright rim on the arena's cells, the brighter grid inside them and the pictured level's lit outline.
+
+*The preference.* `hextable.arenaEdge` is `"dim"` (default: lighting only, plus the flash below) or `"edge"` (the old look: dim plus the glowing
+edge). It is a look like `floors` and `caves`: `LOOK.arenaEdge` in `themes.js`, copied onto every theme as `theme.arenaEdge` by `setLook`, so both
+renderers read it from the theme they were given (`edgeLook(theme)`, exported by `render.js`). A change in Settings (the "Edge of a fight" control,
+made by `settings.js`, as the Shadows one is) goes through `setLook` and `R.setTheme`, which rebuilds the terrain and the edge. The address does not
+lock it. The `edge` code path is unchanged and is tested (`render-three.test.js`, and the smoke steps below); when the travel spec's concurrent
+places arrive it should become the default again: change the fallback in `themes.js` (`'dim'`) and nothing else.
+
+*What is drawn.* In `dim`, `#buildEdge` (`render.js`) and `buildEdge` (`three-build.js`) still run, because they also find `edgeBase` (the height the
+edge rises from), but the mesh handed to the GPU is empty; the arena's cells take the same rim and grid as any other floor. The turn ring under
+whoever acts keeps `arenaRim`.
+
+*The flash.* A move the arena refuses (the engine's `The arena is locked until the fight ends.`) lights the border cells nearest the hex that was
+aimed at: `arenaFlashCells(map, enc, hex, ceiling)` in `render.js` (pure: border cells are those with a side facing outside, the nearest ring and the
+one after it, at most eight) and the same curtain code as the edge, limited to those cells (`only`), 1.1 units tall, with a wider band on the floor,
+drawn for 1.1 s with two pulses, in either look and either renderer. `app.js` sends it as the page event `hextable-arena-flash` (detail: the hex),
+as Shadows does with `hextable-shadows`, so `renderer.js` and its interface list are untouched (a renderer that draws nothing ignores the event). The
+toast keeps the engine's sentence and adds "Nobody leaves the lit area of the fight before then." Only a move the player has just tapped flashes
+(not one the monster AI tried), and only within four seconds of the tap.
+
+*Checked.* `npm test` client tests (new: default has no curtain, edge look has it, flash cells are the nearest border cells, the preference rides on every theme).
+Smoke, one pass at a time: `SMOKE_ONLY=square` (default renderer, squares and hexes, 1280x800 and 390x844 with touch) and `SMOKE_ONLY=three`
+(Three.js, hexes and squares, both sizes) each run the steps "the Settings control reads dim; a fight starts and no edge is drawn; a tapped move out
+is refused with the rule in words and the flash is made and goes out by itself; the control, stored, brings the edge back and takes it away; the
+fight ends and no edge is left". Looked at by eye in screenshots (`/tmp/arena-edge/`) before, during and after a fight, both looks, both renderers,
+both grids, both sizes, and the fight in the three themes: the dim outside reads in Classic, Sunlit and Pocket. The flash lasts 1.1 s, which a
+software-GL screenshot is slower than, so the shots hold it at its brightest by setting `flashAt` from the page; real timing was not seen on a device.
+
+*Left out.* The lighting is the existing one (not made stronger or given its own preference). The dim does not reach walls, doors, pawns or the
+sky, only floors, trees and rock.

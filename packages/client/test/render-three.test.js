@@ -95,9 +95,9 @@ test('the stock dungeon has rooms with walls, and the cut-away lowers some of th
 test('the arena curtain and the overlay are built, finite, and empty with nothing to show', () => {
   const S = world(null), ents = Object.values(S.entities), c = ents[0].pos;
   const arena = {}; for (const h of [c, { q: c.q + 1, r: c.r }, { q: c.q, r: c.r + 1 }]) arena[`${h.q},${h.r}`] = true;
-  const enc = { id: 1, arena }, e = B.buildEdge({ map: S.map, enc, theme, ceiling: Infinity });
+  const enc = { id: 1, arena }, e = B.buildEdge({ map: S.map, enc, theme: { ...theme, arenaEdge: 'edge' }, ceiling: Infinity });      // the curtain is the 'edge' look (the default is 'dim')
   assert.ok(e.b.count > 0 && finite(e.b) && Number.isFinite(e.base));
-  assert.equal(B.buildEdge({ map: S.map, enc: null, theme, ceiling: Infinity }).b.count, 0);
+  assert.equal(B.buildEdge({ map: S.map, enc: null, theme: { ...theme, arenaEdge: 'edge' }, ceiling: Infinity }).b.count, 0);
   const hl = { move: [`${c.q + 1},${c.r}`], area: [], targets: [ents[1].id], allies: [], selected: ents[0].id, turn: null };
   const o = B.buildOverlay({ state: S, hl, theme });
   assert.ok(o.count > 0 && finite(o));
@@ -173,3 +173,46 @@ test('the Three.js renderer\'s floors read the shadow map only when SHADOWS is d
 });
 function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
 function norm3(a) { const l = Math.hypot(...a); return a.map((v) => v / l); }
+
+// ---------- the edge of a fight (#305) ----------
+const R = await load('render.js');
+const arenaWorld = () => {
+  const S = world(null), c = Object.values(S.entities)[0].pos, arena = {};
+  for (const h of [c, { q: c.q + 1, r: c.r }, { q: c.q, r: c.r + 1 }, { q: c.q - 1, r: c.r + 1 }]) arena[`${h.q},${h.r}`] = true;
+  return { S, c, enc: { id: 1, arena } };
+};
+test('the default look has no glowing edge; the edge look has it; the dim of the surroundings is in both', () => {
+  const { S, enc } = arenaWorld(), off = { ...theme, arenaEdge: 'dim' }, on = { ...theme, arenaEdge: 'edge' };
+  assert.equal(theme.arenaEdge, 'dim', 'every theme starts on the lighting change alone');
+  assert.equal(R.edgeLook(off), false); assert.equal(R.edgeLook(on), true);
+  const edge = (t) => B.buildEdge({ map: S.map, enc, theme: t, ceiling: Infinity });
+  assert.equal(edge(off).b.count, 0, 'no light wall in the dim look');
+  assert.ok(edge(on).b.count > 0);
+  assert.equal(edge(off).base, edge(on).base, 'the height the edge sinks and rises from is found in both');
+  const terrain = (t) => B.buildTerrain({ map: S.map, enc, sight: null, theme: t, ceiling: Infinity });
+  const a = terrain(off), b = terrain(on);
+  assert.notDeepEqual(a.terrain.d, b.terrain.d, 'the bright rim of the arena cells is the edge look only');
+  const none = B.buildTerrain({ map: S.map, enc: null, sight: null, theme: off, ceiling: Infinity });
+  assert.notDeepEqual(a.terrain.d, none.terrain.d, 'the dim outside is there in the dim look: a fight changes the floor');
+});
+test('a refused move flashes only the border cells nearest it, in either look', () => {
+  const { S, c, enc } = arenaWorld(), far = { q: c.q + 6, r: c.r };
+  const cols = R.arenaFlashCells(S.map, enc, far, Infinity);
+  assert.ok(cols.length > 0 && cols.length <= 8 && cols.every((k) => enc.arena[k]));
+  assert.ok(cols.includes(`${c.q + 1},${c.r}`), 'the cell nearest the hex aimed at is lit');
+  assert.ok(!cols.includes(`${c.q - 1},${c.r + 1}`), 'the far side of the arena is not');
+  assert.deepEqual(R.arenaFlashCells(S.map, null, far), []); assert.deepEqual(R.arenaFlashCells(S.map, enc, null), []);
+  for (const look of ['dim', 'edge']) {
+    const f = B.buildEdge({ map: S.map, enc, theme: { ...theme, arenaEdge: look }, ceiling: Infinity, only: new Set(cols), tall: 1.1 }).b;
+    const all = B.buildEdge({ map: S.map, enc, theme: { ...theme, arenaEdge: 'edge' }, ceiling: Infinity }).b;
+    assert.ok(f.count > 0 && f.count < all.count && finite(f), `${look}: the flash is a part of the curtain`);
+  }
+});
+test('the arena edge is a device preference carried by every theme', async () => {
+  const T = await import(pathToFileURL(join(client, 'themes.js')).href);
+  assert.ok('arenaEdge' in T.LOOK);
+  for (const t of Object.values(T.THEMES)) assert.equal(t.arenaEdge, T.LOOK.arenaEdge);
+  assert.equal(T.setLook('arenaEdge', 'edge'), true);
+  for (const t of Object.values(T.THEMES)) assert.equal(t.arenaEdge, 'edge');
+  T.setLook('arenaEdge', 'dim');
+});

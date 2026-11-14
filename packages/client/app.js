@@ -697,6 +697,7 @@ const undo = () => isDM() && T.undo?.(), redo = () => isDM() && T.redo?.();
 $('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick = undo; $('dm-redo').onclick = redo;
 
 // ---------- taps ----------
+let lastMove = null;
 R.onTap = ({ hex, id }) => {
   if (!S || !T || skipping()) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
@@ -751,6 +752,7 @@ R.onTap = ({ hex, id }) => {
       const spot = [...moveOptions(S, e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
       return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
     }
+    lastMove = { hex, at: Date.now() };       // if the arena refuses it, the edge nearest this hex flashes (T.on.error)
     act({ type: 'move', actor: e.id, to: hex });
   }
 };
@@ -944,7 +946,12 @@ function start(transport, map = null) {
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
-    if (expired) { TL.skip(); S = null; lobbyBusy(false); showLobby(msg); } else toast(msg); };
+    if (expired) { TL.skip(); S = null; lobbyBusy(false); showLobby(msg); }
+    else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (render.js, arenaFlashCells)
+      toast(`${msg} Nobody leaves the lit area of the fight before then.`);
+      if (lastMove && Date.now() - lastMove.at < 4000) window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: lastMove.hex }));
+    } else toast(msg);
+    lastMove = null; };
   T.on.lobby = () => S && refresh();
   T.on.link = () => DOT.render();
   T.on.links = () => { if (S) { tracker.render(); DOT.render(); } };

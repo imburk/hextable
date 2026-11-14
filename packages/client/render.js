@@ -36,6 +36,22 @@ export function zoneHexes(state, fx) {
   }
   return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => cellParse(k)) };
 }
+// The edge of a fight (docs/specs/renderer.md, arena-edge notes): the lighting change (everything outside the arena dimmed) is always drawn;
+// the glowing edge (the light wall, the bright rim and grid) only when the device's `hextable.arenaEdge` is 'edge' (themes.js carries it
+// as `arenaEdge`). A refused move flashes the edge cells nearest the hex it aimed at, whichever look is chosen.
+export const edgeLook = (th) => th?.arenaEdge === 'edge';
+// The cells ([col, ...]) on the border of the arena (a side faces outside it) nearest `hex`: the nearest ring and the one after it, at most eight.
+export function arenaFlashCells(map, enc, hex, ceiling = Infinity) {
+  if (!enc?.arena || !hex) return [];
+  const G = gridOf(map), seen = new Map();
+  for (const h of allTiles(map)) {
+    const k = cellCol(h);
+    if (h.z > ceiling || !enc.arena[k] || seen.has(k) || G.neighbors(h).every((n) => enc.arena[cellCol(n)])) continue;
+    seen.set(k, G.dist(h, hex));
+  }
+  const best = Math.min(...seen.values());
+  return [...seen].filter(([, d]) => d <= best + 1).sort((a, b) => a[1] - b[1]).slice(0, 8).map(([k]) => k);
+}
 const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
 // Light through the day, by hour: [hour, light colour that multiplies the scene, how much of the sky colour is left].
@@ -264,7 +280,8 @@ export class Renderer {
     this.terrain = new Mesh(gl); this.wallMesh = new Mesh(gl); this.floorData = []; this.cutSig = ''; this.cutYaw = null; this.grid = new Mesh(gl); this.overlay = new Mesh(gl); this.shadows = new Mesh(gl); this.edge = new Mesh(gl); this.edgeId = null; this.anim = 0;
     this.doorMesh = new Mesh(gl); this.doors = new Map(); this.doorInfo = new Map(); this.wallsDirty = false;     // doors: id -> { v: 0 shut .. 1 open as drawn, goal, tw, since }
     this.seenRegions = null; this.veils = new Map();                  // a region just revealed: drawn dark over its floor, fading away
-    this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.edgeBase = 0; this.ghosts = []; this.fell = new Set(); this.now = clock(); this.blobMesh = new Mesh(gl); this.#makeBlob();
+    this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.edgeBase = 0; this.flash = new Mesh(gl); this.flashAt = null;
+    this.onFlash = (ev) => this.#flashEdge(ev.detail); window.addEventListener('hextable-arena-flash', this.onFlash); this.ghosts = []; this.fell = new Set(); this.now = clock(); this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
@@ -520,10 +537,10 @@ export class Renderer {
   // Stop drawing and let go of the page: the frame loop, the size watch, the pointer listeners, the labels and the buffers.
   dispose() {
     if (this.dead) return;
-    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.();
+    this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.(); window.removeEventListener('hextable-arena-flash', this.onFlash);
     for (const a of this.actors.values()) { a.el.remove(); a.mesh.free(); a.dying?.mesh.free(); }
     for (const f of this.floaters) f.el.remove();
-    for (const m of [this.terrain, this.wallMesh, this.grid, this.overlay, this.shadows, this.edge, this.doorMesh, this.blobMesh]) m.free();
+    for (const m of [this.terrain, this.wallMesh, this.grid, this.overlay, this.shadows, this.edge, this.flash, this.doorMesh, this.blobMesh]) m.free();
     this.actors.clear(); this.floaters = []; this.state = null;
   }
   #measure(ms, now) {
@@ -627,7 +644,7 @@ export class Renderer {
       if (h.z > this.ceiling) continue;
       if (pictured.has(h.level.id)) {
         const w = this.G.toWorld(h), inFight = enc && enc.arena[cellCol(h)];
-        gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
+        gb.flatHex(w.x, w.z, surfY(h.z, h.tile) + 0.012, 0.94, 1, inFight && edgeLook(th) ? [...th.arenaRim, 0.7] : shown(map, h.level.id, h) ? [0.06, 0.06, 0.08, 0.3] : [0.3, 0.4, 0.9, 0.35]);
         continue;
       }
       if (caves.has(h.level.id)) continue;                                // a cave is all drawn below
@@ -639,7 +656,7 @@ export class Renderer {
       if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
       const f = seenShade(h.level.id, cellCol(h));
       if (f !== 1) c = c.map((v) => v * f);
-      const rim = enc && !locked ? [...th.arenaRim, 1] : shade(c, th.rim);
+      const rim = enc && !locked && edgeLook(th) ? [...th.arenaRim, 1] : shade(c, th.rim);
       if (!room) {
         b.flatHex(w.x, w.z, y, 0, 0.86, [...c, 1]);
         b.flatHex(w.x, w.z, y, 0.86, 1, rim);
@@ -670,7 +687,7 @@ export class Renderer {
           if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));      // only the DM has these: not yet shown to players
           const f = seenShade(lv.id, key);
           if (f !== 1) c = c.map((v) => v * f);
-          const inArena = enc && !locked, grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
+          const inArena = enc && !locked && edgeLook(th), grid = inArena ? [...th.arenaRim, 1] : shade(c, th.grid ?? 0.92);
           const { inner, rim } = cellParts(cell, inArena ? 0.9 : 0.955, this.G);       // the floor reaches the hex's edge; the grid is a thin, faint line inside it (stronger in a fight's area)
           const fan = (poly, col) => { const m = wpt(centroidOf(poly), y); for (let i = 0; i < poly.length; i++) b.tri(wpt(poly[(i + 1) % poly.length], y), wpt(poly[i], y), m, col); };
           if (inner) fan(inner, [...c, 1]);
@@ -802,28 +819,40 @@ export class Renderer {
       for (const s of r.steps) face(s.at, s.to * UNIT, 0.4);                                                // beside lower rock: a step down
     }
   }
-  // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside.
-  #buildEdge() {
+  // The edge of a fight: a glowing curtain of light standing on every side of the locked area that faces the outside. It is drawn only in the
+  // 'edge' look (edgeLook); the 'dim' look has the lighting change alone. `only` (a Set of cols) and `tall` make the flash of a refused move.
+  #edgeGeom(only = null, tall = 2.1) {
     const eb = new Builder(this.G), map = this.state.map, enc = this.state.encounter, th = this.theme;
     if (enc) {
-      const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), tall = 2.1, v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
+      const glow = th.arenaRim.map((v) => v * 0.95 + 0.05), v = (p, col) => eb.d.push(p[0], p[1], p[2], 0, 1, 0, col[0], col[1], col[2], col[3]);
       const quad2 = (a, b, c, d, ca, cb, cc, cd) => { for (const o of [[a, b, c, d, ca, cb, cc, cd], [d, c, b, a, cd, cc, cb, ca]]) { const [p0, p1, p2, p3, c0, c1, c2, c3] = o; v(p0, c0); v(p1, c1); v(p2, c2); v(p0, c0); v(p2, c2); v(p3, c3); } };
       let ys = 0, ny = 0;
       for (const h of allTiles(map)) {
         if (h.z > this.ceiling || !enc.arena[cellCol(h)]) continue;
         const w = this.G.toWorld(h), y = surfY(h.z, h.tile) + 0.03;
-        ys += y; ny++; this.edgeBase = ys / ny;
-        const top = eb.cellRing(w.x, w.z, 1.02, y), inner = eb.cellRing(w.x, w.z, 0.86, y);
+        if (!only) { ys += y; ny++; this.edgeBase = ys / ny; }
+        if (only && !only.has(cellCol(h))) continue;
+        const top = eb.cellRing(w.x, w.z, 1.02, y), inner = eb.cellRing(w.x, w.z, only ? 0.6 : 0.86, y);
         for (let i = 0; i < top.length; i++) {
           const n = (i + 1) % top.length, [sx, sz] = sideAt(eb.shape, i), out = this.G.fromWorld(w.x + sx * 1.8, w.z + sz * 1.8);
           if (enc.arena[cellCol(out)]) continue;                                        // inside the area on that side: no edge
-          const lo = [...glow, 0.85], hi = [...glow, 0];
+          const lo = [...glow, only ? 1 : 0.85], hi = [...glow, 0];
           quad2(top[i], top[n], [top[n][0], y + tall, top[n][2]], [top[i][0], y + tall, top[i][2]], lo, lo, hi, hi);
-          quad2(inner[i], inner[n], top[n], top[i], [...glow, 0.35], [...glow, 0.35], [...glow.map((v) => v * 0.5 + 0.5), 1], [...glow.map((v) => v * 0.5 + 0.5), 1]);       // a bright line on the floor
+          quad2(inner[i], inner[n], top[n], top[i], [...glow, only ? 0.75 : 0.35], [...glow, only ? 0.75 : 0.35], [...glow.map((v) => v * 0.5 + 0.5), 1], [...glow.map((v) => v * 0.5 + 0.5), 1]);       // a bright line on the floor
         }
       }
     }
-    this.edge.set(eb);
+    return eb;
+  }
+  #buildEdge() {
+    const eb = this.#edgeGeom();                                                        // (it also finds the height the edge rises from)
+    this.edge.set(edgeLook(this.theme) ? eb : new Builder(this.G));
+  }
+  // A refused move (the page event `hextable-arena-flash`, from app.js): the border cells nearest where it aimed light up for a moment.
+  #flashEdge(hex) {
+    const st = this.state, cols = st ? arenaFlashCells(st.map, st.encounter, hex, this.ceiling) : [];
+    if (!cols.length) return;
+    this.flash.set(this.#edgeGeom(new Set(cols), 1.1)); this.flashAt = this.now;
   }
   // An upright slab along a line given in map feet.
   #slab(b, p, q, y0, height, half, col, cap = null) {
@@ -983,6 +1012,11 @@ export class Renderer {
     if (sk) {
       const p = sk.phase === 'hold' ? 0 : Math.min(1, (this.now - sk.t0) / SECS.sink), pulse = 0.82 + 0.18 * Math.sin(this.anim * 2.4), sink = 1 - smooth(p);
       sk.mesh.draw(this.loc, [1, 0, 0, 0, 0, Math.max(0.001, sink), 0, 0, 0, 0, 1, 0, 0, (1 - sink) * sk.base, 0, 1], [1, 1, 1, (1 - p * p) * pulse], 0);
+    }
+    if (this.flashAt !== null) {                                                  // the flash of a refused move: two quick pulses over 1.1 s
+      const age = this.now - this.flashAt;
+      if (age > 1.1 || !this.state.encounter) { this.flashAt = null; this.flash.set(new Builder(this.G)); }
+      else this.flash.draw(this.loc, ident(), [1.5, 1.5, 1.5, Math.sqrt(1 - age / 1.1) * (0.8 + 0.2 * Math.cos(age * 11))], 0);
     }
     for (const v of this.veils.values()) v.mesh.draw(this.loc, ident(), [1, 1, 1, v.alpha], 0);      // a region just seen rises out of the dark
     gl.depthMask(true);
