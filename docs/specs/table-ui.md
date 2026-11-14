@@ -1579,8 +1579,8 @@ same choices; a stand-in may play the character until the player is back. The SR
   durations.js). An old stamp that comes back unmigrated (an undo step or a pin from before) is still read as the
   turn at that place (`thisTurn`; no creature's id is only digits), and `settleOrder` names it by creature before
   a place moves. The server already drops a saved undo history when a table's version changes on loading, and solo
-  drops pins of another version. Left: a creature joining the fight re-sorts the order (world.js) without renaming an
-  unmigrated old stamp first. Nothing else keeps a place in the order: the budget and flags of a turn set aside
+  drops pins of another version. ~~Left: a creature joining the fight re-sorts the order (world.js) without renaming an
+  unmigrated old stamp first.~~ (PR for #303: `joinEncounter` renames them first, as `settleOrder` does.) Nothing else keeps a place in the order: the budget and flags of a turn set aside
   go with it, a waiting reaction stops any stepping away, and the engine has no readied actions.
 - **`hold` skips the turn entirely.** A held turn that is passed over is no turn: nothing at the start or the end of
   its turn happens (a save to end a condition at the end of its turn, a zone's damage at the start, effects that end
@@ -1631,3 +1631,94 @@ same choices; a stand-in may play the character until the player is back. The SR
 - **The server (not touched here).** Nothing is needed for the actions: they are ordinary actions through `apply()`.
   If the owner wants "auto after N seconds", `tables.js` would keep a timer per player from the link reports and send
   `{ type: 'stepAway', actor }` as the DM when it runs out, recorded as any DM action; the engine stays clock-free.
+
+### E21: formations, engine (PR for #303)
+
+The owner (14 November): "Typically when gaming they like to go two abreast, maybe four across when exploring. Can we
+set it so they remain in whatever config they're in when someone first starts leading, or at least let them move around
+in the app." Not an SRD rule (the SRD has a marching order only as table practice): a table convenience on top of
+following, which stays as it was.
+
+- **State.** `formation` on the leader (a party member), absent when unused: `{ shape, slots?, face? }`. `shape` is
+  `column` (no slots: the trail, exactly as before), a preset `pairs` (two abreast), `line` (four across) or `wedge`
+  (dealt to the leader's direct followers in marching order each time it walks, so whoever joins gets a place),
+  `held` (captured: the shape the party stood in), or `custom` (set by hand). `slots = { [id]: { back, side } }` in
+  cells, half steps, `back` 0 to 12 behind the leader, `side` -12 to 12, positive to its right. `face` is the
+  direction the leader last walked, an index into the grid's neighbours (`G.neighbors`), kept for capturing a
+  newcomer. Helpers in `engine/world.js` (`SHAPES`, `presetSlots`, `captureSlots`, `slotsFor`, `frameOf`,
+  `validFormation`); the walking in `engine/movement.js` (`formation`, called by `march`).
+- **No state version bump.** The field is absent on every saved table, and a leader without one walks its followers
+  as the column, as they always walked; `migrate` drops a `formation` that is not whole (idempotent, no version of its
+  own, as #300 did for `away`). A bump would also have changed the server test that pins version 22, which this job
+  may not touch.
+- **The frame.** The leader faces the grid direction of its last step that went somewhere on the map (6 on hexes,
+  8 on squares). On squares a diagonal frame is the square frame turned, so `back: 1` is one diagonal step and the
+  shape stays on cells; on hexes the side axis is not a hex direction, and a slot is the point it names. Each
+  follower's place is the cell nearest that point.
+- **Room, or the column.** After the leader walks, every follower with a slot is laid out before anyone moves: a place
+  within 0.75 cell of its slot's point, that it can reach and stop on, that nobody stays on (those still to walk do
+  not count), not more than half a cell ahead of the leader (beside it, never in front: the leader goes first into
+  whatever is there), and joined to the leader (the leader would walk there in at most twice 5 ft times the distance
+  plus 2 cells, so nobody is set behind a wall or across a chasm). Two never get one place (footprints and heights by
+  `overlapAt`, so a Large follower's whole footprint, and a flyer above someone is not on their space; a flyer keeps its
+  height where it can). If **every** follower has such a place, they walk to them, each when its place is clear; a
+  follower whose place is still held by another (a swap) takes the best place free then. If **any** has none (a
+  corridor, a door, a crowd), nobody is laid out: the column takes them all, in marching order along the leader's
+  trail, with today's keep-up and "couldn't keep up" rules unchanged. The next walk with room brings the shape back.
+  Followers of followers, and followers with no slot, walk as the column after the formation.
+- **Capture.** `partyFollow` without a shape, for a leader with no formation, captures where everyone stands, facing
+  away from the middle of those following (one standing ahead is taken as beside the leader). A held shape that is
+  single file (every `side` 0) is walked as the column, by the trail in marching order: a party lined up in a
+  passage walks as it did before (the existing test of the marching order is unchanged). A `follow` to a leader with no
+  formation captures the same way; to one with a held or custom shape it adds the newcomer where it stands. Presets and
+  the column deal newcomers a place as they walk.
+- **Per leader.** A formation is kept on its leader: `partyFollow` to a new leader keeps that leader's own formation if
+  it has one (else captures); the old leader keeps theirs for when they lead again. `partyFollow { shape }` or
+  `formation` picks another.
+- **Actions.** `partyFollow { leader, shape? }`: now the DM **or whoever controls the leader** (the owner's "a player may
+  lead"); it puts every other party member who is up behind the leader, as before. `shape` is one of
+  `column, pairs, line, wedge, held`. `formation { leader, shape }` or `formation { leader, slots }`: the DM at any
+  time outside a fight; a player only for a leader they control and only while someone follows it ("Pip isn't leading
+  anyone."). `slots` places some by hand; the others keep theirs (from a preset, its places are written out first) and
+  the shape becomes `custom`. A slot only for a party member following the leader; any other id, a creature that is not
+  there, one not of the party or a hidden one, gets the same answer ("Only those following Pip can be given a place
+  behind them."). Refused in a fight ("Nobody falls into line in the middle of a fight."), as following is. Every
+  refusal changes nothing. New places are taken on the leader's next walk; setting them moves nobody.
+- **Events.** `formation { id: leader, shape, slots? }` (from `partyFollow` and `formation`; a capture by `follow` is
+  in the leader's record only). `follow` events as before. Undo's words: "The party fell in behind Pip two abreast",
+  "The party walks behind Pip four across", "The places behind Pip were changed".
+- **Hidden information.** Formations are the party's only: slots name party members, the leader's record is open and
+  carries its formation, and the `formation` event goes to players; a slot for anyone else (a creature since removed or
+  no longer of the party) is taken out of the record and the event (`view.js`). The shape is laid out as if creatures
+  the party does not know of were not there (one the DM hid, one hiding from that follower, under `los` and `light` one
+  nobody in the party can see), so the way the party lines up never gives one away; a follower whose place a hostile one
+  holds stops beside it and finds it (`revealed`, then `found` as for a move onto it), and the others end where they
+  would have. Walking itself (traps, noticing, lookouts, fights starting) is the same `walk` every move uses; the leader
+  still walks first, and a follower is never laid out ahead of it.
+- **Fight start.** Unchanged: `catchUp` brings everyone up as before (followers are set down, not walked).
+- **Also in this PR.** `joinEncounter` (world.js) renames stamps still in the old index form before it re-sorts the
+  order, as `settleOrder` does (review of #306); a test in `step-away.test.js`.
+- **Left** (DEBT P28): no narrowing from four across to two abreast, the whole shape falls to the column; a
+  non-hostile creature unknown to the party at a slot sends the follower elsewhere (as `move` calls that cell occupied).
+
+#### For the client job (Lead, the formation popup)
+
+- **Lead the party for a player.** Show "Lead the party" to the controller of the selected party character outside a
+  fight (not only the DM): `{ type: 'partyFollow', leader: e.id }` (keeps the shape they stand in, or the leader's own
+  formation). Hide it in a fight; the engine refuses it there.
+- **The popup.** After a Lead (or from a "Formation..." row while `e` leads, i.e. someone has `follow === e.id`, or
+  always for the DM), offer the presets: Column (`column`), Two abreast (`pairs`), Four across (`line`), Wedge
+  (`wedge`), As we stand (`held`): `{ type: 'formation', leader, shape }`. Show the leader's current
+  `S.entities[leader].formation.shape` as chosen. Lay out a small grid of the grid's kind (hexes or squares) with the
+  leader at the top facing up, and each follower at its slot: for presets compute them with `presetSlots(shape,
+  followersInMarchOrder)` (exported from `engine.js`), for `held`/`custom` read `formation.slots`. Dragging a token
+  to another cell sends `{ type: 'formation', leader, slots: { [id]: { back, side } } }` with `back` the rows behind
+  (0 to 12) and `side` the columns to the right (negative left, -12 to 12), in half steps (whole steps on squares).
+  Do not offer cells ahead of the leader. On a phone this is a bottom sheet with large tokens.
+- **Greyed with reasons** (`pickFor`-style): "Only the DM or Pip's player can lead with Pip" (not theirs),
+  "Nobody falls into line in a fight" (in a fight), "Pip isn't leading anyone" (a player, nobody following),
+  "Nobody else in the party can follow" (alone).
+- **Log.** `formation`: "The party walks behind Pip two abreast / four across / in a wedge / in single file / as they
+  stand", or "Places behind Pip were changed" with slots. A follower dropped stays the existing "couldn't keep up".
+- **Moves.** Nothing new to draw: followers' `moved` events come as before (in the order they walk).
+
