@@ -4,7 +4,7 @@
 import * as H from './shared/hex.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
-import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
