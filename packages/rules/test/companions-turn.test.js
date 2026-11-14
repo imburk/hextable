@@ -488,7 +488,8 @@ for (const grid of [null, "square"]) for (const how of ["end", "endKeep"]) {
 
 test("random fights with joins, bonds, frees, kills and stepping away: nobody has two turns in a round", () => {
   const lcg = (seed) => { let x = seed; return (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; }; };
-  for (const grid of [null, "square"]) for (let seed = 1; seed <= 12; seed++) {
+  // Seeds 1 to 30 on each grid, and those the reviews of #317 found (as the seed of this harness's own fights).
+  for (const grid of [null, "square"]) for (const seed of [...Array.from({ length: 30 }, (_, i) => i + 1), 36, 48, 129, 187, 326, 340, 488]) {
     const rnd = lcg(seed * 7 + (grid ? 1 : 0)), s = table(grid, seed), f = s.entities.fighter, pool = [];
     const mk = (mon, name, c, n) => { const at = spot(s, c, n, 4); if (!at) return null; const id = spawn(s, mon, at, name); pool.push(id); s.entities[id].initBonus = rnd(20) - 8; return id; };
     const boss = mk("goblin-warrior", "Boss", f.pos, 5);
@@ -496,10 +497,12 @@ test("random fights with joins, bonds, frees, kills and stepping away: nobody ha
     for (let i = 0; i < 2; i++) { const p = mk("wolf", `F${i}`, s.entities.m5.pos, i); if (p && rnd(2)) bond(s, p, boss, { turn: rnd(2) ? "after" : "own" }); }
     const r0 = apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM);
     if (!r0.ok) continue;
+    // A turn passed untaken from early on, so that stepping back in after another (heldBack) comes up often.
+    if (rnd(2)) { const id = ["rogue", "wizard", "cleric"][rnd(3)]; if (current(s) !== id) ok(apply(s, { type: "stepAway", actor: id, how: "hold" }, DM)); }
     const turns = {};
     const note = (evs) => evs.forEach((e, i) => { if (e.type === "turn" && e.id && !(evs[i + 1]?.type === "awayTurn" && evs[i + 1].how === "resumed")) (turns[e.round] ??= []).push(e.id); });
     note(r0.events);
-    for (let step = 0; step < 70 && s.encounter; step++) {
+    for (let step = 0; step < 120 && s.encounter; step++) {
       const op = rnd(24), live = pool.filter((id) => s.entities[id] && !s.entities[id].dead), pick = () => live[rnd(live.length)];
       let a = null;
       if (op === 0) mk("goblin-warrior", `G${step}`, f.pos, 6 + rnd(6));
@@ -619,3 +622,55 @@ test("a creature back from stepping away is put behind the companions of the cre
     assert.deepEqual(o.slice(i, i + 4), ["fighter", p, q, "rogue"], `${o.join(" ")} ${json(s.encounter.moved)} ${json(s.encounter.held)}`);
   }
 });
+
+// ---------- review of #317, round 2 ----------
+
+// A creature taken back in after stepping away is seated once; what C2 later changes round its anchor does not carry it along.
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+  const turnLog = (s) => { const turns = []; return { turns, et: () => { const r = endTurn(s); r.events.forEach((e) => { if (e.type === "turn" && e.id) turns.push(`${e.round}:${e.id}`); }); } }; };
+  const once = (turns, round) => { const t = turns.filter((x) => x.startsWith(`${round}:`)); assert.equal(new Set(t).size, t.length, `two turns in round ${round}: ${t.join(" ")}`); return t; };
+
+  test(`bonding the creature a stepped-back one sits behind gives nobody a second turn${on} (round 2, B1)`, () => {
+    const s = table(grid), f = s.entities.fighter;
+    const M = spawn(s, "goblin-warrior", spot(s, f.pos, 5), "M"), W = spawn(s, "wolf", spot(s, f.pos, 0), "W"), K = spawn(s, "goblin-warrior", spot(s, f.pos, 8), "K");
+    ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM));
+    const counts = { rogue: 30, [M]: 25, [K]: 22, wizard: 15, [W]: 10, fighter: 5, cleric: 3 };
+    for (const o of s.encounter.order) o.init = counts[o.id];
+    s.encounter.order.sort((a, b) => b.init - a.init); s.encounter.turn = 0;
+    const { turns, et } = turnLog(s);
+    ok(apply(s, { type: "stepAway", actor: "rogue", how: "hold" }, DM));
+    while (s.encounter.round < 2) et();
+    while (current(s) !== K) et();
+    ok(apply(s, { type: "bond", actor: W, to: M, turn: "after" }, DM));     // W has its turn still to come, behind K's place: it waits
+    while (current(s) !== W) et();
+    ok(apply(s, { type: "stepBack", actor: "rogue" }, DM));                  // seated behind W, the creature whose turn it is
+    while (s.encounter.round === 2) et();
+    const t = once(turns, 2);
+    assert.deepEqual(t.map((x) => x.slice(2)), [M, K, "wizard", W, "rogue", "fighter", "cleric"]);
+    while (s.encounter.round === 3) et();
+    once(turns, 3);
+    behindMaster(s, M, [W]);
+  });
+
+  test(`freeing a companion with a stepped-back creature seated behind its group gives it no second turn${on} (round 2, B2)`, () => {
+    const s = table(grid), f = s.entities.fighter;
+    const w = spawn(s, "wolf", spot(s, f.pos, 0), "Wolf"), g = spawn(s, "goblin-warrior", spot(s, f.pos, 1), "Gob");
+    bond(s, w, "fighter", { turn: "after" });
+    ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM));
+    const O = s.encounter.order;
+    O.find((x) => x.id === g).init = 25; O.find((x) => x.id === "fighter").init = 20; O.find((x) => x.id === w).init = 20;
+    initiativeSort(O); s.encounter.turn = 0;
+    assert.equal(current(s), g);
+    const { turns, et } = turnLog(s);
+    ok(apply(s, { type: "stepAway", actor: g, how: "hold" }, DM));
+    while (s.encounter.round < 2 || current(s) !== "fighter") et();
+    ok(apply(s, { type: "stepBack", actor: g }, DM));                        // behind the fighter and its wolf
+    assert.deepEqual(ids(s).slice(0, 3), ["fighter", w, g]);
+    et(); et();                                                              // the wolf's turn, then the goblin's
+    bond(s, w, null);                                                        // the wolf is freed: nothing moves
+    assert.deepEqual(ids(s).slice(0, 3), ["fighter", w, g]);
+    while (s.encounter.round === 2) et();
+    assert.deepEqual(once(turns, 2).filter((x) => x === `2:${w}`), [`2:${w}`]);
+  });
+}

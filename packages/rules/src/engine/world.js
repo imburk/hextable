@@ -528,7 +528,7 @@ export function insertSlot(order, slot, moved = {}) {
   }
   const lead = (o) => !o.after && !moved[o.id];
   let i = order.findIndex((o) => lead(o) && (slot.init > o.init || (slot.init === o.init && slot.dex > o.dex)));
-  if (i < 0) { i = order.length; while (i > 0 && moved[order[i - 1].id] && !moved[order[i - 1].id].after) i--; }
+  if (i < 0) { i = order.length; while (i > 0 && moved[order[i - 1].id] && !moved[order[i - 1].id].after && !moved[order[i - 1].id].placed) i--; }
   order.splice(i, 0, slot);
 }
 // Bring the order in step with the bonds (a companion bonded or freed in the fight, a master who joined after

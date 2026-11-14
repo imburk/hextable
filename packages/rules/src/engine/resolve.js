@@ -301,7 +301,11 @@ export function settleOrder(s) {
   }
   const cur = enc.turn >= 0 ? current(s) : null;
   for (const id of Object.keys(moved)) if (!enc.order.some((o) => o.id === id)) delete moved[id];
-  const rest = enc.order.filter((o) => !moved[o.id]);
+  // A creature taken back in after another (heldBack: `after`) is seated once, when it comes back, and from then
+  // on stays where it stands for the rest of the round (`placed`): seating it again behind its anchor on every
+  // later turn would carry it with the anchor when a companion's place changes (a bond, a free), past creatures
+  // that have had their turn, and give them a second one (review of #317, round 2, B1 and B2).
+  const rest = enc.order.filter((o) => !moved[o.id] || moved[o.id].placed);
   for (const o of enc.order.filter((x) => moved[x.id]?.after)) {
     let at = rest.findIndex((x) => x.id === moved[o.id].after);
     // Behind the companions that take their turn straight after that creature's (or after its master's, if it is
@@ -309,8 +313,10 @@ export function settleOrder(s) {
     const lead = at < 0 ? null : rest[at].after ?? rest[at].id;
     while (at >= 0 && rest[at + 1]?.after === lead) at++;
     rest.splice(at < 0 ? rest.length : at + 1, 0, o);
+    delete moved[o.id].after;
+    moved[o.id].placed = true;
   }
-  const ends = enc.order.filter((x) => moved[x.id] && !moved[x.id].after).sort((a, b) => moved[a.id].n - moved[b.id].n);
+  const ends = enc.order.filter((x) => moved[x.id] && !moved[x.id].after && !moved[x.id].placed).sort((a, b) => moved[a.id].n - moved[b.id].n);
   enc.order = [...rest, ...ends];
   if (cur) enc.turn = enc.order.findIndex((o) => o.id === cur);
   if (!Object.keys(moved).length) delete enc.moved;
@@ -328,7 +334,7 @@ function newRound(s) {
   let back = false;
   for (const [id, m] of Object.entries(enc.moved)) {
     delete m.turn;
-    if (!m.keep || m.after) { delete enc.moved[id]; back = true; }
+    if (!m.keep || m.after || m.placed) { delete enc.moved[id]; back = true; }
   }
   if (back) { initiativeSort(enc.order); enc.turn = 0; }
   settleOrder(s);
