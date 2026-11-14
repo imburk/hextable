@@ -399,6 +399,12 @@ function idled() {
 
 // ---------- rendering the UI ----------
 // Cast a spell that has nothing to aim on the spot, or arm it (or put it down again if it is armed).
+// A spell cast from an item (the Items tab arms it with `mode.item = { key, which, base, level? }`) is sent as `use` with the same aim fields; a class's own casting as `cast`.
+// An item casts at the lowest caster level, at `level` when extra charges raise it.
+const castAct = (aim) => (mode.item
+  ? { type: 'use', actor: selId, item: mode.item.key, which: mode.item.which, ...(mode.item.level > mode.item.base ? { level: mode.item.level } : {}), ...aim }
+  : { type: 'cast', actor: selId, spell: mode.id, ...aim });
+const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level ?? mode.item.base) : CLS.most(e, sp, targetCount(sp.def, e.level)));
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
   if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) });
@@ -508,7 +514,7 @@ function refresh() {
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(cellCol(x.pos)));
           const how = aimHow(sp.area, sp.range);
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
-          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, targetCount(sp.def, e.level)).map((x) => x.id);
+          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, mode.item ? spellMost(e, sp) : targetCount(sp.def, e.level)).map((x) => x.id);
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
           hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
@@ -517,7 +523,7 @@ function refresh() {
           if (!sp.harmful) hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
           // Several targets (Magic Missile's darts, Bless): each tap adds one until there are enough, or Cast.
-          const most = CLS.most(e, sp, targetCount(sp.def, e.level)), picked = mode.picked ?? [];
+          const most = spellMost(e, sp), picked = mode.picked ?? [];
           if (most > 1 && picked.length) {
             hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
             go = true;
@@ -711,12 +717,12 @@ R.onTap = ({ hex, id }) => {
     if (sp.area) { mode.aim = hex; return refresh(); }
     if (!tapped) return setMode(MOVE);
     if (!targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
-    const most = CLS.most(e, sp, targetCount(sp.def, e.level));
-    if (most <= 1) return act({ type: 'cast', actor: selId, spell: mode.id, target: id, ...chosen(sp) });
+    const most = spellMost(e, sp);
+    if (most <= 1) return act(castAct({ target: id, ...chosen(sp) }));
     const picked = mode.picked ?? (mode.picked = []);
     if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
     else picked.push(id);
-    if (picked.length >= most) return act({ type: 'cast', actor: selId, spell: mode.id, targets: picked, ...chosen(sp) });
+    if (picked.length >= most) return act(castAct({ targets: picked, ...chosen(sp) }));
     return refresh();
   }
   if (tapped) {
@@ -755,9 +761,9 @@ $('hint-go').onclick = () => {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.
     const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
-    act({ type: 'cast', actor: selId, spell: mode.id, hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) });
+    act(castAct({ hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
-  else act({ type: 'cast', actor: selId, spell: mode.id, targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) });
+  else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) }));
   mode = MOVE;
 };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
@@ -900,6 +906,7 @@ const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skip
   castSpell: startSpell, openSheet: () => D.open('sheet'), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
   openFeature: (e, id) => CLS.openFeature(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
   fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 

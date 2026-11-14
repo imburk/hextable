@@ -1300,12 +1300,17 @@ What was settled while building, where it differs from the text above, and what 
 - **Buttons.** Wield and Put away (a weapon or Shield) or Wear and Take off (the rest) send `equip`; Attune, End attunement, and Cancel attuning (or Keep attunement, for an end that is waiting) send `attune`. An item that is only carried has neither. The reasons are the engine's words,
   worked out in the panel where the action allows no dry run: "can't change what they wear in the middle of a fight", "can't attune ... in the middle of a fight", `attuneProblem` and the three-item limit. A greyed button shows its reason under it, and a tap on it shows the toast and sends nothing.
   What the panel cannot know (an Attunement to a second copy of an item) the engine refuses and the toast says.
+- **Spells from items (after E18b).** A use with `spell` is aimed as the Spells tab aims: a tap arms the row (`mode = { kind: 'spell', id, item: { key, which, base, level? } }`), the usual target or hex taps and Cast follow, and `castAct` in `app.js` sends
+  `{ type: 'use', item, which, ...aim, level? }` instead of `cast`. The engine greys such a use "Pick a target for X." (or a direction, or where it goes off) until it has an aim; that reason means arm, so the row is not greyed for it (`aimOnly`: a
+  reason that starts "Pick a target", "Pick a direction" or "Pick where", on a spell use that is not `self`/`none`); any other reason (not held, not attuned, no charges, not your turn) still greys it. A `self` or `none` spell (Ring of Jumping) is sent at once.
+  A use with `upTo` first offers "Cast at level" (`1`, `2 (2 charges)`, `3 (3 charges)`); `level` is sent only when raised, and the number of darts or targets follows it (`targetCount` at the lowest caster level and that slot). The armed row is highlighted and does
+  not arm the same spell in the Spells tab. A harmful spell outside a fight only starts the fight (engine rule): the smoke fires the wand on the user's turn.
 - **Whom a potion is for.** The row for a potion has a target picker, built in the pane and not on the map: tapping it lists the drinker and each creature not dead within 5 ft (in the fight, if there is one; at 0 Hit Points counts, as in the SRD) and sends `target` only when someone else is chosen. With nobody near, one tap
   sends it. The map is not tapped for a target: the pane is already open, and the picker is large enough for a thumb. The engine still checks reach, walls and height.
 - **Light.** `setLight` is the DM's: for a player the row is greyed "Only the DM hands out light." as in Explore. A carried light shows "Put out the torch" for the DM.
 - **Log.** `item`: "Orla uses Potion of Healing: Drink on Ilya (6/7 charges left), used up."; `equip`: readies or puts away; `attuning` and `attuned`.
 - **Not verified.** A real finger; a screen reader; the themes beyond Classic; a player's own table (the smoke is solo as the DM; the panel reads `e.sheet`, which a controller is sent); a scroll (the pack's `spell-scroll` needs a `spell` on the sheet; `itemUsesFor` is tested in the engine's own tests).
-- **Left out.** Give and drop (E17, T6g). A dice tray for a potion's roll (`rollsDice` in `app.js` does not know item uses, so the engine rolls at once). Charges back at dawn (the DM sets `charges` on the sheet, engine item). Spells cast from an item arrive as a `manual` for the DM.
+- **Left out.** Give and drop (E17, T6g). A dice tray for an item's roll (`rollsDice` in `app.js` does not know item uses, so the engine rolls at once). Choosing among several spellcasting abilities (the engine gives one).
 
 ### E18: using items, engine (PR for #276)
 

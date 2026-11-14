@@ -259,7 +259,7 @@ export function spellRow(S, e, id, { mode = null } = {}) {
   const sp = SPELLS[id], what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
   const range = sp.aim === 'self' ? 'Self' : sp.range > 0 ? `${sp.range} ft` : '';
   return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', range, sp.def.concentration ? 'Concentration' : '', sp.def.ritual ? 'Ritual' : '', what].filter(Boolean).join(' · '),
-    why: spellWhy(S, e, sp) || rangeWhy(S, e, sp), chip: CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : (LONGER[sp.time] ?? sp.time), time: sp.time, armed: armedBy(mode, 'spell', id),
+    why: spellWhy(S, e, sp) || rangeWhy(S, e, sp), chip: CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : (LONGER[sp.time] ?? sp.time), time: sp.time, armed: armedBy(mode, 'spell', id) && !mode.item,
     level: sp.level, school: sp.def.school ?? '', cast: castGroup(sp), conc: !!sp.def.concentration, ritual: !!sp.def.ritual, kinds: sp.kinds ?? [] };
 }
 
@@ -366,9 +366,14 @@ export function lightRow(S, e, { dm = false } = {}) {
 }
 
 // The Items tab: { uses, gear, also, light }. `also`: what the creature carries that is only a name (`gear`, for a creature typed in by hand or plain kit).
-export function itemRows(S, e, { dm = false } = {}) {
+export function itemRows(S, e, { dm = false, mode = null } = {}) {
+  // A spell from an item is aimed as a spell is (tap the row to arm it, then the target or the hex). The engine greys such a use with "Pick a target for ..." (or a direction, or where it
+  // goes off) until it is given an aim: that reason means arm, not disabled, so the row is not greyed for it. Any other reason stays.
+  const needsAim = (u) => !!u.spell && !u.self && !['self', 'none'].includes(SPELLS[u.spell]?.aim);
+  const aimOnly = (u) => needsAim(u) && /^Pick (a target|a direction|where)\b/.test(u.why);
   const row = (u) => ({ id: `item:${u.key}:${u.which}`, kind: 'item', label: u.label, sub: [u.item, u.consumed ? 'used up' : '', u.spell && SPELLS[u.spell] ? SPELLS[u.spell].name : ''].filter((t, i, a) => t && a.indexOf(t) === i && t !== u.label).join(' · '),
-    why: u.why, chip: CHIP[u.time] ?? '', time: u.time, reach: u.reach, targets: u.reach ? potionTargets(S, e, u.reach) : [],
+    aimed: needsAim(u), cost: u.cost, spell: u.spell, level: u.level, upTo: u.upTo ?? 0, armed: !!mode && mode.kind === 'spell' && mode.item?.key === u.key && mode.item.which === u.which,
+    why: aimOnly(u) ? '' : u.why, chip: CHIP[u.time] ?? '', time: u.time, reach: u.reach, targets: u.reach ? potionTargets(S, e, u.reach) : [],
     pips: u.charges !== undefined ? { left: u.charges, max: u.max, unit: 'charges', text: u.cost ? `${u.cost} a use` : '' } : null, send: { type: 'use', actor: e.id, item: u.key, which: u.which } });
   // Two of the same potion (or scroll of one spell, or any item with no charges) are one row, "x2"; a tap uses the first.
   const all = [];
@@ -515,8 +520,9 @@ export function initActionPanel(ctx) {
       case 'send': case 'use': return ctx.act(r.send);
       case 'item': {
         // A potion can be given to someone within reach: ask whom, unless there is only the drinker. Anything else is sent as it is.
-        if (r.targets?.length) { picking = picking?.id === r.id ? null : { id: r.id, actor: e.id }; return ctx.render(); }
-        return ctx.act(r.send);
+        if (r.armed) return ctx.armItem(e, r, null, true);                                        // armed: a tap puts it down
+        if (r.targets?.length || r.upTo > r.level) { picking = picking?.id === r.id ? null : { id: r.id, actor: e.id }; return ctx.render(); }
+        return r.aimed ? ctx.armItem(e, r, null, false) : ctx.act(r.send);
       }
       case 'arm': return ctx.setMode(r.armed ? ctx.move : r.mode);
       case 'spell': return ctx.castSpell(e, r.spell, r.armed);
@@ -546,13 +552,20 @@ export function initActionPanel(ctx) {
   // The Items tab's own controls: a use row (through `run`), whom a potion is for, and the equip and attune buttons of a piece of gear.
   panes.items.addEventListener('click', (ev) => {
     const S = ctx.state(), e = S.entities[ctx.selected()];
-    const pick = ev.target.closest('[data-pick], [data-pick-cancel]');
+    const pick = ev.target.closest('[data-pick], [data-pick-cancel]');          // data-pick-cancel also closes the level chooser
     if (pick && e && !ctx.skipping()) {
       const r = picking && (rowsBy.items ?? []).find((x) => x.id === picking.id);
       if (pick.dataset.pickCancel !== undefined || !r) { picking = null; return ctx.render(); }
       const who = pick.dataset.pick; picking = null;
       ctx.act(who === 'self' ? r.send : { ...r.send, target: who });
       return ctx.render();
+    }
+    const lv = ev.target.closest('[data-lvl]');
+    if (lv && e && !ctx.skipping()) {
+      const r = picking && (rowsBy.items ?? []).find((x) => x.id === picking.id), level = Number(lv.dataset.lvl); picking = null;
+      if (!r) return ctx.render();
+      if (r.aimed) return ctx.armItem(e, r, level, false);
+      return ctx.act(level > r.level ? { ...r.send, level } : r.send);
     }
     const g = ev.target.closest('[data-gact]');
     if (g) {
@@ -643,12 +656,14 @@ export function initActionPanel(ctx) {
   }
 
   // The Items tab: what can be used (greyed with the engine's reason), what is carried and how, the light.
-  function itemsPane(S, e, dm) {
-    const it = itemRows(S, e, { dm });
-    if (picking && (picking.actor !== e.id || !it.uses.some((r) => r.id === picking.id && !r.why && r.targets.length))) picking = null;
+  function itemsPane(S, e, dm, mode) {
+    const it = itemRows(S, e, { dm, mode });
+    if (picking && (picking.actor !== e.id || !it.uses.some((r) => r.id === picking.id && !r.why && (r.targets.length || r.upTo > r.level)))) picking = null;
     const lightList = it.light ? [it.light] : [];
     rowsBy.items = [...it.uses, ...lightList]; rowsBy.itemsGear = it.gear.flatMap((g) => g.acts);
-    const picker = (r) => `<div class="ap-pick" role="group" aria-label="Who is it for?"><span>Give it to</span><button type="button" data-pick="self">${esc(e.name)}</button>${
+    const levels = (r) => `<div class="ap-pick" role="group" aria-label="Cast at which level?"><span>Cast at level</span>${Array.from({ length: r.upTo - r.level + 1 }, (_, i) => r.level + i).map((l) =>
+      `<button type="button" data-lvl="${l}">${l}${l > r.level ? ` (${r.cost + l - r.level} charges)` : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
+    const picker = (r) => r.upTo > r.level && !r.targets.length ? levels(r) : `<div class="ap-pick" role="group" aria-label="Who is it for?"><span>Give it to</span><button type="button" data-pick="self">${esc(e.name)}</button>${
       r.targets.map((t) => `<button type="button" data-pick="${esc(t.id)}">${esc(t.name)}${t.down ? ' (down)' : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
     const uses = it.uses.map((r) => { const on = picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r) : ''); }).join('');
     const gear = it.gear.map((g) => `<div class="ap-row ap-gear info" data-gear="${esc(g.key)}"><span class="ap-top"><span class="ap-t">${esc(g.label)}</span></span>${g.sub ? `<small class="ap-s">${esc(g.sub)}</small>` : ''}${
@@ -742,7 +757,7 @@ export function initActionPanel(ctx) {
         setHtml(panes[tab], listHtml(head, list));
       }
       if (tab === 'spells') spellsPane(S, e, mode);
-      if (tab === 'items') itemsPane(S, e, dm);
+      if (tab === 'items') itemsPane(S, e, dm, mode);
       if (tab === 'reactions') reactionsPane(S, e, react ?? reactionState(S, e, { dm }));
       if (tab === 'down') downPane(S, e);
       body.hidden = !tabsNow.length;
@@ -751,6 +766,7 @@ export function initActionPanel(ctx) {
       card.toggleAttribute('data-raised', raised);
       card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
       if (panes[tab] && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
+      if (tab === 'items' && picking) panes.items.querySelector('.ap-pick')?.scrollIntoView({ block: 'nearest' });       // the chooser must be on screen, not below the fold
       return tab;
     },
     get tab() { return sel.tab ?? card.dataset.tab; },

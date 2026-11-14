@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, itemRows, gearRows, lightRow, potionTargets } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, gearRows, lightRow, potionTargets } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
@@ -367,7 +367,11 @@ test('items: a Use row per use of an item with the engine\'s reason, charges as 
   const w = itemRows(s, s.entities[id]).uses.find((r) => r.id === 'item:i2:0');
   assert.deepEqual([w.why, w.pips.left, w.pips.max], ['', 3, 7]);
   // and a row sent through apply does what the row says
-  const before = s.entities[id].sheet.items.length, r = ok(apply(s, w.send, { role: 'dm' }));
+  assert.equal(w.aimed, true, 'a spell from an item is aimed: the engine\'s "Pick a target" means arm, not greyed');
+  assert.deepEqual([w.level, w.upTo, w.cost], [1, 3, 1]);
+  assert.match(apply(s, w.send, { role: 'dm' }).error, /Pick a target for Magic Missile/, 'the engine does ask for the aim');
+  inFightAs(s, id);                                              // a harmful spell outside a fight only starts one and spends nothing
+  const before = s.entities[id].sheet.items.length, r = ok(apply(s, { ...w.send, targets: ['m1'] }, { role: 'dm' }));
   assert.ok(r.events.some((x) => x.type === 'item'));
   assert.equal(s.entities[id].sheet.items.find((x) => x.id === 'i2').charges, 2);
   assert.equal(s.entities[id].sheet.items.length, before);
@@ -441,4 +445,20 @@ test('items: two of the same potion are one row marked x2 that sends the first; 
   assert.doesNotMatch(uses.find((r) => /Heroism/.test(r.sub)).sub, /x\d/);
   ok(apply(s, heal.send, DMCTX));
   assert.equal(itemRows(s, s.entities[id]).uses.find((r) => /Healing/.test(r.sub)).sub.includes('x2'), false, 'one left: no count');
+});
+
+test('items: an item spell is armed from its row (not greyed for lacking a target); a use with upTo offers the levels; other reasons still grey it', () => {
+  const s = newGame(7), id = built(s, [{ id: 'i2', item: 'wand-of-magic-missiles', equipped: true }, { id: 'i3', item: 'ring-of-jumping', equipped: true, attuned: true }, { id: 'i4', item: 'wand-of-magic-missiles' }]);
+  const rows = itemRows(s, s.entities[id]).uses, by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(by['item:i2:0'].why, ''); assert.equal(by['item:i2:0'].aimed, true);
+  assert.match(by['item:i4:0'].why, /must be held/, 'a wand not held is still greyed with its own reason');
+  assert.equal(by['item:i3:0'].aimed, false, 'a self spell is sent at once');
+  const armed = itemRows(s, s.entities[id], { mode: { kind: 'spell', id: 'magic-missile', item: { key: 'i2', which: 0, base: 1 } } }).uses.find((r) => r.id === 'item:i2:0');
+  assert.equal(armed.armed, true);
+  assert.equal(spellRow(s, s.entities[id], 'magic-missile', { mode: { kind: 'spell', id: 'magic-missile', item: { key: 'i2', which: 0, base: 1 } } }).armed, false, 'it does not arm the Spells tab row');
+  // the aim and the level are sent as `use` takes them
+  inFightAs(s, id);
+  const r = ok(apply(s, { ...by['item:i2:0'].send, targets: ['m1', 'm1', 'm2', 'm2'], level: 2 }, DMCTX));
+  assert.equal(s.entities[id].sheet.items.find((x) => x.id === 'i2').charges, 5, 'level 2 costs 2 charges');
+  assert.ok(r.events.some((x) => x.type === 'cast'));
 });

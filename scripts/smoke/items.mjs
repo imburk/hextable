@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { scenario, wait, state, waitShown, open, playSolo, closePanels, panelTab } from './lib.mjs';
+import { scenario, settle, tapAt, onCanvas, wait, state, waitShown, open, playSolo, closePanels, panelTab } from './lib.mjs';
 
 // ---------- the action panel's Items tab (docs/specs/table-ui.md, T4b and E18) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. A built fighter carries two Potions of Healing, a Wand of Magic Missiles and a Staff of Striking (a hand-typed
@@ -87,12 +87,11 @@ async function items(browser, url, label, opts, tag) {
         await waitShown(page, '#ap-items [data-row="item:i1:0"]', false);
       });
 
-      await run.do('Wield the wand: its row becomes ready, a use spends one charge and shows 6 / 7', async () => {
+      await run.do('Wield the wand: its row is ready (a spell is armed, not greyed for lacking a target) and shows 7 / 7', async () => {
         await tap('#ap-items [data-gact="equip:i3"]');
         await wait(page, () => window.hextable.state.entities && Object.values(window.hextable.state.entities).find((e) => e.name === 'Orla').sheet.items.find((x) => x.id === 'i3').equipped === true);
         await wait(page, () => document.querySelector('#ap-items [data-row="item:i3:0"]')?.getAttribute('aria-disabled') === 'false');
-        await tap('#ap-items [data-row="item:i3:0"]');
-        await wait(page, () => /6 \/ 7/.test(document.querySelector('#ap-items [data-row="item:i3:0"]')?.textContent ?? ''));
+        if (!/7 \/ 7/.test(await text(page, '#ap-items [data-row="item:i3:0"]'))) throw new Error('charges');
         if (!(await page.$eval('#ap-items [data-gear="i3"]', (e) => /Held/.test(e.textContent)))) throw new Error('the wand is not shown held');
       });
 
@@ -115,7 +114,7 @@ async function items(browser, url, label, opts, tag) {
         await waitShown(page, '#log-list');
         const log = await page.textContent('#log-list');
         await closePanels(page);
-        for (const re of [/uses Potion of Healing: Drink on /, /uses Wand of Magic Missiles/, /readies Wand of Magic Missiles/, /will attune to Staff of Striking at the next Short Rest/]) if (!re.test(log)) throw new Error(`the log lacks ${re}: ${log.replace(/\s+/g, " ").slice(-700)}`);
+        for (const re of [/uses Potion of Healing: Drink on /, /readies Wand of Magic Missiles/, /will attune to Staff of Striking at the next Short Rest/]) if (!re.test(log)) throw new Error(`the log lacks ${re}: ${log.replace(/\s+/g, " ").slice(-700)}`);
       });
 
       await run.do('in a fight, out of turn: every use is greyed "It isn\'t Orla\'s turn", the gear buttons are greyed with the engine\'s words and a tap sends nothing', async () => {
@@ -151,6 +150,33 @@ async function items(browser, url, label, opts, tag) {
         await idle(page);
         if ((await state(page, () => window.hextable.state.encounter.budget.bonus)) !== 0) throw new Error('the Bonus Action was not spent');
         await shot('5-own-turn');
+      });
+
+      await run.do('the Magic Missile wand: a tap offers the levels, level 2 arms it, a tap on a goblin and Cast send `use` with the aim and the level; 2 charges are spent and darts land', async () => {
+        const id = await hero(), charges = () => state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Orla').sheet.items.find((x) => x.id === 'i3').charges ?? 7);
+        await wait(page, () => document.querySelector('#ap-items [data-row="item:i3:0"]')?.getAttribute('aria-disabled') === 'false');
+        const goblin = await state(page, (S) => Object.values(S.entities).find((e) => e.side !== 'party' && !e.dead).id);
+        await tap('#ap-items [data-row="item:i3:0"]');
+        await waitShown(page, '#ap-items [data-lvl="2"]');
+        await shot('6-levels');
+        await tap('#ap-items [data-lvl="2"]');
+        await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.item?.level === 2);
+        await waitShown(page, '#hint');
+        await page.evaluate((i) => window.hextable.R.focus(i, true), goblin);
+        await settle(page, goblin);
+        const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), goblin);
+        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error('the goblin is off screen or under a panel');
+        await tapAt(page, touch, pt.x, pt.y);
+        await shot('7-armed');
+        await waitShown(page, '#hint-go');
+        await tap('#hint-go');
+        await wait(page, () => window.hextable.mode.kind === 'move');
+        await idle(page);
+        if ((await charges()) !== 5) throw new Error(`charges ${await charges()}`);
+        const cast = await state(page, (S) => S.timeline.some((e) => e.type === 'cast' && e.item === 'Wand of Magic Missiles'));
+        if (!cast) throw new Error('no cast from the wand in the timeline');
+        await page.evaluate((i) => window.hextable.select(i), id);
+        await wait(page, () => /5 \/ 7/.test(document.querySelector('#ap-items [data-row="item:i3:0"]')?.textContent ?? ''));
       });
     } finally { await ctx.close(); }
   });
