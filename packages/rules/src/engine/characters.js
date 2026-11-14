@@ -1,14 +1,17 @@
 // Characters and their gear (engine.js): addCharacter, editCharacter, setSheet, levelUp, setSpeed,
-// setSize, give, equip, attune.
+// setSize, give, equip, attune; and items between creatures (E17): pass, drop, pickUp.
 import { gridOf, col, parse } from '../grid.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { lintRecord } from '../content/schema.js';
-import { FT, ground, landing, overlapAt, STEP_MAX } from '../space.js';
+import { apart, FT, ground, landing, overlapAt, STEP_MAX, under } from '../space.js';
+import { LIGHTS } from '../content/lights.js';
+import { incapacitatedBy } from '../modifiers.js';
+import { unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
-import { control, ent, fail, inFight, living } from './shared.js';
-import { fitsOn, joinEncounter, lookAround } from './world.js';
+import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
+import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, pileAt, pileContents, PILE_MAX } from './world.js';
 import { donned, landItem, makeEntity, newProblems, remake, resheet } from './sheets.js';
 
 export const handlers = {
@@ -204,3 +207,224 @@ export const handlers = {
   },
 };
 
+
+// ---------- items between creatures (E17; docs/specs/table-ui.md, T6g) ----------
+// `pass` hands an item to a creature on the same side within 5 ft, `drop` lays it on the ground under the creature
+// (a `pile`, world.js), `pickUp` takes from a pile in reach. `item` is what `give` takes: the key of a magic item on
+// a built character's sheet ("i1"), or a name in its gear (any case). Each is one `gear` event per side, with `why`
+// (`pass`, `drop`, `pickup`) and `with` (the other creature) or `object` (the pile). In a fight each is an object
+// interaction on the creature's own turn: the first a turn is free, any more takes the Utilize action (SRD
+// "Interacting with Things"). Everything is checked before anything changes.
+export const GEAR_MAX = 60;          // names a creature carries (derive.js holds a sheet's gear list to 60 as well)
+export const HAND_FEET = 5;          // pass: to a creature within 5 feet
+
+// What `item` names on this creature. Refused if it has none, or if the item is in use: worn or held (taken off first
+// with `equip`, which is outside a fight). A magic item comes with what it is made of (`spec`: the sheet entry without
+// its key, `equipped` or `attuned`) and whether the creature is attuned to it or about to attune to it.
+function holding(e, item) {
+  const named = typeof item === 'string' ? item.trim() : '';
+  (named && named.length <= 80) || fail('Name the item.');
+  const x = e.sheet && Array.isArray(e.sheet.items) ? e.sheet.items.find((y) => y?.id === named) : null;
+  if (x && Object.hasOwn(CONTENT.items, x.item)) {
+    const def = CONTENT.items[x.item], name = itemName(def, x);
+    x.equipped !== true || fail(`${e.name} has ${name} on. Take it off first (that is done outside a fight).`);
+    const { id: _key, equipped: _on, attuned: _att, ...spec } = x;
+    return { key: x.id, name, pack: x.item, spec, attuned: x.attuned === true, attuning: e.sheet.attuning?.item === x.id };
+  }
+  const i = e.gear.findIndex((g) => String(g).toLowerCase() === named.toLowerCase());
+  i >= 0 || fail(`${e.name} has no ${named}.`);
+  return { name: String(e.gear[i]), index: i };
+}
+// Is this name in its gear the light it carries (setLight with a torch, a lamp), and the only one of that name? Then
+// the light goes with it.
+const LIGHT_NAME = (id) => LIGHTS[id]?.name.replace(/ \(.*\)$/, '').toLowerCase();
+const carriesLit = (e, h) => h.index !== undefined && !!e.light?.item && LIGHT_NAME(e.light.item) === h.name.toLowerCase() &&
+  e.gear.filter((g) => String(g).toLowerCase() === h.name.toLowerCase()).length === 1;
+
+// Why this creature can't handle an object right now ('' if it can), and what it would cost: null outside a fight
+// (or for a creature not in it), 'free' for the first object interaction of its turn, 'action' (Utilize) after.
+export function interactionOf(s, e) {
+  if (!up(e)) return { why: `${e.name} is down.`, time: null };
+  const by = incapacitatedBy(e);
+  if (by) return { why: `${e.name} is ${by} and can't act.`, time: null };
+  if (!s.encounter || !inFight(s, e.id)) return { why: '', time: null };
+  if (current(s) !== e.id) return { why: `It isn't ${e.name}'s turn.`, time: null };
+  if (!s.encounter.flags.interact) return { why: '', time: 'free' };
+  return { why: s.encounter.budget.action < 1 ? `${e.name} has already handled one thing this turn and used an action.` : '', time: 'action' };
+}
+function interaction(s, e) {
+  const { why, time } = interactionOf(s, e);
+  if (why) fail(why);
+  if (time === 'action') need(s, e, 'action');
+  return time;
+}
+const pay = (s, time) => { if (time === 'free') s.encounter.flags.interact = true; else if (time === 'action') s.encounter.budget.action--; };
+
+// Run `fn`; if it is refused part way (a sheet that can't take the item), these creatures and the events are put
+// back as they were, so a refused action changes nothing.
+function together(s, ev, ids, fn) {
+  const was = ids.map((id) => [id, structuredClone(s.entities[id])]), n = ev.length;
+  try { return fn(); } catch (err) {
+    if (err instanceof RuleError) { for (const [id, e] of was) s.entities[id] = e; ev.length = n; }
+    throw err;
+  }
+}
+// Take the item off the creature: a name out of its gear, a magic item off its sheet (its Attunement and an attuning
+// that named it end with it, as the sheet no longer holds it), the character made again from the sheet.
+function takeOut(s, id, h, ev) {
+  const e = s.entities[id];
+  if (h.key === undefined) return void e.gear.splice(h.index, 1);
+  const sheet = structuredClone(e.sheet);
+  sheet.items = sheet.items.filter((y) => y.id !== h.key);
+  if (sheet.attuning?.item === h.key) delete sheet.attuning;
+  if (!sheet.items.length) delete sheet.items;
+  resheet(s, e, sheet, ev);
+}
+// Put things on a creature: magic items onto a built character's sheet (carried, each with a new key), anything else,
+// and magic items for a creature with no sheet, as names in its gear. Returns, for each, { key? } or { nameOnly? }.
+function putIn(s, id, things, ev) {
+  const e = s.entities[id], toSheet = things.filter((x) => x.spec && e.sheet);
+  const keys = toSheet.length ? landItem(s, e, toSheet.map((x) => x.spec), ev).map((x) => x.id) : [];
+  const now = s.entities[id];
+  return things.map((x) => {
+    if (x.spec && now.sheet) return { key: keys.shift() };
+    now.gear.push(x.name);
+    return x.spec ? { nameOnly: true } : {};
+  });
+}
+const roomFor = (e, things) => {
+  const names = things.filter((x) => !(x.spec && e.sheet)).length;
+  e.gear.length + names <= GEAR_MAX || fail(`${e.name} carries ${GEAR_MAX} things by name already.`);
+};
+const gearEv = (id, h, why, more) => ({ type: 'gear', id, item: h.name, ...(h.pack ? { pack: h.pack } : {}), why, ...more });
+// An attuning (the next Short Rest's) that named the item ends with it: said as `attune` with `item: null` says it.
+function leaves(s, e, h, ev) {
+  if (h.attuning) ev.push({ type: 'attuning', id: e.id, cleared: true });
+}
+
+// What this creature could hand over, and to whom: [{ id, name, why }] for each creature on its side within 5 ft,
+// with why not ('' if it can), and the time the next object interaction takes (interactionOf).
+export function passTargets(s, e) {
+  if (!e) return [];
+  const { why, time } = interactionOf(s, e);
+  return living(s).filter((t) => t.id !== e.id && !hostile(e, t) && apart(s, e, t) * FT <= HAND_FEET).map((t) => {
+    const no = why || (!up(t) || incapacitatedBy(t) ? `${t.name} is ${incapacitatedBy(t) ?? 'down'} and can't take it.` : '');
+    let wall = '';
+    if (!no) try { walled(s, e, t); } catch (err) { if (!(err instanceof RuleError)) throw err; wall = err.message; }
+    return { id: t.id, name: t.name, why: no || wall, time };
+  });
+}
+// The piles in reach with something in them, as `usesFor` finds objects (a player's client passes its own view, which
+// holds only the piles it may know of): [{ object, name, items: [{ id, name, pack? }], why, time }].
+export function pickUpsFor(s, e) {
+  if (!e) return [];
+  const { why, time } = interactionOf(s, e);
+  return s.map.objects.filter((o) => isPile(o) && objectShown(s.map, o) && nearObject(s, e, o) && pileContents(o).length).map((o) => ({
+    object: o.id, name: objectName(o), items: pileContents(o).map((x) => ({ id: x.id, name: contentName(x), ...(x.item !== undefined ? { pack: x.item } : {}) })), why, time,
+  }));
+}
+
+Object.assign(handlers, {
+  // Hand an item to a creature on the same side within 5 ft (a party member, for a player's character).
+  // { type: 'pass', actor, item, to } By the actor's controller or the DM. The one taking it must be up and able to.
+  pass(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    // A creature the party does not know of is, to a player, a creature that is not there (as in dispatch).
+    typeof a.to === 'string' || fail('Name who to hand it to.');
+    const t = Object.hasOwn(s.entities, a.to) ? s.entities[a.to] : null;
+    (t && (ctx.role === 'dm' || !unknown(s, t))) || fail('No such creature.');
+    t.id !== e.id || fail(`${e.name} already holds it.`);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    const h = holding(e, a.item);
+    !hostile(e, t) || fail(`${t.name} is not on ${e.name}'s side.`);
+    !t.dead || fail(`${t.name} is dead.`);
+    (up(t) && !incapacitatedBy(t)) || fail(`${t.name} is ${incapacitatedBy(t) ?? 'down'} and can't take it.`);
+    apart(s, e, t) * FT <= HAND_FEET || fail(`${t.name} is more than ${HAND_FEET} feet away.`);
+    walled(s, e, t);
+    const lit = carriesLit(e, h);
+    !lit || !t.light || fail(`${t.name} already carries a light.`);
+    const thing = { name: h.name, ...(h.spec ? { spec: h.spec } : {}) };
+    roomFor(t, [thing]);
+    const time = interaction(s, e);
+    const [got] = together(s, ev, [e.id, t.id], () => { takeOut(s, e.id, h, ev); return putIn(s, t.id, [thing], ev); });
+    pay(s, time);
+    ev.push(gearEv(e.id, h, 'pass', { ...(h.key ? { key: h.key } : {}), with: t.id, taken: true, ...(h.attuned ? { unattuned: true } : {}) }));
+    leaves(s, e, h, ev);
+    ev.push(gearEv(t.id, h, 'pass', { ...got, with: e.id }));
+    if (lit) {
+      const giver = s.entities[e.id], taker = s.entities[t.id];
+      taker.light = giver.light; delete giver.light;
+      ev.push({ type: 'light', id: giver.id, bright: 0, dim: 0 });
+      ev.push({ type: 'light', id: taker.id, bright: taker.light.bright, dim: taker.light.dim, item: taker.light.item, name: LIGHTS[taker.light.item].name });
+    }
+  },
+  // Put an item down where the creature is: onto the pile in its cell, or a new pile there (on the surface under it,
+  // if it is in the air). { type: 'drop', actor, item }
+  drop(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    const h = holding(e, a.item);
+    const sf = under(s.map, e.pos) || fail(`There is nothing under ${e.name} for it to land on.`);
+    const there = pileAt(s, sf.level.id, e.pos);
+    !there || (Array.isArray(there.contents) ? there.contents.length : 0) < PILE_MAX || fail(`${PILE_MAX} things lie there already.`);
+    const lit = carriesLit(e, h);
+    const time = interaction(s, e);
+    together(s, ev, [e.id], () => takeOut(s, e.id, h, ev));
+    pay(s, time);
+    let o = there;
+    if (!o) {
+      let id;
+      do id = `pile${++s.seq}`; while (s.map.objects.some((x) => x.id === id));
+      o = { id, def: 'pile', level: sf.level.id, at: { q: e.pos.q, r: e.pos.r }, state: CONTENT.objects.pile.initial, contents: [] };
+      s.map.objects.push(o);
+    }
+    if (!Array.isArray(o.contents)) o.contents = [];
+    let n = 1;
+    while (o.contents.some((x) => x?.id === `c${n}`)) n++;
+    o.contents.push(h.spec ? { id: `c${n}`, ...h.spec } : { id: `c${n}`, name: h.name });
+    ev.push(gearEv(e.id, h, 'drop', { ...(h.key ? { key: h.key } : {}), object: o.id, taken: true, ...(h.attuned ? { unattuned: true } : {}) }));
+    leaves(s, e, h, ev);
+    ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(there ? {} : { placed: true }) });
+    if (lit) {
+      const now = s.entities[e.id];
+      delete now.light;
+      ev.push({ type: 'light', id: now.id, bright: 0, dim: 0 });
+      ev.push({ type: 'manual', actor: now.id, name: h.name, partial: true,
+        text: `${now.name} dropped a lit ${h.name}. It burns on where it fell, but a pile gives no light in the engine: the DM decides what it lights (a campfire or brazier object, or setLight on a creature).` });
+    }
+  },
+  // Take from a pile in reach. { type: 'pickUp', actor, object, item? } `item` is the id of one thing in the pile
+  // (`contents[].id`); without it, everything there, which in a fight is allowed only for a pile of one thing (each
+  // is an object interaction). A pile left empty goes from the map.
+  pickUp(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    const o = objectOf(s, a.object, ctx), name = objectName(o).toLowerCase();
+    isPile(o) || fail(`The ${name} is not something to pick up.`);
+    nearObject(s, e, o) || fail(`${e.name} is too far from the ${name}.`);
+    const list = pileContents(o);
+    list.length || fail('There is nothing there to pick up.');
+    let take;
+    if (a.item === undefined) {
+      (list.length === 1 || !(s.encounter && inFight(s, e.id))) || fail('Name one thing to pick up: in a fight each thing is an object interaction.');
+      take = list;
+    } else take = [list.find((x) => x.id === a.item) || fail('That is not there.')];
+    const things = take.map((x) => { const { id: _id, ...spec } = x; return { id: x.id, name: contentName(x), ...(x.item !== undefined ? { spec, pack: x.item } : {}) }; });
+    roomFor(e, things);
+    const time = interaction(s, e);
+    const got = together(s, ev, [e.id], () => putIn(s, e.id, things, ev));
+    pay(s, time);
+    const gone = new Set(take.map((x) => x.id));
+    o.contents = o.contents.filter((x) => !(x && gone.has(x.id)));
+    const empty = !pileContents(o).length;
+    things.forEach((x, i) => ev.push(gearEv(e.id, x, 'pickup', { ...got[i], object: o.id })));
+    ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'pickup', ...(empty ? { gone: true } : {}) });
+    if (empty) {
+      s.map.objects.splice(s.map.objects.indexOf(o), 1);
+      if (s.map.seen?.objects) delete s.map.seen.objects[o.id];
+    }
+  },
+});

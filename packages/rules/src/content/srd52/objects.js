@@ -356,4 +356,12 @@ export const objects = [
     ],
     text: 'A crank and drum. What it works is set where it is placed on the map.',
   },
+  {
+    // What creatures drop (the `drop` action) or the DM lays down: the items are the placed object's `contents`
+    // (docs/specs/maps-and-objects.md, E17). Taken with `pickUp`; it goes from the map when it is empty.
+    id: 'pile', name: 'Items on the ground', kind: 'pile', source: 'Hextable', tier: 'auto', checked: false,
+    states: { lying: { name: 'lying here', blocks: [] } },
+    initial: 'lying', use: [],
+    text: 'Things lying on the ground. Anyone beside them can pick them up; in a fight that is an object interaction.',
+  },
 ];

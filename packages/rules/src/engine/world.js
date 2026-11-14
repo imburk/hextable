@@ -9,7 +9,8 @@ import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measur
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule } from '../vision.js';
-import { barriers, objectDef, objectHexes, objectSegment } from '../walls.js';
+import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
+import { itemName } from '../derive.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
 import { clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, RuleError, unblocked, up, walled } from './shared.js';
 
@@ -366,6 +367,46 @@ export function objectStep(s, id, of, state, ev) {
   }
   return did;
 }
+// Close enough to use it: beside a door's line, or on or next to a thing's hex, on its level.
+// Everything by the map's grid (review of #262). On squares, a door on a square's side is in reach
+// from either of its two squares or any square next to one, and a thing from its square or next to
+// it, measured by the table rule `squareRange` from any square of the user's space; a traced door
+// (`seg`) within 5 ft of its line, as on hexes. Hex maps as before.
+export function nearObject(s, e, o) {
+  const level = s.map.levels.find((l) => l.id === o.level), z = level.z + (level.tiles[col(o.at)]?.h ?? 0);
+  if (!ground(s.map, e.pos) || Math.abs(e.pos.z - z) > STEP_MAX) return false;
+  const G = gridOf(s.map), seg = objectSegment(o, G);
+  if (G.kind === 'square' && !(seg && o.seg)) {
+    const m = measure(s, G), cells = seg ? objectHexes(o, G) : [o.at];
+    return footprint(e, e.pos, G).some((p) => cells.some((h) => m(p, h) <= 1));
+  }
+  return seg ? distToSegment(G.center(e.pos), seg) <= FT + 1e-9 : G.dist(e.pos, o.at) <= 1;     // within 5 ft
+}
+
+// ---------- piles: what lies on the ground (E17) ----------
+// A pile is a map object of the kind `pile` whose placed record has `contents`, a list of what lies there:
+// `{ id, name }` for an item known by name (as `gear` holds them), or `{ id, item, base?, type?, spell?, charges? }`
+// for a magic item of the pack (a sheet's item entry without its key, `equipped` or `attuned`). Dropped by `drop`,
+// taken by `pickUp`, laid down by the DM with `mapEdit`. The map document's linter (map.js) does not read
+// `contents`, so what is not well formed is left out here, and so never offered, sent or picked up.
+export const PILE_MAX = 40;
+const CONTENT_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges'];
+export const isPile = (o) => objectDef(o)?.kind === 'pile';
+const wellFormed = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).every((k) => CONTENT_KEYS.includes(k)) &&
+  typeof x.id === 'string' && /^[a-z0-9]{1,12}$/.test(x.id) &&
+  (x.item === undefined ? typeof x.name === 'string' && !!x.name.trim() && x.name.length <= 60 && ['base', 'type', 'spell', 'charges'].every((k) => x[k] === undefined)
+    : x.name === undefined && typeof x.item === 'string' && Object.hasOwn(CONTENT.items, x.item) &&
+      (x.charges === undefined || (Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= (CONTENT.items[x.item].charges?.max ?? -1))));
+export function pileContents(o) {
+  if (!isPile(o) || !Array.isArray(o.contents)) return [];
+  const seen = new Set();
+  return o.contents.filter((x) => wellFormed(x) && !seen.has(x.id) && seen.add(x.id)).slice(0, PILE_MAX);
+}
+// What a thing on the ground is called: its name, or the magic item's ("Spear +1").
+export const contentName = (x) => (x.item !== undefined ? itemName(CONTENT.items[x.item], x) : x.name.trim());
+// The pile in this cell of this level, if there is one.
+export const pileAt = (s, level, h) => s.map.objects.find((o) => isPile(o) && o.level === level && o.at.q === h.q && o.at.r === h.r) ?? null;
+
 // Can `e` stand at `to`? Ground or air it fits in, a body that fits, not the hex it is on, and in
 // the arena if it is fighting. '' if so, else why not.
 export function roomAt(s, e, to) {

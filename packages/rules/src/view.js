@@ -17,6 +17,7 @@ import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
+import { isPile, pileContents } from './engine.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -252,7 +253,8 @@ const mapCache = new WeakMap();
 function shownMap(state) {
   const map = state.map, rule = sightRule(state), pv = partyView(state), mem = rule === 'rooms' ? null : memoryOf(map);
   const sig = `${rule}|${pv.n}|${barriers(map).sig}|${map.regions.map((r) => `${r.id}:${r.revealed ? 1 : 0}:${r.hexes.length}`).join()}|${map.levels.map((l) => `${Object.keys(l.tiles).length}:${l.name}:${l.z}:${l.image ? JSON.stringify(l.image) : ''}`).join()}` +
-    (mem ? `|${[...mem.tiles.values()].reduce((a, x) => a + x.size, 0)}|${JSON.stringify(mem.objects)}` : '');
+    (mem ? `|${[...mem.tiles.values()].reduce((a, x) => a + x.size, 0)}|${JSON.stringify(mem.objects)}` : '') +
+    `|${map.objects.filter(isPile).map((o) => `${o.id}:${JSON.stringify(o.contents ?? null)}`).join()}`;      // what lies on a pile (E17)
   const had = mapCache.get(map);
   if (had?.sig === sig) return had;
   const stateOf = (o) => (rule === 'rooms' || pv.objects.has(o.id) ? o.state : mem.objects[o.id]);       // undefined: not known
@@ -286,6 +288,9 @@ function shownMap(state) {
         const out = { id: o.id, def: o.def, level: o.level, at: structuredClone(o.at), state: stateOf(o) };
         for (const k of ['edge', 'seg', 'name', 'key']) if (o[k] !== undefined) out[k] = structuredClone(o[k]);
         if (o.to && levels.some((l) => l.tiles[col(o.to)] && (o.to.z === undefined || l.z === o.to.z))) out.to = structuredClone(o.to);
+        // What lies on a pile (E17), only while it is in view: what each thing is, never its charges. A pile
+        // remembered (under los and light) is sent without it, since what is there may have changed unseen.
+        if (isPile(o) && (rule === 'rooms' || pv.objects.has(o.id))) out.contents = pileContents(o).map((x) => pick(x, ['id', 'name', 'item', 'base', 'type', 'spell']));
         return out;
       }),
     regions: map.regions.filter((r) => r.revealed).map((r) => ({ id: r.id, name: r.name, level: r.level, hexes: rule === 'light' ? r.hexes.filter((k) => has(r.level, parse(k))) : [...r.hexes], revealed: true })),
@@ -500,7 +505,9 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'gear':                                     // an item came or went, for a creature of theirs; who with, if they know of them
-        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why', 'key', 'pack', 'nameOnly']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}) });
+        // (E17: `pass`, `drop`, `pickup`); the pile, if they are sent it; whether an Attunement ended with it.
+        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id', 'item', 'taken', 'why', 'key', 'pack', 'nameOnly', 'unattuned']), ...(ev.with !== undefined && cls(ev.with) !== 'hidden' ? { with: ev.with } : {}),
+          ...(ev.object !== undefined && sm.doc.objects.some((o) => o.id === ev.object) ? { object: ev.object } : {}) });
         break;
       case 'item':                                     // a magic item used (E18): all of it for one of theirs; for another they see, what it used, never its charges
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'key', 'item', 'pack', 'use', 'level', 'target', 'charges', 'max', 'consumed']));
