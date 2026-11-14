@@ -97,12 +97,16 @@ async function pacing(browser, url, label, opts) {
         const before = await state(page, (S) => JSON.stringify([S.entities, S.encounter?.turn]));
         const pt = await page.evaluate(() => { const h = window.hextable; const e = Object.values(h.state.entities).find((x) => x.kind === 'pc'); const p = h.R.screenOf({ q: e.pos.q + 2, r: e.pos.r, z: e.pos.z }); return p; });
         await sleep(60);
-        // The point must be bare map. The old fallback (the middle, 120 px down) lands on the turn-order strip on a phone, and a tap there
-        // opens the drawer: it skipped as it should, but the open drawer then took the next step's Escape (it closes first).
+        // The point must be bare map and clear of every creature (a tap on one selects it, and a DM's tap on a foe can attack). The old
+        // fallback (the middle, 120 px down) lands on the turn-order strip on a phone, and a tap there opens the drawer.
         let canvasPt = (pt && await onCanvas(page, pt.x, pt.y)) ? pt : null;
-        for (let y = 60; !canvasPt && y < opts.viewport.height - 20; y += 30) {
-          for (let x = 20; !canvasPt && x < opts.viewport.width - 20; x += 30) if (await onCanvas(page, x, y)) canvasPt = { x, y };
-        }
+        canvasPt ??= await page.evaluate(() => {
+          const h = window.hextable, at = Object.values(h.state.entities).map((e) => h.R.screenOf(e.pos)).filter(Boolean);
+          for (let y = 60; y < innerHeight - 20; y += 30) for (let x = 20; x < innerWidth - 20; x += 30) {
+            if (document.elementFromPoint(x, y)?.id === 'gl' && at.every((p) => Math.hypot(p.x - x, p.y - y) > 80)) return { x, y };
+          }
+          return null;
+        });
         if (!canvasPt) throw new Error('no bare map to tap');
         // A slow machine can stretch a tap past the renderer's limit for one, so a tap that was not taken is made again.
         for (let k = 0; k < 4 && (await page.evaluate(() => window.hextable.timeline.busy())); k++) { await tapAt(page, touch, canvasPt.x, canvasPt.y); await sleep(150); }
