@@ -868,8 +868,8 @@ function lintGrants(g, cls, say) {
   // `evasion: true`: an effect that lets it make a Dexterity save for half damage does none on a
   // success and half on a failure, while it is not Incapacitated (Evasion).
   if (g.evasion !== undefined && g.evasion !== true) say('evasion is true');
-  // `surfaces: true`: while it wears no armour and holds no Shield, it moves along vertical surfaces
-  // as with a Climb Speed equal to its Speed, and across water, where it cannot stop (Acrobatic Movement).
+  // `surfaces: true`: while it wears no armour and holds no Shield, it moves across water without
+  // falling in, and may not stop there (Acrobatic Movement; vertical surfaces are the DM's).
   if (g.surfaces !== undefined && g.surfaces !== true) say('surfaces is true');
   // `selfCure: { conditions }`: at the end of each of its turns, one of these conditions it has ends
   // (the first of the list it has: Self-Restoration).

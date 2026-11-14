@@ -10,6 +10,7 @@ import { cure, rollMode } from './rolls.js';
 import { aimAction, showPlace, unhide } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { coverOf } from '../sight.js';
+import { conditionName } from '../modifiers.js';
 import { advanceTurn, checkEnd, engage, KIT, resolveAttack, runAction, startEncounter } from './resolve.js';
 
 function checkRange(s, e, t, atk) {
@@ -108,7 +109,8 @@ function cunningFor(s, e, t, atk, list) {
   (m && !atk.spell && (atk.finesse || atk.type === 'ranged')) || fail('Cunning Strike goes with Sneak Attack, which needs a Finesse or Ranged weapon.');
   !s.encounter.flags[`sneak:${e.id}`] || fail(`${e.name} has already dealt Sneak Attack this turn.`);
   const cost = chosen.reduce((n, o) => n + o.cost, 0);
-  cost <= +m[1] || fail(`Those effects cost ${cost} Sneak Attack dice; ${e.name}'s Sneak Attack is ${e.features.sneak}.`);
+  // At least one die must be left to roll: an effect is added "when you deal Sneak Attack damage".
+  cost < +m[1] || fail(`Those effects cost ${cost} Sneak Attack dice; ${e.name}'s Sneak Attack is ${e.features.sneak}, and at least one die must be left to deal Sneak Attack damage.`);
   for (const o of chosen) {
     if (o.needs) e.gear?.some((g) => slug(g) === o.needs) || fail(`${o.name} needs ${o.needs === 'poisoners-kit' ? "a Poisoner's Kit" : o.needs} on ${e.name}'s person.`);
     if (o.size) SIZES.indexOf(t.size ?? 'medium') <= SIZES.indexOf(o.size) || fail(`${o.name} works on a creature of ${o.size[0].toUpperCase() + o.size.slice(1)} size or smaller.`);
@@ -201,14 +203,21 @@ export const handlers = {
   endTurn(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
+    // Self-Restoration (`selfCure`): its player picks which of the conditions it has ends (`cure`).
+    // With only one there is nothing to pick; with several and no pick, the DM is told.
+    const sc = (e.feats ?? []).find((f) => f.selfCure), can = sc ? sc.selfCure.conditions.filter((c) => e.cond[c]) : [];
+    if (a.cure !== undefined) {
+      sc || fail(`${e.name} has nothing that ends a condition at the end of its turn.`);
+      (typeof a.cure === 'string' && can.includes(a.cure)) || fail(can.length ? `${sc.name} can end ${can.map(conditionName).join(' or ')} on ${e.name} now.` : `${e.name} has none of the conditions ${sc.name} ends.`);
+    }
     delete e.cond.disengaged;
     // Stealth Attack: still hidden after its attack only if it ends the turn behind Three-Quarters or
     // Total Cover from every enemy that is up.
     if (s.encounter.flags[`stealth:${e.id}`] && e.hiding && living(s).some((o) => up(o) && hostile(o, e) && !['threeQuarters', 'total'].includes(coverOf(s, o, e)))) unhide(s, e, ev, 'attack');
-    // Self-Restoration: one of these conditions ends on it at the end of each of its turns (the first it has).
-    for (const f of e.feats ?? []) {
-      const c = f.selfCure?.conditions.find((x) => e.cond[x]);
-      if (c) { ev.push({ type: 'std', id: e.id, action: f.name }); cure(s, e, [c], ev); }
+    if (can.length) {
+      const c = a.cure ?? (can.length === 1 ? can[0] : null);
+      if (c) { ev.push({ type: 'std', id: e.id, action: sc.name }); cure(s, e, [c], ev); }
+      else ev.push({ type: 'manual', actor: e.id, name: sc.name, text: `${e.name} is ${can.map(conditionName).join(' and ')}. ${sc.name} ends one of them at the end of its turn, its player's choice; none was sent, so the DM removes the one the player picks.` });
     }
     turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
     checkEnd(s, ev);

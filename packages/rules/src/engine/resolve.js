@@ -473,8 +473,7 @@ export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cun
     if (mode === 'adv' || flank) {
       // Cunning Strike: the dice its effects cost are taken off before the roll.
       const cost = (cunning ?? []).reduce((a, o) => a + o.cost, 0), m = /^(\d+)d(\d+)$/.exec(e.features.sneak);
-      if (!cost) rs.push(roll(s, e.features.sneak, { crit }));
-      else if (m && +m[1] > cost) rs.push(roll(s, `${+m[1] - cost}d${m[2]}`, { crit }));
+      rs.push(roll(s, cost && m ? `${+m[1] - cost}d${m[2]}` : e.features.sneak, { crit }));   // cunningFor leaves at least one die
       if (s.encounter) s.encounter.flags[sneakKey] = true;
       notes.push('Sneak Attack', ...(cunning ?? []).map((o) => `Cunning Strike: ${o.name}`));
       paid = cunning;

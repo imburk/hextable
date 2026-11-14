@@ -9,7 +9,7 @@ import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
 import { control, ent, fail, inFight, living } from './shared.js';
 import { fitsOn, joinEncounter, lookAround } from './world.js';
-import { landItem, makeEntity, remake, resheet } from './sheets.js';
+import { donned, landItem, makeEntity, remake, resheet } from './sheets.js';
 
 export const handlers = {
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
@@ -64,6 +64,7 @@ export const handlers = {
     if (e.look && !a.record.look) fresh.look = e.look;
     s.entities[e.id] = fresh;
     ev.push({ type: 'edited', id: e.id });
+    donned(s, fresh, ev);
   },
   // A character built from class and level (derive.js). { type: 'setSheet', sheet, actor?, at? }
   // Without `actor` it joins the party as addCharacter does; with one, that character is made

@@ -6,10 +6,10 @@
 // Action (Fleet Step).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, current, makeEntity } from "../src/engine.js";
+import { apply, current, makeEntity, moveOptions } from "../src/engine.js";
 import { derive, validate } from "../src/derive.js";
 import { lintRecord } from "../src/content/schema.js";
-import { moveOptions } from "../src/engine/world.js";
+
 import * as H from "../src/hex.js";
 import { newGame } from "../src/scenario.js";
 
@@ -25,9 +25,15 @@ function field(level, more = {}) {
   for (const id of Object.keys(s.entities)) delete s.entities[id];
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
-  s.entities.hero = makeEntity(derive(monk(level, more)).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  const { noInstructions, ...sheet } = more;
+  s.entities.hero = makeEntity(derive(monk(level, sheet)).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
   s.entities.evil = makeEntity(derive(sorc).record, { id: "evil", kind: "npc", side: "foe", pos: { q: 2, r: 0, z: 0 } });
   s.entities.evil.hp = s.entities.evil.maxHp = 300;
+  // Uncanny Metabolism and Disciplined Survivor spend something, so their default is never; these tests set them to always.
+  const set = {};
+  if (level >= 2 && !more.noInstructions) set["uncanny-metabolism"] = "always";
+  if (level >= 14 && !more.noInstructions) set["disciplined-survivor"] = "always";
+  if (Object.keys(set).length) ok(apply(s, { type: "reactions", actor: "hero", set }, DM));
   return s;
 }
 const fight = (s) => ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
@@ -89,7 +95,7 @@ test("Evasion: a Dexterity save for half damage does none on a success and half 
   }
 });
 
-test("Acrobatic Movement: up a wall as with a Climb Speed and across water (not stopping on it), without armor or Shield", () => {
+test("Acrobatic Movement: across water (not stopping on it), without armor or Shield; climbing costs as usual", () => {
   const s = field(9);
   const tiles = s.map.levels[0].tiles;
   for (const h of [{ q: 1, r: 0 }, { q: 2, r: 0 }]) tiles[H.col(h)].t = "water";
@@ -107,7 +113,7 @@ test("Acrobatic Movement: up a wall as with a Climb Speed and across water (not 
   for (const h of [{ q: 1, r: 0 }, { q: 2, r: 0 }]) u.map.levels[0].tiles[H.col(h)].t = "water";
   delete u.entities.evil;
   assert.equal([...moveOptions(u, u.entities.hero).values()].find((v) => v.h.q === 1 && v.h.r === 0), undefined, "level 8");
-  // A wall face: a ledge 15 feet up costs climbing as with a Climb Speed (no extra feet for the height).
+  // A ledge 15 feet up is climbed as anyone climbs: the SRD gives no Climb Speed, so no cheaper climb.
   const w = field(9), wt = w.map.levels[0].tiles;
   delete w.entities.evil;
   wt[H.col({ q: 1, r: 0 })].h = 15;
@@ -116,8 +122,7 @@ test("Acrobatic Movement: up a wall as with a Climb Speed and across water (not 
   delete v8.entities.evil;
   v8.map.levels[0].tiles[H.col({ q: 1, r: 0 })].h = 15;
   const cost8 = [...moveOptions(v8, v8.entities.hero).values()].find((v) => v.h.q === 1 && v.h.r === 0).cost;
-  assert.equal(cost9, 5 + 15);
-  assert.equal(cost8, 5 + 30, "without it, climbing costs double");
+  assert.equal(cost9, cost8, "the same cost with or without it");
 });
 
 test("Patient Defense with a Focus Point: Disengage and Dodge as a Bonus Action, and from level 10 Temporary Hit Points", () => {
@@ -171,16 +176,33 @@ test("Step of the Wind with a Focus Point: Disengage and Dash as a Bonus Action;
   assert.ok(!ok(apply(t, { type: "feature", actor: "hero", feature: "step-of-the-wind" }, DM)).events.some((x) => x.type === "manual" && /willing/.test(x.text)));
 });
 
-test("Self-Restoration: at the end of each of its turns, one of Charmed, Frightened or Poisoned ends", () => {
+test("Self-Restoration: at the end of each of its turns, the one of Charmed, Frightened or Poisoned its player picks ends", () => {
   const s = field(10), e = s.entities.hero;
   fight(s); turnOf(s, "hero");
-  e.cond.frightened = {}; e.cond.poisoned = {};
-  const r = ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
-  assert.ok(r.events.some((x) => x.type === "condEnd" && x.id === "hero" && x.cond === "frightened"));
-  assert.ok(!e.cond.frightened && e.cond.poisoned, "one, not both");
+  e.cond.charmed = {}; e.cond.poisoned = {};
+  // A pick it cannot make is refused, and nothing changes.
+  const snap = JSON.stringify(s);
+  no(apply(s, { type: "endTurn", actor: "hero", cure: "frightened" }, DM), /can end Charmed or Poisoned/);
+  no(apply(s, { type: "endTurn", actor: "hero", cure: 3 }, DM));
+  assert.equal(JSON.stringify(s), snap);
+  // The player's pick: Poisoned, though Charmed comes first in the list.
+  const r = ok(apply(s, { type: "endTurn", actor: "hero", cure: "poisoned" }, DM));
+  assert.ok(r.events.some((x) => x.type === "condEnd" && x.id === "hero" && x.cond === "poisoned"));
+  assert.ok(e.cond.charmed && !e.cond.poisoned, "the one picked, not both");
+  // Two again and no pick: the DM is told, and the engine ends neither.
+  turnOf(s, "hero");
+  e.cond.frightened = {};
+  const r2 = ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
+  assert.ok(r2.events.some((x) => x.type === "manual" && /none was sent, so the DM removes the one the player picks/.test(x.text)));
+  assert.ok(e.cond.charmed && e.cond.frightened);
+  // Only one: no pick needed.
+  delete e.cond.charmed;
   turnOf(s, "hero");
   ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
-  assert.ok(!e.cond.poisoned, "the next one a turn later");
+  assert.ok(!e.cond.frightened, "the only one ends");
+  // Nothing to end: a pick is refused.
+  turnOf(s, "hero");
+  no(apply(s, { type: "endTurn", actor: "hero", cure: "poisoned" }, DM), /has none of the conditions/);
   const t = field(9);
   fight(t); turnOf(t, "hero");
   t.entities.hero.cond.frightened = {};
@@ -222,6 +244,15 @@ test("Disciplined Survivor: a failed save rolled again for 1 Focus Point, the ne
     assert.equal(sv.total, sv.roll + sv.bonus);
   }
   assert.equal(seen, 2);
+  // By default (never), no Focus Point is spent on a failed save.
+  for (let seed = 1; seed < 30; seed++) {
+    const s = field(14, { noInstructions: true });
+    s.rng = seed * 7919;
+    fight(s); turnOf(s, "evil");
+    const f0 = s.entities.hero.uses["monks-focus"];
+    assert.ok(!burn(s).events.find((x) => x.type === "save" && x.id === "hero").reroll);
+    assert.equal(s.entities.hero.uses["monks-focus"], f0);
+  }
   // With no Focus Points left, or an instruction of never, nothing is rolled again.
   for (const prep of [(s) => { s.entities.hero.uses["monks-focus"] = 0; }, (s) => ok(apply(s, { type: "reactions", actor: "hero", set: { "disciplined-survivor": "never" } }, DM))]) {
     for (let seed = 1; seed < 30; seed++) {
@@ -264,6 +295,13 @@ test("Uncanny Metabolism and Perfect Focus on rolling Initiative", () => {
   assert.equal(te.uses["monks-focus"], 1, "never, and no Perfect Focus at 14");
   assert.equal(te.uses["uncanny-metabolism"], 1);
   no(apply(t, { type: "feature", actor: "hero", feature: "uncanny-metabolism" }, DM), /used when Lo rolls Initiative/);
+  // With no instruction set (the default, never), nothing is spent: Focus Points and the use stay as they were.
+  const d = field(14, { noInstructions: true }), de = d.entities.hero;
+  de.uses["monks-focus"] = 2; de.hp = 20;
+  fight(d);
+  assert.equal(de.uses["monks-focus"], 2);
+  assert.equal(de.uses["uncanny-metabolism"], 1);
+  assert.equal(de.hp, 20);
 });
 
 test("Fleet Step: Step of the Wind without a Bonus Action after another Bonus Action, once a turn, not after Step of the Wind itself", () => {

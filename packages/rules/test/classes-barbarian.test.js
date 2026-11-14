@@ -11,6 +11,8 @@ import { modifiers, speedOf } from "../src/modifiers.js";
 import { lintRecord } from "../src/content/schema.js";
 import { reactionsOf } from "../src/reactions.js";
 import { newGame } from "../src/scenario.js";
+import { migrate, VERSION } from "../src/migrate.js";
+import { readFileSync } from "node:fs";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -88,6 +90,13 @@ test("Instinctive Pounce: entering Rage in a fight gives half the Speed in movem
   const m = s.encounter.budget.move;
   ok(use(s, "rage"));                                                   // extended with its Bonus Action
   assert.equal(s.encounter.budget.move, m, "no more movement for extending it");
+  // At Speed 0 (Grappled) there is no movement to add, and nothing is said about it.
+  const g = field(7);
+  fight(g); turnOf(g, "hero");
+  g.entities.hero.cond.grappled = {};
+  const gm = g.encounter.budget.move, gr = ok(apply(g, { type: "feature", actor: "hero", feature: "rage" }, DM));
+  assert.equal(g.encounter.budget.move, gm);
+  assert.ok(!gr.events.some((x) => x.type === "std" && /Instinctive Pounce/.test(x.action)));
   // Level 6 has no pounce.
   const s6 = field(6);
   fight(s6); turnOf(s6, "hero");
@@ -287,9 +296,43 @@ test("Persistent Rage: Rage lasts without being extended, and ends early on Unco
   assert.ok(!(t.effects ?? []).some((x) => x.feature === "rage"));
 });
 
+test("Rage, Persistent or not, ends when the barbarian dons Heavy armor", () => {
+  // A Barbarian sheet can't hold Heavy armor (no training), so the DM puts it on the record.
+  for (const level of [14, 15]) {
+    const s = field(level);
+    ok(use(s, "rage"));
+    assert.ok(raging(s));
+    const record = { ...derive(barb(level)).record, armour: "heavy" };
+    const r = ok(apply(s, { type: "editCharacter", actor: "hero", record }, DM));
+    assert.ok(!raging(s), `level ${level}: Heavy armor ends it`);
+    assert.ok(r.events.some((x) => x.type === "effectEnd" && x.name === "Rage" && /Heavy armor/.test(x.why)));
+  }
+  // Other armour does not.
+  const t = field(15);
+  t.entities.hero.sheet = barb(15);
+  ok(use(t, "rage"));
+  ok(apply(t, { type: "setSheet", actor: "hero", sheet: barb(15, { armour: "hide-armor" }) }, DM));
+  assert.ok(raging(t));
+});
+
+test("Relentless Rage's count since the last rest survives a level-up", () => {
+  const s = field(11), e = s.entities.hero;
+  e.sheet = barb(11);
+  e.uses["relentless-rage"] = 2;
+  ok(apply(s, { type: "levelUp", actor: "hero", sheet: barb(12) }, DM));
+  assert.equal(s.entities.hero.uses["relentless-rage"], 2);
+});
+
 test("Persistent Rage: on rolling Initiative with Rage spent, all uses come back, once per Long Rest, by standing instruction", () => {
   const s = field(15), e = s.entities.hero;
   no(use(s, "persistent-rage"), /used when Ur rolls Initiative/);
+  // By default (never) the use is kept, even with Rage spent.
+  e.uses.rage = 1;
+  fight(s);
+  assert.equal(e.uses.rage, 1);
+  assert.equal(e.uses["persistent-rage"], 1);
+  ok(apply(s, { type: "endEncounter" }, DM));
+  ok(apply(s, { type: "reactions", actor: "hero", set: { "persistent-rage": "always" } }, DM));
   e.uses.rage = 1;
   const r = fight(s);
   assert.equal(e.uses.rage, 5, "all uses back");
@@ -383,4 +426,28 @@ test("Intimidating Presence: a Bonus Action, Wisdom save against 8 + Strength + 
     no(use(s, "intimidating-presence", { targets: ["hero"] }));
   }
   assert.ok(seen, "a failed save was seen");
+});
+
+test("a version 20 table saved before #224 loads and plays; its barbarian gets the new features when the DM makes it again from its sheet", () => {
+  // Saved by the engine on main before this change: a level 11 berserker raging beside a goblin.
+  const s = migrate(JSON.parse(readFileSync(new URL("./fixtures/v20-barbarian-224.json", import.meta.url), "utf8")));
+  assert.equal(VERSION, 20, "no state version change");
+  assert.equal(s.version, 20);
+  const e = s.entities.hero;
+  assert.ok(raging(s), "the saved Rage is still going");
+  assert.equal(e.feats.find((f) => f.id === "relentless-rage").relentless, undefined, "the saved record is the old one");
+  // It plays: a fight starts, the old Rage keeps its old rules (it ends unless extended).
+  fight(s); turnOf(s, "hero");
+  ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
+  turnOf(s, "hero");
+  ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
+  assert.ok(!raging(s), "not extended: it ended");
+  // Made again from its sheet, it has Relentless Rage, which then works.
+  ok(apply(s, { type: "setSheet", actor: "hero", sheet: e.sheet }, DM));
+  const h = s.entities.hero;
+  assert.equal(h.feats.find((f) => f.id === "relentless-rage").relentless.hp, 22);
+  turnOf(s, "hero");
+  ok(apply(s, { type: "feature", actor: "hero", feature: "rage" }, DM));
+  const r = ok(apply(s, { type: "harm", actor: "hero", amount: h.hp + 5, dtype: "fire" }, DM));
+  assert.ok(r.events.some((x) => x.type === "save" && x.against === "Relentless Rage" && x.dc === 10));
 });

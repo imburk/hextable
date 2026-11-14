@@ -332,7 +332,7 @@ export const fighter = {
       "level": 9,
       "tier": "auto",
       "checked": true,
-      "text": "When you fail a saving throw, reroll it with a bonus equal to your Fighter level and use the new roll; once per Long Rest (twice from level 13, three times from 17). Taken by standing instruction (always or never) where the new roll could succeed.",
+      "text": "When you fail a saving throw, you can reroll it with a bonus equal to your Fighter level and use the new roll; once per Long Rest (twice from level 13, three times from 17). Set by standing instruction (never until you set it to always); taken where the new roll could succeed.",
       "uses": {
         "max": {
           "column": "indomitable"

@@ -37,9 +37,11 @@ const turnOf = (s, id) => { for (let i = 0; i < 20 && current(s) !== id; i++) ok
 const swing = (s, target, attack = "longsword") => apply(s, { type: "attack", actor: "hero", target, attack }, DM);
 
 // An enemy barbarian who makes the fighter save: Intimidating Presence, Wisdom DC 8 + 5 + 5 = 18.
-function frightener(level) {
+// `always`: the fighter's player has set Indomitable to be used (its default is never).
+function frightener(level, always = true) {
   const s = field(level);
   s.entities.vor = makeEntity(derive(barb).record, { id: "vor", kind: "npc", side: "foe", pos: { q: -1, r: 0, z: 0 } });
+  if (always && level >= 9) ok(apply(s, { type: "reactions", actor: "hero", set: { indomitable: "always" } }, DM));
   fight(s); turnOf(s, "vor");
   return s;
 }
@@ -97,7 +99,15 @@ test("Indomitable: not on a success, not where even a 20 could not succeed, not 
   assert.equal(e.uses.indomitable, 1);
   // Never: the save stands.
   const t = frightener(9);
-  assert.ok(reactionsOf(t.entities.hero).some((r) => r.id === "indomitable" && r.kind === "free" && r.dflt === "always"));
+  assert.ok(reactionsOf(t.entities.hero).some((r) => r.id === "indomitable" && r.kind === "free" && r.dflt === "never"), "never until the player says otherwise");
+  // By default (no instruction set) a failed save stands and the use is kept.
+  for (let seed = 1; seed < 40; seed++) {
+    const u = frightener(9, false);
+    u.rng = seed * 7919;
+    const x = ok(scare(u)).events.find((y) => y.type === "save" && y.id === "hero");
+    assert.ok(!x.reroll, "not rolled again by default");
+    assert.equal(u.entities.hero.uses.indomitable, 1);
+  }
   ok(apply(t, { type: "reactions", actor: "hero", set: { indomitable: "never" } }, DM));
   for (let seed = 1; seed < 40; seed++) {
     const u = structuredClone(t);

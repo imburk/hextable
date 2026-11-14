@@ -511,7 +511,7 @@ export const barbarian = {
       "level": 15,
       "tier": "auto",
       "checked": true,
-      "text": "When you roll Initiative with uses of Rage spent, you regain them all, once per Long Rest (a standing instruction can say never). Your Rage lasts 10 minutes without being extended and ends early only when you are Unconscious or don Heavy armor.",
+      "text": "When you roll Initiative with uses of Rage spent, you can regain them all, once per Long Rest: set by standing instruction (never until you set it to always). Your Rage lasts 10 minutes without being extended and ends early only when you are Unconscious or don Heavy armor.",
       "uses": {
         "max": 1,
         "recharge": "long"

@@ -136,7 +136,9 @@ function abilityCheck(s, e, what, dimToo = false) {
   const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
   const more = rollDice(s, m.dice);
   if (m.used.length) useUp(s, [], m.used);
-  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(r1, mode === 'normal' ? null : r2, r), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+  // The dice are the faces rolled; `roll` is the d20 as it counts, and `floor.was` what it showed.
+  const shown = pickOf(mode) === r1 ? raw1 : raw2;
+  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
     ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -260,8 +262,8 @@ export const handlers = {
     }
     // Movement that comes with starting this feature in a fight (Instinctive Pounce with Rage): half its Speed.
     const pounce = fighting && (e.feats ?? []).find((x) => x.moveWith?.of === f.id);
-    if (pounce) {
-      const feet = Math.floor(speedOf(s, e) / 2 / FT) * FT;
+    const feet = pounce ? Math.floor(speedOf(s, e) / 2 / FT) * FT : 0;
+    if (feet > 0) {                                                     // at Speed 0 there is nothing to add or to say
       enc.budget.move += feet;
       ev.push({ type: 'std', id: e.id, action: `${pounce.name} (${feet} ft)` });
     }

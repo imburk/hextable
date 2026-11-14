@@ -71,10 +71,11 @@ export function moveOptions(s, e) {
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h)[i])));
   const onHazard = (levelId, h) => (big ? footprint(e, h) : [h]).some((f) => hazards.has(`${levelId}|${H.col(f)}`));
-  // Acrobatic Movement (`surfaces`): with no armour or Shield, up walls as with a Climb Speed equal to
-  // its Speed, and across water, where it may not stop.
+  // Acrobatic Movement (`surfaces`): with no armour or Shield, across water without falling in. It may
+  // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
+  // climbed as anyone climbs (the maps have heights, not wall faces).
   const acrobat = !!e.feats?.some((f) => f.surfaces) && (e.armour ?? 'none') === 'none' && !e.shield, wet = new Set();
-  const climbSpeed = acrobat ? Math.max(walk, speedOf(s, e, 'climb')) : speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
+  const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
   const left = (speed) => (fighting ? enc.budget.move + (speed - walk) * (1 + (enc.budget.dashes | 0)) : EXPLORE_BUDGET);

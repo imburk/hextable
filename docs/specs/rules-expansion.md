@@ -1093,7 +1093,11 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     another's Attunement; curses; identifying (an item is always known); encumbrance; drawing a weapon in a fight;
     Sun Blade's proficiency through Shortswords for a class trained only with Light martial weapons; a Luckstone's +1 on
     Initiative (the engine's Initiative reads its own hook, not ability checks).
-- **Amendment (levels 7 to 15, #224: Barbarian, Fighter, Monk, Rogue). No state change.** Each part has a linter rule
+- **Amendment (levels 7 to 15, #224: Barbarian, Fighter, Monk, Rogue). No state version change**, decided after review:
+  what is new in a saved game is optional and read only by the new code (`uses["relentless-rage"]`, a lasting effect's
+  `option`, a part's `except`, `fragile: 'unconscious'`), so a version 20 table loads and plays as it did; its
+  characters keep the records they were saved with until the DM makes them again from their sheets (`setSheet`,
+  `levelUp`), as with #164 (test: `classes-barbarian.test.js`, a version 20 table saved before #224). Each part has a linter rule
   (`lintGrants`, and `lintFeat` for the record) and a test (`test/classes-barbarian.test.js`, `-fighter`, `-monk`, `-rogue`).
   - *Grants*: `moveWith { of }` (starting that feature's effect in a fight adds half the Speed to the turn's movement:
     Instinctive Pounce); `brutal { after?, dice?, options }` (the `attack` action's `brutal: option id`: on its own turn,
@@ -1109,8 +1113,9 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     for a use of `cost`, adding `add`, the new roll standing, where it could succeed: Indomitable, Disciplined
     Survivor); `missed { modifier, ends }` (after a missed attack roll, that modifier against that target: Studied
     Attacks); `evasion: true`; `surfaces: true` (no armour or Shield: walls as with a Climb Speed equal to Speed, and
-    water crossed but not stopped on: Acrobatic Movement); `selfCure { conditions }` (at the end of each of its turns
-    the first of these it has ends: Self-Restoration); `allTypes { of }` (that feature's reaction loses its damage types:
+    water crossed but not stopped on, as the engine has no swimming; vertical surfaces are the DM's: Acrobatic Movement); `selfCure { conditions }` (at the end of each of its turns
+    one of these it has ends: the one named in `endTurn`'s `cure`, the only one, or with several and no pick a
+    `manual` event for the DM: Self-Restoration); `allTypes { of }` (that feature's reaction loses its damage types:
     Deflect Energy); `fleet { of }` (that feature without a Bonus Action after a different Bonus Action, once a turn:
     Fleet Step); `cunning { max?, options? }` (the `attack` action's `cunning: [option ids]`: Sneak Attack dice given up
     before the roll, effects after the damage; an option is `{ id, name, cost, effects?, duration?, needs?, size?,
@@ -1127,8 +1132,12 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     Blow). `attack.received` adds now count toward the roll (no content used one before). An ending may say
     `orDamaged: true` beside a save (Knock Out).
   - *Choices made in advance*: a feature with `initiative` and uses, or with `reroll`, is listed by `reactionsOf` with
-    `kind: 'free'` (it does not spend the Reaction) and options `never` / `always` (default), set with the `reactions`
-    action. No trigger looks at them; they are read where they apply.
+    `kind: 'free'` (it does not spend the Reaction) and options `never` (the default, as for a reaction that spends a
+    slot: Shield) / `always`, set with the `reactions` action. No trigger looks at them; they are read where they apply.
+    Retaliation costs only the Reaction and defaults to `always`, as the Opportunity Attack and Uncanny Dodge do.
+  - Cunning Strike leaves at least one Sneak Attack die ("when you deal Sneak Attack damage"). Rage of any kind ends
+    when its creature's sheet or record puts it in Heavy armour (`donned`, sheets.js). Reliable Talent's check event
+    keeps the real d20 face, with `floor: { name, value, was }`.
   - *Built below level 7 because a feature here needs it*: Uncanny Metabolism (Monk 2), the Focus Point versions of
     Patient Defense and Step of the Wind (Monk 2), Cunning Strike (Rogue 5).
   - *Not built*: Weapon Mastery (so Tactical Master), Heroic Inspiration (so Heroic Warrior), jumping, carrying a

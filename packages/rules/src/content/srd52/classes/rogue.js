@@ -194,7 +194,7 @@ export const rogue = {
       "level": 5,
       "tier": "assist",
       "checked": true,
-      "text": "When your Sneak Attack deals damage, give up Sneak Attack dice for one effect (`cunning` on the attack; the dice come off before the roll, the effect follows the damage; save DC 8 + Dexterity modifier + Proficiency Bonus): Poison (1d6, needs a Poisoner's Kit: Constitution save or Poisoned for 1 minute, repeating the save at the end of each of its turns), Trip (1d6, Large or smaller: Dexterity save or Prone) or Withdraw (1d6: your move of up to half your Speed without Opportunity Attacks is the DM's).",
+      "text": "When your Sneak Attack deals damage, give up Sneak Attack dice (leaving at least one to deal it) for one effect (`cunning` on the attack; the dice come off before the roll, the effect follows the damage; save DC 8 + Dexterity modifier + Proficiency Bonus): Poison (1d6, needs a Poisoner's Kit: Constitution save or Poisoned for 1 minute, repeating the save at the end of each of its turns), Trip (1d6, Large or smaller: Dexterity save or Prone) or Withdraw (1d6: your move of up to half your Speed without Opportunity Attacks is the DM's).",
       "grants": {
         "cunning": {
           "options": [

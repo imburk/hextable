@@ -82,7 +82,13 @@ test("Reliable Talent: a d20 of 9 or lower counts as 10 on a check with a profic
   for (let seed = 1; seed < 60; seed++) {
     const c = roll(7, "stealth", seed);
     assert.ok(c.roll >= 10, "at least 10 with a proficiency");
-    if (c.floor) { floored++; assert.deepEqual(c.floor, { name: "Reliable Talent", value: 10 }); assert.equal(c.roll, 10); assert.equal(c.total, 10 + c.bonus); }
+    if (c.floor) {
+      floored++;
+      assert.equal(c.floor.name, "Reliable Talent"); assert.equal(c.floor.value, 10);
+      assert.ok(c.floor.was < 10, "the die that was really rolled");
+      assert.equal(c.dice.find((d) => d.sides === 20 && !d.drop).value, c.floor.was, "the log keeps the real face");
+      assert.equal(c.roll, 10, "and it counts as 10"); assert.equal(c.total, 10 + c.bonus);
+    }
     if (roll(7, "arcana", seed).roll < 10) low++;
     if (roll(6, "stealth", seed).roll < 10) low6++;
   }
@@ -132,6 +138,10 @@ test("Cunning Strike is refused, changing nothing, for unknown or repeated effec
   no(stab(s, { cunning: ["trip"] }), /Large size or smaller/);
   s.entities[s.foe].size = "small";
   assert.equal(JSON.stringify(s), snap.replace('"size":"huge"', '"size":"small"'), "nothing changed");
+  // Every Sneak Attack die: Knock Out and Trip cost all 7d6 of a level 14 rogue, leaving no Sneak Attack damage to add them to.
+  const all = ready(14), snapAll = JSON.stringify(all);
+  no(apply(all, { type: "attack", actor: "hero", target: all.foe, attack: "rapier", cunning: ["knock-out", "trip"] }, DM), /at least one die must be left/);
+  assert.equal(JSON.stringify(all), snapAll);
   // More dice than the Sneak Attack has: Knock Out and Obscure cost 9 of a level 14 rogue's 7d6.
   const t = ready(14);
   no(apply(t, { type: "attack", actor: "hero", target: t.foe, attack: "rapier", cunning: ["knock-out", "obscure"] }, DM), /cost 9 Sneak Attack dice; Sly's Sneak Attack is 7d6/);

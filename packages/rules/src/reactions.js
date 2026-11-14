@@ -75,10 +75,12 @@ export function reactionsOf(e) {
   }
   // Not Reactions, but choices made in advance the same way (#224): a feature used on rolling
   // Initiative (Persistent Rage, Uncanny Metabolism) is taken by instruction, `always` or `never`.
-  // `free`: it does not spend the Reaction, and no trigger above looks at it.
-  for (const f of e.feats ?? []) if (f.initiative && f.uses) out.push({ id: f.id, name: f.name, kind: 'free', on: 'initiative', options: ['never', 'always'], dflt: 'always' });
+  // `free`: it does not spend the Reaction, and no trigger above looks at it. Each spends a use or a
+  // Focus Point, so, like a reaction that spends a spell slot (Shield), it is `never` until its
+  // player says otherwise.
+  for (const f of e.feats ?? []) if (f.initiative && f.uses) out.push({ id: f.id, name: f.name, kind: 'free', on: 'initiative', options: ['never', 'always'], dflt: 'never' });
   // A failed save rolled again for a use (Indomitable, Disciplined Survivor), likewise.
-  for (const f of e.feats ?? []) if (f.reroll) out.push({ id: f.id, name: f.name, kind: 'free', on: 'reroll', options: ['never', 'always'], dflt: 'always' });
+  for (const f of e.feats ?? []) if (f.reroll) out.push({ id: f.id, name: f.name, kind: 'free', on: 'reroll', options: ['never', 'always'], dflt: 'never' });
   for (const f of e.feats ?? []) {
     if (!f.reaction) continue;
     // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.

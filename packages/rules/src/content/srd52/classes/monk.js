@@ -299,7 +299,7 @@ export const monk = {
       "level": 2,
       "tier": "auto",
       "checked": true,
-      "text": "When you roll Initiative, regain all spent Focus Points and Hit Points equal to your Monk level plus a roll of your Martial Arts die, once per Long Rest. Used when it gives something back, by standing instruction (always or never).",
+      "text": "When you roll Initiative, you can regain all spent Focus Points and Hit Points equal to your Monk level plus a roll of your Martial Arts die, once per Long Rest. Set by standing instruction (never until you set it to always); used only when it gives something back.",
       "uses": {
         "max": 1,
         "recharge": "long"
@@ -462,9 +462,9 @@ export const monk = {
       "id": "acrobatic-movement",
       "name": "Acrobatic Movement",
       "level": 9,
-      "tier": "auto",
+      "tier": "assist",
       "checked": true,
-      "text": "Without armor or a Shield, move along vertical surfaces (as with a Climb Speed equal to your Speed) and across water on your turn; you can't stop on water.",
+      "text": "Without armor or a Shield, move across water on your turn without falling in (the engine lets you cross it but not end a move on it, having no swimming). Moving along vertical surfaces is the DM's: the maps have heights, not wall faces, and climbing costs as usual.",
       "grants": {
         "surfaces": true
       }
@@ -483,7 +483,7 @@ export const monk = {
       "level": 10,
       "tier": "auto",
       "checked": true,
-      "text": "At the end of each of your turns, end one of Charmed, Frightened or Poisoned on yourself (in that order of choice). Going without food and drink gives you no Exhaustion (the engine does not track food).",
+      "text": "At the end of each of your turns, end one of Charmed, Frightened or Poisoned on yourself: the one you pick when you end the turn (with only one, that one; with several and no pick, the DM removes the one you choose). Going without food and drink gives you no Exhaustion (the engine does not track food).",
       "grants": {
         "selfCure": {
           "conditions": [
@@ -513,7 +513,7 @@ export const monk = {
       "level": 14,
       "tier": "auto",
       "checked": true,
-      "text": "Proficiency in all saving throws. When you fail a save, spend 1 Focus Point to reroll it and use the new roll; taken by standing instruction (always or never) where the new roll could succeed.",
+      "text": "Proficiency in all saving throws. When you fail a save, you can spend 1 Focus Point to reroll it and use the new roll. Set by standing instruction (never until you set it to always); taken where the new roll could succeed.",
       "grants": {
         "saves": "all",
         "reroll": {
