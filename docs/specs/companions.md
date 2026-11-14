@@ -527,3 +527,40 @@ Each has a default; work proceeds on the default.
 6. **XP for a foe's summons.** *Default: a creature with a bond does not count toward a fight's XP*
    (`counts: false` in the conclusion; the DM can tick it). The summon blocks give XP 0 already.
 7. **The cap.** *Default: 20 bonded creatures per master.*
+
+## Build notes
+
+### C1, the bond (#311)
+
+What was settled while building it, where the decisions above left room:
+
+- **Sides.** The DM's `bond` gives the creature its master's side (a spawned wolf is a foe until it is
+  bonded to a party character); "bonding across sides is refused" is read as: refused for a creature
+  that is in a fight going on ("a creature in the fight can't change sides"). Bonding a creature the DM
+  hid (`hidden`) to a party master is refused: a party member is never hidden. A creature that turns
+  party is looked around with (`lookAround`), as a placed party member is.
+- **What the DM's bond accepts.** `kind` (default `pet`), `turn`, `orders`, and two more than Decision 1
+  names: `at0` (default by kind: familiar, steed, summon, servant and object vanish; undead and pets die)
+  and `noAttack` (a DM-made familiar of the SRD can't attack, but the Vampire Familiar can, so it is the
+  DM's to say). `turn` other than `own` and `orders: 'command'` are refused until C2 and C5 run them, so
+  the engine never keeps a choice it would not play. `fx`, `source`, `ends` and `leash` come only from
+  spells (C2, C3); C1 honours them where they are set (`masterDies`, `leash`) and its tests set them by hand.
+- **No chains.** A companion has no companions, and a creature with companions can't become one, so
+  `ownerOf` looks one step up only. A creature with an `owner` (or a `pc`) can't be bonded, and a bonded
+  creature can't be claimed, by a player or the DM: a companion's player is always its master's.
+- **Removing a master** (the DM's `remove`) frees its companions (`unbonded`); they stay.
+- **When it vanishes.** `vanish` is run by `settleBonds`, a pass after every action (engine.js, beside
+  gravity), not inside `damage`: every way a creature reaches 0 (damage, `setHp`, a fall, a kill) is
+  caught in one place. So a familiar at 0 shows `died` and then `vanished` in the same action.
+  `dismissed` has no action yet (C5's `dismiss`); `vanish` takes it.
+- **What it leaves.** Its gear by name, and magic items on a sheet if it has one, go onto the pile in its
+  cell (E17), past `PILE_MAX` if need be, so nothing is lost or made twice. With nothing under it the DM
+  is told what it carried (`manual`). An Animated Object at 0 also tells the DM it reverts (Decision 4).
+- **Lasting effects.** Those it is the source of end; another creature's effect loses only the part on it
+  (Bless goes on for the others), and ends if nothing else was left of it.
+- **The fight order.** It leaves the order; if it was its own turn, the turn passes to the next creature.
+- **What players are sent.** `vanished` is told to players only when the engine marks it `seen` (the
+  party knew of it just before: it is no longer in the state for `view.js` to classify), with `name` and
+  `why` only when it was the party's (`party`). `bonded` goes only when both creatures are the party's;
+  `unbonded` and `companion` only for a party creature (and `from` only when that is the party's).
+- **State version 23**, with a migration that changes nothing.

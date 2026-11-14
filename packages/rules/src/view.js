@@ -17,7 +17,7 @@ import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
-import { isPile, openContents, pileOpen } from './engine.js';
+import { isPile, openContents, ownerOf, pileOpen } from './engine.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -136,7 +136,7 @@ export function viewPrompt(state, viewer) {
   if (!p) return null;
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
-  if (!t || typeof viewer?.userId !== 'string' || t.owner !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
+  if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
   const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => pick(o, ['reaction', 'name', 'slots', 'ac'])) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
@@ -157,7 +157,7 @@ function perceived(state, p) {
 export function viewReactions(state, viewer) {
   const out = {};
   if (typeof viewer?.userId !== 'string') return out;
-  for (const [id, e] of Object.entries(state.entities)) if (e.owner === viewer.userId && e.reactions) out[id] = structuredClone(e.reactions);
+  for (const [id, e] of Object.entries(state.entities)) if (e.reactions && ownerOf(state, e) === viewer.userId) out[id] = structuredClone(e.reactions);
   return out;
 }
 
@@ -417,6 +417,13 @@ export function viewEvents(events, state, viewer) {
       continue;
     }
     if (ev.type === 'encounterStart' || ev.type === 'encounterEnd') lastTurnHidden = false;
+    // A companion left the map (docs/specs/companions.md, Decision 4). It is gone from the state, so the engine
+    // said on the event whether the party knew of it then (`seen`) and whether it was theirs (`party`): told as
+    // any creature that disappears, and why and what it was called only for one of theirs.
+    if (ev.type === 'vanished') {
+      if (ev.seen === true && !was?.includes(ev.id)) out.push({ type: 'vanished', id: ev.id, ...(ev.party === true ? pick(ev, ['name', 'why']) : {}) });
+      continue;
+    }
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
 
     switch (ev.type) {
@@ -479,6 +486,17 @@ export function viewEvents(events, state, viewer) {
       }
       case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known
         if (cls(ev.id) !== 'hidden') out.push(pick(ev, ['type', 'id', 'form', 'name']));
+        break;
+      // Bonds (docs/specs/companions.md, Decision 10): the party's own only, so players never learn that a
+      // creature not of theirs belongs to another.
+      case 'bonded':
+        if (cls(ev.id) === 'open' && cls(ev.to) === 'open') out.push(pick(ev, ['type', 'id', 'to', 'kind', 'side']));
+        break;
+      case 'unbonded':
+        if (cls(ev.id) === 'open') out.push({ ...pick(ev, ['type', 'id']), ...(ev.from !== undefined && cls(ev.from) === 'open' ? { from: ev.from } : {}) });
+        break;
+      case 'companion':
+        if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'auto']));
         break;
       case 'concentration':
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));

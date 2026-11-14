@@ -14,7 +14,7 @@ import { xpFor } from './rewards.js';
 import { restamp } from './durations.js';
 import { validFormation } from './engine/world.js';
 
-export const VERSION = 22;
+export const VERSION = 23;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -122,6 +122,9 @@ export function migrate(state) {
   // saved before then has none, and a leader without one walks its followers as the column, as
   // they always walked. One that is not whole is dropped, which is the column again.
   for (const e of Object.values(state.entities)) if (e.formation !== undefined && !validFormation(e.formation)) delete e.formation;
+  // Version 23: companions (docs/specs/companions.md, stage C1). A creature may carry `bond` (its master and
+  // how it is kept); none before. Nothing changes: the version is raised so that an older server refuses a
+  // table with companions rather than load it and drop what it does not know.
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

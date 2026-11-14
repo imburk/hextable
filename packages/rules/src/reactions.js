@@ -28,6 +28,7 @@
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
 import { incapacitated } from './modifiers.js';
+import { ownerOf } from './engine/shared.js';
 
 export const OPPORTUNITY = 'opportunity-attack';
 // What an instruction can say. `miss`: only when the reaction would turn the hit into a miss
@@ -61,7 +62,9 @@ function acGain(def) {
 // it cannot turn. Reactions that add to Armor Class come before those that cut damage.
 export function reactionsOf(e) {
   const out = [];
-  if (opportunityAttack(e)) out.push({ id: OPPORTUNITY, name: 'Opportunity Attack', kind: 'attack', on: 'leave', options: ['always', 'never', 'ask'], dflt: 'always' });
+  // A companion that can't attack (a familiar) makes no Opportunity Attack and no attack as a Reaction.
+  const strikes = !e.bond?.noAttack;
+  if (strikes && opportunityAttack(e)) out.push({ id: OPPORTUNITY, name: 'Opportunity Attack', kind: 'attack', on: 'leave', options: ['always', 'never', 'ask'], dflt: 'always' });
   for (const id of e.spells ?? []) {
     const sp = SPELLS[id], r = sp?.def.reaction;
     if (!r) continue;
@@ -70,7 +73,7 @@ export function reactionsOf(e) {
   }
   for (const t of CONTENT.monsters[e.tpl]?.traits ?? []) {
     const r = t.reaction;
-    if (!r) continue;
+    if (!r || (r.attack && !strikes)) continue;
     out.push({ id: t.id, name: t.name, kind: 'trait', on: r.on, options: ['never', 'miss', 'always', 'ask'], dflt: 'miss', ac: r.ac, ...(r.attack ? { attack: r.attack } : {}), ...(r.manual ? { manual: r.manual } : {}) });
   }
   // Not Reactions, but choices made in advance the same way (#224): a feature used on rolling
@@ -102,7 +105,8 @@ export const canReact = (e) => !!e && !e.dead && e.hp > 0 && !e.reactionUsed && 
 // Could anything at this table stop an action to ask a player? Only a creature a player controls
 // with a standing instruction of `ask`. The engine takes a copy of the state before an action
 // only then (engine.js, apply), so the rest of the time asking costs nothing.
-export const mayAsk = (s) => Object.values(s.entities).some((e) => e.owner && e.reactions && Object.values(e.reactions).includes('ask'));
+// A companion is asked through its master's player (ownerOf).
+export const mayAsk = (s) => Object.values(s.entities).some((e) => e.reactions && Object.values(e.reactions).includes('ask') && ownerOf(s, e));
 
 // Check a `reactions` action's settings against what the creature has. Returns an error text, or null.
 export function checkInstructions(e, set) {

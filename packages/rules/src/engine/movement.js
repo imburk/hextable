@@ -320,7 +320,7 @@ function capture(s, leader, followers, fresh) {
 
 export const handlers = {
   move(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} can't move.`);
     (speedOf(s, e) > 0 || aloft(s, e)) || fail(`${e.name} can't move: its Speed is 0.`);
     const fighting = inFight(s, e.id);
@@ -360,7 +360,7 @@ export const handlers = {
   },
 
   dash(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
     const time = actTime(e, 'dash', a);
     // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
@@ -374,7 +374,7 @@ export const handlers = {
   // Stand up from Prone (E14). In a fight, on its own turn, for half its Speed (the SRD lets it be done
   // during a move); outside one, at no cost. A creature with a Speed of 0 cannot.
   stand(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     e.cond.prone || fail(`${e.name} is not Prone.`);
     if (s.encounter && inFight(s, e.id)) {
@@ -388,7 +388,7 @@ export const handlers = {
     ev.push({ type: 'stood', id: e.id });
   },
   disengage(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
     const time = actTime(e, 'disengage', a);
     need(s, e, time);
@@ -398,7 +398,7 @@ export const handlers = {
 
   // Walk behind another party member, or stop. { type: 'follow', actor, leader: id | null }
   follow(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     if (a.leader === null || a.leader === undefined) {
       e.follow || fail(`${e.name} isn't following anyone.`);
       return unfollow(s, e, ev);
@@ -438,7 +438,7 @@ export const handlers = {
   partyFollow(s, a, ctx, ev) {
     const l = s.entities[a.leader];
     (l && l.side === 'party' && !l.dead) || fail('Only a member of the party can lead.');
-    control(l, ctx);
+    control(s, l, ctx);
     !s.encounter || fail('Nobody falls into line in the middle of a fight.');
     a.shape === undefined || [...SHAPES, 'held'].includes(a.shape) || fail(`No such formation: the choices are ${[...SHAPES, 'held'].join(', ')}.`);
     const rest = living(s).filter((x) => x.side === 'party' && x.id !== l.id && up(x)).sort(byMarch);
@@ -459,7 +459,7 @@ export const handlers = {
   formation(s, a, ctx, ev) {
     const l = s.entities[a.leader];
     (l && l.side === 'party' && !l.dead) || fail('Only a member of the party can lead.');
-    control(l, ctx);
+    control(s, l, ctx);
     !s.encounter || fail('Nobody falls into line in the middle of a fight.');
     const followers = living(s).filter((x) => x.follow === l.id && x.side === 'party').sort(byMarch);
     ctx.role === 'dm' || followers.length || fail(`${l.name} isn't leading anyone.`);

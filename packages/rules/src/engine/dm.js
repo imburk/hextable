@@ -29,6 +29,8 @@ export const handlers = {
       a.user === ctx.userId || fail('You can only claim a character for yourself.');
       !Object.values(s.entities).some((o) => o.owner === ctx.userId) || fail('You already have a character.');
     }
+    // A companion has no player of its own: it goes with its master's (docs/specs/companions.md, Decision 1).
+    !e.bond || fail(`${e.name} goes with ${s.entities[e.bond.to]?.name ?? 'its master'}'s player.`);
     e.owner = a.user || null; e.ownerName = a.userName || null;
     ev.push({ type: 'claimed', id: e.id, userName: e.ownerName });
   },
@@ -48,7 +50,7 @@ export const handlers = {
   // The DM may set anyone aside, and choose `how` (one of AWAY); else the table rule `away` says.
   // Sent again by the DM it changes `how`. Nothing is done on a connection's state: only a person sends this.
   stepAway(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     const dm = ctx.role === 'dm', breaks = s.settings.breaks ?? 'on';
     if (!dm) {
       a.how === undefined || fail('Only the DM chooses what is done with the turns of someone set aside.');
@@ -84,7 +86,7 @@ export const handlers = {
   // the DM, or by its player when the player stepped it aside (a player does not undo the DM's).
   // A turn held this round is taken after the one going on.
   stepBack(s, a, ctx, ev) {
-    const e = ent(s, a.actor); control(e, ctx);
+    const e = ent(s, a.actor); control(s, e, ctx);
     e.away || fail(`${e.name} is not set aside.`);
     ctx.role === 'dm' || e.away.by === 'player' || fail(`The DM set ${e.name} aside; only the DM can bring them back.`);
     const was = e.away;
@@ -180,6 +182,8 @@ export const handlers = {
     const e = ent(s, a.actor);
     !inFight(s, e.id) || fail(`${e.name} is in the fight. End the fight first.`);
     for (const fx of [...effectsOf(s)]) if (fx.source === e.id || fx.parts.some((p) => p.target === e.id)) endEffect(s, ev, fx, `${e.name} left`);
+    // Its companions stay, freed: on their side, the DM's.
+    for (const x of Object.values(s.entities)) if (x.bond?.to === e.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: e.id }); }
     ev.push({ type: 'removed', id: e.id, name: e.name });
     for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
     delete s.entities[e.id];

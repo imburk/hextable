@@ -29,8 +29,20 @@ export const spellStats = (e, s = null, spell = null) => {
   return { attack: bounded(a, m + a.add), dc: bounded(d, 8 + m + d.add) };
 };
 export const ent = (s, id) => s.entities[id] || fail('No such creature.');
-export const control = (e, ctx) =>
-  ctx.role === 'dm' || (e.owner && e.owner === ctx.userId) || fail(`${e.name} isn't yours to control.`);
+// Who plays a creature: its own player, or for a companion (a creature with a `bond`; engine/companions.js,
+// docs/specs/companions.md, Decision 1) its master's player. A bonded creature has no `owner` of its own, so
+// a player still owns one creature, and a familiar goes to the DM and back with its master. null: the DM's.
+export const ownerOf = (s, e) => {
+  if (!e) return null;
+  if (e.owner) return e.owner;
+  const to = e.bond?.to;
+  return (typeof to === 'string' && Object.hasOwn(s?.entities ?? {}, to) && s.entities[to].owner) || null;
+};
+export const control = (s, e, ctx) => {
+  if (ctx.role === 'dm') return true;
+  const who = ownerOf(s, e);
+  return (!!who && who === ctx.userId) || fail(`${e.name} isn't yours to control.`);
+};
 export const fighters = (s) => (s.encounter ? s.encounter.order.map((o) => s.entities[o.id]).filter(Boolean) : []);
 export const ft = (hexes) => `${hexes * FT} ft`;
 export const featOf = (e, id) => (e.feats ?? []).find((f) => f.id === id) ?? null;
@@ -106,7 +118,7 @@ export function ask(s, t, q, options) {
     const o = a.reactor === t.id && options.find((x) => x.reaction === a.take);
     return o && (a.slot === undefined || o.slots?.includes(a.slot)) ? a : { reactor: t.id, take: null };
   }
-  if (!t.owner || !RUN?.canPause) return null;
+  if (!ownerOf(s, t) || !RUN?.canPause) return null;
   throw new Pause({ reactor: t.id, ...q, options });
 }
 // A DM's creature whose instruction is to ask: the DM alone is told, and decides by hand.

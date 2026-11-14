@@ -286,6 +286,9 @@ export function describeStep(action, events, before, after) {
     }
     // Items between creatures (E17): never what was handed over; the gear events say that to those who may know.
     case 'pass': label = `${who} handed something to ${name(a.to)}`; break;
+    // Companions (docs/specs/companions.md). Players are told only of the party's own (the events say so).
+    case 'bond': label = a.to === null || a.to === undefined ? `${who} was freed from ${name(ev('unbonded')?.from)}` : `${who} became ${name(a.to)}'s companion`; break;
+    case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
   return label;
@@ -293,7 +296,7 @@ export function describeStep(action, events, before, after) {
 
   function finish(label) {
   const a = action;
-  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`
+  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' || a.type === 'bond' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`, `bond` the master
   const known = named.every((id) => classify(after, id) !== 'hidden');
   const heard = viewEvents(events, after, { role: 'player' }).length > 0;
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;

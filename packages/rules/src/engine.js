@@ -10,9 +10,9 @@ import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
-import { control, fail, Pause, RuleError, RUN, setRun } from './engine/shared.js';
+import { control, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround } from './engine/world.js';
-import { checkEnd, fall } from './engine/resolve.js';
+import { checkEnd, fall, settleBonds } from './engine/resolve.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -21,9 +21,12 @@ import { handlers as features } from './engine/features.js';
 import { handlers as characters } from './engine/characters.js';
 import { handlers as rests } from './engine/rests.js';
 import { handlers as dm } from './engine/dm.js';
+import { handlers as companions } from './engine/companions.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
-export { ARENA_RADIUS, blocked, castAbilOf, clear, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, spellStats, unblocked, up } from './engine/shared.js';
+export { ARENA_RADIUS, blocked, castAbilOf, clear, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, ownerOf, spellStats, unblocked, up } from './engine/shared.js';
+export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
+export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
 export { aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
@@ -42,7 +45,7 @@ export { opportunityAttack };
 
 // Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
 // type is defined in one module only: if two defined it, the later spread would win silently.
-const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, {
+const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, {
   // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
   // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
   // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
@@ -53,7 +56,7 @@ const handlers = buildHandlers([movement, attacks, casting, features, characters
     const p = s.pending || fail('No reaction is waiting for an answer.');
     a.prompt === p.n || fail('That question has already been answered.');
     const t = s.entities[p.ask.reactor] || fail('No such creature.');
-    control(t, ctx);
+    control(s, t, ctx);
     let answer = { reactor: t.id, take: null };
     if (a.take !== null && a.take !== undefined) {
       const o = p.ask.options.find((x) => x.reaction === a.take) || fail(`${t.name} can't answer with that.`);
@@ -66,7 +69,7 @@ const handlers = buildHandlers([movement, attacks, casting, features, characters
     Object.assign(RUN, { action, ctx: was, answers: [...answers, answer], i: 0 });
     dispatch(s, action, was, ev);
   },
-}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'engine']);
+}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'engine']);
 
 // Builds the table of handlers, a Map keyed by action type: a lookup can then never find what every
 // object has (`toString`, `constructor`, `__proto__`). Throws, naming both modules, if two modules
@@ -169,7 +172,7 @@ export function apply(s, action, ctx = { role: 'dm' }) {
       const t = s.entities[err.ask.reactor];
       s.asked = (s.asked ?? 0) + 1;
       s.pending = { n: s.asked, action: structuredClone(RUN.action), ctx: { ...RUN.ctx }, answers: structuredClone(RUN.answers), ask: structuredClone(err.ask) };
-      ev = [{ type: 'reactionAsked', id: t.id, n: s.asked, to: t.owner, ask: structuredClone(err.ask) }];
+      ev = [{ type: 'reactionAsked', id: t.id, n: s.asked, to: ownerOf(s, t), ask: structuredClone(err.ask) }];
       setRun(null);
       return record(s, ev);
     }
@@ -179,7 +182,8 @@ export function apply(s, action, ctx = { role: 'dm' }) {
     throw err;
   }
   setRun(null);
-  try { gravity(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
+  // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
+  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
   fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
   return record(s, ev);
 }

@@ -284,8 +284,8 @@ test("Hurl Through Hell: a Fiend takes no Psychic damage but is still Incapacita
 test("a version 20 table saved before #232 loads and plays; its ranger, warlock and wizard get the new features when made again from their sheets", () => {
   // Saved by the engine on main before this change: a level 13 Hunter, a level 14 Fiend warlock and a level 14 Evoker beside a goblin.
   const s = migrate(JSON.parse(readFileSync(new URL("./fixtures/v20-casters-232.json", import.meta.url), "utf8")));
-  assert.equal(VERSION, 22, "two state version changes since: map format 2 (#249) and turns named by creature (#300)");
-  assert.equal(s.version, 22);
+  assert.equal(VERSION, 23, "three state version changes since: map format 2 (#249), turns named by creature (#300) and companions (#311)");
+  assert.equal(s.version, 23);
   const id = (name) => Object.values(s.entities).find((e) => e.name === name).id;
   const R = id("Rook"), W = id("Mor"), V = id("Vex"), G = id("Goblin Warrior 1");
   assert.equal(s.entities[V].feats.find((f) => f.id === "overchannel").overchannel, undefined, "the saved records are the old ones");
