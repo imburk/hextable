@@ -6,7 +6,7 @@ import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
@@ -16,7 +16,7 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, isPile, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, lookAround, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { tryLand } from './sheets.js';
 
@@ -121,9 +121,15 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
     id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
     order: null, where: fightPlace(s, center),
   };
-  const faces = {};
-  s.encounter.order = initiativeSort(who.map((e) => rollInit(s, e, faces)));
+  // Each rolls, in the order the creatures are kept, but a companion whose turn is its master's and whose master
+  // is in the fight: it takes the master's count, straight after it (Decision 3). One whose master is not here rolls.
+  const faces = {}, ids = new Set(who.map((e) => e.id));
+  const behind = (e) => (e.bond?.turn === 'after' && typeof e.bond.to === 'string' && ids.has(e.bond.to) && !s.entities[e.bond.to].bond ? e.bond.to : null);
+  const slots = who.map((e) => (behind(e) ? { id: e.id, init: null, dex: e.abil.dex, after: behind(e) } : rollInit(s, e, faces)));
+  for (const o of slots) if (o.after) o.init = slots.find((x) => x.id === o.after).init;
+  s.encounter.order = initiativeSort(slots);
   ev.push({ type: 'encounterStart', fight: s.encounter.id, where: s.encounter.where, center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
+  for (const e of who) if (!behind(e)) ownCount(e, ev);
   advanceTurn(s, ev);
 }
 
@@ -310,6 +316,9 @@ export function settleOrder(s) {
 function newRound(s) {
   const enc = s.encounter;
   delete enc.held;
+  // A companion whose place behind its master could not change in the middle of the last round (bonded or
+  // freed then, or a master who joined after it) takes it now (followMasters, world.js).
+  if (followMasters(s, false)) enc.turn = 0;
   if (!enc.moved) return;
   let back = false;
   for (const [id, m] of Object.entries(enc.moved)) {
@@ -813,8 +822,9 @@ function settleSeen(s, e, ev) {
   }
 }
 // A bonded creature leaves the map: `why` is 'hp0' (it dropped to 0 Hit Points and its bond says it
-// vanishes), 'master' (its master died), 'leash' (it ended too far from its master), 'dismissed', and
-// in later stages 'ended', 'rest', 'replaced'. What it was concentrating on and its own lasting effects
+// vanishes), 'ended' (the lasting effect that kept it ended), 'master' (its master died), 'rest' (its master
+// finished a Long Rest, rests.js), 'leash' (it ended too far from its master), 'dismissed', and in a later
+// stage 'replaced'. What it was concentrating on and its own lasting effects
 // end; a part of another's effect that was on it ends (the effect too, if nothing else was left of it);
 // it leaves the fight order (its own turn, if it is going on, passes); what it carried stays behind; the
 // record goes. `vanished { id, name, why }` carries `seen` when the party knew of it just before and
@@ -859,7 +869,10 @@ export function vanish(s, e, why, ev) {
 // onto a pile players are not sent (leaveGear). Everything it did goes on as after any death; the DM is told
 // what is left, to end by hand, and may `remove` the record when nothing of it is needed.
 function vanishUnseen(s, e, why, ev) {
-  const name = e.name, left = [];
+  const name = e.name, left = [], kind = e.bond?.kind;
+  // The husk is no one's companion: it does not count toward its master's companions (BOND_MAX, and a master
+  // can't itself be bonded while it has any), and it is what any unseen death leaves (review of #313, round 4, L2).
+  delete e.bond;
   leaveGear(s, e, ev, true);
   e.gear = [];
   if (Array.isArray(e.sheet?.items)) { e.sheet.items = []; delete e.sheet.attuning; }
@@ -874,19 +887,21 @@ function vanishUnseen(s, e, why, ev) {
   ev.push({ type: 'vanished', id: e.id, name, why });
   ev.push({ type: 'manual', actor: null, name, partial: true,
     text: `${name} vanished where the party could not see it. So that the party learns nothing it could not, its record stays, dead and hidden, and what it did goes on as after a death${left.length ? `: ${left.join('; ')}` : ''}. End what should end (endEffect, condition) when the party could know, and remove ${name} when nothing of it is needed.` });
-  if (why === 'hp0' && e.bond?.kind === 'object')
+  if (why === 'hp0' && kind === 'object')
     ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} reverts to the object it was. The damage that took it past 0 carries over to that object: the DM's to apply.` });
   checkEnd(s, ev);
 }
 
 // After every action (engine.js, apply): a companion at 0 Hit Points whose bond says it vanishes, one
-// whose bond ends when its master dies and whose master is dead, and one farther than its leash from
-// its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
+// kept by a lasting effect that no longer holds it (its `summon` part ended, or the effect did: durations.js,
+// holds), one whose bond ends when its master dies and whose master is dead, and one farther than its leash
+// from its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
 export function settleBonds(s, ev) {
   for (const e of Object.values(s.entities).filter((x) => x.bond)) {
     if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
     const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
     if ((e.dead || e.hp <= 0) && b.at0 === 'vanish') vanish(s, e, 'hp0', ev);
+    else if (b.fx && !holds(s, e)) vanish(s, e, 'ended', ev);
     else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);
     else if (m && !e.dead && Number.isFinite(b.leash) && apart(s, e, m) * FT > b.leash) vanish(s, e, 'leash', ev);
   }

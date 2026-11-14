@@ -9,6 +9,7 @@ import { attuneProblem, derive, itemName } from '../derive.js';
 import { ent, fail, featOf, mod } from './shared.js';
 import { heal } from './rolls.js';
 import { newProblems, remake, tryLand } from './sheets.js';
+import { vanish } from './resolve.js';
 
 // ---------- dawn (DEBT C14, #284) ----------
 // The world clock counts minutes from midnight of the first day (scenario.js starts it at 08:00); dawn is
@@ -59,12 +60,14 @@ export const handlers = {
       (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= 500) || fail('Name who rests.');
       who = [...new Set(a.ids)].map((id) => ent(s, id)).filter((x) => !x.dead);
     }
+    const rested = new Set();                                            // who finished the Long Rest
     for (const e of who) {
       if (e.hp <= 0) {
         if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
         else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
         continue;
       }
+      rested.add(e.id);
       Object.assign(e, { hp: e.maxHp, death: { s: 0, f: 0 }, slots: { ...e.slotsMax } });
       e.uses.secondWind = e.features.secondWind || 0;
       for (const f of e.feats ?? []) if (f.uses) e.uses[f.id] = f.uses.max;   // every feature with uses
@@ -83,6 +86,11 @@ export const handlers = {
     ev.push({ type: 'rest' });
     dawn(s, from, ev);
     tick(s, ev);
+    // A companion whose bond ends at its master's Long Rest (Wild Companion: "disappears when you finish a Long
+    // Rest") vanishes once its master has finished one (companions.md, Decision 4). In the order kept, so it replays.
+    for (const x of Object.values(s.entities)) {
+      if (Object.hasOwn(s.entities, x.id) && !x.vanished && rested.has(x.bond?.to) && Array.isArray(x.bond.ends) && x.bond.ends.includes('longRest')) vanish(s, x, 'rest', ev);
+    }
   },
   // SRD Short Rest: an hour. { type: 'shortRest', ids?, spend?: { id: n }, recover?: { id: [slot levels] } }
   // Each who rests (the party when `ids` is not given) can spend Hit Point Dice (`spend`): each rolls

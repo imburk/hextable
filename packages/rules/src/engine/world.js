@@ -478,7 +478,67 @@ export function unhide(s, e, ev, why, by = null) {
 
 // ---------- encounters ----------
 
-export const initiativeSort = (order) => order.sort((a, b) => b.init - a.init || b.dex - a.dex);
+// By Initiative, highest first, Dexterity breaking a tie, and an equal pair kept as it stood (the sort is
+// stable). A companion whose turn is its master's (companions.md, Decision 3) carries `after: masterId` on
+// its entry and the master's `init`: it is not sorted with the rest but put straight behind its master and
+// any of the master's companions before it, in the order they stand, which is the order they were made
+// (entries are added at the end). One whose master is not in the order is sorted by the count it carries.
+// With no `after` entries this is the sort it always was.
+export function initiativeSort(order) {
+  const leads = (o) => !o.after || !order.some((x) => x.id === o.after && !x.after);
+  const out = order.filter(leads).sort((a, b) => b.init - a.init || b.dex - a.dex);
+  for (const o of order) {
+    if (leads(o)) continue;
+    let i = out.findIndex((x) => x.id === o.after);
+    while (i + 1 < out.length && out[i + 1].after === o.after) i++;
+    out.splice(i + 1, 0, o);
+  }
+  order.splice(0, order.length, ...out);
+  return order;
+}
+// The master a companion's turn follows, if it has one in this order: a bond with `turn: 'after'`, and its
+// master there with a place of its own.
+export function leadOf(s, order, e) {
+  if (e?.bond?.turn !== 'after' || typeof e.bond.to !== 'string') return null;
+  return order.find((o) => o.id === e.bond.to && !o.after) ?? null;
+}
+// Bring the order in step with the bonds: an entry is `after` its master exactly when its creature's bond
+// says so and that master has a place in the order (a companion bonded or freed in the fight, a master who
+// joined after its companion). `now`: in the middle of a round, where a change is made only if every
+// creature that has had its turn this round still has, and every one still to come still is (otherwise it
+// waits for the next round, newRound in resolve.js, where any change is safe). `fresh`: the id of a
+// creature just added to the order, which has had no turn whatever its place. True if anything changed.
+// A stamp from before state version 22 (durations.js, thisTurn) is named by its creature before anything
+// moves, as joinEncounter and settleOrder do.
+export function followMasters(s, now, fresh = null) {
+  const enc = s.encounter;
+  if (!enc) return false;
+  const want = (o) => leadOf(s, enc.order, s.entities[o.id]);
+  if (!enc.order.some((o) => (want(o)?.id ?? null) !== (o.after ?? null))) return false;
+  for (const fx of effectsOf(s)) {
+    for (const p of fx.parts) if (p.born !== undefined) p.born = restamp(enc, p.born);
+    if (fx.zone?.last) for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(enc, fx.zone.last[k]);
+  }
+  const cur = enc.turn >= 0 ? enc.order[enc.turn]?.id ?? null : null;
+  const had = (order) => { const t = order.findIndex((o) => o.id === cur); return new Set(order.slice(0, t < 0 ? 0 : t + 1).map((o) => o.id).filter((id) => id !== fresh)); };
+  const same = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
+  let changed = false;
+  for (const o of [...enc.order]) {
+    const m = want(o), to = m?.id ?? null;
+    if (to === (o.after ?? null)) continue;
+    if (now && cur !== null && o.id === cur) continue;                // the creature whose turn it is stays put
+    const trial = enc.order.map((x) => ({ ...x }));
+    const t = trial.find((x) => x.id === o.id);
+    if (to) Object.assign(t, { after: to, init: m.init }); else delete t.after;
+    initiativeSort(trial);
+    if (now && cur !== null && !same(had(enc.order), had(trial))) continue;
+    if (to) Object.assign(o, { after: to, init: m.init }); else delete o.after;
+    initiativeSort(enc.order);
+    changed = true;
+  }
+  if (changed && cur !== null) enc.turn = enc.order.findIndex((o) => o.id === cur);
+  return changed;
+}
 // `faces`, if given, gets the dice of the roll under the creature's id, for the event.
 export function rollInit(s, e, faces = null) {
   const m = modifiers(s, e, 'initiative');
@@ -502,11 +562,23 @@ export function joinEncounter(s, e, ev) {
     for (const p of fx.parts) if (p.born !== undefined) p.born = restamp(enc, p.born);
     if (fx.zone?.last) for (const k of Object.keys(fx.zone.last)) fx.zone.last[k] = restamp(enc, fx.zone.last[k]);
   }
-  const faces = {}, slot = rollInit(s, e, faces);
+  // A companion whose turn is its master's takes its place behind the master with no roll; one whose master is
+  // not in the fight rolls its own, and is put behind the master if the master joins later (Decision 3).
+  const lead = leadOf(s, enc.order, e), faces = {};
+  const slot = lead ? { id: e.id, init: lead.init, dex: e.abil.dex, after: lead.id } : rollInit(s, e, faces);
   enc.order.push(slot);
   initiativeSort(enc.order);
   enc.turn = enc.order.findIndex((o) => o.id === cur);
-  ev.push({ type: 'joined', id: e.id, init: slot.init, ...faces[e.id] });
+  ev.push({ type: 'joined', id: e.id, init: slot.init, ...(lead ? { after: lead.id } : faces[e.id]) });
+  if (!lead) ownCount(e, ev);
+  followMasters(s, true, e.id);                                        // its companions already here go behind it, when that is safe now
+}
+// A companion whose turn is its master's, in a fight its master is not in: it rolls its own Initiative, and its
+// controller is told why (Decision 3). Only the party's own is told in the open: of another's, the DM alone.
+export function ownCount(e, ev) {
+  if (e.bond?.turn !== 'after') return;
+  const text = `${e.name} rolls its own Initiative: its master is not in the fight. It will act straight after its master if its master joins.`;
+  ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: e.name, partial: true, text });
 }
 
 // Where a fight is, in words everyone may read: the revealed region holding its centre, else the map's name.

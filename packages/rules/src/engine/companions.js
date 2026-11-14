@@ -4,10 +4,11 @@
 // control). How a bond ends is in resolve.js (vanish, settleBonds).
 //
 // Built here: the DM's `bond` action (pets, hirelings' mounts, a foe's familiar) and `companion { auto }`.
-// Bonds made by spells (`fx`, `source`, `ends`, `leash`), turns after the master's or none, and commands
-// come with later stages; until then the DM's bond refuses what the engine would not run.
+// Bonds made by spells (`fx`, `source`, `ends`, `leash`), no turn at all, and commands come with later
+// stages; until then the DM's bond refuses what the engine would not run. A turn straight after the
+// master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
 import { ent, control, fail, inFight } from './shared.js';
-import { lookAround, unfollow } from './world.js';
+import { followMasters, lookAround, unfollow } from './world.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
 export const BOND_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
@@ -21,7 +22,8 @@ const AT0_BY_KIND = { familiar: 'vanish', steed: 'vanish', summon: 'vanish', ser
 export const BOND_MAX = 20;
 const FIELDS = ['kind', 'turn', 'orders', 'at0', 'noAttack'];
 
-export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x.bond?.to === id);
+// A husk left by an unseen vanish (resolve.js, vanishUnseen) has no bond; one kept from before stage C2 is passed by too.
+export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x.bond?.to === id && !x.vanished);
 
 export const handlers = {
   // { type: 'bond', actor, to, kind?, turn?, orders?, at0?, noAttack? }: the DM binds a creature to a
@@ -36,6 +38,7 @@ export const handlers = {
       const from = e.bond.to;
       delete e.bond;
       ev.push({ type: 'unbonded', id: e.id, from });
+      followMasters(s, true);                        // in a fight it keeps its place for now, and has its own from the next round
       return;
     }
     typeof a.to === 'string' || fail('Name its master ({ to: id }), or free it ({ to: null }).');
@@ -53,9 +56,9 @@ export const handlers = {
     BOND_KINDS.includes(kind) || fail(`A companion's kind can be: ${BOND_KINDS.join(', ')}.`);
     const turn = a.turn ?? 'own';
     BOND_TURNS.includes(turn) || fail(`A companion's turn can be: ${BOND_TURNS.join(', ')}.`);
-    // The engine does not yet run a turn after the master's or none (stage C2), nor commands (C5): it
-    // refuses them rather than store a choice it would not keep.
-    turn === 'own' || fail('A companion can have only a turn of its own so far: a turn after its master\'s, or none, is not built yet.');
+    // The engine does not yet run a turn of none (riding and the servant, stages C5 and C6), nor commands (C5): it
+    // refuses them rather than store a choice it would not keep. A turn after its master's is built (C2).
+    turn !== 'none' || fail('A companion can have a turn of its own or one straight after its master\'s so far: no turn at all is not built yet.');
     const orders = a.orders ?? 'free';
     BOND_ORDERS.includes(orders) || fail(`A companion's orders can be: ${BOND_ORDERS.join(', ')}.`);
     orders === 'free' || fail('A companion can only be played freely so far: commands are not built yet.');
@@ -74,6 +77,7 @@ export const handlers = {
     }
     e.bond = { to: m.id, kind, fx: null, turn, orders, at0, ends: [], ...(a.noAttack ? { noAttack: true } : {}), commanded: null, auto: false };
     ev.push({ type: 'bonded', id: e.id, to: m.id, kind, ...(turned ? { side: e.side } : {}) });
+    followMasters(s, true);                          // in a fight, a turn after its master's: behind it now if that is safe, else from the next round
     if (turned && e.side === 'party') lookAround(s, ev, [e]);      // what a party member sees, the party sees
   },
 
