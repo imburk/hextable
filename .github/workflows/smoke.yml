@@ -35,7 +35,8 @@ jobs:
       # Fail fast, before the browser install, if the name is not a key of REGISTRY.
       # (An unknown SMOKE_ONLY also exits 1 in scripts/smoke.mjs itself, but only after the install.)
       - name: Check the pass name is in the registry
-        run: grep -Eq "^  '?${{ matrix.pass }}'?: \[" scripts/smoke.mjs
+        run: |
+          grep -Eq "^  '?${{ matrix.pass }}'?: \[" scripts/smoke.mjs
       - run: npm i -g playwright
       - run: npx playwright install --with-deps chromium
       # scripts/smoke.mjs skips with exit 0 when playwright is not found; in CI that would be a false green.
