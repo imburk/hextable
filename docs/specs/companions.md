@@ -594,3 +594,39 @@ Settled in the review of #313:
   of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
 - **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
   may tick it.
+
+### C2, the turn and lasting effects (#316)
+
+- **The order.** An entry with `after: masterId` carries its master's `init` and is not sorted with the rest:
+  `initiativeSort` (world.js) sorts the others as before (stably, so a tie stays as it stood) and puts each
+  `after` entry straight behind its master and that master's earlier companions, in the order they stand,
+  which is the order they joined. With no `after` entries it is the old sort, exactly.
+- **Joining.** At the start of a fight, and when a creature joins one, a companion with `turn: 'after'` whose
+  master has a place takes it with no roll (`joined { id, init, after }`). One whose master is not in the fight
+  rolls its own Initiative and its controller is told (a `note` for the party's own; for another's, a `manual`
+  for the DM alone, so players are never told it belongs to someone).
+- **Changing places in a round.** When the order and the bonds stop agreeing (a master joins after its
+  companion, the DM bonds or frees a creature in the fight), `followMasters` moves an entry at once only if
+  every creature that has had its turn this round still has and every one still to come still is, and the
+  creature whose turn it is stays put. Otherwise the move waits for the start of the next round (`newRound`),
+  so no creature has two turns in a round or loses one. A companion bonded in its master's turn, whose own turn
+  is still to come, so acts straight after the master in that round.
+- **Stepping away (E20) is left as it was:** a master moved to the end of the round goes alone; its `after`
+  companions keep its count.
+- **The DM's bond** takes `turn: 'after'`; `turn: 'none'` and `orders: 'command'` are still refused (C5, C6).
+- **The `summon` part.** A creature a spell keeps is a part `{ target, summon: true }` of the lasting effect its
+  `bond.fx` names. `durations.js` `holds(s, e)` says whether that part still stands; `settleBonds` vanishes the
+  creature (`why: 'ended'`) after the action once it does not, by Concentration lost, its time run out or
+  `endEffect`. `vanish` takes its place in the order, and passes the turn if it was its own. Ending the part
+  itself changes nothing in `durations.js`: the layer under `resolve.js` cannot vanish a creature.
+- **Long Rest.** After a `rest`, a companion whose bond has `ends: ['longRest']` vanishes (`why: 'rest'`) if its
+  master finished the rest (a master at 0 Hit Points does not).
+- **From the C1 reviews.** The record an unseen vanish leaves has no `bond` (it does not count toward
+  `BOND_MAX` or stop its master being bonded; `companionsOf` also passes by a `vanished` record kept from
+  before). A consequence: it counts toward a fight's XP, as any unseen death does, which keeps the twin
+  property (owner's question 6 is about companions players could know of). `effectStart`/`effectEnd`'s `why`
+  becomes "it ended" also when it names a creature the effect was on that players do not know of.
+- **What players are sent.** `after` only on an Open entry whose master is Open (`view.js`, the order, the
+  `encounterStart` order and `joined`); a foe's companion's entry stays `{ id }`.
+- **No state version bump:** `after` on an entry is optional, and nothing else in the shape changed.
+

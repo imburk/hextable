@@ -11,6 +11,7 @@ import { gridOf } from "../src/grid.js";
 import { initiativeSort } from "../src/engine/world.js";
 import { startEffect } from "../src/durations.js";
 import { BOND_MAX } from "../src/engine/companions.js";
+import { aiStep } from "../src/ai.js";
 
 const DM = { role: "dm", userId: "dm" };
 const U1 = { role: "player", userId: "u1" };
@@ -32,8 +33,8 @@ function spot(s, near, n = 0, r = 3) {
 }
 const spawn = (s, monster, at, name) => ok(apply(s, { type: "spawn", monster, at, ...(name ? { name } : {}) }, DM)).events.find((e) => e.type === "spawned").id;
 const bond = (s, actor, to, more = {}) => ok(apply(s, { type: "bond", actor, to, ...more }, DM));
-function table(grid) {
-  const s = newGame(5, grid ? { grid } : {});
+function table(grid, seed = 5) {
+  const s = newGame(seed, grid ? { grid } : {});
   s.settings.autoEngage = false;                  // the DM starts the fights here
   ok(apply(s, { type: "claim", entity: "fighter", user: "u1", userName: "Ann" }, U1));
   ok(apply(s, { type: "claim", entity: "rogue", user: "u2", userName: "Bo" }, U2));
@@ -425,3 +426,30 @@ for (const grid of [null, "square"]) {
     assert.equal(current(s2), p);
   });
 }
+
+test("an AI-played fight with after companions on both sides: everyone plays, the order holds, and no foe's after reaches a player", () => {
+  for (const grid of [null, "square"]) for (const seed of [3, 5, 11]) {
+    const s = table(grid, seed), f = s.entities.fighter;
+    const mage = spawn(s, "goblin-warrior", spot(s, f.pos, 3, 3), "Gob Mage");
+    const theirs = [0, 1].map((n) => spawn(s, "wolf", spot(s, s.entities[mage].pos, n, 2), `Pet ${n}`));
+    for (const t of theirs) bond(s, t, mage, { turn: "after", kind: "summon" });
+    const mine = spawn(s, "wolf", spot(s, f.pos, 0, 2), "Hound");
+    bond(s, mine, "fighter", { turn: "after" });
+    ok(apply(s, { type: "startEncounter", center: f.pos, radius: 5 }, DM));
+    const sent = [];
+    for (let i = 0; i < 120 && s.encounter; i++) {
+      const id = current(s), e = s.entities[id];
+      const step = e.side === "party" && e.kind === "pc" ? { type: "endTurn", actor: id } : aiStep(s, id) ?? { type: "endTurn", actor: id };
+      let r = apply(s, step, DM);
+      if (!r.ok) r = ok(apply(s, { type: "endTurn", actor: id }, DM));
+      sent.push(json(viewEvents(r.events, s, U1)), json(view(s, U1)));
+      if (!s.encounter) break;
+      for (const [m, cs] of [[mage, theirs], ["fighter", [mine]]]) {
+        const live = cs.filter((c) => ids(s).includes(c));
+        if (ids(s).includes(m) && live.length) behindMaster(s, m, live);
+      }
+    }
+    const all = sent.join("\n");
+    assert.ok(!all.includes(`"after":"${mage}"`), "a foe's after reached a player");
+  }
+});
