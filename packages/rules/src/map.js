@@ -1,30 +1,44 @@
 // The map document: one self-contained JSON description of a place. A table's game state holds
 // its own copy. Design: docs/specs/maps-and-objects.md
-import { col } from './grid.js';
+import { col, gridOf } from './grid.js';
 import { TILES } from './content/terrain.js';
 import { CONTENT } from './content/index.js';
 import { WALL_KINDS } from './walls.js';
 import { AMBIENT } from './content/lights.js';
 
-export const MAP_FORMAT = 1;
+// Format 2 (docs/specs/square-grid.md, Decision 3): the map says which grid it is drawn on, `grid`
+// 'hex' or 'square', and how many feet a cell is, `cellFeet` (format 1 called it `hexFeet`). A build
+// that reads format 1 refuses a format 2 document rather than reading a square map as hexes.
+export const MAP_FORMAT = 2;
+export const GRIDS = ['hex', 'square'];
 export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500 };
 
 export const newMap = (over = {}) => ({
-  format: MAP_FORMAT, id: 'map', name: 'Untitled map', hexFeet: 5,
+  format: MAP_FORMAT, id: 'map', name: 'Untitled map', grid: 'hex', cellFeet: 5,
   levels: [{ id: 'ground', name: 'Ground', z: 0, tiles: {} }],
   walls: [], objects: [], regions: [], starts: [], ...over,
 });
 
-// Brings a map document from an older format up to date. Safe to run on any document.
+// Brings a map document from an older format up to date. Safe to run on any document, any number of
+// times. A document of a newer format than this build reads is left as it is, so that the linter
+// refuses it by its format instead of this function stamping it as one it can read.
 export function migrateMap(doc) {
-  if (!doc || typeof doc !== 'object') return doc;
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return doc;
+  if (typeof doc.format === 'number' && doc.format > MAP_FORMAT) return doc;
   if (!doc.levels && doc.tiles) {                       // before format 1: one sheet, heights for looks only
     const tiles = {};
     for (const [k, t] of Object.entries(doc.tiles)) tiles[k] = { t: t.t, ...(typeof t.h === 'number' ? { lift: t.h } : {}) };
     doc = { ...newMap({ id: 'valley', name: 'The valley' }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }] };
   }
   for (const k of ['walls', 'objects', 'regions', 'starts']) if (!Array.isArray(doc[k])) doc[k] = [];
-  doc.format = MAP_FORMAT;
+  // Format 1 to 2: every format 1 map is on hexes; `hexFeet` becomes `cellFeet` (the linter still
+  // insists on 5). The header keeps its order: format, id, name, grid, cellFeet, then the rest.
+  // A format 1 document's own `grid` or `cellFeet`, if it had any, meant nothing to the build that
+  // played it, so they are not read.
+  if (doc.format !== MAP_FORMAT) {
+    const { format, id, name, hexFeet, grid, cellFeet, ...rest } = doc;
+    doc = { format: MAP_FORMAT, ...(id !== undefined && { id }), ...(name !== undefined && { name }), grid: 'hex', ...(hexFeet !== undefined && { cellFeet: hexFeet }), ...rest };
+  }
   return doc;
 }
 
@@ -52,7 +66,10 @@ export function lintMap(doc, extra = []) {
   if (doc.format !== MAP_FORMAT) bad.push(`Its format is ${doc.format}; this game reads format ${MAP_FORMAT}.`);
   if (!text(doc.id)) bad.push('It has no id.');
   if (!text(doc.name)) bad.push('It has no name.');
-  if (doc.hexFeet !== 5) bad.push('A hex must be 5 feet.');
+  if (doc.grid === 'square') bad.push('Square maps come in a later version.');            // until task S6
+  else if (!GRIDS.includes(doc.grid)) bad.push(`Its grid is "${doc.grid}"; it can be ${GRIDS.join(' or ')}.`);
+  const G = gridOf(doc);
+  if (doc.cellFeet !== 5) bad.push(`A ${G.word.one} must be 5 feet.`);
   if (!Array.isArray(doc.levels) || !doc.levels.length) return [...bad, 'It has no levels.'];
   if (doc.levels.length > MAP_LIMITS.levels) bad.push(`It has more than ${MAP_LIMITS.levels} levels.`);
   const ids = new Set();
@@ -101,7 +118,7 @@ export function lintMap(doc, extra = []) {
     if (!level) { bad.push(`Object "${o.id}" is on a level that does not exist.`); continue; }
     if (!o.at || !Number.isInteger(o.at.q) || !Number.isInteger(o.at.r) || !level.tiles[col(o.at)]) bad.push(`Object "${o.id}" is not on a hex of its level.`);
     if (!Object.hasOwn(def.states, o.state)) bad.push(`Object "${o.id}" is in a state its kind does not have: "${o.state}".`);
-    if (o.edge !== undefined && !(Number.isInteger(o.edge) && o.edge >= 0 && o.edge < 6)) bad.push(`Object "${o.id}" has an edge that is not 0 to 5.`);
+    if (o.edge !== undefined && !(Number.isInteger(o.edge) && o.edge >= 0 && o.edge < G.EDGES)) bad.push(`Object "${o.id}" has an edge that is not 0 to ${G.EDGES - 1}.`);
     if (o.seg !== undefined && !(o.seg && point(o.seg.a) && point(o.seg.b))) bad.push(`Object "${o.id}" has a line that is not two points.`);
     if (def.kind === 'door' && o.edge === undefined && o.seg === undefined) bad.push(`Door "${o.id}" needs a hex edge or a line to stand on.`);
     if (def.kind !== 'door' && (o.edge !== undefined || o.seg !== undefined)) bad.push(`Object "${o.id}" stands in a hex, not on an edge.`);

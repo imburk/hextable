@@ -137,6 +137,18 @@ with `key` and `pack`; typed in by hand: its name into `gear`, `nameOnly`), and 
 back. A `conclusion` loot line may say `item` (and `base`, `type`, `spell`); its `name` defaults to the item's. Players
 are sent these events only for the party's creatures. The migration to 20 converts nothing.
 
+**Map format 2 (#249). State version 21.** A map document (`loadMap`, `mapEdit`, `state.map`, and
+the map in every view) is `{ format: 2, id, name, grid, cellFeet, levels, walls, objects, regions,
+starts }`: `grid` is `"hex"` or `"square"` and `cellFeet` (format 1's `hexFeet`) is 5. Players are
+sent `grid` and `cellFeet` with the rest of the map header; nothing about the grid is secret. A
+square map is refused for now ("Square maps come in a later version.", docs/specs/square-grid.md
+task S6). `loadMap` takes format 2 only: a format 1 document is refused with "Its format is 1; this
+game reads format 2." and changes nothing; `migrateMap` in `rules/src/map.js` brings one up (the
+editor runs it on every map file it opens). A build that reads format 1 refuses a format 2 map
+rather than playing it on the wrong grid. Saved tables and exports migrate when they are loaded: the
+map gains `grid: "hex"` and `cellFeet: 5` and loses `hexFeet`, nothing else changes, and, as with
+every version change, a saved undo history is dropped once.
+
 **Spell vocabulary (#165).** No new action. `cast` of a spell with a teleport step (Misty Step,
 Dimension Door) takes the destination in `hex` (`{ q, r, z? }`), as an area spell is aimed; a
 player may name only a place the party has been shown; with no `hex` the DM moves the caster.
