@@ -49,10 +49,10 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-stock').innerHTML = opts;
   $('lobby-map').innerHTML = `<option value="">The starter valley</option>${opts}`;
   // The starter valley comes on squares or on hexes (squares listed first); the choice is asked only while "The starter valley" is
-  // the starting map, and the device remembers the last one. Nothing remembered: hexes, as the valley has always been.
+  // the starting map, and the device remembers the last one. Nothing remembered: squares (the owner's choice of default; the engine's own `newGame` with no option is still the hex valley).
   const grids = [...document.getElementsByName('lobby-grid')];
   const last = (() => { try { return localStorage.getItem(GRID_KEY); } catch { return null; } })();
-  for (const r of grids) r.checked = r.value === (last === 'square' ? 'square' : 'hex');
+  for (const r of grids) r.checked = r.value === (last === 'hex' ? 'hex' : 'square');
   const showGrid = () => { $('lobby-grid').hidden = $('lobby-map').value !== ''; };
   $('lobby-map').addEventListener('change', showGrid); showGrid();
   for (const r of grids) r.addEventListener('change', () => { try { localStorage.setItem(GRID_KEY, valleyGrid()); } catch { /* storage unavailable */ } });

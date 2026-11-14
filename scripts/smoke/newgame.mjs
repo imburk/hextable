@@ -145,12 +145,14 @@ async function valley(browser, url, label, opts) {
       const page = await ctx.newPage();
       run.watch(page);
       const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
-      await run.do('the lobby offers squares first, hexes picked on a first visit, and one tap changes it', async () => {
-        await open(page, url);
+      await run.do('the lobby offers squares first; a first visit, with nothing remembered, has squares picked; one tap changes it', async () => {
+        await open(page, url, { grid: null });                     // a first visit: nothing is remembered on this device
         const labels = await page.$$eval('#lobby-grid label', (l) => l.map((x) => x.textContent.trim()));
         if (labels.join('|') !== 'Valley on squares|Valley on hexes') throw new Error(`choices: ${labels}`);
-        if ((await picked(page)) !== 'hex') throw new Error('hexes are not the first-visit choice');
+        if ((await picked(page)) !== 'square') throw new Error(`squares are not the first-visit choice (${await picked(page)})`);
         if (!(await inView(page, '#lobby-grid label:first-child'))) throw new Error('the choice is out of view');
+        await tap('#lobby-grid label:last-child');
+        if ((await picked(page)) !== 'hex') throw new Error('one tap did not pick hexes');
         await tap('#lobby-grid label:first-child');
         if ((await picked(page)) !== 'square') throw new Error('one tap did not pick squares');
       });
