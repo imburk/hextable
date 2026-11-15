@@ -206,6 +206,11 @@ export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x
 // Refused, with the one text for it, unless master `m` has room for `n` more companions. A dead companion does not count
 // (any kind: a Zombie or a pet that dies keeps its bond, `at0: 'dies'`, so the DM can bring it back with `setHp`; review
 // of #341). Only the cap skips them: they are still `m`'s companions everywhere else.
+// A familiar in its master's pocket dimension (stage C5c) still counts: it is still the master's, only not on the map.
 export function roomForCompanions(s, m, n = 1) {
-  companionsOf(s, m.id).filter((x) => !x.dead).length + n <= BOND_MAX || fail(`${m.name} can have at most ${BOND_MAX} companions.`);
+  companionsOf(s, m.id).filter((x) => !x.dead).length + pocketOf(m).length + n <= BOND_MAX || fail(`${m.name} can have at most ${BOND_MAX} companions.`);
 }
+// The familiars a master has dismissed to a pocket dimension (Decision 6; stage C5c): out of `state.entities`, kept
+// on the master as `pocket = { [id]: record }`, so nothing on the map, in sight or in the fight sees them. Only the
+// master's own keys, in the order they were put there.
+export const pocketOf = (m) => (m?.pocket && typeof m.pocket === 'object' && !Array.isArray(m.pocket) ? Object.keys(m.pocket).map((k) => m.pocket[k]) : []);

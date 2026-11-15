@@ -252,9 +252,9 @@ export const spells1 = [
     time: "hour", range: 10, components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: true,
     target: {"self": true},
-    effects: [{"summon": "form", "forms": {"type": "beast", "cr": 0}, "types": ["celestial", "fey", "fiend"], "bond": {"kind": "familiar", "turn": "own", "orders": "free", "at0": "vanish", "noAttack": true}}],
+    effects: [{"summon": "form", "forms": {"type": "beast", "cr": 0}, "types": ["celestial", "fey", "fiend"], "one": "reform", "bond": {"kind": "familiar", "turn": "own", "orders": "free", "at0": "vanish", "noAttack": true}}],
     tier: "assist", checked: true,
-    text: "Summons a spirit companion in the form of a CR 0 Beast, as a Celestial, Fey or Fiend, that acts on its own turn but cannot attack; an hour to cast, or a ritual. The DM keeps to one familiar a caster (a second casting only changes its form; remove the old one), and runs dismissing, recalling, telepathy and touch delivery. No Octopus form: the SRD has no block.",
+    text: "Summons a spirit companion in the form of a CR 0 Beast, as a Celestial, Fey or Fiend, that acts on its own turn but cannot attack; an hour to cast, or a ritual. One familiar a caster: casting again gives it the new form. The engine dismisses it to a pocket dimension or forever and recalls it, and lets it deliver a touch spell with its Reaction; the DM runs telepathy and seeing through its eyes. No Octopus form: the SRD has no block.",
   },
   {
     id: "fog-cloud", name: "Fog Cloud", source: "SRD 5.2.1",

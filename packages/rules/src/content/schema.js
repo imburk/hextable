@@ -294,16 +294,19 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
 // ---------- the summon step and summon blocks (docs/specs/companions.md, Decisions 1, 2 and 5) ----------
 // What a bond made by a spell may say. The lists are Decision 1's (engine/companions.js keeps the same; a test
 // holds them equal). Not yet run by the engine, so refused here rather than kept and not played: a turn of
-// none (stages C5, C6), riding (C6), one per master (C5c). Commands with their range and corpses run since C5b
+// none (stages C5, C6), riding (C6). One per master (`one`) runs since C5c: `reform`, a new casting gives the one
+// the master has a new form (Find Familiar), or `replace`, the new one replaces it (Find Steed). Commands with their range and corpses run since C5b
 // (#340): `on: 'corpse'` (Decision 7) with `reassert`, the most creatures a casting takes back under control
 // (Animate Dead's "up to four", two more per slot level; the C5b amendment), and a bond's `orders: 'command'`
 // with its command `range` in feet.
 export const SUMMON_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
 export const SUMMON_TURNS = ['own', 'after'];
 export const SUMMON_ENDS = ['masterDies', 'longRest'];
-const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'bond'];
+const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'];
+// One per master (C5c): a new casting while the master has one of this spell's creatures of the step's kind.
+export const SUMMON_ONE = ['reform', 'replace'];
 const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack'];
-const SUMMON_LATER = { one: 'one per master (`one`) comes with stage C5', mount: 'riding (`mount`) comes with stage C6' };
+const SUMMON_LATER = { mount: 'riding (`mount`) comes with stage C6' };
 // A summon amount of creatures: a whole number from 1 to SUMMON_MOST, or { slot, base?, above? } (checked at every level in lintSpell).
 const okCount = (c) => (isInt(c) && c >= 1 && c <= SUMMON_MOST)
   || (!!c && typeof c === 'object' && !Array.isArray(c) && isInt(c.slot) && c.slot > 0 && Object.keys(c).every((k) => ['slot', 'base', 'above'].includes(k))
@@ -336,6 +339,14 @@ function lintSummonStep(st, say) {
   if (st.on === 'corpse') {
     for (const k of ['forms', 'types', 'variants', 'over']) if (st[k] !== undefined) say(`a summon step on corpses has no \`${k}\`: the caster names the corpses only`);
     if (st.bond && typeof st.bond === 'object' && st.bond.orders !== 'command') say('a summon step on corpses makes creatures that take commands (`orders: "command"`)');
+  }
+  // One per master (C5c): the step makes one creature in a space, and a new casting reforms (`reform`: the one the master
+  // has takes the form picked, so the step picks forms) or replaces (`replace`) the one it has.
+  if (st.one !== undefined) {
+    if (!SUMMON_ONE.includes(st.one)) say(`\`one\` is ${SUMMON_ONE.join(' or ')}`);
+    if (st.on === 'corpse') say('a summon step on corpses has no `one`: the caster names the corpses');
+    else if (st.count !== undefined && st.count !== 1) say('a summon step with `one` makes one creature');
+    if (st.one === 'reform' && st.forms === undefined) say('`one: "reform"` gives the creature a new form: the step lists `forms`');
   }
   // `over`: fields replaced on the made creature. Only its speeds so far (Phantom Steed's Speed 100).
   if (st.over !== undefined && !(st.over && typeof st.over === 'object' && Object.keys(st.over).length === 1 && st.over.speed

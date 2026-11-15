@@ -125,7 +125,10 @@ test("the pack lints clean with its summon blocks; the linter catches summon amo
   assert.match(withMonster((m) => { m.traits = [...m.traits, { id: "x", name: "X", text: "x", modifiers: [], only: { slot: 4 } }]; }), /`only` is for summon blocks/);
   const gi = srd.spells.find((x) => x.id === "giant-insect");
   const withStep = (change) => { const sp = clone(gi); change(sp, sp.effects[0]); return lintPack({ ...srd, spells: [sp, ...srd.spells.filter((x) => x.id !== "giant-insect")] }).join("\n"); };
-  assert.match(withStep((sp, st) => { st.one = "replace"; }), /stage C5/);
+  // Since C5c (#342) one per master runs: `replace` lints, `reform` wants forms, and nothing else is a choice.
+  assert.equal(withStep((sp, st) => { st.one = "replace"; }), "");
+  assert.match(withStep((sp, st) => { st.one = "reform"; }), /`one: "reform"` gives the creature a new form: the step lists `forms`/);
+  assert.match(withStep((sp, st) => { st.one = "twice"; }), /`one` is reform or replace/);
   assert.match(withStep((sp, st) => { st.bond.turn = "none"; }), /stages C5 and C6/);
   // Since C5b (#340) commands and corpses run: a command needs its range, and a step on corpses names corpses only
   // (companions-corpses.test.js has the rest).

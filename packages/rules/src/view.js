@@ -412,12 +412,14 @@ export function viewEvents(events, state, viewer) {
   // the party could see as Seen (the engine marks `vanished` with `party` and `seen` just before it goes), any
   // other not at all (review of #313, M2).
   const gone = new Map();
-  for (const e of events) if ((e?.type === 'vanished' || e?.type === 'removed') && e.seen === true && !Object.hasOwn(state.entities, e.id)) gone.set(e.id, e.party === true ? 'open' : 'seen');
+  // A familiar that went to its master's pocket dimension (stage C5c) is gone from the map in the same way.
+  const GONE = ['vanished', 'removed', 'pocketed'];
+  for (const e of events) if (GONE.includes(e?.type) && e.seen === true && !Object.hasOwn(state.entities, e.id)) gone.set(e.id, e.party === true ? 'open' : 'seen');
   // The names a creature goes by, to tell whether words name it: from the state, or from the event that took it away.
   const namesOf = (id) => {
     const x = Object.hasOwn(state.entities, id) ? state.entities[id] : null;
     if (x) return [x.name, seenName(x)];
-    const g = events.find((e) => (e?.type === 'vanished' || e?.type === 'removed') && e.id === id);
+    const g = events.find((e) => GONE.includes(e?.type) && e.id === id);
     return g?.name ? [g.name] : [];
   };
   const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
@@ -450,6 +452,18 @@ export function viewEvents(events, state, viewer) {
     // any creature that disappears, and why and what it was called only for one of theirs.
     if (ev.type === 'vanished') {
       if (ev.seen === true && !was?.includes(ev.id)) out.push({ type: 'vanished', id: ev.id, ...(ev.party === true ? pick(ev, ['name', 'why']) : {}) });
+      continue;
+    }
+    // A familiar dismissed to its master's pocket dimension (Decision 10; stage C5c), also gone from the state: to players
+    // who know of the master, where it went; to those who only saw it, that it disappeared, as any creature that vanishes.
+    if (ev.type === 'pocketed') {
+      if (ev.seen === true && !was?.includes(ev.id)) out.push(ev.party === true && cls(ev.by) === 'open' ? pick(ev, ['type', 'id', 'by', 'name']) : { type: 'vanished', id: ev.id });
+      continue;
+    }
+    // A familiar takes a new form (Find Familiar cast again, `one: 'reform'`): the party's own only. One in the pocket
+    // dimension is not in the state, but the party's pocket is in their master's record.
+    if (ev.type === 'reformed') {
+      if (cls(ev.by) === 'open' && (ev.pocket === true || cls(ev.id) === 'open')) out.push(pick(ev, ['type', 'id', 'by', 'form', 'name', 'pocket']));
       continue;
     }
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
@@ -522,6 +536,17 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'joined':
         out.push(cls(ev.id) === 'open' ? afterOpen(ev) : { type: ev.type, id: ev.id });
+        break;
+      // A familiar back from the pocket dimension (stage C5c): to players who do not know of its master, exactly what a
+      // creature the DM adds gives them (`spawned { id }`, as `summoned` is); to the party, who brought it back and where.
+      case 'recalled': {
+        const by = typeof ev.by === 'string' ? cls(ev.by) : 'hidden';
+        out.push(by === 'open' ? structuredClone(pick(ev, ['type', 'id', 'by', 'at'])) : { ...(ev.t !== undefined ? { t: ev.t } : {}), type: 'spawned', id: ev.id });
+        break;
+      }
+      // A touch spell delivered by the caster's familiar with its Reaction (stage C5c): the party's own only, as a bond is.
+      case 'delivered':
+        if (cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'spell']));
         break;
       case 'cond':
       case 'condEnd':                                  // gaining or losing a condition, if it is one you could see

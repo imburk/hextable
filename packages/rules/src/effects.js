@@ -308,6 +308,8 @@ function exec(s, ev, kit, f, step, at) {
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
     // The damage types under the hit, for a reaction that cares (Deflect Attacks).
     atk.dtypes = (step.onHit ?? []).filter((x) => 'damage' in x).map((x) => x.type);
+    // A touch spell the caster's familiar delivers (`src.via`, engine/casting.js; stage C5c): the roll is made from its space.
+    if (step.kind === 'spell' && typeof f.src.via === 'string') atk.via = f.src.via;
     const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
     // `cut`: a reaction cut this attack's damage (Uncanny Dodge). It holds for the damage steps
     // right under the hit, not for those under a save the hit calls for.

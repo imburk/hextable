@@ -13,7 +13,7 @@ import { SIGHT_RULES, unknown } from '../vision.js';
 import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
-import { ARENA_RADIUS, control, current, ent, fail, inFight, living, up } from './shared.js';
+import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
 import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
@@ -194,6 +194,9 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can remove a creature.');
     const e = ent(s, a.actor);
     !inFight(s, e.id) || fail(`${e.name} is in the fight. End the fight first.`);
+    // A familiar in its pocket dimension (companions.md, stage C5c) would go with its master's record, unseen and untold.
+    const held = pocketOf(e);
+    !held.length || fail(`${e.name} has ${held.map((x) => x.name).join(', ')} in a pocket dimension. Recall ${held.length > 1 ? 'them' : 'it'} or dismiss ${held.length > 1 ? 'them' : 'it'} forever first (dismiss with forever: true).`);
     for (const fx of [...effectsOf(s)]) if (fx.source === e.id || fx.parts.some((p) => p.target === e.id)) endEffect(s, ev, fx, `${e.name} left`);
     // Its companions stay, freed: on their side, the DM's.
     for (const x of Object.values(s.entities)) if (x.bond?.to === e.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: e.id }); }

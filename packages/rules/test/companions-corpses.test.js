@@ -588,9 +588,10 @@ test("the lifted linter rules: commands with a range, corpses with reassert; wha
   assert.match(withAD((sp, st) => { st.count = { slot: 5, base: 1, above: 3 }; }), /`count` makes 31 creatures at level 9/);
   assert.match(withAD((sp, st) => { delete st.count; st.reassert = 4; delete st.on; }), /`reassert` is for a summon step on corpses/);
   assert.match(withAD((sp, st) => { st.range = 10; st.summon = "owlbear-spirit"; }), /neither a summon block nor a pack monster/);
-  // Still refused until their stages: a turn of none (C5c, C6), one per master (C5c), riding (C6); `range` on the step itself.
+  // Still refused until their stages: a turn of none (C6), riding (C6); `range` on the step itself. One per master runs
+  // since C5c (#342), but not on corpses: the caster names them.
   assert.match(withAD((sp, st) => { st.bond.turn = "none"; }), /stages C5 and C6/);
-  assert.match(withAD((sp, st) => { st.one = "replace"; }), /stage C5/);
+  assert.match(withAD((sp, st) => { st.one = "replace"; }), /a summon step on corpses has no `one`/);
   assert.match(withAD((sp, st) => { st.bond.mount = "controlled"; }), /stage C6/);
   assert.match(withAD((sp, st) => { st.range = 60; }), /a summon step has no "range"/);
 });

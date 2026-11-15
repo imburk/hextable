@@ -13,9 +13,10 @@ import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
+import { LIGHTS } from '../content/lights.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
+import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, partyOf, pocketOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
 import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
@@ -586,8 +587,13 @@ function studied(s, e, t, ev) {
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 // `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
 // `keepHidden`: the attack does not end its hiding yet (Stealth Attack; resolveAttack decides).
+// `atk.via`: a touch spell its caster's familiar delivers (casting.js, `deliver`; stage C5c). The caster makes the
+// attack roll, with its own bonus, conditions and senses, but the touch is made from the familiar's space: distance,
+// cover and what can be seen are worked out as if the caster stood there with the familiar's size.
 function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = false } = {}) {
-  let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, e, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
+  const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
+  const from = v ? { ...e, pos: v.pos, size: v.size } : e;
+  let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
   if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
   if (!keepHidden) unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
@@ -595,7 +601,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   const more = rollDice(s, dice);
   const bonus = atk.bonus + add + more.total;
   // Cover adds to Armor Class: 2 for half, 5 for three-quarters.
-  const cover = e.object ? 'none' : coverOf(s, e, t, living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
+  const cover = e.object ? 'none' : coverOf(s, from, t, v ? living(s).filter((o) => o !== v && o !== e) : living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
   // Improved Critical: a weapon attack scores a Critical Hit, and so hits, on a lower roll (`critOn`).
   const critRoll = nat === 20 || (!atk.spell && e.critOn && nat >= e.critOn);
   let hit = nat !== 1 && (critRoll || nat + bonus >= ac), ac2 = ac, cut = null;
@@ -1061,7 +1067,7 @@ function overRecord(record, over) {
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const or = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
 const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`;
-function summonHandOver(m, step, src, ev) {
+function summonHandOver(s, m, step, src, ev) {
   const { slot, caster, count } = src.summon, block = !!CONTENT.summons[step.summon], def = SPELLS[src.spell]?.def;
   const cap = (w) => `${w[0].toUpperCase()}${w.slice(1)}`;
   // The numbers `spawn` gives: a block baked for this casting, or the pack monster as it is (`over`, a Speed the spell
@@ -1101,13 +1107,18 @@ function summonHandOver(m, step, src, ev) {
   const adds = objects ? `up to ${Math.max(caster.mod, 0)} objects (a Large counts as two, a Huge as three), of the size the caster picks`
     : count === 1 ? `the creature${choose ? ' the caster picks' : ''}` : `${count} creatures${choose ? ', of the kind the caster picks' : ''}`;
   const b = step.bond ?? {};
+  // One per master (C5c): what the casting does to the one the master has, which the cast with picks would have done.
+  const olds = (src.summon.had ?? []).map((id) => s.entities[id]?.name ?? m.pocket?.[id]?.name ?? id);
+  const had = !olds.length ? '' : step.one === 'reform'
+    ? ` ${m.name} already has ${olds[0]}: by the spell it takes the new form instead, where it is. The cast with \`summon: { form, type }\` (no space) does that; or the DM edits it.`
+    : ` ${m.name} already has ${or(olds)}: by the spell the new one replaces it. The cast with picks does that; by hand the DM removes the old one.`;
   // Players are told only that the DM has something to add: no numbers, and nothing that says a creature exists.
   // (A hidden caster's line is dropped by the view, as any manual line of a creature the party does not know of.)
   ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name}: the DM adds what it summons.` });
   ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true,
     text: `${src.name} was cast at level ${slot} with nothing picked for the engine to summon, so it made nothing. The DM adds ${adds}: ${what}${types}.${over}${numbers}`
       + ` ${count === 1 && !objects ? 'It goes' : 'Each goes'} in an unoccupied space within ${src.range} ft. that ${m.name} can see (inside the arena in a fight). The DM's ${spawn} makes ${count === 1 && !objects ? 'it' : 'each'}; bond ${count === 1 && !objects ? 'it' : 'each'} to ${m.name} as ${an(b.kind ?? 'companion')}${b.turn ? ` with turn ${b.turn}` : ''}.`
-      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}${rest}${tier}` });
+      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}${had}${rest}${tier}` });
 }
 
 // Make the creatures `src.summon` names (checked when the spell was cast, engine/casting.js): each an ordinary
@@ -1121,10 +1132,13 @@ function summon(s, m, step, src, ev) {
   const pick = src.summon;
   if (!pick) return ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name} names no spaces for the engine to summon into. The DM adds the creature.` });
   if (step.on === 'corpse') return pick.ids ? raise(s, m, step, src, ev) : corpseHandOver(m, step, src, ev);
-  if (!pick.at) return summonHandOver(m, step, src, ev);
+  if (pick.reform) return reform(s, m, step, src, ev);
+  if (!pick.at) return summonHandOver(s, m, step, src, ev);
   const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over);
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
   const b = step.bond;
+  // One per master (`one: 'replace'`, Find Steed): the one the master had goes first, so its space is free for the new one.
+  for (const id of pick.replace ?? []) if (Object.hasOwn(s.entities, id)) vanish(s, s.entities[id], 'replaced', ev);
   for (const want of pick.at) {
     const at = nearestFree(s, { size: record.size }, want);
     // Both lines are the DM's alone (`partial`): a player caster must not be told a creature it does not know of is there.
@@ -1141,6 +1155,118 @@ function summon(s, m, step, src, ev) {
     if (e.side === 'party') lookAround(s, ev, [e]);                 // what a party member sees, the party sees
     if (s.encounter?.arena[col(at)]) joinEncounter(s, e, ev);
   }
+}
+
+// ---------- one per master, and the pocket dimension (Decisions 2 and 6; stage C5c) ----------
+
+// The creatures a step with `one` acts on: master `m`'s companions of the step's kind made by this same spell, on the map
+// (and, for `reform`, in its pocket dimension: a familiar there is still the master's). The SRD's "you can't have more
+// than one familiar at a time" and "if you already have a steed from this spell" (Find Familiar, Find Steed).
+export function oneOf(s, m, step, spell) {
+  if (!step?.one) return [];
+  const mine = (x) => x?.bond?.to === m.id && x.bond.kind === step.bond?.kind && x.bond.source === spell && !x.vanished;
+  return [...Object.values(s.entities).filter(mine), ...(step.one === 'reform' ? pocketOf(m).filter(mine) : [])];
+}
+// What a familiar keeps when it takes a new form (`reform`): where it is and what is going on with it. The rest is the new
+// form's statistics, Hit Points at the new form's maximum ("the familiar has the statistics of the chosen form").
+const KEPT_ON_REFORM = ['cond', 'reactionUsed', 'gear', 'hidden', 'hiding', 'follow', 'light', 'look', 'away'];
+// Find Familiar cast while the master has a familiar (`one: 'reform'`; SRD "One Familiar Only": "you instead cause it to
+// adopt a new eligible form"): the same creature, same id, where it is (on the map, or in the pocket dimension), takes the
+// form and creature type picked. It is made again from the new form's block, so its statistics and Hit Points (at the
+// form's maximum) are the new form's; its place, conditions, Reaction, what it carries, its light and look, whether it is
+// hidden or hiding and whom it follows stay, as does its place in a fight. `reformed { id, by, form, name, pocket? }`.
+function reform(s, m, step, src, ev) {
+  const pick = src.summon, id = pick.reform, inPocket = !Object.hasOwn(s.entities, id);
+  const old = inPocket ? m.pocket[id] : s.entities[id];
+  const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over), b = step.bond;
+  const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
+  const n = Object.values(s.entities).filter((o) => o.id !== id && o.tpl === made.tplId).length + 1;
+  const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
+    ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
+  const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: { ...old.pos }, side: old.side, ...(made.type ? { type: made.type } : {}), bond });
+  for (const k of KEPT_ON_REFORM) if (old[k] !== undefined) e[k] = structuredClone(old[k]);
+  if (old.bond?.order !== undefined) e.bond.order = old.bond.order;
+  if (inPocket) m.pocket[id] = e; else s.entities[id] = e;
+  if (fx) fx.parts.push({ target: id, summon: true });
+  ev.push({ type: 'reformed', id, by: m.id, form: made.tplId, name: e.name, ...(inPocket ? { pocket: true } : {}) });
+}
+
+// Take a creature out of the fight's order, as a vanish does (it is no longer on the map). True if it was its own turn.
+function outOfOrder(s, e) {
+  const enc = s.encounter;
+  if (!enc) return false;
+  const i = enc.order.findIndex((o) => o.id === e.id);
+  let theirs = false;
+  if (i >= 0) {
+    theirs = i === enc.turn;
+    enc.order.splice(i, 1);
+    if (i <= enc.turn) enc.turn--;
+    if (enc.moved) { delete enc.moved[e.id]; if (!Object.keys(enc.moved).length) delete enc.moved; }
+    if (enc.held) delete enc.held[e.id];
+  }
+  for (const k of Object.keys(enc.flags ?? {})) if (k.split(':').includes(e.id)) delete enc.flags[k];
+  return theirs;
+}
+// What the familiar loses as it goes into the pocket dimension: nobody holds it there, it is not lying down, and what it
+// did with its turn is over.
+const LEFT_IN_POCKET = ['grappled', 'prone', 'dodging', 'disengaged'];
+// A familiar dismissed to its master's pocket dimension (companions.js, `dismiss`; Decision 6): it leaves the map. What it
+// wore or carried stays in its space (SRD: "Whenever the familiar ... disappears into the pocket dimension, it leaves behind
+// in its space anything it was wearing or carrying"; leaveGear). What it did that lasts ends, and what was on it, as for a
+// creature that vanished (settleSeen); those following it stop; it leaves the fight's order. Its record, with its Hit Points,
+// goes to `m.pocket[id]`, out of `state.entities`, so nothing on the map, in sight or in the fight sees it. `pocketed { id, by,
+// name, seen?, party? }`: `seen` when the party knew of it just before, as `vanished` says it (view.js).
+export function pocket(s, m, e, ev) {
+  const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
+  settleSeen(s, e, ev, 'went to a pocket dimension');
+  for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
+  if (e.follow) unfollow(s, e, ev);
+  const lit = e.light?.item && LIGHTS[e.light.item] ? LIGHTS[e.light.item].name : null;
+  if (lit) e.gear = [...(Array.isArray(e.gear) ? e.gear : []), lit];
+  else if (e.light) ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} carried a light (${e.light.bright} ft bright, ${e.light.dim} ft dim) that is no named item. It went to a pocket dimension without it: the DM sets the light down in its space if it should go on shining.` });
+  leaveGear(s, e, ev, !seen, 'went to a pocket dimension');
+  e.gear = [];
+  if (Array.isArray(e.sheet?.items)) { e.sheet.items = []; delete e.sheet.attuning; }
+  for (const c of LEFT_IN_POCKET) if (e.cond) delete e.cond[c];
+  delete e.hiding; delete e.away;
+  // A light it carried is one of the things it carried: it stays too (leaveGear puts a torch or lamp by name on the pile).
+  delete e.light;
+  const fought = inFight(s, e.id), theirs = outOfOrder(s, e);
+  // A foe the party saw leave a fight counts toward its XP as one that vanished does (A3); back in the fight's order before
+  // the end, it is counted there and not twice (rewards.js, concludeFight).
+  if (fought && seen && e.side === 'foe' && !(s.encounter.gone ?? []).some((g) => g.id === e.id)) (s.encounter.gone ??= []).push({ id: e.id, name, shown: seenName(e), tpl: e.tpl ?? null });
+  delete s.entities[e.id];
+  if (!m.pocket || typeof m.pocket !== 'object' || Array.isArray(m.pocket)) m.pocket = {};
+  m.pocket[e.id] = e;
+  ev.push({ type: 'pocketed', id: e.id, by: m.id, name, ...(seen ? { seen: true } : {}), ...(party ? { party: true } : {}) });
+  if (!s.encounter) return;
+  checkEnd(s, ev);
+  if (s.encounter && theirs) advanceTurn(s, ev);
+}
+// A familiar brought back from the pocket dimension (companions.js, `recall`) to `at`, checked there: the same record, id
+// and Hit Points. A party one looks around (what it sees, the party sees); in the arena of a fight going on it joins it as
+// any creature that arrives does (world.js, joinEncounter, with the C2 rules: a familiar rolls its own Initiative).
+// `recalled { id, by, at }`; players who do not know of the master are told what a creature the DM adds tells them (view.js).
+export function unpocket(s, m, id, at, ev) {
+  const e = m.pocket[id];
+  delete m.pocket[id];
+  if (!Object.keys(m.pocket).length) delete m.pocket;
+  e.pos = { q: at.q, r: at.r, z: at.z ?? 0 };
+  s.entities[id] = e;
+  ev.push({ type: 'recalled', id, by: m.id, at: { ...e.pos } });
+  if (e.side === 'party') lookAround(s, ev, [e]);
+  if (s.encounter?.arena[col(e.pos)]) joinEncounter(s, e, ev);
+  // Back in the fight it went from, it is one of the fight's creatures again, not one that left it (A3; review of #343, L6).
+  const enc = s.encounter;
+  if (enc?.gone && inFight(s, id)) { enc.gone = enc.gone.filter((g) => g.id !== id); if (!enc.gone.length) delete enc.gone; }
+}
+// A familiar in the pocket dimension dismissed forever: its record goes. Nothing of it is on the map, so nothing else ends.
+export function unpocketForever(s, m, id, ev) {
+  const e = m.pocket[id], party = e.side === 'party';
+  delete m.pocket[id];
+  if (!Object.keys(m.pocket).length) delete m.pocket;
+  // Players know of it only where they know of its master's pocket: the party's own (view.js).
+  ev.push({ type: 'vanished', id, name: e.name, why: 'dismissed', ...(party ? { seen: true, party: true } : {}), pocket: true });
 }
 
 // ---------- corpses (Decision 7; stage C5b, #340) ----------
@@ -1177,6 +1303,12 @@ function raise(s, m, step, src, ev) {
     // As the DM's `remove` does, and what was still on it ends as for a creature that vanished where the party saw it.
     settleSeen(s, t, ev, 'is gone');
     for (const x of Object.values(s.entities)) if (x.bond?.to === t.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: t.id }); }
+    // A familiar in the dead master's pocket dimension (stage C5c) has nowhere to come back to: the master is no more. It
+    // goes, as dismissed forever, and the DM is told (the SRD says nothing of it; the DM may `spawn` it again).
+    for (const x of pocketOf(t)) {
+      ev.push({ type: 'vanished', id: x.id, name: x.name, why: 'master', ...(t.side === 'party' ? { seen: true, party: true } : {}), pocket: true });
+      ev.push({ type: 'manual', actor: null, name: x.name, partial: true, text: `${x.name} was in ${t.name}'s pocket dimension when ${t.name}'s corpse rose, so it is gone with its master's record. The SRD says nothing of this; the DM may spawn it again.` });
+    }
     leaveGear(s, t, ev, !seen, 'rose as undead');
     // On a fight's card that is not yet published it is named as one the party saw go (A3), if it did.
     const due = !s.encounter && s.conclusion && !s.conclusion.published ? s.conclusion.foes.find((f) => f.id === t.id && !f.gone) : null;
