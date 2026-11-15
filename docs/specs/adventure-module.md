@@ -4,7 +4,10 @@ Status: draft by an agent, to be reviewed by the design owner. Issue #322. Nothi
 here is built. No code is written by this spec. **Amended 14 November 2026** to the
 owner's answers to questions 1 (the container is a zip, read by a vendored library),
 3 and 9 (modules are added to a game, which becomes a campaign); see "Questions for
-the owner".
+the owner". **Amended 15 November 2026** (#347) to the owner's answers to questions 2
+(the caps, roughly doubled), 10, 11 and 12 (sharing on the official server is now
+planned, not deferred) and to his answer on stage A0 (he cannot do it himself: "Not
+me; find another way").
 
 The owner asked for **a module format that makes it simple to host an adventure**.
 The DM prepares an adventure once, privately, and adds it to a solo game or a
@@ -78,7 +81,7 @@ Style follows `shops.md` and `travel.md`.
 - **Plain JavaScript, no bundler, no installed dependency.** One documented exception,
   of the same kind as Three.js: a small open-source zip library, **vendored** as
   pinned, hashed files with a README (Decision 1), its reason written in `DESIGN.md` by
-  the build stage that vendors it (A0). Nothing is installed from the network.
+  the build stage that vendors it (A0b). Nothing is installed from the network.
 - **Phones are first-class.** The import dialog and the DM's module panel work at
   390 x 844 with touch.
 
@@ -133,7 +136,7 @@ is handed.
 extension says what it is and still opens in any zip tool. Inside, in this order:
 
 ```
-module.json                 the manifest; the FIRST entry; at most 64 KB unpacked
+module.json                 the manifest; the FIRST entry; at most 128 KB unpacked
 adventure.json              the data; the SECOND entry; at most 4 MB unpacked
 pictures/gate.webp          the pictures, flat, by the author's file name
 pictures/oswin.webp
@@ -141,7 +144,7 @@ pictures/ledger.png
 ```
 
 - **Manifest first** so a reader can refuse a wrong format, a newer `v`, a module
-  over the caps or a module that needs what the table lacks after reading 64 KB, and
+  over the caps or a module that needs what the table lacks after reading 128 KB, and
   before inflating anything else. A zip whose first entry is not `module.json` is
   refused (the assemble script always writes it first).
 - **Pictures by name, with the hash in the manifest.** The manifest lists every
@@ -209,9 +212,36 @@ first pass; the library only lists entries and inflates bytes. The wrapper gives
 rules package `{ manifest, data, found: [assetId…] }` and the caller the pictures'
 bytes.
 
-**The vendored library.** It is not chosen by this spec, because choosing needs a
-download and checks this environment cannot make. The choice and the vendoring are
-build stage **A0**, done by the owner or on a machine with network and npm.
+**The vendored library.** It is not chosen by this spec, because choosing needs
+downloads and checks this environment cannot be assumed to make. The choice and the
+vendoring are build stage **A0**. The first draft said the owner or a machine with
+npm would do it; the owner answered on 15 November 2026 that he **cannot do it
+himself** ("Not me; find another way"). So A0 is split in two, and neither half needs
+npm or the owner's hands **(design choice, lead's proposal; the owner asked only for
+a way that does not need him)**:
+
+- **A0a, the pick.** An agent reads each candidate's licence file, release list and
+  repository as published on GitHub (through `gh api`, as the agents already reach this
+  repo; nothing is installed and nothing is run), measures the sizes of the built files
+  it would vendor, and answers the six checks below in the issue. It brings the owner **one pick
+  and its licence text** to approve in a comment, and nothing is vendored until he
+  does. If no candidate passes, it says which check failed and stops; it never writes
+  a DEFLATE decoder here.
+- **A0b, the vendoring**, after his approval: an agent fetches the pinned tag's files
+  the same way (a read of the tagged files, or a shallow clone into a scratch
+  directory outside the repo, nothing run from it), computes the SHA-256 of each
+  file itself, rewrites import lines only if needed, and writes the README section
+  and the `DESIGN.md` row, as the Three.js vendoring did.
+- **The catch to check first.** Some libraries keep only TypeScript source in their
+  repository and publish the built JavaScript through npm alone. With no npm and no
+  build tool in this project, such a library cannot be vendored by A0b. A0a must say,
+  for each candidate, whether the repository or a release asset carries the built
+  ES module; a candidate that does not is passed over. If every candidate fails this,
+  the finding goes back to the owner with the other way open to him: the platform
+  already inflates DEFLATE (Node's `zlib`, and the browser's `DecompressionStream`),
+  leaving only the zip container's fixed-size records to read, which the wrapper
+  already does for its checks. That would replace the owner's choice of a library, so
+  it is his to make, not A0's.
 
 Candidates to examine (names only; no size, version or licence here is claimed as
 checked):
@@ -223,7 +253,7 @@ checked):
 - **JSZip**: widely used, believed dual-licensed MIT or GPL-3.0; reads whole
   archives into memory, so its fit to streaming limits must be checked with care.
 
-What A0 must verify, and write in `packages/client/vendor/README.md` as the Three.js
+What A0a must verify, and A0b write in `packages/client/vendor/README.md` as the Three.js
 section does:
 
 1. **Licence**: permissive and compatible with AGPL-3.0-or-later (MIT, BSD, ISC,
@@ -246,7 +276,7 @@ section does:
    how it was fetched (a shallow clone into a scratch directory outside the repo,
    nothing run from it), and the upgrade steps.
 
-The reason is added to `DESIGN.md`'s stack table by A0, as R10 added Three.js's: a
+The reason is added to `DESIGN.md`'s stack table by A0b, as R10 added Three.js's: a
 zip is the format the owner chose, and a DEFLATE decoder is general, well-tested code
 that a small library already has.
 
@@ -255,7 +285,7 @@ dangerous part (DEFLATE) is code many people use, and the part that is ours (the
 limits) is a short list of checks with a hostile test each.
 
 **Cost.** One vendored library to pin and upgrade on purpose; a wrapper of checks;
-and A0, which this repo's agents cannot do alone.
+and A0a and A0b, which need the owner once, to approve a pick and its licence.
 
 ### Decision 2: what is in a module, and what is not
 
@@ -306,7 +336,7 @@ one map (or a world whose root leads to one).
   maps:       { mill: { format: 2, … } },     // map documents, by the module's id
   world:      { format: 'hextable-world', … },       // travel.md's world pack, its maps and assets taken from the module
   markets:    [ { format: 'hextable-market', … } ],   // shops.md's market packs
-  shops:      [ { id: 'miller-stall', market: 'mill-goods', template: 'stall', name: "The miller's stall", at: { map: 'mill', region: 'yard' } } ],
+  shops:      [ { id: 'miller-stall', market: 'mill-goods', template: 'stall', name: "The miller's stall", at: { map: 'mill', area: 'stall' } } ],      // `area`: a shop area of that map (shops.md Decision 4)
   homebrew:   [ { format: 'hextable-pack', … } ],    // the DM's own pack, optional copy (Decision 3)
   encounters: [ … ],                          // Decision 3
   npcs:       [ … ],                          // Decision 3
@@ -507,11 +537,12 @@ for the dialog and again on the server before anything is kept.
      inflated.
    - **Inflating**, one entry at a time: output is counted as it comes, never taken
      from the header; the entry is stopped and the file refused the moment its output
-     passes its declared size, its own cap (64 KB, 4 MB, 5 MB), **200 times its
+     passes its declared size, its own cap (128 KB, 4 MB, 5 MB), **200 times its
      compressed size**, or the total unpacked cap; then CRC-32 and SHA-256 are checked
      against the central record and the manifest. A bomb costs at most the cap.
    - **Time**: the whole unpack stops at a time limit (5 seconds on the server, which
-     checks the clock between chunks; 20 seconds in the browser). The server runs at
+     checks the clock between chunks; 20 seconds in the browser; both to be measured again
+     at the doubled size by A3 and A5, and raised if they must be). The server runs at
      most one module unpack per table and a few per server (`limits.js`, A3), so a
      slow file cannot hold the event loop for others; if A3 measures the 5 seconds as
      too long for the loop, the unpack moves to a worker thread.
@@ -549,19 +580,19 @@ are in the wrapper's `ZIP_LIMITS`, the same numbers on both sides):
 
 | What | Cap | Why this number |
 |---|---|---|
-| The zip file | 48 MB | the pictures' 40 MB, the data's 4 MB, and room for zip overhead; pictures barely compress |
-| Unpacked, all entries | 45 MB | 40 MB of pictures, 4 MB of data, the manifest |
-| Entries | 160 | 150 pictures, the manifest, the data, a directory entry, and the skipped desktop files |
+| The zip file | 100 MB | the owner's "about 100 MB" (15 November; the draft's 48 MB was about half): the pictures' 90 MB, the data's 4 MB, and room for zip overhead; pictures barely compress |
+| Unpacked, all entries | 95 MB | 90 MB of pictures, 4 MB of data, the manifest (128 KB) |
+| Entries | 320 | 300 pictures, the manifest, the data, a directory entry, and the skipped desktop files |
 | Entry name | 100 bytes, the charset of pass 1 | long enough for a readable name, short enough for every file system |
 | One entry's ratio | 200 to 1 | a 1 MB map of repeated tiles deflates to about 5 KB; a bomb needs far more |
-| Unpack time | 5 s on the server, 20 s in the browser | a 45 MB unpack takes well under a second on a server; the margin is for phones |
+| Unpack time | 5 s on the server, 20 s in the browser | a 95 MB unpack, nearly all of it stored pictures, takes about a second on a server; the margin is for phones, where the doubled size is what A5 measures first |
 | Archive comment | 1 KB | zip tools add short ones |
-| `module.json` | 64 KB | a manifest is a few KB even with 150 pictures listed |
+| `module.json` | 128 KB | a picture's line in the manifest is about 250 bytes, so 300 of them are about 75 KB; the draft's 64 KB would not have held them |
 | `adventure.json` (the body) | 4 MB | a world pack is 4 MB at most with its pictures; the body has none |
 | Maps | 60, each at most 1 MB as JSON | `WORLD_LIMITS` battle maps; `loadMap`'s 1 MB frame |
-| Pictures | 150 | under the table's 200 |
-| One picture | 5 MB | the server's `assetBytes` |
-| All pictures | 40 MB | under the table's 50 MB |
+| Pictures | 300 | the owner's "about 300 pictures a module"; a quarter of a table's room for module pictures (1,200 files) |
+| One picture | 5 MB | the server's `assetBytes`; not scaled, since it is the size of one file, not of a module |
+| All pictures | 90 MB | under the zip's 100 MB; under a quarter of a table's room for module pictures (400 MB) |
 | Encounters | 200; 40 creatures each; 1,000 in all | `stage`'s 40 |
 | NPCs, scenes, handouts, notes | 200, 100, 200, 500 | handouts: `HANDOUT_LIMITS` |
 | Links | 20 | a module leads to a few others |
@@ -572,7 +603,19 @@ are in the wrapper's `ZIP_LIMITS`, the same numbers on both sides):
 | `licence.text` | 8,000 | room for a licence's short form |
 
 A campaign adds caps of its own (modules per campaign, room for their pictures):
-Decision 11.
+Decision 11. **What was rescaled and what was not.** The owner chose the two headline
+numbers, about 100 MB and 300 pictures a module (15 November); he asked whether the
+caps are architectural or only a performance and safety setting, and was told they are
+one list of constants, raisable later without changing the format (a module made under
+larger caps is refused by a server on smaller ones; there is no ZIP64, so 4 GB is the
+format's ceiling). The numbers that follow from them were not asked one by one and are
+scaled to match **(design choice, lead's proposal)**: the zip 48 to 100 MB, unpacked 45
+to 95 MB, entries 160 to 320, the manifest 64 to 128 KB, all pictures 40 to 90 MB, the
+campaign's room for module pictures 200 MB and 600 files to 400 MB and 1,200 files on a
+server and 200 to 400 MB on a solo device (Question 2). Not scaled, because they do not
+grow with pictures: one picture 5 MB, the body 4 MB, 60 maps, the encounter, NPC, scene,
+handout, note, link and pregen counts, every text length, 20 modules a campaign, 8 MB of
+map deltas, the 200 to 1 ratio and the unpack times (re-measured, above).
 
 **Refusals** follow the linter's style: a path, then a plain sentence, the first
 ten problems, then "and 14 more":
@@ -700,7 +743,7 @@ answer.
   it was given (or rebuilt by the dialog to add pictures a lean copy was missing, which
   changes no hash), to a new **`POST /adventure/<code>`** with `alias` and
   `useSettings` in the query: the DM with a live seat only; `application/zip`; at most
-  48 MB; in the upload slots, rate limits, deadlines and slow-body checks the asset
+  100 MB; in the upload slots, rate limits, deadlines and slow-body checks the asset
   route already has; one module upload per table at a time. HTTP, not the WebSocket,
   because the DM's frames are capped at 1 MB plus an envelope and held whole in
   memory, and the upload path already defends against large and slow bodies.
@@ -877,16 +920,44 @@ is the same 404 as a missing one.
     rest is the author's statement, shown, not checked, as a homebrew pack's licence
     is.
   The import dialog shows all of it. Players see the credit (Decision 8).
-- **Sharing on the official server, later.** A library of modules people can start
-  from is a service the project would run, with take-down, abuse and moderation
-  (`docs/service/FOUNDING.md` §2 and §5.6). This spec proposes only the shape, for the
-  service lead to take or leave: only `content: 'srd-only'` modules with an open
+- **Sharing on the official server, planned now.** The first draft deferred a library of
+  modules people can start from, and said nothing in the game waited for it. The owner
+  answered on 15 November 2026 (question 12) to **plan for it now**, so the design of the
+  service includes a module library from the start. He was shown the draft's conditions as
+  what the default would mean and was not asked to change them, so they stand as the
+  working conditions, for him to confirm: only `content: 'srd-only'` modules with an open
   licence (`CC-BY-4.0`, `CC0-1.0`, `CC-BY-SA-4.0`); listed under the author's moniker;
-  stored and served by hash; linted by the same `lintAdventure`; never a private
-  module. Nothing in the game waits for it. An official adventure (I7) started from
-  a module could carry `module: { id, version, hash }` so the anonymous statistics
-  can relate play time to a module; that would be a change to `INTERFACE.md` made by
-  its own process (`WORKING-TOGETHER.md`), not by this spec.
+  stored and served by hash; linted by the same `lintAdventure`; never a private module.
+  The library itself is the service's (storage, listing, take-down, abuse and moderation,
+  the moniker check: `docs/service/FOUNDING.md` §2 and §5.6) and belongs to the service
+  lead; **what this spec owes it** is below, so the game does not have to change when it
+  arrives. All of it is **(design choice, lead's proposal)**:
+  - **One set of checks.** The library runs the same wrapper (`modulezip.js`, A0b) and the
+    same `lintAdventure`, with the same `ADVENTURE_LIMITS`, at publishing, so a module that
+    is in the library fits every table that can hold one, and a module over a server's caps
+    is refused there with the same sentences.
+  - **A pure verdict on sharing.** `libraryProblems(unpacked)` in `adventure.js` (A16), pure,
+    lists what stops a module being shared: not `srd-only`, a licence not in the open list,
+    an embedded homebrew pack, a missing or inexact licence block, no statement that the
+    prose and pictures are the author's own or openly licensed. The import dialog can show
+    "This module could be shared" with it, and the service calls the same function.
+  - **The moniker comes from the account, not the file.** `module.by` stays the author's own
+    words; the library lists the uploader's moniker, taken from their account by the
+    service, so a file cannot claim another person's moniker. The library keys a module by
+    its hash (`canonical`, Decision 4) and shows `id` and `version` as the author wrote them.
+  - **Adding from the library** is the same single operation as adding from a file (Decision
+    11): the DM picks a module, the table server receives the zip from the library and runs
+    passes 1 to 5 itself, trusting nothing the library says (the server is authoritative).
+    A table never has to be online to the library to play a module it holds.
+  - **Cost to the service**, not to the game: whole zips up to 100 MB each (and a library
+    of them) to store and serve, bandwidth, take-down, and a licence check by a person.
+    The caps were doubled on 15 November; the service lead sizes storage to them.
+  - **What this spec does not change.** `docs/service/FOUNDING.md` and `INTERFACE.md` are
+    not edited by this spec; adding the library to the service's founding spec and
+    interface is for their own process (`WORKING-TOGETHER.md`). An official adventure (I7)
+    started from a module could carry `module: { id, version, hash }` so the anonymous
+    statistics can relate play time to a module; that would be a change to `INTERFACE.md`
+    made by its own process, not by this spec.
 
 ### Decision 10: authoring
 
@@ -1331,27 +1402,30 @@ unchanged.
 
 | # | Task | Lane | Who | Files it may touch | Done when |
 |---|---|---|---|---|---|
-| A0 | **Choose and vendor the zip library.** Examine the candidates of Decision 1 against its six checks; vendor the chosen release as pinned files with a README section like Three.js's (release, commit, fetch method, raw and gzip sizes, SHA-256 of each file, the import rewrites if any, upgrade steps, what the API does not answer); add the reason to `DESIGN.md`'s stack table; let `build.mjs` copy it; write `modulezip.js` with every check of pass 1 and its hostile fixtures | vendor (**needs the owner, or a machine with network and npm**: an agent here cannot download) | owner, then Opus for the wrapper | `packages/client/vendor/<library>/` (new), `packages/client/vendor/README.md`, `docs/DESIGN.md`, `scripts/build.mjs`, new `packages/client/modulezip.js`, new `packages/server/test/modulezip.test.js` with fixture zips made by the test itself | the licence is MIT, BSD, ISC, Apache-2.0 or zlib and is copied; every vendored file's hash is in the README and matches; the default page load fetches none of it; every zip case of the hostile list is refused with its sentence in bounded time and memory, in Node and in a headless browser; the example zip unpacks to the JSON form byte for byte |
+| A0a | **Pick the zip library and its licence.** Examine the candidates of Decision 1 against its six checks, read from the upstream repositories through `gh api` with nothing installed or run; for each, whether the built ES module is in the repository or a release asset (the catch of Decision 1); bring the owner **one pick and its licence text** to approve in a comment. Nothing is vendored. Split from A0 on 15 November: the owner cannot do the original A0 and asked for another way | research (no npm, no code in the repo) | Opus | none (an issue comment) | the six checks answered for each candidate with the files read; one pick named with its licence text and its measured sizes, or the failing check named for each candidate; the owner's approval recorded in the issue |
+| A0b | **Vendor the zip library and write the wrapper.** After the owner's approval: vendor the picked release as pinned files fetched without npm (a read of the tagged files or a shallow clone into a scratch directory, nothing run from it), with a README section like Three.js's (release, commit, fetch method, raw and gzip sizes, SHA-256 of each file computed here, the import rewrites if any, upgrade steps, what the API does not answer); add the reason to `DESIGN.md`'s stack table; let `build.mjs` copy it; write `modulezip.js` with every check of pass 1 and its hostile fixtures | vendor | Opus | `packages/client/vendor/<library>/` (new), `packages/client/vendor/README.md`, `docs/DESIGN.md`, `scripts/build.mjs`, new `packages/client/modulezip.js`, new `packages/server/test/modulezip.test.js` with fixture zips made by the test itself | the licence is MIT, BSD, ISC, Apache-2.0 or zlib and is copied; every vendored file's hash is in the README and matches; the default page load fetches none of it; every zip case of the hostile list is refused with its sentence in bounded time and memory, in Node and in a headless browser; the example zip unpacks to the JSON form byte for byte |
 | A1 | **The format and the linter.** D1, on the unpacked form and the JSON form, for the sections that need nothing unbuilt: `module`, `needs`, the picture list, `settings`, `start`, `links`, `maps`, `encounters`, `npcs`, `scenes`, `handouts`, `notes`, `pregens`; the other sections are recognised and reported as "not in this game yet". Needs no zip: may run before or beside A0 | engine (pure, no engine file) | Opus | `packages/rules/src/adventure.js` (new), `packages/rules/test/adventure.test.js` (new), fixtures in the JSON form | the worked example (lean, no store) lints clean; every hostile case of the list below that is a data case is refused with its sentence; each cap passes at its value and fails one past; `canonical` gives the same string for a full and a lean copy and ignores zip details; no engine file changes |
 | A2 | **The campaign in the state, `stage` and deltas.** D2 to D4: `s.campaign` and the **state version bump with its migration**; `startAdventure`; `stage` (both forms), `prep`, `retire`, the server-only `campaign`; `diffMap` and `applyMapDelta`; the rebase functions | engine | Opus | `adventure.js`, `scenario.js` (only to share the party placing), `map.js` (`diffMap`, `applyMapDelta`), `engine/dm.js`, `handouts.js` and `scenes.js` (`from`), `migrate.js`, `view.js`, `history.js`, tests in `adventure.test.js`, `map.test.js` and `view.test.js` | `startAdventure` on the example gives the clock, the dark cellar, the party at the start, six hidden rats placed the same way every time; adding a second module to a game in play changes nothing but `s.campaign`; `stage` of the goblins places four or, with the loft full, none and changes nothing; undo of a `stage` removes them all; `begin` into a second module writes the first map's delta and coming back restores it exactly; `applyMapDelta(m, diffMap(m, p))` equals `p` for every stock map after scripted play; a three-way rebase keeps untouched entries and lists conflicts; `remove` is refused for a begun module; `campaign` is not in the undo list; the canary tests of Decision 8 pass; replaying the history from the started state gives the same state; a valley game migrates with an empty campaign and nothing else |
-| A3 | **Server.** D5 | server (names `tables.js`) | Opus | `packages/server/src/tables.js`, `packages/server/src/index.js`, new `packages/server/src/adventure-http.js`, `assets.js` (reuse by SHA-256, the module allowance), `limits.js` (the route's slots and allowance), `packages/server/README.md`, `packages/server/test/` | a DM adds the example to a table in play and the party, map and undo history are unchanged; a player's `POST /adventure` is 403; a 48 MB + 1 zip is 413; a zip bomb is refused within the cap and the time limit with nothing kept; the module file survives a restart and the panel's copy comes back; a missing file leaves the table playing; edition 2 updates a table holding edition 1, uploads only changed pictures, and reports conflicts; edition 1 again is refused; the export carries the integrity note and every delta; no player message or player history holds module text |
+| A3 | **Server.** D5 | server (names `tables.js`) | Opus | `packages/server/src/tables.js`, `packages/server/src/index.js`, new `packages/server/src/adventure-http.js`, `assets.js` (reuse by SHA-256, the module allowance), `limits.js` (the route's slots and allowance), `packages/server/README.md`, `packages/server/test/` | a DM adds the example to a table in play and the party, map and undo history are unchanged; a player's `POST /adventure` is 403; a 100 MB + 1 zip is 413; a zip bomb is refused within the cap and the time limit with nothing kept; the module file survives a restart and the panel's copy comes back; a missing file leaves the table playing; edition 2 updates a table holding edition 1, uploads only changed pictures, and reports conflicts; edition 1 again is refused; the export carries the integrity note and every delta; no player message or player history holds module text |
 | A4 | **Solo.** The `hextable-modules` store, Start from a module and Add a module, the party choice with pregens | client | Sonnet | `packages/client/transport.js` (the solo start, add and store only), `packages/client/assets.js` (store pictures from a module), `index.html` (the lobby button), `mycharacters.js` (pregens in the party choice), `scripts/smoke/adventure.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=adventure`: start the example solo at both sizes, see the gate scene open, find the rats; add a second module and begin it; a reload continues the game; no page errors |
 | A5 | **The import dialog and the report.** Decision 6, solo and table, the zip read on the device (in a Worker if a phone needs it), lean pictures asked for and matched by hash, shrinking for solo, the level warning, alias choice on a clash | client | Sonnet | new `packages/client/adventureimport.js`, `adventureimport.css`, `index.html`, `tablecontrols.js` (Add a module), the smoke pass of A4 | the dialog shows the example's summary and report before any change; Cancel changes nothing (no upload made); a bad zip shows the first sentences; a lean picture is matched by its hash; at 390 x 844 every row and button is reachable with a thumb |
 | A6 | **The DM's module panel.** Decision 8's panel: modules, Begin, links, retire, prep editing | client | Sonnet | new `packages/client/adventurepanel.js`, `adventurepanel.css`, `drawer.js` (the tab), `app.js` (`describe` for `stage`, `prep`, `retire`), `scripts/smoke/adventure.mjs` | at both sizes the DM reads aloud the cellar note, stages the goblins, opens the gate scene with Oswin, edits his roleplay note, shows the ledger to one player, then goes on to a second module; the other player's screen never shows the ledger |
 | A7 | **The assemble script.** Decision 10 route 2, writing the zip through `modulezip.js` | tool | Sonnet | new `scripts/adventure.mjs`, `package.json` (the script line), tests in `packages/rules/test/adventure-script.test.js` | `build` of a folder makes a zip that unpacks to the test fixture byte for byte and whose hash is the fixture's; `--lean` leaves pictures out and keeps the hash; `--json` writes the JSON form; `lint` exits 1 with sentences on a broken folder or zip; `read` prints the summary |
 | A8 | **The example module and the authoring guide.** `examples/adventures/flooded-mill/` as a folder, built by A7 in the test; `docs/adventures.md` (how to make one, the folder, the zip, the agent brief, what may not go in a module, the wording rule, campaigns and links) | docs + content | Haiku, reviewed by Opus | `examples/adventures/flooded-mill/**` (new; invented, SRD-only, pictures drawn for the project or none), `docs/adventures.md` (new), a test that lints the example and greps it for the trademark words | the example lints clean and plays in A4's smoke pass; every id and XP figure is the pack's; the guide's agent brief is what Decision 10 says |
 | A9 | **Save as module** from a table. Decision 10 route 1 | client | Sonnet | `packages/client/adventureexport.js` (new), `editor.js` (the menu item), `tablecontrols.js` | a DM paints a map, writes a handout, places three hidden goblins, saves as module, adds it to a new solo game, and finds the goblins in the same region |
-| A10 | **Markets and stores in a module.** Waits for shops P2 and P3 (and P6 for the panel's Open). `markets` and `shops` in `lintAdventure` (calling `lintMarket`), added under the alias, stores left unopened or opened per `shops`; their `prep` entries | engine | Opus | `adventure.js`, tests | the example with its store adds with the stall unshown; a market that fails `lintMarket` refuses the module with the market's sentence; two modules' markets with the same id do not collide |
+| A10 | **Markets and stores in a module.** Waits for shops P2 and P3 (and P6 for the panel's Open). `markets` and `shops` in `lintAdventure` (calling `lintMarket`), added under the alias, stores left unopened or opened per `shops`, a store's `at: { map, area }` naming a shop area of one of the module's maps (the map linter checks the area exists; `shops.md` P3a); their `prep` entries | engine | Opus | `adventure.js`, tests | the example with its store adds with the stall unshown; a market that fails `lintMarket` refuses the module with the market's sentence; two modules' markets with the same id do not collide |
 | A11 | **The atlas in a module.** Waits for travel W2, W3 and the parking of V1. `world` drawing maps and assets from the module; each module's world joined to the table's atlas under its alias; links as routes between atlases; parked module maps holding deltas; `start.node` | engine + server, with `travel.md`'s amendment | Opus | `adventure.js`, `worldpack.js`, `engine/travel.js`, `packages/server/src/tables.js`, tests | two modules with atlases join one table's atlas; a link route takes the party from one to the other; a world referring to a map its module lacks is refused |
 | A12 | **Homebrew in a module.** Waits for homebrew B5 (and B7 for the reading in the dialog). `needs.homebrew` and the embedded pack through the homebrew gate; packs shared between modules | engine + server | Opus | `adventure.js`, `packages/server/src/tables.js` (call the pack path), `adventureimport.js` (the reading), tests | a module with an embedded pack adds it as the DM's; a pack whose hash differs from `needs` refuses the module; a second module with the same pack and hash shares it; one with another hash is refused; no player message holds a homebrew monster |
 | A13 | **Admission and pregens at a table.** Waits for portable-characters P4 and P5. The level warning against the meter; `settings.characters`, `level`, `takeaway` only when the DM ticks them; pregens of every active module as the DM's stable | engine + client | Opus then Sonnet | `adventure.js`, the review files that spec names | adding a level 1 module to a level 4 party warns and admits nobody differently; ticking its settings sets `level` 1 for future characters, with the dialog's warning, and forks nobody already seated |
 | A14 | **Moving progress.** Waits for the import of a table export (DEBT P12). Restoring an export with its modules, with another edition (refused, or the two-way rebase on the DM's tick), and without them (the report, the `missing` mark) | server + client | Opus | `packages/server/src/tables.js`, the import that P12 adds, tests | an export restored with the right zips continues identically (module files plus export reproduce the campaign: state equal); with another hash it is refused; with a newer edition it is refused with the report, and the tick rebases and lists what was dropped; without a zip it plays and names what is needed |
 | A15 | **Friendly NPCs on the map**, if the owner wants it (question 6): a side for creatures that are neither party nor foe, and what `autoEngage` and the arena do with it, after a spec amendment | engine | Opus | `engine/shared.js`, `engine/dm.js`, `engine/resolve.js`, tests | to be written in the amendment |
+| A16 | **What a library needs of a module.** `libraryProblems(unpacked)` (Decision 9), the dialog's "This module could be shared" line; the other half of the library (storage, listing, moniker check, take-down) is the service's and is not a row here. Planned now (the owner, 15 November). Needs A1 | engine (pure, no engine file) | Opus | `packages/rules/src/adventure.js`, `packages/rules/test/adventure.test.js` | the worked example reports "could be shared"; a `private` module, an embedded pack, a `CC-BY-NC-4.0` licence, a missing statement and an inexact SRD sentence each give their own sentence; nothing is checked that only the author can state |
+| A17 | **Add from the library.** The dialog's second source beside the file, once the service has a library to list: the server fetches the zip by hash and runs passes 1 to 5. Waits for the service's library interface and for A3 and A5 | server + client | Opus then Sonnet | to be written when the service's interface exists | a module added from the library behaves as one added from a file, and a library that lies about a hash or a module is refused by the same passes |
 
-**Order and what waits.** A0 needs the owner (or a machine with npm) and gates every
-row that reads a zip; A1 does not need it. A1 first; A2 after A1. A3 and A4 after A0
-and A2, side by side (different files; A4 holds `transport.js`, A3 the server). A5
-after A3 and A4. A6 after A5. A7 any time after A0 and A1; A8 after A7. A9 after A6.
+**Order and what waits.** A0a needs the owner once (to approve a pick and its licence)
+and A0b, after it, gates every row that reads a zip; A1 does not need either. A1 first;
+A2 after A1. A3 and A4 after A0b and A2, side by side (different files; A4 holds `transport.js`, A3 the server). A5
+after A3 and A4. A6 after A5. A7 any time after A0b and A1; A8 after A7. A9 after A6.
 A10, A11, A12 and A13 each wait for the spec stages named in their row and are not
 duplicated here: the market linter, the world pack, the homebrew gate and the
 admission review are built once, by their own specs, and a module only calls them.
@@ -1365,9 +1439,9 @@ Each is a test in `modulezip.test.js`, `adventure.test.js` or the server's tests
 Every refusal changes nothing: no upload kept, no state touched, no member told
 anything but the DM.
 
-1. **Zip size and bombs.** A zip of 48 MB plus one is refused before reading. A small
+1. **Zip size and bombs.** A zip of 100 MB plus one is refused before reading. A small
    zip whose entry inflates past 200 times its size, past its declared size, past its
-   own cap or past the 45 MB total is stopped part-way, with at most the cap
+   own cap or past the 95 MB total is stopped part-way, with at most the cap
    inflated. The classic nested bomb (a zip inside a zip) is refused at its first
    entry (not a name or kind a module has). A "flat" bomb of overlapping entries is
    refused by the layout check before inflating.
@@ -1407,7 +1481,7 @@ anything but the DM.
     `image/webp`; `bytes` that differ; a `sha256` that differs (a picture swapped by
     hand); a picture in the zip the manifest does not name; an asset id `../../x` or
     `a/b`: each refused with the picture's id or name.
-15. **Storage abuse.** 151 pictures; one of 5 MB plus one; 40 MB plus one in all; a
+15. **Storage abuse.** 301 pictures; one of 5 MB plus one; 90 MB plus one in all; a
     picture no section names (reported and not stored); a module whose pictures pass
     the table's room for module pictures: refused with the room left.
 16. **Content that is not in the table.** A monster `giant-ratt`; an `hb-` id with no
@@ -1502,7 +1576,7 @@ project rule, as Three.js was.
     included, takes the next free version when it is built.
 11. **The no-dependency rule** (CLAUDE.md, AGENTS.md, `DESIGN.md`). A zip library is
     vendored as Three.js is: pinned files, not installed, one README, its reason in
-    `DESIGN.md`'s stack table. A0 writes that row and the README section; this PR
+    `DESIGN.md`'s stack table. A0b writes that row and the README section; this PR
     edits neither. `packages/client/vendor/README.md`'s line "Nothing else in the repo
     may import it" becomes a list naming `modulezip.js` (browser and server) as the
     zip library's only importer.
@@ -1514,19 +1588,27 @@ project rule, as Three.js was.
 
 ## Risks
 
-- **A large module on a phone.** A 40 MB set of pictures is no longer a base64 string,
-  but a phone still holds each picture while it is checked and stored. The caps and
-  the lean form bound it; the dialog unpacks in a Worker if a real phone struggles (A5
-  measures).
+- **A large module on a phone.** A 90 MB set of pictures (the cap since 15 November,
+  about double the draft's) is no longer a base64 string, but a phone still holds each
+  picture while it is checked and stored, and the solo device now keeps up to 400 MB
+  of module pictures. The caps and the lean form bound it; the dialog unpacks in a
+  Worker if a real phone struggles (A5 measures, at the new size first), and the solo
+  room may have to be lower on a phone than on a desktop, which the dialog says
+  before it adds a module, not after.
 - **The library is somebody else's code at a security boundary.** The wrapper's
   checks come before the library inflates anything, and the hostile fixtures are
-  ours; an upgrade of the library re-runs them. A0 records what its API does not
+  ours; an upgrade of the library re-runs them. A0b records what its API does not
   answer and the wrapper does instead.
-- **A0 cannot be done here.** Every row that reads a zip waits for the owner or a
-  machine with npm. A1 and A2 do not, so the engine work need not wait.
+- **A0 cannot be done by the owner, and cannot be assumed to be doable here.** Every row
+  that reads a zip waits for A0b, which waits for the owner's approval of A0a's pick.
+  The risk is the catch of Decision 1: a library whose repository holds only TypeScript
+  source cannot be vendored without npm. A1 and A2 do not wait, so the engine work
+  need not.
 - **A campaign grows.** Twenty modules' pictures and deltas sit beside one table. The
-  room for module pictures and the 8 MB of map deltas bound it, and the panel says how
-  much is used.
+  room for module pictures (400 MB, so four full-size modules' pictures if none are
+  shared) and the 8 MB of map deltas bound it, and the panel says how much is used.
+  A server that hosts many tables will want its own total (`limits.js`, 2 GiB today)
+  raised, which is the operator's setting.
 - **Two places for a map.** A module's maps are prep; the table's map, and the deltas,
   are progress. A DM who wants their edits in the module itself uses Save as module
   (A9), never a write-back.
@@ -1542,20 +1624,34 @@ project rule, as Three.js was.
 ## Questions for the owner
 
 Each has a default; work proceeds on the default. Questions 1, 3, 4 and 9 were
-answered by the owner on 14 November 2026.
+answered by the owner on 14 November 2026; questions 2, 10, 11 and 12 on 15 November
+2026 (issue #193, the comment "Q&A lead, 15 November, 08:50 ET"), and question 5, skipped on 14 November,
+stays on its default. Every question now has an answer.
 
 1. **The container.** *Answered 14 November 2026: a zip, with the pictures as
    separate files beside a manifest and the data, read by a small vendored
    open-source library.* What changed: the first draft's single JSON file (and its
    gzip form) is gone as the owner-facing format; the JSON form stays for tests and
    tools only; the vendoring is build stage A0, which needs the owner or a machine
-   with npm (Decision 1).
-2. **The caps.** *Default: a zip of at most 48 MB and 45 MB unpacked, 160 entries,
-   a 200 to 1 ratio, 5 seconds to unpack on the server; 4 MB of data, 60 maps, 150
-   pictures, 5 MB each, 40 MB in all, for one module. For a campaign: 20 modules;
-   module pictures in a room of their own, 200 MB and 600 files a table on the server
-   (configurable in `limits.js`) and 200 MB on a solo device, beside the table's 50 MB
-   for play; 8 MB of map deltas.*
+   with npm (Decision 1). **Amended 15 November 2026:** the owner cannot do A0 himself
+   ("Not me; find another way"), so it is split in two without npm: A0a brings him a
+   pick and its licence to approve, A0b vendors it after he does.
+2. **The caps.** *Answered 15 November 2026: changed, start bigger, about double.* He
+   first asked: "Is this question architectural, constraining the future or is it a
+   performance manager?" The answer given: a performance and safety setting in one list
+   of constants, raisable later without changing the format (a module made under larger
+   caps is refused by a server on smaller ones; there is no ZIP64, so 4 GB is the
+   format's ceiling). He then chose roughly double the draft: **about 100 MB and 300
+   pictures a module** (the draft was 48 MB and 150). What changed: the numbers that
+   follow from those were not asked one by one and are scaled to match, as the lead's
+   proposal: a zip of at most **100 MB** and **95 MB** unpacked, **320** entries, a
+   **128 KB** manifest, **300** pictures and **90 MB** of them in all, for one module;
+   unchanged: a 200 to 1 ratio, 5 seconds to unpack on the server (re-measured), 4 MB of
+   data, 60 maps, 5 MB a picture. For a campaign: 20 modules; module pictures in a room
+   of their own, **400 MB and 1,200 files** a table on the server (configurable in
+   `limits.js`) and **400 MB** on a solo device (was 200 MB and 600 files, and 200 MB),
+   beside the table's 50 MB for play; 8 MB of map deltas. The table in Decision 5, the
+   upload limit in Decision 7, the hostile tests, the A3 row and the risks follow.
 3. **Loading a module at a table in play.** *Answered 14 November 2026: modules are
    additive.* What changed: adding a module keeps the characters, the party, progress
    and history; its content is added under its alias; a new game from a module is
@@ -1587,12 +1683,17 @@ answered by the owner on 14 November 2026.
    and deltas per module, `stage { begin }` and links to move the party between
    modules, retire (and remove only for an unused module), the level range as a
    warning (Decision 11).
-10. **Example modules in the repo.** *Default: yes, invented and SRD-only, under
-    `examples/adventures/`, linted and smoke-played by the tests; the first is the
-    worked example of this spec.*
-11. **The valley as a module.** *Default: not now.* The starter valley stays
-    `newGame`, a campaign with no modules; making it the first stock module would prove
-    the format but changes every test that starts a game.
-12. **Sharing modules on the official server.** *Default: deferred to the service
-    (FOUNDING); if it comes, only `srd-only` modules under an open licence, by the
-    author's moniker, stored by hash.*
+10. **Example modules in the repo.** *Answered 15 November 2026: default confirmed: yes,
+    invented and SRD-only, under `examples/adventures/`, linted and smoke-played by the
+    tests; the first is the worked example of this spec.* What changed: nothing.
+11. **The valley as a module.** *Answered 15 November 2026: default confirmed: not now.*
+    The starter valley stays `newGame`, a campaign with no modules; making it the first
+    stock module would prove the format but changes every test that starts a game.
+    What changed: nothing.
+12. **Sharing modules on the official server.** *Answered 15 November 2026: changed: plan
+    for it now,* so the design of the service includes a module library from the start.
+    The draft's conditions (only `srd-only` modules under an open licence, by the author's
+    moniker, stored by hash) were shown to him as what the default would mean; he was not
+    asked to change them. What changed: Decision 9's "Sharing" bullet is no longer
+    "later"; the rows A16 and A17; the library's storage cost is named for the service
+    lead; `docs/service/` is not edited by this spec and needs its own amendment.
