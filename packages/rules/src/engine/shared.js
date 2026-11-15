@@ -100,9 +100,13 @@ export const mountOf = (s, r) => {
 // as an independent mount, on its own turn, until its rider can again (fix round 1, M2 and L1). A creature that takes
 // commands (`orders: 'command'`, Decision 6) obeys its master's commands, never a rider's, so it is always independent
 // (fix round 1, M3): riding it can't move it round its lock.
+// A rider whose player has stepped away (E20) and whose turn is set aside (not played by a stand-in) can't direct its
+// mount either: the mount acts on its own turn, as for a rider who can't (stage C6b, DEBT W14), so its turns are not
+// taken away with its rider's.
 export const steering = (s, m) => {
   const r = riderOf(s, m);
-  return r?.riding.controlled === true && up(r) && !incapacitatedBy(r) && m.bond?.orders !== 'command' ? r : null;
+  const away = !!r?.away && typeof r.away === 'object' && !r.away.asked && r.away.how !== 'standIn';
+  return r?.riding.controlled === true && up(r) && !incapacitatedBy(r) && m.bond?.orders !== 'command' && !away ? r : null;
 };
 // What a controlled mount may be sent, by its rider's player (DIRECTED) or by anyone who may play it (RIDDEN): its moves,
 // Dash, Disengage and Dodge, and, by whoever plays it, what is set about it or answered for it.

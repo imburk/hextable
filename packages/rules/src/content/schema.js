@@ -305,8 +305,8 @@ export const SUMMON_ENDS = ['masterDies', 'longRest'];
 const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'];
 // One per master (C5c): a new casting while the master has one of this spell's creatures of the step's kind.
 export const SUMMON_ONE = ['reform', 'replace'];
-const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack'];
-const SUMMON_LATER = { mount: 'riding (`mount`) comes with stage C6' };
+const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack', 'mount'];
+const SUMMON_LATER = { mount: 'a controlled mount is said in its `bond` (`mount: "controlled"`)' };
 // A summon amount of creatures: a whole number from 1 to SUMMON_MOST, or { slot, base?, above? } (checked at every level in lintSpell).
 const okCount = (c) => (isInt(c) && c >= 1 && c <= SUMMON_MOST)
   || (!!c && typeof c === 'object' && !Array.isArray(c) && isInt(c.slot) && c.slot > 0 && Object.keys(c).every((k) => ['slot', 'base', 'above'].includes(k))
@@ -364,6 +364,11 @@ function lintSummonStep(st, say) {
   if (b.ends !== undefined && !(allOf(SUMMON_ENDS)(b.ends) && b.ends.length && new Set(b.ends).size === b.ends.length)) say(`a summon bond's \`ends\` lists ${SUMMON_ENDS.join(', ')}`);
   if (b.leash !== undefined && !(isInt(b.leash) && b.leash > 0 && b.leash % 5 === 0 && b.leash <= 5280)) say('a summon bond\'s `leash` is feet, a multiple of 5');
   if (b.noAttack !== undefined && b.noAttack !== true) say('`noAttack` is true or left out');
+  // `mount: 'controlled'`: the creature serves its master as a controlled mount (Find Steed: "it functions as a controlled
+  // mount while you ride it"; docs/specs/companions.md, Decision 8, stage C6b). Free orders only: one that takes commands
+  // is never a controlled mount (C6a, fix round 1, M3).
+  if (b.mount !== undefined && b.mount !== 'controlled') say('a summon bond\'s `mount` is "controlled", or left out');
+  if (b.mount !== undefined && b.orders === 'command') say('a summon bond that takes commands is never a controlled mount');
 }
 
 // A summon block: the monster format with summon amounts (summons.js). Baked at every spell level it can be
