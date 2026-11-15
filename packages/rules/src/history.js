@@ -296,6 +296,9 @@ export function describeStep(action, events, before, after) {
     // The pocket dimension (stage C5c): a familiar sent there, sent away for good, or brought back; a summon dismissed.
     case 'dismiss': label = ev('pocketed') ? `${who} dismissed ${name(a.id)} to a pocket dimension` : `${who} dismissed ${name(a.id)}${a.forever === true ? ' forever' : ''}`; break;
     case 'recall': label = `${who} called ${name(a.id)} back`; break;
+    // Riding (stage C6a).
+    case 'mount': label = `${who} mounted ${name(a.mount)}`; break;
+    case 'dismount': label = `${who} dismounted`; break;
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
@@ -304,7 +307,7 @@ export function describeStep(action, events, before, after) {
 
   function finish(label) {
   const a = action;
-  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' || a.type === 'bond' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`, `bond` the master
+  const named = ['actor', 'target', 'entity', ...(a.type === 'pass' || a.type === 'bond' ? ['to'] : []), ...(a.type === 'mount' ? ['mount'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`, `bond` the master
   // A companion that vanished in this step where the party could see it is one players knew of (view.js, viewEvents).
   const gone = new Set(events.filter((e) => (e.type === 'vanished' || e.type === 'pocketed') && e.seen === true).map((e) => e.id));
   const known = named.every((id) => gone.has(id) || classify(after, id) !== 'hidden');

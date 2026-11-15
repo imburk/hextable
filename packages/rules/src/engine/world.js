@@ -13,13 +13,24 @@ import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '
 import { itemName } from '../derive.js';
 import { effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
-import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, RuleError, spellStats, unblocked, up, walled } from './shared.js';
+import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
 // ---------- movement ----------
 
 // Can this creature stay up without anything under it? It needs a Fly Speed that is not 0, and
 // must not be Prone or Incapacitated unless it can hover.
-export const aloft = (s, e) => up(e) && speedOf(s, e, 'fly') > 0 && (!!e.hover || !(e.cond.prone || incapacitated(e)));
+export const aloft = (s, e) => (up(e) && speedOf(s, e, 'fly') > 0 && (!!e.hover || !(e.cond.prone || incapacitated(e)))) || ridesAloft(s, e);
+// A rider is held up by its mount (stage C6a): on a mount that stays up, it does not fall.
+const ridesAloft = (s, e) => { const m = mountOf(s, e); return !!m && m.pos.z === e.pos.z && m.pos.q === e.pos.q && m.pos.r === e.pos.r && !m.riding && aloft(s, m); };
+// The other of a riding pair (its rider, or the mount it rides), or null: the two share one space, so neither is in
+// the other's way (stage C6a).
+export const partnerOf = (s, e) => riderOf(s, e) ?? mountOf(s, e);
+// A mount that moves takes its rider with it: the rider stands on the mount's anchor (Decision 8, "Moving together").
+export function carry(s, m) {
+  const r = riderOf(s, m);
+  if (r) r.pos = { q: m.pos.q, r: m.pos.r, z: m.pos.z ?? 0 };
+  return r;
+}
 // Would a creature fit at this position? Not inside the ground, not with its head through a floor,
 // and not hanging just above one. `landed` says whether it would be standing.
 export function airspace(map, h, column = surfaces(map, h), height = HEADROOM) {
@@ -158,11 +169,17 @@ export function route(reach, k) {
 // Walking steps onto surfaces in neighbouring columns; a bigger rise or drop is a climb; a ladder
 // or the like joins two places; and a creature that can fly moves through the air in 5 ft steps.
 export function moveOptions(s, e) {
+  // A rider goes where its mount goes (stage C6a): its ways are the mount's, and `move` sent for it moves the mount.
+  const steed = mountOf(s, e);
+  if (steed && !steed.riding) return moveOptions(s, steed);
   const walk = e && up(e) ? speedOf(s, e) : 0, flying = !!e && aloft(s, e), flySpeed = flying ? speedOf(s, e, 'fly') : 0;
   if (!e || !up(e) || (walk === 0 && !flying)) return new Map();
   const enc = s.encounter, fighting = inFight(s, e.id);
-  if (fighting && current(s) !== e.id) return new Map();
-  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id);
+  // In a fight it moves on its turn from the turn's budget; a controlled mount on its rider's turn, from `budget.mount`.
+  const bud = fighting ? turnBudget(s, e) : null;
+  if (fighting && !bud) return new Map();
+  const pair = partnerOf(s, e);
+  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair);
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
@@ -190,7 +207,7 @@ export function moveOptions(s, e) {
   const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
-  const left = (speed) => (fighting ? enc.budget.move + (speed - walk) * (1 + (enc.budget.dashes | 0)) : EXPLORE_BUDGET);
+  const left = (speed) => (fighting ? bud.move + (speed - walk) * (1 + (bud.dashes | 0)) : EXPLORE_BUDGET);
   const limit = { walk: left(walk), climb: left(climbSpeed > 0 ? climbSpeed : walk), fly: fighting ? left(flySpeed) : Math.max(60, flySpeed) };
   const budget = Math.max(limit.walk, limit.climb, flying ? limit.fly : 0);
   // Traps this creature knows of: the party knows the ones it has spotted; everyone else knows them all.
@@ -266,7 +283,7 @@ export function moveOptions(s, e) {
     return out;
   };
   // Hexes: hex.js's search, as it always was. Squares: the search by the diagonal rule.
-  const reach = square ? squareSearch(e.pos, budget, steps, s.settings.diagonals ?? 'real', fighting ? (enc.budget.diagonals | 0) & 1 : 0) : reachable(e.pos, budget, steps);
+  const reach = square ? squareSearch(e.pos, budget, steps, s.settings.diagonals ?? 'real', fighting ? (bud.diagonals | 0) & 1 : 0) : reachable(e.pos, budget, steps);
   const start = key(e.pos);
   // Nobody stops in another creature's space, except that a few Tiny ones can share a hex.
   const share = sizeOf(e).shares;
@@ -611,7 +628,9 @@ export function followMasters(s, now) {
     const keep = o.before ? 'before' : 'after';
     return { m, side: tied && (now || !fits) ? keep : sideOf(e) };
   };
-  const off = (o) => { const w = want(o); return (w?.m.id ?? null) !== tieOf(o) || (!!w && (o.before ? 'before' : 'after') !== w.side); };
+  // A ridden controlled mount has no place of its own while ridden (stage C6a): its entry is left where it is until
+  // its rider gets down (resolve.js, dismountOrder), so its master's before or after choice waits too (A1).
+  const off = (o) => { if (steering(s, s.entities[o.id])) return false; const w = want(o); return (w?.m.id ?? null) !== tieOf(o) || (!!w && (o.before ? 'before' : 'after') !== w.side); };
   if (!enc.order.some(off)) return false;
   for (const fx of effectsOf(s)) {
     for (const p of fx.parts) if (p.born !== undefined) p.born = restamp(enc, p.born);
@@ -1078,7 +1097,9 @@ export function catchUp(s, arena, walked, ev) {
     if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     f.pos = best.v.h;
     ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
-    lookAround(s, ev, [f]);
+    const r = carry(s, f);                               // a mount brought up brings its rider
+    if (r) ev.push({ type: 'moved', id: r.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
+    lookAround(s, ev, r ? [f, r] : [f]);
     party.add(f.id);
   }
 }

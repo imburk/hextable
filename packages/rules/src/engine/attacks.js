@@ -4,13 +4,13 @@ import { actionProfile, stepKind, walk } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, featOf, ft, inFight, need, up, walled } from './shared.js';
+import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, finishTurn, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, finishTurn, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -222,6 +222,7 @@ export const handlers = {
   dodge(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dodge only matters in a fight.');
+    if (steering(s, e)) return mountAct(s, e, a, 'Dodge', ev);          // a controlled mount: from its own action, on its rider's turn (C6a)
     need(s, e, 'action');
     s.encounter.budget.action--; e.cond.dodging = {};
     ev.push({ type: 'std', id: e.id, action: 'Dodge' });
