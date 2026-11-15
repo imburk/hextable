@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { createRecorder, createScrubber, actionArgs, buildReport, fitReport, gather, REPORT_MAX, LOG_LINES, ACTIONS } = await import(pathToFileURL(join(tmp, 'feedback.js')));
+const { LINE_KINDS, createRecorder, createScrubber, actionArgs, buildReport, fitReport, gather, REPORT_MAX, LOG_LINES, ACTIONS } = await import(pathToFileURL(join(tmp, 'feedback.js')));
 const { REPORT } = await import(pathToFileURL(join(here, '../../server/src/feedback.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
@@ -20,9 +20,10 @@ const FACTS = { build: 'state-v1', mode: 'solo', role: 'dm', renderer: 'gl', the
 
 test("the log keeps the last 30 shown lines, as shown, and never talk", () => {
   const rec = createRecorder();
-  for (let i = 0; i < 40; i++) rec.shown([`line ${i}`, '', 'combat']);
-  rec.shown(['Someone: “a secret plan”', '', 'talk']);
-  rec.shown(null);
+  for (let i = 0; i < 40; i++) rec.shown([`line ${i}`, '', 'combat'], 'attack');
+  rec.shown(['Someone: “a secret plan”', '', 'talk'], 'attack');
+  rec.shown(null, 'attack');
+  rec.shown(['a line of a type nobody classified', '', 'combat'], 'brandNewEvent');
   const log = rec.log();
   assert.equal(log.length, LOG_LINES);
   assert.equal(log[0], 'line 10');
@@ -42,7 +43,7 @@ test("an action keeps only its type and short ids, words and numbers; typed text
 
 test("a report passes the server's allow-list, with and without context, and is cut to fit 24 KB oldest first", () => {
   const rec = createRecorder();
-  for (let i = 0; i < 30; i++) rec.shown([`${i} ${'€'.repeat(299)}`, '', 'combat']);      // three bytes a letter: 30 long lines are far over the cap
+  for (let i = 0; i < 30; i++) rec.shown([`${i} ${'€'.repeat(299)}`, '', 'combat'], 'attack');      // three bytes a letter: 30 long lines are far over the cap
   for (let i = 0; i < 15; i++) rec.sent({ type: 'move', actor: 'pc1', to: { q: i, r: i } });
   rec.error('Oops', 'app.js:12');
   const full = buildReport({ comment: 'x'.repeat(2000), kind: 'bug', include: true }, FACTS, rec);
@@ -79,6 +80,8 @@ test("names are scrubbed from every line: monikers, party characters, other crea
     b: { id: 'b', kind: 'pc', side: 'party', name: 'Pip.*(', cls: 'Rogue', ownerName: 'a+b(c' },
     g: { id: 'g', kind: 'monster', side: 'foe', name: 'Goblin Warrior 1', tpl: 'goblin-warrior' },
     f: { id: 'f', kind: 'monster', side: 'foe', name: 'Fangsworth', tpl: 'goblin-warrior' },
+    d: { id: 'd', kind: 'monster', side: 'foe', name: 'Goblin Warrior Dmitri', tpl: 'goblin-warrior' },
+    n: { id: 'n', kind: 'monster', side: 'foe', name: 'Goblin Warrior 12', tpl: 'goblin-warrior' },
   } };
   const T = { solo: false, you: { name: 'Al' }, lobby: { members: [{ name: 'Player-Secret-Moniker' }], pending: [] } };
   const sc = createScrubber((tpl) => (tpl === 'goblin-warrior' ? 'Goblin Warrior' : null));
@@ -90,6 +93,8 @@ test("names are scrubbed from every line: monikers, party characters, other crea
   assert.match(t('Al raises an Alert'), /^Player \d raises an Alert$/);
   assert.match(t('Pip.*( takes 3 damage. a+b(c waves.'), /^Hero 2 \(Rogue\) takes 3 damage\. Player \d waves\.$/);
   assert.equal(t('Goblin Warrior 1 hits Brenna'), 'Goblin Warrior 1 hits Hero 1 (Fighter)');                 // a content name is kept
+  assert.equal(t('Goblin Warrior Dmitri bites'), 'a creature bites', 'a content name with a typed name after it is not kept');
+  assert.equal(t('Goblin Warrior 12 bites'), 'Goblin Warrior 12 bites');
   assert.equal(t('Fangsworth bites'), 'a creature bites');                                                   // anything else is not
   assert.equal(t("Brenna's wolf"), "Hero 1 (Fighter)'s wolf");
   assert.equal(t('Hero 1 (Fighter) stays'), 'Hero 1 (Fighter) stays', 'a placeholder is not scrubbed again');
@@ -128,4 +133,31 @@ test("the build stamp reads aloud in local time, and the report's build token is
   assert.equal(validStamp({ nothing: 1 }), false);
   const r = buildReport({ comment: 'x', kind: 'bug', include: false }, { ...FACTS, build: buildId(b) }, createRecorder());
   assert.equal(REPORT(r), null);
+});
+
+test("every kind of line the log can draw is classified, and typed text never gets into a report", async () => {
+  const { readFileSync } = await import('node:fs');
+  const typesIn = (file, from) => { const src = readFileSync(join(here, '..', file), 'utf8'); const start = src.indexOf(from); assert.ok(start > 0, `${file}: ${from}`); const body = src.slice(start, src.indexOf('\n  }\n', start) > 0 && file !== 'app.js' ? src.indexOf('\n  }\n', start) : src.indexOf('\nfunction floatOf', start)); return [...body.matchAll(/case '([A-Za-z]+)'/g)].map((m) => m[1]); };
+  const drawn = new Set([...typesIn('app.js', 'function words(ev)'), ...typesIn('handouts.js', 'function describe(ev)'), ...typesIn('scenes.js', 'function describe(ev)')]);
+  assert.ok(drawn.size > 60, `read ${drawn.size} line kinds`);
+  const missing = [...drawn].filter((t) => !Object.hasOwn(LINE_KINDS, t));
+  assert.deepEqual(missing, [], `classify these line kinds in LINE_KINDS (feedback.js) and in docs/specs/feedback.md: ${missing.join(', ')}`);
+  const stale = Object.keys(LINE_KINDS).filter((t) => !drawn.has(t));
+  assert.deepEqual(stale, [], `LINE_KINDS lists kinds the log no longer draws: ${stale.join(', ')}`);
+  assert.ok(Object.values(LINE_KINDS).every((v) => ['engine', 'fixed', 'typed'].includes(v)));
+  const doc = readFileSync(join(here, '../../../docs/specs/feedback.md'), 'utf8');
+  for (const [t, how] of Object.entries(LINE_KINDS)) assert.ok(doc.includes(`\`${t}\``), `docs/specs/feedback.md does not list ${t}`);
+  // What each class does in the recorder (one recorder a type: the log keeps only the last 30)
+  for (const [t, how] of Object.entries(LINE_KINDS)) {
+    const rec = createRecorder();
+    rec.shown([`TYPED-${t}`, '', 'explore'], t);
+    assert.deepEqual(rec.log(), how === 'engine' ? [`TYPED-${t}`] : how === 'fixed' ? [t === 'undone' ? 'Taken back.' : 'Done again.'] : [], t);
+  }
+});
+
+test("placeholders are numbered once: a name seen again keeps its number", () => {
+  const sc = createScrubber();
+  const S = { entities: { a: { id: 'a', kind: 'pc', side: 'party', name: 'Brenna', cls: 'Fighter' }, b: { id: 'b', kind: 'pc', side: 'party', name: 'Pip', cls: 'Rogue' } } };
+  for (let i = 0; i < 5; i++) sc.learn({ S, T: {} });
+  assert.equal(sc.text('Brenna and Pip'), 'Hero 1 (Fighter) and Hero 2 (Rogue)');
 });

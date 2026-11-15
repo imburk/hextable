@@ -161,8 +161,8 @@ export function createFeedback({ dir, env = {}, fileMax = FILE_MAX, files = FILE
   let capped = false;
   async function forward(report, ref, limits) {
     if (!repo || !token) return;
-    if (!limits.allowForward()) { if (!capped) { capped = true; setTimeout(() => { capped = false; }, 3_600_000).unref(); log("feedback: the hourly or daily limit on GitHub issues is reached; reports are kept locally only."); } return; }
     if (filing >= 4) return log("feedback: too many GitHub requests at once; this report was kept locally only.");
+    if (!limits.allowForward()) { if (!capped) { capped = true; setTimeout(() => { capped = false; }, 3_600_000).unref(); log("feedback: the hourly or daily limit on GitHub issues is reached; reports are kept locally only."); } return; }
     filing++;
     try {
       const res = await doFetch(`${api}/repos/${repo}/issues`, {

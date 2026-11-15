@@ -33,14 +33,14 @@ const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function createScrubber(monsterName = (tpl) => MONSTERS[tpl]?.name) {
   const map = new Map();                                   // lower-cased name -> placeholder
   let players = 0, heroes = 0, re = null;
-  const add = (name, placeholder) => { const k = String(name ?? '').trim(); if (k.length && !map.has(k.toLowerCase())) { map.set(k.toLowerCase(), placeholder); re = null; } };
+  const add = (name, make) => { const k = String(name ?? '').trim(); if (k.length && !map.has(k.toLowerCase())) { map.set(k.toLowerCase(), make()); re = null; } };
   return {
     // What this client has in view now: { S, T } as app.js has them.
     learn({ S, T }) {
-      for (const n of [T?.you?.name, ...(T?.lobby?.members ?? []).map((m) => m.name), ...(T?.lobby?.pending ?? []).map((m) => m.name), ...Object.values(S?.entities ?? {}).map((e) => e.ownerName)]) if (n && !map.has(String(n).trim().toLowerCase())) add(n, `Player ${++players}`);
+      for (const n of [T?.you?.name, ...(T?.lobby?.members ?? []).map((m) => m.name), ...(T?.lobby?.pending ?? []).map((m) => m.name), ...Object.values(S?.entities ?? {}).map((e) => e.ownerName)]) add(n, () => `Player ${++players}`);
       for (const e of Object.values(S?.entities ?? {})) {
-        if (e.side === 'party' && e.kind === 'pc') add(e.name, `Hero ${++heroes}${e.cls ? ` (${String(e.cls).replace(/[^\w ]/g, '').slice(0, 20)})` : ''}`);
-        else { const base = e.tpl ? monsterName(e.tpl) : null; if (!(base && String(e.name).startsWith(base))) add(e.name, 'a creature'); }
+        if (e.side === 'party' && e.kind === 'pc') add(e.name, () => `Hero ${++heroes}${e.cls ? ` (${String(e.cls).replace(/[^\w ]/g, '').slice(0, 20)})` : ''}`);
+        else { const base = e.tpl ? monsterName(e.tpl) : null; if (!(base && String(e.name) === base || (base && new RegExp(`^${escRe(base)} \\d{1,3}$`).test(String(e.name))))) add(e.name, () => 'a creature'); }      // only a content name, with the game's own numbering, is kept
       }
     },
     text(t) {
@@ -51,8 +51,26 @@ export function createScrubber(monsterName = (tpl) => MONSTERS[tpl]?.name) {
     },
   };
 }
-// Events whose words are someone's own (chat, notes, handouts, scenes, who plays whom, chronicle titles): never recorded.
-const NEVER = /^(say|note|privateNote|claimed|released|checkAsked|chronicle|handout|scene)/;
+// Every kind of line the log can show, by the event's type, and what may leave in a report:
+//   engine  the game's own words (names in it are scrubbed above): recorded
+//   fixed   a fixed sentence stands in for the line (the label it carries is typed text): recorded as that sentence
+//   typed   may hold text a person typed (a title, a name of a map, region, item or object, chat, a note): never recorded
+// A type that is not here is not recorded. packages/client/test/feedback.test.js reads the describe functions of app.js, handouts.js
+// and scenes.js and fails until every type they draw is listed; docs/specs/feedback.md has the same table.
+export const LINE_KINDS = {
+  encounterStart: 'engine', encounterEnd: 'engine', turn: 'engine', joined: 'engine', attack: 'engine', damage: 'engine', heal: 'engine', cast: 'engine', act: 'engine',
+  recharge: 'engine', save: 'engine', down: 'engine', died: 'engine', deathSave: 'engine', std: 'engine', cond: 'engine', condEnd: 'engine', manual: 'engine',
+  effectStart: 'engine', effectEnd: 'engine', concentration: 'engine', stood: 'engine', time: 'engine', rest: 'engine', tempHp: 'engine', spawned: 'engine',
+  summoned: 'engine', bonded: 'engine', unbonded: 'engine', companion: 'engine', vanished: 'engine', fell: 'engine', size: 'engine', speed: 'engine',
+  revealed: 'engine', concealed: 'engine', hid: 'engine', unhidden: 'engine', light: 'engine', follow: 'engine', formation: 'engine', marchingOrder: 'engine',
+  rewound: 'engine', levelReady: 'engine', conclusionSkipped: 'engine', conclusionReady: 'engine', xp: 'engine', conclusionEdited: 'engine',
+  undone: 'fixed', redone: 'fixed',
+  note: 'typed', chronicle: 'typed', claimed: 'typed', released: 'typed', map: 'typed', region: 'typed', check: 'typed', object: 'typed', noticed: 'typed', triggered: 'typed',
+  gear: 'typed', item: 'typed', equip: 'typed', attuning: 'typed', attuned: 'typed', conclusion: 'typed',
+  say: 'typed', privateNote: 'typed', handoutShown: 'typed', handout: 'typed', handoutHidden: 'typed', handoutRemoved: 'typed',
+  sceneStart: 'typed', sceneEdit: 'typed', sceneEnd: 'typed', sceneNpc: 'typed', checkAsked: 'typed',
+};
+const FIXED = { undone: 'Taken back.', redone: 'Done again.' };
 
 // ---- what is remembered: a ring of shown log lines, a ring of sent actions, the page's errors ----
 export function createRecorder({ scrub = (t) => t, changed = () => {} } = {}) {
@@ -60,7 +78,11 @@ export function createRecorder({ scrub = (t) => t, changed = () => {} } = {}) {
   const keep = (list, x, n) => { list.push(x); if (list.length > n) list.splice(0, list.length - n); changed(); };
   return {
     // `line` is the app's [text, class, kind], `type` the event's. Talk and the events above are never kept.
-    shown(line, type) { if (line && line[2] !== 'talk' && !NEVER.test(type ?? '') && typeof line[0] === 'string') keep(log, clean(scrub(line[0]), LINE_MAX), LOG_LINES); },
+    shown(line, type) {
+      const how = Object.hasOwn(LINE_KINDS, type) ? LINE_KINDS[type] : 'typed';
+      if (!line || line[2] === 'talk' || how === 'typed' || typeof line[0] !== 'string') return;
+      keep(log, how === 'fixed' ? FIXED[type] : clean(scrub(line[0]), LINE_MAX), LOG_LINES);
+    },
     sent(action) { const e = { type: WORD.test(action?.type ?? '') ? action.type : 'other', args: actionArgs(action), answer: 'sent' }; keep(actions, e, ACTIONS); return e; },
     answer(entry, text) { entry.answer = clean(scrub(text), 200); changed(); },
     error(message, at) { keep(errors, { message: clean(scrub(message), 200), ...(at ? { at: clean(at, 200) } : {}) }, ERRORS); },

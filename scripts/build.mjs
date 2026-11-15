@@ -34,10 +34,10 @@ console.log(`Build stamp: ${JSON.stringify(stamp)}`);
 const fb = process.env.HEXTABLE_FEEDBACK_URL?.trim();
 if (fb) {
   let origin = null;
-  try { const u = new URL(fb); if (/^https?:$/.test(u.protocol)) origin = u.origin; } catch { /* not an address */ }
+  try { const u = new URL(fb); if (/^https?:$/.test(u.protocol) && /^[A-Za-z0-9.:\[\]-]+$/.test(u.host)) origin = u.origin; } catch { /* not an address */ }
   if (!origin) throw new Error(`HEXTABLE_FEEDBACK_URL is not an http(s) address: ${fb}`);
   const html = readFileSync("dist/index.html", "utf8");
   if (!html.includes('<meta charset="utf-8">')) throw new Error("dist/index.html has no meta charset to put the feedback address after");
-  writeFileSync("dist/index.html", html.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n<meta name="hextable-feedback-url" content="${origin}/feedback">`));
+  writeFileSync("dist/index.html", html.replace('<meta charset="utf-8">', () => `<meta charset="utf-8">\n<meta name="hextable-feedback-url" content="${origin}/feedback">`));
   console.log(`Feedback goes to ${origin}/feedback`);
 }

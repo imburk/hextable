@@ -36,8 +36,8 @@ With "Include what just happened" (`context`):
 
 - the last 30 log lines as this viewer was shown them (taken from what the log was handed to
   draw, never from the state), each cut to 300 characters, **with every name replaced**
-  first (see "Names"); lines of talk, notes, handouts, scenes, who plays whom (`claimed`,
-  `released`) and chronicle titles are never kept;
+  first (see "Names"). Only lines of the kinds the table under "Log lines" calls `engine`
+  are kept; a kind that may hold typed text is not, and a kind not in the table is not;
 - the last 15 actions this client sent, as a type and a few short ids and numbers (never
   text a player typed, names or documents), each with the answer: `accepted`, `refused: <the
   engine's words>` or `sent` (no answer yet);
@@ -55,14 +55,32 @@ The dice seed, the game state, anything the viewer was not shown (so a player's 
 nothing hidden from that player), **names of people or of their characters**, monikers, the table
 code or any hash of it, other people's chat, private notes, handouts, pictures.
 
+### Log lines
+
+Every kind of line the log can draw, by the event's type, and what leaves. The same table is
+`LINE_KINDS` in `packages/client/feedback.js`; a client test reads the describe functions of
+`app.js`, `handouts.js` and `scenes.js` and fails until each type they draw is classified here
+and there. `engine`: the game's own words, names scrubbed, kept. `fixed`: the label it carries
+is typed text (a scene or NPC or chronicle title), so a fixed sentence is kept instead
+("Taken back.", "Done again."). `typed`: may hold text a person typed (a title, a name of a
+map, region, item or object, chat, a note, a free-text check): never kept. Toasts are not
+recorded; the engine's refusal text for an action is kept as `refused: ...` after the same
+scrubbing (engine words; a refusal that echoed typed text is a known gap).
+
+| Class | Types |
+|---|---|
+| engine | `encounterStart` `encounterEnd` `turn` `joined` `attack` `damage` `heal` `cast` `act` `recharge` `save` `down` `died` `deathSave` `std` `cond` `condEnd` `manual` `effectStart` `effectEnd` `concentration` `stood` `time` `rest` `tempHp` `spawned` `summoned` `bonded` `unbonded` `companion` `vanished` `fell` `size` `speed` `revealed` `concealed` `hid` `unhidden` `light` `follow` `formation` `marchingOrder` `rewound` `levelReady` `conclusionSkipped` `conclusionReady` `xp` `conclusionEdited` |
+| fixed | `undone` `redone` |
+| typed | `note` `chronicle` `claimed` `released` `map` `region` `check` `object` `noticed` `triggered` `gear` `item` `equip` `attuning` `attuned` `conclusion` `say` `privateNote` `handoutShown` `handout` `handoutHidden` `handoutRemoved` `sceneStart` `sceneEdit` `sceneEnd` `sceneNpc` `checkAsked` |
+
 ### Names
 
 A log line is the viewer's own log as drawn, so it holds names. Before a line, a refusal text or
 a page error is kept, every name the client has in view is replaced, in one pass and by whole
 names only (a name inside a longer word is left alone, regex characters in a name do no harm):
 each player's moniker by "Player 1", "Player 2"; each party character's name by "Hero 1
-(Fighter)"; a creature's name is kept only when it is a content entry's own ("Goblin Warrior
-1"), otherwise it becomes "a creature". A name the client has never seen (a creature that left
+(Fighter)"; a creature's name is kept only when it is exactly a content entry's own name,
+with at most the number the game adds ("Goblin Warrior 2"; "Goblin Warrior Dmitri" is not), otherwise it becomes "a creature". A name the client has never seen (a creature that left
 before this page loaded) cannot be replaced; such lines come only from history, which is not
 recorded (see below). A DM's report can hold things players have not seen (a hidden creature,
 say); the panel says so for the DM and the tick can be cleared.
