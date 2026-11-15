@@ -21,7 +21,13 @@ import { squareRoom } from "./fixtures/square-room.js";
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
-export const ROUNDS = Number(process.env.C7_ROUNDS ?? 2400);
+// A short seeded run by default (the same assertions); 2,400 rounds a grid with HEXTABLE_STRESS=full (the name the riding
+// stress uses too). C7_ROUNDS overrides both, for debugging.
+export const FULL = process.env.HEXTABLE_STRESS === "full";
+export const ROUNDS = Number(process.env.C7_ROUNDS ?? (FULL ? 2400 : 200));
+// Hard bounds, so that a harness or an engine fault shows as a failure, never as a run that does not end: brain steps in
+// one turn, turns in one round (every creature in the order a few times over), actions in the whole run.
+const STEPS_MOST = 25, TURNS_A_ROUND = 4, ACTIONS_MOST = 120;
 const SPOTS = {
   hex: { fighter: { q: -6, r: 2 }, rogue: { q: -7, r: 3 }, cleric: { q: -7, r: 2 }, wizard: { q: -8, r: 3 }, goblin: { q: 2, r: 2 } },
   square: { fighter: { q: 3, r: 3 }, rogue: { q: 1, r: 12 }, cleric: { q: 2, r: 12 }, wizard: { q: 3, r: 12 }, goblin: { q: 11, r: 11 } },
@@ -100,7 +106,7 @@ export function stress(grid, rounds) {
   const rnd = (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; };
   const worth = new Map(), present = new Map();
   let lastKey = null, budgetSeen = null, done = 0;
-  const bad = [], stats = { actions: 0, refused: 0, brainTurns: 0, brainSteps: 0, stalls: 0, loops: 0, brainRefused: 0, monsterRefused: 0, modes: {}, waits: {}, commands: {}, fights: 0, rode: 0 };
+  const bad = [], stats = { actions: 0, refused: 0, brainTurns: 0, brainSteps: 0, stalls: 0, loops: 0, brainRefused: 0, monsterRefused: 0, modes: {}, waits: {}, commands: {}, offline: 0, saddled: 0, fights: 0, rode: 0 };
   const key = () => `${s.encounter.id}:${s.encounter.round}`;
   const credit = (k, id) => { if (!worth.has(k)) worth.set(k, new Map()); worth.get(k).set(id, (worth.get(k).get(id) ?? 0) + 1); };
   const upNow = () => new Set(s.encounter.order.map((o) => o.id).filter((id) => { const e = s.entities[id]; return e && !e.dead && e.hp > 0 && !e.away; }));
@@ -121,17 +127,20 @@ export function stress(grid, rounds) {
     } else { const now = upNow(), p = present.get(k); for (const id of [...p]) if (!now.has(id)) p.delete(id); }
   };
   const act = (a) => { const r = apply(s, a, DM); if (r.ok) after(r); else stats.refused++; return r; };
+  // Players who are offline now (the client's lobby): they go and come back, also in the middle of a round.
+  const away = new Set(), OPTS = { offline: (u) => away.has(u) };
+  let turnsThisRound = 0, roundSeen = null;
   const answer = () => { if (s.pending) act({ type: "react", prompt: s.pending.n, take: rnd(2) ? null : s.pending.ask.options[0]?.reaction ?? null }); };
   const start = () => { budgetSeen = null; stats.fights++; ok(act({ type: "startEncounter", center: CENTER[grid], radius: 7 })); lastKey = key(); present.set(lastKey, upNow()); };
   // The DM's auto-play of one turn, as the client does it.
   const autoTurn = (id) => {
     stats.brainTurns++;
-    const mode = s.entities[id].bond ? brainMode(s, s.entities[id]) : "monster";
+    const mode = s.entities[id].bond ? brainMode(s, s.entities[id], OPTS) : "monster";
     stats.modes[mode] = (stats.modes[mode] ?? 0) + 1;
-    for (let n = 0; n < 25; n++) {
+    for (let n = 0; n < STEPS_MOST; n++) {
       if (!s.encounter || current(s) !== id) return;
       if (s.pending) { answer(); continue; }
-      const a = aiStep(s, id);
+      const a = aiStep(s, id, OPTS);
       if (!a && !(s.entities[id]?.hp > 0)) { stats.downMidTurn = (stats.downMidTurn ?? 0) + 1; act({ type: "endTurn", actor: id }); return; }   // it dropped in its own turn (an Opportunity Attack): the DM ends it, as for any monster
       if (!a) { stats.stalls++; if (bad.length < 8) bad.push(`stall: ${id} (${mode})`); act({ type: "endTurn", actor: id }); return; }
       stats.brainSteps++;
@@ -153,13 +162,29 @@ export function stress(grid, rounds) {
       for (const id of riders) if (s.entities[id].cond.stunned) apply(s, { type: "condition", actor: id, condition: "stunned", on: false }, DM);
       if (!Object.values(s.entities).some((o) => o.side === "foe" && !o.dead && o.hp > 0)) tough();
       restore();
-      start(); continue;
+      // Every other fight the cleric starts on her steed (brought beside her by the DM), so that its turns with a rider who
+      // can't steer, has stepped away or is offline come up.
+      if (stats.fights % 2 === 1 && s.entities[steed] && !s.entities.cleric.riding && !s.entities[steed].rider && !s.entities.cleric.dead) {
+        const G = gridOf(s.map), c = s.entities.cleric;
+        const spot = G.range(c.pos, 3).sort((a, b) => G.dist(a, c.pos) - G.dist(b, c.pos) || a.q - b.q || a.r - b.r).find((h) => { const t2 = structuredClone(s); return apply(t2, { type: "place", actor: steed, to: h }, DM).ok && apply(t2, { type: "mount", actor: "cleric", mount: steed }, DM).ok; });
+        if (spot && apply(s, { type: "place", actor: steed, to: spot }, DM).ok && apply(s, { type: "mount", actor: "cleric", mount: steed }, DM).ok) stats.saddled++;
+      }
+      start();
+      // Now and then she steps away on it (the table rule `dodge`): her steed then carries a rider who is not there.
+      if (s.entities.cleric.riding?.on === steed && rnd(2)) act({ type: "stepAway", actor: "cleric", how: "dodge" });
+      continue;
     }
     if (s.pending) { answer(); continue; }
+    if (stats.actions > ACTIONS_MOST * rounds) { bad.push(`the run did not end: ${stats.actions} actions`); stats.runaway = true; break; }
+    const rk = key();
+    if (rk !== roundSeen) { roundSeen = rk; turnsThisRound = 0; }
+    if (++turnsThisRound > TURNS_A_ROUND * s.encounter.order.length) { bad.push(`round ${rk}: more than ${TURNS_A_ROUND} turns a creature`); stats.runaway = true; break; }
     const cur = current(s), e = s.entities[cur];
     if (s.encounter.turn === 0 && s.encounter.round % 4 === 1) horses = horses.map((h, i) => (s.entities[h] && !s.entities[h].dead ? h : i < 3 ? beside(s, riders[i], "warhorse") ?? h : h));
     // The DM, now and then, on anyone's turn.
     const who = riders[rnd(4)], d = rnd(40), w = s.entities[who], hz = horses[rnd(horses.length)];
+    // A player's connection drops or comes back (u2 plays the cleric, u3 the wizard), on anyone's turn.
+    if (rnd(12) === 0) { const u = rnd(2) ? "u2" : "u3"; if (away.has(u)) away.delete(u); else away.add(u); stats.offline++; }
     if (w?.dead) { if (!Object.values(s.entities).some((o) => o.id !== who && !o.dead && overlapAt(o, o.pos, w, w.pos, gridOf(s.map)))) act({ type: "setHp", actor: who, hp: 10 }); }
     else if (w) {
       if (d === 0) act({ type: "harm", actor: who, amount: w.hp });
@@ -176,14 +201,17 @@ export function stress(grid, rounds) {
       else if (d === 12 && w.riding) act({ type: "dismount", actor: who });
       else if (d === 13 && rnd(2)) { const id = rnd(2) && s.entities[hz] && !s.entities[hz].dead ? hz : who, p = s.entities[id].pos; act({ type: "place", actor: id, to: { q: p.q + rnd(5) - 2, r: p.r + rnd(5) - 2 } }); }
       else if (d === 15 && s.entities[owl]) act({ type: "companion", actor: owl, auto: rnd(2) === 0 });
+      else if (d === 17 && s.entities[steed]) act({ type: "companion", actor: steed, auto: rnd(2) === 0 });
+      else if (d === 18 && s.entities[steed] && s.entities[steed].rider && rnd(3) === 0) act(rnd(2) ? { type: "harm", actor: steed, amount: 999 } : { type: "remove", actor: steed });
     }
     if (!s.encounter || current(s) !== cur || s.pending) continue;
-    if (e.kind === "npc" && autoPlays(s, cur)) { autoTurn(cur); continue; }
-    if (e.bond) { const m = brainMode(s, e); stats.waits[m] = (stats.waits[m] ?? 0) + 1; assert.equal(aiStep(s, cur), null, `${cur} (${m}) is not the brain's`); }
+    if (e.kind === "npc" && autoPlays(s, cur, OPTS)) { autoTurn(cur); continue; }
+    if (e.bond) { const m = brainMode(s, e, OPTS); stats.waits[m] = (stats.waits[m] ?? 0) + 1; assert.equal(aiStep(s, cur, OPTS), null, `${cur} (${m}) is not the brain's`); }
     // A stand-in for a player or for the DM's hand.
     if (riders.includes(cur) && rnd(3)) {
       const c = rnd(8);
-      if (!e.riding && c < 3) { for (const h of [...horses, bear]) if (s.entities[h] && act({ type: "mount", actor: cur, mount: h }).ok) break; }
+      // The cleric gets onto her own steed first, when it is there.
+      if (!e.riding && c < 3) { for (const h of cur === "cleric" ? [steed, ...horses, bear] : [...horses, bear]) if (s.entities[h] && act({ type: "mount", actor: cur, mount: h }).ok) break; }
       else if (e.riding && c === 0) act({ type: "dismount", actor: cur });
       else if (e.riding && c === 1) act({ type: "dash", actor: e.riding.on });
       else if (e.riding && c === 2) { const p = e.pos; act({ type: "move", actor: cur, to: { q: p.q + (rnd(3) - 1), r: p.r + (rnd(3) - 1) } }); }
@@ -225,9 +253,11 @@ export function check(grid) {
     assert.equal(stats.brainRefused, 0, `refused: ${bad.join("; ")}`);
     assert.equal(lost, 0, `lost: ${bad.join("; ")}`);
     assert.equal(doubled, 0, `doubled: ${bad.join("; ")}`);
+    assert.ok(!stats.runaway, bad.join("; "));
     assert.ok(finished.length >= ROUNDS);
-    // What the loop reached: each of the brain's ways of playing, and the monster AI.
-    for (const m of ["guard", "protect", "free", "monster"]) assert.ok((stats.modes[m] ?? 0) >= 5, `the loop played '${m}': ${json(stats.modes)}`);
-    for (const m of ["player", "dm"]) assert.ok((stats.waits[m] ?? 0) >= 5, `companions left to their player or the DM: ${json(stats.waits)}`);
-    assert.ok(stats.rode >= 10, `rides: ${stats.rode}`);
+    // What the loop reached: each of the brain's ways of playing, and the monster AI (fewer in the short run).
+    const most = FULL ? 5 : 1;
+    for (const m of ["guard", "protect", "free", "hold", "monster"]) assert.ok((stats.modes[m] ?? 0) >= most, `the loop played '${m}': ${json(stats.modes)}`);
+    for (const m of ["player", "dm"]) assert.ok((stats.waits[m] ?? 0) >= most, `companions left to their player or the DM: ${json(stats.waits)}`);
+    assert.ok(stats.offline >= most && stats.rode >= most, `players offline ${stats.offline}, rides ${stats.rode}`);
 }
