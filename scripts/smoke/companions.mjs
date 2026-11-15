@@ -208,6 +208,7 @@ async function leftovers(browser, url, label, opts) {
         await page.evaluate(() => window.hextable.select(window.hextable.state.entities.fighter ? 'fighter' : null));
         const l = await labels(page);
         if (!l.some((x) => /^Ven's Giant Wasp/.test(x))) throw new Error(`pawn labels: ${JSON.stringify(l)}`);
+        await page.evaluate((w) => window.hextable.R.focus(w, true), wasp); await sleep(400);
         await shot(page, `companions-summoned-${tag}`);
       });
       await run.do('a goblin bonded to Brenna is labelled "Brenna\'s goblin" on the map', async () => {
@@ -217,6 +218,7 @@ async function leftovers(browser, url, label, opts) {
         await calm(page);
         const l = await labels(page);
         if (!l.some((x) => /^Brenna's goblin/i.test(x))) throw new Error(`pawn labels: ${JSON.stringify(l)}`);
+        await page.evaluate((g) => window.hextable.R.focus(g, true), goblin); await sleep(400);
         await shot(page, `companions-labels-${tag}`);
       });
       await run.do('in a fight the tracker draws the wasp straight after Ven', async () => {

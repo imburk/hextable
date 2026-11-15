@@ -677,7 +677,8 @@ Settled in the review of #313:
   seated behind its anchor again on every turn. Once a bond or a free could change what stands around that
   anchor, that carried it past creatures that had had their turn and gave them a second one (review of #317,
   round 2, B1 and B2). A record of the old form, from a save, is seated once the same way.
-- **The DM's bond** takes `turn: 'after'`; `turn: 'none'` and `orders: 'command'` are still refused (C5, C6).
+- **The DM's bond** takes `turn: 'after'`; `turn: 'none'` and `orders: 'command'` are still refused (C5, C6). *Since C5a
+  (#338) it takes `orders: 'command'`; `turn: 'none'` is still refused.*
 - **The `summon` part.** A creature a spell keeps is a part `{ target, summon: true }` of the lasting effect its
   `bond.fx` names. `durations.js` `holds(s, e)` says whether that part still stands. `settleBonds` vanishes the
   creature (`why: 'ended'`) after the action once it does not: Concentration lost, its time run out, or
@@ -819,7 +820,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   (`fx` only on their own); otherwise players get `{ type: 'spawned', id }`. Log line: "Ven summons a Giant Wasp".
 - **The creature**: `tpl: 'giant-insect'` is not in `MONSTERS` (the client's `MONSTERS[e.tpl]?.name` falls back to
   "Creature"; use `e.name`, or `CONTENT.summons[e.tpl]`); the model to draw is the client's choice by `tpl`. Its
-  turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`, C8/C10).
+  turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`; built, #339: the tracker draws the order as sent; C10 still owes drawing a rider on its mount).
   Built in #337: the log says "Ven summons a Giant Wasp." (the master's name taken off the creature's, else the template's); pawn labels and the reaction
   question take the shown name ("Brenna's goblin") through `shownState()` in app.js; the card falls back to `e.name`; the tracker already draws the order as
   sent, so the wasp stands straight after Ven; the DM's auto-play leaves a player's companion to its player unless `bond.auto` is set.
@@ -970,7 +971,7 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
 - **No state version bump:** `bond.order`, `bond.orderNext` and an entry's `before` are optional; a save or record
   without them plays as `after`, unchanged (C2's rule).
 
-### A2, a Bonus Action command puts the turn in the player's hands (not built)
+### A2, a Bonus Action command puts the turn in the player's hands (built, #338)
 
 - **Choice.** In `command` (C5), a command spends the Bonus Action and sets `bond.commanded` for that turn;
   `ownerOf` for that creature's turn is its master's player when `commanded` is set and the DM's
@@ -983,6 +984,84 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
 - **Cost.** A control rule that depends on the turn, not only on the bond, in `ownerOf`'s callers;
   tests that a never-commanded Zombie is the DM's and may only Dodge and move, one commanded this turn is its
   player's and refused for another player, and one with only a standing order is the DM's.
+
+#### Build notes: C5a, the command and who plays a commanded creature (A2; #338)
+
+Stage C5 is built in three parts: C5a (this), C5b (corpses: `on: 'corpse'`, Animate Dead, Create Undead, the 24-hour bond
+and reassert) and C5c (`dismiss` and `recall` with the pocket, `one: 'reform'` and `'replace'`, touch delivery through the
+familiar's Reaction). What was settled while building C5a, where Decision 6 and A2 left room:
+
+- **The action.** `{ type: 'command', actor: masterId, ids: [...], order? }` (companions.js), by the master's controller or
+  the DM. `ids`: one to 30 (`BOND_MAX`) different ids. Each must be the master's companion, with `orders: 'command'`, not
+  dead, and within `bond.range` feet of the master (a finite number of 0 or more; none is any distance, and anything else,
+  `NaN`, a string, is refused, never taken as none: review of #338, L6) (`apart`, so by the table's square rule on squares, from the nearest
+  parts of the two). Checked before anything changes; a refusal changes nothing. A player is told "X is not Brenna's
+  companion." for any creature it knows of that is not that master's, bonded to another or to no one, and "No such
+  creature." for one it does not know of (engine.js also walks `ids`), as `companionOrder` does; the DM is told which. A
+  free companion is "X takes no commands: it is played freely." Then `need(master, 'bonus')`: in a fight the master's
+  turn with its Bonus Action left ("already used a Bonus Action"); outside one it costs nothing, but the master must be up
+  and able to act. One command for any number costs one Bonus Action.
+- **`order`.** Words, trimmed, then 1 to 80 characters (UTF-16 units) with no control characters (no newline or tab,
+  U+0000 to U+001F and U+007F to U+009F), stored trimmed; or `null`; or left out (review of #338, L5). Given, it is the order that stands after this
+  turn (`bond.standing`); `null` clears it, so the creature Dodges again after the commanded turn; left out, the standing
+  order is unchanged and the command is for the one turn (the SRD's "you decide what action the creature will take and
+  where it will move on its next turn"). engine.js does not take `order` for creature ids in this action (one line in
+  `dispatch`, beside `companionOrder`'s): an order that happens to be a creature's id is words, so it is neither refused
+  nor a way to test for a hidden creature.
+- **What it writes.** `bond.commanded = { order, at }`, `at` the turn it was given in (`turnKey`, the master's) or `null`
+  outside the fight; `bond.standing` as above. Event `commanded { by, ids, order? }`.
+- **Taken up at the creature's turn.** At the start of a commanded creature's next turn (`beginTurn`, resolve.js,
+  `takeCommand`) the command is stamped with that turn (`commanded.turn`, its `turnKey`). For that turn `ownerOf` gives the
+  master's player. **When it is cleared:** at the start of the creature's next turn after that (spent), or at the start of
+  its first turn when `at` is not of this fight (given in another fight or outside one), so a command never carries into a
+  later fight. A command given outside a fight (`at: null`) does not expire on its own: it lifts the lock outside the
+  fight until the creature's first turn in a fight clears it, and it never makes that turn its player's (review of #338,
+  L4). Decision 6 says "cleared when that creature's turn ends"; the turn's end is not in this stage's files
+  (`finishTurn`), so a spent command stays on the bond until the next turn start, and `ownerOf` reads it only during the
+  turn it was stamped for: what plays the creature is the same either way.
+- **Who plays it (`ownerOf`, shared.js).** For a creature with `orders: 'command'` in the fight going on: its master's
+  player on the turn it was commanded for (`commandedNow`), the DM's on every other turn **and off its turns** (so a
+  Reaction question goes to the DM, and its reaction instructions are the DM's to set in a fight). Outside the fight going
+  on (no fight, or not in its order) it is its master's player's, as any companion (Decision 6: outside a fight a
+  companion moves as any party member), under the lock below.
+- **The lock.** Checked in `control` (shared.js), which every handler of a creature's own actions calls: for a creature
+  with `orders: 'command'` and no standing order, in the fight and not commanded for this turn, or outside the fight and
+  not commanded there (`at: null`), every action is refused, by the DM too ("X has no command to follow, so it only takes
+  the Dodge action and moves to avoid harm."), but `move`, `dodge`, `endTurn`, `stand` and `follow` (with `leader: null`
+  to stop: moving, as Decision 6 lets a companion follow its master outside a fight), and what is set about it or answered
+  for it rather than done by it: `reactions`, `companion`, `react`, `stepAway`, `stepBack`. **This is wider than Decision
+  6's one line ("only `dodge`, `move` and `endTurn`")**, which named what the creature does on its turn; `stand` and
+  `follow` are ways of moving, and the rest are its controller's settings and answers (review of #338, M1 and L1). Only the
+  acting creature is locked (`actor`): a locked creature named as the leader of `partyFollow` or `formation` is not acting,
+  and is not refused by the lock (L2; checked in `control`, which those handlers call on the leader). It reads the type of
+  the action `apply` is running (`RUN.action`), since the handlers are in files this stage does not touch; it lives in
+  `control` and not in attacks.js for that reason (the issue named attacks.js for it). Whether a move "avoids harm" is the
+  DM's. A creature with a standing order is played by the DM as it sees fit: the lock is off.
+- **The prompt.** In the turn's events, straight after `turn`: `commandedTurn { id, by, to, order?, text }`, text
+  "Brenna's Zombie 1 is yours this turn." (the creature's name, with the master's in front unless it already starts with
+  it). Only when the master has a player (`to`); a DM-played master's or a foe's commanded turn gives none. Sent to that
+  player alone, without `to`. Showing it is C8.
+- **What players are sent.** `commanded` only when the master and every id are Open (the party's own); never a foe's, which
+  is mental. A foe companion's record is Seen or Hidden and `bond` is not on the Seen allow list (C1), so neither
+  `commanded` nor `standing` reaches players. Twin runs (companions-command.test.js) of a fight that differ only in a hiding
+  foe master's commands give players the same events, view, record and `seq`, on hexes and squares.
+- **The DM's bond** now takes `orders: 'command'` (C1 refused it until the engine ran commands; one assertion of
+  companions.test.js changed for it). It takes no `range`: the DM's commanded creature is commanded at any distance. The
+  source's range comes from the summon step's `bond.range` in C5b (the linter still refuses `orders: 'command'` and a
+  range in a step until then).
+- **The Unseen Servant's 15 ft is not built.** It needs `turn: 'none'` (a creature with no entry of its own, moved on its
+  master's turn: `move` with the servant as actor from a `budget.servant` the command fills), which is movement.js and the
+  fight order, not in this stage's files, and the servant has no block yet (C4 left it manual). What is left for it: the
+  DM's bond and the step to take `turn: 'none'`, `budget.servant` in `command` and `move`, and its block.
+- **For the client job (C8).** The order's words are stored on the bond (`commanded.order`, `standing`) and sent to the
+  party in the record, `commanded` and `commandedTurn`: other players' text, so the UI shows it as text, escaped, never as
+  markup, though the engine already refuses control characters and newlines. The DM's auto-play (`idled()`, app.js) does
+  not yet skip or play a locked creature: on its turn the auto-play's monster moves are refused by the lock and the turn
+  waits until the DM ends it, until the companion brain (C7) plays it (review of #338, M2).
+- **Labels.** `describeStep` for `command`: "Brenna commanded Zombie 1", or "Brenna commanded 3 companions"; the order's
+  words are not in a label.
+- **No state version bump.** `bond.standing`, `bond.commanded.turn` and the events are new and optional; a bond without
+  `commanded` or `standing` (a save from before) is never commanded for `orders: 'command'` and unchanged for `'free'`.
 
 ### A3, XP for a foe's summons (built, #329)
 

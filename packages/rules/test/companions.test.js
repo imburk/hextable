@@ -228,7 +228,7 @@ test("the DM's bond: what it refuses changes nothing, and players can't bond at 
   refused(s, { type: "bond", actor: "rogue", to: "fighter" }, DM, /player's character/);
   refused(s, { type: "bond", actor: wolf, to: "fighter", kind: "dragon" }, DM, /kind can be/);
   refused(s, { type: "bond", actor: wolf, to: "fighter", turn: "none" }, DM, /not built yet/);
-  refused(s, { type: "bond", actor: wolf, to: "fighter", orders: "command" }, DM, /not built yet/);
+  refused(s, { type: "bond", actor: wolf, to: "fighter", orders: "orders" }, DM, /orders can be/);   // commands are built (C5a): companions-command.test.js
   refused(s, { type: "bond", actor: wolf, to: "fighter", at0: "explodes" }, DM, /vanish, dies/);
   refused(s, { type: "bond", actor: wolf, to: null }, DM, /no one's companion/);
   refused(s, { type: "companion", actor: wolf, auto: true }, DM, /no one's companion/);
