@@ -119,6 +119,9 @@ win over anything older in this file:
   official server**; anonymous play statistics are a separate switch with no
   penalty for opting out (Decision 8).
 - **Dates**: a character's history shows the date only (Decision 3).
+- **Customs and coins** (15 November): the DM's review highlights large amounts of
+  coins and magical gear, and a character's coins leave with it as items do
+  (Decision 5; questions 15 and 16).
 
 Open and decided here: where the character lives, what "history" can mean,
 what is recorded, what leaves, how differences are handled, how the meter reads.
