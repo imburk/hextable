@@ -5,10 +5,11 @@ import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile } from '../effects.js';
-import { apart, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
+import { apart, apartAt, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
+import { hiddenFrom } from '../sight.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { itemName } from '../derive.js';
 import { effectsOf, restamp } from '../durations.js';
@@ -30,6 +31,39 @@ export function carry(s, m) {
   const r = riderOf(s, m);
   if (r) r.pos = { q: m.pos.q, r: m.pos.r, z: m.pos.z ?? 0 };
   return r;
+}
+// Where a rider comes off its mount: gets down (`dismount`, stage C6a), falls off (stage C6b) or is put off it (it grew,
+// its mount shrank). A space it can stand in by its own size, within 5 ft of any part of the mount, with no wall
+// between, on ground within a step of the mount's, in the arena if it is fighting, not the mount's own space, and not
+// held by a creature its side knows of. A party rider chooses by what the party knows, so the choice is the same with
+// or without a creature it does not know of (hidden-information.md, section 5): `want` if given (the nearest if not).
+// Returns { p, lurker } (`lurker`: a creature the rider did not know of in that space), or null when there is none
+// (or `want` is not such a space). Nearest by distance from the rider, then by q and r, so that it replays.
+export function landingFits(s, e, m, p) {
+  const G = gridOf(s.map), B = barriers(s.map), body = { ...e, riding: undefined };
+  return !!p && Math.abs(p.z - m.pos.z) <= STEP_MAX && TILES[ground(s.map, p)?.tile.t]?.cost < Infinity && fitsOn(s.map, body, p, B) &&
+    !!airspace(s.map, p) && apartAt(s, m, m.pos, body, p) <= 1 && !overlapAt(m, m.pos, body, p, G) &&
+    (!inFight(s, e.id) || footprint(body, p, G).every((f) => s.encounter.arena[col(f)])) && footprint(m, m.pos, G).some((f) => clear(s, f, p));
+}
+const unseenByRider = (s, o, e) => e.side === 'party' && o.side !== 'party' && !o.dead && (o.hidden || hiddenFrom(o, e) || (sightRule(s) !== 'rooms' && unknown(s, o)));
+export function riderLanding(s, e, m, want = null) {
+  const G = gridOf(s.map), body = { ...e, riding: undefined };
+  const others = living(s).filter((o) => o.id !== e.id);
+  const holders = (p) => others.filter((o) => overlapAt(o, o.pos, body, p, G));
+  const out = (p) => ({ p, lurker: holders(p).find((o) => unseenByRider(s, o, e)) ?? null });
+  const free = (p) => holders(p).every((o) => unseenByRider(s, o, e));
+  if (want !== undefined && want !== null) {
+    if (!(want && Number.isInteger(want.q) && Number.isInteger(want.r))) return null;
+    const p = landing(s.map, want, want.z ?? m.pos.z);
+    return p && landingFits(s, e, m, p) && free(p) ? out(p) : null;
+  }
+  const spots = [];
+  for (const f of footprint(m, m.pos, G)) for (const h of G.range(f, 1)) {
+    const p = landing(s.map, h, m.pos.z);
+    if (p && !spots.some((x) => key(x) === key(p)) && landingFits(s, e, m, p)) spots.push(p);
+  }
+  const p = spots.filter(free).sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos) || x.q - y.q || x.r - y.r)[0];
+  return p ? out(p) : null;
 }
 // Would a creature fit at this position? Not inside the ground, not with its head through a floor,
 // and not hanging just above one. `landed` says whether it would be standing.

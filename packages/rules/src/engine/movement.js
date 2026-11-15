@@ -11,7 +11,7 @@ import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { checkEnd, dismountOrder, engage, KIT, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
 
@@ -627,38 +627,15 @@ export const handlers = {
   },
 };
 
-// Where a rider gets down (stage C6a): `to` if given, else the nearest. A space it can stand in, within 5 ft of the
-// mount (any part of it), with no wall between it and the mount, in the arena if it is fighting, on ground within a
-// step of the mount's, and not held by a creature it knows of. A party rider chooses by what the party knows, so the
-// choice is the same with or without a creature it does not know of (hidden-information.md, section 5). Returns
-// { p, lurker }: `lurker` is such a creature in the space chosen. The rider is beside it already (its space is the
-// mount's), so, as for a move onto a hidden creature's space when beside it, it does not get down and the creature
-// is found (the handler).
+// Where a rider gets down: `to` if given, else the nearest (world.js, riderLanding, shared with falling off, C6b).
 function dismountSpot(s, e, m, want) {
-  const G = gridOf(s.map), B = barriers(s.map), body = { ...e, riding: undefined };
-  const fighting = inFight(s, e.id);
-  const others = living(s).filter((o) => o.id !== e.id);
-  const unseen = (o) => e.side === 'party' && unseenBy(s, o, e);
-  const fits = (p) => !!p && Math.abs(p.z - m.pos.z) <= STEP_MAX && TILES[ground(s.map, p)?.tile.t]?.cost < Infinity && fitsOn(s.map, body, p, B) &&
-    !!airspace(s.map, p) && apartAt(s, m, m.pos, body, p) <= 1 && !overlapAt(m, m.pos, body, p, G) &&
-    (!fighting || footprint(body, p, G).every((f) => s.encounter.arena[col(f)])) && footprint(m, m.pos, G).some((f) => clear(s, f, p));
-  const holders = (p) => others.filter((o) => overlapAt(o, o.pos, body, p, G));
-  const spots = [];
-  for (const f of footprint(m, m.pos, G)) for (const h of G.range(f, 1)) {
-    const p = landing(s.map, h, m.pos.z);
-    if (p && !spots.some((x) => key(x) === key(p)) && fits(p)) spots.push(p);
-  }
-  const free = spots.filter((p) => holders(p).every(unseen));       // free as far as the rider knows
-  const out = (p) => ({ p, lurker: holders(p).find(unseen) ?? null });
-  if (want === undefined || want === null) {
-    const p = free.slice().sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos) || x.q - y.q || x.r - y.r)[0];
-    return p ? out(p) : fail(`There is no free space within 5 ft of ${m.name} for ${e.name} to get down.`);
-  }
+  const G = gridOf(s.map), spot = riderLanding(s, e, m, want);
+  if (spot) return spot;
+  if (want === undefined || want === null) fail(`There is no free space within 5 ft of ${m.name} for ${e.name} to get down.`);
   (want && Number.isInteger(want.q) && Number.isInteger(want.r)) || fail('Pick a place to get down.');
   const p = landing(s.map, want, want.z ?? m.pos.z);
-  (p && fits(p)) || fail(`${e.name} can get down only in a space within 5 ft of ${m.name}.`);
-  holders(p).every(unseen) || fail(`That ${G.word.one} is occupied.`);
-  return out(p);
+  (p && landingFits(s, e, m, p)) || fail(`${e.name} can get down only in a space within 5 ft of ${m.name}.`);
+  return fail(`That ${G.word.one} is occupied.`);
 }
 
 // Set a leader's formation to a preset, to the shape `followers` stand in ('held'), or (null) leave it.
