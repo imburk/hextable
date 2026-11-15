@@ -12,7 +12,7 @@ const [srd] = PACKS;
 const clone = (x) => structuredClone(x);
 // Lint a pack with one entry swapped for a broken copy, and return the problems.
 const withSpell = (change) => { const s = clone(srd.spells[0]); change(s); return lintPack({ ...srd, spells: [s] }); };
-const withMonster = (change) => { const m = clone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m] }); };
+const withMonster = (change) => { const m = clone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m, ...srd.monsters.slice(1)] }); };
 
 test("the SRD pack passes the linter", () => {
   assert.deepEqual(lintPack(srd), []);

@@ -984,36 +984,58 @@ function overRecord(record, over) {
 }
 // A summon cast with no `summon` field (engine/casting.js, summonFor; #332): nothing is made. The DM is told what
 // this casting would make and with which numbers (each choice of the block baked at this level with the master's
-// numbers, as the step would bake it), where it may go and how to add it. The line is the DM's alone (`partial`):
-// the numbers are the block's, and a player caster is told nothing a cast with picks would not tell them.
+// numbers, as the step would bake it), where it may go and how to add it. That line is the DM's alone (`partial`): the
+// numbers are the block's. The player's own line says only that the DM adds what it summons (#331 review, M1/M2).
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const or = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
+const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`;
 function summonHandOver(m, step, src, ev) {
-  const { slot, caster, count } = src.summon, block = !!CONTENT.summons[step.summon];
-  const stats = (made, also = '') => {
-    const r = overRecord(made.record, step.over), moves = Object.entries(r.speeds ?? {}).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} ${v} ft.`);
-    return `${made.name}${also} (AC ${r.ac}, ${r.hp} Hit Points, Speed ${[`${r.speed} ft.`, ...moves].join(', ')}, ${r.size[0].toUpperCase()}${r.size.slice(1)})`;
+  const { slot, caster, count } = src.summon, block = !!CONTENT.summons[step.summon], def = SPELLS[src.spell]?.def;
+  const cap = (w) => `${w[0].toUpperCase()}${w.slice(1)}`;
+  // The numbers `spawn` gives: a block baked for this casting, or the pack monster as it is (`over`, a Speed the spell
+  // replaces, is not something `spawn` or any DM tool sets, so it is said apart).
+  const core = (made) => {
+    const r = made.record, moves = Object.entries(r.speeds ?? {}).map(([k, v]) => `${cap(k)} ${v} ft.`);
+    return `${made.name} (AC ${r.ac}, ${r.hp} Hit Points, Speed ${[`${r.speed} ft.`, ...moves].join(', ')}`;
   };
-  let what;
+  let what, over = '', single = false;
   if (step.forms !== undefined) {
     what = Array.isArray(step.forms) ? or(step.forms.map((f) => CONTENT.monsters[f]?.name ?? f)) : `any ${step.forms.type} of Challenge Rating ${step.forms.cr}`;
   } else {
-    const picks = [];
+    // Picks that bake to the same numbers are listed once, with every size or creature type they cover (Draconic
+    // Spirit's five breath types; Animated Object's Tiny, Small and Medium; the steed's three creature types).
+    const groups = new Map();
     for (const variant of step.variants ?? [undefined]) for (const type of (block ? step.types : null) ?? [undefined]) {
       const pick = { ...(variant !== undefined ? { variant } : {}), ...(type !== undefined ? { type } : {}) };
-      picks.push(stats(summonMade(step, pick, slot, caster), type !== undefined ? ` as a ${type}` : ''));
+      const made = summonMade(step, pick, slot, caster), key = core(made), g = groups.get(key) ?? { sizes: [], types: [] };
+      if (!g.sizes.includes(made.record.size)) g.sizes.push(made.record.size);
+      if (type !== undefined) g.types.push(type);
+      groups.set(key, g);
     }
-    what = or(picks);
+    what = or([...groups].map(([key, g]) => `${key.replace(' (AC', g.types.length ? ` as a ${or(g.types)} (AC` : ' (AC')}, ${or(g.sizes.map(cap))})`));
+    single = groups.size === 1 && !!step.variants;
+    const o = step.over?.speed;
+    if (o && !block) over = ` The spell gives it Speed ${or(Object.entries(o).map(([k, v]) => `${k === 'walk' ? '' : `${k} `}${v} ft.`))}, which \`spawn\` does not set: the DM notes that by hand.`;
   }
   const choose = step.forms !== undefined || step.variants || (block && step.types);
-  const types = step.types && !block ? `, of a creature type the caster picks (${or(step.types)})` : '';
-  const numbers = block ? ` Its numbers are baked from ${m.name}'s: spell attack ${signed(caster.attack)}, spell save DC ${caster.dc}, Proficiency Bonus ${signed(caster.pb)}.` : '';
+  const objects = step.summon === 'animated-object';
+  const types = step.types && !block ? `, of a creature type the caster picks (${or(step.types)}; \`spawn\` takes no creature type for a pack monster, so the DM notes the type by hand)` : '';
+  const picked = single ? ` The caster's pick (${or(step.variants)}) changes none of these numbers; it is in the block's text.` : '';
+  const numbers = block ? ` Its numbers are baked from ${m.name}'s: spell attack ${signed(caster.attack)}, spell save DC ${caster.dc}, Proficiency Bonus ${signed(caster.pb)}.${picked}` : '';
   const spawn = block ? `spawn with monster ${step.summon}, slot ${slot}${step.variants ? ', the variant' : ''}${step.types ? ', kind (its creature type)' : ''} and caster ${m.id}`
     : `spawn with the monster${step.forms !== undefined ? ' picked' : ` ${step.summon}`}`;
+  const rest = (def?.effects ?? []).some((x) => !('summon' in x) && !('manual' in x)) ? ` The rest of ${src.name} that needs no creature, such as a Resistance it gives ${m.name}, was applied as usual.` : '';
+  const tier = def && def.tier !== 'auto' ? ` ${def.text}` : '';
+  const adds = objects ? `up to ${Math.max(caster.mod, 0)} objects (a Large counts as two, a Huge as three), of the size the caster picks`
+    : count === 1 ? `the creature${choose ? ' the caster picks' : ''}` : `${count} creatures${choose ? ', of the kind the caster picks' : ''}`;
+  const b = step.bond ?? {};
+  // Players are told only that the DM has something to add: no numbers, and nothing that says a creature exists.
+  // (A hidden caster's line is dropped by the view, as any manual line of a creature the party does not know of.)
+  ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name}: the DM adds what it summons.` });
   ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true,
-    text: `${src.name} was cast at level ${slot} with nothing picked for the engine to summon, so it made nothing. The DM adds ${count === 1 ? `the creature${choose ? ' the caster picks' : ''}` : `${count} creatures${choose ? ', of the kind the caster picks' : ''}`}: ${what}${types}.${numbers}`
-      + ` Each goes in an unoccupied space within ${src.range} ft. that ${m.name} can see (inside the arena in a fight). The DM's ${spawn} makes it; bond it to ${m.name} as a ${step.bond?.kind ?? 'companion'}.`
-      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}` });
+    text: `${src.name} was cast at level ${slot} with nothing picked for the engine to summon, so it made nothing. The DM adds ${adds}: ${what}${types}.${over}${numbers}`
+      + ` ${count === 1 && !objects ? 'It goes' : 'Each goes'} in an unoccupied space within ${src.range} ft. that ${m.name} can see (inside the arena in a fight). The DM's ${spawn} makes ${count === 1 && !objects ? 'it' : 'each'}; bond ${count === 1 && !objects ? 'it' : 'each'} to ${m.name} as ${an(b.kind ?? 'companion')}${b.turn ? ` with turn ${b.turn}` : ''}.`
+      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}${rest}${tier}` });
 }
 
 // Make the creatures `src.summon` names (checked when the spell was cast, engine/casting.js): each an ordinary

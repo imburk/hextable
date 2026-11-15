@@ -12,7 +12,7 @@ import { view } from "../src/view.js";
 const srd = PACKS[0];
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
-const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m] }).join(" | "); };
+const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m, ...srd.monsters.slice(1)] }).join(" | "); };
 
 // A cleric's Sacred Flame (a Dexterity save) at a creature next to it; returns the save the creature made.
 function dexSave(tpl, patch = {}, seed = 7) {

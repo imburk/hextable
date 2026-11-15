@@ -95,16 +95,18 @@ for (const grid of [null, "square"]) {
       // The DM's line: every variant baked at this level with Ven's numbers.
       const told = handOver(r), caster = summonCaster(s, ven, "giant-insect");
       assert.ok(told && told.partial && told.actor === "ven" && told.name === "Giant Insect");
-      assert.equal(manuals(r).length, 1, "one line, and no tier note for an auto spell");
+      assert.equal(manuals(r).length, 2, "the DM's line and the public one, and no tier note for an auto spell");
+      assert.deepEqual(manuals(r).filter((e) => !e.partial).map((e) => e.text), ["Giant Insect: the DM adds what it summons."]);
       for (const variant of ["centipede", "spider", "wasp"]) {
         const t = summonTemplate("giant-insect", { slot, variant, caster });
         assert.ok(told.text.includes(`${t.name} (AC ${t.record.ac}, ${t.record.hp} Hit Points, Speed 40 ft., Climb 40 ft.${variant === "wasp" ? ", Fly 40 ft." : ""}, Large)`), `${variant} at ${slot}: ${told.text}`);
       }
       assert.ok(told.text.includes(`at level ${slot}`) && told.text.includes(`spell attack +${caster.attack}, spell save DC ${caster.dc}, Proficiency Bonus +${caster.pb}`));
       assert.ok(told.text.includes("within 60 ft.") && told.text.includes(`slot ${slot}`) && told.text.includes("caster ven"));
-      // The player: the cast and the effect, as for any spell of theirs, and no line from the DM's note.
+      // The player: the cast and the effect, as for any spell of theirs, and one short public line (#331 review): no numbers, no creature.
       const mine = viewEvents(r.events, s, PAT);
-      assert.deepEqual(mine.map((e) => e.type), ["cast", "effectEnd", "effectStart"], "the old effect's end, then the new one");
+      assert.deepEqual(mine.map((e) => e.type), ["cast", "effectEnd", "effectStart", "manual"], "the old effect's end, the new one, then the line");
+      assert.equal(mine.find((e) => e.type === "manual").text, "Giant Insect: the DM adds what it summons.");
       assert.ok(!json(mine).includes("Hit Points"));
       // It lasts as a spell does, and ends when its time runs out.
       ok(apply(s, { type: "advanceTime", minutes: 5 }, DM));
@@ -121,9 +123,9 @@ for (const grid of [null, "square"]) {
     assert.ok(s.effects.some((x) => x.spell === "test-assist-insect" && x.conc));
     const told = handOver(r);
     assert.ok(told && told.partial && told.text.includes("at level 6") && told.text.includes("Test Assist Insect"));
-    assert.ok(manuals(r).some((e) => e.partial && e.text === ASSIST.text), "the tier note");
-    assert.ok(manuals(r).every((e) => e.partial));
-    assert.ok(!viewEvents(r.events, s, PAT).some((e) => e.type === "manual"));
+    assert.ok(told.text.endsWith(ASSIST.text), "the tier note, in the DM's line");
+    assert.deepEqual(manuals(r).filter((e) => !e.partial).map((e) => e.text), ["Test Assist Insect: the DM adds what it summons."]);
+    assert.ok(!json(viewEvents(r.events, s, PAT)).includes("Hit Points") && !json(viewEvents(r.events, s, PAT)).includes(ASSIST.text));
     // With picks it builds, the assist note still the DM's.
     const b = table(grid);
     const r2 = ok(apply(b, { type: "cast", actor: "ven", spell: "test-assist-insect", slot: 6, summon: { variant: "spider", at: [big(b, b.entities.fighter.pos, 2)] } }, PAT));

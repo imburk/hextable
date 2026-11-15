@@ -252,9 +252,9 @@ export const spells1 = [
     time: "hour", range: 10, components: ["v", "s", "m"], costly: true,
     duration: "instant", concentration: false, ritual: true,
     target: {"self": true},
-    effects: [{"manual": "Find Familiar: the caster gains a familiar in an animal form the caster chooses, a spirit companion that can communicate telepathically within 100 feet and can deliver the caster's touch spells using its Reaction. The DM adds and runs the familiar."}],
-    tier: "manual", checked: true,
-    text: "Summons a spirit companion in animal form that can deliver the caster's touch spells. Takes an hour to cast; it can be a ritual.",
+    effects: [{"summon": "form", "forms": {"type": "beast", "cr": 0}, "types": ["celestial", "fey", "fiend"], "bond": {"kind": "familiar", "turn": "own", "orders": "free", "at0": "vanish", "noAttack": true}}],
+    tier: "assist", checked: true,
+    text: "Summons a spirit companion in the form of a CR 0 Beast, as a Celestial, Fey or Fiend, that acts on its own turn but cannot attack; an hour to cast, or a ritual. The DM keeps to one familiar a caster (a second casting only changes its form; remove the old one), and runs dismissing, recalling, telepathy and touch delivery. No Octopus form: the SRD has no block.",
   },
   {
     id: "fog-cloud", name: "Fog Cloud", source: "SRD 5.2.1",

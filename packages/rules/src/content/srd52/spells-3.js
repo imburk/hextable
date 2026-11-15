@@ -256,9 +256,9 @@ export const spells3 = [
     time: "minute", range: 30, components: ["v", "s"],
     duration: "1 hour", concentration: false, ritual: true,
     target: {"self": true},
-    effects: [{"manual": "Phantom Steed: a Large, quasi-real, horselike creature appears on the ground in an unoccupied space in range, with a saddle, bit and bridle that vanish if carried more than 10 feet away. The caster or a creature the caster chooses can ride it for 1 hour. It uses the Riding Horse stat block except that its Speed is 100 feet (13 miles in an hour). When the spell ends it fades over a minute, giving the rider time to dismount, and the spell ends early if the steed takes any damage. The DM places and runs the steed."}],
-    tier: "manual", checked: true,
-    text: "A Large quasi-real horselike creature, saddled and bridled, appears for an hour. It uses the Riding Horse stat block with a Speed of 100 feet and fades, after 1 minute for riders to dismount, when the spell ends or it takes damage.",
+    effects: [{"summon": "riding-horse", "over": {"speed": {"walk": 100}}, "bond": {"kind": "steed", "turn": "after", "orders": "free", "at0": "vanish"}}],
+    tier: "assist", checked: true,
+    text: "A Large horselike steed for an hour: a Riding Horse with Speed 100 feet (made by spawn it has the pack's 60, so the DM notes the 100 and the 13 miles an hour by hand), acting straight after the caster (the SRD gives no Initiative rule). The DM ends the spell when the steed takes damage, and handles riding, its fading over a minute and its tack.",
   },
   {
     id: "plant-growth", name: "Plant Growth", source: "SRD 5.2.1",

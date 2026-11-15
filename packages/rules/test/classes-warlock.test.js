@@ -174,10 +174,17 @@ test("Witch Sight: Truesight 30 feet from level 15", () => {
 test("Pact of the Chain: Find Familiar as a Magic action without a slot, even in a fight", () => {
   const s = ready(9, ["pact-of-the-chain"]), e = s.entities.hero, slots = { ...e.slots };
   no(cast(s, { spell: "find-familiar" }), /takes longer than a turn/);
-  const r = ok(cast(s, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain" }));
+  // Find Familiar summons since C4 (#328). With no `summon` pick (what the client sends until C8) the cast is a manual
+  // hand-off (#332): nothing is made and the DM is told. With picks the familiar is made.
+  const bare = ready(9, ["pact-of-the-chain"]), plain = ok(cast(bare, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain" }));
+  assert.equal(bare.encounter.budget.action, 0);
+  assert.ok(!plain.events.some((x) => x.type === "summoned") && plain.events.some((x) => x.type === "manual" && x.partial && /nothing picked/.test(x.text)), "no pick: the DM adds it");
+  no(cast(s, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain", summon: null }), /summon/i);
+  const r = ok(cast(s, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain", summon: { form: "owl", type: "fey", at: [{ q: 1, r: 0 }] } }));
   assert.equal(s.encounter.budget.action, 0);
   assert.deepEqual(e.slots, slots);
-  assert.ok(r.events.some((x) => x.type === "manual"), "the familiar itself is the DM's");
+  assert.ok(r.events.some((x) => x.type === "summoned"), "the familiar is made");
+  assert.ok(r.events.some((x) => x.type === "manual" && x.partial), "what the engine does not do for it is the DM's");
 });
 
 test("Contact Patron: Contact Other Plane once per Long Rest without a slot, its save a success", () => {

@@ -204,9 +204,9 @@ export const spells2 = [
     time: "action", range: 30, components: ["v", "s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"manual": "Find Steed: the caster summons a Large Otherworldly Steed (Celestial, Fey or Fiend, the caster's choice) in an unoccupied space within 30 feet, an ally that shares the caster's Initiative and acts as a controlled mount. It uses the Otherworldly Steed stat block with the spell slot's level (AC 10 + level, HP 5 + 10 per level, Speed 60, and Fly 60 at level 4 or higher), a Slam attack (1d8 plus the spell's level, Radiant, Psychic or Necrotic by type), and one type-specific bonus action (Fell Glare, Fey Step, or Healing Touch for 2d8 plus the spell's level). It disappears at 0 Hit Points or if the caster dies, and a new casting replaces it. The DM places and runs it."}],
-    tier: "manual", checked: true,
-    text: "Summons an otherworldly steed (Celestial, Fey or Fiend) in an unoccupied space within 30 feet, using the Otherworldly Steed stat block at the spell's level. A new casting replaces an old steed.",
+    effects: [{"summon": "otherworldly-steed", "types": ["celestial", "fey", "fiend"], "bond": {"kind": "steed", "turn": "after", "orders": "free", "at0": "vanish", "ends": ["masterDies"]}}],
+    tier: "assist", checked: true,
+    text: "Summons an otherworldly steed (Celestial, Fey or Fiend) within 30 feet, using the Otherworldly Steed block at the slot level; it shares the caster's Initiative count and disappears at 0 Hit Points or if the caster dies. The DM replaces an old steed with a new casting and handles riding, its turn while the caster is Incapacitated, and its look.",
   },
   {
     id: "find-traps", name: "Find Traps", source: "SRD 5.2.1",

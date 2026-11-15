@@ -462,14 +462,14 @@ and dropping fields it does not know.
 | Entry | Tier after this work | How | Still the DM's |
 |---|---|---|---|
 | Find Familiar | assist | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing; Octopus (no block) |
-| Find Steed | auto (with C6) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
+| Find Steed | auto (with C6); **C4 set assist**: `one` (C5) and `mount` (C6) are not in the vocabulary yet | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
 | Summon Dragon | auto | `summon: 'draconic-spirit'`, Concentration part; Shared Resistances as a `modifier` step on `self` with the spell's `choice` | its "verbal commands" |
 | Giant Insect | auto | `summon: 'giant-insect'`, `variants` | as above |
 | Animate Dead | assist | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert; commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
 | Create Undead | assist | as Animate Dead, Ghoul (Ghast, Wight, Mummy by slot), range 120; "only at night" is the DM's | as above |
 | Animate Objects | assist | `summon: 'animated-object'` with `variants` as size, at points the caster names | which objects (map things are not checked), the count by size against the modifier, reverting to the object |
-| Phantom Steed | auto | `summon: 'riding-horse'`, `over: { speed: { walk: 100 } }`, part ends on damage, `mount` via the mounts list | travel pace, the vanishing tack, the minute to dismount |
-| Unseen Servant | assist | a block built from the spell's numbers (AC 10, HP 1, Str 2), `turn: 'none'`, `orders: 'command'`, `leash: 60`, `noAttack`, Invisible | its other ability scores (none in the SRD), the tasks |
+| Phantom Steed | auto; **C4 set assist**: a part's `ends: damaged` and `mount` (C6) are not in the vocabulary yet | `summon: 'riding-horse'`, `over: { speed: { walk: 100 } }`, part ends on damage, `mount` via the mounts list | travel pace, the vanishing tack, the minute to dismount |
+| Unseen Servant | assist; **C4 left manual**: `turn: 'none'`, commands and a block of one score are not in the vocabulary | a block built from the spell's numbers (AC 10, HP 1, Str 2), `turn: 'none'`, `orders: 'command'`, `leash: 60`, `noAttack`, Invisible | its other ability scores (none in the SRD), the tasks |
 | Wild Companion | auto | feature casting Find Familiar through `freeCast`-like spending of a slot or a Wild Shape use, `types: ['fey']`, `ends: ['longRest']` | as Find Familiar |
 | Faithful Steed | auto | `freeCast { spells: ['find-steed'] }` and always prepared (vocabulary exists; data entry) | — |
 | Pact of the Chain | assist | Find Familiar learned, Magic action, no slot; the seven extra forms; forgo an attack for the familiar's Reaction attack (C9) | — |
@@ -818,6 +818,35 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   "Creature"; use `e.name`, or `CONTENT.summons[e.tpl]`); the model to draw is the client's choice by `tpl`. Its
   turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`, C8/C10).
 
+### C4, blocks and spells, data (#328)
+
+Content, plus the public hand-over line in `resolve.js` (`summonHandOver`, #331 review): three blocks in `content/srd52/summons.js` and five spells moved. Every number was compared with
+`reference/srd52/srd52-flow.txt` (lines in the table above); `test/summons-c4.test.js` bakes each block at every
+casting and casts each spell.
+
+- **`otherworldly-steed`** (level 2, `types`): `assist`. AC 10 + level, HP 5 + 10 per level, Fly 60 from level 4, the
+  Slam's damage type by creature type. Fell Glare applies Frightened and tells the DM it ends on the *caster's* next
+  turn (the step's `ends` can only say the steed's); Fey Step (a teleport that takes the rider) and Healing Touch (2d8
+  plus the spell's level: `plus` is added to damage dice only) are `manual` steps; Life Bond waits for a healing hook.
+  Each is `uses: { per: 'day', n: 1 }`, as "once per Long Rest".
+- **`draconic-spirit`** (level 5): `auto`. The `variants` are the breath's damage type, which the SRD makes "your
+  choice when you cast the spell" and separate from the Shared Resistances choice, which stays the spell's own `choice`
+  and a `modifier` step on the caster. A cast therefore names both (`summon.variant` and `choice`).
+- **`animated-object`** (level 5): `auto`. The `variants` are the object's size, tiny to huge (the SRD's "Medium or
+  smaller" is three of them with the same numbers). The upcast dice are `only: { slot: n }` damage entries, one more
+  die for each level above 5 (a resistance rounds each of those entries apart). The SRD gives the block no Proficiency
+  Bonus; `pb` is the engine's required field and nothing in the block uses it.
+- **Spell tiers.** Summon Dragon `auto`. Find Familiar, Find Steed, Phantom Steed, Animate Objects `assist`, each with its `text` naming what is left (the
+  DM's note; there is no `manual` step, so a player is told only the public line above). Find Familiar uses `forms: { type: 'beast', cr: 0 }` (the ten listed forms and any
+  other CR 0 Beast of the pack; the SRD has no Octopus block). Missing, so assist and not the table's tier: `one:
+  'reform'` / `'replace'` (C5) for the one familiar or steed, `mount` (C6) for riding, a part's `ends: { on: 'damaged' }`
+  for Phantom Steed, and a `count` that depends on the caster's modifier and the objects' sizes for Animate Objects (the
+  step makes one; the DM adds the rest with `spawn`). Find Steed's before-or-after choice is stage A1.
+- **Casting from the UI.** The client cannot send `summon` until C8; until then a UI cast of these spells is a manual hand-off (C3b) with one public line.
+- **Unseen Servant stays `manual`, with no block.** It needs `turn: 'none'` and `orders: 'command'` (the linter refuses
+  both until C5 and C6) and a block with only Strength 2 (the monster linter wants all six scores, and inventing the
+  other five is not allowed). Its manual text already carries the SRD's numbers.
+
 ### C3b, a summon cast with no picks (#332)
 
 Found in the review of #331: from C3 a cast of a spell with a `summon` step and no `summon` field was refused ("Pick
@@ -829,8 +858,8 @@ cast at all. Before C3 these spells were `manual` and were never refused. Settle
   or empty `at` or the wrong number of spaces, a missing variant. A `summon` on a spell that summons nothing is still
   refused, `null` included.
 - **The manual path** is any spell's: the slot spent (and the turn's one slot, the action), Concentration started where
-  the spell has it (ending the old one), its lasting effect timed as usual, with no parts (it keeps nothing, and ends
-  when its time runs out or its caster drops it). Nothing is made and `seq` moves only for the effect. Checks that do
+  the spell has it (ending the old one), its lasting effect timed as usual, with no summon part (it keeps no creature, and ends
+  when its time runs out or its caster drops it; the spell's other steps, such as Summon Dragon's Resistance on the caster, run as usual). Nothing is made and `seq` moves only for the effect. Checks that do
   not depend on the picks still hold: a companion can't cast a summon, and a master at the cap of 30 is refused.
 - **The DM is told, alone** (`manual`, `partial: true`, emitted by the summon step in `resolve.js`, `summonHandOver`):
   the level it was cast at; each choice of the block baked at that level with the master's numbers (name, AC, Hit
@@ -839,8 +868,11 @@ cast at all. Before C3 these spells were `manual` and were never refused. Settle
   that the space must be one the caster can see (in the arena in a fight); the DM's `spawn` that makes it and that it
   is bonded with `bond`; and, for a spell that lasts, that the creature so added is not kept by the spell (the DM's
   `bond` takes no `fx`), so the DM removes it when the spell ends. A player caster gets the `cast` and `effectStart`
-  any spell of theirs gives, and no line: a cast with picks tells them nothing more either. An `assist` or `manual`
-  entry's own tier note follows as before (partial too). A step after the summon step (#331's Find Familiar line) runs
+  any spell of theirs gives, and one short public (not `partial`) `manual` line, "<Spell>: the DM adds what it summons.",
+  with no numbers and no claim that a creature exists (#331 review; a foe's or a hidden caster's line is dropped by the
+  view like any manual line of a creature that is not the party's). An `assist` or `manual` entry's own tier note (its
+  `text`) is the DM's alone and follows the DM's line. Identical bakes are listed once (Draconic Spirit's five breath
+  types), and the line says the caster's pick changes none of the numbers. A step after the summon step (#331's Find Familiar line) runs
   as it does with picks.
 - **A hidden caster is not revealed**, as with picks (the spell is aimed at its caster only in form). A twin run (a
   hidden foe's cast without picks against the same foe's plain manual spell aimed at nothing, same level, duration
@@ -849,7 +881,8 @@ cast at all. Before C3 these spells were `manual` and were never refused. Settle
 - **A cast with picks is unchanged** (checked byte for byte against main for party and foe casts with a hidden
   creature in the space, on hexes and squares, through a fight). One existing test changed: the C3 refusal of a cast
   with no `summon` now sends `summon: null`.
-- **For the client job:** until the chooser exists, the plain cast button works for these spells; the DM's log shows
+- **For the client job (C8):** the chooser must omit `summon` when nothing is picked, never send `summon: null` (that is
+  refused), and for Summon Dragon still send `choice` (the Shared Resistances pick; a cast without it is refused "Choose a damage type": the client's `chosen()` defaults to the first option). Until the chooser exists, the plain cast button works for these spells; the DM's log shows
   the line to act on.
 
 ## Amendments of 14 November
