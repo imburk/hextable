@@ -9,6 +9,7 @@
 //   const slot = limits.uploadSlot(addr, code)      // { release } or { refused: "server" | "address" | "table" }
 //   limits.uploadPace(elapsedMs, bytes)             // null, "slow" or "deadline": cut an upload body off?
 //   limits.allowAssetRead(addr)                     // false when the address reads files too fast
+//   limits.allowFeedback(addr)                      // false when the address has sent too many feedback reports (a minute's and an hour's budget)
 
 import { isIP } from "node:net";
 
@@ -40,6 +41,8 @@ export const DEFAULT_LIMITS = {
   uploadMinBytesPerSec: 32 * 1024,
   assetReadBurst: 120,                 // file reads per address at once
   assetReadsPerSecond: 10,             // and sustained
+  feedbackPerMinute: 5,                // feedback reports (POST /feedback) per address per minute
+  feedbackPerHour: 30,                 // and per hour
 };
 
 // Each limit can be set from the environment (useful for tests and for unusual hosts).
@@ -59,6 +62,7 @@ export function limitsFromEnv(env = {}) {
     uploadBodyMs: n("LIMIT_UPLOAD_BODY_MS", d.uploadBodyMs), uploadGraceMs: n("LIMIT_UPLOAD_GRACE_MS", d.uploadGraceMs),
     uploadMinBytesPerSec: n("LIMIT_UPLOAD_MIN_RATE", d.uploadMinBytesPerSec),
     assetReadBurst: n("LIMIT_ASSET_READ_BURST", d.assetReadBurst), assetReadsPerSecond: n("LIMIT_ASSET_READ_RATE", d.assetReadsPerSecond),
+    feedbackPerMinute: n("LIMIT_FEEDBACK_MINUTE", d.feedbackPerMinute), feedbackPerHour: n("LIMIT_FEEDBACK_HOUR", d.feedbackPerHour),
   };
 }
 
@@ -70,6 +74,7 @@ export function createLimits(config = {}, now = Date.now) {
   const uploads = new Map();       // address -> timestamps of recent uploads and deletions
   const uploading = { all: 0, byAddr: new Map(), byTable: new Map() };   // upload bodies being read now
   const reads = new Map();         // address -> { tokens, last }: file reads
+  const feedback = new Map();      // address -> timestamps of feedback reports in the last hour
   const bump = (map, key, by) => { const n = (map.get(key) ?? 0) + by; if (n > 0) map.set(key, n); else map.delete(key); };
 
   // Sliding window: count the events still inside the window, admit this one if there is room.
@@ -97,6 +102,14 @@ export function createLimits(config = {}, now = Date.now) {
     allowHost: (addr) => admit(hosts, addr, c.hosts, c.hostWindowMs),
     allowJoin: (addr) => admit(joins, addr, c.joins, c.joinWindowMs),
     allowUpload: (addr) => admit(uploads, addr, c.uploads, c.uploadWindowMs),
+    // Two windows at once: a report is admitted only if both the minute's and the hour's budget have room (a refusal costs nothing).
+    allowFeedback(addr) {
+      const t = now(), hour = (feedback.get(addr) ?? []).filter((x) => t - x < 3_600_000);
+      const ok = hour.length < c.feedbackPerHour && hour.filter((x) => t - x < 60_000).length < c.feedbackPerMinute;
+      if (ok) hour.push(t);
+      if (hour.length) feedback.set(addr, hour); else feedback.delete(addr);
+      return ok;
+    },
     config: c,
     uploadSlot(addr, code) {
       if (uploading.all >= c.uploadsAtOnce) return { refused: "server" };
@@ -140,6 +153,7 @@ export function createLimits(config = {}, now = Date.now) {
       for (const [map, windowMs] of [[hosts, c.hostWindowMs], [joins, c.joinWindowMs], [uploads, c.uploadWindowMs]]) {
         for (const [addr, list] of map) if (!list.some((x) => t - x < windowMs)) map.delete(addr);
       }
+      for (const [addr, list] of feedback) if (!list.some((x) => t - x < 3_600_000)) feedback.delete(addr);
       for (const [addr, b] of reads) if (b.tokens + ((t - b.last) / 1000) * c.assetReadsPerSecond >= c.assetReadBurst) reads.delete(addr);
     },
     stats: () => ({ addresses: open.size, hosts: hosts.size, joins: joins.size }),
