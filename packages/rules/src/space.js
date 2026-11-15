@@ -100,7 +100,12 @@ export const WALL_HEIGHT = 10, HEADROOM = 5;
 // fails on a call that leaves it out, so no rules code measures a square map in hexes (task S6).
 // The hex default stays for the hex tests that call these directly.
 export const sizeOf = (e) => SIZES[e?.size] ?? SIZES.medium;
-export const shapeOf = (e, G = HEX) => G.footprint(e?.size);
+// A rider (`riding`, docs/specs/companions.md, Decision 8; stage C6a) stands in its mount's space: its position is the
+// mount's anchor and its footprint is the mount's shape, kept on the ride as `riding.size` (the engine keeps it in
+// step with the mount after every action: engine/resolve.js, settleRiders). So reach, range, areas and the overlap
+// check all measure a rider by the whole mount, on hexes and on squares alike, and two creatures share a space only
+// through riding. Its own size (`sizeOf`) is unchanged: what it can grapple, how tall it is.
+export const shapeOf = (e, G = HEX) => G.footprint(e?.riding && SIZES[e.riding.size] ? e.riding.size : e?.size);
 // The cells a creature fills when it stands at `pos` (its own position if none is given).
 export const footprint = (e, pos = e.pos, G = HEX) => shapeOf(e, G).map(([dq, dr]) => ({ q: pos.q + dq, r: pos.r + dr, z: pos.z ?? 0 }));
 // Would two creatures be in each other's space, one at `pa` and the other at `pb`?

@@ -68,14 +68,49 @@ export function commandLock(s, e) {
   return !(b.commanded && typeof b.commanded === 'object' && b.commanded.at === null);
 }
 export const control = (s, e, ctx) => {
+  const type = RUN?.action?.type, acting = typeof type === 'string' && RUN.action.actor === e.id;
   if (ctx.role !== 'dm') {
-    const who = ownerOf(s, e);
-    (!!who && who === ctx.userId) || fail(`${e.name} isn't yours to control.`);
+    const who = ownerOf(s, e), r = steering(s, e);
+    // A controlled mount "moves on your turn as you direct it": its rider's player sends its moves, Dash and Disengage.
+    (!!who && who === ctx.userId) || (acting && DIRECTED.has(type) && !!r && ownerOf(s, r) === ctx.userId) || fail(`${e.name} isn't yours to control.`);
   }
-  const type = RUN?.action?.type;
-  if (typeof type === 'string' && !UNLOCKED.has(type) && RUN.action.actor === e.id && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
+  if (acting && !UNLOCKED.has(type) && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
+  if (acting && steering(s, e)) {
+    if (type === 'dodge') fail(`A controlled mount's Dodge is not in the engine yet: the DM gives ${e.name} the Dodge by hand.`);
+    RIDDEN.has(type) || fail('A controlled mount can only Dash, Disengage or Dodge.');
+  }
   return true;
 };
+
+// ---------- riding (docs/specs/companions.md, Decision 8; stage C6a) ----------
+// A rider carries `riding: { on: mountId, controlled, size }` and its mount `rider: riderId`; one rider per mount.
+// `size` is the mount's, so that space.js can give the rider the mount's footprint without the game state.
+// The rider of this mount, if the pair is whole (both records there, each naming the other), else null.
+export const riderOf = (s, m) => {
+  const id = m?.rider, r = typeof id === 'string' && Object.hasOwn(s?.entities ?? {}, id) ? s.entities[id] : null;
+  return r && r.riding?.on === m.id ? r : null;
+};
+// The mount this creature rides, if the pair is whole, else null.
+export const mountOf = (s, r) => {
+  const id = r?.riding?.on, m = typeof id === 'string' && Object.hasOwn(s?.entities ?? {}, id) ? s.entities[id] : null;
+  return m && m.rider === r.id ? m : null;
+};
+// The rider steering this mount: a rider that controls it (SRD "Controlling a Mount": it moves on its rider's turn
+// as the rider directs and has only Dash, Disengage and Dodge), or null for a mount nobody rides or an independent one.
+export const steering = (s, m) => { const r = riderOf(s, m); return r?.riding.controlled === true ? r : null; };
+// What a controlled mount may be sent, by its rider's player (DIRECTED) or by anyone who may play it (RIDDEN): its moves,
+// Dash and Disengage (Dodge is attacks.js's, not built for a mount yet), and what is set about it or answered for it.
+const DIRECTED = new Set(['move', 'dash', 'disengage', 'dodge']);
+const RIDDEN = new Set(['move', 'dash', 'disengage', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+// Whose turn a creature moves on, and from which budget, in the fight going on: its own turn and `budget`, or, for a
+// controlled mount, its rider's turn and `budget.mount`. Null when it is not its turn to move (or there is no fight).
+export function turnBudget(s, e) {
+  const enc = s?.encounter;
+  if (!enc || !enc.budget) return null;
+  const r = steering(s, e);
+  if (r) return current(s) === r.id && enc.budget.mount && typeof enc.budget.mount === 'object' ? enc.budget.mount : null;
+  return current(s) === e.id ? enc.budget : null;
+}
 export const fighters = (s) => (s.encounter ? s.encounter.order.map((o) => s.entities[o.id]).filter(Boolean) : []);
 export const ft = (hexes) => `${hexes * FT} ft`;
 export const featOf = (e, id) => (e.feats ?? []).find((f) => f.id === id) ?? null;

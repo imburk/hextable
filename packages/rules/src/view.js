@@ -44,7 +44,17 @@ const seenHp = (e) => (!e.dead && e.hp > 0 ? 1 : 0);      // keeps up(e) true or
 const inForm = (e) => !!e.form && e.side !== 'party';
 export { seenName };                              // vision.js: the Beast's name for such a creature
 
-function seenRecord(e) {
+// Riding (docs/specs/companions.md, Decisions 8 and 10; stage C6a) is plain to see, so a creature players see shows
+// what it rides and who rides it; but only where they know of the other one too. A ride's other fields (whether the
+// rider controls the mount, the footprint it borrows) are the party's own, in their open records.
+function rideSeen(state, e) {
+  const out = {};
+  if (typeof e.riding?.on === 'string' && classify(state, e.riding.on) !== 'hidden') out.riding = { on: e.riding.on };
+  if (typeof e.rider === 'string' && classify(state, e.rider) !== 'hidden') out.rider = e.rider;
+  return out;
+}
+
+function seenRecord(e, state) {
   const cond = {};
   for (const c of visibleConditions(e)) cond[c] = true;         // which conditions show is decided by their data
   const form = inForm(e);
@@ -54,6 +64,7 @@ function seenRecord(e) {
     dead: !!e.dead, hp: seenHp(e), health: healthOf(e), cond,
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
     ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
+    ...(state ? rideSeen(state, e) : {}),
   };
 }
 
@@ -211,9 +222,13 @@ export function playerView(state) {
       // A formation's places are party members' (#303); one for anyone else (a creature since gone, or no longer of the party) is not sent.
       const slots = entities[id].formation?.slots;
       if (slots) for (const k of Object.keys(slots)) if (classify(state, k) !== 'open') delete slots[k];
+      // A ride whose other half the party does not know of is not sent at all (not as 'someone'): riding is shown
+      // only where both are known (stage C6a).
+      if (e.riding && !(typeof e.riding.on === 'string' && classify(state, e.riding.on) !== 'hidden')) delete entities[id].riding;
+      if (e.rider !== undefined && !(typeof e.rider === 'string' && classify(state, e.rider) !== 'hidden')) delete entities[id].rider;
       scrub(entities[id], hidden);
     }
-    else if (c === 'seen') entities[id] = seenRecord(e);
+    else if (c === 'seen') entities[id] = seenRecord(e, state);
   }
   return {
     // No `seq`: it counts creatures as they are added, so it would tick when the DM adds a hidden one.
@@ -581,6 +596,13 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'companion':
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'auto']));
+        break;
+      // Riding (stage C6a): plain to see, so told where players know of both the rider and its mount.
+      case 'mounted':
+        if (cls(ev.mount) !== 'hidden') out.push({ ...pick(ev, ['type', 'id', 'mount']), ...(cls(ev.id) === 'open' ? pick(ev, ['controlled']) : {}) });
+        break;
+      case 'dismounted':
+        if (typeof ev.mount === 'string' && cls(ev.mount) !== 'hidden') out.push(structuredClone(pick(ev, ['type', 'id', 'mount', 'at', 'why'])));
         break;
       case 'companionOrder':                           // a before or after choice (A1): the party's own only, as a bond is
         if (cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'next']));

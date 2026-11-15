@@ -14,9 +14,10 @@ import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
+import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, partyOf, pocketOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
+import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, rollDice, rolledOf, spellStats, steering, tellDM, together, up } from './shared.js';
 import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
@@ -177,6 +178,9 @@ export function advanceTurn(s, ev) {
     if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; newRound(s); roundStarted(s, ev); }
     const e = s.entities[enc.order[enc.turn].id];
     if (!e || e.dead) { idle++; continue; }
+    // A controlled mount has no turn of its own while it is ridden: it moves and acts on its rider's (stage C6a). One
+    // its rider got down from has had its turn this round on the rider's.
+    if (riddenNow(s, e) || enc.rode?.[e.id] === enc.round) { idle++; continue; }
     if (e.hp <= 0) {
       if (!e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
       if (e.hp <= 0) { idle++; continue; }
@@ -224,6 +228,7 @@ function beginTurn(s, e, ev) {
   ev.push({ type: 'turn', id: e.id, round: enc.round });
   if (prompt) ev.push(prompt);
   recharge(s, e, ev);
+  mountTurnStarts(s, e, ev);
   if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
     delete e.cond.prone;
     enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
@@ -264,10 +269,88 @@ export function finishTurn(s, e, ev, pick = undefined) {
     else ev.push({ type: 'manual', actor: e.id, name: sc.name, text: `${e.name} is ${can.map(conditionName).join(' and ')}. ${sc.name} ends one of them at the end of its turn, its player's choice; none was sent, so the DM removes the one the player picks.` });
   }
   turnInZones(s, ev, KIT, e, 'turnEnd');                              // a zone it ends its turn in (Moonbeam, Spirit Guardians)
+  // A controlled mount's turn is its rider's (stage C6a): its Disengage ends, and what ends at the end of its turn ends.
+  const m = ridden(s, e);
+  if (m) { delete m.cond.disengaged; turnInZones(s, ev, KIT, m, 'turnEnd'); }
   checkEnd(s, ev);
   if (!s.encounter) return false;
   turnEnded(s, ev, e, KIT);
+  if (m && s.encounter && Object.hasOwn(s.entities, m.id)) turnEnded(s, ev, m, KIT);
   return !!s.encounter;
+}
+
+// ---------- riding (docs/specs/companions.md, Decision 8; stage C6a) ----------
+
+// The controlled mount this creature rides in the fight going on, or null.
+const ridden = (s, r) => { const m = r?.riding?.controlled ? mountOf(s, r) : null; return m && steering(s, m) === r && inFight(s, m.id) ? m : null; };
+// Is this a controlled mount whose rider is in the fight going on? Its own place in the order is then passed by.
+const riddenNow = (s, m) => { const r = steering(s, m); return !!r && inFight(s, r.id); };
+// What a controlled mount has on its rider's turn (`budget.mount`): its Speed, and one action, for Dash, Disengage
+// or Dodge ("it has only three action options during that turn"). None if it is Incapacitated.
+export const mountBudget = (s, m) => ({ move: speedOf(s, m), action: incapacitated(m) ? 0 : 1, dashes: 0 });
+// The rider's turn begins: so does its controlled mount's, which "moves on your turn". What ends at the start of the
+// mount's turn ends, a zone it starts in works on it, its Reaction comes back, a recharge, and its budget.
+function mountTurnStarts(s, r, ev) {
+  const m = ridden(s, r);
+  if (!m) return;
+  turnStarted(s, ev, m, KIT);
+  turnInZones(s, ev, KIT, m, 'turnStart');
+  if (!s.encounter || !Object.hasOwn(s.entities, m.id) || steering(s, m) !== r) return;
+  m.reactionUsed = false;
+  delete m.cond.dodging;
+  recharge(s, m, ev);
+  s.encounter.budget.mount = mountBudget(s, m);
+}
+// A controlled mount's rider got down (or the pair came apart) in the fight: "The Initiative of a controlled mount
+// changes to match yours when you mount it", so its place is now straight behind its rider (and the rider's `after`
+// companions), on the rider's count, unless its bond ties it to its master (Decision 3, A1: the bond keeps its place).
+// If the rider's turn has come this round, the mount has had its own on it and takes no other this round (`enc.rode`).
+export function dismountOrder(s, m, r) {
+  const enc = s.encounter;
+  if (!enc) return;
+  const cur = enc.turn >= 0 ? current(s) : null;
+  const ri = enc.order.findIndex((o) => o.id === r.id), o = enc.order.find((x) => x.id === m.id);
+  if (!o) return;
+  if (ri >= 0 && ri <= enc.turn) (enc.rode ??= {})[m.id] = enc.round;
+  if (ri < 0 || tieOf(o) || enc.moved?.[m.id] || enc.moved?.[r.id]) return;
+  enc.order.splice(enc.order.indexOf(o), 1);
+  let i = enc.order.findIndex((x) => x.id === r.id);
+  while (i + 1 < enc.order.length && enc.order[i + 1].after === r.id) i++;
+  o.init = enc.order.find((x) => x.id === r.id).init;
+  enc.order.splice(i + 1, 0, o);
+  if (cur) enc.turn = enc.order.findIndex((x) => x.id === cur);
+}
+// After every action (from settleBonds): the pairs are kept whole. A rider whose mount is gone or dead, or whose mount
+// and it no longer stand on one anchor (one of them was pushed, teleported, fell or was set down by the DM), is down
+// from it where it stands. Moving the pair together under a push, a teleport or a fall, and the DC 10 Dexterity save
+// against falling off, are stage C6b: until then the DM is told, never anything made up. A rider or mount knocked
+// Prone is the same save: the DM is told once. The rider's footprint follows the mount's size.
+export function settleRiders(s, ev) {
+  for (const e of Object.values(s.entities)) {
+    if (!e.riding) continue;
+    const id = e.riding.on, m = typeof id === 'string' && Object.hasOwn(s.entities, id) ? s.entities[id] : null;
+    const whole = !!m && m.rider === e.id && !m.vanished && !m.dead && !e.dead && !e.vanished;
+    const apart = whole && (m.pos.q !== e.pos.q || m.pos.r !== e.pos.r || (m.pos.z ?? 0) !== (e.pos.z ?? 0));
+    if (whole && !apart) {
+      if (e.riding.size !== m.size && SIZES[m.size]) e.riding.size = m.size;
+      const prone = !!(e.cond?.prone || m.cond?.prone);
+      if (prone && !e.riding.told) {
+        e.riding.told = true;
+        ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
+          text: `${e.cond?.prone ? e.name : m.name} is Prone while ${e.name} rides ${m.name}. ${e.name} makes a DC 10 Dexterity saving throw or falls off, landing Prone within 5 ft of ${m.name} (SRD "Falling Off"). Falling off is not in the engine yet: the DM has ${e.name} roll and, on a failure, sends dismount and the Prone condition.` });
+      } else if (!prone && e.riding.told) delete e.riding.told;
+      continue;
+    }
+    const controlled = e.riding.controlled === true;
+    delete e.riding;
+    if (m && m.rider === e.id) delete m.rider;
+    if (m && controlled && s.encounter && inFight(s, m.id) && !m.dead) dismountOrder(s, m, e);
+    if (s.encounter?.budget?.mount && current(s) === e.id) delete s.encounter.budget.mount;
+    ev.push({ type: 'dismounted', id: e.id, mount: id, at: { q: e.pos.q, r: e.pos.r, z: e.pos.z ?? 0 }, why: apart ? 'apart' : 'gone' });
+    if (apart) ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
+      text: `${e.name} and ${m.name} were moved apart, so ${e.name} is no longer riding. Moving a rider with its mount (a push, a teleport, a fall) and the DC 10 Dexterity save against falling off are not in the engine yet: if ${e.name} should have stayed on, or fallen Prone, the DM sets that by hand.` });
+  }
+  for (const m of Object.values(s.entities)) if (m.rider !== undefined && !(typeof m.rider === 'string' && s.entities[m.rider]?.riding?.on === m.id)) delete m.rider;
 }
 
 // ---------- stepping away (docs/specs/table-ui.md, "E20: stepping away") ----------
@@ -382,6 +465,7 @@ export function settleOrder(s) {
 function newRound(s) {
   const enc = s.encounter;
   delete enc.held;
+  delete enc.rode;                                     // a mount got down from last round has its turns again (stage C6a)
   takeUpOrders(s);                                     // a before or after choice made last round takes effect now (A1)
   // A companion whose place behind its master could not change in the middle of the last round (bonded or
   // freed then, or a master who joined after it) takes it now (followMasters, world.js).
@@ -407,6 +491,7 @@ function newRound(s) {
 function takeUpOrders(s) {
   for (const e of Object.values(s.entities)) {
     if (!e.bond?.orderNext) continue;
+    if (steering(s, e)) continue;                      // a ridden steed has no place of its own: its choice waits (A1, C6a)
     e.bond.order = e.bond.orderNext;
     delete e.bond.orderNext;
   }
@@ -993,6 +1078,7 @@ function vanishUnseen(s, e, why, ev) {
 // holds), one whose bond ends when its master dies and whose master is dead, and one farther than its leash
 // from its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
 export function settleBonds(s, ev) {
+  settleRiders(s, ev);
   for (const e of Object.values(s.entities).filter((x) => x.bond)) {
     if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
     const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;

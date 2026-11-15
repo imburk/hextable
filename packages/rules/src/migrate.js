@@ -13,6 +13,7 @@ import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
 import { restamp } from './durations.js';
 import { validFormation } from './engine/world.js';
+import { SIZES } from './content/sizes.js';
 
 export const VERSION = 23;
 
@@ -125,6 +126,26 @@ export function migrate(state) {
   // Version 23: companions (docs/specs/companions.md, stage C1). A creature may carry `bond` (its master and
   // how it is kept); none before. Nothing changes: the version is raised so that an older server refuses a
   // table with companions rather than load it and drop what it does not know.
+  // Riding (docs/specs/companions.md, Decision 8; stage C6a): `riding` on a rider, `rider` on its mount, a fight's
+  // `budget.mount` and `rode`. No version of its own (all optional; absent means none, so a table saved before plays
+  // as it did): see the C6a build notes for why the version is not raised. A pair that is not whole (one half
+  // missing, or not naming the other, or riding in a ring) is dropped, both halves, so nothing reads half a ride.
+  {
+    const ents = state.entities, has = (id) => typeof id === 'string' && Object.hasOwn(ents, id);
+    for (const e of Object.values(ents)) {
+      const r = e.riding;
+      const whole = r && typeof r === 'object' && !Array.isArray(r) && has(r.on) && r.on !== e.id && ents[r.on].rider === e.id && !ents[r.on].riding && e.rider === undefined && typeof r.controlled === 'boolean';
+      if (r !== undefined && !whole) delete e.riding;
+      else if (whole && (typeof r.size !== 'string' || !SIZES[r.size])) r.size = SIZES[ents[r.on].size] ? ents[r.on].size : 'medium';
+    }
+    for (const m of Object.values(ents)) if (m.rider !== undefined && !(has(m.rider) && ents[m.rider].riding?.on === m.id)) delete m.rider;
+    const enc = state.encounter;
+    if (enc && typeof enc === 'object') {
+      const b = enc.budget?.mount;
+      if (b !== undefined && !(b && typeof b === 'object' && Number.isFinite(b.move) && Number.isInteger(b.action))) delete enc.budget.mount;
+      if (enc.rode !== undefined && !(enc.rode && typeof enc.rode === 'object' && !Array.isArray(enc.rode))) delete enc.rode;
+    }
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
