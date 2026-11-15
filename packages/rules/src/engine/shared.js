@@ -99,7 +99,8 @@ export const mountOf = (s, r) => {
 // as the rider directs and has only Dash, Disengage and Dodge), or null for a mount nobody rides or an independent one.
 export const steering = (s, m) => { const r = riderOf(s, m); return r?.riding.controlled === true ? r : null; };
 // What a controlled mount may be sent, by its rider's player (DIRECTED) or by anyone who may play it (RIDDEN): its moves,
-// Dash and Disengage (Dodge is attacks.js's, not built for a mount yet), and what is set about it or answered for it.
+// Dash and Disengage, and its Dodge (only to be told it is not built: attacks.js spends the rider's action for it), and,
+// by whoever plays it, what is set about it or answered for it.
 const DIRECTED = new Set(['move', 'dash', 'disengage', 'dodge']);
 const RIDDEN = new Set(['move', 'dash', 'disengage', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
 // Whose turn a creature moves on, and from which budget, in the fight going on: its own turn and `budget`, or, for a
