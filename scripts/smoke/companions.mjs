@@ -158,8 +158,102 @@ async function table(browser, url) {
   });
 }
 
+// ---------- the leftovers of the first client job (#337) ----------
+// Solo at both sizes. A druid Ven is added, played by someone else than the DM, and casts Giant Insect: the log says "Ven summons a Giant Wasp.", the pawn labels
+// read "Ven's Giant Wasp" and "Brenna's goblin" (a goblin bonded to Brenna), the tracker draws the wasp straight after Ven, and the DM's auto-play leaves the
+// wasp's turn to its player until `companion { auto: true }` is set.
+const labels = (page) => page.$$eval('#labels .label span:first-child', (l) => l.map((x) => x.textContent));
+async function leftovers(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const tag = opts.hasTouch ? 'phone' : 'desktop';
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      let wasp, goblin;
+      await run.do('Ven (played by someone else) casts Giant Insect: the log says who summons what, and the pawn is named for its master', async () => {
+        await open(page, url); await playSolo(page);
+        await wait(page, () => window.hextable.state.entities.fighter);
+        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }); });
+        await page.evaluate(async () => {
+          const { derive } = await import('./shared/derive.js');
+          const h = window.hextable;
+          const ABIL = { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 };
+          const record = derive({ name: 'Ven', class: 'druid', level: 17, subclass: 'land', abilities: ABIL, skills: ['nature', 'perception'], choices: { 'primal-order': 'warden', 'elemental-fury': 'primal-strike', 'natures-ward': 'polar' }, armour: 'leather-armor', shield: true, weapons: ['quarterstaff'], spells: ['produce-flame', 'giant-insect'] }).record;
+          h.act({ type: 'addCharacter', record });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'));
+        const ven = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Ven').id);
+        await page.evaluate((v) => window.hextable.act({ type: 'claim', entity: v, user: 'somebody-else', userName: 'Somebody' }), ven);
+        await wait(page, (v) => window.hextable.state.entities[v].owner === 'somebody-else', ven);
+        const spot = await page.evaluate(async (v) => {
+          const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+          const S = window.hextable.state, G = gridOf(S.map), c = S.entities[v];
+          for (const h of G.range(c.pos, 4)) {
+            const r = apply(structuredClone(S), { type: 'cast', actor: v, spell: 'giant-insect', slot: 4, summon: { variant: 'wasp', at: [h] } }, { role: 'dm', userId: 'dm' });
+            if (r.ok) return h;
+          }
+          return null;
+        }, ven);
+        if (!spot) throw new Error('no place to summon');
+        await page.evaluate(([v, at]) => window.hextable.act({ type: 'cast', actor: v, spell: 'giant-insect', slot: 4, summon: { variant: 'wasp', at: [at] } }), [ven, spot]);
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.kind === 'summon' || e.bond?.source === 'giant-insect'));
+        wasp = await state(page, (S) => Object.values(S.entities).find((e) => e.bond?.source === 'giant-insect').id);
+        await calm(page);
+        await openTab(page, 'log');
+        const t = await logText(page);
+        if (!/Ven summons a Giant Wasp\./.test(t)) throw new Error(`log: ${t.slice(-300)}`);
+        if (/Ven's Giant Wasp appears/.test(t)) throw new Error('the summons is also logged as appearing');
+        await closeMenu(page);
+        await page.evaluate(() => window.hextable.select(window.hextable.state.entities.fighter ? 'fighter' : null));
+        const l = await labels(page);
+        if (!l.some((x) => /^Ven's Giant Wasp/.test(x))) throw new Error(`pawn labels: ${JSON.stringify(l)}`);
+        await shot(page, `companions-summoned-${tag}`);
+      });
+      await run.do('a goblin bonded to Brenna is labelled "Brenna\'s goblin" on the map', async () => {
+        goblin = await state(page, (S) => Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden && !e.bond)?.id);
+        await page.evaluate((g) => window.hextable.act({ type: 'bond', actor: g, to: 'fighter', kind: 'pet' }), goblin);
+        await wait(page, (g) => window.hextable.state.entities[g].bond, goblin);
+        await calm(page);
+        const l = await labels(page);
+        if (!l.some((x) => /^Brenna's goblin/i.test(x))) throw new Error(`pawn labels: ${JSON.stringify(l)}`);
+        await shot(page, `companions-labels-${tag}`);
+      });
+      await run.do('in a fight the tracker draws the wasp straight after Ven', async () => {
+        await page.evaluate(() => { const h = window.hextable, x = h.state.entities.fighter; h.act({ type: 'startEncounter', center: x.pos, radius: 40 }); });
+        await wait(page, () => window.hextable.state.encounter);
+        await calm(page);
+        await openTab(page, 'turns');
+        const rows = await page.$$eval('#tracker li[data-id] .tr-name', (l) => l.map((x) => x.textContent.replace(/\s*\(current turn\)|▶/g, '').trim()));
+        const i = rows.findIndex((r) => r === 'Ven');
+        if (i < 0 || !/^Ven's Giant Wasp/.test(rows[i + 1] ?? '')) throw new Error(`tracker: ${JSON.stringify(rows)}`);
+        await shot(page, `companions-tracker-${tag}`);
+        await closeMenu(page);
+      });
+      await run.do('the DM\'s auto-play leaves the wasp\'s turn to Ven\'s player, until it is set to act on its own', async () => {
+        for (let i = 0; i < 40; i++) {
+          const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
+          if (cur === wasp) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+          await calm(page);
+        }
+        if ((await state(page, (S) => S.encounter.order[S.encounter.turn].id)) !== wasp) throw new Error('the wasp\'s turn did not come');
+        await page.evaluate(() => { document.getElementById('dm-auto').checked = true; });
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'pace', value: 'instant' }));
+        await sleep(3000); await calm(page);
+        if ((await state(page, (S) => S.encounter.order[S.encounter.turn].id)) !== wasp) throw new Error('the DM\'s auto-play moved a player\'s companion');
+        await page.evaluate((w) => window.hextable.act({ type: 'companion', actor: w, auto: true }), wasp);
+        await wait(page, (w) => window.hextable.state.entities[w].bond.auto === true, wasp);
+        await wait(page, (w) => window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id !== w, wasp, 40000).catch(async (e) => { throw new Error(`${e.message}; ${await logText(page).catch(() => '')}`); });
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await solo(browser, url, 'companions: solo, desktop', { viewport: { width: 1280, height: 800 } });
   await solo(browser, url, 'companions: solo, phone with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await leftovers(browser, url, 'companions: summoned, names, tracker and auto-play, desktop', { viewport: { width: 1280, height: 800 } });
+  await leftovers(browser, url, 'companions: summoned, names, tracker and auto-play, phone with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await table(browser, url);
 }
