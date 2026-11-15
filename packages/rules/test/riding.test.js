@@ -340,6 +340,22 @@ for (const grid of GRIDS) {
   });
 }
 
+test("a party rider's record never names a mount the party has stopped knowing of, not even as 'someone'", () => {
+  for (const grid of GRIDS) {
+    const { s, horse } = table(grid);
+    s.entities[horse].side = "foe";
+    ok(mount(s, "fighter", horse, DM));
+    let v = view(s, U1);
+    assert.deepEqual(v.entities.fighter.riding, { on: horse, controlled: false, size: "large" });
+    assert.deepEqual(v.entities[horse].rider, "fighter", "a seen mount shows who rides it");
+    ok(apply(s, { type: "reveal", actor: horse, hidden: true }, DM));
+    v = view(s, U1);
+    assert.equal(v.entities.fighter.riding, undefined);
+    assert.equal(v.entities[horse], undefined);
+    assert.ok(!json(v).includes(horse) && !json(v.entities.fighter).includes("someone"));
+  }
+});
+
 test("a ridden steed's before or after choice waits until it is ridden no more (A1); the cap holds", () => {
   const { s, horse } = table("hex");
   s.entities[horse].side = "foe";
