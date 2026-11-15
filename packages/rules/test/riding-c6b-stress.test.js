@@ -4,7 +4,7 @@
 // killing or removing a mount (a new one comes at the next round), and setting riders aside (stepping away, Dodge).
 // After every action: nobody overlaps anyone but its own rider or mount, and every ride is whole. Over every round:
 // every creature that was up and in the fight all round had exactly one turn's worth (its own turn, or for a mount
-// its budget on a rider's turn), never none and never two. 2,400 rounds on hexes and on the square room.
+// its budget on a rider's turn), never none and never two. 2,400 rounds on hexes and on the square room. Fix round 1 of #363: the DM's `place` is in the mix (M1).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current } from "../src/engine.js";
@@ -56,7 +56,7 @@ function stress(grid, rounds) {
   let x = 4242;
   const rnd = (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; };
   const worth = new Map(), present = new Map();   // key `${fight}:${round}` -> Map(id -> turns' worth), Set of ids up and in the fight all round
-  let lastKey = null, budgetSeen = null, done = 0, bad = [], stats = { fell: 0, pushed: 0, teleported: 0, gone: 0, actions: 0, refused: 0 };
+  let lastKey = null, budgetSeen = null, done = 0, bad = [], stats = { fell: 0, pushed: 0, teleported: 0, gone: 0, apart: 0, actions: 0, refused: 0 };
   const key = () => `${s.encounter.id}:${s.encounter.round}`;
   const credit = (k, id) => { if (!worth.has(k)) worth.set(k, new Map()); worth.get(k).set(id, (worth.get(k).get(id) ?? 0) + 1); };
   const upNow = () => new Set(s.encounter.order.map((o) => o.id).filter((id) => { const e = s.entities[id]; return e && !e.dead && e.hp > 0 && !e.away; }));
@@ -66,7 +66,7 @@ function stress(grid, rounds) {
     const w = whole(s);
     if (w && bad.length < 5) bad.push(`${w} after ${json(r.events.map((e) => e.type))}`);
     for (const ev of r.events) {
-      if (ev.type === "dismounted") { if (ev.fell) stats.fell++; if (ev.why === "pushed") stats.pushed++; if (ev.why === "teleport") stats.teleported++; if (ev.why === "gone") stats.gone++; }
+      if (ev.type === "dismounted") { if (ev.fell) stats.fell++; if (ev.why === "pushed") stats.pushed++; if (ev.why === "teleport") stats.teleported++; if (ev.why === "gone") stats.gone++; if (ev.why === "apart") stats.apart++; }
       if (ev.type === "turn" && s.encounter && !ev.someone) credit(`${s.encounter.id}:${ev.round}`, ev.id);
     }
     if (!s.encounter) return;
@@ -80,11 +80,13 @@ function stress(grid, rounds) {
     } else { const now = upNow(), p = present.get(k); for (const id of [...p]) if (!now.has(id)) p.delete(id); }
   };
   const act = (a) => { const r = apply(s, a, DM); if (r.ok) after(r); else stats.refused++; return r; };
-  const start = () => { ok(act({ type: "startEncounter", center: CENTER[grid], radius: 7 })); budgetSeen = null; lastKey = key(); present.set(lastKey, upNow()); };
+  const start = () => { budgetSeen = null; ok(act({ type: "startEncounter", center: CENTER[grid], radius: 7 })); lastKey = key(); present.set(lastKey, upNow()); };
   start();
   while (done < rounds) {
     if (!s.encounter) {
       for (const id of riders) { const e = s.entities[id]; if (e.dead) ok(apply(s, { type: "setHp", actor: id, hp: 10 }, DM)); else if (e.hp <= 0) ok(apply(s, { type: "mend", actor: id, amount: 50 }, DM)); if (e.away) apply(s, { type: "stepBack", actor: id }, DM); }
+      // The goblin that keeps the fight going may have died (a Thunderwave): another, far off.
+      if (!Object.values(s.entities).some((x) => x.side === "foe" && !x.dead && x.hp > 0)) apply(s, { type: "spawn", monster: "goblin-warrior", at: P.goblin }, DM);
       start(); continue;
     }
     const cur = current(s), e = s.entities[cur];
@@ -106,6 +108,9 @@ function stress(grid, rounds) {
       else if (d === 10 && !w.away && rnd(3) === 0) act({ type: "stepAway", actor: who, how: "dodge" });
       else if (d === 11 && w.away) act({ type: "stepBack", actor: who });
       else if (d === 12 && w.riding) act({ type: "dismount", actor: who });
+      // The DM sets one half of a pair (or anyone) down a cell or two away: refused onto the other half (fix round 1 of
+      // #363, M1), else the ride ends; never an overlap.
+      else if (d === 13 && rnd(2)) { const id = rnd(2) && s.entities[hz] && !s.entities[hz].dead ? hz : who, p = s.entities[id].pos; act({ type: "place", actor: id, to: { q: p.q + rnd(5) - 2, r: p.r + rnd(5) - 2 } }); }
     }
     if (!s.encounter || current(s) !== cur) continue;
     if (riders.includes(cur) && e && rnd(3)) {
@@ -141,6 +146,7 @@ for (const grid of ["hex", "square"]) {
     assert.equal(lost, 0, `lost: ${bad.join("; ")}`);
     assert.equal(doubled, 0, `doubled: ${bad.join("; ")}`);
     assert.ok(finished.length >= ROUNDS);
-    for (const [k, n] of [["fell", 20], ["gone", 2], ["pushed", 1], ["teleported", 1]]) assert.ok(stats[k] >= n, `the loop exercised ${k}: ${json(stats)}`);
+    // How much of each the seeded loop reaches (the hex valley is roomier, so riders and horses part more often there).
+    for (const [k, n] of grid === "hex" ? [["fell", 10], ["pushed", 1], ["teleported", 1], ["apart", 1]] : [["fell", 20], ["gone", 2], ["pushed", 1], ["teleported", 1], ["apart", 1]]) assert.ok(stats[k] >= n, `the loop exercised ${k}: ${json(stats)}`);
   });
 }

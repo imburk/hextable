@@ -112,9 +112,11 @@ export const footprint = (e, pos = e.pos, G = HEX) => shapeOf(e, G).map(([dq, dr
 // C6a), so neither is ever in the other's way: not when the pair moves, is pushed, grows or shrinks (stage C6b, DEBT
 // W13). Everyone else still sees both as occupying it.
 export const paired = (a, b) => !!a && !!b && a !== b && ((a.riding?.on === b.id && b.rider === a.id) || (b.riding?.on === a.id && a.rider === b.id));
-// Would two creatures be in each other's space, one at `pa` and the other at `pb`? Never the two of a riding pair.
+// Would two creatures be in each other's space, one at `pa` and the other at `pb`? Never the two of a riding pair while
+// they stand on one anchor, as riding has them; anywhere else they are two creatures like any (fix round 1 of #363, M1:
+// the DM's `place` of one half onto another cell of the other is refused as occupied, as before C6b).
 export function overlapAt(a, pa, b, pb, G = HEX) {
-  if (paired(a, b)) return false;
+  if (paired(a, b) && pa.q === pb.q && pa.r === pb.r && (pa.z ?? 0) === (pb.z ?? 0)) return false;
   const za = pa.z ?? 0, zb = pb.z ?? 0;
   if (za >= zb + sizeOf(b).height || zb >= za + sizeOf(a).height) return false;
   const sa = shapeOf(a, G), sb = shapeOf(b, G);

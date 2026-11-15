@@ -12,7 +12,7 @@ import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { migrate } from "../src/migrate.js";
-import { apart, overlapAt } from "../src/space.js";
+import { apart, footprint, overlapAt } from "../src/space.js";
 import { gridOf } from "../src/grid.js";
 import { derive } from "../src/derive.js";
 import { unknown, raised } from "../src/vision.js";
@@ -200,11 +200,46 @@ for (const grid of GRIDS) {
     const r2 = ok(apply(b.s, { type: "cast", actor: "wizard", spell: "thunderwave", hex: b.aim }, DM));
     const d = off(r2), types = r2.events.map((e) => e.type);
     assert.ok(d && d.fell && d.why === "pushed");
-    assert.ok(types.indexOf("dismounted") < r2.events.findIndex((e) => e.type === "moved" && e.id === b.horse), "off before the horse moves");
+    // Fix round 1 of #363, M2: the push is worked out with the rider out of the way, and the rider lands after it.
+    assert.equal(r2.events.find((e) => e.type === "moved" && e.id === b.horse).path.length, mh.path.length, "the fall does not shorten the push");
+    assert.ok(types.indexOf("save") < types.indexOf("dismounted"));
     assert.ok(apart(b.s, b.s.entities.fighter, was) <= 1, "within 5 ft of the mount, as it stood");
     assert.ok(b.s.entities.fighter.cond.prone);
     assert.ok(!r2.events.some((e) => e.type === "moved" && e.id === "fighter"));
     assert.equal(noOverlap(b.s), null);
+  });
+
+  test(`${grid}: fix round 1 of #363, M2: a failed save never cuts the push short: every wizard cell and aim, the horse moves as far as with the rider on`, () => {
+    const t = table(grid, { fight: true });
+    ok(apply(t.s, { type: "endTurn", actor: "fighter" }, U1));
+    t.s.entities.wizard.spells.push("thunderwave");
+    t.s.entities[t.horse].saveBonus = { con: -40 };
+    t.s.entities.fighter.saveBonus = { con: 40 };
+    if (grid === "hex") {                       // the reviewer's recipe: the pair at (-6,3), the wizard at (-4,2), aimed at (-5,3)
+      for (const id of ["fighter", t.horse]) t.s.entities[id].pos = { q: -6, r: 3, z: 0 };
+    }
+    turnOf(t.s, "wizard");
+    const G = gridOf(t.s.map);
+    let pushes = 0;
+    const cells = grid === "hex" ? [{ q: -4, r: 2, z: 0 }, ...[0, 1, 2, 3].map((n) => { try { return besidePos(t.s, t.horse, n); } catch { return null; } })] : [0, 1, 2, 3, 4, 5].map((n) => { try { return besidePos(t.s, t.horse, n); } catch { return null; } });
+    for (const at of cells.filter(Boolean)) {
+      const base = structuredClone(t.s);
+      base.entities.wizard.pos = { ...at, z: 0 };
+      for (const aim of G.range(at, 1)) {
+        const run = (d) => { const u = structuredClone(base); dex(u, "fighter", d); const r = apply(u, { type: "cast", actor: "wizard", spell: "thunderwave", hex: aim }, DM); return { u, r }; };
+        const on = run(40), off_ = run(-40);
+        if (!on.r.ok) continue;
+        const p1 = on.r.events.find((e) => e.type === "moved" && e.id === t.horse)?.path ?? [];
+        if (!p1.length) continue;
+        pushes++;
+        const p2 = off_.r.events.find((e) => e.type === "moved" && e.id === t.horse)?.path ?? [];
+        assert.deepEqual(p2, p1, `wizard ${json(at)} aim ${json(aim)}: the same push`);
+        const d = off(off_.r);
+        assert.ok(d?.fell, "fell off");
+        assert.equal(noOverlap(off_.u), null);
+      }
+    }
+    assert.ok(pushes >= 2, "pushes were tried");
   });
 
   test(`${grid}: a push of the rider itself the SRD has no rule for: it stays riding and the DM is told`, () => {
@@ -522,3 +557,118 @@ for (const grid of GRIDS) {
     assert.equal(noOverlap(s), null);
   });
 }
+
+// ---------- fix round 1 (review of #363) ----------
+
+function refusedSame(s, action, ctx, words) {
+  const before = json(s), r = apply(s, action, ctx);
+  assert.equal(r.ok, false, `${action.type} should be refused`);
+  if (words) assert.match(r.error, words);
+  assert.equal(json(s), before, "a refused action changes nothing");
+}
+// A rider on a giant eagle 30 ft up (set by hand: the eagle is the DM's to fly), on either grid.
+function aloftPair(grid) {
+  const t = table(grid);
+  const eagle = beside(t.s, "rogue", "giant-eagle");
+  ok(apply(t.s, { type: "dismount", actor: "fighter" }, DM));
+  for (const id of [eagle, "rogue"]) t.s.entities[id].pos = { ...t.s.entities[eagle].pos, z: 30 };
+  t.s.entities[eagle].side = "party";
+  t.s.entities.rogue.riding = { on: eagle, controlled: false, size: "large" }; t.s.entities[eagle].rider = "rogue";
+  ok(apply(t.s, { type: "condition", actor: "cleric", condition: "prone" }, DM));
+  assert.equal(t.s.entities.rogue.pos.z, 30);
+  return { ...t, eagle };
+}
+for (const grid of GRIDS) {
+  test(`${grid}: M1: the DM can't place one half of a pair on another cell of the other (occupied, as before C6b); placed clear of it, the ride ends with no overlap`, () => {
+    const { s, horse } = table(grid);
+    const G = gridOf(s.map), anchor = s.entities[horse].pos;
+    const cells = footprint(s.entities[horse], anchor, G).filter((c) => c.q !== anchor.q || c.r !== anchor.r);
+    assert.ok(cells.length >= 2);
+    for (const c of cells) {
+      refusedSame(s, { type: "place", actor: "fighter", to: { q: c.q, r: c.r } }, DM, /occupied/);
+      refusedSame(s, { type: "place", actor: horse, to: { q: c.q, r: c.r } }, DM, /occupied/);
+    }
+    const far = grid === "square" ? { q: 10, r: 10 } : { q: 3, r: -3 };
+    const r = ok(apply(s, { type: "place", actor: "fighter", to: far }, DM));
+    assert.equal(off(r)?.why, "apart");
+    assert.equal(noOverlap(s), null);
+  });
+
+  test(`${grid}: M3: a rider that falls off its flying mount in the air comes off and falls (Prone with a failed save, or at 0 Hit Points)`, () => {
+    for (const how of ["prone", "down"]) {
+      const { s, eagle } = aloftPair(grid);
+      dex(s, "rogue", -40);
+      const r = ok(apply(s, how === "prone" ? { type: "condition", actor: "rogue", condition: "prone" } : { type: "harm", actor: "rogue", amount: s.entities.rogue.hp }, DM));
+      assert.equal(saves(r, "rogue")[0]?.success, false);
+      assert.ok(off(r, "rogue")?.fell, "off");
+      assert.ok(r.events.some((e) => e.type === "fell" && e.id === "rogue" && e.feet === 30), "falls 30 ft");
+      assert.ok(!r.events.some((e) => e.type === "manual" && e.name === "Mounted combat"), "no hand-off");
+      assert.equal(s.entities.rogue.pos.z, 0);
+      assert.equal(s.entities.rogue.riding, undefined); assert.equal(s.entities[eagle].rider, undefined);
+      assert.equal(noOverlap(s), null);
+    }
+  });
+
+  test(`${grid}: L1: a rider killed on its flying mount comes down with the action; L2: a second knock-down is saved against again`, () => {
+    const { s } = aloftPair(grid);
+    ok(apply(s, { type: "harm", actor: "rogue", amount: 999 }, DM));
+    assert.ok(s.entities.rogue.dead);
+    assert.equal(s.entities.rogue.pos.z, 0, "the body comes down at once");
+    const t = table(grid, { fight: true });
+    dex(t.s, "fighter", 40);
+    const r1 = ok(apply(t.s, { type: "condition", actor: t.horse, condition: "prone" }, DM));
+    assert.equal(saves(r1).length, 1);
+    const r2 = ok(apply(t.s, { type: "condition", actor: "fighter", condition: "prone" }, DM));
+    assert.equal(saves(r2).length, 1, "the rider knocked Prone too: the same save again");
+    const r3 = ok(apply(t.s, { type: "condition", actor: "rogue", condition: "prone" }, DM));
+    assert.equal(saves(r3).length, 0, "nothing new: no save");
+  });
+
+  test(`${grid}: twin run: a hidden Opportunity Attacker beside a party pair: no prompt and nothing told to players that a world without it would not tell`, () => {
+    // A party pair (Brenna on the horse) walks away; in world A a goblin that took the Hide action stands beside it,
+    // its instruction `ask` (the DM's creature: the DM alone is told). World B has no goblin.
+    const mk = (withGob) => {
+      const t = table(grid, { fight: true });
+      if (withGob) {
+        const g = beside(t.s, t.horse, "goblin-warrior");
+        t.s.entities[g].hiding = { dc: 30 };
+        t.s.entities[g].reactions = { [OPPORTUNITY]: "ask" };
+        t.gob = g;
+      }
+      return t;
+    };
+    const A = mk(true), B = mk(false);
+    assert.ok(unknown(A.s, A.s.entities[A.gob]), "the party does not know of it");
+    const G = gridOf(A.s.map), m = A.s.entities[A.horse], g = A.s.entities[A.gob];
+    const to = G.range(m.pos, 3).filter((h) => G.dist(h, m.pos) === 3).sort((a, b) => G.dist(b, g.pos) - G.dist(a, g.pos) || a.q - b.q || a.r - b.r)
+      .find((h) => { const u = structuredClone(A.s), r = apply(u, { type: "move", actor: "fighter", to: h }, U1); return r.ok && apart(u, u.entities[A.gob], u.entities[A.horse]) > 1; });
+    assert.ok(to, "a cell out of its reach");
+    A.s.seq = B.s.seq;
+    const ra = ok(apply(A.s, { type: "move", actor: "fighter", to }, U1)), rb = ok(apply(B.s, { type: "move", actor: "fighter", to }, U1));
+    assert.ok(ra.events.some((e) => e.type === "manual" && e.name === "Opportunity Attack" && e.partial), "the DM is told");
+    assert.ok(!ra.events.some((e) => e.type === "reactionAsked"));
+    assert.equal(json(viewEvents(ra.events, A.s, U1)), json(viewEvents(rb.events, B.s, U1)));
+    assert.equal(view(A.s, U1).prompt ?? null, null);
+  });
+}
+
+test("hex: the rider's raised eye: on a hex map with a low wall, a goblin behind it is in sight from horseback only", () => {
+  const { s } = table("hex");
+  ok(apply(s, { type: "setting", key: "sight", value: "los" }, DM));
+  const r = s.entities.fighter, horse = r.riding.on, G = gridOf(s.map);
+  // A 10-ft wall (the map's walls stand WALL_HEIGHT high) just west of the pair, across the valley's open ground.
+  const c = G.center({ q: r.pos.q - 1, r: r.pos.r });
+  const [cx, cz] = c, [wx, wz] = G.center(r.pos), mid = { x: (cx + wx) / 2, z: (cz + wz) / 2 }, dx = wz - cz, dz = cx - wx, n = Math.hypot(dx, dz);
+  s.map.walls.push({ id: "low", level: "ground", kind: "wall", a: [mid.x + (dx / n) * 15, mid.z + (dz / n) * 15], b: [mid.x - (dx / n) * 15, mid.z - (dz / n) * 15] });
+  for (const id of ["rogue", "cleric", "wizard"]) s.entities[id].hp = 0;                  // only Brenna's eyes count
+  let found = null;
+  for (const h of G.range(r.pos, 6)) {
+    const t = structuredClone(s), res = apply(t, { type: "spawn", monster: "goblin-warrior", at: h }, DM);
+    if (!res.ok) continue;
+    const id = res.events[0].id;
+    const u = structuredClone(t);
+    delete u.entities.fighter.riding; delete u.entities[horse].rider;
+    if (!unknown(t, t.entities[id]) && unknown(u, u.entities[id])) { found = h; break; }
+  }
+  assert.ok(found, "a cell seen only from horseback");
+});

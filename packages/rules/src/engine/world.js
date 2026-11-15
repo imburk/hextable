@@ -46,9 +46,11 @@ export function landingFits(s, e, m, p) {
     (!inFight(s, e.id) || footprint(body, p, G).every((f) => s.encounter.arena[col(f)])) && footprint(m, m.pos, G).some((f) => clear(s, f, p));
 }
 const unseenByRider = (s, o, e) => e.side === 'party' && o.side !== 'party' && !o.dead && (o.hidden || hiddenFrom(o, e) || (sightRule(s) !== 'rooms' && unknown(s, o)));
-export function riderLanding(s, e, m, want = null) {
-  const G = gridOf(s.map), body = { ...e, riding: undefined };
-  const others = living(s).filter((o) => o.id !== e.id);
+// `from`: where the mount stood, if it has been moved since (a push the rider fell off in): the space is within 5 ft of
+// that, and not the mount's old space nor where it is now.
+export function riderLanding(s, e, m0, want = null, from = null) {
+  const G = gridOf(s.map), body = { ...e, riding: undefined }, m = from ? { ...m0, pos: { ...from } } : m0;
+  const others = living(s).filter((o) => o.id !== e.id).map((o) => (o.id === m0.id ? { ...o, riding: undefined, rider: undefined } : o));
   const holders = (p) => others.filter((o) => overlapAt(o, o.pos, body, p, G));
   const out = (p) => ({ p, lurker: holders(p).find((o) => unseenByRider(s, o, e)) ?? null });
   const free = (p) => holders(p).every((o) => unseenByRider(s, o, e));

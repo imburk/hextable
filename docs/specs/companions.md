@@ -384,19 +384,20 @@ A rider stores `riding: { on: mountId, controlled: true | false }`; its mount st
   `dodge` with the mount as actor; anything else is refused: "A controlled mount can only Dash,
   Disengage or Dodge."). `move` with either the rider or the mount as actor moves both, from the
   mount's movement, by the mount's speeds and costs (a flying steed flies); the rider's own movement
-  is left for dismounting. Opportunity Attacks are checked for each of the two as it leaves a foe's
-  reach, each with its own Disengage; a foe still has one Reaction and chooses which (its standing
+  is left for dismounting. *As built in C6b:* the mount provokes an Opportunity Attack when it leaves a
+  foe's reach, and its Disengage covers the pair; the rider, moved without its own movement, does not
+  provoke (SRD 2088-2090). The foe has one Reaction and chooses the mount or the rider (its standing
   instruction, or its player is asked, as now).
 - **An independent mount** keeps its own turn and is played by its controller or the DM; the rider
   moves with it and cannot move it.
-- **Moving together.** Every way a mount moves takes the rider along: walking, a push, a
-  teleport (Fey Step: "along with its rider"), a fall. Outside a fight the pair moves as one
+- **Moving together.** Every way a mount moves takes the rider along: walking, a push, a fall, and a
+  teleport only where the effect says so (Fey Step: "along with its rider"; SRD 34458-34461; C6b). Outside a fight the pair moves as one
   creature, at the mount's pace.
-- **Falling off.** When an effect moves the mount against its will (a push, a pull, a forced
-  teleport), or the rider or the mount is knocked Prone, the rider makes a DC 10 Dexterity save;
+- **Falling off.** When an effect moves the mount against its will (a push or a pull; the engine has no
+  forced teleport, C6b), or the rider or the mount is knocked Prone, the rider makes a DC 10 Dexterity save;
   on a failure the rider is dismounted Prone in the nearest unoccupied space within 5 ft (`fell`
-  in `dismounted`). When the mount vanishes or dies the rider is dismounted where it stands (and
-  falls if that is in the air, by the existing gravity pass).
+  in `dismounted`), or, in the air, comes off and falls. When the mount vanishes or dies the rider is dismounted
+  where it stands (and falls if that is in the air).
 - **Find Steed** is a controlled mount for its master (`bond.mount: 'controlled'`). Ridden, it keeps
   moving on its rider's turn and has no entry; not ridden, it acts before or after its master as
   `bond.order` says (Decision 3). If its master is Incapacitated while riding, the steed gets a turn
@@ -1260,6 +1261,23 @@ are marked **new rule**.
   one turn's worth, and nobody ever overlaps anyone but its own rider or mount.
 - **State.** No new field and no version bump: `riding.told` (C6a) now means "this Prone was saved against". A save
   from main (C6a) loads unchanged and plays (fixture `test/fixtures/c6a-riding-saves.json`).
+- **Changed in fix round 1 (review of #363).**
+  - *M1* (repair): two creatures share cells only while `riding`/`rider` hold and they stand on one anchor:
+    `overlapAt` skips a pair only then. The DM's `place` of one half onto another cell of the other is refused as
+    occupied, as on main; placed clear of it, the ride ends (`apart`) with no overlap. The stress loop has `place`.
+  - *M2* (repair): the push of a mount whose rider fails the save is worked out with the rider out of the way, then the
+    rider lands within 5 ft of where the mount stood, in a space the mount did not go to (`riderLanding`'s `from`). The
+    fall never shortens the push. With nowhere to land it stays on and is carried. Events: `save`, the mount's
+    `moved`, then `dismounted { fell }`.
+  - *M3* (repair): a rider that falls off in the air (no ground within 5 ft) comes off where it is and falls, with the
+    fall's damage and Prone by the gravity pass's rules, as from a flying mount that vanishes.
+  - *L1*: a dead rider's body comes down with the action that killed it (no damage, as gravity treats a body).
+  - *L2* (repair): `riding.told` says which knock-downs were saved against (`'r'`, `'m'`, `'rm'`; `true` from older
+    saves means both), so the mount Prone and then the rider Prone are two saves. A rider no longer smaller than its
+    mount with nowhere to go is marked `riding.cramped` (told once).
+  - *L7*: Decision 8's text above now says what was built (the mount provokes; no forced teleport).
+  - Tests: M1, M2 (every wizard cell and aim, including the reviewer's hex recipe), M3, L1, L2, a hidden Opportunity
+    Attacker (twin run), and the raised eye on hexes.
 - **For the client job (C8, C10).** New: `dismounted.fell` and `why` `prone`, `pushed`, `pulled`, `teleport`, `size`;
   `save { against: 'Falling Off' }`; `moved { forced }` for both of a pushed pair; an Opportunity Attack prompt may have
   a second option `{ reaction: 'opportunity-attack-rider', name, against }`, answered with `react { take }` as any.

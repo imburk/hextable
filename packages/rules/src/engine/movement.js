@@ -497,7 +497,7 @@ export const handlers = {
     e.riding = { on: m.id, controlled, size: SIZES[m.size] ? m.size : 'medium' };
     m.rider = e.id;
     // Getting onto a mount that is Prone already is not being knocked Prone while mounted: no save for that Prone (C6b).
-    if (m.cond.prone) e.riding.told = true;
+    if (m.cond.prone) e.riding.told = 'm';
     ev.push({ type: 'mounted', id: e.id, mount: m.id, controlled });
     // A controlled mount "can move and act even on the turn that you mount it": its movement and one action start now.
     if (fighting && controlled) {

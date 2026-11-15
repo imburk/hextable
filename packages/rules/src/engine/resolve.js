@@ -48,7 +48,9 @@ export function fall(s, t, feet, ev) {
 // cross no wall and pass no corner, as when it walks.
 // A ridden pair (stage C6b): a push or pull of the mount is an effect moving it against its will, so its rider makes the
 // DC 10 Dexterity save before the first step (SRD 5.2.1 "Falling Off", 2126-2131): on a success it is carried along, on a
-// failure it falls off Prone beside where the mount stood and the mount goes on alone. A push of the rider itself the
+// failure it falls off Prone beside where the mount stood and the mount goes on alone. The push is not changed by the
+// fall: it is worked out with the rider out of the way, and the rider then lands within 5 ft of where the mount stood,
+// in a space the mount did not go to (fix round 1 of #363, M2). A push of the rider itself the
 // SRD gives no rule for (it is not the mount that is moved): the engine does not move it, and the DM is told.
 function push(s, t, feet, dir, from, ev) {
   if (mountOf(s, t)) {
@@ -57,7 +59,8 @@ function push(s, t, feet, dir, from, ev) {
     return;
   }
   const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
-  let rider = riderOf(s, t), asked = false;
+  const r0 = riderOf(s, t), was = { ...t.pos };
+  let rider = r0, asked = false, fallen = null;
   const square = G.kind === 'square', rule = s.settings.diagonals ?? 'real';
   let left = feet, odd = false;
   const stride = (a, b) => (!square || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT);
@@ -70,16 +73,15 @@ function push(s, t, feet, dir, from, ev) {
       const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
       if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
       const h = { q: n.q, r: n.r, z: sf.z };
-      if (living(s).some((c) => c.id !== t.id && overlapAt(c, c.pos, t, h, G)) || !fitsOn(s.map, t, h, B)) continue;
+      if (living(s).some((c) => c.id !== t.id && c.id !== r0?.id && overlapAt(c, c.pos, t, h, G)) || !fitsOn(s.map, t, h, B)) continue;
       if (square && below(left, stride(t.pos, n))) continue;                                                              // not enough of the push left for this step
       if (square && !footprint(t, t.pos, G).every((f, j) => { const g = footprint(t, h, G)[j]; return !B.blocked(here.level.id, f, g) && cornerFree(s.map, G, B, f, g, t.pos.z); })) continue;     // every part: no wall, no corner
       const nw = G.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
-    // The save is made once a step is found (the effect is about to move it); fallen off, the rider now stands beside
-    // the mount, so this step is looked for again with it there.
-    if (rider && !asked) { asked = true; if (!ridesThrough(s, t, dir === 'toward' ? 'pulled' : 'pushed', ev)) { rider = null; i--; continue; } }
+    // The save is made once a step is found (the effect is about to move it).
+    if (rider && !asked) { asked = true; if (!staysOn(s, rider, ev)) { fallen = rider; rider = null; } }
     if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
     const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
@@ -90,6 +92,10 @@ function push(s, t, feet, dir, from, ev) {
   ev.push({ type: 'moved', id: t.id, path, forced: true });
   if (rider) ev.push({ type: 'moved', id: rider.id, path: path.map((h) => ({ ...h })), forced: true });
   lookAround(s, ev, rider ? [t, rider] : [t]);
+  if (fallen && !putOff(s, fallen, t, dir === 'toward' ? 'pulled' : 'pushed', ev, true, was)) {
+    carry(s, t);                                                         // nowhere to land: it stays on, carried along
+    ev.push({ type: 'moved', id: fallen.id, path: path.map((h) => ({ ...h })), forced: true });
+  }
 }
 // The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
 // runs the step's `blocked` steps instead when it has them.
@@ -443,11 +449,12 @@ const offEvent = (r, id, why, more = {}) => ({ type: 'dismounted', id: r.id, mou
 // A creature left with nothing under it falls now, as the gravity pass after every action would make it (engine.js):
 // a rider whose flying mount vanished, teleported away or was moved off from under it.
 function drop(s, e, ev) {
-  if (e.dead || ground(s.map, e.pos) || aloft(s, e)) return;
+  if (ground(s.map, e.pos) || aloft(s, e)) return;
   const sf = under(s.map, e.pos);
   if (!sf) return;
   const feet = e.pos.z - sf.z;
   e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
+  if (e.dead) return;                                                  // a body comes down with it, as the gravity pass puts it (no damage)
   fall(s, e, feet, ev);
   lookAround(s, ev, [e]);
   checkEnd(s, ev);
@@ -464,9 +471,18 @@ function staysOn(s, r, ev) {
 // it would (revealed, unhidden), and the next space is chosen with it known. `prone`: it lands Prone (falling off);
 // otherwise it is set down on its feet (it no longer fits on its mount). False, with the DM told, if there is no space:
 // it stays on.
-function putOff(s, r, m, why, ev, prone) {
-  let spot = riderLanding(s, r, m);
-  for (let n = 0; spot?.lurker && n < 50; n++) { reveal(s, spot.lurker, ev); unhide(s, spot.lurker, ev, 'found', r); spot = riderLanding(s, r, m); }
+function putOff(s, r, m, why, ev, prone, from = null) {
+  let spot = riderLanding(s, r, m, null, from);
+  for (let n = 0; spot?.lurker && n < 50; n++) { reveal(s, spot.lurker, ev); unhide(s, spot.lurker, ev, 'found', r); spot = riderLanding(s, r, m, null, from); }
+  // In the air (a flying mount) there is nothing within 5 ft to land on: it comes off where it is and falls, as from a
+  // flying mount that vanishes (fix round 1 of #363, M3): the fall's damage, and Prone, by the gravity pass's own rules.
+  if (!spot && prone && !ground(s.map, m.pos)) {
+    unride(s, r, m);
+    ev.push(offEvent(r, m.id, why, { fell: true }));
+    if (up(r)) condition(s, r, 'prone', ev); else r.cond.prone = {};
+    drop(s, r, ev);
+    return true;
+  }
   if (!spot) {
     ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
       text: `${r.name} ${prone ? 'falls off' : 'can no longer ride'} ${m.name}, but there is no unoccupied space within 5 ft of ${m.name} for ${r.name} to land in, so ${r.name} stays on. The DM places ${r.name}${prone ? ' (Prone)' : ''} if room is made.` });
@@ -480,15 +496,6 @@ function putOff(s, r, m, why, ev, prone) {
   entered(s, ev, KIT, zonesBefore);
   lookAround(s, ev, [r]);
   return true;
-}
-// A mount `m` is about to be moved against its will (a push or a pull) with its rider on it: the rider's save. False if
-// it fell off (it is then off, beside where the mount stood).
-export function ridesThrough(s, m, why, ev) {
-  const r = riderOf(s, m);
-  if (!r) return false;
-  if (staysOn(s, r, ev)) return true;
-  putOff(s, r, m, why, ev, true);
-  return !!riderOf(s, m);
 }
 // One creature of a pair teleports (SRD 5.2.1 "Teleportation", 34458-34461: "If you're touching another creature when
 // you teleport, that creature doesn't teleport with you unless the teleportation effect says otherwise."), so the ride
@@ -535,12 +542,16 @@ export function settleRide(s, e, ev) {
     e.riding.controlled = false;
     if (s.encounter?.budget?.mount && current(s) === e.id) delete s.encounter.budget.mount;
   }
-  if (rank(m) < rank(e) + 1) { if (!e.riding.told) { if (!putOff(s, e, m, 'size', ev, false)) e.riding.told = true; } return; }
-  const prone = !!(e.cond?.prone || m.cond?.prone);
-  if (prone && !e.riding.told) {
-    e.riding.told = true;
+  if (rank(m) < rank(e) + 1) { if (!e.riding.cramped) { if (!putOff(s, e, m, 'size', ev, false)) e.riding.cramped = true; } return; }
+  if (e.riding.cramped) delete e.riding.cramped;
+  // `told` says which knock-downs have been saved against: 'r' the rider's, 'm' the mount's (true, from C6a saves: both).
+  // A new one, of the other, is saved against again (fix round 1 of #363, L2).
+  const now = `${e.cond?.prone ? 'r' : ''}${m.cond?.prone ? 'm' : ''}`, had = e.riding.told === true ? 'rm' : typeof e.riding.told === 'string' ? e.riding.told : '';
+  if ([...now].some((c) => !had.includes(c))) {
+    e.riding.told = now;
     if (!staysOn(s, e, ev)) putOff(s, e, m, 'prone', ev, true);
-  } else if (!prone && e.riding.told) delete e.riding.told;
+  } else if (!now && e.riding.told !== undefined) delete e.riding.told;
+  else if (now && e.riding.told !== true && now !== had) e.riding.told = now;
 }
 
 // ---------- stepping away (docs/specs/table-ui.md, "E20: stepping away") ----------
