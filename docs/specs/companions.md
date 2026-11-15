@@ -332,9 +332,11 @@ A pocketed familiar is moved out of `state.entities` into `master.pocket = { [id
 nothing on the map, in sight or in the fight sees it, and back by `recall` with the same id and
 Hit Points. `dismiss` of a non-familiar summon whose spell has a duration ends its effect (as
 `endEffect`); of one without (Animate Dead), it frees it as the DM's `bond { to: null }` does.
-*As built in C5c (#343): only a summon kept by a Concentration effect of its master's is dismissed, at no cost, as
-dropping Concentration; any other is refused (the SRD gives Find Steed, Phantom Steed or Animate Dead no way to end it
-early, and the DM's `bond { to: null }` frees one). See the C5c build notes.*
+*As built in C5c (#343): a summon kept by a lasting effect of its master's spell that has a duration (Concentration, or a
+time span: SRD Spells, Duration, "While a time-span spell that you cast is ongoing, you can dismiss it (no action
+required) if you don't have the Incapacitated condition") is dismissed at no cost, and the effect ends as by `endEffect`.
+One made by an Instantaneous spell (Find Steed, Animate Dead) is refused: such a spell is not dismissed, and the DM's
+`bond { to: null }` frees one. See the C5c build notes.*
 
 ### Decision 7: Animate Dead and Create Undead work on corpses
 
@@ -914,20 +916,28 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   its action left, not Action Surge's extra one, and marked a Magic action as casting marks it; outside a fight free, but the
   master must be up and able to act), to the pocket or, with `forever: true`, for good (`vanished`, `why: 'dismissed'`). One
   already in the pocket may be dismissed forever from there; dismissed again without `forever` it is refused. Any other
-  companion: refused with `forever`; dismissed only when its `bond.fx` names a lasting effect of the master's that needs
-  Concentration, which "you can end ... at any time (no action required)" (SRD Concentration), so that effect ends as by
-  `endEffect` and `settleBonds` vanishes the creature (`ended`); anything else is refused ("Find Steed gives Ven no way to
-  end it early"). **This narrows Decision 6**, which freed a creature with no duration as the DM's `bond { to: null }` does:
-  no SRD spell lets its caster do that (Animate Dead's control ends only with its 24 hours), so the engine does not; the
-  DM's `bond { to: null }` still frees one.
+  companion: refused with `forever`; dismissed when its `bond.fx` names a lasting effect of the master's spell that has a
+  duration: Concentration ("you can end ... at any time (no action required)", SRD Concentration) or a time span ("While a
+  time-span spell that you cast is ongoing, you can dismiss it (no action required) if you don't have the Incapacitated
+  condition", SRD Spells, Duration; flow lines 23753-23759), so Summon Dragon, Giant Insect, Animate Objects and Phantom
+  Steed. It costs nothing, in a fight or out; for a time span the master must not be Incapacitated. The effect ends as by
+  `endEffect` and `settleBonds` vanishes the creature (`ended`). One made by an **Instantaneous** spell is refused ("Find
+  Steed is instantaneous, so it does not end when Ven wishes"): Find Steed, and Animate Dead and Create Undead, whose 24
+  hours of control are the engine's effect and not the spell's duration. Decision 6 said such a creature is freed as by the
+  DM's `bond { to: null }`; no SRD spell lets its caster do that, so it is refused, and the DM's `bond { to: null }` still
+  frees one (review of #343, M2).
 - **Into the pocket** (`pocket`, resolve.js). What it wore or carried stays in its space (`leaveGear`, SRD: "it leaves
   behind in its space anything it was wearing or carrying"); its own lasting effects and Concentration end and a part of
   another's on it ends, as for a seen vanish (`settleSeen`, also for a familiar the party could not see: the pocket is real,
   so a grapple it held on someone ends); those following it stop; it leaves the fight's order as a vanish takes it out (if
   it was its turn, the turn passes) and the fight's flags that name it go; Grappled, Prone, Dodging and Disengaged and its
-  hiding are left behind; other conditions stay with it. Its record, Hit Points and all, moves from `state.entities` to
+  hiding are left behind; other conditions stay with it. A light it carried (`light`) stays behind too, as what it
+  carried: a named torch or lamp goes onto the pile by name, any other light the DM is told of (review of #343, L2). Its record, Hit Points and all, moves from `state.entities` to
   `master.pocket[id]`. `pocketed { id, by, name, seen?, party? }`. Then `checkEnd`: a foe's last companion up going to its
-  pocket can end a fight. Not in `encounter.gone` (A3): it did not die and is not counted for XP.
+  pocket can end a fight. A foe the party saw leave a fight that way goes into `encounter.gone` (A3), as a seen vanish does;
+  recalled into the same fight it is counted in the order and not twice (review of #343, L6). In the pocket nothing touches
+  it: a Long Rest does not heal it, and it keeps its Hit Points until recalled (Decision 6's "same Hit Points"; review of
+  #343, L1).
 - **`recall { actor, id, at }`** (companions.js). A Magic action as `dismiss`. `id` must be in this master's pocket. `at`
   is checked as a summon's space (C3): a player names a place the party has seen; the familiar fits there (a flyer given `z`
   in the air); nothing the master knows of stands there ("That hex is occupied."); within 30 ft of the master by `gap` from
@@ -942,6 +952,12 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   is "No such creature."; one it knows of that is not this master's is "not Ven's companion".
 - **The cap** counts the pocket (`roomForCompanions`, shared.js), and a creature with a familiar in its pocket has
   companions, so the DM's `bond` refuses to make it one.
+- **A master made again** (`remake`, sheets.js: `levelUp`, `setSheet` with an actor, an item given, worn or attuned at a
+  rest; and `editCharacter`, characters.js) keeps its `pocket`; a record typed in can't bring one (the record linter refuses
+  the field). The DM's `remove` of a master with a familiar in its pocket is refused, changing nothing, until the DM recalls
+  it or dismisses it forever. A master's corpse raised as undead (C5b) loses its pocket: each familiar there vanishes (`why:
+  'master'`, `pocket: true`) and the DM is told. `loadMap` keeps the party, so a party master's pocket goes with it; a foe
+  master left behind on the old map goes with its pocket, as every creature of the old place does (review of #343, B1).
 - **The master dies**: nothing happens to a familiar (Find Familiar has no `masterDies`); it stays in the pocket, and a
   dead master can't recall it. `companionsOf`, `ownerOf`, `followMasters`, `settleBonds` and the fight order read
   `state.entities` only, so a pocketed familiar is none of theirs until it is back.
@@ -959,6 +975,8 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   'replaced'`) and the new one is made as any summon. The cap counts the new one less the old.
 - **A cast with no picks** (#332's path) while the master has one: nothing changes, and the DM's line says what the spell
   does to the one it has and that the cast with picks does it.
+- **Replace, in order.** The old steed vanishes before the new one is made (so the new one may take its space), as a
+  hand-over: the old one's `vanished` comes before the new one's `summoned` in the events (review of #343, L5).
 - **The linter.** `one` is `reform` or `replace`; not on corpses; only with a `count` of one; `reform` only with `forms`.
   Find Familiar has `one: 'reform'`, Find Steed `one: 'replace'`. Both stay `assist`: telepathy and seeing through its eyes
   are the DM's; riding (C6) and Life Bond (C9) wait. `spellProfile` (effects.js) does not list `one`; the client (C8) reads it
@@ -984,9 +1002,15 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   squares. Labels: "Ven dismissed Ven's Owl to a pocket dimension", "Ven dismissed Ven's Owl forever", "Ven called Ven's
   Owl back".
 - **No state version bump.** `pocket` is optional and absent means none; a save without it loads and plays as before. An
-  older build that loads a save with a familiar in a pocket keeps the field and cannot recall it.
-- **Left** (in DEBT): the DM's `remove` of a master (dm.js), and raising its corpse (C5b), take its record and its pocket
-  with it, with no event for the familiar; Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
+  older build that loads a save with a familiar in a pocket keeps the field and cannot recall it. **A later migration that
+  changes creature records must walk the records in every master's `pocket` too** (review of #343, L3).
+- **Not built: an unseen familiar in a fight** (review of #343, M1). A familiar the party cannot see that goes to the pocket
+  in the middle of a fight leaves the order (and comes back with an Initiative roll), so players can tell from the turns
+  that something unseen stopped acting (one `someone` turn fewer a round), and the roll moves the dice. An unseen vanish
+  keeps a husk in the order for this reason, but a husk is dead and takes no turn, which does not match a living familiar
+  either. Keeping the entry with a turn that waits for the DM needs `endTurn` (attacks.js) to end a turn whose creature is
+  in a pocket. Left open, in DEBT; the twin runs here are outside a fight.
+- **Left** (in DEBT): an unseen familiar going to the pocket in a fight (above); Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
   pocket (rests.js); a seen foe familiar's new form reaches players only through their view, with no event; the client has
   no Dismiss, Recall or Deliver (C8).
 
