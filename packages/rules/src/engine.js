@@ -128,6 +128,7 @@ function dispatch(s, action, ctx, ev) {
   // else is looked at (issue #136). tests/hidden-ids.test.js walks every field every handler reads.
   if (ctx.role !== 'dm') {
     for (const k of CREATURE_FIELDS) {
+      if (k === 'order' && action?.type === 'companionOrder') continue;    // there `order` is 'before' or 'after', not creatures; its `id` is looked at in companions.js
       const v = action?.[k];
       for (const id of Array.isArray(v) ? v : [v]) {
         if (typeof id !== 'string') continue;

@@ -910,6 +910,42 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   Open, as `after` is). Tests: a choice mid-round changes nothing until the next round; before and after
   give no double or lost turn across a full fight with ties and joins.
 
+#### Build notes: A1
+
+- **The action.** `{ type: 'companionOrder', actor: masterId, id, order: 'after' | 'before' }` (companions.js), by the
+  master's controller or the DM. Refused, changing nothing: an `order` other than those two, an `id` that is not bonded,
+  one bonded to another master, one whose bond has `turn: 'own'` (it rolls its own count, so there is no master's count
+  to act beside; the engine keeps no choice it would not play), and a player who does not control the master. To a
+  player an `id` the party does not know of is answered "No such creature." as an id that is nothing (engine.js walks
+  `actor` and the other creature fields; `id` is checked in the handler, and `order` is not taken for creature ids in
+  this action). Event `companionOrder { id, by, order, next? }`, sent to players only when both are Open.
+- **Where it is kept.** Outside a fight it is `bond.order` at once (and any `orderNext` goes). In a fight it is
+  `bond.orderNext`; choosing what this round already has deletes `orderNext`, so nothing waits. Absent `order` is
+  `after`; absent or null `orderNext` is nothing waiting. `takeUpOrders` (resolve.js) copies `orderNext` to `order` for
+  every bond, in the fight or not, at a round's start (`newRound`) and at a fight's start (`startEncounter`, the start
+  of round 1), and nowhere else.
+- **The order.** An entry carries `after: masterId` or `before: masterId`, never both (`tieOf` in world.js reads
+  either). `initiativeSort` puts a `before` entry straight before its master, behind the master's earlier `before`
+  companions; `insertSlot` does the same for a `before` slot and puts any other creature that outranks the master
+  before the master's whole group, so a group is never split. A creature taken back in after a `before` companion
+  (`settleOrder`) is seated behind that master's whole group.
+- **Changing sides.** `followMasters` changes an entry's side only with `now` false (a round's start) and only where
+  the party knows of both (`placeable`), as a new place is: a seen steed moving round its master's unseen turn would
+  tell players they belong together. Until then the entry keeps the side it has; its bond already has the choice. A new
+  place in the middle of a round (a join, a bond, a master coming to be known) is taken on the side `bond.order` says
+  this round, under the C2 rules unchanged (`insertSlot`, nothing else moves, only when no turn is gained or lost).
+  `newRound` runs `followMasters` once more after it gives back places moved for one round (E20), so a companion whose
+  master was set aside last round changes sides or takes its place at this round's start, not a round later.
+- **A join in the middle of a round on `before`.** It is put straight before its master. If the master's turn is going
+  on or past, that place is past too, and the companion acts from the next round, as any creature joining on a count
+  already passed. A steed made by a casting has a new bond, so `after`, and acts straight after its master as before.
+- **Riding** (C6) is not built: a ridden steed will have no entry, and its choice waits in its bond.
+- **What players are sent.** `before` only on an Open entry whose master is Open (the order, `encounterStart`,
+  `joined`), as `after`. A foe's choice is never told; twin runs (companions-order.test.js) of a fight that differ only
+  in a hidden foe's steed choice give players the same events, view, record and `seq`.
+- **No state version bump:** `bond.order`, `bond.orderNext` and an entry's `before` are optional; a save or record
+  without them plays as `after`, unchanged (C2's rule).
+
 ### A2, a Bonus Action command puts the turn in the player's hands (not built)
 
 - **Choice.** In `command` (C5), a command spends the Bonus Action and sets `bond.commanded` for that turn;
