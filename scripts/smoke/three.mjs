@@ -16,10 +16,40 @@ async function threePass(browser, url, label, opts) {
       const asked = [], got = [];
       page.on('request', (r) => asked.push(r.url()));
       page.on('response', (r) => { if (r.url().includes('/vendor/')) got.push({ url: r.url(), enc: r.headers()['content-encoding'], vary: r.headers()['vary'], status: r.status() }); });
-      await run.do('a normal page load and a solo game fetch nothing under vendor/', async () => {
-        await open(page, url); await playSolo(page); await sleep(1000);
+      // Since R14 step 1 (#348) the default renderer is Three.js, so a normal page load fetches the library; a page that chose another renderer
+      // (`?renderer=gl`) still fetches nothing under vendor/.
+      await run.do('a page and a solo game on ?renderer=gl fetch nothing under vendor/', async () => {
+        await open(page, `${url}?renderer=gl`); await playSolo(page); await sleep(1000);
         const v = asked.filter((u) => u.includes('/vendor/'));
         if (v.length) throw new Error(`the page fetched ${v.join(', ')}`);
+      });
+      await run.do('a normal page load and a solo game load the library and draw with the Three.js renderer', async () => {
+        await open(page, url); await playSolo(page);
+        await wait(page, () => window.hextable.R.kind === 'three' && window.hextable.state.entities.fighter, null, 30000);
+        if (!asked.some((u) => u.endsWith('/vendor/three/three.module.js'))) throw new Error('the default page did not fetch the library');
+        if (await page.evaluate(() => !document.getElementById('gl-status').hidden)) throw new Error('the loading message is still up');
+      });
+      await run.do('while the library loads the table says so; if it cannot load, a message offers the classic renderer, and the button reaches it', async () => {
+        const ctx2 = await browser.newContext(opts);
+        try {
+          const p2 = await ctx2.newPage();
+          p2.on('pageerror', (e) => run.problems.push(`page error: ${e.message}`));
+          p2.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) run.problems.push(`console error: ${m.text()}`); });      // the blocked library is the point of this step
+          let hold = true; await p2.route('**/vendor/**', async (route) => { while (hold) await sleep(100); route.continue(); });
+          await open(p2, url); await playSolo(p2);
+          await wait(p2, () => !document.getElementById('gl-status').hidden && /Loading the 3D view/.test(document.getElementById('gl-status-text').textContent), null, 10000);
+          if (await p2.evaluate(() => !document.getElementById('gl-status-classic').hidden)) throw new Error('the loading message offers the classic renderer');
+          hold = false; await wait(p2, () => window.hextable.R.kind === 'three' && document.getElementById('gl-status').hidden, null, 30000);
+          await p2.unroute('**/vendor/**'); await p2.route('**/vendor/**', (route) => route.abort());
+          await p2.goto(url); await playSolo(p2);
+          await wait(p2, () => document.getElementById('gl-status').classList.contains('failed') && !document.getElementById('gl-status-classic').hidden, null, 15000);
+          const msg = await p2.evaluate(() => document.getElementById('gl-status-text').textContent);
+          if (!/could not be loaded/.test(msg)) throw new Error(`the failure message reads: ${msg}`);
+          await p2.unroute('**/vendor/**');
+          await p2.click('#gl-status-classic'); await p2.waitForLoadState('load'); await playSolo(p2);
+          await wait(p2, () => window.hextable.R.constructor.name === 'Renderer' && window.hextable.state.entities.fighter, null, 20000);
+          if ((await p2.evaluate(() => localStorage.getItem('hextable.renderer'))) !== '"gl"') throw new Error('the preference was not stored');
+        } finally { await ctx2.close(); }
       });
       await run.do('the vendored module loads, draws a cube on an offscreen canvas, GLTFLoader and SkeletonUtils import', async () => {
         const r = await page.evaluate(async () => (await import('/three-check.js')).checkThree());
