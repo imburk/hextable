@@ -305,6 +305,20 @@ with no entries.
   (`active`, milliseconds) is saved with the table; tables saved before it existed start the
   clock when the server loads them.
 
+## Player feedback (#353)
+
+`POST /feedback` takes one report from the game's feedback button (`docs/specs/feedback.md`):
+JSON, at most 24 KB, checked field by field (`packages/server/src/feedback.js`), 5 a minute and
+30 an hour per address (`LIMIT_FEEDBACK_MINUTE`, `LIMIT_FEEDBACK_HOUR`; the address is found as
+described under Limits). Each report is one JSON line in `DATA_DIR/feedback.jsonl`, rotated to
+`feedback.1.jsonl` at 5 MB (`FEEDBACK_MAX_BYTES`). The answer is `{ "ref": "FB-XXXXXX" }`. CORS is
+open for this route only, without credentials.
+
+To also file each report as a GitHub issue labelled `feedback`, set `FEEDBACK_GITHUB_REPO`
+(`owner/name`) and `FEEDBACK_GITHUB_TOKEN` (a fine-grained token with Issues: write on that
+repository, nothing else). The token is never logged or sent to a client. A failure to file is
+logged and the local line is kept.
+
 ## Table files (assets)
 
 Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/maps-and-objects.md`,

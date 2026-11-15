@@ -39,6 +39,7 @@ import { initTableControls, importLine, gridWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
+import { initFeedback } from './feedback.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -381,7 +382,8 @@ function floatOf(ev) {
 function beat(ev, ctx) {
   if (!S) return;
   played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
-  LV.add(ev, describe(ev), S.clock);
+  const line = describe(ev);
+  LV.add(ev, line, S.clock); FB.shown(line);
   const f = floatOf(ev);
   if (f) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
@@ -1013,6 +1015,9 @@ const lead = (e) => { pendingLead = e.id; act({ type: 'partyFollow', leader: e.i
 const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { dm: isDM(), mine: mine(e) }) || 'Nobody can be placed yet.'); };
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
+// The feedback button (feedback.js): a report is built only from what was shown or sent here.
+const FB = initFeedback({ look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
+
 // For the browser console, tests and future automation.
 window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
 
@@ -1074,6 +1079,7 @@ function start(transport, map = null) {
     refresh();
   };
   T.on.welcome = (you) => { SC.resync(); $('lobby').hidden = you.approved; if (!you.approved) { $('lobby-remember').hidden = true; $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; } };
+  FB.attach(T);                 // feedback.js notes the actions sent and the answers (nothing else is read from the transport)
   T.start();
 }
 // The lobby says what this device holds: a remembered table (Rejoin or Forget) and a saved solo game (Continue or New game).
