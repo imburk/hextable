@@ -557,6 +557,10 @@ function lintHigher(e, say) {
 const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
 // A senses map gives a range in feet, a multiple of 5, for some of the four special senses.
 const validSenses = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([k, f]) => SENSES.includes(k) && isInt(f) && f >= 0 && f <= 1000 && f % 5 === 0);
+// The animals the SRD sells as mounts ("Mounts and Other Animals", SRD 5.2.1 22627-22680): Camel, Elephant, Draft
+// Horse, Riding Horse, Mastiff, Mule, Pony, Warhorse. "Domesticated horses, mules, and similar creatures" are trained
+// to accept a rider; "appropriate anatomy" for any other creature is the DM's (who may send `mount` for it).
+export const MOUNTS = ['camel', 'elephant', 'draft-horse', 'riding-horse', 'mastiff', 'mule', 'pony', 'warhorse'];
 // `baked`: a template made from a summon block (summons.js), whose CR is none (`cr: null`) and XP 0.
 function lintMonster(e, say, baked = false) {
   lintCommon(e, say);
@@ -577,6 +581,10 @@ function lintMonster(e, say, baked = false) {
   // `languages` is the stat block's Languages line, one piece of text per language or ability to speak (an empty list: none). Data only: the engine does not use it.
   if (e.languages !== undefined && !(Array.isArray(e.languages) && e.languages.length <= 12 && e.languages.every((x) => isText(x) && x.length <= 120))) say('languages must be a list of short texts (empty for none)');
   if (e.skills !== undefined && !(e.skills && Object.entries(e.skills).every(([k, v]) => Object.hasOwn(SKILLS, k) && isInt(v)))) say('skills must give a whole-number bonus for each skill named');
+  // `mount: 'trained'`: an animal trained to accept a rider, so a rider on its side controls it (SRD "Controlling a
+  // Mount"; docs/specs/companions.md, Decision 8). Only the eight the SRD sells as mounts carry it (MOUNTS).
+  if (e.mount !== undefined && e.mount !== 'trained') say('mount is "trained" (an animal trained to accept a rider), or left out');
+  if (e.mount !== undefined && !baked && !MOUNTS.includes(e.id)) say(`mount: "trained" is only for the animals the SRD sells as mounts (${MOUNTS.join(', ')})`);
   const ids = new Set();
   for (const t of e.traits ?? []) {
     const sub = (m) => say(`trait ${t.id}: ${m}`);

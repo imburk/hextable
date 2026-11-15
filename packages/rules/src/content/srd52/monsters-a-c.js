@@ -5157,6 +5157,7 @@ export const monsters = [
     source: "SRD 5.2.1",
     size: "large",
     type: "beast",
+    mount: "trained",
     cr: 0.125,
     xp: 25,
     pb: 2,
