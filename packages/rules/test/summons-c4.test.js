@@ -225,7 +225,7 @@ test("Find Steed (SRD lines 26824-26905) cast at levels 2 to 5 (the most a 17th-
     assert.deepEqual([e.ac, e.maxHp, e.size, e.type, e.speed], [10 + slot, 5 + 10 * slot, "large", type, 60], say);
     assert.deepEqual(e.speeds ?? {}, slot >= 4 ? { fly: 60 } : {}, say);
     assert.equal(e.actions.find((a) => a.id === "otherworldly-slam").effects[0].bonus, caster.attack);
-    assert.deepEqual(e.bond, { to: "ven", kind: "steed", source: "find-steed", fx: null, turn: "after", orders: "free", at0: "vanish", ends: ["masterDies"], slot, commanded: null, auto: false });
+    assert.deepEqual(e.bond, { to: "ven", kind: "steed", source: "find-steed", fx: null, turn: "after", orders: "free", at0: "vanish", ends: ["masterDies"], mount: "controlled", slot, commanded: null, auto: false });          // C6b: `mount`
     assert.ok(r.events.some((x) => x.type === "manual" && x.partial && x.name === "Find Steed"), "the DM is told what the engine does not do");
     // The steed disappears if the caster dies.
     const t = structuredClone(s);

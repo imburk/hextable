@@ -161,7 +161,7 @@ export function viewPrompt(state, viewer) {
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
   if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
-  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => pick(o, ['reaction', 'name', 'slots', 'ac'])) };
+  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => ({ ...pick(o, ['reaction', 'name', 'slots', 'ac']), ...(typeof o.against === 'string' && classify(state, o.against) !== 'hidden' ? { against: o.against } : {}) })) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
   for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype']) if (q[k] !== undefined) out[k] = q[k];
@@ -602,7 +602,7 @@ export function viewEvents(events, state, viewer) {
         if (cls(ev.mount) !== 'hidden') out.push({ ...pick(ev, ['type', 'id', 'mount']), ...(cls(ev.id) === 'open' ? pick(ev, ['controlled']) : {}) });
         break;
       case 'dismounted':
-        if (typeof ev.mount === 'string' && cls(ev.mount) !== 'hidden') out.push(structuredClone(pick(ev, ['type', 'id', 'mount', 'at', 'why'])));
+        if (typeof ev.mount === 'string' && cls(ev.mount) !== 'hidden') out.push(structuredClone(pick(ev, ['type', 'id', 'mount', 'at', 'why', 'fell'])));
         break;
       case 'companionOrder':                           // a before or after choice (A1): the party's own only, as a bond is
         if (cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'next']));

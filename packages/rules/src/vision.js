@@ -15,6 +15,7 @@ import { FT, concealed, gap, regionAt, shown } from './space.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { canSee, coverOf, inView, inViewOf, lightAt, lightSources } from './sight.js';
 import { has } from './modifiers.js';
+import { SIZES } from './content/sizes.js';
 
 export const SIGHT_RULES = ['rooms', 'los', 'light'];
 export const sightRule = (s) => s?.settings?.sight ?? 'rooms';
@@ -23,7 +24,11 @@ export const sightRule = (s) => s?.settings?.sight ?? 'rooms';
 export const FLOOD_HEXES = 40;
 
 const up = (e) => !e.dead && e.hp > 0;
-const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e));
+// A rider sits on its mount (docs/specs/companions.md, Decision 8; stage C6b): its height is the mount's height plus its
+// own, so it sees, and is seen, from that high: its position raised by the mount's height (`riding.size`, kept in step
+// with the mount). Everything else about it is its own.
+export const raised = (e) => (e?.riding && SIZES[e.riding.size] ? { ...e, pos: { ...e.pos, z: (e.pos.z ?? 0) + SIZES[e.riding.size].height } } : e);
+const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e)).map(raised);
 const placeOf = (level, h) => { const t = level.tiles[col(h)]; return t ? { q: h.q, r: h.r, z: level.z + (t.h ?? 0) } : null; };
 
 // ---------- places in sight ----------
@@ -80,7 +85,7 @@ function signature(s, rule) {
     (s.effects ?? []).filter((fx) => fx.terrain?.obscured).map((fx) => fx.id).join()];        // a spell's fog (terrain.js)
   for (const e of Object.values(s.entities)) {
     const cond = Object.keys(e.cond ?? {}).filter((k) => e.cond[k]).sort().join('+');
-    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}`);
+    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}`);
   }
   return parts.join('|');
 }
@@ -99,7 +104,8 @@ export function partyView(s) {
   const creatures = new Set();
   for (const c of Object.values(s.entities)) {
     if (c.side === 'party' || concealed(map, c)) continue;
-    if (eyes.some((v) => (rule === 'los' ? inViewOf(map, v, c) : canSee(s, v, c, { sources }) !== 'no'))) creatures.add(c.id);
+    const at = raised(c);
+    if (eyes.some((v) => (rule === 'los' ? inViewOf(map, v, at) : canSee(s, v, at, { sources }) !== 'no'))) creatures.add(c.id);
   }
   const sight = new Map(), seen = new Map();
   for (const v of eyes) {
@@ -177,7 +183,7 @@ export function regionsInSight(s, who) {
   const found = new Set(), map = s.map;
   for (const e of who) {
     if (e.side !== 'party' || e.dead) continue;
-    for (const t of tilesInSight(map, e.pos).values()) { const r = regionAt(map, t.level, t); if (r && !r.revealed) found.add(r); }
+    for (const t of tilesInSight(map, raised(e).pos).values()) { const r = regionAt(map, t.level, t); if (r && !r.revealed) found.add(r); }
   }
   return found;
 }

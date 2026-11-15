@@ -204,9 +204,9 @@ export const spells2 = [
     time: "action", range: 30, components: ["v", "s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"summon": "otherworldly-steed", "types": ["celestial", "fey", "fiend"], "one": "replace", "bond": {"kind": "steed", "turn": "after", "orders": "free", "at0": "vanish", "ends": ["masterDies"]}}],
+    effects: [{"summon": "otherworldly-steed", "types": ["celestial", "fey", "fiend"], "one": "replace", "bond": {"kind": "steed", "turn": "after", "orders": "free", "at0": "vanish", "ends": ["masterDies"], "mount": "controlled"}}],
     tier: "assist", checked: true,
-    text: "Summons an otherworldly steed (Celestial, Fey or Fiend) within 30 feet, using the Otherworldly Steed block at the slot level; it shares the caster's Initiative count and disappears at 0 Hit Points or if the caster dies. A new casting replaces the old steed. The DM handles riding, its turn while the caster is Incapacitated, Life Bond and its look.",
+    text: "Summons an otherworldly steed (Celestial, Fey or Fiend) within 30 feet, using the Otherworldly Steed block at the slot level; it shares the caster's Initiative count and disappears at 0 Hit Points or if the caster dies. A new casting replaces the old steed. Its caster rides it as a controlled mount; while the caster is Incapacitated the steed takes its own turn straight after the caster's. The DM handles Life Bond, the steed acting to protect its rider, and its look.",
   },
   {
     id: "find-traps", name: "Find Traps", source: "SRD 5.2.1",

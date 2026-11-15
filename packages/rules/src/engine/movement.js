@@ -13,9 +13,12 @@ import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, KIT, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, KIT, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
-export const ENGAGE_RANGE = 2;       // walking this close to a hostile starts the fight
+export const ENGAGE_RANGE = 2;
+// The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
+// Only an answer: the standing instruction is the Opportunity Attack's own (OPPORTUNITY).
+export const OPPORTUNITY_RIDER = 'opportunity-attack-rider';       // walking this close to a hostile starts the fight
 
 // Who could make an Opportunity Attack on `e` standing at `pos`: hostile, able to take a Reaction
 // (reactions.js, canReact), armed for one, within reach and able to see it (SRD). Whether each
@@ -74,7 +77,8 @@ function notice(s, e, ev, before) {
 // `bud`: the budget the walk is spent from (a controlled mount's is `budget.mount`, its rider's turn's).
 function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
   let seg = [], prev = e.pos;
-  const walked = [e.pos], rider = riderOf(s, e);
+  const walked = [e.pos];
+  let rider = riderOf(s, e);
   const flush = () => { if (seg.length) { ev.push({ type: 'moved', id: e.id, path: seg }); if (rider) ev.push({ type: 'moved', id: rider.id, path: seg.map((h) => ({ ...h })) }); } seg = []; };
   if (notice(s, e, ev, flush)) return null;
   const range = Math.max(ENGAGE_RANGE, Math.floor((s.settings.engageRange ?? 10) / FT));
@@ -90,28 +94,34 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
         // happens and nothing is said. `ask`: its player is asked, and the walk waits; for one of
         // the DM's creatures the DM alone is told and decides by hand.
-        const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY));
+        // A mount that provokes carries its rider out of reach too: the attacker may make its one attack against either
+        // (stage C6b, Decision 8). The rider is offered only where the attacker could attack it (riderTarget).
+        const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY)), alt = riderTarget(s, o, rider, prev);
         if (w === 'never') continue;
+        let t = e;
         if (w === 'ask') {
-          const answer = ask(s, o, { trigger: 'leave', by: e.id }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' }]);
+          const answer = ask(s, o, { trigger: 'leave', by: e.id }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },
+            ...(alt ? [{ reaction: OPPORTUNITY_RIDER, name: `Opportunity Attack on ${alt.name}`, against: alt.id }] : [])]);
           if (answer === null) {
             ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
-              text: `${e.name} leaves ${o.name}'s reach. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack, the DM makes it and marks its Reaction used.` });
+              text: `${e.name} leaves ${o.name}'s reach${alt ? `, carrying ${alt.name}` : ''}. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack${alt ? ` (against ${e.name} or ${alt.name})` : ''}, the DM makes it and marks its Reaction used.` });
             continue;
           }
-          if (answer.take !== OPPORTUNITY) continue;
+          if (answer.take === OPPORTUNITY_RIDER && alt) t = alt;
+          else if (answer.take !== OPPORTUNITY) continue;
         }
         flush();
         o.reactionUsed = true;
-        ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: e.id });
+        ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
         const oa = opportunityAttack(o);
-        if (o.actions) runAction(s, o, oa, [e], null, null, ev, { opportunity: true });
-        else resolveAttack(s, o, e, oa, ev, { opportunity: true });
+        if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
+        else resolveAttack(s, o, t, oa, ev, { opportunity: true });
+        // A rider knocked down or Prone by it may fall off here, before the mount goes on (settleRide).
+        if (t === rider) { settleRide(s, rider, ev); rider = riderOf(s, e); }
         if (!up(e)) break;
       }
       if (!up(e)) break;
     }
-    if (fighting && s.encounter && rider && !rider.cond.disengaged) riderLeaves(s, rider, prev, step, ev, flush);
     const k = key(step);
     if (fighting && s.encounter && bud) {
       const b = bud;
@@ -145,15 +155,15 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
   flush();
   return walked;
 }
-// A rider carried out of a foe's reach (stage C6a). Opportunity Attacks for the pair (one Reaction, the foe choosing
-// either, Decision 8) are stage C6b: until then the engine does not make or skip one against the rider, it tells the DM.
-function riderLeaves(s, r, prev, step, ev, flush) {
-  for (const o of threatsAt(s, r, prev)) {
-    if (apartAt(s, o, o.pos, r, step) <= 1) continue;
-    flush();
-    ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
-      text: `${r.name}, riding, is carried out of ${o.name}'s reach. An Opportunity Attack against a rider is not in the engine yet: if ${o.name} takes one (against ${r.name} or its mount, with its one Reaction), the DM makes it and marks its Reaction used.` });
-  }
+// The rider a mount carries out of a foe's reach, if the foe may make its Opportunity Attack against it instead (stage
+// C6b; Decision 8: "a foe still has one Reaction and chooses which"): hostile to it, within its reach where the pair
+// stood, a clear line, and a rider it can see (and, for a party attacker, one the party knows of, so a prompt never
+// names a hidden creature). The rider itself does not provoke: it is moved without using its own movement (SRD 5.2.1
+// 2088-2090).
+function riderTarget(s, o, r, prev) {
+  if (!r || !hostile(o, r) || r.dead) return null;
+  if (o.side === 'party' && unknown(s, r)) return null;
+  return apartAt(s, o, o.pos, r, prev) <= 1 && clear(s, o.pos, prev) && canSee(s, o, r) !== 'no' ? r : null;
 }
 const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.march ?? -1)) + 1;

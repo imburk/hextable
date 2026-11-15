@@ -592,6 +592,8 @@ test("the lifted linter rules: commands with a range, corpses with reassert; wha
   // since C5c (#342), but not on corpses: the caster names them.
   assert.match(withAD((sp, st) => { st.bond.turn = "none"; }), /stages C5 and C6/);
   assert.match(withAD((sp, st) => { st.one = "replace"; }), /a summon step on corpses has no `one`/);
-  assert.match(withAD((sp, st) => { st.bond.mount = "controlled"; }), /stage C6/);
+  // C6b: `mount` is in the bond now; one that takes commands (Animate Dead) is still refused it.
+  assert.match(withAD((sp, st) => { st.bond.mount = "controlled"; }), /takes commands is never a controlled mount/);
+  assert.match(withGI((sp, st) => { st.bond.mount = "steered"; }), /`mount` is "controlled"/);
   assert.match(withAD((sp, st) => { st.range = 60; }), /a summon step has no "range"/);
 });
