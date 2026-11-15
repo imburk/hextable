@@ -14,6 +14,7 @@ import { apart, FT, gap } from "../src/space.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { migrate } from "../src/migrate.js";
 import { newMap } from "../src/map.js";
+import { SHEETS } from "./fixtures/sheets.js";
 import { CONTENT, PACKS } from "../src/content/index.js";
 import { lintPack } from "../src/content/schema.js";
 
@@ -253,7 +254,7 @@ for (const grid of [null, "square"]) {
     const p = table(grid, "paladin", ["find-steed"]);
     const at2 = spots(p, p.entities.ven.pos, 4, "giant-spider").filter((h) => gap(p, p.entities.ven.pos, h) * FT <= 30).at(-1);
     const steed = made(ok(apply(p, { type: "cast", actor: "ven", spell: "find-steed", slot: 2, summon: { type: "fey", at: [at2] } }, PAT)));
-    refused(p, { type: "dismiss", actor: "ven", id: steed }, PAT, /Find Steed gives Ven no way to end it early/);
+    refused(p, { type: "dismiss", actor: "ven", id: steed }, PAT, /Find Steed is instantaneous, so it does not end when Ven wishes/);
     // Another master's companion, a stranger, an id that is nothing: refused, with nothing told of a foe's bond.
     refused(p, { type: "dismiss", actor: "ven", id: "fighter" }, PAT, /is not Ven's companion/);
     refused(p, { type: "dismiss", actor: "ven", id: "nobody" }, PAT, /No such creature/);
@@ -274,6 +275,81 @@ for (const grid of [null, "square"]) {
     // Taken out of the pocket for good, there is room again.
     ok(apply(s, { type: "dismiss", actor: "ven", id: owl, forever: true }, PAT));
     ok(apply(s, { type: "bond", actor: one, to: "ven" }, DM));
+  });
+}
+
+// ---------- review of #343 ----------
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+
+  // B1: whatever makes a character again from its sheet or a record keeps its pocket.
+  test(`the pocket stays with its master when the character is made again: level up, a new sheet, items given and attuned at a rest, an edit${on}`, () => {
+    const s = newGame(5, grid ? { grid } : {});
+    s.settings.autoEngage = false;
+    const w = { ...SHEETS.wizard, level: 1, spells: ["fire-bolt", "magic-missile", "find-familiar"] };
+    const id = ok(apply(s, { type: "setSheet", sheet: w }, DM)).events.find((e) => e.type === "spawned").id;
+    const owl = familiar(s, "owl", DM, id);
+    ok(apply(s, { type: "setHp", actor: owl, hp: 1 }, DM));
+    ok(apply(s, { type: "dismiss", actor: id, id: owl }, DM));
+    const kept = json(s.entities[id].pocket);
+    const check = (what) => assert.equal(json(s.entities[id].pocket), kept, `${what} keeps the pocket`);
+    ok(apply(s, { type: "levelUp", actor: id, sheet: { ...s.entities[id].sheet, level: 2 } }, DM)); check("levelUp");
+    ok(apply(s, { type: "setSheet", actor: id, sheet: s.entities[id].sheet }, DM)); check("setSheet");
+    ok(apply(s, { type: "give", actor: id, item: "potion-of-healing" }, DM)); check("give");
+    ok(apply(s, { type: "give", actor: id, item: "ring-of-protection" }, DM)); check("give");
+    const ring = s.entities[id].sheet.items.find((x) => x.item === "ring-of-protection").id;
+    ok(apply(s, { type: "equip", actor: id, item: ring }, DM)); check("equip");
+    ok(apply(s, { type: "attune", actor: id, item: ring }, DM));
+    const att = ok(apply(s, { type: "shortRest" }, DM)).events.find((x) => x.type === "attuned" && x.id === id);
+    assert.ok(att && !att.failed, att?.failed); check("attunement at a rest");
+    ok(apply(s, { type: "editCharacter", actor: id, record: derive(w).record }, DM)); check("editCharacter");
+    // A record typed in brings no pocket of its own.
+    refused(s, { type: "editCharacter", actor: id, record: { ...derive(w).record, pocket: { x: { id: "x" } } } }, DM, /"pocket" is not something a character record has/);
+    // The DM can't remove a master with a familiar in its pocket: it would go with it, untold.
+    refused(s, { type: "remove", actor: id }, DM, /in a pocket dimension\. Recall it or dismiss it forever first/);
+    const back = spots(s, s.entities[id].pos, 2).find((h) => gap(s, s.entities[id].pos, h) * FT <= 30);
+    ok(apply(s, { type: "recall", actor: id, id: owl, at: back }, DM));
+    assert.equal(s.entities[owl].hp, 1);
+    ok(apply(s, { type: "remove", actor: id }, DM));
+  });
+
+  // M2: a time-span summon is dismissed by its caster with no action (SRD Spells, Duration: Time Span), but not while
+  // Incapacitated; an Instantaneous one is not.
+  test(`a time-span summon is dismissed with no action unless its caster is Incapacitated; Concentration's too; Instantaneous ones are not${on}`, () => {
+    const s = table(grid, "wizard", ["phantom-steed", "giant-insect"]), v = s.entities.ven;
+    const free = spots(s, v.pos, 4, "giant-spider").filter((h) => gap(s, v.pos, h) * FT <= 30);
+    const horse = made(ok(apply(s, { type: "cast", actor: "ven", spell: "phantom-steed", slot: 3, summon: { at: [free.at(-1)] } }, PAT)));
+    const t = structuredClone(s);
+    ok(apply(t, { type: "condition", actor: "ven", condition: "stunned" }, DM));
+    refused(t, { type: "dismiss", actor: "ven", id: horse }, PAT, /Ven is Stunned, and a spell is dismissed only by a caster who isn't Incapacitated/);
+    const r = ok(apply(s, { type: "dismiss", actor: "ven", id: horse }, PAT));
+    assert.ok(!s.entities[horse] && r.events.some((e) => e.type === "vanished" && e.id === horse && e.why === "ended"));
+    assert.ok(!s.effects.some((x) => x.spell === "phantom-steed"));
+    // In a fight it costs nothing.
+    const bug = made(ok(apply(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [free.at(-2)] } }, PAT)));
+    spawn(s, "goblin-warrior", spots(s, s.entities.fighter.pos, 5).filter((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 5)[0], "Gob");
+    ok(apply(s, { type: "startEncounter", center: v.pos, radius: 6 }, DM));
+    toTurn(s, "ven");
+    const budget = json(s.encounter.budget);
+    ok(apply(s, { type: "dismiss", actor: "ven", id: bug }, PAT));
+    assert.ok(!s.entities[bug]);
+    assert.equal(json(s.encounter.budget), budget, "no action spent");
+  });
+
+  // L2: a light it carried is something it carried: it stays behind. L4: its id is checked before it comes back.
+  test(`a familiar's torch stays behind when it goes to the pocket, and it comes back without it; a taken id is refused${on}`, () => {
+    const s = table(grid), owl = familiar(s);
+    ok(apply(s, { type: "setLight", actor: owl, item: "torch" }, DM));
+    const was = { ...s.entities[owl].pos };
+    ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    assert.equal(s.entities.ven.pocket[owl].light, undefined);
+    assert.ok(s.map.objects.some((o) => o.def === "pile" && o.at.q === was.q && o.at.r === was.r && o.contents.some((c) => /torch/i.test(c.name ?? ""))), "the torch is in its space");
+    const near = spots(s, s.entities.ven.pos, 2).find((h) => gap(s, s.entities.ven.pos, h) * FT <= 30);
+    const t = structuredClone(s); t.entities[owl] = structuredClone(t.entities.fighter); t.entities[owl].id = owl;
+    refused(t, { type: "recall", actor: "ven", id: owl, at: near }, DM, /already has that id/);
+    ok(apply(s, { type: "recall", actor: "ven", id: owl, at: near }, PAT));
+    assert.equal(s.entities[owl].light, undefined, "it comes back unlit");
   });
 }
 
