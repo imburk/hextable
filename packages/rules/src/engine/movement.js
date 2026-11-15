@@ -7,13 +7,13 @@ import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, OPPORTUNITY, opportunityAttack, reactionsOf } from '../reactions.js';
-import { incapacitated, modifiers, speedOf } from '../modifiers.js';
+import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, KIT, mountAct, mountBudget, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, KIT, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;       // walking this close to a hostile starts the fight
 
@@ -340,7 +340,8 @@ export const handlers = {
     // A rider moves by moving its mount (stage C6a): a controlled one as it directs, from the mount's movement on the
     // rider's turn (its own movement is left for dismounting); an independent one moves as it likes, on its own turn.
     const steed = mountOf(s, actor);
-    if (steed && !actor.riding.controlled) fail(`${steed.name} lets ${actor.name} ride but goes where it likes: ${actor.name} dismounts to move on foot.`);
+    if (steed && steering(s, steed) !== actor) fail(actor.riding.controlled && steed.bond?.orders !== 'command'
+      ? `${actor.name} can't direct ${steed.name} now.` : `${steed.name} lets ${actor.name} ride but goes where it likes: ${actor.name} dismounts to move on foot.`);
     const e = steed ?? actor;
     up(actor) || fail(`${actor.name} can't move.`);
     up(e) || fail(`${e.name} can't move.`);
@@ -466,7 +467,7 @@ export const handlers = {
       !s.encounter.flags[`mounted:${e.id}`] || fail(`${e.name} has already mounted this turn.`);
       !below(s.encounter.budget.move, cost) || fail(`Mounting takes ${cost} ft of movement; ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft left.`);
     }
-    const controlled = m.side === e.side && (trained || steed);
+    const controlled = m.side === e.side && (trained || steed) && m.bond?.orders !== 'command';
     if (fighting) { s.encounter.budget.move -= cost; s.encounter.flags[`mounted:${e.id}`] = true; }
     // A rider and its mount walk as one: neither follows the other, and the rider follows no one (its mount may).
     if (e.follow) unfollow(s, e, ev);
@@ -477,7 +478,12 @@ export const handlers = {
     m.rider = e.id;
     ev.push({ type: 'mounted', id: e.id, mount: m.id, controlled });
     // A controlled mount "can move and act even on the turn that you mount it": its movement and one action start now.
-    if (fighting && controlled) s.encounter.budget.mount = mountBudget(s, m);
+    if (fighting && controlled) {
+      const had = mountHadTurn(s, m);
+      s.encounter.budget.mount = mountTurnBudget(s, m);
+      const text = `${m.name} has had its turn this round: it carries ${e.name}, and moves and acts again on ${e.name}'s next turn.`;
+      if (had) ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: 'Mounted combat', partial: true, text });
+    }
     lookAround(s, ev, [e]);
     trip(s, e, prev, ev, () => {});
     entered(s, ev, KIT, zonesBefore);
@@ -489,24 +495,32 @@ export const handlers = {
   dismount(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const m = mountOf(s, e) || fail(`${e.name} isn't riding.`);
-    up(e) || fail(`${e.name} can't move.`);
+    // A rider that can't get down by itself (at 0 Hit Points, Incapacitated, or with a Speed of 0) is taken down by the
+    // DM: at no cost and on no one's turn in particular, so a downed rider never leaves the pair stuck (fix round 1, M2).
     const speed = speedOf(s, e), cost = Math.floor(speed / 2 / FT) * FT;
-    speed > 0 || fail(`${e.name} has a Speed of 0 and can't dismount.`);
+    const helpless = !up(e) || !!incapacitated(e) || speed <= 0, lifted = helpless && ctx.role === 'dm';
+    if (!lifted) {
+      up(e) || fail(`${e.name} can't move: the DM can take ${e.name} down from ${m.name}.`);
+      !incapacitated(e) || fail(`${e.name} is ${incapacitatedBy(e) ?? 'Incapacitated'} and can't dismount: the DM can take ${e.name} down from ${m.name}.`);
+      speed > 0 || fail(`${e.name} has a Speed of 0 and can't dismount: the DM can take ${e.name} down from ${m.name}.`);
+    }
     const fighting = inFight(s, e.id);
-    if (fighting) {
+    if (fighting && !lifted) {
       current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
       !s.encounter.flags[`dismounted:${e.id}`] || fail(`${e.name} has already dismounted this turn.`);
       !below(s.encounter.budget.move, cost) || fail(`Dismounting takes ${cost} ft of movement; ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft left.`);
     }
-    const to = dismountSpot(s, e, m, a.to, ctx);
-    const prev = e.pos, near = fighting && !e.cond.disengaged ? threatsAt(s, e, prev) : [];
-    if (fighting) { s.encounter.budget.move -= cost; s.encounter.flags[`dismounted:${e.id}`] = true; }
+    const { p: to, lurker } = dismountSpot(s, e, m, a.to);
+    // Getting down onto a creature it did not know was there: it stays on and finds it, as a move does (section 5).
+    if (lurker) return bumped(s, lurker, e, ev);
+    const prev = e.pos, near = fighting && !lifted && !e.cond.disengaged ? threatsAt(s, e, prev) : [];
+    if (fighting && !lifted) { s.encounter.budget.move -= cost; s.encounter.flags[`dismounted:${e.id}`] = true; }
     const controlled = e.riding.controlled === true;
     delete e.riding; delete m.rider;
     const zonesBefore = snapshot(s);
     e.pos = to;
-    if (fighting) { if (controlled) dismountOrder(s, m, e); delete s.encounter.budget.mount; }
-    ev.push({ type: 'dismounted', id: e.id, mount: m.id, at: { ...to } });
+    if (fighting) { if (controlled) dismountOrder(s, m, e); if (current(s) === e.id) delete s.encounter.budget.mount; }
+    ev.push({ type: 'dismounted', id: e.id, mount: m.id, at: { ...to }, ...(lifted ? { why: 'dm' } : {}) });
     for (const o of near) if (apartAt(s, o, o.pos, e, to) > 1) ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
       text: `${e.name} dismounts out of ${o.name}'s reach. Opportunity Attacks for a rider are not in the engine yet: if ${o.name} takes one, the DM makes it and marks its Reaction used.` });
     lookAround(s, ev, [e]);
@@ -603,33 +617,38 @@ export const handlers = {
   },
 };
 
-// Where a rider gets down (stage C6a): `to` if given, else the nearest. An unoccupied space it can stand in, within
-// 5 ft of the mount (any part of it), with no wall between it and the mount, in the arena if it is fighting, and on
-// ground within a step of the mount's. A space held by a creature the party does not know of is not refused to a
-// player (that would tell them it is there): the rider gets down in the nearest free space to it instead.
-function dismountSpot(s, e, m, want, ctx) {
+// Where a rider gets down (stage C6a): `to` if given, else the nearest. A space it can stand in, within 5 ft of the
+// mount (any part of it), with no wall between it and the mount, in the arena if it is fighting, on ground within a
+// step of the mount's, and not held by a creature it knows of. A party rider chooses by what the party knows, so the
+// choice is the same with or without a creature it does not know of (hidden-information.md, section 5). Returns
+// { p, lurker }: `lurker` is such a creature in the space chosen. The rider is beside it already (its space is the
+// mount's), so, as for a move onto a hidden creature's space when beside it, it does not get down and the creature
+// is found (the handler).
+function dismountSpot(s, e, m, want) {
   const G = gridOf(s.map), B = barriers(s.map), body = { ...e, riding: undefined };
   const fighting = inFight(s, e.id);
   const others = living(s).filter((o) => o.id !== e.id);
+  const unseen = (o) => e.side === 'party' && unseenBy(s, o, e);
   const fits = (p) => !!p && Math.abs(p.z - m.pos.z) <= STEP_MAX && TILES[ground(s.map, p)?.tile.t]?.cost < Infinity && fitsOn(s.map, body, p, B) &&
     !!airspace(s.map, p) && apartAt(s, m, m.pos, body, p) <= 1 && !overlapAt(m, m.pos, body, p, G) &&
     (!fighting || footprint(body, p, G).every((f) => s.encounter.arena[col(f)])) && footprint(m, m.pos, G).some((f) => clear(s, f, p));
-  const taken = (p, test = () => true) => others.some((o) => overlapAt(o, o.pos, body, p, G) && test(o));
+  const holders = (p) => others.filter((o) => overlapAt(o, o.pos, body, p, G));
   const spots = [];
   for (const f of footprint(m, m.pos, G)) for (const h of G.range(f, 1)) {
     const p = landing(s.map, h, m.pos.z);
     if (p && !spots.some((x) => key(x) === key(p)) && fits(p)) spots.push(p);
   }
-  const free = spots.filter((p) => !taken(p));
-  const nearest = (from) => free.slice().sort((x, y) => G.dist(x, from) - G.dist(y, from) || x.q - y.q || x.r - y.r)[0] ?? null;
-  if (want === undefined || want === null) return nearest(e.pos) || fail(`There is no free space within 5 ft of ${m.name} for ${e.name} to get down.`);
+  const free = spots.filter((p) => holders(p).every(unseen));       // free as far as the rider knows
+  const out = (p) => ({ p, lurker: holders(p).find(unseen) ?? null });
+  if (want === undefined || want === null) {
+    const p = free.slice().sort((x, y) => G.dist(x, e.pos) - G.dist(y, e.pos) || x.q - y.q || x.r - y.r)[0];
+    return p ? out(p) : fail(`There is no free space within 5 ft of ${m.name} for ${e.name} to get down.`);
+  }
   (want && Number.isInteger(want.q) && Number.isInteger(want.r)) || fail('Pick a place to get down.');
   const p = landing(s.map, want, want.z ?? m.pos.z);
   (p && fits(p)) || fail(`${e.name} can get down only in a space within 5 ft of ${m.name}.`);
-  const known = (o) => ctx.role === 'dm' || !unknown(s, o);
-  !taken(p, known) || fail(`That ${G.word.one} is occupied.`);
-  if (!taken(p)) return p;
-  return nearest(p) || fail(`There is no free space within 5 ft of ${m.name} for ${e.name} to get down.`);
+  holders(p).every(unseen) || fail(`That ${G.word.one} is occupied.`);
+  return out(p);
 }
 
 // Set a leader's formation to a preset, to the shape `followers` stand in ('held'), or (null) leave it.

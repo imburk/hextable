@@ -96,7 +96,14 @@ export const mountOf = (s, r) => {
 };
 // The rider steering this mount: a rider that controls it (SRD "Controlling a Mount": it moves on its rider's turn
 // as the rider directs and has only Dash, Disengage and Dodge), or null for a mount nobody rides or an independent one.
-export const steering = (s, m) => { const r = riderOf(s, m); return r?.riding.controlled === true ? r : null; };
+// A controlled mount whose rider can't direct it now (at 0 Hit Points or Incapacitated) is steered by no one and acts
+// as an independent mount, on its own turn, until its rider can again (fix round 1, M2 and L1). A creature that takes
+// commands (`orders: 'command'`, Decision 6) obeys its master's commands, never a rider's, so it is always independent
+// (fix round 1, M3): riding it can't move it round its lock.
+export const steering = (s, m) => {
+  const r = riderOf(s, m);
+  return r?.riding.controlled === true && up(r) && !incapacitatedBy(r) && m.bond?.orders !== 'command' ? r : null;
+};
 // What a controlled mount may be sent, by its rider's player (DIRECTED) or by anyone who may play it (RIDDEN): its moves,
 // Dash, Disengage and Dodge, and, by whoever plays it, what is set about it or answered for it.
 const DIRECTED = new Set(['move', 'dash', 'disengage', 'dodge']);

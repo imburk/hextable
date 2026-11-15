@@ -405,3 +405,163 @@ for (const grid of GRIDS) {
     refused(s, { type: "dodge", actor: horse }, DM, /acts on Brenna's turn/);
   });
 }
+
+// ---------- fix round 1 (review of #350) ----------
+
+for (const grid of GRIDS) {
+  test(`${grid}: B1: a dismount chooses where to land by what the party knows; landing on a hidden creature finds it`, () => {
+    // World B: no hidden creature. Where does the rider land by default?
+    const B = table(grid);
+    ok(mount(B.s, "fighter", B.horse, U1));
+    const landed = ok(apply(structuredClone(B.s), { type: "dismount", actor: "fighter" }, U1)).events.find((e) => e.type === "dismounted").at;
+    // World A: the same, with a hidden goblin standing exactly there.
+    const A = table(grid);
+    const gob = spawn(A.s, "goblin-warrior", landed, null, { hidden: true });
+    B.s.seq = A.s.seq;
+    ok(mount(A.s, "fighter", A.horse, U1));
+    assert.equal(json(view(A.s, U1)), json(view(B.s, U1)), "the same view before the dismount");
+    // Naming the cell, or not, gives the same outcome in A: the goblin is found, the rider stays on.
+    for (const to of [undefined, { q: landed.q, r: landed.r }]) {
+      const t = structuredClone(A.s), before = json(view(t, U1));
+      const r = ok(apply(t, { type: "dismount", actor: "fighter", ...(to ? { to } : {}) }, U1));
+      const seen = viewEvents(r.events, t, U1);
+      assert.ok(seen.some((e) => e.type === "revealed" && e.id === gob), "the goblin is found");
+      assert.ok(!seen.some((e) => e.type === "dismounted"), "the rider does not get down");
+      assert.ok(t.entities.fighter.riding, "still riding");
+      assert.ok(!t.entities[gob].hidden);
+      assert.notEqual(json(view(t, U1)), before);
+    }
+    // B lands there as normal.
+    const rb = ok(apply(B.s, { type: "dismount", actor: "fighter" }, U1));
+    assert.deepEqual(rb.events.find((e) => e.type === "dismounted").at, landed);
+  });
+
+  test(`${grid}: B1: a hidden creature elsewhere changes nothing about a dismount`, () => {
+    const A = table(grid), B = table(grid);
+    const P = SPOTS[grid];
+    spawn(A.s, "goblin-warrior", grid === "square" ? { q: 12, r: 2 } : { q: 6, r: -6 }, null, { hidden: true });
+    B.s.seq = A.s.seq;
+    for (const t of [A, B]) ok(mount(t.s, "fighter", t.horse, U1));
+    const ra = ok(apply(A.s, { type: "dismount", actor: "fighter" }, U1)), rb = ok(apply(B.s, { type: "dismount", actor: "fighter" }, U1));
+    assert.equal(json(viewEvents(ra.events, A.s, U1)), json(viewEvents(rb.events, B.s, U1)));
+    assert.equal(json(view(A.s, U1)), json(view(B.s, U1)));
+    void P;
+  });
+
+  test(`${grid}: M1: a mount has one turn's worth a round, however many riders mount it`, () => {
+    const { s, horse } = fight(grid);
+    // The cleric's place straight after the fighter's, so her turn is still to come this round.
+    const o = s.encounter.order, c = o.splice(o.findIndex((x) => x.id === "cleric"), 1)[0];
+    o.splice(o.findIndex((x) => x.id === "fighter") + 1, 0, c); s.encounter.turn = o.findIndex((x) => x.id === "fighter");
+    ok(mount(s, "fighter", horse, U1));
+    ok(apply(s, { type: "dash", actor: horse }, U1));
+    ok(apply(s, { type: "dismount", actor: "fighter" }, U1));
+    // The cleric, beside the horse, mounts it later in the same round: it carries her but has nothing left this round.
+    s.entities.cleric.pos = besidePos(s, horse);
+    const order = s.encounter.order.map((o) => o.id);
+    assert.ok(order.indexOf("cleric") > order.indexOf("fighter"));
+    turnOf(s, "cleric");
+    const r = ok(mount(s, "cleric", horse, DM));
+    assert.deepEqual(s.encounter.budget.mount, { move: 0, action: 0, dashes: 0 });
+    assert.ok(r.events.some((e) => e.type === "note" && /has had its turn this round/.test(e.text)));
+    refused(s, { type: "dash", actor: horse }, DM, /already used its action/);
+    // The next round, on the cleric's turn, it has its turn's worth again.
+    const r0 = s.encounter.round;
+    for (let i = 0; i < 40 && !(current(s) === "cleric" && s.encounter.round === r0 + 1); i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    assert.equal(s.encounter.budget.mount.move, 60);
+  });
+
+  test(`${grid}: M1: a mount that took its own turn this round gets no more when mounted after it`, () => {
+    const { s, horse } = fight(grid);
+    const o = s.encounter.order;
+    // Put the horse's place first, so its own turn comes before the fighter's in round 2.
+    const h = o.splice(o.findIndex((x) => x.id === horse), 1)[0];
+    o.unshift(h); s.encounter.turn = o.findIndex((x) => x.id === "fighter");
+    const r0 = s.encounter.round;
+    for (let i = 0; i < 40 && !(current(s) === "fighter" && s.encounter.round === r0 + 1); i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    ok(mount(s, "fighter", horse, U1));
+    assert.deepEqual(s.encounter.budget.mount, { move: 0, action: 0, dashes: 0 }, "its own turn came this round");
+  });
+
+  test(`${grid}: M1 stress: over many rounds of mounting and dismounting, no mount has two turns' worth in a round`, () => {
+    const { s, horse } = fight(grid);
+    const pony = beside(s, "rogue", "pony", "Pony");
+    void pony;
+    const worth = new Map();                         // `${round}:${mount}` -> turns' worth
+    const add = (round, id) => worth.set(`${round}:${id}`, (worth.get(`${round}:${id}`) ?? 0) + 1);
+    let x = 7;
+    const rnd = (n) => { x = (x * 1103515245 + 12345) % 2147483648; return x % n; };
+    const riders = ["fighter", "cleric", "wizard"];
+    for (const id of riders) if (id !== "fighter") s.entities[id].pos = besidePos(s, horse);
+    let lastBudget = null;
+    for (let step = 0; step < 400 && s.encounter; step++) {
+      const cur = current(s), e = s.entities[cur];
+      const tries = [];
+      if (riders.includes(cur)) {
+        if (e.riding) tries.push({ type: "dismount", actor: cur }, { type: "dash", actor: e.riding.on });
+        else tries.push({ type: "mount", actor: cur, mount: horse });
+      }
+      tries.push({ type: "endTurn", actor: cur });
+      const a = tries[rnd(tries.length)];
+      const r = apply(s, a, DM);
+      if (!r.ok) { ok(apply(s, { type: "endTurn", actor: cur }, DM)); }
+      const evs = r.ok ? r.events : [];
+      for (const ev of evs) if (ev.type === "turn" && ev.id === horse) add(ev.round, horse);
+      const b = s.encounter?.budget?.mount;
+      if (b && b !== lastBudget && (b.move > 0 || b.action > 0)) add(s.encounter.round, horse);
+      lastBudget = b ?? null;
+      if (!s.encounter) break;
+      // Keep the idle riders beside the horse.
+      for (const id of riders) if (!s.entities[id].riding && id !== current(s)) { try { s.entities[id].pos = besidePos(s, horse); } catch { /* crowded */ } }
+    }
+    for (const [k, n] of worth) assert.ok(n <= 1, `${k}: ${n} turns' worth`);
+    assert.ok(worth.size > 3, "the loop rode the horse");
+  });
+
+  test(`${grid}: M2 and L1: a rider at 0 Hit Points or Incapacitated can't direct its mount; the mount takes its own turns, and the DM can take the rider down`, () => {
+    const { s, horse } = fight(grid);
+    ok(mount(s, "fighter", horse, U1));
+    ok(apply(s, { type: "endTurn", actor: "fighter" }, U1));
+    ok(apply(s, { type: "harm", actor: "fighter", amount: s.entities.fighter.hp }, DM));
+    assert.ok(s.entities.fighter.riding, "still riding: falling off is the DM's (C6b)");
+    const r0 = s.encounter.round, turns = [];
+    for (let i = 0; i < 40 && s.encounter.round < r0 + 2; i++) { const r = ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); for (const e of r.events) if (e.type === "turn") turns.push(e.id); }
+    assert.ok(turns.includes(horse), "the horse takes its own turns while its rider is down");
+    // A player can't get a downed rider down; the DM can, at no cost, on anyone's turn.
+    turnOf(s, horse);
+    refused(s, { type: "dismount", actor: "fighter" }, U1, /the DM can take Brenna down/);
+    const move = s.encounter.budget.move;
+    const d = ok(apply(s, { type: "dismount", actor: "fighter" }, DM));
+    assert.ok(d.events.some((e) => e.type === "dismounted" && e.why === "dm"));
+    assert.equal(s.encounter.budget.move, move, "nothing is spent of the horse's turn");
+    assert.equal(s.entities.fighter.riding, undefined);
+
+    const t = fight(grid);
+    ok(mount(t.s, "fighter", t.horse, U1));
+    ok(apply(t.s, { type: "condition", actor: "fighter", condition: "stunned" }, DM));
+    refused(t.s, { type: "move", actor: "fighter", to: t.s.entities.rogue.pos }, U1, /can't direct Warhorse now/);
+    refused(t.s, { type: "move", actor: t.horse, to: t.s.entities.rogue.pos }, U1, /isn't yours/);
+  });
+
+  test(`${grid}: M3: a creature that takes commands is never a controlled mount`, () => {
+    const { s, horse } = fight(grid);
+    ok(apply(s, { type: "bond", actor: horse, to: "rogue", kind: "pet", orders: "command" }, DM));
+    ok(mount(s, "fighter", horse, DM));
+    assert.equal(s.entities.fighter.riding.controlled, false);
+    assert.equal(s.encounter.budget.mount, undefined);
+    refused(s, { type: "move", actor: "fighter", to: s.entities.rogue.pos }, U1, /goes where it likes/);
+    refused(s, { type: "dodge", actor: horse }, U1, /isn't yours/);
+  });
+
+  test(`${grid}: L4: a Prone controlled mount stands up at the start of its rider's turn, for half its Speed`, () => {
+    const { s, horse } = fight(grid);
+    ok(mount(s, "fighter", horse, U1));
+    ok(apply(s, { type: "condition", actor: horse, condition: "prone" }, DM));
+    const r0 = s.encounter.round;
+    let stood = false;
+    for (let i = 0; i < 40 && !(current(s) === "fighter" && s.encounter.round === r0 + 1); i++) { const r = ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); stood ||= r.events.some((e) => e.type === "stood" && e.id === horse); }
+    assert.ok(stood);
+    assert.ok(!s.entities[horse].cond.prone);
+    assert.equal(s.encounter.budget.mount.move, 30);
+  });
+}

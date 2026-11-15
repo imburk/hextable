@@ -17,7 +17,7 @@ import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
+import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
@@ -229,6 +229,7 @@ function beginTurn(s, e, ev) {
   if (prompt) ev.push(prompt);
   recharge(s, e, ev);
   mountTurnStarts(s, e, ev);
+  if (riderOf(s, e)) (enc.rode ??= {})[e.id] = enc.round;            // a ridden mount on its own turn: its turn's worth for the round (M1)
   if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
     delete e.cond.prone;
     enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
@@ -306,6 +307,25 @@ const riddenNow = (s, m) => { const r = steering(s, m); return !!r && inFight(s,
 // What a controlled mount has on its rider's turn (`budget.mount`): its Speed, and one action, for Dash, Disengage
 // or Dodge ("it has only three action options during that turn"). None if it is Incapacitated.
 export const mountBudget = (s, m) => ({ move: speedOf(s, m), action: incapacitated(m) ? 0 : 1, dashes: 0 });
+// One turn's worth a round for a mount, however many riders it has in the round (fix round 1, M1): a mount that has had
+// its turn this round, its own (its place in the order is behind the turn going on, so it has come: settleOrder keeps
+// that true) or on a rider's (`enc.rode`), gets nothing more this round. Mounted after that it carries its rider but
+// moves and acts again only on its rider's next turn.
+export function mountHadTurn(s, m) {
+  const enc = s.encounter;
+  if (!enc) return false;
+  if (enc.rode?.[m.id] === enc.round) return true;
+  const i = enc.order.findIndex((o) => o.id === m.id);
+  return i >= 0 && i < enc.turn;
+}
+// The turn's worth a controlled mount has on its rider's turn: its budget, marking the round as its turn's (`enc.rode`),
+// or none if it has had its turn this round.
+export function mountTurnBudget(s, m) {
+  const enc = s.encounter;
+  if (mountHadTurn(s, m)) return { move: 0, action: 0, dashes: 0 };
+  (enc.rode ??= {})[m.id] = enc.round;
+  return mountBudget(s, m);
+}
 // The rider's turn begins: so does its controlled mount's, which "moves on your turn". What ends at the start of the
 // mount's turn ends, a zone it starts in works on it, its Reaction comes back, a recharge, and its budget.
 function mountTurnStarts(s, r, ev) {
@@ -314,10 +334,21 @@ function mountTurnStarts(s, r, ev) {
   turnStarted(s, ev, m, KIT);
   turnInZones(s, ev, KIT, m, 'turnStart');
   if (!s.encounter || !Object.hasOwn(s.entities, m.id) || steering(s, m) !== r) return;
+  const enc = s.encounter;
+  if (enc.rode?.[m.id] === enc.round) { enc.budget.mount = { move: 0, action: 0, dashes: 0 }; return; }   // it had its turn this round (M1)
   m.reactionUsed = false;
   delete m.cond.dodging;
   recharge(s, m, ev);
-  s.encounter.budget.mount = mountBudget(s, m);
+  (enc.rode ??= {})[m.id] = enc.round;
+  enc.budget.mount = mountBudget(s, m);
+  // Standing up from Prone costs half its Speed, as at the start of any creature's turn (fix round 1, L4). Whether its
+  // rider falls off is C6b's (the DM is told, settleRiders).
+  const speed = speedOf(s, m);
+  if (m.cond.prone && speed > 0) {
+    delete m.cond.prone;
+    enc.budget.mount.move -= Math.floor(speed / 2 / FT) * FT;
+    ev.push({ type: 'stood', id: m.id });
+  }
 }
 // A controlled mount's rider got down (or the pair came apart) in the fight: "The Initiative of a controlled mount
 // changes to match yours when you mount it", so its place is now straight behind its rider (and the rider's `after`
