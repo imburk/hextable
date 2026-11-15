@@ -132,7 +132,7 @@ slot; Create Undead makes 3 Ghouls at 6th level and 6 at 9th; Animate Objects ma
 spellcasting modifier (a Large counts as 2, a Huge as 3). Several castings, a familiar and a steed fit in
 30. More is refused, to keep a table's state and the fight order bounded. A dead companion does not count toward the 30
 (since C5b, #341: a Zombie or a pet at 0 keeps its bond so that the DM can bring it back). A familiar in its master's
-pocket dimension does count (since C5c, #342): it is still the master's, only not on the map.
+pocket dimension does count (since C5c, #343): it is still the master's, only not on the map.
 
 ### Decision 2: the `summon` step
 
@@ -332,7 +332,7 @@ A pocketed familiar is moved out of `state.entities` into `master.pocket = { [id
 nothing on the map, in sight or in the fight sees it, and back by `recall` with the same id and
 Hit Points. `dismiss` of a non-familiar summon whose spell has a duration ends its effect (as
 `endEffect`); of one without (Animate Dead), it frees it as the DM's `bond { to: null }` does.
-*As built in C5c (#342): only a summon kept by a Concentration effect of its master's is dismissed, at no cost, as
+*As built in C5c (#343): only a summon kept by a Concentration effect of its master's is dismissed, at no cost, as
 dropping Concentration; any other is refused (the SRD gives Find Steed, Phantom Steed or Animate Dead no way to end it
 early, and the DM's `bond { to: null }` frees one). See the C5c build notes.*
 
@@ -469,8 +469,8 @@ and dropping fields it does not know.
 
 | Entry | Tier after this work | How | Still the DM's |
 |---|---|---|---|
-| Find Familiar | assist (**C5c built, #342**) | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing, seeing through its eyes; Octopus (no block) |
-| Find Steed | auto (with C6); **C4 set assist**; **C5c added `one: 'replace'` (#342)**, still assist: `mount` (C6) is not in the vocabulary yet, nor Life Bond's healing hook (C9) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
+| Find Familiar | assist (**C5c built, #343**) | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing, seeing through its eyes; Octopus (no block) |
+| Find Steed | auto (with C6); **C4 set assist**; **C5c added `one: 'replace'` (#343)**, still assist: `mount` (C6) is not in the vocabulary yet, nor Life Bond's healing hook (C9) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
 | Summon Dragon | auto | `summon: 'draconic-spirit'`, Concentration part; Shared Resistances as a `modifier` step on `self` with the spell's `choice` | its "verbal commands" |
 | Giant Insect | auto | `summon: 'giant-insect'`, `variants` | as above |
 | Animate Dead | assist (**C5b built, #341**) | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert (`reassert`, up to four and two more a slot level); commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
@@ -900,7 +900,7 @@ cast at all. Before C3 these spells were `manual` and were never refused. Settle
   refused), and for Summon Dragon still send `choice` (the Shared Resistances pick; a cast without it is refused "Choose a damage type": the client's `chosen()` defaults to the first option). Until the chooser exists, the plain cast button works for these spells; the DM's log shows
   the line to act on.
 
-#### Build notes: C5c, dismiss, recall and the pocket, one per master, touch delivery (#342)
+#### Build notes: C5c, dismiss, recall and the pocket, one per master, touch delivery (#343)
 
 What was settled while building it, where Decisions 1, 2, 6 and 10 left room. **This amends the `summon` step** with the
 key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 named it.
