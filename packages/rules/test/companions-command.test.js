@@ -98,6 +98,30 @@ for (const grid of [null, "square"]) {
     assert.equal(s.entities[z].bond.standing, undefined);
   });
 
+  test(`a never-commanded Zombie may follow its master and stop, outside a fight; in one, nothing else changes${on}`, () => {
+    const s = table(grid), [z] = horde(s, 1);
+    for (const ctx of [U1, DM]) {
+      const r = ok(apply(s, { type: "follow", actor: z, leader: "fighter" }, ctx));
+      assert.deepEqual(r.events.find((e) => e.type === "follow"), { type: "follow", id: z, leader: "fighter" });
+      assert.equal(s.entities[z].follow, "fighter");
+      ok(apply(s, { type: "follow", actor: z, leader: null }, ctx));
+      assert.equal(s.entities[z].follow, undefined);
+    }
+    refused(s, { type: "follow", actor: z, leader: "fighter" }, U2, /isn't yours to control/);
+    refused(s, { type: "follow", actor: z, leader: null }, U2, /isn't yours to control/);
+    // A locked creature named as the party's leader is not acting itself: the lock does not refuse it.
+    assert.doesNotMatch(apply(structuredClone(s), { type: "partyFollow", leader: z }, DM).error ?? "", LOCK);
+    ok(apply(s, { type: "follow", actor: z, leader: "fighter" }, U1));
+    fight(s);
+    toTurn(s, z);
+    const pos = json(s.entities[z].pos);
+    refused(s, { type: "follow", actor: z, leader: "fighter" }, DM, /middle of a fight/);
+    ok(apply(s, { type: "follow", actor: z, leader: null }, DM));
+    assert.equal(json(s.entities[z].pos), pos, "stopping moves nobody");
+    assert.equal(s.encounter.budget.move > 0 && s.encounter.budget.action, 1, "and spends nothing");
+    refused(s, { type: "dash", actor: z }, DM, LOCK);
+  });
+
   test(`commanded this turn it is its player's, refused for another player, with a prompt to that player alone${on}`, () => {
     const s = table(grid), [z] = horde(s, 1);
     fight(s);
@@ -222,8 +246,18 @@ for (const grid of [null, "square"]) {
     refused(s, { type: "command", actor: "fighter", ids: ["nobody"] }, U1, /No such creature/);
     refused(s, { type: "command", actor: "fighter", ids: ["constructor"] }, U1, /No such creature/);
     for (const ids of [undefined, [], near, [near, near], [1]]) refused(s, { type: "command", actor: "fighter", ids }, U1, /Name the creatures/);
-    for (const order of ["", "   ", "x".repeat(81), 5, {}]) refused(s, { type: "command", actor: "fighter", ids: [near], order }, U1, /up to 80 characters/);
+    for (const order of ["", "   ", "x".repeat(81), 5, {}, "guard\nthe door", "guard\tthe door", "stop\u0007", "x\u0085"]) refused(s, { type: "command", actor: "fighter", ids: [near], order }, U1, /up to 80 characters/);
     ok(apply(structuredClone(s), { type: "command", actor: "fighter", ids: [near], order: "x".repeat(80) }, U1));
+    // Trimmed before the cap, and kept trimmed.
+    const padded = structuredClone(s);
+    ok(apply(padded, { type: "command", actor: "fighter", ids: [near], order: `  ${"y".repeat(80)}  ` }, U1));
+    assert.equal(padded.entities[near].bond.standing, "y".repeat(80));
+    // A range that is not a number of feet is refused, never taken as any distance.
+    for (const range of [NaN, Infinity, -5, "60", {}]) {
+      const x = structuredClone(s);
+      x.entities[near].bond.range = range;
+      refused(x, { type: "command", actor: "fighter", ids: [near] }, U1, /command range is not a number of feet/);
+    }
     // An order that happens to be a creature's id, one the party knows of or not, is words, not a creature.
     for (const order of ["m1", "m5", theirs]) ok(apply(structuredClone(s), { type: "command", actor: "fighter", ids: [near], order }, U1));
   });

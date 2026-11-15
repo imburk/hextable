@@ -990,14 +990,16 @@ familiar's Reaction). What was settled while building C5a, where Decision 6 and 
 
 - **The action.** `{ type: 'command', actor: masterId, ids: [...], order? }` (companions.js), by the master's controller or
   the DM. `ids`: one to 30 (`BOND_MAX`) different ids. Each must be the master's companion, with `orders: 'command'`, not
-  dead, and within `bond.range` feet of the master (`apart`, so by the table's square rule on squares, from the nearest
+  dead, and within `bond.range` feet of the master (a finite number of 0 or more; none is any distance, and anything else,
+  `NaN`, a string, is refused, never taken as none: review of #338, L6) (`apart`, so by the table's square rule on squares, from the nearest
   parts of the two). Checked before anything changes; a refusal changes nothing. A player is told "X is not Brenna's
   companion." for any creature it knows of that is not that master's, bonded to another or to no one, and "No such
   creature." for one it does not know of (engine.js also walks `ids`), as `companionOrder` does; the DM is told which. A
   free companion is "X takes no commands: it is played freely." Then `need(master, 'bonus')`: in a fight the master's
   turn with its Bonus Action left ("already used a Bonus Action"); outside one it costs nothing, but the master must be up
   and able to act. One command for any number costs one Bonus Action.
-- **`order`.** Words of 1 to 80 characters (trimmed), `null`, or left out. Given, it is the order that stands after this
+- **`order`.** Words, trimmed, then 1 to 80 characters (UTF-16 units) with no control characters (no newline or tab,
+  U+0000 to U+001F and U+007F to U+009F), stored trimmed; or `null`; or left out (review of #338, L5). Given, it is the order that stands after this
   turn (`bond.standing`); `null` clears it, so the creature Dodges again after the commanded turn; left out, the standing
   order is unchanged and the command is for the one turn (the SRD's "you decide what action the creature will take and
   where it will move on its next turn"). engine.js does not take `order` for creature ids in this action (one line in
@@ -1009,7 +1011,9 @@ familiar's Reaction). What was settled while building C5a, where Decision 6 and 
   `takeCommand`) the command is stamped with that turn (`commanded.turn`, its `turnKey`). For that turn `ownerOf` gives the
   master's player. **When it is cleared:** at the start of the creature's next turn after that (spent), or at the start of
   its first turn when `at` is not of this fight (given in another fight or outside one), so a command never carries into a
-  later fight. Decision 6 says "cleared when that creature's turn ends"; the turn's end is not in this stage's files
+  later fight. A command given outside a fight (`at: null`) does not expire on its own: it lifts the lock outside the
+  fight until the creature's first turn in a fight clears it, and it never makes that turn its player's (review of #338,
+  L4). Decision 6 says "cleared when that creature's turn ends"; the turn's end is not in this stage's files
   (`finishTurn`), so a spent command stays on the bond until the next turn start, and `ownerOf` reads it only during the
   turn it was stamped for: what plays the creature is the same either way.
 - **Who plays it (`ownerOf`, shared.js).** For a creature with `orders: 'command'` in the fight going on: its master's
@@ -1020,8 +1024,13 @@ familiar's Reaction). What was settled while building C5a, where Decision 6 and 
 - **The lock.** Checked in `control` (shared.js), which every handler of a creature's own actions calls: for a creature
   with `orders: 'command'` and no standing order, in the fight and not commanded for this turn, or outside the fight and
   not commanded there (`at: null`), every action is refused, by the DM too ("X has no command to follow, so it only takes
-  the Dodge action and moves to avoid harm."), but `move`, `dodge`, `endTurn` and `stand`, and what is set about it or
-  answered for it rather than done by it: `reactions`, `companion`, `react`, `stepAway`, `stepBack`. It reads the type of
+  the Dodge action and moves to avoid harm."), but `move`, `dodge`, `endTurn`, `stand` and `follow` (with `leader: null`
+  to stop: moving, as Decision 6 lets a companion follow its master outside a fight), and what is set about it or answered
+  for it rather than done by it: `reactions`, `companion`, `react`, `stepAway`, `stepBack`. **This is wider than Decision
+  6's one line ("only `dodge`, `move` and `endTurn`")**, which named what the creature does on its turn; `stand` and
+  `follow` are ways of moving, and the rest are its controller's settings and answers (review of #338, M1 and L1). Only the
+  acting creature is locked (`actor`): a locked creature named as the leader of `partyFollow` or `formation` is not acting,
+  and is not refused by the lock (L2; checked in `control`, which those handlers call on the leader). It reads the type of
   the action `apply` is running (`RUN.action`), since the handlers are in files this stage does not touch; it lives in
   `control` and not in attacks.js for that reason (the issue named attacks.js for it). Whether a move "avoids harm" is the
   DM's. A creature with a standing order is played by the DM as it sees fit: the lock is off.
@@ -1041,6 +1050,11 @@ familiar's Reaction). What was settled while building C5a, where Decision 6 and 
   master's turn: `move` with the servant as actor from a `budget.servant` the command fills), which is movement.js and the
   fight order, not in this stage's files, and the servant has no block yet (C4 left it manual). What is left for it: the
   DM's bond and the step to take `turn: 'none'`, `budget.servant` in `command` and `move`, and its block.
+- **For the client job (C8).** The order's words are stored on the bond (`commanded.order`, `standing`) and sent to the
+  party in the record, `commanded` and `commandedTurn`: other players' text, so the UI shows it as text, escaped, never as
+  markup, though the engine already refuses control characters and newlines. The DM's auto-play (`idled()`, app.js) does
+  not yet skip or play a locked creature: on its turn the auto-play's monster moves are refused by the lock and the turn
+  waits until the DM ends it, until the companion brain (C7) plays it (review of #338, M2).
 - **Labels.** `describeStep` for `command`: "Brenna commanded Zombie 1", or "Brenna commanded 3 companions"; the order's
   words are not in a label.
 - **No state version bump.** `bond.standing`, `bond.commanded.turn` and the events are new and optional; a bond without

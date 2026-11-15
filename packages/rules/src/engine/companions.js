@@ -128,8 +128,9 @@ export const handlers = {
     (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= BOND_MAX && a.ids.every((x) => typeof x === 'string') && new Set(a.ids).size === a.ids.length)
       || fail('Name the creatures to command, each once ({ ids: [...] }).');
     const order = a.order;
-    (order === undefined || order === null || (typeof order === 'string' && order.trim() && order.length <= 80))
-      || fail('An order is words of up to 80 characters ({ order: \'guard the door\' }), or null to clear the one that stands.');
+    // Words: trimmed, then 1 to 80 characters, with no control characters (no newlines): they are stored and shown to the party.
+    (order === undefined || order === null || (typeof order === 'string' && order.trim() && order.trim().length <= 80 && !/[\u0000-\u001f\u007f-\u009f]/.test(order.trim())))
+      || fail('An order is words of up to 80 characters on one line ({ order: \'guard the door\' }), or null to clear the one that stands.');
     const list = a.ids.map((id) => {
       // Only the creatures' own ids. To a player a creature the party does not know of is no creature at all (engine.js
       // also checks `ids`), and any it knows of that is not this master's is "not its companion", so a foe's bond is never told.
@@ -140,7 +141,9 @@ export const handlers = {
       e.bond.to === m.id || fail(`${e.name} is not ${m.name}'s companion.`);
       e.bond.orders === 'command' || fail(`${e.name} takes no commands: it is played freely.`);
       !e.dead || fail(`${e.name} is dead.`);
+      // A range is a number of feet; none (a DM's bond) is any distance. Anything else is refused, never taken as no range.
       const range = e.bond.range, d = apart(s, m, e);
+      (range === undefined || range === null || (typeof range === 'number' && Number.isFinite(range) && range >= 0)) || fail(`${e.name}'s command range is not a number of feet.`);
       (typeof range !== 'number' || d * FT <= range) || fail(`${e.name} is ${ft(d)} from ${m.name}. A command reaches ${range} ft.`);
       return e;
     });

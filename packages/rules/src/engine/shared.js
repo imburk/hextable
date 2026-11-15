@@ -57,8 +57,10 @@ export const commandedNow = (s, e) => {
 // The lock (Decision 6): a commanded creature with no order standing and no command for this turn "takes the Dodge
 // action and moves only to avoid harm". Whoever plays it (the DM, or the companion brain for the DM) may send only
 // these for it; the rest are what a creature's player or the DM set about it, or answer, not things it does. Whether
-// a move avoids harm is the DM's. Outside the fight going on, a command given there (`at: null`) lifts it too.
-const UNLOCKED = new Set(['move', 'dodge', 'endTurn', 'stand', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+// a move avoids harm is the DM's; `follow` (and stopping) is moving, as for any party member outside a fight (Decision 6).
+// Outside the fight going on, a command given there (`at: null`) lifts it too. Only the acting creature (`actor`) is
+// locked: a locked creature named as the leader of a `partyFollow` or `formation` is not doing anything itself.
+const UNLOCKED = new Set(['move', 'dodge', 'endTurn', 'stand', 'follow', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
 export function commandLock(s, e) {
   const b = e?.bond;
   if (b?.orders !== 'command' || (typeof b.standing === 'string' && b.standing)) return false;
@@ -71,7 +73,7 @@ export const control = (s, e, ctx) => {
     (!!who && who === ctx.userId) || fail(`${e.name} isn't yours to control.`);
   }
   const type = RUN?.action?.type;
-  if (typeof type === 'string' && !UNLOCKED.has(type) && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
+  if (typeof type === 'string' && !UNLOCKED.has(type) && RUN.action.actor === e.id && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
   return true;
 };
 export const fighters = (s) => (s.encounter ? s.encounter.order.map((o) => s.entities[o.id]).filter(Boolean) : []);
