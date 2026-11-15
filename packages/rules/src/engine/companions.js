@@ -3,13 +3,17 @@
 // creature has no `owner` of its own, and whoever plays its master plays it (shared.js, ownerOf and
 // control). How a bond ends is in resolve.js (vanish, settleBonds).
 //
-// Built here: the DM's `bond` action (pets, hirelings' mounts, a foe's familiar) and `companion { auto }`.
-// Bonds made by spells (`fx`, `source`, `ends`, `leash`), no turn at all, and commands come with later
-// stages; until then the DM's bond refuses what the engine would not run. A turn straight after the
+// Built here: the DM's `bond` action (pets, hirelings' mounts, a foe's familiar), `companion { auto }`, the
+// master's before or after choice (`companionOrder`, A1) and `command` (stage C5a, amendment A2: who plays a
+// commanded creature is in shared.js, ownerOf, control and the lock; the command is taken up at the start of the
+// creature's turn, resolve.js). Bonds made by spells (`fx`, `source`, `ends`, `leash`) come from the summon step;
+// no turn at all is not run yet, and the DM's bond refuses it. A turn straight after the
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
-import { companionsOf, ent, control, fail, inFight, roomForCompanions } from './shared.js';
+import { BOND_MAX, companionsOf, ent, control, fail, ft, inFight, need, roomForCompanions } from './shared.js';
 import { followMasters, lookAround, unfollow } from './world.js';
 import { unknown } from '../vision.js';
+import { apart, FT } from '../space.js';
+import { turnKey } from '../durations.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
 export const BOND_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
@@ -58,12 +62,12 @@ export const handlers = {
     BOND_KINDS.includes(kind) || fail(`A companion's kind can be: ${BOND_KINDS.join(', ')}.`);
     const turn = a.turn ?? 'own';
     BOND_TURNS.includes(turn) || fail(`A companion's turn can be: ${BOND_TURNS.join(', ')}.`);
-    // The engine does not yet run a turn of none (riding and the servant, stages C5 and C6), nor commands (C5): it
-    // refuses them rather than store a choice it would not keep. A turn after its master's is built (C2).
+    // The engine does not yet run a turn of none (riding and the servant, stages C5 and C6): it refuses it rather
+    // than store a choice it would not keep. A turn after its master's is built (C2), and commands (C5a): a DM's
+    // bond has no command range (`range` comes from a spell's step), so its master commands it at any distance.
     turn !== 'none' || fail('A companion can have a turn of its own or one straight after its master\'s so far: no turn at all is not built yet.');
     const orders = a.orders ?? 'free';
     BOND_ORDERS.includes(orders) || fail(`A companion's orders can be: ${BOND_ORDERS.join(', ')}.`);
-    orders === 'free' || fail('A companion can only be played freely so far: commands are not built yet.');
     const at0 = a.at0 ?? AT0_BY_KIND[kind];
     BOND_AT0.includes(at0) || fail('At 0 Hit Points a companion can: vanish, dies.');
     (a.noAttack === undefined || typeof a.noAttack === 'boolean') || fail('Say whether it can attack: { noAttack: true } or leave it out.');
@@ -109,6 +113,50 @@ export const handlers = {
     else if (a.order === now) delete e.bond.orderNext;                 // back to what this round has: nothing waits
     else e.bond.orderNext = a.order;
     ev.push({ type: 'companionOrder', id: e.id, by: m.id, order: a.order, ...(fight ? { next: true } : {}) });
+  },
+
+  // { type: 'command', actor: masterId, ids: [companion ids], order?: text up to 80 characters | null }: the master
+  // commands any number of its companions that take commands (`orders: 'command'`), as one Bonus Action in a fight
+  // and for nothing outside one (Decision 6; SRD Animate Dead, Create Undead, Animate Objects). By the master's
+  // controller or the DM. Each must be within its source's command range (`bond.range`, feet) of the master.
+  // Each gets `bond.commanded = { order, at }` (`at` the master's turn, null outside the fight): its next turn in
+  // this fight is its master's player's (A2; resolve.js takes it up at that turn's start). `order` given is the
+  // order that stands after it (`bond.standing`), which the DM plays it on when it is not commanded; `null` clears
+  // it, so it Dodges again; left out, the standing order is unchanged and the command is for the one turn.
+  command(s, a, ctx, ev) {
+    const m = ent(s, a.actor); control(s, m, ctx);
+    (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= BOND_MAX && a.ids.every((x) => typeof x === 'string') && new Set(a.ids).size === a.ids.length)
+      || fail('Name the creatures to command, each once ({ ids: [...] }).');
+    const order = a.order;
+    // Words: trimmed, then 1 to 80 characters, with no control characters (no newlines): they are stored and shown to the party.
+    (order === undefined || order === null || (typeof order === 'string' && order.trim() && order.trim().length <= 80 && !/[\u0000-\u001f\u007f-\u009f]/.test(order.trim())))
+      || fail('An order is words of up to 80 characters on one line ({ order: \'guard the door\' }), or null to clear the one that stands.');
+    const list = a.ids.map((id) => {
+      // Only the creatures' own ids. To a player a creature the party does not know of is no creature at all (engine.js
+      // also checks `ids`), and any it knows of that is not this master's is "not its companion", so a foe's bond is never told.
+      const e = Object.hasOwn(s.entities, id) ? s.entities[id] : fail('No such creature.');
+      ctx.role === 'dm' || !unknown(s, e) || fail('No such creature.');
+      if (ctx.role !== 'dm' && e.bond?.to !== m.id) fail(`${e.name} is not ${m.name}'s companion.`);
+      e.bond || fail(`${e.name} is no one's companion.`);
+      e.bond.to === m.id || fail(`${e.name} is not ${m.name}'s companion.`);
+      e.bond.orders === 'command' || fail(`${e.name} takes no commands: it is played freely.`);
+      !e.dead || fail(`${e.name} is dead.`);
+      // A range is a number of feet; none (a DM's bond) is any distance. Anything else is refused, never taken as no range.
+      const range = e.bond.range, d = apart(s, m, e);
+      (range === undefined || range === null || (typeof range === 'number' && Number.isFinite(range) && range >= 0)) || fail(`${e.name}'s command range is not a number of feet.`);
+      (typeof range !== 'number' || d * FT <= range) || fail(`${e.name} is ${ft(d)} from ${m.name}. A command reaches ${range} ft.`);
+      return e;
+    });
+    // A Bonus Action in a fight: on the master's turn, with one left. Outside a fight it costs nothing, but the master
+    // must be up and able to act.
+    need(s, m, 'bonus');
+    if (s.encounter) s.encounter.budget.bonus--;
+    const at = s.encounter ? turnKey(s) : null, text = typeof order === 'string' ? order.trim() : order;
+    for (const e of list) {
+      e.bond.commanded = { order: text ?? null, at };
+      if (order !== undefined) e.bond.standing = text;
+    }
+    ev.push({ type: 'commanded', by: m.id, ids: list.map((e) => e.id), ...(order !== undefined ? { order: text } : {}) });
   },
 
   // { type: 'companion', actor, auto }: whether the engine's companion brain may play this companion's

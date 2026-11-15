@@ -289,6 +289,7 @@ export function describeStep(action, events, before, after) {
     // Companions (docs/specs/companions.md). Players are told only of the party's own (the events say so).
     case 'bond': label = a.to === null || a.to === undefined ? `${who} was freed from ${name(ev('unbonded')?.from)}` : `${who} became ${name(a.to)}'s companion`; break;
     case 'companionOrder': label = `${name(a.id)} will act ${a.order === 'before' ? 'before' : 'after'} ${who}`; break;
+    case 'command': { const n = Array.isArray(a.ids) ? a.ids.length : 0; label = n === 1 ? `${who} commanded ${name(a.ids[0])}` : `${who} commanded ${n} companions`; break; }
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
