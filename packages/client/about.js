@@ -723,7 +723,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 // Escaped text with each web address made a link that opens in a new tab.
 export const linked = (s) => esc(s).replace(/https?:\/\/[^\s<>"]*[^\s<>".,;:)]/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
 
-// The About tab. `info` is { stateVersion, tableVersion? }: the version this game's rules keep tables in and, at a table, the one
+// The About tab. `info` is { stateVersion, tableVersion?, buildLine? } (buildLine: which build this is, feedback.js): the version this game's rules keep tables in and, at a table, the one
 // this table is in, so a bug report can say which.
 export function aboutHTML(info = {}) {
   const packs = MODEL_PACKS.length
@@ -731,7 +731,8 @@ export function aboutHTML(info = {}) {
     : '<p class="note">None yet. Each model pack that is added is listed here with its author and licence.</p>';
   return `<section class="ab-sec"><h3>Hextable</h3>
       <p>A virtual tabletop compatible with fifth edition, in the browser. Version ${esc(GAME_VERSION)}. Tables are kept in state version ${esc(info.stateVersion ?? '')}${info.tableVersion !== undefined ? `; this table is in version ${esc(info.tableVersion)}` : ''}.</p>
-      <p class="note">Say these numbers when you report a problem.</p>
+      ${info.buildLine ? `<p id="ab-build">${esc(info.buildLine)}</p>` : ''}
+      <p class="note">Say ${info.buildLine ? 'the build and ' : ''}these numbers when you report a problem.</p>
       <p>The table plays on hexes or on squares, whichever the map is drawn on; the DM can start a table on either, and each map says which it is.</p></section>
     <section class="ab-sec" id="ab-srd"><h3>The rules</h3>
       <p id="ab-srd-text">${linked(SRD_ATTRIBUTION)}</p></section>

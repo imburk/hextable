@@ -6,6 +6,9 @@
 //   TIMELINE_CAP  timeline entries kept besides chronicle entries (default 5000)
 //   TRUST_PROXY, CLIENT_IP_HEADER   how to find the client address behind a proxy (default: socket address only)
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
+//   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js
+//   Player feedback is kept in DATA_DIR/feedback.jsonl (five files of 5 MB: FEEDBACK_MAX_BYTES and FEEDBACK_FILES change that; when full, new reports are refused and nothing is deleted).
+//   LIMIT_FEEDBACK_FORWARD_HOUR / _DAY   the whole server's cap on feedback issues filed on GitHub (20 an hour, 100 a day)
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -20,6 +23,8 @@ import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
+import { createFeedback, feedbackRoute } from "./feedback.js";
+import { buildInfo } from "./build-info.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
 const DATA = process.env.DATA_DIR || join(process.cwd(), "data");
@@ -183,9 +188,19 @@ function catchUp(peer) {
 }
 const sit = (key, by) => { const n = (live.get(key) ?? 0) + by; if (n > 0) live.set(key, n); else live.delete(key); };
 
+// Player feedback (feedback.js): kept beside the tables, optionally filed on GitHub too.
+const feedback = createFeedback({ dir: DATA, env: process.env, ...(/^\d+$/.test(process.env.FEEDBACK_MAX_BYTES ?? "") && Number(process.env.FEEDBACK_MAX_BYTES) > 0 && { fileMax: Number(process.env.FEEDBACK_MAX_BYTES) }), ...(/^\d+$/.test(process.env.FEEDBACK_FILES ?? "") && Number(process.env.FEEDBACK_FILES) > 0 && { files: Number(process.env.FEEDBACK_FILES) }) });
+
+// Which change this is (build-info.js): from Railway's variables when there are some, else the image's own dist/build.json.
+const build = buildInfo({ file: join(SITE, "build.json"), env: process.env });
+
 // ---------- http ----------
 const server = createServer(async (req, res) => {
   for (const [k, v] of Object.entries(securityHeaders(req))) res.setHeader(k, v);
+  if (feedbackRoute(req.url)) {
+    try { return feedback.handle(req, res, { limits, addr: addressOf(req) }); }
+    catch (err) { console.error(`Feedback request failed: ${err.message}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
+  }
   const route = assetRoute(/^https?:/i.test(req.url) ? new URL(req.url).pathname : req.url);
   if (route) {
     try { return handleAssets(req, res, route, { assets, tables, limits, addr: addressOf(req), online }); }
@@ -194,6 +209,10 @@ const server = createServer(async (req, res) => {
   let path;
   try { path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)); }
   catch { res.writeHead(400).end(); return; }
+  if (path === `${sep}build.json`) {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }).end(JSON.stringify(build));
+    return;
+  }
   if (path === `${sep}api${sep}ping`) {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end('{"ok":true}');
     return;
