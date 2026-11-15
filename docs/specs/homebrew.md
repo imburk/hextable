@@ -784,3 +784,7 @@ Still open. Each has a default, and work proceeds on the default.
 9. **Schedule.** *Default: build B1 to B6 (the pure functions and the registry)
    in Next after milestone 2, the pack manager and the spell builder next, the
    paste route with them, the tool server and monsters' builder later.*
+
+## Adventure modules
+
+A DM may also add their own pack inside their adventure module, through the same gate and limits: see [adventure-module.md](adventure-module.md) (Decision 3).
