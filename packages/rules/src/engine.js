@@ -116,8 +116,9 @@ function look(s, ev) {
 }
 
 // The fields of an action that name creatures, one id or a list of them. (`follow`'s `leader` is
-// not one: its handler gives one answer for a creature that is not there and one not in the party.)
-const CREATURE_FIELDS = ['actor', 'target', 'entity', 'targets', 'spare', 'ids', 'order'];
+// not one: its handler gives one answer for a creature that is not there and one not in the party. `deliver` is a cast's
+// familiar, stage C5c; `dismiss` and `recall` look at their `id` in companions.js, as `companionOrder` does.)
+const CREATURE_FIELDS = ['actor', 'target', 'entity', 'targets', 'spare', 'ids', 'order', 'deliver'];
 
 // Run one action's handler. Also how a waiting action is run again when its reaction is answered.
 function dispatch(s, action, ctx, ev) {

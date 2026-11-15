@@ -10,10 +10,12 @@ import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, creatureType, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { aimArea, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
+import { incapacitatedBy } from '../modifiers.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -244,9 +246,14 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   const p = a.summon;
   const count = summonCount(step.count, slot);
   if (step.on === 'corpse') return corpsesFor(s, e, sp, step, p, slot, range, ctx);
+  // One per master (`one`; stage C5c): the master's creature of this spell that a new casting reforms (Find Familiar: it
+  // takes the new form where it is, so no space is named) or replaces (Find Steed: it goes, and its space is free for the
+  // new one). Neither adds a companion to the master's count beyond the one it had.
+  const old = oneOf(s, e, step, sp.id), reforming = step.one === 'reform' && old.length > 0;
+  const adds = reforming ? 0 : Math.max(count - (step.one === 'replace' ? old.length : 0), 0);
   if (p === undefined) {
     !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
-    roomForCompanions(s, e, count);
+    roomForCompanions(s, e, adds);
     return { count };
   }
   (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Pick where ${sp.name} summons: { at: [a space] }.`);
@@ -262,9 +269,22 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
     fits || fail(`Choose a form ${sp.name} can take.`);
     out.form = p.form;
   } else p.form === undefined || fail(`${sp.name} has no choice of form.`);
+  if (reforming) {
+    const f = old[0];
+    p.at === undefined || fail(`${e.name} already has ${f.name}: ${sp.name} gives it the new form where it is, so name no space.`);
+    !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
+    // On the map, the new form must fit where it stands (in the pocket dimension there is nothing to fit).
+    if (Object.hasOwn(s.entities, f.id)) {
+      const made = summonMade(step, out, slot, summonCaster(s, e, sp.id)), body = { size: made.record.size, side: f.side }, G = gridOf(s.map);
+      fitsOn(s.map, body, f.pos, barriers(s.map)) || fail(`There isn't room for ${f.name} to take a ${made.record.size} form where it stands.`);
+      !living(s).some((o) => o.id !== f.id && knownTo(s, e, o) && overlapAt(o, o.pos, body, f.pos, G)) || fail(`There isn't room for ${f.name} to take that form where it stands.`);
+    }
+    out.reform = f.id;
+    return out;
+  }
   (Array.isArray(p.at) && p.at.length === count) || fail(count === 1 ? `Pick one space for ${sp.name}.` : `Pick ${count} spaces for ${sp.name}, one for each creature.`);
   !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
-  roomForCompanions(s, e, count);
+  roomForCompanions(s, e, adds);
   // The creature's body: its size and whether it can fly, from what this casting makes.
   const made = summonMade(step, out, slot, summonCaster(s, e, sp.id));
   const body = { size: made.record.size }, flies = (step.over?.speed?.fly ?? made.record.speeds?.fly ?? 0) > 0;
@@ -273,7 +293,8 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
     (want && typeof want === 'object' && Number.isInteger(want.q) && Number.isInteger(want.r) && (want.z === undefined || Number.isFinite(want.z))) || fail(`Pick a space for ${sp.name}.`);
     // A player is told nothing about a place the party has not seen, not even whether something could stand there.
     if (player && unseenAt(s.map, landing(s.map, want) ?? { q: want.q, r: want.r, z: want.z ?? e.pos.z })) fail(`Pick a place the party has seen for ${sp.name}.`);
-    const to = placeCreature(s, body, want, { air: flies, ignore: (o) => !knownTo(s, e, o) });
+    // The creature a new casting replaces (`one: 'replace'`) leaves first, so its space may be named.
+    const to = placeCreature(s, body, want, { air: flies, ignore: (o) => !knownTo(s, e, o) || old.includes(o) && step.one === 'replace' });
     if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${sp.name}.`);
     const d = gap(s, e.pos, to);
     d * FT <= range || fail(`That is ${ft(d)} away. ${sp.name} reaches ${range} ft.`);
@@ -283,7 +304,32 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
     at.push(to);
   }
   out.at = at;
+  if (step.one === 'replace' && old.length) out.replace = old.map((x) => x.id);
   return out;
+}
+
+// Touch delivery (Find Familiar; stage C5c): "when you cast a spell with a range of touch, your familiar can deliver the
+// touch. Your familiar must be within 100 feet of you, and it must take a Reaction to deliver the touch when you cast the
+// spell." `a.deliver` names the familiar: a companion of the caster's of kind `familiar` that a spell made (as the pocket
+// dimension takes, companions.js), up, within 100 ft of the caster (by the nearest parts of the two), able to take a
+// Reaction (not Incapacitated) and, in a fight, with its Reaction left. The spell must have a range of Touch and be aimed
+// at a creature. Its targets are then reached from the familiar (range, walls; resolve.js makes the attack roll from its
+// space), and the Reaction is spent with the spell. Outside a fight no Reaction is kept count of (there are no turns to
+// give it back), so it is only checked that it could take one. Returns the familiar, or null.
+export const DELIVER_FEET = 100;
+function deliverFor(s, e, sp, a) {
+  if (a.deliver === undefined) return null;
+  typeof a.deliver === 'string' || fail('Name the familiar that delivers the touch ({ deliver: id }).');
+  const f = ent(s, a.deliver);
+  (f.bond?.to === e.id && f.bond.kind === 'familiar' && typeof f.bond.source === 'string') || fail(`${f.name} is not ${e.name}'s familiar.`);
+  (sp.def.range === 'touch' && sp.aim === 'creature') || fail(`A familiar delivers only a spell with a range of Touch aimed at a creature, and ${sp.name} is not one.`);
+  up(f) || fail(`${f.name} is down.`);
+  const d = apart(s, e, f);
+  d * FT <= DELIVER_FEET || fail(`${f.name} is ${ft(d)} from ${e.name}. A familiar delivers a touch within ${DELIVER_FEET} ft.`);
+  const by = incapacitatedBy(f);
+  !by || fail(`${f.name} is ${by} and can't take a Reaction to deliver the touch.`);
+  !(s.encounter && f.reactionUsed) || fail(`${f.name} has already used its Reaction.`);
+  return f;
 }
 
 // On corpses (Decision 7; stage C5b, #340): `a.summon` = { ids: [...] }, naming either dead Medium or Small Humanoids
@@ -425,6 +471,8 @@ function castSpell(s, a, ctx, ev, item) {
     const casterLevel = item ? 1 : e.level;           // an item casts at the lowest caster level
     if (item?.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${sp.name} from ${item.name} targets ${e.name} only.`);
     const mm = metamagicFor(s, e, sp, a, slot);
+    // A touch its familiar delivers (`a.deliver`): reached from the familiar, for its Reaction (checked now, spent below).
+    const toucher = deliverFor(s, e, sp, a);
     // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
     const spear = (e.feats ?? []).reduce((n, f) => n + (f.spellRange?.spell === a.spell ? f.spellRange.add : 0), 0);
     const range = typeof (mm.range ?? sp.range) === 'number' && spear ? (mm.range ?? sp.range) + spear : mm.range ?? sp.range;
@@ -434,7 +482,7 @@ function castSpell(s, a, ctx, ev, item) {
       ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
-      targets = creatures(s, e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
+      targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
     } else if (sp.aim === 'self') targets = [e];
     if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
     if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
@@ -469,6 +517,7 @@ function castSpell(s, a, ctx, ev, item) {
       if (slotted) s.encounter.flags.slot = true;
     }
     if (slotted) e.slots[slot]--;
+    if (toucher && s.encounter) toucher.reactionUsed = true;
     if (via && !via.freeCast.atWill) e.uses[via.id]--;
     if (mm.cost) e.uses[mm.pool] -= mm.cost;
     if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
@@ -504,6 +553,7 @@ function castSpell(s, a, ctx, ev, item) {
     if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
     ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}), ...(item ? { item: item.name } : {}) });
+    if (toucher) ev.push({ type: 'delivered', id: toucher.id, by: e.id, spell: a.spell });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
@@ -555,7 +605,7 @@ function castSpell(s, a, ctx, ev, item) {
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
         spell: sp.id, ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
-        ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}) },
+        ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}), ...(toucher ? { via: toucher.id } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared,

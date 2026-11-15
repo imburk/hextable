@@ -9,11 +9,15 @@
 // creature's turn, resolve.js). Bonds made by spells (`fx`, `source`, `ends`, `leash`) come from the summon step;
 // no turn at all is not run yet, and the DM's bond refuses it. A turn straight after the
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
-import { BOND_MAX, companionsOf, ent, control, fail, ft, inFight, need, roomForCompanions } from './shared.js';
-import { followMasters, lookAround, unfollow } from './world.js';
+import { BOND_MAX, companionsOf, ent, control, fail, ft, inFight, need, pocketOf, roomForCompanions } from './shared.js';
+import { followMasters, lookAround, nearestFree, placeCreature, unfollow } from './world.js';
 import { unknown } from '../vision.js';
-import { apart, FT } from '../space.js';
-import { turnKey } from '../durations.js';
+import { apart, footprint, FT, gap, landing, unseenAt } from '../space.js';
+import { effectsOf, endEffect, turnKey } from '../durations.js';
+import { hiddenFrom } from '../sight.js';
+import { gridOf, col } from '../grid.js';
+import { pocket, unpocket, unpocketForever, vanish } from './resolve.js';
+import { SPELLS } from '../content/index.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
 export const BOND_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
@@ -27,6 +31,44 @@ export const BOND_SIDES = ['after', 'before'];
 // disappear; undead and ordinary animals die (Decision 4). The DM may say otherwise (`at0`).
 const AT0_BY_KIND = { familiar: 'vanish', steed: 'vanish', summon: 'vanish', servant: 'vanish', object: 'vanish', undead: 'dies', pet: 'dies' };
 const FIELDS = ['kind', 'turn', 'orders', 'at0', 'noAttack'];
+
+// A familiar comes back from its pocket dimension within this many feet of its master (SRD Find Familiar).
+export const RECALL_FEET = 30;
+// A familiar the pocket dimension takes: a companion of kind `familiar` that a spell made (`bond.source`: Find Familiar,
+// and the features that cast it). One the DM bonded (the Vampire Familiar, a pet) is not: no spell gives it a pocket.
+const familiar = (e) => e?.bond?.kind === 'familiar' && typeof e.bond.source === 'string';
+// Whether master `m` knows of creature `o` (as casting.js reads it for a summon's space): a creature it does not know of
+// does not stop a space, so that refusing does not tell a player it is there.
+const knownTo = (s, m, o) => !hiddenFrom(o, m) && !(m.side === 'party' && (o.hidden || unknown(s, o)));
+// The companion `id` of master `m`, on the map or in its pocket dimension, checked as `companionOrder` and `command` check
+// theirs: only the creatures' own ids; to a player a creature the party does not know of, or one in a pocket that is not
+// this master's, is no creature at all (engine.js does not walk `id`), and any it knows of that is not this master's is
+// "not its companion", so a foe's bond is never told. The DM is told which.
+function companionNamed(s, m, id, ctx) {
+  typeof id === 'string' || fail('Name the companion ({ id }).');
+  if (!Object.hasOwn(s.entities, id)) {
+    const p = m.pocket && typeof m.pocket === 'object' && !Array.isArray(m.pocket) && Object.hasOwn(m.pocket, id) ? m.pocket[id] : null;
+    return p ?? fail('No such creature.');
+  }
+  const e = s.entities[id];
+  ctx.role === 'dm' || !unknown(s, e) || fail('No such creature.');
+  if (ctx.role !== 'dm' && e.bond?.to !== m.id) fail(`${e.name} is not ${m.name}'s companion.`);
+  e.bond || fail(`${e.name} is no one's companion.`);
+  e.bond.to === m.id || fail(`${e.name} is not ${m.name}'s companion.`);
+  !e.dead || fail(`${e.name} is dead.`);
+  return e;
+}
+// A Magic action (Decision 6: dismiss and recall). In a fight: the master's turn, with its action left, and not the extra
+// action of Action Surge, which "can't be used for a Magic action" (features.js reads the same flags). Outside a fight it
+// costs nothing, but the master must be up and able to act.
+function magicAction(s, m) {
+  need(s, m, 'action');
+  const enc = s.encounter;
+  if (!enc) return;
+  if (enc.flags[`surge:${m.id}`] && enc.flags[`magic:${m.id}`]) fail('The extra action from Action Surge can\'t be used for a Magic action.');
+  enc.budget.action--;
+  enc.flags[`magic:${m.id}`] = true;
+}
 
 // The cap and companionsOf live in shared.js, used by the DM's `bond` here and by a cast's summon (casting.js).
 export { BOND_MAX, companionsOf } from './shared.js';
@@ -56,7 +98,7 @@ export const handlers = {
     !m.dead || fail(`${m.name} is dead.`);
     !e.bond || fail(`${e.name} is already ${s.entities[e.bond.to]?.name ?? 'someone'}'s companion. Free it first ({ to: null }).`);
     !m.bond || fail(`${m.name} is a companion itself and can't have companions.`);
-    !companionsOf(s, e.id).length || fail(`${e.name} has companions of its own.`);
+    (!companionsOf(s, e.id).length && !pocketOf(e).length) || fail(`${e.name} has companions of its own.`);
     roomForCompanions(s, m);
     const kind = a.kind ?? 'pet';
     BOND_KINDS.includes(kind) || fail(`A companion's kind can be: ${BOND_KINDS.join(', ')}.`);
@@ -157,6 +199,69 @@ export const handlers = {
       if (order !== undefined) e.bond.standing = text;
     }
     ev.push({ type: 'commanded', by: m.id, ids: list.map((e) => e.id), ...(order !== undefined ? { order: text } : {}) });
+  },
+
+  // { type: 'dismiss', actor: masterId, id, forever?: true } (Decision 6; stage C5c). A familiar (a companion of kind
+  // `familiar` made by a spell: Find Familiar) is dismissed as a Magic action, temporarily to a pocket dimension (out of the
+  // map, the sight and the fight, kept on its master: resolve.js, pocket) or, with `forever`, for good (it vanishes,
+  // `dismissed`); one already in the pocket may be dismissed forever from there. Any other companion is dismissed only
+  // where its spell lets its caster end it: one kept by a lasting effect of the master's that needs Concentration, which
+  // the master may end at any time and with no action (SRD Concentration), so that effect ends (as `endEffect`) and the
+  // creature with it. Anything else is refused: the SRD gives Find Steed or Animate Dead no way to send it away (the DM's
+  // `bond { to: null }` frees one). By the master's controller or the DM.
+  dismiss(s, a, ctx, ev) {
+    const m = ent(s, a.actor); control(s, m, ctx);
+    const e = companionNamed(s, m, a.id, ctx), held = !Object.hasOwn(s.entities, e.id);
+    (a.forever === undefined || a.forever === true) || fail('Dismiss it for good with { forever: true }, or leave `forever` out.');
+    if (!familiar(e)) {
+      a.forever === undefined || fail(`Only a familiar is dismissed forever or to a pocket dimension; ${e.name} goes when its spell ends.`);
+      const fx = e.bond.fx ? effectsOf(s).find((x) => x.id === e.bond.fx) : null;
+      (fx && fx.source === m.id && fx.conc) || fail(`${e.name} can't be dismissed: ${SPELLS[e.bond.source]?.name ?? 'what keeps it'} gives ${m.name} no way to end it early.`);
+      endEffect(s, ev, fx, `${m.name} dismissed ${e.name}`);
+      return;                                        // settleBonds vanishes it (`ended`) after the action
+    }
+    if (held && a.forever !== true) fail(`${e.name} is already in a pocket dimension.`);
+    magicAction(s, m);
+    if (held) unpocketForever(s, m, e.id, ev);
+    else if (a.forever === true) vanish(s, e, 'dismissed', ev);
+    else pocket(s, m, e, ev);
+  },
+
+  // { type: 'recall', actor: masterId, id, at: { q, r, z? } } (Decision 6; stage C5c): a Magic action, the familiar `id` back
+  // from its master's pocket dimension into an unoccupied space within 30 ft of the master (SRD Find Familiar), with the
+  // same id and Hit Points (resolve.js, unpocket). The space is checked as a summon's is (casting.js, summonFor): a player
+  // names a place the party has seen; the familiar fits there; nothing the master knows of stands there (a creature it
+  // does not know of does not stop it: the familiar appears in the nearest unoccupied space instead, and the DM is told);
+  // in a fight, inside the arena. No sight is needed: the SRD says only "within 30 feet of you".
+  recall(s, a, ctx, ev) {
+    const m = ent(s, a.actor); control(s, m, ctx);
+    typeof a.id === 'string' || fail('Name the familiar ({ id }).');
+    const p = m.pocket && typeof m.pocket === 'object' && !Array.isArray(m.pocket) && Object.hasOwn(m.pocket, a.id) ? m.pocket[a.id] : null;
+    if (!p) {
+      // Not in this master's pocket: answered as `dismiss` answers a creature that is not its companion, so a foe's bond
+      // or pocket is never told to a player.
+      const e = companionNamed(s, m, a.id, ctx);
+      fail(familiar(e) ? `${e.name} is not in a pocket dimension.` : `${e.name} is not a familiar in a pocket dimension.`);
+    }
+    const G = gridOf(s.map), player = ctx.role !== 'dm', want = a.at;
+    (want && typeof want === 'object' && Number.isInteger(want.q) && Number.isInteger(want.r) && (want.z === undefined || Number.isFinite(want.z))) || fail(`Pick a space for ${p.name} within ${RECALL_FEET} ft.`);
+    if (player && unseenAt(s.map, landing(s.map, want) ?? { q: want.q, r: want.r, z: want.z ?? m.pos.z })) fail(`Pick a place the party has seen for ${p.name}.`);
+    const flies = (p.speeds?.fly ?? 0) > 0, body = { size: p.size };
+    let to = placeCreature(s, body, want, { air: flies, ignore: (o) => !knownTo(s, m, o) });
+    if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${p.name}.`);
+    const d = gap(s, m.pos, to);
+    d * FT <= RECALL_FEET || fail(`That is ${ft(d)} away. ${p.name} comes back within ${RECALL_FEET} ft of ${m.name}.`);
+    if (inFight(s, m.id)) footprint(body, to, G).every((f) => s.encounter.arena[col(f)]) || fail('The arena is locked until the fight ends.');
+    magicAction(s, m);
+    // A creature the master did not know of stands there: the nearest unoccupied space instead, as a summon (resolve.js).
+    const free = nearestFree(s, body, to);
+    if (!free) {
+      ev.push({ type: 'manual', actor: m.id, name: p.name, partial: true, text: `The space named for ${p.name} is taken by a creature ${m.name} did not know of, and the engine found no unoccupied space near it, so ${p.name} stays in the pocket dimension. The DM places it (the player has not been told why).` });
+      return;
+    }
+    if (free !== to) ev.push({ type: 'manual', actor: m.id, name: p.name, partial: true, text: `A creature ${m.name} did not know of stands in the space named for ${p.name}, so it appeared in the nearest unoccupied space.` });
+    to = free;
+    unpocket(s, m, a.id, to, ev);
   },
 
   // { type: 'companion', actor, auto }: whether the engine's companion brain may play this companion's

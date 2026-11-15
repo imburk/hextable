@@ -214,9 +214,12 @@ const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'fou
 
 export function describeStep(action, events, before, after) {
   const prior = before?.tree ?? before;
-  const real = (id) => after.entities[id]?.name ?? prior?.entities?.[id]?.name ?? 'Someone';
+  // A familiar in a pocket dimension (stage C5c) is in its master's record, not among the creatures.
+  const pocketed = (st, id) => { const m = st?.entities?.[action.actor]; return m?.pocket && Object.hasOwn(m.pocket, id) ? m.pocket[id] : null; };
+  const find = (id) => after.entities[id] ?? prior?.entities?.[id] ?? pocketed(after, id) ?? pocketed(prior, id);
+  const real = (id) => find(id)?.name ?? 'Someone';
   // Players are told a creature's name as they see it: one not of the party in a form is the Beast (view.js, seenName).
-  const seen = (id) => { const e = after.entities[id] ?? prior?.entities?.[id]; return e ? seenName(e) : 'Someone'; };
+  const seen = (id) => { const e = find(id); return e ? seenName(e) : 'Someone'; };
   const ev = (type) => events.find((e) => e.type === type);
   if (action.type === 'react') {
     // An answer to a reaction carries on the action that waited for it, and is named after that.
@@ -290,6 +293,9 @@ export function describeStep(action, events, before, after) {
     case 'bond': label = a.to === null || a.to === undefined ? `${who} was freed from ${name(ev('unbonded')?.from)}` : `${who} became ${name(a.to)}'s companion`; break;
     case 'companionOrder': label = `${name(a.id)} will act ${a.order === 'before' ? 'before' : 'after'} ${who}`; break;
     case 'command': { const n = Array.isArray(a.ids) ? a.ids.length : 0; label = n === 1 ? `${who} commanded ${name(a.ids[0])}` : `${who} commanded ${n} companions`; break; }
+    // The pocket dimension (stage C5c): a familiar sent there, sent away for good, or brought back; a summon dismissed.
+    case 'dismiss': label = ev('pocketed') ? `${who} dismissed ${name(a.id)} to a pocket dimension` : `${who} dismissed ${name(a.id)}${a.forever === true ? ' forever' : ''}`; break;
+    case 'recall': label = `${who} called ${name(a.id)} back`; break;
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;
   }
@@ -300,7 +306,7 @@ export function describeStep(action, events, before, after) {
   const a = action;
   const named = ['actor', 'target', 'entity', ...(a.type === 'pass' || a.type === 'bond' ? ['to'] : [])].map((k) => a[k]).filter((id) => typeof id === 'string');      // `pass` names its taker in `to`, `bond` the master
   // A companion that vanished in this step where the party could see it is one players knew of (view.js, viewEvents).
-  const gone = new Set(events.filter((e) => e.type === 'vanished' && e.seen === true).map((e) => e.id));
+  const gone = new Set(events.filter((e) => (e.type === 'vanished' || e.type === 'pocketed') && e.seen === true).map((e) => e.id));
   const known = named.every((id) => gone.has(id) || classify(after, id) !== 'hidden');
   const heard = viewEvents(events, after, { role: 'player' }).length > 0;
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
