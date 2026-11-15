@@ -147,6 +147,8 @@ lent from `engine/resolve.js`:
   over: { speed: { walk: 100 } },         // fields replaced on the made creature (Phantom Steed)
   one: 'replace' | 'reform',              // one per master: a new one replaces the old (steed) or the old one takes the new form (familiar)
   bond: { kind, turn, orders, at0, ends?, leash?, noAttack?, mount? } }
+// Since C5b (#341): `reassert` (on corpses: how many of its own creatures a casting keeps under control; `count` if left
+// out), the bond's command `range` (feet, with `orders: 'command'`), and on the made creature's bond `lapse: 'foe'`.
 ```
 
 The cast action carries what the caster chose and where:
@@ -1130,7 +1132,37 @@ step's vocabulary is an engine change) with one key, `reassert`, below.
   Undead's Ghasts, Wights and Mummies at levels 8 and 9; whether a creature keeps to a standing order; the Zombie's
   Undead Fortitude (the pack's trait text). The client cannot yet name corpses (C8).
 - **No state version bump.** `bond.range`, `bond.lapse`, a `bond` part and the `reasserted` event are optional; a save
-  without them plays as before, and a DM-bonded undead (no `fx`) never lapses.
+  without them plays as before, and a DM-bonded undead (no `fx`) never lapses. Without a bump, an older build that loads
+  a save made with this one does not refuse it, and gets the raised creatures wrong: its `holds` reads only `summon`
+  parts, so after the first action its `settleBonds` vanishes every raised creature as a summon whose effect ended. Such
+  a save should be loaded by this build or a later one.
+
+Settled in the review of #341:
+
+- **A corpse still in the fight's order is refused** (M1): "Bandit 1 fell in this fight and is still in its order: it can
+  be raised once the fight is over." Divine Intervention casts Animate Dead as a Magic action, so in a fight. Refusing is
+  what the DM's `remove` does for a creature in the fight, and it keeps A3 right: the corpse keeps its place and counts
+  toward the fight's XP. Taking it out and keeping it in `encounter.gone` was the other choice. It was not taken: `gone`
+  means "the party saw it go", and an unseen corpse put there would be named on the card. Raised after the fight, a seen
+  corpse's line is marked `gone` with the name it was shown, so the card still has it. A corpse that is not in the order
+  (one that fell outside the arena) is not refused by this rule (not tested).
+- **Names a player is told** (M2). Every refusal of `corpsesFor` names a creature as the party sees it (`seenName`: a foe
+  in Wild Shape is the Beast); the DM is told its own name. The wall check is the same as `walled`, with the seen name.
+- **Ids.** A sparse list (`new Array(1)`) is refused as one that names no creature (`Array.from`, so the holes are read).
+- **A destroyed raised creature is freed at once** (`at0: 'dies'`; `settleBonds`, `destroyed`): its bond and its 24-hour
+  effect end (`unbonded { why: 'destroyed' }`), so it no longer counts toward its master's 30, and a reassert that names it
+  is told "is dead: a destroyed Undead is no corpse to raise ...". If the DM brings it back (`setHp`), it is unbonded and
+  the DM's.
+- **A lapse runs `checkEnd`**, so a fight that its new foe changes is settled at once. A party creature that is not a
+  character does not keep the party standing (`partyOf`), so a lapse can only keep a fight going, never end it. A mid-fight
+  lapse is tested: the creature turns foe, keeps its place, and the fight goes on.
+- **A DM-made NPC from a sheet** (`kind: 'npc'`, a derived record, no `type` or `tpl`) is refused as not a Humanoid: a sheet
+  carries no creature type, and `creatureType` gives Humanoid only to a player's character. Such a corpse is the DM's to
+  raise by hand (`remove`, `spawn`, `bond`).
+- **A dead caster's creatures** stay bonded to it, and so its player's (`ownerOf`), until their 24 hours end. The SRD ends
+  control only with the time: nothing in the spells ends it at the caster's death.
+- **Names repeat.** A party caster's creatures are all "Nia's Zombie"; ids tell them apart, and the DM may rename them.
+  (A foe's are numbered, as `spawn` numbers them.)
 
 ### A3, XP for a foe's summons (built, #329)
 
