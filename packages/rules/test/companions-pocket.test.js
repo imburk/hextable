@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, makeEntity, ownerOf } from "../src/engine.js";
+import { unknown } from "../src/vision.js";
 import { view, viewEvents } from "../src/view.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
@@ -350,6 +351,118 @@ for (const grid of [null, "square"]) {
     refused(t, { type: "recall", actor: "ven", id: owl, at: near }, DM, /already has that id/);
     ok(apply(s, { type: "recall", actor: "ven", id: owl, at: near }, PAT));
     assert.equal(s.entities[owl].light, undefined, "it comes back unlit");
+  });
+}
+
+// ---------- review of #343, round 2: an unseen familiar in a fight, a raised master's pocket, a fight's XP ----------
+
+const unknownTo = (s, id) => unknown(s, s.entities[id]);
+const ZED = { role: "player", userId: "zed" };          // a player with no creature of their own
+const VIEWERS = [PAT, BO, ZED];
+// A foe wizard, Hex, beside the party, with a familiar of its own (cast by the DM). `type` so that its corpse is a Humanoid's.
+function foeMaster(s, hidden = false) {
+  const d = derive(sheet("wizard", ["find-familiar"], "Hex"));
+  s.entities.hex = makeEntity(d.record, { id: "hex", kind: "npc", side: "foe", type: "humanoid", pos: { ...spots(s, s.entities.fighter.pos, 5).at(-1), z: 0 } });
+  if (hidden) ok(apply(s, { type: "reveal", actor: "hex", hidden: true }, DM));
+  return familiar(s, "owl", DM, "hex");
+}
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+
+  // M1, option (b): the review's scenario (a hiding foe master and its hiding owl in a fight, a seen goblin between them).
+  // Sending the owl away is refused, changing nothing, so players get exactly what they get when nothing is tried.
+  test(`in a fight, an unseen familiar is not sent to the pocket or brought back: refused, and players get the same as with nothing${on}`, () => {
+    const run = (trying) => {
+      const s = table(grid), log = [];
+      const owl = foeMaster(s, true);
+      ok(apply(s, { type: "reveal", actor: owl, hidden: true }, DM));
+      const gob = spawn(s, "goblin-warrior", spots(s, s.entities.fighter.pos, 3).filter((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 2)[0], "Gob");
+      ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 14 }, DM));
+      // The order the review used: Hex, the goblin, the owl, then the party; both unseen ones hiding.
+      const by = Object.fromEntries(s.encounter.order.map((o) => [o.id, o]));
+      s.encounter.order = ["hex", gob, owl, "fighter", "ven"].filter((i) => by[i]).map((i, k) => ({ ...by[i], init: 30 - k * 2 }));
+      s.entities.hex.hiding = { dc: 10 }; s.entities[owl].hiding = { dc: 10 };
+      s.encounter.turn = 0;
+      assert.equal(current(s), "hex");
+      assert.ok(VIEWERS.every(() => true) && apply(structuredClone(s), { type: "endTurn", actor: "hex" }, DM).ok);
+      if (trying) {
+        refused(s, { type: "dismiss", actor: "hex", id: owl }, DM, /out of the party's sight in this fight\. The engine can't send it away without the players noticing/);
+        refused(s, { type: "dismiss", actor: "hex", id: owl, forever: true }, DM, /out of the party's sight/);
+        for (const u of VIEWERS) refused(s, { type: "dismiss", actor: "hex", id: owl }, u, /No such creature/);
+      }
+      for (let i = 0; i < 8 && current(s) !== "ven"; i++) log.push(endTurn(s));
+      assert.equal(s.encounter.gone, undefined, "nothing unseen reaches the fight's list of those gone");
+      return { s, seen: VIEWERS.map((u) => log.map((r) => json(viewEvents(r.events, s, u))).filter((x) => x !== "[]")), view: VIEWERS.map((u) => json(view(s, u))), tl: VIEWERS.map((u) => json(viewEvents(s.timeline, s, u))), seq: s.seq, all: json(s) };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.seen, B.seen, "the events players get");
+    assert.deepEqual(A.view, B.view, "their view");
+    assert.deepEqual(A.tl, B.tl, "the record");
+    assert.equal(A.seq, B.seq);
+    assert.equal(A.all, B.all, "the very same game");
+  });
+
+  test(`in a fight, an unseen familiar is not recalled from the pocket; a seen one is, and the party's own always${on}`, () => {
+    const s = table(grid), owl = foeMaster(s);
+    ok(apply(s, { type: "reveal", actor: owl, hidden: true }, DM));
+    ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM));        // outside the fight: nothing changes there
+    const mine = familiar(s);
+    ok(apply(s, { type: "dismiss", actor: "ven", id: mine }, PAT));
+    spawn(s, "goblin-warrior", spots(s, s.entities.fighter.pos, 3).filter((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 2)[0], "Gob");
+    ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 14 }, DM));
+    toTurn(s, "hex");
+    const near = spots(s, s.entities.hex.pos, 2).find((h) => gap(s, s.entities.hex.pos, h) * FT <= 30);
+    refused(s, { type: "recall", actor: "hex", id: owl, at: near }, DM, /out of the party's sight in this fight\. The engine can't bring it back/);
+    // Forever, from the pocket, is nothing on the map or in the order: it may go.
+    const t = structuredClone(s);
+    ok(apply(t, { type: "dismiss", actor: "hex", id: owl, forever: true }, DM));
+    endTurn(s);
+    toTurn(s, "ven");
+    ok(apply(s, { type: "recall", actor: "ven", id: mine, at: spots(s, s.entities.ven.pos, 2).find((h) => gap(s, s.entities.ven.pos, h) * FT <= 30) }, PAT));
+  });
+
+  // L6: a foe familiar the party saw go to the pocket in a fight is kept by the fight once, and not twice if it comes back.
+  test(`a seen foe familiar pocketed in a fight is counted once for the fight's XP, and not twice when recalled into it${on}`, () => {
+    const s = table(grid), owl = foeMaster(s);
+    const gob = spawn(s, "goblin-warrior", spots(s, s.entities.fighter.pos, 3).filter((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 2)[0], "Gob");
+    ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 14 }, DM));
+    assert.ok(!unknownTo(s, owl), "the party sees the owl");
+    toTurn(s, "hex");
+    const r = ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM));
+    for (const u of VIEWERS) assert.deepEqual(viewEvents(r.events, s, u).filter((e) => e.id === owl), [{ type: "vanished", id: owl }], "seen to vanish, its master not named");
+    assert.deepEqual(s.encounter.gone.map((g) => g.id), [owl]);
+    endTurn(s); toTurn(s, "hex");
+    ok(apply(s, { type: "recall", actor: "hex", id: owl, at: spots(s, s.entities.hex.pos, 2).find((h) => gap(s, s.entities.hex.pos, h) * FT <= 30) }, DM));
+    assert.ok(s.encounter.order.some((o) => o.id === owl));
+    assert.equal(s.encounter.gone, undefined, "back in the fight, it is not one that left it");
+    endTurn(s); toTurn(s, "hex");
+    ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM));
+    assert.deepEqual(s.encounter.gone.map((g) => g.id), [owl], "once");
+    for (const id of [gob, "hex"]) ok(apply(s, { type: "setHp", actor: id, hp: 0 }, DM));
+    if (s.encounter) ok(apply(s, { type: "endEncounter" }, DM));
+    const foes = s.conclusion.foes.filter((f) => f.id === owl);
+    assert.equal(foes.length, 1, "listed once");
+    assert.ok(foes[0].counts && foes[0].gone);
+    if (!s.conclusion.published) ok(apply(s, { type: "conclusion", publish: true }, DM));
+    const card = json(view(s, PAT).conclusion ?? null) + json(view(s, PAT).chronicle ?? null);
+    assert.equal(card.split(`"${owl}"`).length - 1, 1, "the party's card names it once");
+  });
+
+  // B1, the corpse: a master raised as undead loses what was in its pocket, and the DM is told.
+  test(`a master's corpse raised as undead: its pocketed familiar vanishes, the DM is told, players learn nothing of a foe's${on}`, () => {
+    const s = table(grid, "wizard", ["find-familiar", "animate-dead"]), owl = foeMaster(s);
+    ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM));
+    // Hex dies beside Ven.
+    s.entities.hex.pos = { ...spots(s, s.entities.ven.pos, 2).find((h) => apart(s, s.entities.ven, { ...s.entities.ven, pos: { ...h, z: 0 } }) * FT <= 10), z: 0 };
+    ok(apply(s, { type: "setHp", actor: "hex", hp: 0 }, DM));
+    if (!s.entities.hex.dead) ok(apply(s, { type: "kill", actor: "hex" }, DM));
+    assert.ok(s.entities.hex.dead && s.entities.hex.pocket[owl]);
+    const r = ok(apply(s, { type: "cast", actor: "ven", spell: "animate-dead", slot: 3, summon: { ids: ["hex"] } }, PAT));
+    assert.ok(!s.entities.hex, "the corpse rose");
+    assert.ok(r.events.some((e) => e.type === "vanished" && e.id === owl && e.why === "master" && e.pocket === true && !e.seen));
+    assert.ok(r.events.some((e) => e.type === "manual" && e.partial && /pocket dimension when Hex's corpse rose/.test(e.text)), "the DM is told");
+    for (const u of VIEWERS) assert.ok(!json(viewEvents(r.events, s, u)).includes(owl) && !json(view(s, u)).includes(owl), "players learn nothing of the foe's familiar");
   });
 }
 

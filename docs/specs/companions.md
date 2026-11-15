@@ -1004,13 +1004,19 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
 - **No state version bump.** `pocket` is optional and absent means none; a save without it loads and plays as before. An
   older build that loads a save with a familiar in a pocket keeps the field and cannot recall it. **A later migration that
   changes creature records must walk the records in every master's `pocket` too** (review of #343, L3).
-- **Not built: an unseen familiar in a fight** (review of #343, M1). A familiar the party cannot see that goes to the pocket
-  in the middle of a fight leaves the order (and comes back with an Initiative roll), so players can tell from the turns
-  that something unseen stopped acting (one `someone` turn fewer a round), and the roll moves the dice. An unseen vanish
-  keeps a husk in the order for this reason, but a husk is dead and takes no turn, which does not match a living familiar
-  either. Keeping the entry with a turn that waits for the DM needs `endTurn` (attacks.js) to end a turn whose creature is
-  in a pocket. Left open, in DEBT; the twin runs here are outside a fight.
-- **Left** (in DEBT): an unseen familiar going to the pocket in a fight (above); Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
+- **An unseen familiar in a fight is refused** (review of #343, M1). In the middle of a fight, `dismiss` (to the pocket or
+  forever) of a familiar on the map that the party cannot see, and `recall` of one that would come back where the party
+  cannot see it (worked out on a copy of the creatures with it in that space), are refused, changing nothing: "Owl 1 is out
+  of the party's sight in this fight. The engine can't send it away without the players noticing a turn more or fewer, so
+  it does not: do it outside the fight, or once the party can see it." Its leaving or coming back would change the turns
+  players are told of (an unseen creature's turn reaches them as `{ turn, someone }`, and a recall rolls its Initiative),
+  and the engine cannot keep that from them, so it refuses rather than pretend. An unseen vanish keeps a husk in the order,
+  but a husk is dead and takes no turn, which would not match a living familiar either. Only the DM or the master's player
+  can send these, and a party's familiar is never unseen, so the refusal tells no player anything. Unaffected: the party's
+  own familiars, any familiar the party can see, `dismiss` forever of one already in the pocket, and everything outside a
+  fight. A twin run of the review's case (a hiding foe master and its hiding owl in a fight with a seen goblin between them)
+  gives three players the same events, views, record and `seq` with the attempt as without, on hexes and squares.
+- **Left** (in DEBT): an unseen familiar can't go to or come from the pocket in a fight (above); Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
   pocket (rests.js); a seen foe familiar's new form reaches players only through their view, with no event; the client has
   no Dismiss, Recall or Deliver (C8).
 

@@ -60,6 +60,16 @@ function companionNamed(s, m, id, ctx) {
   !e.dead || fail(`${e.name} is dead.`);
   return e;
 }
+// A familiar the party cannot see, in the middle of a fight, is not sent to the pocket dimension or brought back from it
+// (review of #343, M1). Its going or coming would change the turns players are told of (an unseen creature's turn is a
+// `{ turn, someone }` to them, and recalling it rolls its Initiative), so they would learn that something unseen stopped or
+// started acting, and the engine cannot keep that from them: it refuses rather than pretend. Only the DM or the master's
+// player can send it, and a party's familiar is never unseen, so a refusal tells no player anything. The DM does it outside
+// the fight, or once the party can see it.
+function unseenInFight(s, e, what) {
+  if (!s.encounter || e.side === 'party' || !unknown(s, e)) return;
+  fail(`${e.name} is out of the party's sight in this fight. The engine can't ${what} without the players noticing a turn more or fewer, so it does not: do it outside the fight, or once the party can see it.`);
+}
 // A Magic action (Decision 6: dismiss and recall). In a fight: the master's turn, with its action left, and not the extra
 // action of Action Surge, which "can't be used for a Magic action" (features.js reads the same flags). Outside a fight it
 // costs nothing, but the master must be up and able to act.
@@ -228,6 +238,8 @@ export const handlers = {
       return;                                        // settleBonds vanishes it (`ended`) after the action
     }
     if (held && a.forever !== true) fail(`${e.name} is already in a pocket dimension.`);
+    // On the map, in a fight, out of the party's sight: refused (review of #343, M1; see unseenInFight).
+    if (!held) unseenInFight(s, e, 'send it away');
     magicAction(s, m);
     if (held) unpocketForever(s, m, e.id, ev);
     else if (a.forever === true) vanish(s, e, 'dismissed', ev);
@@ -261,9 +273,15 @@ export const handlers = {
     const d = gap(s, m.pos, to);
     d * FT <= RECALL_FEET || fail(`That is ${ft(d)} away. ${p.name} comes back within ${RECALL_FEET} ft of ${m.name}.`);
     if (inFight(s, m.id)) footprint(body, to, G).every((f) => s.encounter.arena[col(f)]) || fail('The arena is locked until the fight ends.');
-    magicAction(s, m);
     // A creature the master did not know of stands there: the nearest unoccupied space instead, as a summon (resolve.js).
     const free = nearestFree(s, body, to);
+    // In a fight, where it would come back out of the party's sight: refused (review of #343, M1; see unseenInFight). Worked
+    // out on a copy of the creatures with it in that space, so nothing changes.
+    if (s.encounter && p.side !== 'party') {
+      const probe = { ...s, entities: { ...s.entities, [p.id]: { ...p, pos: { ...(free ?? to), z: (free ?? to).z ?? 0 } } } };
+      unseenInFight(probe, probe.entities[p.id], 'bring it back');
+    }
+    magicAction(s, m);
     if (!free) {
       ev.push({ type: 'manual', actor: m.id, name: p.name, partial: true, text: `The space named for ${p.name} is taken by a creature ${m.name} did not know of, and the engine found no unoccupied space near it, so ${p.name} stays in the pocket dimension. The DM places it (the player has not been told why).` });
       return;

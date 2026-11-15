@@ -1234,7 +1234,7 @@ export function pocket(s, m, e, ev) {
   const fought = inFight(s, e.id), theirs = outOfOrder(s, e);
   // A foe the party saw leave a fight counts toward its XP as one that vanished does (A3); back in the fight's order before
   // the end, it is counted there and not twice (rewards.js, concludeFight).
-  if (fought && seen && e.side === 'foe') (s.encounter.gone ??= []).push({ id: e.id, name, shown: seenName(e), tpl: e.tpl ?? null });
+  if (fought && seen && e.side === 'foe' && !(s.encounter.gone ?? []).some((g) => g.id === e.id)) (s.encounter.gone ??= []).push({ id: e.id, name, shown: seenName(e), tpl: e.tpl ?? null });
   delete s.entities[e.id];
   if (!m.pocket || typeof m.pocket !== 'object' || Array.isArray(m.pocket)) m.pocket = {};
   m.pocket[e.id] = e;
@@ -1256,6 +1256,9 @@ export function unpocket(s, m, id, at, ev) {
   ev.push({ type: 'recalled', id, by: m.id, at: { ...e.pos } });
   if (e.side === 'party') lookAround(s, ev, [e]);
   if (s.encounter?.arena[col(e.pos)]) joinEncounter(s, e, ev);
+  // Back in the fight it went from, it is one of the fight's creatures again, not one that left it (A3; review of #343, L6).
+  const enc = s.encounter;
+  if (enc?.gone && inFight(s, id)) { enc.gone = enc.gone.filter((g) => g.id !== id); if (!enc.gone.length) delete enc.gone; }
 }
 // A familiar in the pocket dimension dismissed forever: its record goes. Nothing of it is on the map, so nothing else ends.
 export function unpocketForever(s, m, id, ev) {
