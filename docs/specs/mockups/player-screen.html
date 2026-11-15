@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: the player's screen at the table (#358)</title>
+<!-- A picture to react to (docs/specs/player-screen.md). Nothing here runs the game; every control says what it would do.
+     Self-contained: no network, no fonts fetched (the game's font names are listed first, with fallbacks). -->
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #111614; color: #e8e4d8; font: 15px/1.4 'Segoe UI', system-ui, sans-serif; }
+[hidden] { display: none !important; }
+
+/* ---------- the mockup's own controls (not part of the design) ---------- */
+#mock { position: sticky; top: 0; z-index: 30; background: #0b0f0d; border-bottom: 1px solid #333; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+#mock h1 { font-size: 14px; margin: 0; flex-basis: 100%; font-weight: 600; color: #bbb; }
+#mock fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+#mock legend { float: left; font-size: 12px; color: #999; margin-right: 4px; padding: 0; }
+#mock label { position: relative; }
+#mock input { position: absolute; opacity: 0; inset: 0; margin: 0; }
+#mock span { display: inline-block; font-size: 12px; padding: 4px 8px; border: 1px solid #444; border-radius: 4px; color: #ccc; cursor: pointer; }
+#mock input:checked + span { background: #ddd; color: #111; border-color: #ddd; }
+#mock input:focus-visible + span { outline: 2px solid #8cf; outline-offset: 1px; }
+@media (max-width: 760px) { #mock { position: static; } }
+#note { max-width: 1280px; margin: 10px auto 0; padding: 0 12px; font-size: 13px; color: #aaa; }
+#stage { padding: 12px; display: flex; justify-content: center; }
+
+/* ---------- themes: tokens copied from packages/client/themes.js ---------- */
+.frame { --bg: #1d2622; --panel: #26322dee; --panel-2: #31403a; --ink: #efe9d8; --muted: #a9b3a6; --accent: #d7a84a; --accent-ink: #1d2622; --line: #4a5a52; --good: #7fc48a; --bad: #e0685a;
+  --display: 'Vollkorn SC', Georgia, serif; --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; --radius: 6px;
+  --grass: #6f9a4f; --grass-2: #86ad5c; --move: rgba(242, 204, 89, .22); --area: rgba(255, 115, 51, .45); --foe: #b5483c; --party: #4f7fc0; }
+.frame[data-theme=sunlit] { --bg: #8fd0e8; --panel: #fffdf4f2; --panel-2: #eef4dc; --ink: #23412f; --muted: #5f7a68; --accent: #2f9e6b; --accent-ink: #ffffff; --line: #c9dab5; --good: #2f9e6b; --bad: #d9483b;
+  --display: 'Baloo 2', 'Trebuchet MS', sans-serif; --body: 'Nunito', 'Segoe UI', system-ui, sans-serif; --radius: 14px; color-scheme: light; --move: rgba(255, 255, 255, .3); --area: rgba(255, 140, 38, .5); }
+.frame[data-theme=pocket] { --bg: #c7e8c1; --panel: #2b2d42f2; --panel-2: #3a3d5c; --ink: #f8f7ff; --muted: #b8b8d1; --accent: #ffd23f; --accent-ink: #2b2d42; --line: #545880; --good: #8be28b; --bad: #ff6b6b;
+  --display: 'Silkscreen', 'Courier New', monospace; --body: 'Nunito', 'Segoe UI', system-ui, sans-serif; --radius: 2px; --move: rgba(255, 217, 64, .3); --area: rgba(255, 102, 77, .5); }
+
+/* ---------- the frame: a phone (390 x 844) or a desktop window (1280 x 800) ---------- */
+.frame { container: page / inline-size; position: relative; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--body); border: 1px solid #444; width: 100%; max-width: 1280px; height: 800px; }
+.frame[data-size=phone] { width: 390px; max-width: 100%; height: 844px; border-radius: 22px; }
+
+/* ---------- the map: a drawn grid with pawns (stands in for the 3D view) ---------- */
+.map { position: absolute; inset: 0; }
+.map svg { width: 100%; height: 100%; display: block; }
+.map text { font: 600 5.5px var(--body); fill: #fff; paint-order: stroke; stroke: #0008; stroke-width: 1.4px; text-anchor: middle; }
+.map .rock { fill: #6b6b66; stroke: #4a4a45; stroke-width: .6; }
+.map .reach { fill: var(--move); stroke: var(--ink); stroke-opacity: .85; stroke-width: 1.1; }
+.map .dash { fill: none; stroke: var(--ink); stroke-opacity: .8; stroke-width: 1; stroke-dasharray: 3 2.2; }
+.map .cone { fill: url(#hatch); stroke: var(--ink); stroke-width: 1.1; }
+.map .ring { fill: none; stroke: #fff; stroke-width: 1; }
+.map .warn { font-size: 8px; fill: #ffd23f; }
+.map .cur { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+.frame.mono .ov { filter: grayscale(1); }
+.desk-only { display: none; }
+@container page (min-width: 720px) { .map { right: 300px; } .desk-only { display: block; } }
+
+/* ---------- the design (what style.css and actionpanel.css would hold) ---------- */
+.hud button { font: inherit; color: inherit; min-height: 44px; padding: 6px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.hud button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hud .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.hud .text { background: transparent; border-color: transparent; text-decoration: underline; text-underline-offset: 3px; padding: 6px 6px; }
+.hud .off { opacity: .45; cursor: not-allowed; }
+.top { position: absolute; top: 8px; left: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 4; }
+.toprow { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+@container page (min-width: 720px) { .top { right: 310px; } .cam { right: 310px; } .banner { left: calc((100% - 300px) / 2); } }
+.status { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 12px; }
+.status { min-width: 0; }
+.status strong { font-family: var(--display); font-size: 16px; display: block; line-height: 1.2; }
+.status span { font-size: 12px; color: var(--muted); }
+.status.mine { border-color: var(--accent); }
+.tools { display: flex; gap: 6px; }
+.tools .dot { width: 44px; padding: 0; display: grid; place-items: center; }
+.tools .dot svg { width: 16px; height: 16px; fill: var(--good); }
+.frame[data-state=offline] .tools .dot svg { fill: var(--bad); }
+.tools .burger { width: 44px; padding: 0; font-size: 20px; }
+.order { display: flex; gap: 4px; overflow: hidden; list-style: none; margin: 0; padding: 0; }
+.order li { flex: none; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--foe); border-radius: var(--radius); padding: 2px 8px; font-size: 13px; line-height: 1.25; }
+.order li.pc { border-left-color: var(--party); }
+.order li.now { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.order li small { display: block; font-size: 10px; opacity: .85; }
+.fb { position: absolute; left: 6px; top: 160px; width: 40px; height: 40px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; z-index: 4; font-size: 16px; }
+.cam { position: absolute; right: 10px; top: 236px; display: flex; flex-direction: column; gap: 6px; z-index: 3; }
+.cam button { width: 40px; min-height: 40px; padding: 0; }
+.banner { position: absolute; top: 110px; left: 50%; transform: translateX(-50%); z-index: 5; background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 8px 18px; text-align: center; box-shadow: 0 4px 18px #0006; width: max-content; max-width: 92%; pointer-events: none; }
+.banner b { font-family: var(--display); font-size: 20px; display: block; }
+.banner span { font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { .banner { animation: drop .25s ease-out; } @keyframes drop { from { transform: translate(-50%, -12px); opacity: 0; } } }
+.offbar { background: var(--bad); color: #fff; border-radius: var(--radius); padding: 8px 12px; font-size: 14px; }
+.offbar b { display: block; }
+
+.bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 8px 8px; z-index: 4; display: flex; flex-direction: column; gap: 6px; }
+@container page (min-width: 720px) { .bottom { right: 300px; align-items: center; } .bottom > .last, .bottom > .panel { width: min(760px, 100%); } }
+.last { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 4px 2px 10px; font-size: 13px; text-align: left; width: 100%; }
+.last.quiet { color: var(--muted); }
+.last span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .last { min-height: 36px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; box-shadow: 0 6px 20px #0005; }
+.panel .head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.panel .head .who strong { font-family: var(--display); font-size: 18px; }
+.panel .head .who span { font-size: 13px; color: var(--muted); margin-left: 6px; }
+.panel .head .who small { display: block; font-size: 12px; color: var(--accent); }
+.panel .head .btns { display: flex; gap: 6px; align-items: flex-start; flex: none; }
+.endturn { display: flex; flex-direction: column; align-items: center; line-height: 1.1; padding: 4px 12px !important; }
+.endturn small { font-size: 11px; font-weight: 400; }
+.chip { font-size: 12px; border: 1px solid var(--accent); color: var(--accent); border-radius: 20px; padding: 2px 8px; background: transparent; min-height: 32px !important; }
+.hp { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 4px 0; }
+.hp .bar { flex: 1; height: 8px; background: #0005; border-radius: 4px; overflow: hidden; }
+.hp .bar i { display: block; height: 100%; background: var(--good); }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
+.pills span { font-size: 12px; border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px; }
+.turnbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 6px; }
+.turnbar button { min-height: 48px; padding: 2px 4px; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1.15; border-width: 2px; }
+.turnbar b { font-size: 13px; }
+.turnbar small { font-size: 12px; }
+.turnbar .ready { border-color: var(--accent); }
+.turnbar .ready small { color: var(--accent); font-weight: 700; }
+.frame[data-theme=sunlit] .turnbar .ready small { color: var(--ink); }
+.turnbar .used { opacity: .7; border-style: dashed; }
+.turnbar .used b { text-decoration: line-through; }
+.turnbar .used small::before { content: '✓ '; }
+.turnbar .idle { opacity: .6; }
+.turnbar .open { outline: 2px solid var(--ink); outline-offset: -4px; }
+.turnbar .meter { width: 80%; height: 4px; background: #0005; border-radius: 2px; margin-top: 2px; overflow: hidden; }
+.turnbar .meter i { display: block; height: 100%; background: var(--accent); }
+.turnbar .ask { background: var(--accent); color: var(--accent-ink); }
+.wait { font-size: 13px; color: var(--accent); margin: 2px 0 4px; }
+.rows { display: grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 6px; }
+@container page (min-width: 720px) { .rows { grid-template-columns: 1fr 1fr; } }
+.row { text-align: left; display: grid !important; grid-template-columns: 1fr auto; gap: 0 8px; align-items: center; padding: 6px 10px !important; }
+.row strong { font-size: 15px; }
+.row small { grid-column: 1; color: var(--muted); font-size: 12px; }
+.row .cost { grid-row: 1 / span 2; grid-column: 2; font-size: 11px; border: 1px solid var(--line); border-radius: 20px; padding: 1px 6px; color: var(--muted); }
+.row.grey { opacity: .6; border-style: dashed; }
+.row.grey em { grid-column: 1 / span 2; font-style: normal; font-size: 12px; color: var(--ink); }
+.row.alert { border-color: var(--bad); border-width: 2px; }
+.row.alert strong::before { content: '⚠ '; color: var(--bad); }
+.verbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 6px; }
+.verbs button { min-height: 56px; padding: 4px; display: flex; flex-direction: column; justify-content: center; line-height: 1.15; }
+.verbs b { font-size: 14px; } .verbs small { font-size: 11px; color: var(--muted); }
+.verbs .grey { opacity: .6; border-style: dashed; }
+.lead2 { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); margin: -2px 0 6px; }
+.more { font-size: 12px; color: var(--muted); text-align: center; border: 1px dashed var(--line); border-radius: var(--radius); padding: 4px; margin-bottom: 6px; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { flex: 1; min-width: 0; padding: 6px 4px; font-size: 14px; min-height: 48px; }
+.tabs button[aria-selected=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.slotline { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 6px; }
+.aim p { margin: 0 0 4px; font-size: 14px; }
+.aim .what { font-family: var(--display); font-size: 17px; }
+.aim .warnline { color: var(--bad); font-weight: 700; }
+.frame[data-theme=sunlit] .aim .warnline { color: #b0281c; }
+.aim .help { font-size: 12px; color: var(--muted); }
+.aim .go { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; margin-top: 6px; }
+.down .marks { font-size: 22px; letter-spacing: 4px; margin: 2px 0; }
+.down .marks .f { color: var(--bad); } .down .marks .s { color: var(--good); }
+.down p { margin: 2px 0 6px; font-size: 14px; }
+.card { position: absolute; left: 54px; right: 10px; top: 120px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; box-shadow: 0 8px 30px #0008; }
+@container page (min-width: 720px) { .card { left: calc(50% - 300px); width: 420px; right: auto; transform: translateX(-90px); } }
+.card h2 { font-family: var(--display); margin: 0; font-size: 20px; display: flex; justify-content: space-between; align-items: baseline; }
+.card h2 small { font-family: var(--body); font-size: 13px; color: var(--muted); font-weight: 400; }
+.card h3 { font-family: var(--display); font-size: 15px; margin: 10px 0 4px; display: flex; justify-content: space-between; }
+.card h3 span { color: var(--accent); }
+.card p { margin: 2px 0; font-size: 14px; }
+.card .line { display: flex; justify-content: space-between; font-size: 14px; border-top: 1px solid var(--line); padding: 6px 0; }
+.card .ready { color: var(--accent); font-weight: 700; }
+.card .wide { width: 100%; margin-top: 6px; }
+.rp { position: absolute; inset: 0; z-index: 8; background: #0009; display: grid; place-items: center; padding: 12px; }
+.rp > div { background: var(--panel); border: 2px solid var(--accent); border-radius: var(--radius); padding: 14px; max-width: 360px; width: 100%; }
+.rp h2 { font-family: var(--display); color: var(--accent); margin: 0 0 6px; font-size: 20px; }
+.rp .opt { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; margin: 8px 0; }
+.rp .opt p { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.rp button { width: 100%; }
+
+/* the pinned drawer on a computer: Turns */
+.drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 300px; background: var(--panel); border-left: 1px solid var(--line); padding: 12px; z-index: 4; }
+.drawer h2 { font-family: var(--display); margin: 0 0 8px; font-size: 18px; }
+.drawer ol { list-style: none; margin: 0; padding: 0; }
+.drawer li { border: 1px solid var(--line); border-left: 3px solid var(--foe); border-radius: var(--radius); padding: 6px 8px; margin-bottom: 4px; font-size: 14px; display: flex; justify-content: space-between; }
+.drawer li.pc { border-left-color: var(--party); }
+.drawer li.now { outline: 2px solid var(--accent); }
+.drawer .tabsrow { display: flex; gap: 10px; font-size: 13px; color: var(--muted); margin-bottom: 10px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.drawer .tabsrow b { color: var(--ink); }
+
+/* alternative B: tabs by resource */
+.btabs button { display: flex; flex-direction: column; line-height: 1.1; font-size: 13px; }
+.btabs small { font-size: 11px; }
+.group { font-size: 11px; letter-spacing: .1em; color: var(--muted); margin: 4px 0 2px; }
+/* alternative C: a ring around the pawn */
+.ringmenu { position: absolute; z-index: 5; left: 51%; top: 38%; width: 0; height: 0; }
+@container page (min-width: 720px) { .ringmenu { left: calc((100% - 300px) * .505); top: 35%; } }
+.ringmenu button { position: absolute; transform: translate(-50%, -50%); border-radius: 999px; min-width: 76px; background: var(--panel); }
+.strip { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.strip .grow { flex: 1; }
+
+/* what a control would do: the mockup's in-place note */
+.say { position: absolute; z-index: 20; max-width: 300px; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: var(--radius); font-size: 13px; background: var(--panel-2); color: var(--ink); box-shadow: 0 6px 18px #0008; }
+.say::before { content: 'Would: '; font-weight: 700; color: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { .say { animation: fade .15s ease-out; } @keyframes fade { from { opacity: 0; } } }
+</style>
+</head>
+<body>
+<form id="mock" aria-label="Mockup controls">
+  <h1>Mockup of the player's screen at the table (#358). Not the game: every control says what it would do.</h1>
+  <fieldset><legend>Layout</legend>
+    <label><input type="radio" name="layout" value="a" checked><span>Recommended: turn bar</span></label>
+    <label><input type="radio" name="layout" value="b"><span>B: tabs by resource</span></label>
+    <label><input type="radio" name="layout" value="c"><span>C: ring on the map</span></label></fieldset>
+  <fieldset><legend>Size</legend>
+    <label><input type="radio" name="size" value="phone"><span>Phone 390 x 844</span></label>
+    <label><input type="radio" name="size" value="desk"><span>Desktop 1280 x 800</span></label></fieldset>
+  <fieldset><legend>State</legend>
+    <label><input type="radio" name="state" value="explore"><span>Exploring</span></label>
+    <label><input type="radio" name="state" value="turn" checked><span>My turn</span></label>
+    <label><input type="radio" name="state" value="aim"><span>Aiming an area</span></label>
+    <label><input type="radio" name="state" value="wait"><span>Someone else's turn</span></label>
+    <label><input type="radio" name="state" value="react"><span>Reaction asked</span></label>
+    <label><input type="radio" name="state" value="down"><span>Down</span></label>
+    <label><input type="radio" name="state" value="dead"><span>Dead</span></label>
+    <label><input type="radio" name="state" value="after"><span>After a fight</span></label>
+    <label><input type="radio" name="state" value="level"><span>Level-up ready</span></label>
+    <label><input type="radio" name="state" value="offline"><span>Offline</span></label></fieldset>
+  <fieldset><legend>Theme</legend>
+    <label><input type="radio" name="theme" value="classic" checked><span>Classic</span></label>
+    <label><input type="radio" name="theme" value="sunlit"><span>Sunlit</span></label>
+    <label><input type="radio" name="theme" value="pocket"><span>Pocket</span></label></fieldset>
+  <fieldset><legend>Check</legend>
+    <label><input type="checkbox" name="mono"><span>Overlays without colour</span></label></fieldset>
+</form>
+<p id="note">The states apply to the recommended layout; B and C are drawn on "My turn". The map is a flat drawing that stands in for the 3D view. Tap any control to see what it would do. Fonts fall back to system fonts here.</p>
+
+<div id="stage">
+<div class="frame" id="frame" data-size="desk" data-state="turn" data-theme="classic" data-layout="a">
+
+  <!-- ================= the map (all layouts) ================= -->
+  <div class="map" aria-hidden="true">
+    <svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <pattern id="grid" width="15" height="15" patternUnits="userSpaceOnUse"><rect width="15" height="15" fill="var(--grass)"/><rect x=".6" y=".6" width="13.8" height="13.8" fill="var(--grass-2)" opacity=".55"/></pattern>
+        <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" fill="var(--area)"/><rect width="1.4" height="4" fill="#fff" opacity=".55"/></pattern>
+      </defs>
+      <rect width="400" height="400" fill="url(#grid)"/>
+      <g transform="translate(0,-35)">
+      <rect class="rock" x="240" y="135" width="30" height="30"/><rect class="rock" x="120" y="60" width="30" height="15"/>
+      <g class="ov">
+        <path class="dash" data-show="turn" d="M60 45H330V330H60Z"/>
+        <path class="reach" data-show="turn" d="M150 135H240V165H255V240H150Z"/>
+        <path class="cone" data-show="aim" d="M195 180H210V165H225V135H180V165H195Z"/>
+        <g data-show="aim"><circle class="ring" cx="187.5" cy="142.5" r="7"/><circle class="ring" cx="217.5" cy="142.5" r="7"/><circle class="ring" cx="202.5" cy="157.5" r="7"/><circle class="ring" cx="217.5" cy="157.5" r="7"/><text class="warn" x="224" y="152">⚠</text></g>
+        <circle class="cur" data-show="wait react" cx="217.5" cy="142.5" r="8"/>
+      </g>
+      <g><circle cx="187.5" cy="142.5" r="5.5" fill="var(--foe)"/><text x="187.5" y="133">Goblin Warrior 1</text></g>
+      <g><circle cx="217.5" cy="142.5" r="5.5" fill="var(--foe)"/><text x="230" y="129">Goblin Warrior 2</text></g>
+      <g><circle cx="202.5" cy="157.5" r="5.8" fill="#7a5a44"/><text x="190" y="166">Wolf 1</text></g>
+      <g><circle cx="217.5" cy="157.5" r="5" fill="#3f7a5a"/><text x="230" y="168">Pip</text></g>
+      <g><circle cx="150" cy="112.5" r="5.5" fill="var(--foe)"/><text x="150" y="103">Goblin Warrior 3</text></g>
+      <g><circle cx="172.5" cy="187.5" r="5" fill="#b8473c" stroke="#fff" stroke-width=".6"/><text x="168" y="200">Brenna</text></g>
+      <g><circle cx="202.5" cy="187.5" r="5.5" fill="var(--party)" stroke="var(--accent)" stroke-width="1.2"/><text x="214" y="199">Wren</text></g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- ================= A: the recommendation ================= -->
+  <div class="hud" data-layout="a">
+    <header class="top">
+      <div class="toprow">
+      <div class="status" id="status">
+        <strong data-show="explore after level offline">Exploring</strong><span data-show="explore after level offline">Day 1, 08:00</span>
+        <strong data-show="turn aim down dead">Round 2 · Your turn</strong>
+        <strong data-show="wait">Round 2 · Goblin Warrior 2's turn</strong>
+        <strong data-show="react">Round 2 · Your reaction?</strong>
+        <span data-show="turn aim wait react down dead">Day 1, 08:00</span>
+      </div>
+      <div class="tools">
+        <button class="dot" aria-label="Connection good" data-say="Shows how good the link to the table is, in words. Unchanged (linkdot.js)."><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg></button>
+        <button class="burger" aria-label="Menu" data-say="Opens the drawer: Turns (Party when exploring), Sheet, Log, Handouts, Settings, About. Leave table is now inside Settings, group Table, not at the top of every tab.">☰</button>
+      </div>
+      </div>
+    <ol class="order" data-show="turn aim wait react down dead" aria-label="Turn order">
+      <li>Wolf 1</li><li class="now" data-show="wait react">Goblin Warrior 2</li><li data-show="turn aim down dead">Goblin Warrior 2</li>
+      <li class="pc now" data-show="turn aim down dead">Wren<small>You</small></li><li class="pc" data-show="wait react">Wren<small>You · next</small></li><li>Goblin Warrior 3</li><li class="pc">Pip</li><li>Goblin Warrior 1</li>
+    </ol>
+    <div class="offbar" data-show="offline" role="status"><b>Connection lost. Trying again…</b>Nothing you do is sent until the table is back.</div>
+    </header>
+
+
+    <div class="banner" data-show="turn" role="status"><b>Your turn, Wren</b><span>Action, Bonus Action, 30 ft and your Reaction.</span></div>
+
+    <button class="fb" aria-label="Send feedback" data-say="Opens the feedback panel (#359). Unchanged; cards and the aim bar keep clear of it on a phone.">💬</button>
+    <div class="cam"><button aria-label="Rotate left" data-say="Turns the view (Q on the keyboard).">⟲</button><button aria-label="Rotate right" data-say="Turns the view (E).">⟳</button><button aria-label="Zoom in" data-say="Zooms in.">+</button><button aria-label="Zoom out" data-say="Zooms out.">−</button></div>
+
+    <!-- the pinned drawer on a computer -->
+    <aside class="drawer desk-only" aria-label="Menu, pinned">
+      <div class="tabsrow"><b>Turns</b><span>Sheet</span><span>Log</span><span>Settings</span><span>About</span></div>
+      <h2 data-show="turn aim wait react down dead">Round 2</h2><h2 data-show="explore after level offline">Party</h2>
+      <ol data-show="turn aim wait react down dead"><li>Wolf 1<span>Bloodied</span></li><li class="now" data-show="wait react">Goblin Warrior 2<span>Healthy</span></li><li data-show="turn aim down dead">Goblin Warrior 2<span>Healthy</span></li><li class="pc now" data-show="turn aim down dead">▶ Wren (you)<span data-show="turn aim">6 / 8</span><span data-show="down">Dying</span><span data-show="dead">Dead</span></li><li class="pc" data-show="wait react">Wren (you)<span>6 / 8</span></li><li>Goblin Warrior 3<span>Healthy</span></li><li class="pc">Pip<span>10 / 10</span></li><li>Goblin Warrior 1<span>Healthy</span></li></ol>
+      <ol data-show="explore after level offline"><li class="pc">Wren (you)<span>6 / 8</span></li><li class="pc">Pip<span>10 / 10</span></li><li class="pc">Brenna<span data-show="explore offline">Dying</span><span data-show="after level">12 / 12</span></li><li class="pc">Odessa<span>10 / 10</span></li></ol>
+    </aside>
+
+    <!-- rewards card -->
+    <section class="card" data-show="after level" role="dialog" aria-labelledby="cc-h">
+      <h2 id="cc-h">The fight is won. <small>1 round</small></h2>
+      <p>Goblin Warrior x3, Wolf</p>
+      <h3>Experience <span data-show="after">+200 each</span><span data-show="level">+100 each</span></h3>
+      <div class="line"><span>Wren</span><span data-show="after">200 of 300 XP for level 2</span><span data-show="level">300 of 300 XP for level 2</span></div>
+      <div data-show="level"><p class="ready">Wren can reach level 2.</p>
+        <button class="primary wide" data-say="At a table: sends the DM the private note 'Wren has 300 XP and is ready for level 2.' (the existing note action), then reads 'Asked. Your DM levels Wren up.' In solo, or for the DM, this button reads 'Level up Wren' and opens the build screen at level 2.">Ask the DM to level up Wren</button></div>
+      <button class="wide" data-say="Closes the card. The panel keeps a 'Level 2 ready' chip when a level is waiting.">Continue</button>
+    </section>
+
+    <!-- the reaction question (as built, reactionprompt.js) -->
+    <div class="rp" data-show="react"><div role="dialog" aria-labelledby="rp-h">
+      <h2 id="rp-h">Use a reaction?</h2>
+      <p><b>Goblin Warrior 2 attacks you with Scimitar: 15 against Armor Class 12.</b></p>
+      <div class="opt"><b>Shield</b><p>Spends a level 1 spell slot · Adds 5 to Armor Class · Uses your Reaction</p>
+        <button class="primary" data-say="Casts Shield with the Reaction (unchanged).">Use Shield (level 1)</button></div>
+      <button data-say="Lets the hit stand (unchanged).">Do not react</button>
+    </div></div>
+
+    <div class="bottom">
+      <button class="last" data-show="turn wait react down" data-say="Opens the drawer on Log, scrolled to this line. The line is the newest log entry that names one of your creatures, in the log's own words.">
+        <span data-show="turn">Goblin Warrior 1 hits Wren with a Scimitar: 2 slashing.</span><span data-show="wait react">Goblin Warrior 2 moves next to Wren.</span><span data-show="down">Goblin Warrior 1 hits Wren with a Scimitar: 6 slashing. Wren is down.</span><b aria-hidden="true">›</b></button>
+
+      <!-- the panel, every state but aiming -->
+      <section class="panel" data-show="explore turn wait react down dead after level offline" aria-label="Wren">
+        <div class="head">
+          <div class="who"><strong>Wren</strong><span>Level 1 Wizard</span>
+            <small data-show="wait react">Your turn next.</small></div>
+          <div class="btns">
+            <button class="chip" data-show="level" data-say="Does what the rewards card's button did: asks the DM (at a table) or opens the level-up screen (solo, DM).">Level 2 ready</button>
+            <button data-say="Opens the drawer on Sheet.">Sheet</button>
+            <button class="primary endturn" data-show="turn" data-say="Ends Wren's turn at once (no second tap; question 4). The line under it says what is unused.">End turn<small>Action not used</small></button>
+            <button class="primary endturn" data-show="down" data-say="Ends the turn; the death save was already rolled at its start.">End turn<small>You can't act</small></button>
+          </div>
+        </div>
+        <div class="hp"><div class="bar"><i data-show="explore turn wait react after level offline" style="width:75%"></i></div><span data-show="explore turn wait react after level offline">6 / 8 HP · AC 12</span><span data-show="down dead">0 / 8 HP · AC 12</span></div>
+
+        <!-- the turn bar -->
+        <div class="turnbar" role="group" aria-label="This turn" data-show="turn wait react">
+          <button class="ready" data-show="turn" data-say="Opens the tab with Wren's likeliest action: Spells (a wizard has no attack). Reads 'Used' once the Action is spent; with Extra Attack, '1 attack left'." aria-label="Action, ready"><b>Action</b><small>Ready</small></button>
+          <button class="ready" data-show="turn" data-say="Opens the Bonus tab: everything that costs a Bonus Action (a rogue's Hide from level 2)." aria-label="Bonus Action, ready"><b>Bonus</b><small>Ready</small></button>
+          <button class="ready" data-show="turn" data-say="Opens the Move tab and draws the reach: solid edge for this turn, dashed edge with Dash. 15 feet of 30 left." aria-label="Move, 15 of 30 feet"><b>Move</b><small>15 of 30 ft</small><span class="meter"><i style="width:50%"></i></span></button>
+          <button class="idle" data-show="wait react" data-say="Nothing: it isn't your turn. The segment says so in words." aria-label="Action, not your turn"><b>Action</b><small>Not your turn</small></button>
+          <button class="idle" data-show="wait react" data-say="Nothing: it isn't your turn." aria-label="Bonus Action, not your turn"><b>Bonus</b><small>Not your turn</small></button>
+          <button class="idle" data-show="wait react" data-say="Nothing: it isn't your turn." aria-label="Move, not your turn"><b>Move</b><small>Not your turn</small></button>
+          <button class="ready" data-show="turn wait" data-say="Opens the Reactions tab: a summary of what Wren will do, and Change." aria-label="Reaction, ready"><b>Reaction</b><small>Ready</small></button>
+          <button class="ready ask" data-show="react" data-say="Brings the question back to the front." aria-label="Reaction, answer the question"><b>Reaction</b><small>Answer</small></button>
+        </div>
+        <div class="pills" data-show="explore turn wait react after level offline"><span>Level 1 slots 2/2</span></div>
+
+        <!-- exploring: four fixed verbs -->
+        <div data-show="explore after level offline">
+          <div class="verbs">
+            <button data-say="Sends search: one Wisdom (Perception) check against everything hidden within 15 ft (secret doors, traps, things hiding)."><b>Search</b><small>Perception +1</small></button>
+            <button class="grey" data-say="Nothing yet: greyed, with the engine's reason under the verbs (hideProblem): Goblin Warrior 3 can see Wren."><b>Hide</b><small>Seen</small></button>
+            <button data-say="Arms Follow: tap a party member to walk behind them."><b>Follow</b><small>Walk behind</small></button>
+            <button data-say="Sends partyFollow with Wren as leader: everyone walks behind Wren. The formation popup opens to pick the shape."><b>Lead</b><small>All behind you</small></button>
+          </div>
+          <div class="lead2"><span>Hide: Goblin Warrior 3 can see Wren.</span></div>
+          <div class="lead2"><span>Pip leads · two abreast</span><button class="text" data-say="Sends partyFollow with Wren as leader (the last tap leads), then opens the formation popup.">Take the lead</button></div>
+          <div class="rows">
+            <button class="row alert" data-show="explore offline" data-say="Selects Brenna and moves the view to her."><strong>Brenna is dying (0 HP)</strong><small>Wren has no healing spell or item. Outside a fight Brenna stays dying until healed or the DM steps in.</small></button>
+            <button class="row grey" data-show="explore offline" data-say="Nothing: the game has no Help action yet (engine amendment E-P3). The row says so instead of hiding."><strong>Stabilise with Medicine (DC 10)</strong><em>Not in the game yet: ask the DM.</em></button>
+          </div>
+          <nav class="tabs" role="tablist" aria-label="Actions"><button role="tab" aria-selected="true" data-say="The Explore tab (open).">Explore</button><button role="tab" aria-selected="false" data-say="Opens Spells: slots, Sort and filter, the spells.">Spells</button><button role="tab" aria-selected="false" data-say="Opens Features.">Features</button><button role="tab" aria-selected="false" data-say="Opens Items.">Items</button></nav>
+        </div>
+
+        <!-- my turn: Spells -->
+        <div data-show="turn">
+          <div class="slotline"><span>Level 1 ●●  2 of 2 left</span><button class="text" data-say="Opens Sort (Level, Name, School, Casting time) and Filters in a small sheet, so the list keeps its room on a phone.">Sort and filter</button></div>
+          <div class="rows">
+            <button class="row" data-say="Arms Fire Bolt: tap a creature in range to cast."><strong>Fire Bolt</strong><small>Cantrip · 120 ft · 1d10 fire</small><span class="cost">Action</span></button>
+            <button class="row" data-say="Arms Burning Hands: the panel becomes the aim bar (see the state 'Aiming an area')."><strong>Burning Hands</strong><small>Level 1 · 15 ft cone · 3d6 fire</small><span class="cost">Action</span></button>
+          </div>
+          <div class="more">▾ 2 more: scroll or tap for more room</div>
+          <nav class="tabs" role="tablist" aria-label="Actions"><button role="tab" aria-selected="true" data-say="Spells (open).">Spells</button><button role="tab" aria-selected="false" data-say="Opens Bonus.">Bonus</button><button role="tab" aria-selected="false" data-say="Opens Move: Speed left, Dash, Disengage, Dodge, Hide, Search, the legend for the edges.">Move</button><button role="tab" aria-selected="false" data-say="Opens Features.">Features</button><button role="tab" aria-selected="false" data-say="Opens Items.">Items</button></nav>
+        </div>
+
+        <!-- someone else's turn: Reactions summary -->
+        <div data-show="wait react">
+          <p class="wait" style="margin:0 0 4px">Reaction this round: ready</p>
+          <div class="rows">
+            <div class="row"><strong>Shield</strong><small>asks you</small></div>
+            <div class="row"><strong>Opportunity Attack</strong><small>always</small></div>
+          </div>
+          <div class="lead2"><span>What Wren does when the moment comes.</span><button class="text" data-say="Opens today's choices in place: Never, Only if it turns the hit into a miss, Always, Ask.">Change</button></div>
+          <nav class="tabs" role="tablist" aria-label="Actions"><button role="tab" aria-selected="true" data-say="Reactions (open).">Reactions</button><button role="tab" aria-selected="false" data-say="Opens Spells, every row greyed 'It isn't your turn'.">Spells</button><button role="tab" aria-selected="false" data-say="Opens Features.">Features</button><button role="tab" aria-selected="false" data-say="Opens Items.">Items</button></nav>
+        </div>
+
+        <!-- down -->
+        <div class="down" data-show="down">
+          <p><b>Dying.</b></p>
+          <div class="marks" role="img" aria-label="Death saves: 1 success, 1 failure"><span class="s">✓ ○ ○</span>  <span class="f">✗ ○ ○</span></div>
+          <p>Rolled for you at the start of your turn. Three successes and you are stable; three failures and you die. Any healing brings you back up.</p>
+          <p>Your friends can heal you.</p>
+        </div>
+        <!-- dead -->
+        <div class="down" data-show="dead">
+          <p><b>Wren has died.</b></p><p>Your DM decides what happens next.</p>
+          <button data-say="Opens the drawer on Log at this fight.">Open the log</button>
+        </div>
+      </section>
+
+      <!-- the aim bar -->
+      <section class="panel aim" data-show="aim" aria-label="Aiming Burning Hands">
+        <p class="what">Burning Hands · 15 ft cone</p>
+        <p aria-live="polite">Catches Goblin Warrior 1, Goblin Warrior 2 and Wolf 1.</p>
+        <p class="warnline">⚠ Also catches Pip, on your side.</p>
+        <p class="help">Tap another square to aim again. The aim stays where you put it.</p>
+        <div class="go"><button data-say="Disarms Burning Hands; the panel comes back (Escape does the same).">Cancel</button><button class="primary" data-say="Sends cast with the locked square: the same creatures as listed, whatever the pointer does on the way here.">Cast Burning Hands</button></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ================= B: tabs by resource ================= -->
+  <div class="hud" data-layout="b" hidden>
+    <header class="top"><div class="toprow"><div class="status mine"><strong>Round 2 · Your turn</strong><span>Day 1, 08:00</span></div><div class="tools"><button class="burger" aria-label="Menu" data-say="Opens the drawer.">☰</button></div></div></header>
+    <div class="bottom">
+      <section class="panel">
+        <div class="head"><div class="who"><strong>Wren</strong><span>6 / 8 HP</span></div><div class="btns"><button class="primary" data-say="Ends the turn.">End turn</button></div></div>
+        <p class="group">ATTACKS</p><p style="margin:0;font-size:13px;color:var(--muted)">None: Wren has no attack.</p>
+        <p class="group">SPELLS</p>
+        <div class="rows"><button class="row" data-say="Arms Fire Bolt."><strong>Fire Bolt</strong><small>Cantrip · 120 ft</small></button><button class="row" data-say="Arms Burning Hands."><strong>Burning Hands</strong><small>Level 1 · cone</small></button></div>
+        <p class="group">FEATURES</p><p style="margin:0 0 6px;font-size:13px;color:var(--muted)">None that cost an Action.</p>
+        <nav class="tabs btabs" role="tablist"><button role="tab" aria-selected="true" data-say="Everything that costs an Action, grouped by kind.">Action<small>Ready</small></button><button role="tab" aria-selected="false" data-say="Everything that costs a Bonus Action.">Bonus<small>Ready</small></button><button role="tab" aria-selected="false" data-say="Move and its actions.">Move<small>15 ft</small></button><button role="tab" aria-selected="false" data-say="Reactions.">React<small>Ready</small></button><button role="tab" aria-selected="false" data-say="Items, passive features, the rest. Rejected: exploring needs another set of tabs, and Items and Features hide here.">More</button></nav>
+      </section>
+    </div>
+  </div>
+
+  <!-- ================= C: a ring on the map ================= -->
+  <div class="hud" data-layout="c" hidden>
+    <header class="top"><div class="toprow"><div class="status mine"><strong>Round 2 · Your turn</strong><span>Day 1, 08:00</span></div><div class="tools"><button class="burger" aria-label="Menu" data-say="Opens the drawer.">☰</button></div></div></header>
+    <div class="ringmenu">
+      <button style="left:0;top:-70px" data-say="Opens the spell list in a sheet.">Spell</button>
+      <button style="left:-80px;top:-20px" data-say="Wren has no attack: greyed.">Attack</button>
+      <button style="left:80px;top:-20px" data-say="Sends dash.">Dash</button>
+      <button style="left:-50px;top:40px" data-say="Sends hide, or says why not.">Hide</button>
+      <button style="left:50px;top:40px" data-say="The rest, in a sheet. Rejected: nothing is on the screen until the pawn is tapped, and the ring covers the spaces next to Wren.">More</button>
+    </div>
+    <div class="bottom"><section class="panel strip"><strong>Wren</strong><span>6 / 8 HP</span><span class="grow">Action ● Bonus ● 15 ft</span><button class="primary" data-say="Ends the turn.">End turn</button></section></div>
+  </div>
+
+  <p id="live" class="sr" aria-live="polite" style="position:absolute;left:-9999px"></p>
+</div>
+</div>
+
+<script>
+// A few lines: the mockup's switches and the "Would:" notes. Nothing real runs.
+const F = document.getElementById('frame'), say = document.createElement('p'); say.className = 'say';
+const v = (n) => document.querySelector(`#mock [name=${n}]:checked`)?.value;
+const set = () => {
+  const st = v('layout') === 'a' ? v('state') : 'turn';
+  Object.assign(F.dataset, { size: v('size'), state: st, theme: v('theme'), layout: v('layout') });
+  F.classList.toggle('mono', !!document.querySelector('#mock [name=mono]').checked);
+  F.querySelectorAll('[data-layout]').forEach((p) => { p.hidden = p.dataset.layout !== v('layout'); });
+  F.querySelectorAll('[data-show]').forEach((e) => { const on = e.dataset.show.split(' ').includes(st); e.hidden = !on; if (e instanceof SVGElement) e.style.display = on ? '' : 'none'; });
+  F.querySelectorAll('.hud[data-layout=a] .panel button, .hud[data-layout=a] .last').forEach((b) => b.classList.toggle('off', st === 'offline'));
+  say.remove(); };
+document.querySelector(`#mock [name=size][value=${innerWidth < 760 ? 'phone' : 'desk'}]`).checked = true;
+document.getElementById('mock').addEventListener('change', set); set();
+F.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button'); if (!b || !b.dataset.say) return;
+  say.textContent = b.classList.contains('off') ? 'Nothing: greyed while the link is lost. The bar at the top says why.' : b.dataset.say;
+  F.append(say); const f = F.getBoundingClientRect(), r = b.getBoundingClientRect(), w = Math.min(300, f.width - 16);
+  say.style.width = w + 'px'; say.style.left = Math.max(8, Math.min(r.left - f.left, f.width - w - 8)) + 'px';
+  const below = r.bottom - f.top + 6, h = say.offsetHeight; say.style.top = (below + h < f.height ? below : Math.max(8, r.top - f.top - h - 6)) + 'px';
+  document.getElementById('live').textContent = say.textContent; });
+</script>
+</body>
+</html>
