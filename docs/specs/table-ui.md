@@ -5,7 +5,11 @@ Status: draft by an agent, to be reviewed by the design owner. Issue #181
 absorbs #173 (menu with Settings and About). **Amended 15 November 2026** (#347)
 to the owner's answers to its seven questions and the wording of the defeat card:
 six defaults and the card's words are confirmed, and one answer changed the design,
-the rule for who leads the party (Decision 6; question 4).
+the rule for who leads the party (Decision 6; question 4). Two more items of the
+owner's 15 November answers (body items 8 and 9 of #193, "Beej (lead 4)") are
+recorded under "What the engine must add": a hostile cast at a party member
+lands before the fight starts (E23), and spell kinds are tagged by hand (E12,
+amended; a schema amendment).
 
 Covers what the player and the DM touch around the map: the slide-out drawer,
 the combat tracker, the context action panel, what happens when a fight is
@@ -758,8 +762,10 @@ when greyed.
   | Kind: Damage, Healing, Control, Utility | a derived tag, below |
   | Class | shown only if the creature has more than one class |
 
-- **Where the Kind tag comes from, without inventing data.** The pack has no
-  such field and none is added. A spell's `def.effects` are steps from a
+- **Where the Kind tag comes from** (amended 15 November 2026: the owner chose to
+  **tag spell kinds by hand now**; see E12). The first design below derived
+  kinds from the steps and added no field; that stays as the fallback for a
+  spell that carries no tag. Derived today: **no pack field exists**. A spell's `def.effects` are steps from a
   closed list (`STEPS` in `schema.js`), and `spellProfile` already walks them
   to decide `harmful` and `heals`. A new pure function there,
   `spellKinds(def)`, returns the kinds from the steps it finds:
@@ -769,7 +775,9 @@ when greyed.
   none of them. A spell can have several. It is returned as `sp.kinds`; the
   client only reads it. The builder lists how the 339 spells fall out and
   fixes the function, not the data, where the split looks wrong; a spell
-  entered as `manual` (no steps) is Utility, honestly.
+  entered as `manual` (no steps) is Utility, honestly. **Amended:** a spell may now
+  carry its kinds by hand, which settles the spells the steps cannot (the 211 that
+  derive `[]`); the spell's own tag wins over the derived one (E12).
 - **Class filter and multiclass.** The engine has one class per character
   (`e.cls`, one `casting` in `derive.js`); multiclassing is #175. The Class
   chip is hidden until a character carries more than one, and what it needs
@@ -1005,6 +1013,7 @@ in the next section.
 | E18 | Items that do things (potions, scrolls, wands with charges): an `items` content kind reusing the effect steps, and an `item` action. | content, action | controller, DM | — | — | later | not scheduled |
 | E19 | The monster AI may attack a creature at 0 Hit Points (SRD: within 5 ft, a critical hit that adds failures). Only if the owner says so (question 1). | AI | engine | — | — | no | after 5 |
 | E20 | Stepping away (#300, the owner's first comment on #246): `stepAway { actor, how? }`, `stepBack { actor }`, settings `away` and `breaks`. Built; see the build notes, "E20: stepping away". | actions, settings | controller (as `breaks` allows), DM | everything | their party's `away` field and events only | 22 (turn stamps) | the tracker control, the break button |
+| E23 | **A hostile cast at a party member lands, then the fight starts** (the owner, 15 November 2026, body item 8 of #193; it was dropped, DEBT T7). With `autoEngage` on and no fight, the DM's `cast` of a harmful spell at a party member runs its steps (slot spent, saves, damage, conditions) and **then** starts the fight; today `casting.js` returns into `startEncounter` or `engage` before anything resolves, so the cast is lost and must be sent again. Engine amendment to build, not built. Proposals for the details (design choice, lead's proposal): the fight starts after the cast has resolved and the events are kept in order (`castEnd`, then `encounterStart`); initiative is rolled as it is today; the caster's Action for round 1 counts as used, the slot is spent once and not again; a spell that kills or drops the whole party can end the fight the moment it starts (the defeat rules of Decision 1 apply). The same drop exists for `attack` and monster `act` (`attacks.js`, the `autoEngage` branch before `engage`); to be consistent the lead proposes they land too, which the owner has not said and is to confirm. A rejected cast still changes nothing. | action, `casting.js`, `attacks.js` | DM (and a player's cast, if the owner confirms the proposal) | everything | the events as for any cast, then the fight's events | no | none |
 
 Nothing in E1 to E20 lets a client send what the engine should compute: the
 client sends `conclusion`, `pass`, `rewind` and the existing actions, and
@@ -1025,7 +1034,8 @@ checked at 390 x 844 with touch and at 1280 x 800 (`npm run smoke` by hand).
 | T2 | **The tracker in the drawer.** Rows as in Decision 3: initiative for own side, unseen ghost row, Dying counts, Reaction used for own side only, DM's controls kept and folded behind Edit on a phone; `#order` opens the drawer on the tracker; the turn is announced once per turn through the live region. | client agent | `packages/client/tracker.js`, `style.css`, `index.html`, `app.js` (small) | A player's tracker, with a hidden creature acting, shows no number and no name that the view did not send; the DM's shows all; tapping a row selects, focuses and, on a phone, closes the drawer; works at both sizes; a test in `tests/` drives `rows`/`rowHTML` from a `playerView` and from the full state. |
 | T3 | **The action panel shell.** `actionpanel.js`: the head, status line with how-it-ends cards, and tabs by `panelContext`; the **Explore** and **Reactions** tabs from what exists (`usesFor`, Follow, Search, Hide, `reactionsHtml`); one temporary tab, "All", holding today's `#actions` bar unchanged so nothing is lost before T4; compact and raised heights; the `panelTab` preference. E15 and E16 optional beside it. | client agent (engine lane for E15, E16) | `packages/client/index.html`, `style.css`, `app.js`, `actionpanel.js` (new), `reactionsheet.js`, `features.js` (export only) | Exploring shows Explore first with the ranking of Decision 6, the DM's rest buttons, no Lead the party for a player; on another's turn Reactions is greyed with a reason or, with a pending prompt, active and pulsing while `#rp` still answers; the map stays tappable at both sizes; `panelContext` and `rankExplore` have tests. |
 | T3b | **The lead rule.** Decision 6's "The lead": Lead the party always shown in the Explore tab (greyed with its reason, never hidden), the lead mark on the leader's chip and pawn, the log line and the toast to the previous leader, Give the lead on each row of the DM's marching order. The engine needs no change: one test pins that a second `partyFollow` by another controller takes the lead and puts the old leader behind, that the DM may give it to any party character outside a fight, and that a fight refuses it. After E22 (built). | client agent (the test: engine lane reviews) | `packages/client/actionpanel.js`, `app.js` (`describe`, the toast, the lead mark), `tracker.js`, `formation.js` (the DM's row), `packages/client/test/`, `packages/rules/test/` (the pinning test only), `scripts/smoke/formation.mjs` | at both sizes, two players and the DM: both see Lead the party at all times; each tap takes the lead and the log says who; the previous leader is told; the DM gives it to a third character; in a fight the row is greyed with the engine's sentence; no page errors |
-| T4e | **Spell kinds.** E12 (and E14 `stand` if taken). | engine lane | `packages/rules/src/effects.js`, `engine.js` (only if E14), `tests/` | `spellKinds` returns kinds for every spell; the test prints the split; no pack file changed. |
+| T4e | **Spell kinds.** E12 (and E14 `stand` if taken). **Amended 15 November 2026:** the optional spell field `kinds` (schema amendment), `spellKinds` preferring it, and every spell tagged by hand. | engine lane | `packages/rules/src/effects.js`, `content/schema.js`, `content/srd52/spells*.js`, `engine.js` (only if E14), `tests/` | `spellKinds` returns kinds for every spell; the test prints the split and fails on an untagged manual spell; a tag outside `SPELL_KINDS` or a repeat is refused by `lintPack`; the derived kinds are unchanged for an untagged spell. |
+| T4f | **A hostile cast lands, then the fight starts.** E23. | engine lane | `packages/rules/src/engine/casting.js`, `attacks.js` (if confirmed), `docs/DEBT.md` (strike the T7 note), `tests/` | With `autoEngage` on and no fight, a DM's harmful cast at a party member deals its damage or applies its condition, spends the slot once, and then the fight starts with the events in that order; with `autoEngage` off nothing changes; a rejected cast changes nothing; the same replays from the seed. |
 | T4a | **Attacks, Bonus, Move, Features tabs.** Rows with visible reasons; Bonus built as the filter described; Move with the budget, standard actions, objects in reach, fly; Features with pips and recharge text; "All" removed once these cover what it held. | client agent | `actionpanel.js`, `app.js` (the `refresh()` bar code is removed), `features.js`, `classes.js` (only where it returns buttons), `style.css`, `tests/` | Every button the old bar built has a row; a greyed row names its reason on screen; Second Wind, Dash, Disengage, Hide, Search, objects and fly rows behave as before; the choosers still open; monsters' `actions` list under Attacks. |
 | T4b | **Spells and Items tabs.** The slot strip, sort, filters, the Kind chip from `sp.kinds`, Cantrips and Prepared, Can cast now, the Class chip hidden until #175, Metamagic entry, Items as gear and light. | client agent | `actionpanel.js`, `style.css`, `tests/` | The slot strip is visible whatever the sort; sort and each filter work and combine; a spell greyed shows its reason, including "Nobody within N ft"; a spell armed collapses the panel on a phone and cancelling restores it; sort order is remembered. |
 | T5e | **Defeat, engine.** E1, E2, E3. | engine lane | `packages/rules/src/engine.js`, `history.js`, `packages/server/src/tables.js`, `packages/client/transport.js` (`rewind`, pins), `packages/server/README.md`, `docs/DEBT.md` (strike W10 where fixed), `tests/` | A party all at 0 keeps fighting until saves resolve; a 20 revives; all-Stable or all-dead ends in `defeat`; `rewind` restores the fight start with new dice and Undo takes it back; a pin survives a server restart and is dropped by `loadMap`; players cannot send `rewind`. |
@@ -1161,6 +1171,21 @@ What was settled while building, and where the build differs from the text above
   and does not guess; today that is 211 of 339 spells. The client shows those under every kind,
   marked as not known. Steps under a teleport's `blocked` branch (what befalls the caster) do not
   count. `tempHp` and `cure` count as healing.
+  **Amended 15 November 2026 (body item 9 of #193: "tag by hand now").** What was
+  checked: kinds are **derived from steps today and nowhere stored**
+  (`spellKinds` and `SPELL_KINDS` in `effects.js`; `content/schema.js` has no spell
+  field for kinds, and `lintSpell` would not refuse an unknown key but
+  `homebrew.md` strict mode would). So hand-tagging **needs a schema amendment**:
+  an optional spell field **`kinds`**, a list drawn from `SPELL_KINDS` (`damage`,
+  `healing`, `control`, `utility`), at most four, no repeats, named `kinds` and
+  not `kind` because an `attack` step already has a `kind` of `weapon` or `spell`
+  (the name is the lead's proposal). `schema.js` exports the list and
+  `lintSpell` checks it; `spellKinds(def)` returns the tag when present and the
+  derivation otherwise; `homebrew.md`'s `shapes.js` gets the field (B2). The
+  211 untagged spells are then tagged by hand in `content/srd52/spells*.js`, a
+  content change (data only, no function), done once and checked by a test that
+  prints the split and fails if a manual spell is untagged. The client is
+  unchanged. `npm run content` should count untagged spells.
 - **E13** was done by #182 (`e.spellClass`, `e.classes`); nothing added here.
 - **E14.** `stand { actor }`: in a fight only on its own turn and for half its Speed (refused with
   the feet needed if too little is left); outside a fight it costs nothing.

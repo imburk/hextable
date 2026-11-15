@@ -170,10 +170,14 @@ ending `.hextable-character.json`, at most 96 KB, with this shape:
 ```
 
 Nothing in the file is a secret, and nothing in it names a person beyond
-monikers (Decisions 7 and 8). **The file never carries homebrew content**: it
-lists homebrew ids and hashes in `needs.homebrew` so a table can say what it
-lacks, but the entries themselves are never taken from a file (`homebrew.md`,
-Decision 4). A character's own `cid` is its unique id (Decision 8).
+monikers (Decisions 7 and 8). **Homebrew in the file** (amended 15 November 2026; the owner reopened the
+14 November rule): it lists homebrew ids and hashes in `needs.homebrew` so a
+table can say what it lacks, and it **may carry a `homebrew.bundle`** of the
+entries its sheet names (the lead's proposal: at most 12 entries and 24 KB, no
+monsters, inside the 96 KB file limit). A bundle is gated on the server, read
+back to the DM in plain words, **denied by default**, and enters a table only if
+the DM allows that piece (`homebrew.md`, Decision 4). The bundle is not covered
+by the signed history. A character's own `cid` is its unique id (Decision 8).
 The sheet stays exactly the shape `validate` knows: the history travels beside
 the sheet, not inside it, so `SHEET_FIELDS` and `validate` do not change.
 
@@ -525,7 +529,7 @@ do about it.
 
 | Kind | What is compared | What the DM can do |
 |---|---|---|
-| **Missing content** | Every id the sheet names (class, subclass, spells, feats, magic items, weapons, armour, tools): is it in this table's content? Homebrew ids (`hb-...`, `homebrew.md`) are looked for among the DM's own packs for this table. **Homebrew is never taken from a file.** A homebrew piece plays only if the DM's own packs already hold an entry with the same id and hash; otherwise the report shows it as "not in this table's rules". | **Refuse** the character. **Accept without it**: the entry is taken off the playing copy and written to `parked` in the file (a name, never stats), and the report says what the character does not have here. **Stand in**: a stand-in rule below. For a homebrew piece the DM can do nothing about it inside the review: a DM who wants it adds it to their own pack outside the review, from what the player gave them outside the app, and the player offers again. |
+| **Missing content** | Every id the sheet names (class, subclass, spells, feats, magic items, weapons, armour, tools): is it in this table's content? Homebrew ids (`hb-...`, `homebrew.md`) are looked for among the DM's own packs for this table. **A homebrew piece is denied by default** (the owner, 15 November 2026). It plays if the table's packs already hold an entry with the same id and hash; otherwise the report shows it as "not in this table's rules", and, when the file's `homebrew.bundle` carried it and it passed the server's gate, with a generated plain-language reading from which the DM may **allow** it (`homebrew.md`, Decision 4; the details are the lead's proposal). | **Refuse** the character. **Accept without it**: the entry is taken off the playing copy and written to `parked` in the file (a name, never stats), and the report says what the character does not have here. **Stand in**: a stand-in rule below. For a homebrew piece the DM may **allow** it inside the review when the file carried it and it passed the gate (it enters as a guest pack); otherwise a DM who wants it adds it to their own pack outside the review, and the player offers again. |
 | **Different version of content** | The `needs.packs` versions (`pack.version` in `content/srd52/pack.js`) against the table's; for homebrew, the `hash` of the entry against the table's entry with the same id. | **Accept** (the table's version plays), or **refuse**. A homebrew entry with the same id and a different hash is flagged separately: it is a different thing with the same name, and the table's entry is the one that plays. |
 | **Tier differences** | The sheet's features and items by tier (`auto`, `assist`, `manual`; `derive(sheet).record.feats`, `CONTENT.items[x].tier`). Not a fault, a fact: "of this character's 21 features, 4 need you to apply them by hand." | Accept. Information, never a block on its own. |
 | **Table rules** | The table's `settings` against the `rules` snapshot a block records (the settings that touch characters: `conclusion`, `xpShare`, `passiveFind`, `vertical`, `climbing`, `cover`, `creatureCover`; the list is a constant in `compat.js`). The snapshot is a signed claim like the rest: it says which rules the previous table played under. | Accept. Information: "levelled at a table where Experience Points were shared in full; here they are split." |
