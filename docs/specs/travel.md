@@ -875,3 +875,7 @@ Each has a default; work proceeds on the default.
     "very familiar" only by the DM.*
 12. **A parked group's screen.** *Default: their own place, frozen, with a band saying the table is
     with the others; they hear only out-of-character talk from the other place.*
+
+## Adventure modules
+
+A world pack inside an adventure module takes its maps and assets from the module: see [adventure-module.md](adventure-module.md) ("Where this spec changes or meets existing specs", item 2).

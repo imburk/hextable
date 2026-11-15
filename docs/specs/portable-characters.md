@@ -1068,3 +1068,7 @@ was settled while building:
   exported, imported and played, but its Edit button says it cannot be opened yet).
 - **For a player joining a table later (P8, not built):** the lobby's Join would need a chosen entry from this list sent as an offer; the file is
   already the shape P5 expects, and `LIMITS` and `pickProblem` can be reused for what a table admits. The server has no `admit` yet (P4).
+
+## Adventure modules
+
+An adventure module presets `characters`, `level` and `takeaway` and offers its pregens as the DM's stable: see [adventure-module.md](adventure-module.md) (Decision 3, and item 5 of "Where this spec changes or meets existing specs").

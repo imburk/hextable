@@ -657,3 +657,7 @@ needs P5; P7 needs P2 and P6's card component.
 10. **Shopping in a fight.** *Default: refused for players; the DM can still edit.*
 11. **Tie a store to a scene**, so that starting the scene shows it? *Default: not
     now; the DM shows it with one tap.*
+
+## Adventure modules
+
+A market pack can also reach a table inside an adventure module, through the same linter and import: see [adventure-module.md](adventure-module.md) (Decision 2 and "Where this spec changes or meets existing specs", item 3).
