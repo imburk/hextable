@@ -13,7 +13,7 @@ import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, KIT, mountBudget, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, KIT, mountAct, mountBudget, objectEffects, resolveAttack, runAction, startEncounter } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;       // walking this close to a hostile starts the fight
 
@@ -603,21 +603,6 @@ export const handlers = {
   },
 };
 
-// A controlled mount's Dash or Disengage (stage C6a): on its rider's turn, from its own action (`budget.mount`),
-// never as a Bonus Action. Its Dash adds its Speed to its own movement; its Disengage lasts the rest of the turn.
-function mountAct(s, m, a, what, ev) {
-  const r = steering(s, m);
-  !a.bonus || fail(`A controlled mount's ${what} takes its action.`);
-  inFight(s, m.id) || fail(`${m.name} is outside the battle.`);
-  const bud = turnBudget(s, m) || fail(`${m.name} acts on ${r.name}'s turn.`);
-  up(m) || fail(`${m.name} is down.`);
-  const by = incapacitated(m);
-  !by || fail(`${m.name} is ${by} and can't act.`);
-  bud.action >= 1 || fail(`${m.name} has already used its action this turn.`);
-  bud.action--;
-  if (what === 'Dash') { bud.move += speedOf(s, m); bud.dashes = (bud.dashes | 0) + 1; } else m.cond.disengaged = {};
-  ev.push({ type: 'std', id: m.id, action: what });
-}
 // Where a rider gets down (stage C6a): `to` if given, else the nearest. An unoccupied space it can stand in, within
 // 5 ft of the mount (any part of it), with no wall between it and the mount, in the arena if it is fighting, and on
 // ground within a step of the mount's. A space held by a creature the party does not know of is not refused to a

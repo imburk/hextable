@@ -191,7 +191,7 @@ for (const grid of GRIDS) {
     // Its attack is refused, as anything but Dash, Disengage and Dodge.
     refused(s, { type: "attack", actor: horse, attack: "hooves", target: "rogue" }, DM, /can only Dash, Disengage or Dodge/);
     refused(s, { type: "act", actor: horse, action: CONTENT.monsters.warhorse.actions[0].id, target: "rogue" }, DM, /can only Dash, Disengage or Dodge/);
-    refused(s, { type: "dodge", actor: horse }, U1, /Dodge is not in the engine yet/);
+    refused(s, { type: "dodge", actor: horse }, U1, /already used its action/);
     // Another player may not direct it.
     refused(s, { type: "move", actor: horse, to: from }, U2, /isn't yours/);
     // Dismount: half Speed, a free space within 5 ft of the horse.
@@ -371,8 +371,37 @@ test("a ridden steed's before or after choice waits until it is ridden no more (
   assert.equal(s.entities[horse].bond.order ?? "after", "after");
 });
 
-test("labels: mount and dismount read in plain words", { todo: "history.js (describeStep) needs a label for mount and dismount: outside this job's files" }, () => {
+test("labels: mount and dismount read in plain words", () => {
   const { s, horse } = table("hex");
-  const before = mark(s), r = ok(mount(s, "fighter", horse, U1));
-  assert.match(describeStep({ type: "mount", actor: "fighter", mount: horse }, r.events, before, s).label, /mounted/);
+  const label = (a) => { const before = mark(s), r = ok(apply(s, a, U1)); return describeStep(a, r.events, before, s); };
+  assert.deepEqual(label({ type: "mount", actor: "fighter", mount: horse }), { label: "Brenna mounted Warhorse", shown: "Brenna mounted Warhorse" });
+  assert.equal(label({ type: "dismount", actor: "fighter" }).label, "Brenna dismounted");
 });
+
+for (const grid of GRIDS) {
+  test(`${grid}: a controlled mount takes the Dodge with its own action, not its rider's`, () => {
+    const { s, horse } = fight(grid);
+    ok(mount(s, "fighter", horse, U1));
+    const r = ok(apply(s, { type: "dodge", actor: horse }, U1));
+    assert.ok(r.events.some((e) => e.type === "std" && e.id === horse && e.action === "Dodge"));
+    assert.ok(s.entities[horse].cond.dodging, "the warhorse is Dodging");
+    assert.ok(!s.entities.fighter.cond.dodging, "its rider is not");
+    assert.equal(s.encounter.budget.mount.action, 0, "the mount's action is spent");
+    assert.equal(s.encounter.budget.action, 1, "the rider still has its own");
+    refused(s, { type: "dodge", actor: horse }, U1, /already used its action/);
+    refused(s, { type: "dash", actor: horse }, U1, /already used its action/);
+    refused(s, { type: "dodge", actor: horse }, U2, /isn't yours/);
+    refused(s, { type: "dodge", actor: horse, bonus: true }, DM, /takes its action/);
+    // The rider's own Dodge spends the rider's action, as ever.
+    ok(apply(s, { type: "dodge", actor: "fighter" }, U1));
+    assert.equal(s.encounter.budget.action, 0);
+    // It lasts until the start of its next turn, which is its rider's.
+    const r0 = s.encounter.round;
+    for (let i = 0; i < 40 && !(current(s) === "fighter" && s.encounter.round === r0 + 1); i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    assert.ok(!s.entities[horse].cond.dodging, "its Dodge ended at the start of its rider's next turn");
+    assert.equal(s.encounter.budget.mount.action, 1, "and it has its action back");
+    // Not on another's turn.
+    ok(apply(s, { type: "endTurn", actor: "fighter" }, U1));
+    refused(s, { type: "dodge", actor: horse }, DM, /acts on Brenna's turn/);
+  });
+}

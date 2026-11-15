@@ -17,7 +17,7 @@ import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, rollDice, rolledOf, spellStats, steering, tellDM, together, up } from './shared.js';
+import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
@@ -280,6 +280,24 @@ export function finishTurn(s, e, ev, pick = undefined) {
 }
 
 // ---------- riding (docs/specs/companions.md, Decision 8; stage C6a) ----------
+
+// A controlled mount's Dash, Disengage or Dodge (stage C6a; SRD "Controlling a Mount": its only three action options):
+// on its rider's turn, from its own action (`budget.mount`), never the rider's and never as a Bonus Action. Its Dash adds
+// its Speed to its own movement; its Disengage lasts the rest of the turn; its Dodge until the start of its next turn,
+// which is its rider's (mountTurnStarts). Used by movement.js (dash, disengage) and attacks.js (dodge).
+export function mountAct(s, m, a, what, ev) {
+  const r = steering(s, m);
+  !a.bonus || fail(`A controlled mount's ${what} takes its action.`);
+  inFight(s, m.id) || fail(`${m.name} is outside the battle.`);
+  const bud = turnBudget(s, m) || fail(`${m.name} acts on ${r.name}'s turn.`);
+  up(m) || fail(`${m.name} is down.`);
+  const by = incapacitated(m);
+  !by || fail(`${m.name} is ${by} and can't act.`);
+  bud.action >= 1 || fail(`${m.name} has already used its action this turn.`);
+  bud.action--;
+  if (what === 'Dash') { bud.move += speedOf(s, m); bud.dashes = (bud.dashes | 0) + 1; } else if (what === 'Dodge') m.cond.dodging = {}; else m.cond.disengaged = {};
+  ev.push({ type: 'std', id: m.id, action: what });
+}
 
 // The controlled mount this creature rides in the fight going on, or null.
 const ridden = (s, r) => { const m = r?.riding?.controlled ? mountOf(s, r) : null; return m && steering(s, m) === r && inFight(s, m.id) ? m : null; };

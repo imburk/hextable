@@ -76,7 +76,6 @@ export const control = (s, e, ctx) => {
   }
   if (acting && !UNLOCKED.has(type) && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
   if (acting && steering(s, e)) {
-    if (type === 'dodge') fail(`A controlled mount's Dodge is not in the engine yet: the DM gives ${e.name} the Dodge by hand.`);
     RIDDEN.has(type) || fail('A controlled mount can only Dash, Disengage or Dodge.');
   }
   return true;
@@ -99,10 +98,9 @@ export const mountOf = (s, r) => {
 // as the rider directs and has only Dash, Disengage and Dodge), or null for a mount nobody rides or an independent one.
 export const steering = (s, m) => { const r = riderOf(s, m); return r?.riding.controlled === true ? r : null; };
 // What a controlled mount may be sent, by its rider's player (DIRECTED) or by anyone who may play it (RIDDEN): its moves,
-// Dash and Disengage, and its Dodge (only to be told it is not built: attacks.js spends the rider's action for it), and,
-// by whoever plays it, what is set about it or answered for it.
+// Dash, Disengage and Dodge, and, by whoever plays it, what is set about it or answered for it.
 const DIRECTED = new Set(['move', 'dash', 'disengage', 'dodge']);
-const RIDDEN = new Set(['move', 'dash', 'disengage', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+const RIDDEN = new Set(['move', 'dash', 'disengage', 'dodge', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
 // Whose turn a creature moves on, and from which budget, in the fight going on: its own turn and `budget`, or, for a
 // controlled mount, its rider's turn and `budget.mount`. Null when it is not its turn to move (or there is no fight).
 export function turnBudget(s, e) {
