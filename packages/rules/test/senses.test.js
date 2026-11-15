@@ -11,7 +11,7 @@ import { view } from "../src/view.js";
 
 const srd = PACKS[0];
 const DM = { role: "dm", userId: "dm" };
-const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m] }).join(" | "); };
+const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m, ...srd.monsters.slice(1)] }).join(" | "); };
 const withRecord = (change) => { const r = structuredClone(Object.values(PREGENS)[0]); change(r); return lintRecord(r, { spells: SPELLS }).join(" | "); };
 
 test("the linter accepts senses in feet and rejects anything else, for monsters and records", () => {

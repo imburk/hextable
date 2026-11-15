@@ -7,7 +7,7 @@ import { apply } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 
 const srd = PACKS[0];
-const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m] }).join(" | "); };
+const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m, ...srd.monsters.slice(1)] }).join(" | "); };
 
 test("the linter accepts a list of short texts (empty for none) and rejects anything else", () => {
   assert.equal(withMonster((m) => { m.languages = ["Common", "Goblin"]; }), "");

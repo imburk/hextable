@@ -174,10 +174,13 @@ test("Witch Sight: Truesight 30 feet from level 15", () => {
 test("Pact of the Chain: Find Familiar as a Magic action without a slot, even in a fight", () => {
   const s = ready(9, ["pact-of-the-chain"]), e = s.entities.hero, slots = { ...e.slots };
   no(cast(s, { spell: "find-familiar" }), /takes longer than a turn/);
-  const r = ok(cast(s, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain" }));
+  // Find Familiar summons since C4 (#328): the cast names the form, the creature type and a space.
+  no(cast(s, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain" }), /Pick where/);
+  const r = ok(cast(s, { spell: "find-familiar", via: "eldritch-invocations-pact-of-the-chain", summon: { form: "owl", type: "fey", at: [{ q: 1, r: 0 }] } }));
   assert.equal(s.encounter.budget.action, 0);
   assert.deepEqual(e.slots, slots);
-  assert.ok(r.events.some((x) => x.type === "manual"), "the familiar itself is the DM's");
+  assert.ok(r.events.some((x) => x.type === "summoned"), "the familiar is made");
+  assert.ok(r.events.some((x) => x.type === "manual"), "what the engine does not do for it is the DM's");
 });
 
 test("Contact Patron: Contact Other Plane once per Long Rest without a slot, its save a success", () => {

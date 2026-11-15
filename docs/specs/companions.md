@@ -819,6 +819,34 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   "Creature"; use `e.name`, or `CONTENT.summons[e.tpl]`); the model to draw is the client's choice by `tpl`. Its
   turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`, C8/C10).
 
+### C4, blocks and spells, data (#328)
+
+Content only: three blocks in `content/srd52/summons.js` and five spells moved. Every number was compared with
+`reference/srd52/srd52-flow.txt` (lines in the table above); `test/summons-c4.test.js` bakes each block at every
+casting and casts each spell.
+
+- **`otherworldly-steed`** (level 2, `types`): `assist`. AC 10 + level, HP 5 + 10 per level, Fly 60 from level 4, the
+  Slam's damage type by creature type. Fell Glare applies Frightened and tells the DM it ends on the *caster's* next
+  turn (the step's `ends` can only say the steed's); Fey Step (a teleport that takes the rider) and Healing Touch (2d8
+  plus the spell's level: `plus` is added to damage dice only) are `manual` steps; Life Bond waits for a healing hook.
+  Each is `uses: { per: 'day', n: 1 }`, as "once per Long Rest".
+- **`draconic-spirit`** (level 5): `auto`. The `variants` are the breath's damage type, which the SRD makes "your
+  choice when you cast the spell" and separate from the Shared Resistances choice, which stays the spell's own `choice`
+  and a `modifier` step on the caster. A cast therefore names both (`summon.variant` and `choice`).
+- **`animated-object`** (level 5): `auto`. The `variants` are the object's size, tiny to huge (the SRD's "Medium or
+  smaller" is three of them with the same numbers). The upcast dice are `only: { slot: n }` damage entries, one more
+  die for each level above 5 (a resistance rounds each of those entries apart). The SRD gives the block no Proficiency
+  Bonus; `pb` is the engine's required field and nothing in the block uses it.
+- **Spell tiers.** Summon Dragon `auto`. Find Familiar, Find Steed, Phantom Steed, Animate Objects `assist`, each with a
+  `manual` step naming what is left. Find Familiar uses `forms: { type: 'beast', cr: 0 }` (the ten listed forms and any
+  other CR 0 Beast of the pack; the SRD has no Octopus block). Missing, so assist and not the table's tier: `one:
+  'reform'` / `'replace'` (C5) for the one familiar or steed, `mount` (C6) for riding, a part's `ends: { on: 'damaged' }`
+  for Phantom Steed, and a `count` that depends on the caster's modifier and the objects' sizes for Animate Objects (the
+  step makes one; the DM adds the rest with `spawn`). Find Steed's before-or-after choice is stage A1.
+- **Unseen Servant stays `manual`, with no block.** It needs `turn: 'none'` and `orders: 'command'` (the linter refuses
+  both until C5 and C6) and a block with only Strength 2 (the monster linter wants all six scores, and inventing the
+  other five is not allowed). Its manual text already carries the SRD's numbers.
+
 ## Amendments of 14 November
 
 The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change four things in the engine.

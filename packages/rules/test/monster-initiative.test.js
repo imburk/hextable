@@ -12,7 +12,7 @@ import { view } from "../src/view.js";
 const srd = PACKS[0];
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
-const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m] }).join(" | "); };
+const withMonster = (change) => { const m = structuredClone(srd.monsters[0]); change(m); return lintPack({ ...srd, monsters: [m, ...srd.monsters.slice(1)] }).join(" | "); };
 
 // The same table, the same dice: start a fight and read what a creature rolled for Initiative.
 function initiativeOf(tpl, patch = {}, seed = 11) {
