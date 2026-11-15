@@ -2,7 +2,11 @@
 
 Status: draft by an agent, to be reviewed by the design owner. Issue #292 (the
 owner's request of 14 November). Nothing here is built. No code is written by
-this spec.
+this spec. **Amended 15 November 2026** (#347) to the owner's answers to questions
+2, 3, 5 and 10 (a roleplaying bonus on haggling, stores that buy magic items, split
+payment, and shopping only inside a shop area); the other questions are confirmed
+on their defaults; see "Questions for the owner". The "customs" request that came
+with question 5 is in `portable-characters.md`.
 
 The owner asked for a storefront that shows its goods as pictures, not as a list
 of names; for the DM to make either a **loot package** (found, taken, shared out)
@@ -16,6 +20,13 @@ that fits and the **negotiated price** is what is paid, and the DM **reveals** a
 special item (a Wand of Magic Missiles at a price) when it suits the story; and
 for **ordinary goods to need no tending**: once a standard store is open, the
 party buys rope and rations at list price, without limit, without the DM.
+
+From the owner's answers of 15 November: **players buy and sell only when they
+are in a store**, which on a map means the character's pawn stands inside the
+store's **shop area**; a store **buys magic items** by itself at 70 percent of their
+value; the DM has a button for a further 5 percent off for **good roleplaying**; and
+the vendor **takes split payments**, so several characters can each pay a share of
+one purchase.
 
 This spec says what the documents are and where they live, what a player may know
 of a store, the actions and who may send each, money and change, negotiation, how
@@ -49,8 +60,9 @@ plan. It ends with the questions for the owner. Style follows `table-ui.md`.
 - **Two actions must not share a name** (`CLAUDE.md`). The issue's `reveal` is
   already the DM's action for hidden creatures (`engine/dm.js`), so revealing an
   item is `revealGoods`.
-- **Grid-agnostic.** A shop is not on the grid. Where it is tied to a place, it is
-  tied to a region or an object by id, which works on hex and square maps alike.
+- **Grid-agnostic.** A shop is not on the grid. Where it is tied to a place, a store
+  is tied to a **shop area** of the map (a named set of cells, by id) and a loot
+  package to an object, which works on hex and square maps alike.
 - **Phones are first-class.** The storefront and the DM's shop controls work at
   390 x 844 with touch.
 
@@ -67,6 +79,7 @@ What exists today, with the file and function so a builder can check.
 | **Checks** | `check { actor, skill, dc? }` (`engine/features.js`): the engine rolls with the character's numbers; with a DC (DM only) the event is `secret`. `askCheck { actor, skill }` (`scenes.js`): a player asks, the DM answers with `check`. | A check whose result changes a price. |
 | **Who sees what** | `view.js`: allow lists; handouts are the one per-player part (`viewHandouts`, `shown: 'all' \| [userIds]`). Events not listed are dropped for players. | Shops in a view. |
 | **Documents imported** | Maps (`map.js`): a document with its own format, linter and migration, copied into the game by `loadMap` (DM, up to 1 MB: `MAP_ACTIONS` in `tables.js`). Homebrew packs (`homebrew.md`): linted on the server, kept beside the state. Character files (`portable-characters.md`): kept on the device, exported and imported. | A market document. |
+| **Where a creature stands** | `regionAt(map, level, hex)` (`space.js`) says which region a cell is in; `footprint(e)` the cells a creature fills, by size and grid. Regions are a partition of a level and reveal a place room by room (`maps-and-objects.md` Decision 7). | A named area that may lie inside a region and reveals nothing; a rule for "inside" for a creature that fills several cells. |
 | **Weight** | `weight` on weapons and armour. | Encumbrance (`rules-expansion.md` R12, DEBT C4). So this spec carries weights in the data and enforces none. |
 | **Undo** | `history.js`: every action except `claim` and `release` is a DM-undoable step, down to the dice. | — |
 | **Log** | `logview.js` kinds `combat`, `explore`, `loot`, `talk`, `dm`; the chip "Loot and trades"; `LOOT` is `gear`, `conclusion`, `conclusionSkipped`, `levelReady`. | Trade lines. |
@@ -137,8 +150,8 @@ they told apart?
   stores: [
     { id: 'outfitter', name: 'Outfitter', blurb: 'Rope, steel and lamp oil, sold by the quay.',
       lists: ['standard'], markup: 100,                                        // percent of the list price
-      buys: { equipment: 50, trade: 100, magic: null },                        // percent paid when the party sells; null: only by the DM's quote
-      haggle: { step: 10, dc: 15 },                                            // Decision 6
+      buys: { equipment: 50, trade: 100, magic: 70 },                          // percent of value paid when the party sells; magic defaults to 70; null: that store does not buy it by itself, only by the DM's quote
+      haggle: { step: 10, dc: 15, bonus: 5 },                                  // Decision 6; bonus: points for good roleplaying (default 5)
       special: [ { id: 'wand-of-magic-missiles', item: 'wand-of-magic-missiles', qty: 1, hidden: true } ],
       art: 'a7Qm2xR4' },
   ],
@@ -174,12 +187,13 @@ state.shops = [ {
   from: { market: 'port-goods', template: 'outfitter' } | null,                  // null: made from nothing in the game
   lists: ['standard'],                                                           // read live from its market: a newer pack version updates every shop using it
   markup, buys, haggle, keeper?,                                                 // keeper: a creature id whose Intelligence sets the haggle DC floor
-  at?: { region } | { object },                                                  // Decision 4
+  at?: { area } | { object },                                                    // Decision 4: a store's shop area (an id on the map in play), a loot package's object
   lines: [ ... ],                                                                // its own: the template's specials plus what the DM added
   overrides: { [lineId]: { price?, qty?, gone?: true } },                        // changes to listed lines, for this shop only
   coins?: { gp, sp, ... },                                                       // a loot package's coins
   shown: 'none' | 'all' | [userIds],
-  quotes: [ { id: 'q2', line? , item?, for, price, sell?: true, by: 'dm' | 'haggle' } ],
+  quotes: [ { id: 'q2', line? , item?, for, price, sell?: true, by: 'dm' | 'haggle', roleplay?: true } ],
+  joint: [ { id: 'j1', line, qty, price, buyer, pledges: { [creature]: copper } } ],   // purchases several characters pay together (Decision 5)
   waits: { '<creature>:<line>': t },                                             // Influence's 24 hours, world time
   notes? } ]
 ```
@@ -256,14 +270,18 @@ list of user ids, and only the DM changes it (`showShop`). A new shop starts at
   lines: [ { id, name, item?, base?, kind, art, note?, price, qty? } ],   // listed lines not gone, and own lines not hidden; price after markup and overrides
   coins?,                                                                  // a loot package's
   buys,                                                                    // what it pays when the party sells, as a shopkeeper would say
-  quotes: [ { id, line?, item?, for, price, sell? } ] }                    // standing offers for party characters
+  quotes: [ { id, line?, item?, for, price, sell? } ],                     // standing offers for party characters
+  joint: [ { id, line, name, qty, price, buyer, pledges } ],               // purchases being paid together (Decision 5)
+  area?: [ cells ],                                                        // a store's shop area, only the cells in tiles this player is sent
+  here?: [ creatureIds ] }                                                 // party characters standing in the area now (a store with an area, a map in play)
 ```
 
 | A player is sent | Never sent |
 |---|---|
 | shops shown to them, as above | a shop not shown to them: not its id, not that it exists |
 | revealed specials with their price and how many are left | a hidden special: not its id, its name, its price, or how many hidden lines there are |
-| quotes for party characters | `haggle` (step, DC), `notes`, `from`, `waits`, `keeper`, `at` |
+| quotes for party characters, and the purchases being paid together | `haggle` (step, DC, bonus), `roleplay`, `notes`, `from`, `waits`, `keeper`, `at` |
+| the outline of a shown store's shop area, and which of the party stand in it | the area of a shop not shown to them (it is not drawn on their map and not sent), and cells of an area in tiles they are not sent |
 | — | `state.markets`, ever, and the DM's notes in a pack |
 
 - **Revealing.** `revealGoods { shop, line }` (DM) shows a hidden special. Players it
@@ -272,7 +290,11 @@ list of user ids, and only the DM changes it (`showShop`). A new shop starts at
   sight (a quote on it is withdrawn).
 - **Refusals for players are the same as for a thing that does not exist**: a shop
   not shown, or a line hidden, gets "No such shop." or "No such item.", whatever the
-  id. Line ids are the author's words, not a counter, so their gaps say nothing.
+  id. **The order of the checks matters for this** (Decision 4): whether the shop
+  exists and is shown to this player comes before anything about where the character
+  stands, so "Ilya is not at the Outfitter." is only ever said about a store the
+  player was shown, and standing in the area of a store that was not shown gets
+  "No such shop." and nothing more. Line ids are the author's words, not a counter, so their gaps say nothing.
   Shop ids are a counter (`s1, s2...`), as handout ids are: a player can tell that
   shops exist that they were not shown, not what they are (DEBT T11 has the same
   for creatures).
@@ -293,20 +315,21 @@ missing one.
 
 **Question.** What can be done, and by whom?
 
-**Choice.** Ten actions, in a new handler module `engine/trade.js` (the domain split
+**Choice.** Eleven actions, in a new handler module `engine/trade.js` (the domain split
 of `CLAUDE.md`), helpers in `market.js`, and one form added to `give`. "Controller"
 is the player who controls the character (`control` in `engine/shared.js`).
 
 | Action | Shape | Who | What it does |
 |---|---|---|---|
 | `market` | `{ add: doc }` or `{ remove: id }` | DM | Decision 2 |
-| `openShop` | `{ kind: 'store' \| 'loot', name, market?, template?, at?, keeper? }` | DM | makes a shop from a template (its lists, markup, buys, haggle, specials, art) or from nothing; starts unshown. Event `shopOpened { shop }` (DM only) |
+| `openShop` | `{ kind: 'store' \| 'loot', name, market?, template?, at?, keeper? }` | DM | makes a shop from a template (its lists, markup, buys, haggle, specials, art) or from nothing; starts unshown. `at` is `{ area }` for a store (the shop area, below) and `{ object }` for a loot package. Event `shopOpened { shop }` (DM only) |
 | `shopEdit` | `{ shop, set?: { name, blurb, art, markup, buys, haggle, keeper, at, lists, notes }, add?: [line], remove?: [lineId], override?: { [lineId]: { price?, qty?, gone? } \| null }, coins? }` | DM | every change to one shop; `override: { id: null }` gives a line back to the list. Event `shopEdited { shop }` (DM only); a change to something a player can see also sends them `shopChanged { shop }` and the new shape comes with the view |
 | `showShop` | `{ shop, to: 'none' \| 'all' \| [userIds] }` | DM | Decision 3. Event `shopShown { shop, name, to }`, to those now shown, never who else; `shopHidden { shop }` to those it is taken from |
 | `revealGoods` | `{ shop, line, hide? }` | DM | Decision 3 |
 | `closeShop` | `{ shop }` | DM | removes the shop and its quotes (undo brings it back). `shopClosed { shop }` to those it was shown to |
-| `quote` | `{ shop, for, line \| item, price? , check?: { skill, dc? }, sell?, withdraw? }` | DM | an offer for one character: a price set by hand, or a haggle rolled (Decision 6); `sell` for an offer to buy what the character carries; `withdraw` removes it. Event `quoted` |
-| `buy` | `{ actor, shop, line, qty? }` | controller, DM | Decision 5 |
+| `quote` | `{ shop, for, line \| item, price? , check?: { skill, dc? }, roleplay?, sell?, withdraw? }` | DM | an offer for one character: a price set by hand, or a haggle rolled (Decision 6); `roleplay` adds the bonus for good roleplaying to the quote; `sell` for an offer to buy what the character carries; `withdraw` removes it. Event `quoted` |
+| `buy` | `{ actor, shop, line, qty?, pay?, split? }` or `{ actor, shop, joint, cancel? }` | controller, DM | Decision 5; `split` opens a purchase several characters pay together, `joint` settles or (with `cancel`) ends one |
+| `chipIn` | `{ actor, shop, joint, share }` | controller, DM | a character's share of a joint purchase, in copper pieces' worth; `share: 0` takes it back. Decision 5. Event `pledged` |
 | `sell` | `{ actor, shop, item, qty? }` | controller, DM | `item` is a sheet key (`i3`) or a name in `gear`. Decision 5 |
 | `take` | `{ actor, shop, line, qty? }` or `{ actor, shop, coins }`; DM also `{ shop, split: [ids] }` | controller, DM | from a loot package. Decision 7 |
 | `give` (extended) | `{ actor, coins: { gp: 35 }, take? }` | DM | hands coins over or takes them away, as it does items; event `coins { why: 'dm' }` |
@@ -316,12 +339,36 @@ Common checks, before anything changes:
 - The shop exists and, for a player, is shown to them and of the right kind (`buy`,
   `sell` and `quote` need a store, `take` a loot package).
 - The actor is up and not in a fight (in a fight: "Not in the middle of a fight."; the
-  DM is not stopped). A creature that is down cannot shop; one that is Unconscious or
-  Incapacitated cannot either.
-- **Where.** A shop with no `at` needs nothing: the party is in the store in the
-  story. With `at: { region }`, the actor stands in that region; with
-  `at: { object }`, within 5 feet of it (the reach test objects use already, on hex or
-  square maps). The refusal says where: "Ilya is not at the Outfitter."
+  DM is not stopped). **Shopping stays refused in a fight even for a pawn inside the
+  shop area** (the owner's answer). A creature that is down cannot shop; one that is
+  Unconscious or Incapacitated cannot either.
+- **Where** (the owner's answer to question 10: "players should only be able to buy
+  and sell when in a store"). The checks run in this order, so a refusal never says
+  more than the player was shown: (1) the shop exists and is shown to this player
+  ("No such shop."); (2) the actor is up and not in a fight (the bullet above); (3) the place. The place rule is for
+  `buy`, `sell`, `chipIn` and a settling `buy`, and for the **acting character, and
+  every character paying a share**:
+  - **No map in play** (a scene is open, or the table is on a navigation node of the
+    atlas, `travel.md` Decision 1): only the `shown` rule applies. The DM opens the
+    store with one tap, as before; this is the pedlar on the road.
+  - **A map in play, a store with a shop area:** the character's pawn must be inside
+    the area (below). The refusal says where: "Ilya is not at the Outfitter."
+  - **A map in play, a store with no area, or an area that is not on this map** (the
+    DM changed maps): players are refused, "The Outfitter has no place on this map."
+    The DM's shop card shows the same sentence as a warning, with the button to draw
+    the area. The store stays shown, and nothing is lost.
+  - **The DM** is not stopped by the place rule, as it is not stopped in a fight.
+  - **A loot package** keeps its object: with `at: { object }`, within 5 feet of it
+    (the reach test objects use already, on hex or square maps); with no `at`, no
+    place rule. Only stores have the shop-area rule: the owner's answer was about
+    buying and selling.
+  - **Inside** (design choice, lead's proposal): a pawn is inside an area when **any
+    cell of its footprint** (`footprint(e)`, by its size on the map's grid) is a cell
+    of the area, on the area's level. A Large pawn standing half in the doorway is
+    in; so is a Medium one on the threshold cell. The rule is the generous one, so a
+    big creature is never locked out of a shop it can see, and it is one test that
+    both grids share. A creature that is down, Unconscious or Incapacitated is
+    refused by the actor check above, not by the place.
 - Numbers are whole and in range: `qty` 1 to 99 (a line's stock or 99, whichever is
   less), coins 0 to 10,000,000 of each kind.
 
@@ -329,7 +376,25 @@ Common checks, before anything changes:
 thing the DM does, so each is one line in the history and in the log. `give` already
 hands out items, so it hands out coins.
 
-**Cost.** Ten labels in `history.js` (`describeStep`), ten handlers, and the view.
+**The shop area** (design choice, lead's proposal; the owner chose the rule, not the
+drawing). Not a region: regions partition a level and reveal it room by room, so a
+stall in a street square cannot be one without splitting the street. A shop area is
+a new, optional list on the map document, `areas: [ { id, name, level, hexes } ]`
+(`hexes` is the key the map already uses for cells on both grids), which reveals
+nothing, changes no light or sight, and may lie inside a region or across several. It
+is like `entries` in `travel.md` Decision 3: optional, so an older build ignores it
+and the map `format` stays 2; `lintMap` checks the ids are unique, the level exists
+and every cell is a tile of it; `mapEdit` gains an `areas` change beside `regions`. A
+store points at one by id (`at: { area }`). Several stores may share an area (three
+stalls in one market square) and one store has one area. The DM draws it in the map
+editor with a brush ("Shop area", a tinted outline with the area's name) or in play
+with the same `mapEdit`, and picks it on the shop's card. On the map it is a tinted
+outline with the store's name: the DM sees every area (dashed when its store is not
+shown), a player only the areas of stores shown to them. A module's stores name a
+map's area by id (`adventure-module.md` A10).
+
+**Cost.** Eleven labels in `history.js` (`describeStep`), eleven handlers, and the
+view; one optional field on the map document with its linter and editor change (P3a).
 
 ### Decision 5: money, prices, paying and change
 
@@ -384,14 +449,74 @@ A standing quote for the actor and that line replaces the price.
    { id, coins, why: 'buy' }`, and `gear { id, item, key?, pack?, why: 'buy' }` for
    each thing landed.
 
+**Paying together** (the owner's answer to question 5: "it's common for a character
+buying a magic item to need help from other players ... I'd prefer it if the vendor
+takes split payments"). There is still no party purse: each character keeps their
+own coins, and several of them can each pay a share of one purchase. How it is
+offered and settled is not the owner's wording, so it is **(design choice, lead's
+proposal)**:
+
+1. **Opening.** A character who wants a line they cannot pay alone, or does not
+   want to pay alone, taps **Buy with help** on its card: `buy { actor, shop, line,
+   qty, split: true }`. The checks of Decision 4 run (the shop, the place, the line,
+   the stock), the price is worked out once, as for any buy (a standing quote for
+   this character counts), and a **joint purchase** is recorded on the shop:
+   `{ id, line, qty, price, buyer, pledges: {} }`. No coin moves. The card shows to
+   everyone the shop is shown to: "Ilya is buying the Wand of Magic Missiles for 400
+   GP. Pledged: 0 of 400 GP."
+2. **Pledging.** Any party character who may shop here (the checks of Decision 4, the
+   place rule included) sends `chipIn { actor, shop, joint, share }`: a share in
+   copper pieces' worth, at least 1 and at most what their purse is worth (the
+   screen shows it in coins). Sending it again replaces it; `share: 0` takes it back.
+   A player sends it only for a character they control, so nobody can pledge another
+   player's coins (the DM can, as for any action). The **buyer's own share is what
+   nobody else has pledged**: the buyer pays last, and the screen says how much that
+   is as pledges come in.
+3. **Settling.** The buyer (or the DM) taps **Pay**: `buy { actor, shop, joint }`.
+   Everything is checked again, all or nothing: the line and the stock, the place for
+   every payer, the pledges together no more than the price, and each payer's purse
+   worth at least their share (the buyer's included). A refusal names the one who is
+   short ("Tor has 3 GP; his share is 100 GP.") and changes nothing, and the pledges
+   stay for the table to fix. When it passes, each payer's share is taken as a buy
+   takes it (smallest coins up, change in the largest, `pay` not offered), the goods
+   land with the **buyer**, stock goes down once, and the buyer's quote is used up.
+   A pledge is a promise, not a held coin: nothing is set aside, so a character who
+   spends the coins elsewhere before Pay simply fails the re-check.
+4. **Ending.** A joint purchase ends when it is settled, when the buyer or the DM
+   cancels it (`buy { joint, cancel: true }`), or by itself when its shop closes or
+   is taken out of sight, when a fight starts, when the line is gone or has too
+   little stock, or when the buyer is refused by the place rule (they walked out of
+   the area). Pledges end with it. At most three are open at once in one shop
+   **(design choice)**.
+5. **Events.** `jointOpened { shop, id, line, name, qty, price, buyer }`, `pledged {
+   shop, id, who, share }`, `jointEnded { shop, id, why }`, and, on settling, one
+   `bought { shop, id, line, name, qty, price, payers: [ { id, paid, change } ] }`
+   with a `coins { id, coins, why: 'buy' }` for each payer and the `gear` for the
+   buyer. All of them go to the players the shop is shown to, as the other trade
+   events do: it is the party's own money and everyone at the table sees the sheets.
+
+A plain transfer of coins from one character to another outside a store is not part
+of this spec; the DM's `give { coins }` moves coins as it moves items, and a later
+`pass` for coins (the items' `pass`, `engine/characters.js`) is a small extension if
+the table wants it.
+
 **Selling.** `sell { actor, shop, item }`. The offer, in order: a standing `sell`
 quote for that actor and item; otherwise, if the item matches a line of the shop
 (same pack id, or same name for named goods), that line's list price times the
 shop's `buys` percent for its kind; otherwise a weapon or armour of the pack at its
 `cost` times `buys.equipment`. Defaults follow the SRD: equipment 50, trade goods and
-valuables 100. **Magic items** are bought only at a quote unless the shop's
-`buys.magic` is a number (question 3). No offer: "The Outfitter makes no offer for
-the Ring of Swimming. Ask the DM." A worn, wielded or attuned item is refused
+valuables 100. **Magic items** (the owner's answer to question 3: "let's make it 70
+percent of value") are bought **without a DM step** at `buys.magic` percent of the
+item's **value**, which is 70 unless the store says otherwise. The **value** is the
+list price of step 3 above (the rarity's value, halved for a consumable, a Spell
+Scroll at double its scribing cost, plus the `cost` of its `base`), so a Wand of
+Magic Missiles is bought at 280 GP and a Potion of Healing at 35 GP. The value is
+never the shop's markup or a line's own price **(design choice: "value" is the SRD's
+number, so a store that marks a wand up does not pay more for one)**. A store whose
+`buys.magic` is `null` makes no automatic offer, and the DM still sets a price with
+a `sell` quote, as for any item, whatever `buys.magic` says: the DM's price always
+wins. An Artifact has no value and so no automatic offer. No offer: "The Outfitter
+makes no offer for the Ring of Swimming. Ask the DM." A worn, wielded or attuned item is refused
 ("Take it off first"); an item being attuned to stops being attuned to. The coins are
 paid in the largest kinds first. Events: `sold`, `coins { why: 'sell' }`,
 `gear { why: 'sell', taken: true }`. What is sold is not added to the shop's stock
@@ -401,8 +526,9 @@ paid in the largest kinds first. Events: `sold`, `coins { why: 'sell' }`,
 copper arithmetic avoids fractions; paying from small coins and changing into large
 ones is what a purse does and needs no choices on a phone.
 
-**Cost.** A new state field on creatures and a state version (22). Old `"35 gp"` lines
-in `gear` stay names; they are not parsed (question 9).
+**Cost.** A new state field on creatures and a state version (22), the joint
+purchases on a shop (inside the shops' own field, so no further version). Old
+`"35 gp"` lines in `gear` stay names; they are not parsed (question 9).
 
 ### Decision 6: negotiation
 
@@ -434,25 +560,44 @@ rolled out of sight.
 
   The new price is rounded up to a whole copper piece and never goes below 1 CP.
   Haggling over a `sell` offer works the same way upwards (plus one step, two steps).
+- **The roleplaying bonus** (the owner's answer to question 2: "1 with a button for
+  the DM to a roleplaying bonus, +5%"). Beside the roll the DM has a button, **Good
+  roleplaying**, which is `quote { ..., roleplay: true }`. It takes a further **5
+  percent of the list price** off the quote (or adds 5 to a sell offer): 15 percent
+  off in all after a roll that met the DC, 25 after one that beat it by 10, 5 on
+  its own. That is the reading the lead gave the owner (10 and 20 percent as
+  drafted, plus a further 5), and he did not correct it. The rest is **(design
+  choice, lead's proposal)**: the 5 is a store field, `haggle.bonus`, default 5; it
+  is points of the list price, not of the price already reduced; it applies once to
+  a quote (a second tap changes nothing); the DM may press it before or after the
+  roll, or with no roll at all, and after a failed roll it does not lift the
+  Influence wait, which a hand-set price already can; a price is never taken below
+  1 CP. **A sell offer is never above the item's value** (or, for a line the store
+  sells, never above the store's own price for it): with the haggle steps and the
+  bonus a trade good that sells at 100 percent could otherwise be bought low and
+  sold high in a loop, and an automatic offer for a magic item (70 percent, plus at
+  most two steps and the bonus, 95) stays under its value.
 - **Overrides.** `quote { shop, for, line, price }` sets the price outright, before or
   after a roll: the DM's word on a seller who will not budge, a friend's discount,
   or a price that rises because the threat went badly. `withdraw` removes a quote.
 - **What a player sees.** The check's dice and total (as any check of their own), and
   the new price. Not the DC and not the word "success": the price is the answer, as a
   shopkeeper's reply would be. A price set by hand is shown as the price, without
-  saying how it was reached.
+  saying how it was reached, and the bonus for roleplaying is a part of the price,
+  never named to players (the DM's chip shows it).
 - **How long a quote lasts.** Until it is used by a purchase, withdrawn, the line is
   hidden, or the shop is closed. It is for one character: another party member pays
   the shop's price unless they haggle too.
 
 Event: `quoted { shop, for, line | item, price, was, sell?, by: 'dm' | 'haggle',
-check?: { skill, rolls, total } }`, with the DC and `steps` only for the DM.
+check?: { skill, rolls, total } }`, with the DC, `steps` and `roleplay` only for the DM.
 
 **Reasons.** The owner asked for a check that moves the price by a rule the DM may
 override, with no hidden die. The Influence action gives the DC, the skills and the
 retry rule from the SRD; only the size of a step is ours, and it is a store field.
 
-**Cost.** One rule function in `market.js` and its table of cases in tests.
+**Cost.** One rule function in `market.js` and its table of cases in tests (the bonus
+and the cap on a sell offer are cases of it).
 
 ### Decision 7: loot packages
 
@@ -460,7 +605,7 @@ retry rule from the SRD; only the size of a step is ours, and it is a store fiel
 
 **Choice.** A loot package is a shop of kind `loot`: lines with `qty` and no price,
 and `coins`. It is opened from a template or from nothing (`openShop { kind: 'loot' }`),
-shown as a store is, and may be tied to a place (`at: { object }`: the chest).
+shown as a store is, and may be tied to a place (`at: { object }`: the chest; a loot package has no shop area).
 
 - `take { actor, shop, line, qty }`: a party character takes things. They land as a
   purchase does (Decision 5, step 3); the line's `qty` goes down; at 0 the line goes.
@@ -516,10 +661,20 @@ drawer that lists the shops shown to you, and from a toast when one is shown
 - **A tap on a card** opens its detail: the picture large, the pack's short text for
   an SRD item (the `text` the pack already holds, which is our own words), weight,
   Attunement if it needs it, and the actions: a count stepper and **Buy for 4 GP**
-  (greyed with the engine's reason: "Ilya has 3 GP 2 SP"), **Ask to haggle** for a
-  player. The DM sees **Haggle** instead (pick the character, the skill, the DC
-  filled with the default; Roll), **Set price**, **Hide again** for a special, and
-  **Give it away** (a quote of 0).
+  (greyed with the engine's reason: "Ilya has 3 GP 2 SP", or "Ilya is not at the
+  Outfitter." when the pawn is outside the shop area), **Buy with help** (Decision 5:
+  it opens a joint purchase), **Ask to haggle** for a player. The DM sees **Haggle**
+  instead (pick the character, the skill, the DC filled with the default; Roll, and
+  the **Good roleplaying** button beside it), **Set price**, **Hide again** for a
+  special, and **Give it away** (a quote of 0).
+- **A joint purchase** shows as a strip above the cards while one is open: what is
+  being bought, the price, each pledge ("Tor 100 GP"), what is still the buyer's
+  ("Ilya pays 200 GP"), and for a character that may shop here a **Pledge** stepper
+  (in coins, with the purse beside it) and, for the buyer, **Pay** and **Cancel**. Pay
+  is greyed with the engine's sentence naming whoever is short.
+- **On the map**, a store's shop area is a tinted outline with its name; the
+  storefront's header says "You are in the Outfitter" or "Walk into the Outfitter's
+  area to trade", from the `here` list, and a tap on the name pans to it.
 - **Sell** lists what the chosen character carries, each with the shop's offer or
   "Ask the DM"; a tap sells, after one confirmation that names the coins.
 - **A loot package** is the same grid with **Take** in place of Buy, the coins as one
@@ -535,13 +690,17 @@ state (Shown to nobody / everyone / 2 players), and per shop: Show to (none, all
 pick players), Edit (name, blurb, art, markup, buys, haggle, keeper, where), the
 specials with a Reveal or Hide switch each, Add a line (from the pack's items with a
 search, or a named line with a price), Override a listed line's price or stock,
-Close. A store's storefront, opened by the DM, has the same controls on its cards.
+**Where** (pick the shop area on the map in play, or Draw an area, which opens the
+map editor's Shop area brush; a store with no area on a map shows the warning of
+Decision 4), Close. A store's storefront, opened by the DM, has the same controls on its cards.
 
 **The market editor, outside a game.** The build screen pattern of
 `portable-characters.md` Decision 6: from the lobby, "My markets": new, open, export,
 import. A pack is edited as lists (rows with name, item, price, picture), store
-templates and loot templates. The same card grid previews a store as players will
-see it. "Start from the SRD prices" adds a list of the pack's priced items. The
+templates (with what each buys, magic items at 70 percent unless changed, and its
+haggle step, DC and roleplaying bonus) and loot templates. The same card grid previews
+a store as players will see it; where a store stands is not in the pack (a shop area
+belongs to a map, Decision 4). "Start from the SRD prices" adds a list of the pack's priced items. The
 editor lints with `lintMarket` as you type and shows its sentences.
 
 ### Decision 9: what is written down
@@ -555,13 +714,18 @@ editor lints with `lintMarket` as you type and shows its sentences.
 - **The log** (T7c). Every trade event is of kind `loot` ("Loot and trades"), added to
   `LOOT` in `logview.js`, and `describe` in `app.js` writes:
   - `bought`: "Ilya buys Rope x3 at the Outfitter for 3 GP (paid 5 GP, 2 GP back)."
+    A joint purchase: "Ilya buys the Wand of Magic Missiles at the Outfitter for 400 GP:
+    Ilya 200 GP, Tor 100 GP, Orla 100 GP." `pledged`: "Tor pledges 100 GP towards the
+    Wand of Magic Missiles." `jointEnded`: "The joint purchase of the Wand of Magic
+    Missiles was cancelled."
   - `sold`: "Tor sells a Shortbow to the Outfitter for 12 GP 5 SP."
   - `quoted` by a haggle: "Ilya haggles over the Wand of Magic Missiles (Persuasion 17): 360 GP."
   - `quoted` by hand: "The Outfitter will sell Ilya the Wand of Magic Missiles for 300 GP."
   - `goodsRevealed`: "Something new at the Outfitter: Wand of Magic Missiles, 400 GP."
   - `took`: "Ilya takes 30 GP from a strongbox." Split: "The DM shares out the strongbox: 30 GP each to Ilya, Tor, Orla and Brenna; 2 SP left."
   - `shopShown`: "The Outfitter is open." `shopClosed`: "The Outfitter has closed."
-  - DM only (the DM-only chip): `shopOpened`, `shopEdited`, the haggle's DC and steps.
+  - DM only (the DM-only chip): `shopOpened`, `shopEdited`, the haggle's DC and steps,
+    the roleplaying bonus.
 - **The timeline and the chronicle.** Trade events go to the timeline as all events
   do, so `recall` and a later AI DM read them. Nothing goes to the chronicle by
   itself; the DM writes one if the purchase is part of the story.
@@ -571,11 +735,11 @@ editor lints with `lintMarket` as you type and shows its sentences.
 | # | Addition | Kind | Who may send | DM sees | Players see | Version |
 |---|---|---|---|---|---|---|
 | X1 | `content/srd52/prices.js`: Coin Values, Magic Item Rarities and Values with the consumable and Spell Scroll rules, Spell Scroll Costs, and the selling rates; linted (`schema.js`) | content | — | — | — | no |
-| X2 | `market.js`: the market document's format, `lintMarket`, `migrateMarket`; `listPrice(line, shop, market)`, `haggle(price, total, dc, step)`, `pay(purse, cp)` and `change(cp)`; pure | rules module | — | — | — | no |
+| X2 | `market.js`: the market document's format, `lintMarket`, `migrateMarket`; `listPrice(line, shop, market)`, `haggle(price, total, dc, step, bonus)`, `pay(purse, cp)`, `change(cp)` and `settle(joint, purses)` (a joint purchase's shares); `buys.magic` defaults to 70; pure | rules module | — | — | — | no |
 | X3 | `e.coins`, `state.markets`, `state.shops`; migration 21 to 22 gives `markets: []`, `shops: []` | state | engine | all | `coins` on open creatures; `viewShops` per player | **21 to 22** |
-| X4 | `engine/trade.js`: `market`, `openShop`, `shopEdit`, `showShop`, `revealGoods`, `closeShop`, `quote`, `buy`, `sell`, `take`; `give { coins }` in `characters.js`; `askCheck { about }` in `scenes.js` | actions | as Decision 4 | everything | as Decision 3 | 22 |
-| X5 | Events: `shopOpened`, `shopEdited` (DM only); `shopShown`, `shopHidden`, `shopChanged`, `shopClosed`, `goodsRevealed`, `quoted`, `bought`, `sold`, `took` (those the shop is shown to); `coins` (open creatures); `gear` with `why` `buy`, `sell`, `take` | events | engine | all | listed in `viewEvents`, shaped as Decision 3 | 22 |
-| X6 | `view.js`: `viewShops` and the event rules; `history.js`: the ten labels | view | — | — | — | no |
+| X4 | `engine/trade.js`: `market`, `openShop`, `shopEdit`, `showShop`, `revealGoods`, `closeShop`, `quote`, `buy` (with `split`, `joint`), `chipIn`, `sell`, `take`; the place rule and the shop area's test; `give { coins }` in `characters.js`; `askCheck { about }` in `scenes.js` | actions | as Decision 4 | everything | as Decision 3 | 22 |
+| X5 | Events: `shopOpened`, `shopEdited` (DM only); `shopShown`, `shopHidden`, `shopChanged`, `shopClosed`, `goodsRevealed`, `quoted`, `bought`, `sold`, `took`, `jointOpened`, `pledged`, `jointEnded` (those the shop is shown to); `coins` (open creatures); `gear` with `why` `buy`, `sell`, `take` | events | engine | all | listed in `viewEvents`, shaped as Decision 3 | 22 |
+| X6 | `view.js`: `viewShops` and the event rules; `history.js`: the eleven labels | view | — | — | — | no |
 | X7 | `tables.js`: `market` joins `MAP_ACTIONS` (1 MB for the DM); `packages/server/README.md` lists the actions | server | DM | — | — | no |
 
 Nothing here lets a client say a price, a quote, the coins taken or the change: the
@@ -591,16 +755,19 @@ and at 390 x 844 with touch.
 | # | Task | Who | Touches | Done when |
 |---|---|---|---|---|
 | P1 | **SRD prices as data.** X1. | engine lane (schema) | `content/srd52/prices.js` (new), `content/index.js`, `content/schema.js`, `tests/` | Every number compared with `reference/srd52`; `checked: true`; a test that the Potion of Healing comes to 50 GP, the Wand of Magic Missiles 400 GP and +1 Armor (Plate Armor) 5,500 GP. |
-| P2 | **The market document.** X2. | engine lane | `packages/rules/src/market.js` (new), `tests/` | `lintMarket` refuses each case of Decision 2 with a sentence; prices parse; `pay` and `change` pass a table of cases; `haggle` passes the table of Decision 6. No engine file changes. |
-| P3 | **Purses and shops, engine.** X3 to X6. | engine lane | `engine/trade.js` (new), `engine.js` (spread the handlers), `engine/characters.js` (`give { coins }`, keep `coins` on remake), `engine/sheets.js` (only if remake needs it), `scenes.js` (`about`), `view.js`, `history.js`, `migrate.js`, `tests/` | Import, open three shops from one template, add a special to two; buy at list and at a haggled price; change is right; a refused buy changes nothing; a hidden line never reaches a player message; a guessed id gets "No such item."; undo restores coins, stock and dice; 21 to 22 migrates. |
+| P2 | **The market document.** X2. | engine lane | `packages/rules/src/market.js` (new), `tests/` | `lintMarket` refuses each case of Decision 2 with a sentence; prices parse; `pay` and `change` pass a table of cases; `haggle` passes the table of Decision 6, including the 5-point bonus and the cap on a sell offer; a magic item sells at 70 percent of its value by default (a Wand of Magic Missiles 280 GP) and at nothing automatic when `buys.magic` is null; `settle` splits a price exactly and refuses a share that is too big. No engine file changes. |
+| P3 | **Purses and shops, engine.** X3 to X6. Needs P3a for the place rule. | engine lane | `engine/trade.js` (new), `engine.js` (spread the handlers), `engine/characters.js` (`give { coins }`, keep `coins` on remake), `engine/sheets.js` (only if remake needs it), `scenes.js` (`about`), `view.js`, `history.js`, `migrate.js`, `tests/` | Import, open three shops from one template, add a special to two; buy at list and at a haggled price; change is right; a refused buy changes nothing; a hidden line never reaches a player message; a guessed id gets "No such item."; undo restores coins, stock and dice; 21 to 22 migrates; a joint purchase of 400 GP pledged by three characters settles all or nothing, refuses naming whoever is short and changes nothing, and undo restores all three purses; a pawn outside the shop area is refused "Ilya is not at the Outfitter." for a shown store and "No such shop." for one not shown; a Large pawn with one cell in the area is inside; a fight refuses even a pawn inside; with a scene open only `shown` applies; a store with no area on a map refuses players. |
 | P4 | **Server.** X7. | engine lane | `packages/server/src/tables.js`, `packages/server/README.md`, `packages/server/test/` | A 900 KB market from the DM is taken; from a player it is refused; a player's buy goes through `apply()` with their role. |
-| P5 | **The storefront.** | client agent | `packages/client/shop.js` (new), `shop.css` (new), `index.html`, `app.js` (`describe`, the drawer row, the toast), `logview.js` (`LOOT`), `scripts/smoke/shop.mjs` (new), `test/` | Decision 8's storefront and loot package for a player and the DM at both sizes; Buy, Sell, Take, Ask to haggle, Haggle, Set price; the log lines of Decision 9. |
-| P6 | **The DM's shop controls.** | client agent | `packages/client/shops-dm.js` (new), `tablecontrols.js`, `shop.css`, `test/` | Import a market from a file, open, show, reveal, override, close; the port-city example takes under two minutes on a tablet. |
+| P3a | **Shop areas on the map.** The optional `areas` list of the map document (Decision 4): `lintMap`, `mapEdit`, `inArea(map, area, e)` (any cell of the footprint), what players are sent of an area of a shown store only; format stays 2. Can run beside P2. | engine lane | `map.js`, `space.js`, `view.js` (the area's outline), `packages/rules/test/map.test.js`, `view.test.js` | An older build reads the map and ignores `areas`; a bad id, level or cell is refused with a sentence; a Large pawn is inside with one cell in the area on either grid; the area of a store not shown is in no player message, and neither are cells in tiles a player is not sent; every stock map still lints. |
+| P5 | **The storefront.** | client agent | `packages/client/shop.js` (new), `shop.css` (new), `index.html`, `app.js` (`describe`, the drawer row, the toast), `logview.js` (`LOOT`), `scripts/smoke/shop.mjs` (new), `test/` | Decision 8's storefront and loot package for a player and the DM at both sizes; Buy, Buy with help (open, pledge from two other characters, pay), Sell, Take, Ask to haggle, Haggle with Good roleplaying, Set price; Buy greyed with "is not at the" outside the area; the log lines of Decision 9. |
+| P6 | **The DM's shop controls.** | client agent | `packages/client/shops-dm.js` (new), `tablecontrols.js`, `shop.css`, `test/` | Import a market from a file, open, show, reveal, override, close, pick a shop's area; the port-city example takes under two minutes on a tablet. |
+| P6a | **Shop areas in the map editor and on the map.** The Shop area brush (tinted outline, a name), the outline drawn on the map for the DM and, for a shown store, for players, through the renderer's overlay; the "You are in the Outfitter" header. Needs P3a and P5. | client agent | `packages/client/editor.js`, the renderers' shared overlay (`render-three.js` and, until R14 removes it, `render.js`), `shop.js`, `test/`, `scripts/smoke/shop.mjs` | At both sizes the DM paints an area, a player walks a pawn into it and Buy wakes, walks out and it greys with the engine's sentence; a store not shown draws no outline for the player. |
 | P7 | **The market editor and My markets.** | client agent | `packages/client/markets.js` (new), the lobby in `index.html`, `transport.js` (the `hextable.markets` key only), `test/` | A pack made with no game, exported, imported into a game, and used; the linter's sentences shown while editing. |
-| P8 | **Later.** Adventuring Gear as pack data (question 8); "Make a package of these" and coin loot lines on the rewards form; packages in piles after E17; coins in the send-off of `portable-characters.md` (question 6). | content agent; engine lane | each its own issue | — |
+| P8 | **Later.** Adventuring Gear as pack data (question 8); "Make a package of these" and coin loot lines on the rewards form; packages in piles after E17; coins in the send-off of `portable-characters.md` (question 6, confirmed 15 November), with the customs highlight there. | content agent; engine lane | each its own issue | — |
 
-P1 and P2 can be built at once; P3 needs both; P4 needs P3; P5 needs P3 and P4; P6
-needs P5; P7 needs P2 and P6's card component.
+P1 and P2 can be built at once, and P3a beside them; P3 needs all three; P4 needs P3;
+P5 needs P3 and P4; P6 needs P5; P6a needs P3a and P5; P7 needs P2 and P6's card
+component.
 
 ## Security and hidden-information review points
 
@@ -618,6 +785,21 @@ needs P5; P7 needs P2 and P6's card component.
 6. **Pack text is plain text.** Every string from a market pack is shown with `esc`;
    none is rendered as HTML or a link. Art goes through the asset rules of M9.
 7. **Undo is the DM's.** A player cannot undo a purchase.
+8. **The place refusal says no more than the player was shown.** The shop's
+   existence and being shown come first; only then "Ilya is not at the Outfitter."
+   A test stands a pawn in the area of a store not shown to its player, sends `buy`,
+   `sell` and `chipIn` with its id and with a guessed one, and asserts the answer is
+   "No such shop." in every case and that no message names the store or its area.
+9. **Areas are not leaked.** The outline and `here` go only to players the store is
+   shown to, and only cells in tiles they are sent; the area of a store not shown, and
+   an area of a store that has since been hidden again, are in no message or patch
+   (the same canary test as a hidden line).
+10. **Nobody pays with another player's coins.** `chipIn` and a settling `buy` are
+    checked against `control`: a player's pledge for a character they do not control
+    is refused; a forged `share` above the purse is refused at pledging and again at
+    settling; settling is all or nothing and a refusal changes nothing.
+11. **The roleplaying bonus and the DC are the DM's.** `roleplay` and `haggle.bonus`
+    appear in no player message or player label.
 
 ## Risks
 
@@ -625,6 +807,15 @@ needs P5; P7 needs P2 and P6's card component.
   wrote "35 gp" in gear converts it by hand (question 9).
 - **Lists by reference.** A re-imported pack changes three shops at once; that is the
   point, and the DM's import screen says which shops a new version touches.
+- **A store with no area refuses players on a map.** The owner's rule is strict, so a
+  DM who opens a store while the party stands on a map must also give it an area, or
+  take the party into a scene. The card says so in words and offers the brush; the
+  pedlar on the road (no map in play) is unaffected.
+- **"Inside" is a convention.** Any cell of the footprint counts (Decision 4); a table
+  that wants "the centre cell" or "all of it" is a different test, one function.
+- **Splitting is not escrow.** A pledge holds no coin; settling re-checks every purse.
+  That is what keeps a player's coins theirs until the moment of paying, at the price
+  of a refusal at the last tap if someone spent them meanwhile.
 - **Haggling is a convention.** Some tables will want a different rule; the step and
   DC are per store, and Set price covers the rest.
 - **Coins of five kinds on a phone.** The purse bar shows the coins and, on a tap,
@@ -632,31 +823,77 @@ needs P5; P7 needs P2 and P6's card component.
 
 ## Questions for the owner
 
-1. **Coins as five kinds, or one total?** *Default: five kinds, as the SRD has them;
-   pay from the smallest up, change in the largest down, never Electrum as change.*
-2. **The haggle rule.** *Default: one step (10 percent) off on meeting the DC, two
-   steps on beating it by 10; no change on a failure, and the Influence action's
-   24-hour wait before the same character haggles over the same item again; the DM
-   can always set a price by hand. The step and the DC are per store.*
-3. **Do stores buy magic items?** The SRD gives values, not a buying rule. *Default:
-   only at a price the DM quotes; a store may set `buys.magic` to a percent.*
-4. **Does the DM approve each purchase of a special item?** *Default: no. Revealing it
-   and setting its price is the approval; the player buys when they are ready.*
-5. **A party purse?** *Default: no. Each character has their own coins; a loot
-   package's Share out evenly does the splitting.*
-6. **Do coins leave with a portable character?** *Default: yes, as items do, under the
-   `takeaway` setting and the DM's send-off; an amendment to `portable-characters.md`.*
-7. **Does what the party sells go on the shelf?** *Default: no. It would put the
-   party's items in front of the next buyer and make stock the DM must tend, which the
-   owner wants to avoid. The DM can add it as a line.*
+All eleven were answered by the owner on 15 November 2026 (issue #193, the comment
+"Q&A lead, 15 November, 08:00 ET"). Seven are confirmed on their defaults, four
+changed the design. Where an answer left a number or a detail open, this spec says so
+and marks the proposal "(design choice, lead's proposal)" for the owner to confirm.
+
+1. **Coins as five kinds, or one total?** *Answered 15 November 2026: default
+   confirmed, five kinds, as the SRD has them; pay from the smallest up, change in
+   the largest down, never Electrum as change.* What changed: nothing.
+2. **The haggle rule.** *Answered 15 November 2026: default confirmed, with an
+   addition.* The owner: "1 with a button for the DM to a roleplaying bonus, +5%."
+   Read, and told to him, as: one step (10 percent) off on meeting the DC, two steps
+   on beating it by 10, as drafted, plus a DM button that grants a further 5 percent
+   off for good roleplaying (he did not correct the reading). What changed: Decision 6
+   gains the roleplaying bonus (`quote { roleplay }`, `haggle.bonus`); its size as a
+   store field, how it stacks, and the cap on a sell offer are the lead's proposals;
+   Decision 4's `quote`, the storefront's Haggle row, the log and the review points
+   follow.
+3. **Do stores buy magic items?** *Answered 15 November 2026: changed.* Stores buy
+   them without a DM step at a fixed share of value. The owner: "let's make it 70% of
+   value." What changed: `buys.magic` defaults to 70 (it was `null`, "only by the DM's
+   quote"); the value is the SRD value of Decision 5 step 3, which the lead's proposal
+   keeps free of the shop's markup; `null` still means "no automatic offer" and the
+   DM can still set a price by a quote; Decision 5's Selling, the pack example and the
+   linter's ranges follow.
+4. **Does the DM approve each purchase of a special item?** *Answered 15 November
+   2026: default confirmed, no.* Revealing it and setting its price is the approval.
+   What changed: nothing.
+5. **A party purse?** *Answered 15 November 2026: default confirmed (no purse), with
+   a change: the vendor takes split payments.* The owner: "it's common for a character
+   buying a magic item to need help from other players so there needs to be a transfer
+   option somewhere in there ... I'd prefer it if the vendor takes split payments." What
+   changed: Decision 5 gains "Paying together" (a joint purchase, `buy { split }`,
+   `chipIn`, settled all or nothing); how it is offered and settled is the lead's
+   proposal, and a plain transfer of coins outside a store is left out (the DM's
+   `give { coins }` covers it). The same answer carried a **new request, "customs"**:
+   "A DM needs to be able to screen money when importing a character ... We should add
+   a highlight when bringing in characters for large amounts of cash and magical
+   gear." That is `portable-characters.md` (Decision 5, the Customs row of "What is
+   compared"), not this spec.
+6. **Do coins leave with a portable character?** *Answered 15 November 2026: default
+   confirmed, yes, as items do, under `takeaway` and the DM's send-off.* What changed:
+   nothing here; `portable-characters.md` carries the amendment (the file's `coins`,
+   the send-off's tick, the `left` block).
+7. **Does what the party sells go on the shelf?** *Answered 15 November 2026: default
+   confirmed, no.* It would put the party's items in front of the next buyer and make
+   stock the DM must tend, which the owner wants to avoid; the DM can add it as a
+   line. What changed: nothing.
 8. **Enter the Adventuring Gear table as pack data** (rope, rations, torches and the
    rest, with their SRD prices and weights), so a standard store needs no typed
-   prices? *Default: yes, as its own content job, checked against the SRD.*
-9. **Old "35 gp" lines in gear.** *Default: left as names; the Items tab offers the DM
-   "Turn into coins" on a line that reads as coins.*
-10. **Shopping in a fight.** *Default: refused for players; the DM can still edit.*
-11. **Tie a store to a scene**, so that starting the scene shows it? *Default: not
-    now; the DM shows it with one tap.*
+   prices? *Answered 15 November 2026: default confirmed, yes, as its own content job,
+   checked against the SRD.* What changed: nothing (P8).
+9. **Old "35 gp" lines in gear.** *Answered 15 November 2026: default confirmed, left
+   as names; the Items tab offers the DM "Turn into coins" on a line that reads as
+   coins.* What changed: nothing.
+10. **Shopping in a fight.** *Answered 15 November 2026: default confirmed (refused
+    for players; the DM can still edit), and a new rule.* The owner: "players should
+    only be able to buy and sell when in a store." Asked what "in a store" requires, he
+    chose: the character's **pawn must stand inside the shop area on the map**. A
+    character elsewhere cannot buy or sell even when the store is shown; in a fight
+    shopping stays refused even inside. What changed: Decision 4's "Where" check and
+    its order, the shop area (a new optional list on the map document, the lead's
+    proposal for how it is drawn), what players are sent of it (Decision 3), "inside"
+    for a Large pawn (any cell of its footprint, the lead's proposal), the refusal
+    texts, the storefront and the DM's controls, tasks P3a and P6a, and review points 8
+    and 9. With no map in play only `shown` applies (question 11).
+11. **Tie a store to a scene**, so that starting the scene shows it? *Answered 15
+    November 2026: default confirmed, not now.* With no map on the table (a story
+    scene, a pedlar on the road) the DM opens the store with one tap, as drafted; on a
+    map the pawn rule of question 10 applies. What changed: Decision 4 says what "no
+    map in play" means (a scene is open, or the table is on a navigation node), which
+    is the lead's proposal.
 
 ## Adventure modules
 
