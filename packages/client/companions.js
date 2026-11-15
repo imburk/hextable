@@ -7,7 +7,7 @@
 // view sent: a creature the view did not send is not here, and nothing is guessed from ids or gaps. Every word that came from a person (an order,
 // a name) is escaped where it is drawn.
 import { inFight, current } from './shared/engine.js';
-import { SPELLS, MONSTERS } from './shared/content/index.js';
+import { SPELLS, MONSTERS, CONTENT } from './shared/content/index.js';
 import { CHOICES } from './shared/content/schema.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -45,8 +45,8 @@ export function summonPlan(S, e, spellId, slot) {
   if (sm.variants) choices.push({ key: 'variant', title: 'Which?', options: sm.variants.map((v) => ({ v, label: human(v) })) });
   if (sm.types) choices.push({ key: 'type', title: 'Creature type', options: sm.types.map((v) => ({ v, label: human(v) })) });
   if (sm.forms) {
-    const ids = Array.isArray(sm.forms) ? sm.forms : Object.keys(MONSTERS).filter((id) => MONSTERS[id].type === sm.forms.type && MONSTERS[id].cr === sm.forms.cr);
-    choices.push({ key: 'form', title: 'Form', options: ids.filter((id) => MONSTERS[id]).map((id) => ({ v: id, label: MONSTERS[id].name })) });
+    const ids = Array.isArray(sm.forms) ? sm.forms : Object.keys(CONTENT.monsters).filter((id) => CONTENT.monsters[id].type === sm.forms.type && CONTENT.monsters[id].cr === sm.forms.cr);
+    choices.push({ key: 'form', title: 'Form', options: ids.filter((id) => CONTENT.monsters[id]).map((id) => ({ v: id, label: CONTENT.monsters[id].name })) });
   }
   const pickDef = sp.def.choice, list = pickDef ? pickDef.from ?? CHOICES[pickDef.of] ?? null : null;
   if (list) choices.push({ key: 'choice', title: pickDef.of === 'damageType' ? 'Damage type' : human(pickDef.of ?? 'choice'), options: list.map((v) => ({ v, label: human(v) })), extra: true });

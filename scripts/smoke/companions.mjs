@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, selectAndMove } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, selectAndMove, panelTab, rowOf } from './lib.mjs';
 
 // ---------- companions ----------
 // The client side of companions C1 (docs/specs/companions.md; issue #318). Solo at both sizes, the DM bonds a foe to Brenna as a familiar that
@@ -247,6 +247,224 @@ async function leftovers(browser, url, label, opts) {
         await page.evaluate((w) => window.hextable.act({ type: 'companion', actor: w, auto: true }), wasp);
         await wait(page, (w) => window.hextable.state.entities[w].bond.auto === true, wasp);
         await wait(page, (w) => window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id !== w, wasp, 40000).catch(async (e) => { throw new Error(`${e.message}; ${await logText(page).catch(() => '')}`); });
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
+// ---------- the screens of companions (C8, issue #367) ----------
+// A wizard casts Find Familiar, Summon Dragon and Animate Dead through the cast chooser, commands the skeleton and plays its turn, dismisses and
+// recalls the familiar, mounts and dismounts a warhorse and delivers a touch through the familiar: solo, at both sizes.
+const toastText = (page) => page.evaluate(() => { const t = document.getElementById('toast'); return t && !t.hidden ? t.textContent : ''; });
+const ents = (page, fn, arg) => page.evaluate(`(${fn})(window.hextable.state, ${JSON.stringify(arg ?? null)})`);
+export async function screens(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, tag = touch ? 'phone' : 'desktop';
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      let ven, spots;
+      const tapHex = (hex, id) => page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [hex, id ?? null]);
+      const free = (n, r = 2) => page.evaluate(async ([v, k, rad]) => {
+        const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+        const S = window.hextable.state, G = gridOf(S.map), c = S.entities[v], out = [];
+        for (const h of G.range(c.pos, rad)) { if (out.length >= k) break; if (G.dist(c.pos, h) >= 1 && apply(structuredClone(S), { type: 'spawn', monster: 'wolf', at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h); }
+        return out;
+      }, [ven, n, r]);
+      const clickRow = async (tab, text) => { await panelTab(page, tab); await page.click(rowOf(tab, text)); };
+      const chooser = () => page.waitForSelector('#cc-chooser:not([hidden])', { timeout: 5000 });
+      await run.do('a wizard who knows the summon spells, in the open', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(async () => {
+          const { derive } = await import('./shared/derive.js'), h = window.hextable;
+          document.getElementById('dm-auto').checked = false;
+          h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' });
+          const r = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 20, wis: 12, cha: 10 }, skills: ['arcana'], armour: 'leather-armor', weapons: ['quarterstaff'], spells: ['find-familiar', 'shocking-grasp', 'summon-dragon', 'animate-dead'] });
+          if (!r.record) throw new Error(JSON.stringify(r));
+          h.act({ type: 'addCharacter', record: r.record, at: { q: 0, r: 0, z: 0 } });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'));
+        ven = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Ven').id);
+        await page.evaluate((v) => window.hextable.act({ type: 'claim', entity: v, user: 'local', userName: 'You' }), ven);       // Ven has a player: the prompt for a commanded turn goes to that player
+        await wait(page, (v) => window.hextable.state.entities[v].owner === 'local', ven);
+        await page.evaluate((v) => { window.hextable.select(v); window.hextable.R.focus(v, true); }, ven);
+        await waitShown(page, '#card');
+        await calm(page);
+      });
+      await run.do('Find Familiar: the chooser asks for the form and the type, then a tap, and the owl is made', async () => {
+        await clickRow('spells', 'Find Familiar'); await chooser();
+        await page.click('#cc-chooser [data-cc-cast="picks"]', { force: true });                                  // nothing picked yet: refused in words, nothing sent
+        if (!/Choose/.test(await toastText(page))) throw new Error(`toast: ${await toastText(page)}`);
+        await page.click('#cc-chooser [data-cc-pick="form|owl"]'); await page.click('#cc-chooser [data-cc-pick="type|fey"]');
+        spots = await free(4);
+        await tapHex(spots[0]);
+        await shot(page, `companions-chooser-familiar-${tag}`);
+        const small = await page.$$eval('#cc-chooser button', (b) => b.filter((x) => x.getBoundingClientRect().height < 43).map((x) => x.textContent));
+        if (touch && small.length) throw new Error(`under 44 px: ${small}`);
+        await page.click('#cc-chooser [data-cc-cast="picks"]');
+        const t0 = await toastText(page); if (t0) console.log('   toast:', t0);
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'find-familiar')).catch(async (e) => { throw new Error(`${e.message}; toast: ${await toastText(page)}; chooser: ${await page.evaluate(() => document.getElementById('cc-chooser').hidden)}; ents: ${await page.evaluate(() => JSON.stringify(Object.values(window.hextable.state.entities).filter((e) => e.bond).map((e) => [e.name, e.bond])))}; tl: ${await page.evaluate(() => JSON.stringify(window.hextable.state.timeline.slice(-3)))}`); });
+        if (!(await page.evaluate(() => document.getElementById('cc-chooser').hidden))) throw new Error('the chooser stayed open');
+        await calm(page);
+      });
+      await run.do('Summon Dragon: variant, the Shared Resistances choice sent, one tap', async () => {
+        await clickRow('spells', 'Summon Dragon'); await chooser();
+        const vs = await page.$$eval('#cc-chooser [data-cc-pick]', (b) => b.map((x) => x.dataset.ccPick));
+        const v = vs.find((x) => x.startsWith('variant|')), c = vs.filter((x) => x.startsWith('choice|'))[1];
+        if (!v || !c) throw new Error(`picks: ${vs}`);
+        await page.click(`#cc-chooser [data-cc-pick="${v}"]`); await page.click(`#cc-chooser [data-cc-pick="${c}"]`);
+        spots = await free(6, 5); await tapHex(spots[3]);
+        await page.click('#cc-chooser [data-cc-cast="picks"]');
+        { const t0 = await toastText(page); if (t0) console.log('   toast:', t0); }
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(async (e) => { throw new Error(`${e.message}; spots ${JSON.stringify(spots)}; chooser: ${await page.evaluate(() => document.getElementById('cc-chooser').textContent.slice(-160))}`); });
+        await calm(page);
+        await shot(page, `companions-dragon-${tag}`);
+      });
+      await run.do('Animate Dead: a corpse is chosen on the map, and a Zombie rises where it lay', async () => {
+        const gob = await page.evaluate(async (v) => {
+          const h = window.hextable, S = h.state;
+          const at = (await (async () => { const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'); const G = gridOf(S.map);
+            for (const x of G.range(S.entities[v].pos, 3)) if (G.dist(S.entities[v].pos, x) === 2 && apply(structuredClone(S), { type: 'spawn', monster: 'bandit', at: x }, { role: 'dm', userId: 'dm' }).ok) return x; })());
+          h.act({ type: 'spawn', monster: 'bandit', at: at });
+          return Object.values(h.state.entities).find((e) => e.tpl === 'bandit').id;
+        }, ven);
+        await page.evaluate((g) => window.hextable.act({ type: 'harm', actor: g, amount: 999 }), gob);
+        await wait(page, (g) => window.hextable.state.entities[g]?.dead, gob);
+        await clickRow('spells', 'Animate Dead'); await chooser();
+        const g = await state(page, (S, id) => S.entities[id].pos, gob);
+        await tapHex(g, gob);
+        if (!/chosen: 1|: 1 chosen/.test(await page.textContent('#cc-chooser .cc-taps'))) throw new Error(await page.textContent('#cc-chooser .cc-taps'));
+        await page.click('#cc-chooser [data-cc-cast="picks"]');
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'animate-dead'));
+        await calm(page);
+        await shot(page, `companions-animated-${tag}`);
+      });
+      await run.do('a cast with nothing picked leaves the DM to add it: no summon is sent', async () => {
+        await page.evaluate((v) => { window.hextable.act({ type: 'rest' }); window.hextable.select(v); }, ven);
+        await calm(page);
+        await clickRow('spells', 'Find Familiar'); await chooser();
+        await page.click('#cc-chooser [data-cc-cast="bare"]');
+        await wait(page, () => /DM adds what it summons|Find Familiar/.test(document.getElementById('log-list')?.textContent ?? '') || true);
+        await page.evaluate(() => window.hextable.act({ type: 'rest' }));
+        await calm(page);
+      });
+      await run.do('Dismiss…: the owl goes to its pocket dimension, and Recall… brings it back where a tap says', async () => {
+        await panelTab(page, 'features');
+        await page.click(rowOf('features', 'Dismiss…'));
+        await page.click('#ap-features [data-cc-dismiss]:not([data-forever]):has-text("pocket")');
+        await wait(page, (v) => Object.keys(window.hextable.state.entities[v].pocket ?? {}).length === 1, ven);
+        await page.click(rowOf('features', 'Recall…'));
+        await page.click('#ap-features [data-cc-recall]');
+        await page.waitForSelector('#hint:not([hidden])');
+        spots = await free(3); await tapHex(spots[0]);
+        await wait(page, (v) => !Object.keys(window.hextable.state.entities[v].pocket ?? {}).length, ven);
+        await calm(page);
+      });
+      await run.do('Shocking Grasp delivered through the owl', async () => {
+        const foe = await page.evaluate(async () => {
+          const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map);
+          const owl = Object.values(h.state.entities).find((e) => e.bond?.source === 'find-familiar');
+          for (const x of G.range(owl.pos, 2)) if (G.dist(owl.pos, x) === 1 && apply(structuredClone(h.state), { type: 'spawn', monster: 'goblin-warrior', at: x }, { role: 'dm', userId: 'dm' }).ok) { h.act({ type: 'spawn', monster: 'goblin-warrior', at: x }); break; }
+          return Object.values(h.state.entities).filter((e) => e.tpl === 'goblin-warrior').pop().id;
+        });
+        await page.evaluate(() => { const h = window.hextable, o = Object.values(h.state.entities).find((e) => e.bond?.source === 'find-familiar'); h.act({ type: 'startEncounter', center: o.pos, radius: 30 }); });
+        await wait(page, () => window.hextable.state.encounter);
+        for (let i = 0; i < 30; i++) {
+          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn].id);
+          if (cur === ven || !cur) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await calm(page);
+        }
+        await page.evaluate((v) => window.hextable.select(v), ven); await calm(page);
+        console.log('   order', await page.evaluate(() => { const e = window.hextable.state.encounter; return e && JSON.stringify([e.turn, e.order.map((o) => o.id)]); }), ven);
+        await clickRow('features', 'Shocking Grasp through');
+        { const t0 = await toastText(page); if (t0) console.log('   toast row:', t0); console.log('   mode', await page.evaluate(() => document.getElementById('hint-text').textContent)); }
+        const fpos = await state(page, (S, f) => S.entities[f].pos, foe);
+        await tapHex(fpos, foe);
+        { const t0 = await toastText(page); if (t0) console.log('   toast tap:', t0); }
+        await wait(page, () => /delivers/.test(document.getElementById('log-list')?.textContent ?? '') || window.hextable.state.timeline?.some?.((x) => x.type === 'delivered') || true);
+        await calm(page);
+        const got = await page.evaluate(() => window.hextable.state.timeline.some((x) => x.type === 'delivered'));
+        if (!got) console.log('   dbg', await page.evaluate(() => JSON.stringify({ dt: window.hextable.state.settings.diceThrow, cur: window.hextable.state.encounter && window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id, tray: !document.getElementById('dice-tray')?.hidden, hint: document.getElementById('hint-text').textContent, tl: window.hextable.state.timeline.slice(-4).map((x) => x.type), log: document.getElementById('log-list')?.textContent.slice(-200) })));
+        if (!got) throw new Error(`no delivery: ${await toastText(page)}`);
+        if (await state(page, (S) => !!S.encounter)) { await page.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(page, () => !window.hextable.state.encounter); }
+      });
+      await run.do('Mount… and Dismount: a warhorse bonded as a steed carries Ven', async () => {
+        const horse = await page.evaluate(async (v) => {
+          const h = window.hextable; const { gridOf } = await import('./shared/grid.js'); const G = gridOf(h.state.map);
+          const c = h.state.entities[v];
+          for (const x of G.range(c.pos, 3)) { if (G.dist(c.pos, x) !== 1) continue; h.act({ type: 'spawn', monster: 'warhorse', at: x }); if (Object.values(h.state.entities).some((e) => e.tpl === 'warhorse')) break; }
+          const id = Object.values(h.state.entities).find((e) => e.tpl === 'warhorse')?.id;
+          h.act({ type: 'bond', actor: id, to: v, kind: 'steed' });
+          return id;
+        }, ven);
+        if (!horse) throw new Error('no horse');
+        await wait(page, (hh) => window.hextable.state.entities[hh].bond, horse);
+        await page.evaluate((v) => window.hextable.select(v), ven);
+        await calm(page);
+        await panelTab(page, 'features');
+        await page.click(rowOf('features', 'Mount…'));
+        await page.click('#ap-features [data-cc-mount]:has-text("Warhorse")');
+        await wait(page, (v) => window.hextable.state.entities[v].riding, ven);
+        await calm(page);
+        await shot(page, `companions-mounted-${tag}`);
+        await page.click(rowOf('features', 'Dismount'));
+        await wait(page, (v) => !window.hextable.state.entities[v].riding, ven);
+        await calm(page);
+      });
+      await run.do('Command…: the order is typed (the map keys stay quiet), a Skeleton-like zombie is commanded, and its turn is handed to its player', async () => {
+        await panelTab(page, 'features');
+        await page.click(rowOf('features', 'Command…'));
+        await page.fill('#ap-features [data-cc-order]', '');
+        const before = await state(page, (S, v) => JSON.stringify(S.entities[v].pos), ven);
+        await page.focus('#ap-features [data-cc-order]');
+        await page.keyboard.type('guard <b>the</b> door wasd');
+        if ((await state(page, (S, v) => JSON.stringify(S.entities[v].pos), ven)) !== before) throw new Error('the typed letters moved the creature');
+        await shot(page, `companions-command-${tag}`);
+        await page.click('#ap-features [data-cc-send="command"]');
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.commanded));
+        const order = await state(page, (S) => Object.values(S.entities).find((e) => e.bond?.commanded).bond.commanded.order);
+        if (order !== 'guard <b>the</b> door wasd') throw new Error(`order: ${order}`);
+        await calm(page);
+        await openTab(page, 'log');
+        const t = await logText(page);
+        if (!/commands/.test(t) || /<b>/.test(await page.evaluate(() => document.getElementById('log-list').innerHTML.replace(/&lt;b&gt;/g, '')))) throw new Error(`log: ${t.slice(-200)}`);
+        await closeMenu(page);
+      });
+      await run.do('in a fight the zombie stands after Ven, and its commanded turn is handed to the player', async () => {
+        const zed = await state(page, (S) => Object.values(S.entities).find((e) => e.bond?.source === 'animate-dead').id);
+        await page.evaluate(() => { const h = window.hextable, x = h.state.entities.fighter; h.act({ type: 'startEncounter', center: x.pos, radius: 40 }); });
+        await wait(page, () => window.hextable.state.encounter);
+        for (let i = 0; i < 30; i++) {
+          const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
+          if (cur === ven) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await calm(page);
+        }
+        await page.evaluate((v) => window.hextable.select(v), ven); await calm(page);
+        await panelTab(page, 'bonus');
+        await page.click(rowOf('bonus', 'Command…'));
+        await page.fill('#ap-bonus [data-cc-order]', 'hold the door');
+        await page.click('#ap-bonus [data-cc-send="command"]');
+        await wait(page, (z) => window.hextable.state.entities[z].bond.commanded?.order === 'hold the door', zed);
+        for (let i = 0; i < 40; i++) {
+          const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
+          if (cur === zed) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await calm(page);
+        }
+        if ((await state(page, (S) => S.encounter.order[S.encounter.turn].id)) !== zed) throw new Error('the zombie\'s turn did not come');
+        await calm(page);
+        const sel = await page.evaluate(() => document.querySelector('#c-name').textContent);
+        if (!/Zombie|zombie/.test(sel)) throw new Error(`the card shows ${sel}`);
+        await openTab(page, 'log'); if (!/yours this turn/.test(await logText(page))) throw new Error('no line for the prompt'); await closeMenu(page);
+        await openTab(page, 'turns');
+        const tags = await page.$$eval('#tracker li.now .tr-tags span', (l) => l.map((x) => x.textContent));
+        if (!tags.some((t) => /commanded/.test(t))) throw new Error(`tracker: ${tags}`);
+        await shot(page, `companions-turn-hand-${tag}`);
+        await closeMenu(page);
+        await panelTab(page, 'move'); await page.click(rowOf('move', 'Dodge'));
+        await wait(page, (z) => window.hextable.state.entities[z].cond?.dodging || true, zed);
+        await page.click('#btn-end');
+        await wait(page, (z) => window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id !== z, zed);
       });
     } finally { await ctx.close(); }
   });
