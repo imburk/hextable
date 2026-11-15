@@ -141,16 +141,19 @@ function rig({ fight = false } = {}) {
     now: () => io.t, start: () => io.sel, actor: () => io.sel, fight: () => io.inFight, yaw: () => io.yawNow, turns: () => io.turnsNow,
     turnKey: () => io.turn, grid: () => HEX, busy: () => io.busyNow,
     send: (a, d) => { log.sent.push([a, d, io.t]); return true; }, look: (y, p) => log.looks.push([y, p]),
-    stepped: (a, d, follow) => log.stepped.push([a, d, follow]), stopped: (w) => log.stopped.push(w) };
+    stepped: (a, d, follow, ahead) => log.stepped.push([a, d, follow, ahead]), stopped: (w) => log.stopped.push(w) };
   const W = createWalker(io);
   const run = (ms, answer = true) => { for (let i = 0; i < ms / 10; i++) { io.t += 10; W.tick(); if (answer && W.waiting) W.update((id) => id === 'pc', false); } };
-  return { io, W, log, run };
+  const go = (a) => { W.down(a); run(PACE.chord, false); };      // a press, and the moment the first step waits for a second key
+  return { io, W, log, run, go };
 }
 
 test('a press sends one step at once; a held key repeats at the steady pace; release stops at once and nothing is queued', () => {
   const { io, W, log, run } = rig();
   W.down('forward');
-  assert.equal(log.sent.length, 1, 'the first step goes at once');
+  assert.equal(log.sent.length, 0, 'the first step waits a moment for a second key');
+  run(PACE.chord, false);
+  assert.equal(log.sent.length, 1, 'then goes');
   W.down('forward', true); W.down('forward', true);
   assert.equal(log.sent.length, 1, 'the key\'s own repeat sends nothing');
   W.update((id) => id === 'pc', false);
@@ -163,13 +166,23 @@ test('a press sends one step at once; a held key repeats at the steady pace; rel
   run(1000);
   assert.equal(log.sent.length, n, 'nothing after the release');
   assert.equal(W.walking, false);
-  assert.ok(log.stepped.every(([, , f]) => f === true), 'followed');
-  io.t += 0;
+  assert.ok(log.stepped.every(([, , f, ahead]) => f === true && ahead === true), 'followed, forward');
+  W.down('back'); run(PACE.chord, false); W.update((id) => id === 'pc', false);
+  assert.equal(log.stepped.at(-1)[3], false, 'a step back is not a direction of travel to turn to');
+});
+
+test('a tap shorter than the wait for a second key still steps once, and only once', () => {
+  const { W, log, run } = rig();
+  W.down('forward'); W.up('forward');
+  assert.equal(log.sent.length, 1);
+  W.update((id) => id === 'pc', false);
+  run(1000);
+  assert.equal(log.sent.length, 1);
 });
 
 test('one step at a time: no answer, no next step; no answer in 2 s ends the walk', () => {
-  const { W, log, run } = rig();
-  W.down('right');
+  const { log, run, go } = rig();
+  go('right');
   run(1500, false);
   assert.equal(log.sent.length, 1);
   run(700, false);
@@ -186,7 +199,7 @@ test('a refusal, a question, a turn change and a change of selection each stop t
     ['selection', (r) => { r.W.update((id) => id === 'pc', false); r.io.sel = 'other'; r.run(500); }],
   ]) {
     const r = rig();
-    r.W.down('forward');
+    r.go('forward');
     poke(r);
     assert.deepEqual(r.log.stopped, [why]);
     const n = r.log.sent.length; r.run(1000);
@@ -195,8 +208,8 @@ test('a refusal, a question, a turn change and a change of selection each stop t
 });
 
 test('in a fight the pace is slower; a busy timeline holds the next step; the frame is kept while keys are held', () => {
-  const { io, W, log, run } = rig({ fight: true });
-  W.down('forward');
+  const { io, W, log, run, go } = rig({ fight: true });
+  go('forward');
   W.update((id) => id === 'pc', false);
   io.yawNow = 1.2;                                   // the view follows; the held key keeps walking the same way
   run(800);
@@ -206,7 +219,7 @@ test('in a fight the pace is slower; a busy timeline holds the next step; the fr
   assert.equal(log.sent.length, 3, 'waits while a tap would be skipped');
   io.busyNow = false; run(50);
   assert.equal(log.sent.length, 4);
-  W.up('forward'); W.down('forward');
+  W.up('forward'); go('forward');
   assert.notDeepEqual(log.sent.at(-1)[1], log.sent[0][1], 'a new press measures from the view as it is');
 });
 
@@ -219,7 +232,7 @@ test('Shift held looks instead of walking; a manual turn during a walk stops fol
   assert.ok(log.looks.length > 10 && log.looks.every(([y, p]) => y > 0 && p === 0), 'Shift+A turns the gaze left');
   W.up('left'); W.down('forward'); log.looks.length = 0; run(100);
   assert.ok(log.looks.every(([y, p]) => y === 0 && p < 0), 'Shift+W tilts toward the horizon');
-  W.shift(false);
+  W.shift(false); run(PACE.chord, false);
   assert.equal(log.sent.length, 1, 'releasing Shift with W held walks');
   W.update((id) => id === 'pc', false);
   io.turnsNow = 1;                                   // the person turned the view

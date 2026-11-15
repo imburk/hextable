@@ -3,6 +3,7 @@
 //   the table's rules, which the DM alone changes with the `setting` action, shown here in plain words and read only.
 // Nothing here sends an action.
 import { THEMES, LOOK, lookLocked } from './themes.js';
+import { PRESETS, presetId, presetOf, keyList } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -89,6 +90,18 @@ export function initSettings(ctx) {
   // The drawer: which side, and (wide screens) pinned.
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
+
+  // The keys (docs/specs/keyboard.md): a preset for this device, and the list of what each key does. Nothing is sent to the table.
+  const kd = document.createElement('div');
+  kd.innerHTML = `<label class="assign">Keys <select id="set-keys">${Object.entries(PRESETS).map(([id, p]) => `<option value="${esc(id)}">${esc(p.name)}</option>`).join('')}</select></label>`
+    + '<p class="note">W A S D or the arrows walk the selected character; hold Shift to look around; Space returns the view. Keys need a keyboard; the choice stays on this device.</p>'
+    + '<div class="row"><button type="button" id="set-keys-show" aria-expanded="false" aria-controls="set-keys-list">Show keys</button></div><dl id="set-keys-list" class="keys-list" hidden></dl>';
+  $('set-pin-note').after(...kd.children);
+  const ksel = $('set-keys'), klist = $('set-keys-list'), kshow = $('set-keys-show');
+  const paintKeys = () => { klist.innerHTML = keyList(presetOf(ksel.value)).map((k) => `<dt>${esc(k.words)}</dt><dd>${k.keys.map((x) => `<kbd>${esc(x)}</kbd>`).join(' ')}</dd>`).join(''); };
+  ksel.value = presetId(prefs.get('hextable.keys'));
+  ksel.onchange = (ev) => { prefs.set('hextable.keys', ev.target.value); paintKeys(); };
+  kshow.onclick = () => { const open = klist.hidden; klist.hidden = !open; kshow.setAttribute('aria-expanded', String(open)); kshow.textContent = open ? 'Hide keys' : 'Show keys'; if (open) paintKeys(); };
 
   // This device's dice and animation.
   $('dice-show').value = ctx.dice.show; $('dice-show').onchange = (ev) => { ctx.dice.show = ev.target.value; };

@@ -83,6 +83,8 @@ from forward, clockwise positive. The candidate whose angle is nearest the wish'
 
 ## Stepping
 
+- The first step of a walk waits 50 ms for a second key, so W and D pressed together make one diagonal step and not a
+  step forward first.
 - One step at a time: a step is sent, and the next waits for its answer (an update that names the walker, or a refusal).
   An answer that does not come within 2 seconds ends the walk. A held key repeats every 200 ms outside a fight and every
   400 ms in one. In `wait` pace a step also waits until the beats of the last one have played, as a tap would.
@@ -99,16 +101,20 @@ from forward, clockwise positive. The candidate whose angle is nearest the wish'
 
 ## The follow camera
 
-- After each accepted step the view turns, eased, to face the step's direction (`R.face(yaw)`). Facing a grid direction
-  exactly also means the next W is exactly that direction, with no tie. With `prefers-reduced-motion` the view snaps.
+- After each accepted step taken with forward held (W, or W with A or D) the view turns, eased, to face the step's
+  direction (`R.face(yaw)`); that is the direction of travel. Facing a grid direction exactly also means the next W is
+  exactly that direction, with no tie. With `prefers-reduced-motion` the view snaps.
+- A step back or to the side (S, A or D without W) leaves the view where it is, as backing up and sidestepping do in
+  third-person games. Otherwise S would turn the view round and the next press of S would walk the other way, and
+  separate presses of A would walk a square.
 - **A manual turn wins.** Q, E, Shift-look, a right-button or Shift drag, or a two-finger twist cancels the turn in
   progress and suspends following until the next walk starts (every walk key released, then one pressed) or Space. The
   renderer counts manual turns (`cameraAngles().turns`); the app compares the count.
 - The view's centre already follows the walker (the `moved` beat focuses it, as for a tap).
 - **Shift held**: the walk keys send nothing. Left and right turn the view (1.8 radians a second while held), up and down
   tilt it (between the renderer's limits). Releasing Shift with a walk key still held starts a new walk from the new view.
-- **Space**: centre on the selected character and face its last direction of travel (as it stands, if it has not moved
-  with the keys). Following resumes.
+- **Space**: centre on the selected character and face its last direction of travel (its last step with forward held;
+  the view's turn stays as it is if it has not walked forward with the keys). Following resumes.
 - Both renderers: the classic renderer (`?renderer=gl`, to be removed in R14 step 2) has the same `face` and `tilt`, so
   its keys and follow camera work too. The empty renderer accepts both and does nothing.
 

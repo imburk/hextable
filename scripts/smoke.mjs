@@ -53,6 +53,7 @@ const REGISTRY = {
   formation: ['formation'],
   mychars: ['mychars'],
   companions: ['companions'],
+  keys: ['keys'],
 };
 
 const only = process.env.SMOKE_ONLY;

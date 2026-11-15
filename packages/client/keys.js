@@ -121,8 +121,9 @@ export function leaveAlone(ev, doc) {
 //   now() ms; start() the actor to walk (it may select one) or null; actor() the actor the keys may walk now, or null;
 //   fight() whether a step is in a fight; yaw() the camera's turn; turns() its count of manual turns; turnKey() the turn as a key;
 //   grid() the geometry; busy() whether a tap would be skipped now; send(actor, { dq, dr }) true if sent;
-//   look(dyaw, dpitch) turn and tilt the view; stepped(actor, dir, follow) after an accepted step; stopped(why).
-export const PACE = { explore: 200, fight: 400, timeout: 2000, turnRate: 1.8, tiltRate: 0.9 };
+//   look(dyaw, dpitch) turn and tilt the view; stepped(actor, dir, follow, ahead) after an accepted step (`follow`: no manual turn since
+//   the walk began; `ahead`: forward was held, so the step is a direction of travel the view may turn to); stopped(why).
+export const PACE = { explore: 200, fight: 400, chord: 50, timeout: 2000, turnRate: 1.8, tiltRate: 0.9 };      // chord: the first step waits this long for a second key (W and D)
 export function createWalker(io) {
   const held = new Set(), looks = new Set();
   let shift = false, walk = null, last = null;
@@ -146,15 +147,19 @@ export function createWalker(io) {
     if (!walk) {
       const actor = io.start();
       if (!actor) { held.clear(); return; }
-      walk = { actor, yaw: io.yaw(), turns: io.turns(), turn: io.turnKey(), pending: null, next: 0 };
+      walk = { actor, yaw: io.yaw(), turns: io.turns(), turn: io.turnKey(), pending: null, next: now + PACE.chord };
     }
     if (walk.pending) { if (now - walk.pending.at > PACE.timeout) stop('timeout'); return; }
     if (io.actor() !== walk.actor) return stop('selection');
     if (io.turnKey() !== walk.turn) return stop('turn');
-    if (now < walk.next || io.busy()) return;
-    const d = stepFor(io.grid(), walk.yaw, has('forward') - has('back'), has('right') - has('left'));
+    if (now < walk.next) return;
+    step(now);
+  }
+  function step(now) {
+    if (io.busy()) return;
+    const f = has('forward') - has('back'), d = stepFor(io.grid(), walk.yaw, f, has('right') - has('left'));
     if (!d) return;
-    walk.pending = { at: now, dir: d };
+    walk.pending = { at: now, dir: d, ahead: f > 0 }; walk.sent = true;
     walk.next = now + (io.fight() ? PACE.fight : PACE.explore);
     if (!io.send(walk.actor, d)) { walk.pending = null; stop('unsent'); }
   }
@@ -169,7 +174,9 @@ export function createWalker(io) {
     },
     up(action) {
       looks.delete(action);
-      if (!held.delete(action)) return;
+      if (!held.has(action)) return;
+      if (walk && !walk.sent && !walk.pending && io.actor() === walk.actor) step(io.now());      // a tap shorter than the chord wait still steps once
+      held.delete(action);
       if (!held.size) walk = null;
     },
     shift(on) {
@@ -183,8 +190,8 @@ export function createWalker(io) {
       if (!walk) return;
       if (asking) return stop('prompt');
       if (walk.pending && mentions(walk.actor)) {
-        const d = walk.pending.dir; walk.pending = null;
-        io.stepped(walk.actor, d, io.turns() === walk.turns);
+        const { dir, ahead } = walk.pending; walk.pending = null;
+        io.stepped(walk.actor, dir, io.turns() === walk.turns, ahead);
       }
       if (walk && io.turnKey() !== walk.turn) stop('turn');
     },
