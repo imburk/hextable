@@ -444,6 +444,60 @@ for (const grid of [null, "square"]) {
   });
 }
 
+// A player's Giant Insect whose space, and every space near it, is taken by creatures the party does not know of:
+// nothing appears, the DM alone is told why (review of #326, M1). A small map of floor only, the party on one side,
+// hidden goblins on every other cell. Players get exactly the same whether the goblin in the space is an unbonded
+// creature the DM added or a hidden foe's companion.
+for (const grid of ["hex", "square"]) {
+  test(`a player's summon with no free space near: nothing reaches the player of the creatures there or of why (${grid === "hex" ? "hexes" : "squares"})`, () => {
+    const run = (bonded) => {
+      const s = newGame(9), G0 = gridOf({ grid }), tiles = {};
+      for (const h of G0.range({ q: 0, r: 0 }, 4)) tiles[`${h.q},${h.r}`] = { t: "stone" };
+      ok(apply(s, { type: "loadMap", map: { format: 2, id: "tiny", name: "Tiny", grid, cellFeet: 5, levels: [{ id: "ground", name: "Ground", z: 0, light: "bright", tiles }], walls: [], objects: [], regions: [], starts: [{ q: -3, r: 0 }] } }, DM));
+      s.settings.autoEngage = false;
+      const G = gridOf(s.map), cells = [...G.range({ q: 0, r: 0 }, 4)];
+      const party = ["fighter", "rogue", "cleric", "wizard"];
+      s.entities.ven = druid("ven", "party", s.entities.fighter.pos, "Ven");
+      s.entities.fighter.pos = { q: 40, r: 40, z: 0 };                          // off the little map, out of the way
+      ok(apply(s, { type: "claim", entity: "ven", user: "pat", userName: "Pat" }, PAT));
+      const taken = new Set(Object.values(s.entities).filter((e) => party.includes(e.id) || e.id === "ven").map((e) => `${e.pos.q},${e.pos.r}`));
+      const gobs = [];
+      for (const h of cells) if (!taken.has(`${h.q},${h.r}`)) gobs.push(ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: h, hidden: true }, DM)).events[0].id);
+      // A space for the insect that only hidden goblins stand in, as far from the party as the little map goes.
+      const want = cells.filter((h) => footprint({ size: "large" }, h, G).every((f) => cells.some((c) => c.q === f.q && c.r === f.r) && !taken.has(`${f.q},${f.r}`)))
+        .sort((a, b) => G.dist(b, s.entities.ven.pos) - G.dist(a, s.entities.ven.pos))[0];
+      const under = gobs.find((id) => footprint({ size: "large" }, want, G).some((f) => f.q === s.entities[id].pos.q && f.r === s.entities[id].pos.r));
+      if (bonded) { s.entities[under].hidden = false; ok(apply(s, { type: "bond", actor: under, to: gobs.find((x) => x !== under), kind: "summon" }, DM)); s.entities[under].hidden = true; }
+      const r = ok(cast(s, want));
+      return { s, r, gobs, seen: [PAT, U2].map((u) => [json(viewEvents(r.events, s, u)), json(view(s, u)), json(viewEvents(s.timeline.slice(-r.events.length), s, u))]), seq: s.seq };
+    };
+    const A = run(false), B = run(true);
+    assert.ok(!A.r.events.some((e) => e.type === "summoned"), "nothing appeared");
+    const told = A.r.events.find((e) => e.type === "manual" && /found no unoccupied space/.test(e.text));
+    assert.ok(told && told.partial, "the DM is told, and only the DM");
+    const mine = viewEvents(A.r.events, A.s, PAT);
+    assert.ok(!mine.some((e) => e.type === "manual"), "no line for the player");
+    assert.ok(!A.gobs.some((id) => json(A.seen).includes(`"${id}"`)), "no goblin's id reaches a player");
+    assert.deepEqual(A.seen, B.seen, "the same for an unbonded creature and a foe's companion");
+    assert.equal(A.seq, B.seq);
+  });
+}
+
+test("a summon's count that grows with the slot must stay 1 to 30 at every level; a foe's variants are numbered apart", () => {
+  const gi = srd.spells.find((x) => x.id === "giant-insect");
+  const withCount = (count) => { const sp = structuredClone(gi); Object.assign(sp.effects[0], { on: "space", count }); return lintPack({ ...srd, spells: [sp, ...srd.spells.filter((x) => x.id !== "giant-insect")] }).join("\n"); };
+  assert.match(withCount({ slot: 4, base: 0 }), /makes 32 creatures at level 8/);
+  assert.match(withCount({ slot: 1000 }), /must be 1 to 30/);
+  assert.match(withCount({ slot: 1, base: 0, above: 4 }), /makes 0 creatures at level 4/);
+  assert.equal(withCount({ slot: 2, base: 1, above: 4 }), "");
+  const s = table(null);
+  s.entities.mage = druid("mage", "foe", ring(s, s.entities.fighter.pos, 5), "Mira");
+  const a = summonedId(ok(apply(s, { type: "cast", actor: "mage", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [big(s, s.entities.fighter.pos, 2)] } }, DM)));
+  const b = ok(apply(s, { type: "spawn", monster: "giant-insect", at: big(s, s.entities.fighter.pos, 4, 5), slot: 4, variant: "spider", caster: "mage" }, DM)).events[0].id;
+  const c = ok(apply(s, { type: "spawn", monster: "giant-insect", at: big(s, s.entities.fighter.pos, 6, 6), slot: 4, variant: "wasp", caster: "mage" }, DM)).events[0].id;
+  assert.deepEqual([s.entities[a].name, s.entities[b].name, s.entities[c].name], ["Giant Wasp 1", "Giant Spider 1", "Giant Wasp 2"]);
+});
+
 // ---------- undo, redo, replay, a save in the middle of a fight, and one turn each a round ----------
 
 // A seeded fight: Ven and a foe druid summon, the insects fight (the AI plays every creature that is not a

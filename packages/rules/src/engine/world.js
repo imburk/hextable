@@ -451,8 +451,6 @@ export const contentName = (x) => (x.item !== undefined ? itemName(CONTENT.items
 // The open pile in this cell of this level, or with `by` the one that creature dropped there unseen, if there is one.
 export const pileAt = (s, level, h, by = null) => s.map.objects.find((o) => isPile(o) && o.level === level && o.at.q === h.q && o.at.r === h.r && (o.by ?? null) === by) ?? null;
 
-// Can `e` stand at `to`? Ground or air it fits in, a body that fits, not the hex it is on, and in
-// the arena if it is fighting. '' if so, else why not.
 // ---------- adding a creature to the map (the DM's spawn, the summon step: docs/specs/companions.md, Decision 2) ----------
 // Where a new creature with this body (`{ size }`) can stand when it is put at `at`: the floor in that column
 // (as `spawn` has always taken it), or, with `air` and a height in `at.z`, exactly there in the air (a flyer).
@@ -492,6 +490,8 @@ export function summonCaster(s, e, spell) {
   return { attack: st.attack, dc: st.dc, pb: e.prof, mod: mod(e.abil[castAbilOf(e, spell)] ?? 10) };
 }
 
+// Can `e` stand at `to`? Ground or air it fits in, a body that fits, not the hex it is on, and in
+// the arena if it is fighting. '' if so, else why not.
 export function roomAt(s, e, to) {
   if (!airspace(s.map, to, undefined, sizeOf(e).height)) return 'Nothing can stand there.';
   if (!fitsOn(s.map, e, to, barriers(s.map))) return `${e.name} does not fit there.`;

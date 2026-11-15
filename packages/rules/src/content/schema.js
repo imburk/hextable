@@ -496,6 +496,12 @@ function lintSpell(e, say) {
     if (!e.target?.self) say('a spell with a summon step is aimed at its caster (`target: { self: true }`); the spaces are named when it is cast');
     if (!(isInt(e.range) && e.range > 0)) say('a spell with a summon step needs a range in feet');
     if (e.reaction !== undefined || e.zone !== undefined) say('a summon step is not for a reaction or a zone');
+    // A `count` that grows with the slot makes 1 to SUMMON_MOST creatures at every level the spell can be cast at.
+    const c = seen.summons[0].count;
+    if (c && typeof c === 'object' && isInt(e.level)) for (let l = Math.max(1, e.level); l <= 9; l++) {
+      const n = (c.base ?? 0) + c.slot * (l - (c.above ?? 0));
+      if (!(isInt(n) && n >= 1 && n <= SUMMON_MOST)) { say(`a summon step's \`count\` makes ${n} creatures at level ${l}: it must be 1 to ${SUMMON_MOST} at every level the spell is cast at`); break; }
+    }
   }
 }
 // What grows when a spell is cast higher: `level` (a cantrip's damage dice by character level),

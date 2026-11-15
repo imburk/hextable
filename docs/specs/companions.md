@@ -757,7 +757,14 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   of it has room; anything else lands on the floor of the column. `a.summon` on a spell that summons nothing is refused.
 - **A creature the caster does not know of** (hidden by the DM, hiding, out of sight) does not stop a space: refusing
   would tell the player it is there. The creature appears in the nearest free space instead, as a teleport does
-  (`nearestFree`, rings out to 6), and the DM is told (`manual`, partial). None near: the DM places it.
+  (`nearestFree`, rings out to 6), and the DM is told (`manual`, partial). None near: nothing appears and the DM
+  places it; that line is `partial` too, so the player is not told why (review of #326, M1). **An accepted trade-off
+  (review of #326, L1):** the move itself hints that something unseen stands there, since a player who named a seen,
+  empty-looking space sees the creature appear a cell or two away, or not at all. Refusing would say more, and so
+  would naming the creature. A stricter reading (the summon appears in the space named, sharing it with the unseen
+  creature until one of them moves, or the cast is spent with nothing made and a neutral line) would need either
+  two creatures in one space outside riding (C6's footprint rules) or a spell that fails for a reason the player
+  sees no cause for. Neither is built; the owner may choose.
 - **The cap.** At most 30 bonded creatures per master (`SUMMON_MOST`, owner's answer 7), counting the master's
   bonded creatures that have not vanished, before the new ones. A companion can't summon (it has no companions).
   `BOND_MAX` in `engine/companions.js` is still 20 for the DM's `bond`: that is stage A4, whose file and pinned test
@@ -765,7 +772,8 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
 - **The creature made.** Id `m<seq>` as `spawn`; `tpl` is the block id (or the pack monster's); the baked creature
   type is kept on the record (`type`, which `creatureType` reads first); side, the master's. `name`: the party's
   is "Ven's Giant Wasp"; **a foe's is named as `spawn` names a creature** ("Giant Wasp 1", counted by `tpl`), so its
-  name says nothing of a master. `bond`: `{ to, kind, source (the spell), fx, turn, orders, at0, ends, leash?,
+  name says nothing of a master; each variant is numbered apart ("Giant Wasp 1", "Giant Spider 1"; review of #326, L5),
+  counting by `tpl` and name as the DM's `spawn` of a block does, hidden ones and husks included as `spawn` always has. `bond`: `{ to, kind, source (the spell), fx, turn, orders, at0, ends, leash?,
   noAttack?, slot, commanded: null, auto: false }`. With a lasting effect, a part `{ target, summon: true }` (C2 then
   ends it with the effect). A party one looks around (its sight is the party's). It joins a fight going on **if it
   stands in the arena, as a spawned creature does** (`joinEncounter`, so straight after a master the party knows of,
@@ -783,7 +791,8 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   `bond` is never on a Seen record, and a foe's `after` is never sent (C2).
 - **The DM's `spawn`** takes a summon block too: `{ monster: 'giant-insect', slot, variant?, kind? (its creature type),
   caster }`, baked with `caster`'s numbers for the spell whose step names the block. It makes the same creature
-  unbonded (the DM may then `bond` it). This is also what the twin runs compare against.
+  unbonded (the DM may then `bond` it). This is also what the twin runs compare against. With `at` missing or not
+  whole numbers, `spawn` now answers "Pick a place for it." where it threw or said it could not stand there (L7).
 - **XP.** A summon's `tpl` is not a pack monster, so the conclusion's lookup gives it 0 (owner's answer 6: a block with
   XP 0 stays 0). `counts` is still `!e.bond` (stage A3 not built).
 - **No state version bump:** `bond.source`, `bond.slot` and a creature's `type` are optional fields; nothing else in

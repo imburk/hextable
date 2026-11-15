@@ -988,10 +988,11 @@ function summon(s, m, step, src, ev) {
   const b = step.bond;
   for (const want of pick.at) {
     const at = nearestFree(s, { size: record.size }, want);
-    if (!at) { ev.push({ type: 'manual', actor: m.id, name: src.name, text: `The space named for ${src.name} is taken by a creature ${m.name} did not know of, and the engine found no unoccupied space near it. The DM places the creature.` }); continue; }
+    // Both lines are the DM's alone (`partial`): a player caster must not be told a creature it does not know of is there.
+    if (!at) { ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true, text: `The space named for ${src.name} is taken by a creature ${m.name} did not know of, and the engine found no unoccupied space near it, so nothing appeared. The DM places the creature (the player has not been told why).` }); continue; }
     if (at !== want) ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true, text: `A creature ${m.name} did not know of stands in the space named for ${src.name}, so the creature appeared in the nearest unoccupied space.` });
     const id = `m${++s.seq}`;
-    const n = Object.values(s.entities).filter((o) => o.tpl === made.tplId).length + 1;
+    const n = Object.values(s.entities).filter((o) => o.tpl === made.tplId && (!CONTENT.summons[made.tplId] || o.name?.startsWith(`${made.name} `))).length + 1;
     const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
       ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), slot: pick.slot, commanded: null, auto: false };
     const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, ...(made.type ? { type: made.type } : {}), bond });

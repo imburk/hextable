@@ -14,7 +14,7 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, up } from './shared.js';
-import { airspace, AREA_FILLS, DIAGONALS, fitsOn, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
@@ -128,7 +128,7 @@ export const handlers = {
     tpl || fail('Unknown monster.');
     const at = placeCreature(s, { size: tpl.size }, a.at);
     const id = `m${++s.seq}`;
-    const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
+    const n = Object.values(s.entities).filter((o) => o.tpl === a.monster && (!block || o.name?.startsWith(`${tpl.name} `))).length + 1;      // a block's variants are counted apart
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(type ? { type } : {}), ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
     if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
