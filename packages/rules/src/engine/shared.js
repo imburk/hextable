@@ -4,6 +4,7 @@ import { faceSum, negate, roll } from '../rng.js';
 import { FT } from '../space.js';
 import { coverOf, inSight } from '../sight.js';
 import { bounded, incapacitatedBy, modifiers } from '../modifiers.js';
+import { SUMMON_MOST } from '../content/schema.js';
 
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
 export const EXPLORE_BUDGET = 300;   // feet per tap while free roaming
@@ -162,3 +163,15 @@ export function fleetFree(s, e, id) {
 }
 export const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i]; return false; };
 
+// ---------- companions (docs/specs/companions.md) ----------
+
+// At most this many creatures bonded to one master, however they were bonded: the DM's `bond` and a spell's
+// `summon` (companions.js, casting.js) alike (owner's question 7; amendment A4). It is the number the content linter lets one
+// summon step make (schema.js, SUMMON_MOST), so no step makes more than a master may have.
+export const BOND_MAX = SUMMON_MOST;
+// A husk left by an unseen vanish (resolve.js, vanishUnseen) has no bond; one kept from before stage C2 is passed by too.
+export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x.bond?.to === id && !x.vanished);
+// Refused, with the one text for it, unless master `m` has room for `n` more companions.
+export function roomForCompanions(s, m, n = 1) {
+  companionsOf(s, m.id).length + n <= BOND_MAX || fail(`${m.name} can have at most ${BOND_MAX} companions.`);
+}

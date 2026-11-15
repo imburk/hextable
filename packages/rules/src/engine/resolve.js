@@ -8,7 +8,7 @@ import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
-import { unknown } from '../vision.js';
+import { seenName, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
@@ -872,6 +872,7 @@ function settleSeen(s, e, ev) {
 export function vanish(s, e, why, ev) {
   const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
   if (!seen) return vanishUnseen(s, e, why, ev);
+  const shown = seenName(e);                          // what players were shown of it, for the fight's rewards (A3)
   settleSeen(s, e, ev);
   for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
   if (e.follow) unfollow(s, e, ev);
@@ -886,11 +887,19 @@ export function vanish(s, e, why, ev) {
       if (i <= enc.turn) enc.turn--;                  // its own turn: the one before stands, and the turn passes below
       if (enc.moved) { delete enc.moved[e.id]; if (!Object.keys(enc.moved).length) delete enc.moved; }
       if (enc.held) delete enc.held[e.id];
+      // A foe that took part counts toward the fight's XP as any foe does (companions.md, amendment A3): its record
+      // goes, so the fight keeps what the conclusion needs of it (rewards.js, concludeFight). Only a creature the
+      // party saw vanish comes here; one it could not see stays as a husk in the order (vanishUnseen) and counts there.
+      if (e.side === 'foe') (enc.gone ??= []).push({ id: e.id, name, shown, tpl: e.tpl ?? null });
     }
     // Flags that name it (`hit:<id>:<target>`, `attacked:<id>`) go with it: once it is gone nothing can tell
     // whether players may know of it (view.js filters flags by the creatures there are; review of #313, L2).
     for (const k of Object.keys(enc.flags ?? {})) if (k.split(':').includes(e.id)) delete enc.flags[k];
   }
+  // The last foe of a fight to fall vanishes after the fight's conclusion is made (settleBonds runs after the
+  // action): marked there, so the card names it as it names a corpse (review of #330, M1).
+  const due = !enc && s.conclusion && !s.conclusion.published ? s.conclusion.foes.find((f) => f.id === e.id && !f.gone) : null;
+  if (due) Object.assign(due, { gone: true, shown });
   delete s.entities[e.id];
   ev.push({ type: 'vanished', id: e.id, name, why, seen: true, ...(party ? { party: true } : {}) });
   if (why === 'hp0' && e.bond?.kind === 'object')
@@ -973,6 +982,50 @@ function overRecord(record, over) {
   for (const [k, v] of Object.entries(over.speed)) { if (k === 'walk') r.speed = v; else (r.speeds ??= {})[k] = v; }
   return r;
 }
+// A summon cast with no `summon` field (engine/casting.js, summonFor; #332): nothing is made. The DM is told what
+// this casting would make and with which numbers (each choice of the block baked at this level with the master's
+// numbers, as the step would bake it), where it may go and how to add it. That line is the DM's alone (`partial`): the
+// numbers are the block's. The player's own line says only that the DM adds what it summons (#331 review, M1/M2).
+const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
+const or = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
+const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`;
+function summonHandOver(m, step, src, ev) {
+  const { slot, caster, count } = src.summon, block = !!CONTENT.summons[step.summon], def = SPELLS[src.spell]?.def;
+  const stats = (made, also = '') => {
+    const r = overRecord(made.record, step.over), moves = Object.entries(r.speeds ?? {}).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} ${v} ft.`);
+    return `${made.name}${also} (AC ${r.ac}, ${r.hp} Hit Points, Speed ${[`${r.speed} ft.`, ...moves].join(', ')}, ${r.size[0].toUpperCase()}${r.size.slice(1)})`;
+  };
+  let what, same = false;
+  if (step.forms !== undefined) {
+    what = Array.isArray(step.forms) ? or(step.forms.map((f) => CONTENT.monsters[f]?.name ?? f)) : `any ${step.forms.type} of Challenge Rating ${step.forms.cr}`;
+  } else {
+    const picks = [];
+    for (const variant of step.variants ?? [undefined]) for (const type of (block ? step.types : null) ?? [undefined]) {
+      const pick = { ...(variant !== undefined ? { variant } : {}), ...(type !== undefined ? { type } : {}) };
+      picks.push(stats(summonMade(step, pick, slot, caster), type !== undefined ? ` as a ${type}` : ''));
+    }
+    // Picks that bake to the same numbers (Draconic Spirit's five breath types) are listed once.
+    const once = [...new Set(picks)];
+    same = once.length < picks.length;
+    what = or(once);
+  }
+  const choose = step.forms !== undefined || step.variants || (block && step.types);
+  const types = step.types && !block ? `, of a creature type the caster picks (${or(step.types)}; \`spawn\` takes no creature type for a pack monster, so the DM notes the type by hand)` : '';
+  const picked = same ? ` The caster's pick (${or(step.variants)}) changes none of these numbers; it is in the block's text.` : '';
+  const numbers = block ? ` Its numbers are baked from ${m.name}'s: spell attack ${signed(caster.attack)}, spell save DC ${caster.dc}, Proficiency Bonus ${signed(caster.pb)}.${picked}` : '';
+  const spawn = block ? `spawn with monster ${step.summon}, slot ${slot}${step.variants ? ', the variant' : ''}${step.types ? ', kind (its creature type)' : ''} and caster ${m.id}`
+    : `spawn with the monster${step.forms !== undefined ? ' picked' : ` ${step.summon}`}`;
+  const rest = (def?.effects ?? []).some((x) => !('summon' in x) && !('manual' in x)) ? ` The rest of ${src.name} that needs no creature, such as a Resistance it gives ${m.name}, was applied as usual.` : '';
+  const tier = def && def.tier !== 'auto' ? ` ${def.text}` : '';
+  // Players are told only that the DM has something to add: no numbers, and nothing that says a creature exists.
+  // (A hidden caster's line is dropped by the view, as any manual line of a creature the party does not know of.)
+  ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name}: the DM adds what it summons.` });
+  ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true,
+    text: `${src.name} was cast at level ${slot} with nothing picked for the engine to summon, so it made nothing. The DM adds ${count === 1 ? `the creature${choose ? ' the caster picks' : ''}` : `${count} creatures${choose ? ', of the kind the caster picks' : ''}`}: ${what}${types}.${numbers}`
+      + ` Each goes in an unoccupied space within ${src.range} ft. that ${m.name} can see (inside the arena in a fight). The DM's ${spawn} makes it; bond it to ${m.name} as ${an(step.bond?.kind ?? 'companion')}.`
+      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}${rest}${tier}` });
+}
+
 // Make the creatures `src.summon` names (checked when the spell was cast, engine/casting.js): each an ordinary
 // creature from the baked block or the pack monster, on its master's side, with a bond to it. One made by a
 // spell that lasts is a part of that spell's lasting effect (`{ target, summon: true }`), so ending the effect
@@ -983,6 +1036,7 @@ function overRecord(record, over) {
 function summon(s, m, step, src, ev) {
   const pick = src.summon;
   if (!pick) return ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name} names no spaces for the engine to summon into. The DM adds the creature.` });
+  if (!pick.at) return summonHandOver(m, step, src, ev);
   const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over);
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
   const b = step.bond;

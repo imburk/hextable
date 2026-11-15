@@ -9,9 +9,9 @@ export const spells5 = [
     time: "action", range: 120, components: ["v","s"],
     duration: "1 minute", concentration: true, ritual: false,
     target: {"self":true},
-    effects: [{"summon": "animated-object", "variants": ["tiny", "small", "medium", "large", "huge"], "bond": {"kind": "object", "turn": "after", "orders": "free", "at0": "vanish"}}, {"manual": "Animate Objects: the engine makes one object per casting, of the size the caster picks, as an ally acting straight after the caster for the duration. The caster may animate objects up to its spellcasting modifier (a Large one counts as two, a Huge as three): the DM adds the others (the `spawn` action with the block 'animated-object', the slot, a size and the caster) and bonds them (they have no lasting effect, so the DM also removes them when the spell ends), and checks the objects are nonmagical, unworn, uncarried, unfixed and not Gargantuan. The engine does not yet take Bonus Action commands within 500 feet; with none, an object Dodges and moves only to avoid harm. At 0 Hit Points an object vanishes where it should revert to its object form, and the DM applies any damage left over to that form."}],
+    effects: [{"summon": "animated-object", "variants": ["tiny", "small", "medium", "large", "huge"], "bond": {"kind": "object", "turn": "after", "orders": "free", "at0": "vanish"}}],
     tier: "assist", checked: true,
-    text: "Animates nonmagical objects as allied constructs for up to a minute, as many as the caster's spellcasting modifier allows, each with a slam attack. The engine makes one object a casting; the DM adds the rest and runs the commands.",
+    text: "Animates a nonmagical object as an allied construct for up to a minute of Concentration: the engine makes one per casting, of the size picked. The DM adds the rest up to the caster's spellcasting modifier (Large counts two, Huge three) with spawn and bond, removes them when the spell ends, checks the objects, commands within 500 feet, and the reverting to an object at 0 Hit Points.",
   },
   {
     id: "antilife-shell", name: "Antilife Shell", source: "SRD 5.2.1",

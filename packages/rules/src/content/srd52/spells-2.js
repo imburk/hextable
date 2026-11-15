@@ -204,9 +204,9 @@ export const spells2 = [
     time: "action", range: 30, components: ["v", "s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"summon": "otherworldly-steed", "types": ["celestial", "fey", "fiend"], "bond": {"kind": "steed", "turn": "after", "orders": "free", "at0": "vanish", "ends": ["masterDies"]}}, {"manual": "Find Steed: the steed is made at the slot's level, shares the caster's Initiative count (acting straight after the caster), and disappears at 0 Hit Points or if the caster dies. The engine does not yet replace an earlier steed with a new one (the DM removes the old steed), seat a rider on it, play it as a controlled mount, or give it a turn of its own straight after the caster while the caster is Incapacitated. Its appearance as a horse, camel, dire wolf or elk is the DM's."}],
+    effects: [{"summon": "otherworldly-steed", "types": ["celestial", "fey", "fiend"], "bond": {"kind": "steed", "turn": "after", "orders": "free", "at0": "vanish", "ends": ["masterDies"]}}],
     tier: "assist", checked: true,
-    text: "Summons an otherworldly steed (Celestial, Fey or Fiend) in an unoccupied space within 30 feet, using the Otherworldly Steed stat block at the spell's level. A new casting replaces an old steed. The DM replaces an old steed and handles riding.",
+    text: "Summons an otherworldly steed (Celestial, Fey or Fiend) within 30 feet, using the Otherworldly Steed block at the slot level; it shares the caster's Initiative count and disappears at 0 Hit Points or if the caster dies. The DM replaces an old steed with a new casting and handles riding, its turn while the caster is Incapacitated, and its look.",
   },
   {
     id: "find-traps", name: "Find Traps", source: "SRD 5.2.1",

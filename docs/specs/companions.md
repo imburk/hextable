@@ -632,7 +632,7 @@ Settled in the review of #313:
   lasting effect: Grappled ends (nobody holds on), any other loses its `source` and the DM is told. A part
   of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
 - **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
-  may tick it. *Superseded 14 November: a foe's summons count; stage A3.*
+  may tick it. *Superseded 14 November: a foe's summons count; stage A3, built (see its build notes).*
 
 ### C2, the turn and lasting effects (#316)
 
@@ -767,8 +767,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   sees no cause for. Neither is built; the owner may choose.
 - **The cap.** At most 30 bonded creatures per master (`SUMMON_MOST`, owner's answer 7), counting the master's
   bonded creatures that have not vanished, before the new ones. A companion can't summon (it has no companions).
-  `BOND_MAX` in `engine/companions.js` is still 20 for the DM's `bond`: that is stage A4, whose file and pinned test
-  are not in this stage's list. Until A4 the DM's bond stops at 20 and a summon at 30.
+  *Since A4 the DM's `bond` and a summon share `BOND_MAX` (30) and one refusal; see A4's build notes.*
 - **The creature made.** Id `m<seq>` as `spawn`; `tpl` is the block id (or the pack monster's); the baked creature
   type is kept on the record (`type`, which `creatureType` reads first); side, the master's. `name`: the party's
   is "Ven's Giant Wasp"; **a foe's is named as `spawn` names a creature** ("Giant Wasp 1", counted by `tpl`), so its
@@ -794,7 +793,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   unbonded (the DM may then `bond` it). This is also what the twin runs compare against. With `at` missing or not
   whole numbers, `spawn` now answers "Pick a place for it." where it threw or said it could not stand there (L7).
 - **XP.** A summon's `tpl` is not a pack monster, so the conclusion's lookup gives it 0 (owner's answer 6: a block with
-  XP 0 stays 0). `counts` is still `!e.bond` (stage A3 not built).
+  XP 0 stays 0). *Since A3, `counts` is `!up(e)` for every foe; see A3's build notes.*
 - **No state version bump:** `bond.source`, `bond.slot` and a creature's `type` are optional fields; nothing else in
   the shape changed.
 - **Giant Insect** (SRD 5.2.1, flow lines 27421-27490) is `auto`, `checked`: AC 11 + level, HP 30 + 10 per level above
@@ -821,7 +820,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
 
 ### C4, blocks and spells, data (#328)
 
-Content only: three blocks in `content/srd52/summons.js` and five spells moved. Every number was compared with
+Content, plus the public hand-over line in `resolve.js` (`summonHandOver`, #331 review): three blocks in `content/srd52/summons.js` and five spells moved. Every number was compared with
 `reference/srd52/srd52-flow.txt` (lines in the table above); `test/summons-c4.test.js` bakes each block at every
 casting and casts each spell.
 
@@ -837,8 +836,8 @@ casting and casts each spell.
   smaller" is three of them with the same numbers). The upcast dice are `only: { slot: n }` damage entries, one more
   die for each level above 5 (a resistance rounds each of those entries apart). The SRD gives the block no Proficiency
   Bonus; `pb` is the engine's required field and nothing in the block uses it.
-- **Spell tiers.** Summon Dragon `auto`. Find Familiar, Find Steed, Phantom Steed, Animate Objects `assist`, each with a
-  `manual` step naming what is left. Find Familiar uses `forms: { type: 'beast', cr: 0 }` (the ten listed forms and any
+- **Spell tiers.** Summon Dragon `auto`. Find Familiar, Find Steed, Phantom Steed, Animate Objects `assist`, each with its `text` naming what is left (the
+  DM's note; there is no `manual` step, so a player is told only the public line above). Find Familiar uses `forms: { type: 'beast', cr: 0 }` (the ten listed forms and any
   other CR 0 Beast of the pack; the SRD has no Octopus block). Missing, so assist and not the table's tier: `one:
   'reform'` / `'replace'` (C5) for the one familiar or steed, `mount` (C6) for riding, a part's `ends: { on: 'damaged' }`
   for Phantom Steed, and a `count` that depends on the caster's modifier and the objects' sizes for Animate Objects (the
@@ -847,6 +846,43 @@ casting and casts each spell.
 - **Unseen Servant stays `manual`, with no block.** It needs `turn: 'none'` and `orders: 'command'` (the linter refuses
   both until C5 and C6) and a block with only Strength 2 (the monster linter wants all six scores, and inventing the
   other five is not allowed). Its manual text already carries the SRD's numbers.
+### C3b, a summon cast with no picks (#332)
+
+Found in the review of #331: from C3 a cast of a spell with a `summon` step and no `summon` field was refused ("Pick
+where ..."), and the client cannot send one until the cast chooser (C8), so from the table Giant Insect could not be
+cast at all. Before C3 these spells were `manual` and were never refused. Settled:
+
+- **What counts as no picks: `a.summon === undefined` only.** That is the manual path. Any other value is refused as
+  before, with nothing changed: `null`, a string, a number, an array, an object with a key it does not take, a missing
+  or empty `at` or the wrong number of spaces, a missing variant. A `summon` on a spell that summons nothing is still
+  refused, `null` included.
+- **The manual path** is any spell's: the slot spent (and the turn's one slot, the action), Concentration started where
+  the spell has it (ending the old one), its lasting effect timed as usual, with no summon part (it keeps no creature, and ends
+  when its time runs out or its caster drops it; the spell's other steps, such as Summon Dragon's Resistance on the caster, run as usual). Nothing is made and `seq` moves only for the effect. Checks that do
+  not depend on the picks still hold: a companion can't cast a summon, and a master at the cap of 30 is refused.
+- **The DM is told, alone** (`manual`, `partial: true`, emitted by the summon step in `resolve.js`, `summonHandOver`):
+  the level it was cast at; each choice of the block baked at that level with the master's numbers (name, AC, Hit
+  Points, speeds, size), or the pack monster, or the forms; a creature type to pick where the step has `types`; the
+  master's spell attack, spell save DC and Proficiency Bonus the block is baked with; the count; the spell's range and
+  that the space must be one the caster can see (in the arena in a fight); the DM's `spawn` that makes it and that it
+  is bonded with `bond`; and, for a spell that lasts, that the creature so added is not kept by the spell (the DM's
+  `bond` takes no `fx`), so the DM removes it when the spell ends. A player caster gets the `cast` and `effectStart`
+  any spell of theirs gives, and one short public (not `partial`) `manual` line, "<Spell>: the DM adds what it summons.",
+  with no numbers and no claim that a creature exists (#331 review; a foe's or a hidden caster's line is dropped by the
+  view like any manual line of a creature that is not the party's). An `assist` or `manual` entry's own tier note (its
+  `text`) is the DM's alone and follows the DM's line. Identical bakes are listed once (Draconic Spirit's five breath
+  types), and the line says the caster's pick changes none of the numbers. A step after the summon step (#331's Find Familiar line) runs
+  as it does with picks.
+- **A hidden caster is not revealed**, as with picks (the spell is aimed at its caster only in form). A twin run (a
+  hidden foe's cast without picks against the same foe's plain manual spell aimed at nothing, same level, duration
+  and Concentration) gives players byte-identical events, views, record and counter, on hexes and squares
+  (`summons-fallback.test.js`).
+- **A cast with picks is unchanged** (checked byte for byte against main for party and foe casts with a hidden
+  creature in the space, on hexes and squares, through a fight). One existing test changed: the C3 refusal of a cast
+  with no `summon` now sends `summon: null`.
+- **For the client job (C8):** the chooser must omit `summon` when nothing is picked, never send `summon: null` (that is
+  refused). Until the chooser exists, the plain cast button works for these spells; the DM's log shows
+  the line to act on.
 
 ## Amendments of 14 November
 
@@ -887,7 +923,7 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   tests that a never-commanded Zombie is the DM's and may only Dodge and move, one commanded this turn is its
   player's and refused for another player, and one with only a standing order is the DM's.
 
-### A3, XP for a foe's summons (not built)
+### A3, XP for a foe's summons (built, #329)
 
 - **Choice.** `counts` in a fight's conclusion (`rewards.js`) is no longer `false` for a bonded foe
   (`counts: !up(e)` only): a summon is listed and counted like any foe, with the pack's `xp` (0 for a
@@ -895,10 +931,48 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   any unseen death does and a seen vanished one counts too.
 - **Reasons.** The owner's answer; a foe's summons are foes. It removes the L3 difference noted in the
   review of #317.
-- **Cost.** One expression in `rewards.js`, the tests that pin `counts: false`, and the notes in C1 and C2.
+- **Cost.** One expression in `rewards.js`, the tests that pin `counts: false`, and the notes in C1 and C2. *As built: also
+  `encounter.gone` (resolve.js, `vanish`) and the `seen` and `shown` rule in `publish` for a foe whose record is gone; see the build notes.*
 
-### A4, the cap (not built)
+### A4, the cap (built, #329)
 
 - **Choice.** `BOND_MAX` (`engine/companions.js`) becomes 30.
 - **Reasons.** The SRD limits in Decision 1.
 - **Cost.** One constant and the test that pins 20.
+
+### Build notes: A3 and A4 (#329)
+
+- **A3, the rule.** In `concludeFight` (`rewards.js`) every foe of the fight counts unless it is still up:
+  `counts: !up(e)`, bonded or not. Its XP is the pack monster's (`CONTENT.monsters[tpl].xp`); a summon block is not a
+  pack monster, so it is 0 and stays 0. The DM may untick any foe, as before.
+- **A3, a foe the party saw vanish.** A seen vanish takes the record away (resolve.js, `vanish`), so a foe that vanished
+  that way in the middle of a fight left nothing for the conclusion. The fight now keeps it: `encounter.gone`, a list
+  of `{ id, name, shown, tpl }` for each foe that left the order by a seen vanish. `concludeFight` adds each one not
+  still among the fight's creatures with `counts: true` and `gone: true`, so it is listed once. A foe that is the last
+  of the fight to fall is counted among the fight's creatures (the fight ends inside the action, before `settleBonds`
+  makes it vanish), so it is never counted twice either; when it then vanishes seen, `vanish` marks its line in the
+  unpublished conclusion `gone` with its `shown` name (review of #330, M1). At publish a foe whose record is gone is
+  `seen` exactly when it is `gone`: the party saw it vanish. So the party's card and the chronicle's "Beaten" name it
+  as they name a twin's corpse, under `conclusion: 'dm'` and `'auto'` alike.
+- **A3, the name players are shown.** `shown` is `seenName` (moved from view.js to vision.js so the engine can use it)
+  at the moment it vanished: a foe in Wild Shape is the Beast. The card (view.js, `foeName`) and the chronicle use
+  `seenName` of the record if it is there, `shown` if not; `name` stays the DM's (review of #330, M2).
+- **A3, a foe that vanishes alive.** A `gone` foe counts whatever its Hit Points were: a DM-bonded pack monster that
+  vanishes at full health (its master died, a leash, its effect ended) gives its full XP, as the husk an unseen vanish
+  leaves does (that one is made dead). It is "counts as a death does" taken literally; the DM unticks it if not. Summon
+  blocks give 0 either way (review of #330, L1; in DEBT).
+- **A3, unseen.** The husk an unseen vanish leaves is a dead foe in the order and counts as any unseen death does; it
+  is not in `gone`. So seen or unseen, killed or vanished, a foe counts the same, once. Twin runs on hexes and squares
+  (companions-xp.test.js): a hidden companion killed unseen (the party blinded under `sight: 'light'`, since a creature
+  in a fight can't be hidden by the DM's switch) against an unbonded twin, and a bonded undead killed seen against an
+  unbonded twin, give players the same events, views, record and `seq`; a seen vanish against a twin's seen death gives
+  the same XP shares, the same card and the same chronicle.
+- **A3, what players are sent.** `encounter.gone` is never sent: the players' encounter is built field by field
+  (`view.js`, viewEncounter). `gone` on a conclusion foe is the DM's only (`playerConclusion` sends id, name, counts).
+- **A4.** `BOND_MAX` is `SUMMON_MOST` (`schema.js`, 30), so one number stands for both the master's cap and the most
+  one summon step makes. `roomForCompanions(s, m, n)` is the one check and the one refusal ("Brenna can have at most 30
+  companions."), used by the DM's `bond` (companions.js) and by a cast's summon (casting.js). It, `BOND_MAX` and
+  `companionsOf` live in `engine/shared.js`, under both handlers (review of #330, L2); `engine/companions.js` re-exports
+  the two it had.
+- **No state version bump.** `encounter.gone` and a conclusion foe's `gone` and `shown` are optional; a save without them loads and
+  plays as before (a fight saved in the middle simply has no seen vanish kept from before the change).

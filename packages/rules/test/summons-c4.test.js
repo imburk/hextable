@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, makeEntity } from "../src/engine.js";
+import { view, viewEvents } from "../src/view.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { gridOf } from "../src/grid.js";
@@ -177,7 +178,15 @@ test("Summon Dragon is refused out of range, with a choice not on its list, or w
   refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 5, choice: "cold", summon: { variant: "thunder", at: [good] } }, PAT, /acid, cold, fire, lightning, poison/);
   refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 5, choice: "thunder", summon: { variant: "fire", at: [good] } }, PAT);
   refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 4, choice: "cold", summon: { variant: "fire", at: [good] } }, PAT);
-  refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 5, choice: "cold" }, PAT, /Pick where/);
+  refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 5, choice: "cold", summon: null }, PAT);
+  refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 5, choice: "cold", summon: { variant: "fire" } }, PAT, /Pick one space/);
+  // No pick at all (what the client sends until C8): a manual hand-off, with the Resistance given to the caster as usual.
+  const bare = ok(castAt(structuredClone(s), "summon-dragon", 5, undefined, { choice: "cold" }));
+  assert.ok(!bare.events.some((x) => x.type === "summoned"));
+  const dm = bare.events.find((x) => x.type === "manual" && x.partial);
+  assert.equal((dm.text.match(/Draconic Spirit \(AC 19/g) ?? []).length, 1, "the five breath types bake alike: listed once");
+  assert.match(dm.text, /pick \(acid, cold, fire, lightning or poison\) changes none of these numbers/);
+  assert.match(dm.text, /Resistance it gives Ven, was applied as usual/);
   const far = [...gridOf(s.map).range(s.entities.ven.pos, 14)].find((h) => gridOf(s.map).dist(h, s.entities.ven.pos) === 13 && apply(structuredClone(s), { type: "spawn", monster: "giant-spider", at: h }, DM).ok);
   if (far) refused(s, { type: "cast", actor: "ven", spell: "summon-dragon", slot: 5, choice: "cold", summon: { variant: "fire", at: [far] } }, PAT, /reaches 60 ft/);
 });
@@ -197,7 +206,7 @@ test("Animate Objects (SRD lines 24073-24135) cast at levels 5 to 9, each size: 
     assert.deepEqual([e.bond.kind, e.bond.turn, e.bond.at0], ["object", "after", "vanish"]);
     assert.ok(s.effects.find((x) => x.spell === "animate-objects").conc);
     // At 0 Hit Points it vanishes (it should revert to its object form: that part is the DM's, said in the spell).
-    r.events.some((x) => x.type === "manual" && /Animate Objects/.test(x.text)) || assert.fail("the DM is told what the engine does not do");
+    r.events.some((x) => x.type === "manual" && x.partial && x.name === "Animate Objects" && x.text === CONTENT.spells["animate-objects"].text) || assert.fail("the DM is told what the engine does not do");
     ok(apply(s, { type: "setHp", actor: id, hp: 0 }, DM));
     assert.ok(!s.entities[id]);
   }
@@ -217,7 +226,7 @@ test("Find Steed (SRD lines 26824-26905) cast at levels 2 to 5 (the most a 17th-
     assert.deepEqual(e.speeds ?? {}, slot >= 4 ? { fly: 60 } : {}, say);
     assert.equal(e.actions.find((a) => a.id === "otherworldly-slam").effects[0].bonus, caster.attack);
     assert.deepEqual(e.bond, { to: "ven", kind: "steed", source: "find-steed", fx: null, turn: "after", orders: "free", at0: "vanish", ends: ["masterDies"], slot, commanded: null, auto: false });
-    assert.ok(r.events.some((x) => x.type === "manual" && /Find Steed/.test(x.text)), "the DM is told what the engine does not do");
+    assert.ok(r.events.some((x) => x.type === "manual" && x.partial && x.name === "Find Steed"), "the DM is told what the engine does not do");
     // The steed disappears if the caster dies.
     const t = structuredClone(s);
     t.entities.ven.dead = true;
@@ -241,7 +250,7 @@ test("Phantom Steed (SRD lines 29404-29428): a Riding Horse with a Speed of 100,
   const fx = s.effects.find((x) => x.spell === "phantom-steed");
   assert.ok(fx && !fx.conc, "an hour, no Concentration");
   assert.ok(fx.parts.some((p) => p.summon && p.target === id));
-  assert.ok(r.events.some((x) => x.type === "manual" && /Phantom Steed/.test(x.text)), "the DM is told it ends when the steed takes damage, and the riding");
+  assert.ok(r.events.some((x) => x.type === "manual" && x.partial && x.name === "Phantom Steed"), "the DM is told it ends when the steed takes damage, and the riding");
   ok(apply(s, { type: "endEffect", effect: fx.id }, PAT));
   assert.ok(!s.entities[id], "the steed goes when the spell ends");
 });
@@ -266,7 +275,7 @@ test("Find Familiar (SRD lines 26772-26822): any CR 0 Beast form as a Celestial,
   refused(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "owl", type: "beast", at: [at] } }, PAT, /celestial, fey, fiend/);   // it is not a Beast
   refused(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "octopus", type: "fey", at: [at] } }, PAT, /Choose a form/);        // the SRD has no Octopus block
   assert.equal(CONTENT.monsters.octopus, undefined);
-  assert.ok(CONTENT.spells["find-familiar"].effects.some((x) => x.manual && /Octopus/.test(x.manual)));
+  assert.match(CONTENT.spells["find-familiar"].text, /No Octopus/);
 });
 
 test("Unseen Servant stays manual: a block with only Strength, no turn and commands are not in the vocabulary yet", () => {
@@ -276,4 +285,42 @@ test("Unseen Servant stays manual: a block with only Strength, no turn and comma
   assert.equal(CONTENT.summons["unseen-servant"], undefined);
   // The SRD (lines 31898-31922) gives AC 10, 1 Hit Point and Strength 2 and nothing else: the text says exactly that.
   assert.match(sp.effects[0].manual, /AC 10, 1 Hit Point and Strength 2/);
+});
+
+// ---------- a cast with no pick (what the client sends until C8): what a player is told (#331 review, M1/M2) ----------
+
+const LINE = (name) => `${name}: the DM adds what it summons.`;
+const NO_PICK = [["find-familiar", "Find Familiar", 1, "wizard"], ["phantom-steed", "Phantom Steed", 3, "wizard"], ["animate-objects", "Animate Objects", 5, "wizard"], ["summon-dragon", "Summon Dragon", 5, "wizard", { choice: "cold" }]];
+
+test("a player caster with no pick gets one short public line, no numbers and no creature; the DM gets the detail", () => {
+  for (const [id, name, slot, cls, more] of NO_PICK) {
+    const s = table(cls, [id]), seq = s.seq, n = Object.keys(s.entities).length;
+    const r = ok(castAt(s, id, slot, undefined, more));
+    assert.equal(Object.keys(s.entities).length, n, "nothing is made");
+    assert.ok(!r.events.some((x) => x.type === "summoned"));
+    const mine = viewEvents(r.events, s, PAT).filter((x) => x.type === "manual");
+    assert.deepEqual(mine.map((x) => x.text), [LINE(name)], name);
+    assert.ok(!/\d|made|appears/.test(mine[0].text.replace(name, "")), "no numbers, no claim of a creature");
+    const dm = r.events.filter((x) => x.type === "manual" && x.partial);
+    assert.ok(dm.length >= 1 && dm[0].text.includes("nothing picked") && dm[0].text.includes("The DM"), name);
+    assert.ok(s.seq >= seq);
+  }
+});
+
+test("a foe's cast with no pick, seen or hidden, tells the players no line (what a foe does by hand is the DM's to tell)", () => {
+  for (const hidden of [false, true]) {
+    const s = table("wizard", ["phantom-steed"]);
+    const d = derive(sheet("wizard", ["phantom-steed"], { name: "Mira" }));
+    s.entities.mira = makeEntity(d.record, { id: "mira", kind: "npc", side: "foe", pos: { ...spot(s, s.entities.ven.pos, 3, 3), z: 0 } });
+    if (hidden) s.entities.mira.hidden = true;
+    const plain = structuredClone(s);
+    const r = ok(apply(s, { type: "cast", actor: "mira", spell: "phantom-steed", slot: 3 }, DM));
+    const mine = viewEvents(r.events, s, PAT);
+    assert.ok(!mine.some((x) => x.type === "manual") && !json(mine).includes("DM adds"), "no line, as for any foe's hand-applied spell");
+    if (hidden) assert.ok(!json(mine).includes("mira") && !json(view(s, PAT)).includes("Mira"), "and a hidden one is not named");
+    else assert.ok(view(s, PAT).entities.mira, "the foe is in the party's view");
+    // The same cast of a plain manual spell tells the players exactly as much.
+    const twin = structuredClone(plain); twin.entities.mira.spells = ["fireball"];
+    assert.ok(!viewEvents(ok(apply(twin, { type: "cast", actor: "mira", spell: "fireball", slot: 3, hex: { q: 9, r: 9 } }, DM)).events, twin, PAT).some((x) => x.type === "manual"));
+  }
 });
