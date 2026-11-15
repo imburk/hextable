@@ -116,8 +116,8 @@ for (const grid of GRIDS) {
     const r2 = ok(apply(b.s, { type: "condition", actor: t, condition: "prone" }, DM));
     assert.equal(saves(r2).length, 1); assert.equal(saves(r2)[0].success, true);
     assert.ok(b.s.entities.fighter.riding, "stays on");
-    const r3 = ok(apply(b.s, { type: "move", actor: "fighter", to: b.s.entities.fighter.pos }, U1).ok ? { ok: true, events: [] } : { ok: true, events: [] });
-    assert.equal(saves(r3).length, 0);
+    const r3 = ok(apply(b.s, { type: "endTurn", actor: "fighter" }, U1));
+    assert.equal(saves(r3).length, 0, "the next action makes no second save");
     const r4 = ok(apply(b.s, { type: "condition", actor: "rogue", condition: "prone" }, DM));
     assert.equal(saves(r4).length, 0, "no second save for the same Prone");
   });
@@ -146,7 +146,7 @@ for (const grid of GRIDS) {
     for (const id of [eagle, "rogue"]) t.s.entities[id].pos = { ...t.s.entities[eagle].pos, z: 30 };
     t.s.entities[eagle].side = "party";
     t.s.entities.rogue.riding = { on: eagle, controlled: false, size: "large" }; t.s.entities[eagle].rider = "rogue";
-    ok(apply(t.s, { type: "wait", minutes: 1 }, DM).ok ? { ok: true } : { ok: true });
+    ok(apply(t.s, { type: "condition", actor: "cleric", condition: "prone" }, DM));       // any action: the gravity pass runs
     assert.equal(t.s.entities.rogue.pos.z, 30, "held up by its flying mount");
     const hp = t.s.entities.rogue.hp;
     const r2 = ok(apply(t.s, { type: "remove", actor: eagle }, DM));
@@ -495,5 +495,30 @@ for (const grid of GRIDS) {
     const again = structuredClone(start);
     for (const [act, ctx] of log) ok(apply(again, act, ctx));
     assert.equal(json(again), end);
+  });
+}
+
+// A save made with main's code before C6b (origin/main 55e1302, C6a): a rider on a warhorse in a fight, the horse
+// Prone and the DM already told (`riding.told`). It loads unchanged and plays on: the old Prone is not saved against
+// again (it was the DM's then), the pair walks together, and a new Prone is saved against.
+import { readFileSync } from "node:fs";
+const OLD = JSON.parse(readFileSync(new URL("./fixtures/c6a-riding-saves.json", import.meta.url), "utf8"));
+for (const grid of GRIDS) {
+  test(`${grid}: an old save from main (C6a) loads and plays`, () => {
+    const { horse, save } = OLD[grid];
+    const s = migrate(structuredClone(save));
+    assert.equal(json(s), json(save), "loads unchanged");
+    assert.equal(s.entities.fighter.riding.on, horse);
+    assert.equal(s.entities.fighter.riding.told, true);
+    const r2 = ok(apply(s, { type: "condition", actor: "rogue", condition: "prone" }, DM));
+    assert.equal(saves(r2).length, 0, "the Prone told of under main is not saved against again");
+    for (let i = 0; i < 30 && !(current(s) === "fighter" && s.encounter.round === save.encounter.round + 1); i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    assert.ok(!s.entities[horse].cond.prone, "the horse stood at its rider's turn");
+    assert.equal(s.entities.fighter.riding.told, undefined);
+    dex(s, "fighter", -40);
+    const r3 = ok(apply(s, { type: "condition", actor: "fighter", condition: "prone" }, DM));
+    assert.equal(saves(r3).length, 1);
+    assert.ok(off(r3)?.fell);
+    assert.equal(noOverlap(s), null);
   });
 }

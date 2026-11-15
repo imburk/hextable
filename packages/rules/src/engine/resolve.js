@@ -77,7 +77,9 @@ function push(s, t, feet, dir, from, ev) {
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
-    if (rider && !asked) { asked = true; if (!ridesThrough(s, t, dir === 'toward' ? 'pulled' : 'pushed', ev)) rider = null; }
+    // The save is made once a step is found (the effect is about to move it); fallen off, the rider now stands beside
+    // the mount, so this step is looked for again with it there.
+    if (rider && !asked) { asked = true; if (!ridesThrough(s, t, dir === 'toward' ? 'pulled' : 'pushed', ev)) { rider = null; i--; continue; } }
     if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
     const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
@@ -408,6 +410,7 @@ export function dismountOrder(s, m, r) {
   const cur = enc.turn >= 0 ? current(s) : null;
   const ri = enc.order.findIndex((o) => o.id === r.id), o = enc.order.find((x) => x.id === m.id);
   if (!o || ri < 0 || enc.moved?.[m.id] || enc.moved?.[r.id]) return;
+  if (cur === m.id) return;                                         // its own turn is going on: it keeps its place (C6b)
   const had = enc.rode?.[m.id] === enc.round, mi = enc.order.indexOf(o);
   if (tieOf(o) && (had || mi > enc.turn)) return;                   // the bond keeps its place (A1)
   if (!had && mi > enc.turn && ri < enc.turn) return;               // its own place is still to come: it takes its turn there
