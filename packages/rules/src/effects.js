@@ -107,6 +107,7 @@ function summarise(def) {
   if (kind === 'heal') return { short: `heal ${step.heal}`, long: `Heal ${step.heal}` };
   if (kind === 'tempHp') return { short: `${step.tempHp} temp HP`, long: `${step.tempHp} Temporary Hit Points` };
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
+  if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
@@ -170,7 +171,7 @@ export function spellProfile(def) {
     if (k === 'modifier' && st.modifier.against) harmful = true;     // a mark or curse that works only against its target (Hex, Hunter's Mark) is cast at a foe
     if (k === 'heal') { heals = true; healStep ??= st; }
   });
-  const t = def.target, tp = def.effects.find((st) => 'teleport' in st);
+  const t = def.target, tp = def.effects.find((st) => 'teleport' in st), sm = def.effects.find((st) => 'summon' in st);
   // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
   const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
   const aim = t.self ? 'self' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
@@ -185,6 +186,9 @@ export function spellProfile(def) {
     kinds: spellKinds(def),                        // what it is for: damage, healing, control, utility
     // A teleport: the `cast` action names the destination in `hex` (docs/specs/rules-expansion.md).
     ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
+    // A summon: the `cast` action names its choices and a space for each creature in `summon` (engine/casting.js).
+    ...(sm ? { summon: { of: sm.summon, count: sm.count ?? 1, ...(sm.variants ? { variants: [...sm.variants] } : {}), ...(sm.types ? { types: [...sm.types] } : {}),
+      ...(sm.forms ? { forms: structuredClone(sm.forms) } : {}), kind: sm.bond?.kind ?? null } } : {}),
     ...summarise(def),
     def,
   };
@@ -393,6 +397,9 @@ function exec(s, ev, kit, f, step, at) {
     return;
   }
   if (f.half) return;                                                 // a successful save halves damage and skips the rest
+  // Creatures made in the spaces the cast named, bound to the caster (docs/specs/companions.md, Decision 2).
+  // The spell is aimed at its caster, so the target is the caster; the cast checked every choice and space.
+  if (kind === 'summon') return kit.summon ? kit.summon(s, t, step, f.src, ev) : handOver(`${f.src.name} summons a creature, which the engine cannot make here. The DM adds it.`);
   // Teleport the target (the caster) to the place the cast named, checked when it was cast.
   if (kind === 'teleport') {
     if (!f.src.to) return handOver(`${f.src.name} names no destination, so the engine cannot teleport ${t.name}. The DM moves it, up to ${step.teleport} ft${step.see ? ' to a space it can see' : ''}.`);

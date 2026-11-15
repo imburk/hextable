@@ -2,6 +2,7 @@
 //
 // Spells are played straight from their data by the effect runner (effects.js).
 import { spellProfile } from '../effects.js';
+import { bake } from '../summons.js';
 import { TILES } from './terrain.js';
 import { pack } from './srd52/pack.js';
 import { spells as spellsStarter } from './srd52/spells.js';
@@ -20,6 +21,7 @@ import { monsters as monstersAC } from './srd52/monsters-a-c.js';
 import { monsters as monstersPZ } from './srd52/monsters-p-z.js';
 import { monsters as monstersDG } from './srd52/monsters-d-g.js';
 import { monsters as monstersHO } from './srd52/monsters-h-o.js';
+import { summons } from './srd52/summons.js';
 import { pregens } from './srd52/pregens.js';
 import { conditions } from './srd52/conditions.js';
 import { objects } from './srd52/objects.js';
@@ -48,10 +50,10 @@ const monsters = [...monstersStarter, ...monstersAC, ...monstersPZ, ...monstersD
 const classes = [barbarian, bard, cleric, druid, fighter, monk, paladin, ranger, rogue, sorcerer, warlock, wizard];
 
 export { TILES };
-export const PACKS = [{ pack, spells, monsters, pregens, conditions, objects, classes, weapons, armour, feats, items, multiclass: multiclassSpellcaster, advancement }];
+export const PACKS = [{ pack, spells, monsters, summons, pregens, conditions, objects, classes, weapons, armour, feats, items, multiclass: multiclassSpellcaster, advancement }];
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
-export const CONTENT = { spells: byId(spells), monsters: byId(monsters), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
+export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons: byId(summons), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
   classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement };
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
@@ -103,3 +105,14 @@ const table = (list, make) => Object.fromEntries(list.map((e) => [e.id, make(e)]
 export const MONSTERS = table(monsters, legacyMonster);
 export const PREGENS = table(pregens, legacyPregen);
 export const MONSTER_ACTIONS = table(monsters, (m) => m.actions.map(runtimeAction));
+
+// ---------- summon blocks (docs/specs/companions.md, Decision 5) ----------
+// A block baked for one casting (summons.js), in the shape a pack monster takes in the engine: the record
+// makeEntity makes a creature from (`actions` included), the baked block's creature type and name.
+// `o` is { slot, caster: { attack, dc, pb, mod }, variant?, type? }.
+export function summonTemplate(id, o) {
+  const block = CONTENT.summons[id];
+  if (!block) return null;
+  const baked = bake(block, o);
+  return { record: { ...legacyMonster(baked), actions: baked.actions.map(runtimeAction) }, type: baked.type, name: baked.name, baked };
+}

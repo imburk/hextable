@@ -5,8 +5,10 @@
 // these lists is an engine change and needs the spec amended (docs/specs/rules-expansion.md);
 // a content pull request cannot do it.
 //
-//   lintPack({ pack, spells, monsters, pregens, conditions, objects }) -> [ "spells/fire-bolt: problem", ... ]
+//   lintPack({ pack, spells, monsters, summons, pregens, conditions, objects }) -> [ "spells/fire-bolt: problem", ... ]
 //   coverage({ spells, monsters })                -> { spells: { auto, assist, manual, unchecked, total }, ... }
+
+import { bake, castings, CASTER_AMOUNTS, isAmount, isByAmount, isCasterAmount } from '../summons.js';
 
 export const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 export const DAMAGE_TYPES = ['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder'];
@@ -23,7 +25,7 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'manual'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -269,6 +271,10 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
       if (step.see !== undefined && step.see !== true) say('`see` is true or left out');
     }
     if (step.blocked !== undefined && kind !== 'teleport') say('`blocked` is for a teleport step');
+    // `summon`: the caster makes creatures in unoccupied spaces it names, bound to it (docs/specs/companions.md,
+    // Decision 2). What it names is checked against the pack in lintPack; its place in a spell in lintSpell.
+    if (kind === 'summon') { (seen.summons ??= []).push(step); lintSummonStep(step, say); }
+    if (step.plus !== undefined) say('`plus` (an amount added to dice) is for a summon block');
     // `cure: [conditions]`: the conditions end on the creature it works on (Heal); "chosen" is one
     // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
     // Exhaustion is not ended this way: a spell lowers it by levels.
@@ -285,6 +291,109 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
   }
   return seen;
 }
+// ---------- the summon step and summon blocks (docs/specs/companions.md, Decisions 1, 2 and 5) ----------
+// What a bond made by a spell may say. The lists are Decision 1's (engine/companions.js keeps the same; a test
+// holds them equal). Not yet run by the engine, so refused here rather than kept and not played: a turn of
+// none (stages C5, C6), commands and their range (C5), riding (C6), one per master (C5), corpses (C5).
+export const SUMMON_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
+export const SUMMON_TURNS = ['own', 'after'];
+export const SUMMON_ENDS = ['masterDies', 'longRest'];
+const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'on', 'over', 'bond'];
+const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'at0', 'ends', 'leash', 'noAttack'];
+const SUMMON_LATER = { one: 'one per master (`one`) comes with stage C5', mount: 'riding (`mount`) comes with stage C6', range: 'commands and their range come with stage C5' };
+// The most creatures one casting makes (the cap of a master's companions, owner's question 7).
+export const SUMMON_MOST = 30;
+function lintSummonStep(st, say) {
+  for (const k of Object.keys(st)) if (!SUMMON_STEP_KEYS.includes(k)) say(SUMMON_LATER[k] ? `a summon step: ${SUMMON_LATER[k]}` : `a summon step has no "${k}"`);
+  if (st.forms !== undefined) {
+    if (st.summon !== 'form') say('a summon step with `forms` says `summon: "form"`: the caster picks one');
+    const f = st.forms;
+    const list = Array.isArray(f) && f.length > 0 && f.length <= 40 && f.every((x) => ID.test(x ?? '')) && new Set(f).size === f.length;
+    const filter = !!f && !Array.isArray(f) && typeof f === 'object' && Object.keys(f).length === 2 && CREATURE_TYPES.includes(f.type) && typeof f.cr === 'number' && f.cr >= 0;
+    if (!list && !filter) say('`forms` lists pack monsters, or is { type, cr }');
+  } else if (!ID.test(st.summon ?? '') || st.summon === 'form') say('`summon` names a summon block or a pack monster');
+  if (st.types !== undefined && !(allOf(CREATURE_TYPES)(st.types) && st.types.length >= 1 && new Set(st.types).size === st.types.length)) say('`types` lists creature types the caster picks from');
+  if (st.variants !== undefined && !(Array.isArray(st.variants) && st.variants.length >= 2 && st.variants.every((x) => ID.test(x ?? '')) && new Set(st.variants).size === st.variants.length)) say('`variants` lists the choices the caster picks from');
+  if (st.on !== undefined && st.on !== 'space') say(st.on === 'corpse' ? 'a summon step on corpses comes with stage C5' : '`on` is "space"');
+  if (st.count !== undefined) {
+    if (st.on === undefined) say('`count` goes with `on`');
+    const okCount = (isInt(st.count) && st.count >= 1 && st.count <= SUMMON_MOST)
+      || (st.count && typeof st.count === 'object' && isInt(st.count.slot) && st.count.slot > 0 && Object.keys(st.count).every((k) => ['slot', 'base', 'above'].includes(k))
+        && (st.count.base === undefined || isInt(st.count.base)) && (st.count.above === undefined || isInt(st.count.above)));
+    if (!okCount) say(`\`count\` is a whole number from 1 to ${SUMMON_MOST}, or { slot, base?, above? }`);
+  }
+  // `over`: fields replaced on the made creature. Only its speeds so far (Phantom Steed's Speed 100).
+  if (st.over !== undefined && !(st.over && typeof st.over === 'object' && Object.keys(st.over).length === 1 && st.over.speed
+    && Object.keys(st.over.speed).length && Object.entries(st.over.speed).every(([m, v]) => MOVE_MODES.includes(m) && isInt(v) && v >= 0 && v % 5 === 0))) say('`over` replaces { speed: { walk, fly, ... } } on the made creature, in feet');
+  const b = st.bond;
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return say('a summon step needs `bond`: { kind, turn, orders?, at0, ends?, leash?, noAttack? }');
+  for (const k of Object.keys(b)) if (!SUMMON_BOND_KEYS.includes(k)) say(SUMMON_LATER[k] ? `a summon bond: ${SUMMON_LATER[k]}` : `a summon bond has no "${k}"`);
+  if (!SUMMON_KINDS.includes(b.kind)) say(`a summon bond's kind is one of ${SUMMON_KINDS.join(', ')}`);
+  if (!SUMMON_TURNS.includes(b.turn)) say(b.turn === 'none' ? 'a summon bond with no turn of its own comes with stages C5 and C6' : `a summon bond's turn is one of ${SUMMON_TURNS.join(', ')}`);
+  if (b.orders !== undefined && b.orders !== 'free') say(b.orders === 'command' ? 'commands come with stage C5' : 'a summon bond\'s orders are "free"');
+  if (!['vanish', 'dies'].includes(b.at0)) say('a summon bond says what 0 Hit Points does: `at0` vanish or dies');
+  if (b.ends !== undefined && !(allOf(SUMMON_ENDS)(b.ends) && b.ends.length && new Set(b.ends).size === b.ends.length)) say(`a summon bond's \`ends\` lists ${SUMMON_ENDS.join(', ')}`);
+  if (b.leash !== undefined && !(isInt(b.leash) && b.leash > 0 && b.leash % 5 === 0 && b.leash <= 5280)) say('a summon bond\'s `leash` is feet, a multiple of 5');
+  if (b.noAttack !== undefined && b.noAttack !== true) say('`noAttack` is true or left out');
+}
+
+// A summon block: the monster format with summon amounts (summons.js). Baked at every spell level it can be
+// cast at, with each variant and type, every result must pass the monster linter (cr null, XP 0). Class
+// amounts ({ column }, { mod }, ...) are refused here, as summon amounts are in monsters.
+const CLASS_AMOUNT_KEYS = ['column', 'mod', 'perLevel', 'byLevel', 'prof', 'die'];
+const DUMMY_CASTER = { attack: 7, dc: 15, pb: 3, mod: 4 };
+function walkValues(v, visit, path = '') {
+  visit(v, path);
+  if (Array.isArray(v)) v.forEach((x, i) => walkValues(x, visit, `${path}[${i}]`));
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walkValues(x, visit, `${path}.${k}`);
+}
+function lintSummonBlock(e, say) {
+  const fn = findFunction(e);
+  if (fn) return say(`contains a function at ${fn}; content is data only`);
+  if (!ID.test(e.id ?? '')) say(`id "${e.id}" must be kebab-case`);
+  if (!(isInt(e.level) && e.level >= 1 && e.level <= 9)) say('`level` is the lowest spell level the block is cast at, 1 to 9');
+  for (const k of ['variants', 'types']) if (e[k] !== undefined && !(Array.isArray(e[k]) && e[k].length >= 2 && e[k].every((x) => ID.test(x ?? '')) && new Set(e[k]).size === e[k].length)) say(`\`${k}\` lists the choices the block reads`);
+  if (e.types !== undefined && !allOf(CREATURE_TYPES)(e.types)) say('`types` lists creature types');
+  if (e.cr !== undefined || e.xp !== undefined) say('a summon block has no cr or xp of its own: baked, it is CR none, XP 0');
+  walkValues(e, (v, path) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return;
+    if (Object.keys(v).length && Object.keys(v).every((k) => CLASS_AMOUNT_KEYS.includes(k) || k === 'min')) say(`${path}: class amounts are for class features, not summon blocks`);
+    if (isByAmount(v)) {
+      const of = v.by === 'variant' ? e.variants : v.by === 'type' ? e.types : null;
+      if (!of) say(`${path}: a summon amount by ${v.by} needs the block's ${v.by === 'type' ? 'types' : 'variants'}`);
+      else for (const k of Object.keys(v)) if (k !== 'by' && !of.includes(k)) say(`${path}: "${k}" is not one of the block's ${v.by === 'type' ? 'types' : 'variants'}`);
+    }
+    if (isCasterAmount(v) && !CASTER_AMOUNTS.includes(v.caster)) say(`${path}: a caster amount is one of ${CASTER_AMOUNTS.join(', ')}`);
+    if (v.only !== undefined) {
+      const o = v.only;
+      if (!o || typeof o !== 'object' || !Object.keys(o).length || !Object.keys(o).every((k) => ['variant', 'type', 'slot'].includes(k))) say(`${path}: \`only\` is { variant?, type?, slot? }`);
+      else {
+        if (o.variant !== undefined && !(Array.isArray(o.variant) && o.variant.length && o.variant.every((x) => (e.variants ?? []).includes(x)))) say(`${path}: \`only.variant\` lists the block's variants`);
+        if (o.type !== undefined && !(Array.isArray(o.type) && o.type.length && o.type.every((x) => (e.types ?? []).includes(x)))) say(`${path}: \`only.type\` lists the block's types`);
+        if (o.slot !== undefined && !(isInt(o.slot) && o.slot >= 1 && o.slot <= 9)) say(`${path}: \`only.slot\` is a spell level`);
+      }
+    }
+  });
+  if ((e.traits ?? []).some((t) => t.modifiers?.length || t.reaction)) say('a summon block\'s traits are text for now: the engine reads trait modifiers and reactions from pack monsters only');
+  if (!(e.variants?.length || e.types?.length || e.level)) return;
+  for (const c of castings(e)) {
+    const label = `baked at level ${c.slot}${c.variant ? `, ${c.variant}` : ''}${c.type ? `, ${c.type}` : ''}`;
+    let t;
+    try { t = bake(e, { ...c, caster: DUMMY_CASTER }); } catch (err) { say(`${label}: ${err.message}`); continue; }
+    lintMonster(t, (m) => say(`${label}: ${m}`), true);
+  }
+}
+// The template a summon block bakes to, linted as a monster (its cr is null).
+export function lintBaked(t) { const out = []; lintMonster(t, (m) => out.push(m), true); return out; }
+// Summon amounts and `only` are for summon blocks: a monster (or a baked template) holds plain numbers.
+function lintNoSummonAmounts(e, say) {
+  walkValues(e, (v, path) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return;
+    if (isAmount(v)) say(`${path}: summon amounts are for summon blocks`);
+    else if (v.only !== undefined) say(`${path}: \`only\` is for summon blocks`);
+  });
+}
+
 function lintTarget(target, say) {
   if (!target || typeof target !== 'object') return say('needs a target');
   const kinds = ['self', 'creature', 'area'].filter((k) => k in target);
@@ -380,6 +489,20 @@ function lintSpell(e, say) {
   if (seen.teleport && !(e.target?.self && e.effects.some((st) => 'teleport' in st))) say('a `teleport` step is for a spell aimed at its caster, in its own list of steps');
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
+  // A summon step works from the caster, on spaces it names within the spell's range: one, in the spell's own
+  // list of steps (not under a roll), in a spell aimed at its caster with a range in feet.
+  if (seen.summons) {
+    if (seen.summons.length > 1 || !e.effects.some((st) => 'summon' in st)) say('a spell has one summon step, in its own list of steps');
+    if (!e.target?.self) say('a spell with a summon step is aimed at its caster (`target: { self: true }`); the spaces are named when it is cast');
+    if (!(isInt(e.range) && e.range > 0)) say('a spell with a summon step needs a range in feet');
+    if (e.reaction !== undefined || e.zone !== undefined) say('a summon step is not for a reaction or a zone');
+    // A `count` that grows with the slot makes 1 to SUMMON_MOST creatures at every level the spell can be cast at.
+    const c = seen.summons[0].count;
+    if (c && typeof c === 'object' && isInt(e.level)) for (let l = Math.max(1, e.level); l <= 9; l++) {
+      const n = (c.base ?? 0) + c.slot * (l - (c.above ?? 0));
+      if (!(isInt(n) && n >= 1 && n <= SUMMON_MOST)) { say(`a summon step's \`count\` makes ${n} creatures at level ${l}: it must be 1 to ${SUMMON_MOST} at every level the spell is cast at`); break; }
+    }
+  }
 }
 // What grows when a spell is cast higher: `level` (a cantrip's damage dice by character level),
 // `targets` (how many it aims at by character level), and `slot`, per slot level above its own:
@@ -403,11 +526,13 @@ function lintHigher(e, say) {
 const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
 // A senses map gives a range in feet, a multiple of 5, for some of the four special senses.
 const validSenses = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && Object.entries(v).every(([k, f]) => SENSES.includes(k) && isInt(f) && f >= 0 && f <= 1000 && f % 5 === 0);
-function lintMonster(e, say) {
+// `baked`: a template made from a summon block (summons.js), whose CR is none (`cr: null`) and XP 0.
+function lintMonster(e, say, baked = false) {
   lintCommon(e, say);
+  lintNoSummonAmounts(e, say);
   if (!SIZES.includes(e.size)) say(`unknown size "${e.size}"`);
   if (!isText(e.type)) say('needs a creature type');
-  if (!(typeof e.cr === 'number' && e.cr >= 0)) say('cr must be a number');
+  if (baked ? !(e.cr === null && e.xp === 0) : !(typeof e.cr === 'number' && e.cr >= 0)) say(baked ? 'a baked summon block has cr null and xp 0' : 'cr must be a number');
   if (!(isInt(e.xp) && e.xp >= 0)) say('xp must be a whole number of Experience Points');
   for (const k of ['ac', 'hp', 'pb']) if (!(isInt(e[k]) && e[k] > 0)) say(`${k} must be a positive whole number`);
   if (!e.speed || !Object.keys(e.speed).length || !Object.entries(e.speed).every(([m, v]) => MOVE_MODES.includes(m) && v >= 0)) say(`speed must give feet for one or more of: ${MOVE_MODES.join(', ')}`);
@@ -462,6 +587,7 @@ function lintMonster(e, say) {
     lintTarget(a.target, sub);
     const seen = lintSteps(a.effects, sub);
     if (e.tier === 'auto' && seen.manual) sub('the monster is marked auto but this action has a manual step');
+    if (seen.summons) sub('a summon step is for a spell (a creature\'s action that summons is the DM\'s for now)');
   }
 }
 // How often an action can be used: `recharge: [min, 6]` (rolled at the start of each of its turns
@@ -1210,11 +1336,11 @@ function lintItem(e, say, ctx = {}) {
   if (findFunction(e)) say('content is data only');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement }) {
+export function lintPack({ pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement }) {
   const problems = [];
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
   const itemCtx = { weapons: new Set(weapons.map((w) => w.id)), armour: new Set(armour.filter((a) => a.category !== 'shield').map((a) => a.id)), spells: spells.length ? new Set(spells.map((x) => x.id)) : null };
-  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)]]) {
+  for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['summons', summons ?? [], lintSummonBlock], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);
@@ -1225,6 +1351,30 @@ export function lintPack({ pack, spells = [], monsters = [], pregens = [], condi
     }
   }
   const spellIds = new Set(spells.map((s) => s.id));
+  // What a summon step names is in the pack: a summon block or a pack monster (not both of one id), with the
+  // block's own variants and types; forms are pack monsters.
+  // (Checked when the pack's summon blocks are given: spells linted alone are not.)
+  const blocks = new Map((summons ?? []).map((b) => [b.id, b])), beasts = new Map(monsters.map((m) => [m.id, m]));
+  for (const b of summons ?? []) if (beasts.has(b.id)) problems.push(`summons/${b.id}: a pack monster has the same id`);
+  if (summons !== undefined) for (const sp of spells) {
+    walkSteps(sp.effects, (st) => {
+      if (!st || !('summon' in st)) return;
+      const say = (m) => problems.push(`spells/${sp.id}: ${m}`);
+      if (st.forms !== undefined) {
+        if (Array.isArray(st.forms)) for (const id of st.forms) if (!beasts.has(id)) say(`a form is not a pack monster: "${id}"`);
+        if (st.variants !== undefined) say('a summon of forms has no variants');
+        return;
+      }
+      const b = blocks.get(st.summon), m = beasts.get(st.summon);
+      if (!b && !m) return say(`summons "${st.summon}", which is neither a summon block nor a pack monster`);
+      const same = (x, y) => JSON.stringify([...(x ?? [])].sort()) === JSON.stringify([...(y ?? [])].sort());
+      if (b) {
+        if (!same(st.variants, b.variants)) say(`the summon step's variants must be the block's: ${(b.variants ?? []).join(', ') || 'none'}`);
+        if (!same(st.types, b.types)) say(`the summon step's types must be the block's: ${(b.types ?? []).join(', ') || 'none'}`);
+        if (sp.level < b.level) say(`the block "${b.id}" is cast at level ${b.level} or higher`);
+      } else if (st.variants !== undefined) say('a pack monster has no variants to pick from');
+    });
+  }
   // Spells a class always has prepared must be in the pack, and a cost must name a feature with uses.
   for (const c of classes) {
     const say = (m) => problems.push(`classes/${c?.id ?? '?'}: ${m}`);

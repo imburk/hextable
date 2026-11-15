@@ -492,6 +492,17 @@ export function viewEvents(events, state, viewer) {
       case 'formation':                                // how the party walks: only ever party members' places, and only theirs are sent
         out.push({ ...pick(ev, ['type', 'id', 'shape']), ...(ev.slots ? { slots: Object.fromEntries(Object.entries(ev.slots).filter(([id]) => cls(id) === 'open').map(([id, v]) => [id, { ...v }])) } : {}) });
         break;
+      // A creature summoned (docs/specs/companions.md, Decision 10; stage C3): to players who do not know of its
+      // master, exactly what a creature the DM adds gives them (`spawned { id }`), so nothing says it has a master;
+      // to those who do, who summoned it and what kind of companion it is, and the lasting effect that keeps it
+      // only for one of their own (a foe's effect is not theirs to see).
+      case 'summoned': {
+        const by = typeof ev.by === 'string' ? cls(ev.by) : 'hidden';
+        // `t` first, where a record entry has it, as an entry passed on whole has it (the keys' order is the same too).
+        out.push(by === 'hidden' ? { ...(ev.t !== undefined ? { t: ev.t } : {}), type: 'spawned', id: ev.id }
+          : { type: 'summoned', id: ev.id, by: ev.by, kind: ev.kind, ...(by === 'open' && ev.fx !== undefined ? { fx: ev.fx } : {}) });
+        break;
+      }
       case 'joined':
         out.push(cls(ev.id) === 'open' ? afterOpen(ev) : { type: ev.type, id: ev.id });
         break;

@@ -13,7 +13,7 @@ import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '
 import { itemName } from '../derive.js';
 import { effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
-import { clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, RuleError, unblocked, up, walled } from './shared.js';
+import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, RuleError, spellStats, unblocked, up, walled } from './shared.js';
 
 // ---------- movement ----------
 
@@ -450,6 +450,45 @@ export function pileId(s, level, h, by = null) {
 export const contentName = (x) => (x.item !== undefined ? itemName(CONTENT.items[x.item], x) : x.name.trim());
 // The open pile in this cell of this level, or with `by` the one that creature dropped there unseen, if there is one.
 export const pileAt = (s, level, h, by = null) => s.map.objects.find((o) => isPile(o) && o.level === level && o.at.q === h.q && o.at.r === h.r && (o.by ?? null) === by) ?? null;
+
+// ---------- adding a creature to the map (the DM's spawn, the summon step: docs/specs/companions.md, Decision 2) ----------
+// Where a new creature with this body (`{ size }`) can stand when it is put at `at`: the floor in that column
+// (as `spawn` has always taken it), or, with `air` and a height in `at.z`, exactly there in the air (a flyer).
+// Refused with the same words for both. `ignore(o)`: creatures that do not stop it (those its caster does not
+// know of; the summon step places it beside them instead, below). Returns the position.
+export function placeCreature(s, body, at, { air = false, ignore = null } = {}) {
+  (at && Number.isInteger(at.q) && Number.isInteger(at.r)) || fail('Pick a place for it.');
+  const G = gridOf(s.map), B = barriers(s.map);
+  let to;
+  if (air && Number.isFinite(at.z)) {
+    to = { q: at.q, r: at.r, z: at.z };
+    footprint(body, to, G).every((f) => !!airspace(s.map, { q: f.q, r: f.r, z: to.z }, undefined, sizeOf(body).height)) || fail("A creature can't stand there.");
+  } else {
+    to = landing(s.map, at);
+    (to && TILES[ground(s.map, to).tile.t].cost < Infinity) || fail("A creature can't stand there.");
+    fitsOn(s.map, body, to, B) || fail(`There isn't room for something ${body.size} there.`);
+  }
+  !living(s).some((o) => !(ignore && ignore(o)) && overlapAt(o, o.pos, body, to, G)) || fail(`That ${G.word.one} is occupied.`);
+  return to;
+}
+// The nearest place to `at` where `body` fits and nobody stands (the first found on each ring, out to 6), or
+// null: where a summoned creature goes when the space named turns out taken by a creature its caster did not
+// know of (as a teleport does; resolve.js).
+export function nearestFree(s, body, at) {
+  const G = gridOf(s.map), B = barriers(s.map), taken = (p) => living(s).some((o) => overlapAt(o, o.pos, body, p, G));
+  if (!taken(at)) return at;
+  for (let n = 1; n <= 6; n++) for (const h of G.range(at, n).filter((x) => G.dist(x, at) === n)) {
+    const p = landing(s.map, h, at.z);
+    if (p && Math.abs(p.z - at.z) <= STEP_MAX && TILES[ground(s.map, p).tile.t].cost < Infinity && fitsOn(s.map, body, p, B) && !taken(p)) return p;
+  }
+  return null;
+}
+// The numbers of a master that a summon block reads (summons.js, `{ caster }`): its spell attack bonus and spell
+// save DC for this spell, its Proficiency Bonus and its spellcasting ability modifier.
+export function summonCaster(s, e, spell) {
+  const st = spellStats(e, s, spell);
+  return { attack: st.attack, dc: st.dc, pb: e.prof, mod: mod(e.abil[castAbilOf(e, spell)] ?? 10) };
+}
 
 // Can `e` stand at `to`? Ground or air it fits in, a body that fits, not the hex it is on, and in
 // the arena if it is fighting. '' if so, else why not.

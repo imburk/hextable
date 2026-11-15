@@ -2,7 +2,7 @@
 // and placing creatures, regions, objects, map edits and loading, light, conditions and Hit Points,
 // handouts and scenes, and table settings.
 import { gridOf, col, key, parse } from '../grid.js';
-import { CONTENT, MONSTERS, TILES } from '../content/index.js';
+import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
 import { effectsOf, endEffect } from '../durations.js';
 import { FT, ground, landing, overlapAt, regionAt, SQUARE_RANGES, STEP_MAX, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
@@ -14,7 +14,7 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, up } from './shared.js';
-import { airspace, AREA_FILLS, DIAGONALS, fitsOn, joinEncounter, lookAround, objectName, objectOf, reveal, revealRegion, setObject, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
@@ -106,17 +106,30 @@ export const handlers = {
     s.encounter || fail('There is no fight to end.');
     endEncounter(s, ev, 'ended');
   },
+  // { type: 'spawn', monster, at, name?, hidden? }. `monster` may also name a summon block (content/srd52/summons.js),
+  // baked for { slot, variant?, kind?, caster } as its spell would bake it, with `caster`'s numbers: an unbonded
+  // creature (the DM may bond it), the same as a summoned one but for the bond (docs/specs/companions.md, C3).
   spawn(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can add creatures.');
-    const tpl = MONSTERS[a.monster] || fail('Unknown monster.');
-    const at = landing(s.map, a.at);
-    (at && TILES[ground(s.map, at).tile.t].cost < Infinity) || fail("A creature can't stand there.");
-    const body = { size: tpl.size };
-    fitsOn(s.map, body, at, barriers(s.map)) || fail(`There isn't room for something ${tpl.size} there.`);
-    !living(s).some((o) => overlapAt(o, o.pos, body, at, gridOf(s.map))) || fail(`That ${gridOf(s.map).word.one} is occupied.`);
+    const block = CONTENT.summons[a.monster];
+    for (const k of ['slot', 'variant', 'kind', 'caster']) block || a[k] === undefined || fail(`"${k}" is for a summon block.`);
+    let tpl = MONSTERS[a.monster], type;
+    if (block) {
+      (Number.isInteger(a.slot) && a.slot >= block.level && a.slot <= 9) || fail(`${block.id} is made by a spell of level ${block.level} to 9: give its \`slot\`.`);
+      !block.variants || block.variants.includes(a.variant) || fail(`Choose one of: ${block.variants.join(', ')}.`);
+      block.variants || a.variant === undefined || fail(`${block.id} has no variants.`);
+      !block.types || block.types.includes(a.kind) || fail(`Choose its creature type (\`kind\`): ${block.types.join(', ')}.`);
+      block.types || a.kind === undefined || fail(`${block.id} has no choice of creature type.`);
+      const c = ent(s, a.caster);
+      const spell = Object.values(SPELLS).find((sp) => sp.def.effects.some((st) => st.summon === block.id))?.id ?? null;
+      const made = summonTemplate(block.id, { slot: a.slot, caster: summonCaster(s, c, spell), ...(a.variant !== undefined ? { variant: a.variant } : {}), ...(a.kind !== undefined ? { type: a.kind } : {}) });
+      tpl = made.record; type = made.type;
+    }
+    tpl || fail('Unknown monster.');
+    const at = placeCreature(s, { size: tpl.size }, a.at);
     const id = `m${++s.seq}`;
-    const n = Object.values(s.entities).filter((o) => o.tpl === a.monster).length + 1;
-    s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(a.hidden ? { hidden: true } : {}) });
+    const n = Object.values(s.entities).filter((o) => o.tpl === a.monster && (!block || o.name?.startsWith(`${tpl.name} `))).length + 1;      // a block's variants are counted apart
+    s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(type ? { type } : {}), ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
     if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
   },
