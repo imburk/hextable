@@ -891,7 +891,7 @@ The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change f
 **None of these is built yet**: this PR changes the spec only. Each is a small stage, to run after the
 stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each follows the spec's form.
 
-### A1, the master's before or after choice for a steed (not built)
+### A1, the master's before or after choice for a steed (built, #335)
 
 - **Choice.** A per-round choice on a bonded companion: `bond.order` (`'after'` default, or `'before'`)
   and `bond.orderNext`, one action `{ type: 'companionOrder', actor, id, order }` by the master's
