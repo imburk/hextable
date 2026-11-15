@@ -1,18 +1,18 @@
 // Casting (engine.js): the cast action, Metamagic, Counterspell and other spells that answer a
 // spell, teleport destinations, and ending a lasting effect.
 import { gridOf, col, key } from '../grid.js';
-import { SPELLS } from '../content/index.js';
-import { BRANCHES, CHOICES } from '../content/schema.js';
+import { CONTENT, SPELLS } from '../content/index.js';
+import { BRANCHES, CHOICES, SUMMON_MOST } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
-import { FT, gap, landing, overlapAt, unseenAt } from '../space.js';
+import { footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
-import { aimArea, creatures, reveal, roomAt, showPlace, unhide } from './world.js';
+import { aimArea, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter } from './resolve.js';
+import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
 
 // ---------- teleportation ----------
@@ -224,6 +224,58 @@ function evokerFor(e, sp, a, slot, via, targets) {
   return out;
 }
 
+// ---------- summoning (docs/specs/companions.md, Decision 2; stage C3) ----------
+// `a.summon` = { variant?, type?, form?, at: [{ q, r, z? }, ...] }: what the caster picks, and one space for each
+// creature, each within the spell's range of the caster, one it can see (a player names a place the party has
+// seen), where the creature fits on the floor (or, for a flyer given a height, in the air) and nothing the caster
+// knows of stands; inside the arena if the caster is in a fight. A creature the caster does not know of does not
+// stop it (refusing would tell the player it is there): the creature appears beside it instead (resolve.js).
+// A master has at most SUMMON_MOST companions (owner's question 7), and a companion has none of its own.
+// Returns { variant?, type?, form?, at: [positions] }, or null for a spell that summons nothing.
+function summonFor(s, e, sp, a, slot, range, ctx) {
+  const step = sp.def.effects.find((x) => 'summon' in x);
+  if (!step) { a.summon === undefined || fail(`${sp.name} summons nothing.`); return null; }
+  const p = a.summon;
+  (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Pick where ${sp.name} summons: { at: [a space] }.`);
+  for (const k of Object.keys(p)) ['variant', 'type', 'form', 'at'].includes(k) || fail(`A summon names variant, type, form and at, not "${k}".`);
+  const out = {};
+  if (step.variants) { step.variants.includes(p.variant) || fail(`Choose what ${sp.name} summons: ${step.variants.join(', ')}.`); out.variant = p.variant; }
+  else p.variant === undefined || fail(`${sp.name} has no choice of that kind.`);
+  if (step.types) { step.types.includes(p.type) || fail(`Choose its creature type: ${step.types.join(', ')}.`); out.type = p.type; }
+  else p.type === undefined || fail(`${sp.name} has no choice of creature type.`);
+  if (step.forms !== undefined) {
+    const m = typeof p.form === 'string' && Object.hasOwn(CONTENT.monsters, p.form) ? CONTENT.monsters[p.form] : null;
+    const fits = m && (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr);
+    fits || fail(`Choose a form ${sp.name} can take.`);
+    out.form = p.form;
+  } else p.form === undefined || fail(`${sp.name} has no choice of form.`);
+  const c = step.count;
+  const count = c === undefined ? 1 : Number.isInteger(c) ? c : (c.base ?? 0) + c.slot * (slot - (c.above ?? 0));
+  (Array.isArray(p.at) && p.at.length === count) || fail(count === 1 ? `Pick one space for ${sp.name}.` : `Pick ${count} spaces for ${sp.name}, one for each creature.`);
+  !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
+  const have = Object.values(s.entities).filter((x) => x.bond?.to === e.id && !x.vanished).length;
+  have + count <= SUMMON_MOST || fail(`${e.name} would have more than ${SUMMON_MOST} companions.`);
+  // The creature's body: its size and whether it can fly, from what this casting makes.
+  const made = summonMade(step, out, slot, summonCaster(s, e, sp.id));
+  const body = { size: made.record.size }, flies = (step.over?.speed?.fly ?? made.record.speeds?.fly ?? 0) > 0;
+  const G = gridOf(s.map), player = ctx.role !== 'dm', at = [];
+  for (const want of p.at) {
+    (want && typeof want === 'object' && Number.isInteger(want.q) && Number.isInteger(want.r) && (want.z === undefined || Number.isFinite(want.z))) || fail(`Pick a space for ${sp.name}.`);
+    // A player is told nothing about a place the party has not seen, not even whether something could stand there.
+    if (player && unseenAt(s.map, landing(s.map, want) ?? { q: want.q, r: want.r, z: want.z ?? e.pos.z })) fail(`Pick a place the party has seen for ${sp.name}.`);
+    const to = placeCreature(s, body, want, { air: flies, ignore: (o) => !knownTo(s, e, o) });
+    if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${sp.name}.`);
+    const d = gap(s, e.pos, to);
+    d * FT <= range || fail(`That is ${ft(d)} away. ${sp.name} reaches ${range} ft.`);
+    canSee(s, e, spotOf({ size: body.size, side: e.side }, to)) !== 'no' || fail(`${e.name} can't see that space.`);
+    if (inFight(s, e.id)) footprint(body, to, G).every((f) => s.encounter.arena[col(f)]) || fail('The arena is locked until the fight ends.');
+    !at.some((x) => overlapAt({ size: body.size }, x, body, to, G)) || fail('Pick a different space for each creature.');
+    at.push(to);
+  }
+  out.at = at;
+  return out;
+}
+
 // ---------- casting a spell from a magic item (DEBT C14, #284) ----------
 // The `use` action with `item` (features.js) casts an item's spell through castSpell, below, with
 // `item` = { name, level, dc, attack, healMod, comps, self?, spend(e), check?(e), done?(e) }.
@@ -323,6 +375,8 @@ function castSpell(s, a, ctx, ev, item) {
     // With no `hex` the engine has nowhere to take the caster and the DM moves it.
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
     const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
+    // A summon names its choices and a space for each creature (`a.summon`), checked now, before anything is spent.
+    const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx);
     const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);
     const repel = repelFor(e, sp, a);
 
@@ -371,7 +425,9 @@ function castSpell(s, a, ctx, ev, item) {
       return checkEnd(s, ev);
     }
     item?.done?.(e);                                    // a scroll crumbles once its spell is cast
-    for (const t of targets) reveal(s, t, ev);         // caught in the area: no longer unseen
+    // Caught in the area: no longer unseen. A summon is aimed at its caster only in form (its targets are the spaces
+    // it names), so it does not show a caster the DM hid: the creature appears, its caster stays unknown.
+    for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
 
     // What it does: run its effect steps.
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
@@ -431,7 +487,8 @@ function castSpell(s, a, ctx, ev, item) {
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
-        spell: sp.id, ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}) },
+        spell: sp.id, ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
+        ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
       shared,

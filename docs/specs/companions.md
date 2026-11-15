@@ -713,6 +713,103 @@ Settled in the review of #313:
   3, L3: redo after a `spawn` and a `place` of the new creature gave a different `to`).
 - **No state version bump:** the shape is unchanged.
 
+### C3, summon blocks and the step (#325)
+
+What was settled while building it, where Decisions 2, 5 and 10 left room. **This is the spec amendment for the
+new effect step `summon`** (CLAUDE.md: a new step is an engine change).
+
+- **The pack list.** `content/srd52/summons.js`, in `PACKS[0].summons` and `CONTENT.summons`. A block is the
+  monster format with summon amounts, plus `level` (the lowest spell level it is cast at; the linter bakes it from
+  there to 9) and `variants` / `types` (the choices it reads). It has no `cr` or `xp`: baked, it is `cr: null`,
+  `xp: 0`. `name` may itself be an amount (`{ by: 'variant', wasp: 'Giant Wasp', ... }`). `only` works on any entry
+  of a list (a trait, an action) and on a field given as `{ value, only }` (a speed). A damage step's `plus` is an
+  amount added to its dice. A Multiattack entry's `action` and `times` may be amounts (the spider's "any of Poison
+  Jab and Web Bolt"; "half this spell's level").
+- **`bake(block, { slot, caster, variant?, type? })`** (`summons.js`, pure, no imports) replaces every amount and
+  resolves every `only`; `castings(block)` lists every casting it can be baked for. `summonTemplate` (content/index.js)
+  turns a baked block into the record `makeEntity` takes, `actions` included. `round: 'down'` (or `'up'`) is needed
+  for an amount that is not a whole number; one without it is a content error.
+- **The linter.** A block is linted by baking it at every casting with a stand-in caster (attack +7, DC 15, PB 3,
+  modifier +4) and linting each result as a monster (`lintBaked`: the monster linter with `cr: null` allowed). Also:
+  class amounts (`{ column }`, `{ mod }`, ...) are refused in a block; summon amounts, `only` and `plus` are refused
+  in a monster; a by-amount's keys and an `only`'s lists name the block's own variants and types. **A block's traits
+  are text only**: the engine reads trait modifiers and trait reactions from `CONTENT.monsters[e.tpl]` (modifiers.js,
+  reactions.js, not in this stage's files), so a block trait with modifiers or a reaction is refused rather than
+  carried and ignored. Giant Insect's one trait (Spider Climb) is text, as on the pack's Giant Spider.
+- **The step**, as built: `{ summon: id | 'form', forms?, types?, variants?, count?, on?, over?, bond }`. `summon` names
+  a block or a pack monster (`'form'` with `forms`: a list of pack monsters, or `{ type, cr }`). `count` is a whole
+  number (1 to 30) or `{ slot, base?, above? }`, and needs `on`, which is only `'space'` so far. `over` replaces only
+  speeds (`{ speed: { walk: 100 } }`). `bond` takes `kind`, `turn` (`own` or `after`), `orders` (`free`), `at0`,
+  `ends` (`masterDies`, `longRest`), `leash`, `noAttack`. **Refused by the linter until the stage that runs them:**
+  `one` (C5), `on: 'corpse'` (C5), `turn: 'none'` (C5, C6), `orders: 'command'` and a command `range` (C5), `mount`
+  (C6). The step is only in a spell, once, in the spell's own list (not under a roll), the spell aimed at its
+  caster and with a range in feet; a monster's action may not have one. The pack check (when the pack's summon
+  blocks are given to `lintPack`) wants the step's `variants` and `types` to be exactly the block's, the spell's
+  level at least the block's, and every form a pack monster.
+- **The cast.** `{ type: 'cast', ..., summon: { variant?, type?, form?, at: [{ q, r, z? }, ...] } }`, one space per
+  creature. Checked before anything is spent, in this order for each space: a player may name only a place the party
+  has seen (checked on the column before anything else, so nothing is said of an unseen place); the creature's
+  footprint fits there (`placeCreature`, shared with `spawn`, so the same words: "A creature can't stand there.",
+  "There isn't room for something large there.", "That hex is occupied."); within the spell's range by `gap` (the
+  anchor, as for a teleport); a space the caster can see (`canSee` of a stand-in of the creature's size); inside the
+  arena while the caster is in a fight ("The arena is locked until the fight ends."); not overlapping another space of
+  the same casting. A flyer (its baked speeds, or `over`) given `z` is placed exactly there in the air if every cell
+  of it has room; anything else lands on the floor of the column. `a.summon` on a spell that summons nothing is refused.
+- **A creature the caster does not know of** (hidden by the DM, hiding, out of sight) does not stop a space: refusing
+  would tell the player it is there. The creature appears in the nearest free space instead, as a teleport does
+  (`nearestFree`, rings out to 6), and the DM is told (`manual`, partial). None near: the DM places it.
+- **The cap.** At most 30 bonded creatures per master (`SUMMON_MOST`, owner's answer 7), counting the master's
+  bonded creatures that have not vanished, before the new ones. A companion can't summon (it has no companions).
+  `BOND_MAX` in `engine/companions.js` is still 20 for the DM's `bond`: that is stage A4, whose file and pinned test
+  are not in this stage's list. Until A4 the DM's bond stops at 20 and a summon at 30.
+- **The creature made.** Id `m<seq>` as `spawn`; `tpl` is the block id (or the pack monster's); the baked creature
+  type is kept on the record (`type`, which `creatureType` reads first); side, the master's. `name`: the party's
+  is "Ven's Giant Wasp"; **a foe's is named as `spawn` names a creature** ("Giant Wasp 1", counted by `tpl`), so its
+  name says nothing of a master. `bond`: `{ to, kind, source (the spell), fx, turn, orders, at0, ends, leash?,
+  noAttack?, slot, commanded: null, auto: false }`. With a lasting effect, a part `{ target, summon: true }` (C2 then
+  ends it with the effect). A party one looks around (its sight is the party's). It joins a fight going on **if it
+  stands in the arena, as a spawned creature does** (`joinEncounter`, so straight after a master the party knows of,
+  or on its own roll otherwise, as C2 settled). Following its master outside a fight (Decision 6) is not set: that
+  needs `movement.js`, not in this stage's files.
+- **A hidden master.** The summon does not take the master's `hidden`: the DM's switch hides the creature, not what it
+  does, as a hidden caster's Fireball still burns. And casting a summon does not reveal a caster the DM hid: the
+  spell is aimed at its caster only in form (casting.js skips revealing the caster for a summon; other self spells
+  are unchanged).
+- **What players are sent.** `summoned { id, by, kind, fx? }` goes to players **as `spawned { id }` when they do not
+  know of `by`** (the same event type and keys, `t` first in a record entry, as a passed-on entry has it), so a twin
+  run against a creature the DM adds unbonded, with the master holding a lasting effect of its own so `seq` moves the
+  same, gives byte-identical events, views and record on hexes and on squares (summons.test.js). Where they know of
+  `by`: `{ id, by, kind }`, and `fx` only for their own. The creature's record follows `classify` as any creature:
+  `bond` is never on a Seen record, and a foe's `after` is never sent (C2).
+- **The DM's `spawn`** takes a summon block too: `{ monster: 'giant-insect', slot, variant?, kind? (its creature type),
+  caster }`, baked with `caster`'s numbers for the spell whose step names the block. It makes the same creature
+  unbonded (the DM may then `bond` it). This is also what the twin runs compare against.
+- **XP.** A summon's `tpl` is not a pack monster, so the conclusion's lookup gives it 0 (owner's answer 6: a block with
+  XP 0 stays 0). `counts` is still `!e.bond` (stage A3 not built).
+- **No state version bump:** `bond.source`, `bond.slot` and a creature's `type` are optional fields; nothing else in
+  the shape changed.
+- **Giant Insect** (SRD 5.2.1, flow lines 27421-27490) is `auto`, `checked`: AC 11 + level, HP 30 + 10 per level above
+  4, Speed 40, Climb 40, Fly 40 (wasp), Str 17 Dex 13 Con 15 Int 4 Wis 14 Cha 3 (every save equal to its modifier, so
+  no `saves`), Darkvision 60, PB the caster's; Spider Climb; Multiattack of half the level rounded down; Poison Jab
+  (spell attack, reach 10, 1d6 + 3 + level Piercing and 1d4 Poison); Web Bolt, spider (spell attack, range 60, 1d10 + 3
+  + level Bludgeoning, Speed 0 until the start of the insect's next turn); Venomous Spew, centipede, Bonus Action (Con
+  save against the spell save DC, one creature within 10 ft, Poisoned until the start of the insect's next turn).
+  "If you don't issue any [commands], it takes the Dodge action" is the companion brain's (C7).
+
+#### For the client job
+
+- **The cast chooser** reads `SPELLS[id].summon`: `{ of, count, variants?, types?, forms?, kind }` (effects.js,
+  `spellProfile`). It asks for the variant (or type, or form), then one tap per creature (`count`, a number, or for
+  `{ slot, base, above }` worked out from the slot), and sends `{ type: 'cast', actor, spell, slot, summon: { variant,
+  at: [{ q, r }] } }`. A flyer may be given `z`. The engine refuses with words fit to show (range, sight, room,
+  occupied, arena); a Large creature's tap is its anchor (on squares the top-left of its 2 by 2; on hexes the centre
+  of its 3). `look` from the player is not taken yet.
+- **The `summoned` event**: `{ type: 'summoned', id, by, kind, fx? }` for the DM and for players who know of `by`
+  (`fx` only on their own); otherwise players get `{ type: 'spawned', id }`. Log line: "Ven summons a Giant Wasp".
+- **The creature**: `tpl: 'giant-insect'` is not in `MONSTERS` (the client's `MONSTERS[e.tpl]?.name` falls back to
+  "Creature"; use `e.name`, or `CONTENT.summons[e.tpl]`); the model to draw is the client's choice by `tpl`. Its
+  turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`, C8/C10).
+
 ## Amendments of 14 November
 
 The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change four things in the engine.

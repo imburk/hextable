@@ -3,7 +3,7 @@
 // a fight starts, passes from turn to turn and ends.
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
-import { CONTENT, SPELLS, TILES } from '../content/index.js';
+import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
@@ -16,9 +16,9 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
-import { tryLand } from './sheets.js';
+import { makeEntity, tryLand } from './sheets.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -950,6 +950,59 @@ export function settleBonds(s, ev) {
   followMasters(s, true);
 }
 
+// ---------- the summon step (docs/specs/companions.md, Decision 2; stage C3) ----------
+
+// What a summon step makes, for its master `m` and the choices `pick` ({ variant?, type?, form? }) at spell level
+// `slot` with the master's numbers `caster`: { tplId, record, type, name }. The cast checked all of it.
+export function summonMade(step, pick, slot, caster) {
+  if (step.forms !== undefined) {
+    const m = CONTENT.monsters[pick.form];
+    return { tplId: pick.form, record: MONSTERS[pick.form], type: pick.type ?? m.type, name: m.name };
+  }
+  if (CONTENT.summons[step.summon]) {
+    const t = summonTemplate(step.summon, { slot, caster, ...(pick.variant !== undefined ? { variant: pick.variant } : {}), ...(pick.type !== undefined ? { type: pick.type } : {}) });
+    return { tplId: step.summon, record: t.record, type: t.type, name: t.name };
+  }
+  const m = CONTENT.monsters[step.summon];
+  return { tplId: step.summon, record: MONSTERS[step.summon], type: pick.type ?? m.type, name: m.name };
+}
+// `over` (Phantom Steed's Speed 100): its speeds replaced on the made record.
+function overRecord(record, over) {
+  if (!over?.speed) return record;
+  const r = structuredClone(record);
+  for (const [k, v] of Object.entries(over.speed)) { if (k === 'walk') r.speed = v; else (r.speeds ??= {})[k] = v; }
+  return r;
+}
+// Make the creatures `src.summon` names (checked when the spell was cast, engine/casting.js): each an ordinary
+// creature from the baked block or the pack monster, on its master's side, with a bond to it. One made by a
+// spell that lasts is a part of that spell's lasting effect (`{ target, summon: true }`), so ending the effect
+// ends it (settleBonds). A foe's is named as the DM's `spawn` names a creature ("Giant Wasp 2"), so its name
+// says nothing of its master; the party's is "Ven's Giant Wasp". It joins a fight going on if it stands in the
+// arena, as a spawned creature does, straight after a master the party knows of (world.js, joinEncounter).
+// `summoned { id, by, kind, fx? }`: players get it as `spawned` unless they know of its master (view.js).
+function summon(s, m, step, src, ev) {
+  const pick = src.summon;
+  if (!pick) return ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name} names no spaces for the engine to summon into. The DM adds the creature.` });
+  const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over);
+  const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
+  const b = step.bond;
+  for (const want of pick.at) {
+    const at = nearestFree(s, { size: record.size }, want);
+    if (!at) { ev.push({ type: 'manual', actor: m.id, name: src.name, text: `The space named for ${src.name} is taken by a creature ${m.name} did not know of, and the engine found no unoccupied space near it. The DM places the creature.` }); continue; }
+    if (at !== want) ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true, text: `A creature ${m.name} did not know of stands in the space named for ${src.name}, so the creature appeared in the nearest unoccupied space.` });
+    const id = `m${++s.seq}`;
+    const n = Object.values(s.entities).filter((o) => o.tpl === made.tplId).length + 1;
+    const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
+      ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), slot: pick.slot, commanded: null, auto: false };
+    const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, ...(made.type ? { type: made.type } : {}), bond });
+    s.entities[id] = e;
+    if (fx) fx.parts.push({ target: id, summon: true });
+    ev.push({ type: 'summoned', id, by: m.id, kind: b.kind, ...(fx ? { fx: fx.id } : {}) });
+    if (e.side === 'party') lookAround(s, ev, [e]);                 // what a party member sees, the party sees
+    if (s.encounter?.arena[col(at)]) joinEncounter(s, e, ev);
+  }
+}
+
 // ---------- actions ----------
 
 // Run the effect stack to the end, then whatever zones went off while it ran (zones.js).
@@ -959,5 +1012,5 @@ export function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 // Evasion (a built character's `evasion`): only while it is not Incapacitated.
 const evades = (t) => !t.object && !incapacitated(t) && (t.feats ?? []).some((f) => f.evasion);
 
-export const KIT = { evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration };
+export const KIT = { evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

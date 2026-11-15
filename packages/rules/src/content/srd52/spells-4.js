@@ -207,9 +207,9 @@ export const spells4 = [
     time: "action", range: 60, components: ["v","s"],
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"self":true},
-    effects: [{"manual":"Giant Insect: the caster summons a Large Beast, a giant centipede, spider or wasp, in an unoccupied space in range for up to 10 minutes, using the Giant Insect stat block (AC 11 + the spell level, HP 30 + 10 per level above 4, Speed 40, Climb 40, Fly 40 for the wasp, attacks equal to half the spell level using the caster's spell attack modifier). It is an ally that acts right after the caster, obeys verbal commands, or Dodges if given none. The DM adds and runs it from the stat block in the SRD."}],
-    tier: "manual", checked: true,
-    text: "Summons a giant centipede, spider or wasp as an allied creature for up to 10 minutes, scaling with the slot level.",
+    effects: [{"summon":"giant-insect","variants":["centipede","spider","wasp"],"bond":{"kind":"summon","turn":"after","orders":"free","at0":"vanish"}}],
+    tier: "auto", checked: true,
+    text: "Summons a giant centipede, spider or wasp, an ally that acts straight after the caster, for up to 10 minutes; its numbers grow with the slot level. It disappears at 0 Hit Points or when the spell ends.",
   },
   {
     id: "greater-invisibility", name: "Greater Invisibility", source: "SRD 5.2.1",
