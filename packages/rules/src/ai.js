@@ -5,9 +5,7 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow } from './engine.js';
-// Not re-exported by engine.js; imported from the module itself, as reactions.js and scenes.js import ownerOf.
-import { commandedNow, steering } from './engine/shared.js';
+import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering } from './engine.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
@@ -26,10 +24,11 @@ export function aiStep(s, id, opts) {
   const e = s.entities[id], end = { type: 'endTurn', actor: id };
   // While an action waits for a player's reaction (reactions.js) nothing else can happen: no move,
   // not even ending the turn. The answer, from the player or the DM, carries the table on.
-  if (!e || current(s) !== id || !up(e) || s.pending) return null;
+  if (!e || current(s) !== id || s.pending) return null;
   // A companion (a creature with a `bond`) is played by the companion brain (below). Everything after this line is the
   // monster AI as it was before the brain, for every creature with no bond (companions-brain-replay.test.js).
   if (e.bond) return companionStep(s, id, opts);
+  if (!up(e)) return null;
   // It does not act on creatures it has not found.
   const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id) && aware(s, e, o));
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
@@ -177,21 +176,41 @@ function withAttacks(s, e, foes) {
 // sees it do says nothing of a hidden master.
 const QUIET = new Set(['summon', 'object']);                           // "If you don't issue any [commands], it takes the Dodge action"
 const masterOf = (s, e) => (typeof e.bond?.to === 'string' && Object.hasOwn(s.entities, e.bond.to) ? s.entities[e.bond.to] : null);
+const riderOn = (s, e) => { const r = typeof e.rider === 'string' && Object.hasOwn(s.entities, e.rider) ? s.entities[e.rider] : null; return r?.riding?.on === e.id ? r : null; };
+// Is nobody there to play this creature's player's part: its player offline (`opts.offline`, the client's lobby) or
+// stepped away (E20, as the table rule says of `x`)?
+const absent = (s, who, x, opts) => !!who && ((typeof opts.offline === 'function' && opts.offline(who) === true) || (!!x && !!awayHow(s, x)));
 export function brainMode(s, e, opts = {}) {
   const b = e?.bond;
   if (!b) return null;
   const m = masterOf(s, e), who = ownerOf(s, e);
   const knowsMaster = !!m && (e.side === 'party' || !unknown(s, m));
   const cant = knowsMaster && (!up(m) || !!incapacitatedBy(m));                     // it can give no commands: down, dead, or Incapacitated (Speechless)
-  const gone = !!who && ((typeof opts.offline === 'function' && opts.offline(who) === true) || (!!m && !!awayHow(s, m)));
+  const gone = absent(s, who, m, opts);
+  let mode;
   if (b.orders === 'command') {
-    if (commandedNow(s, e)) return who && !gone ? 'player' : 'dm';
-    if (typeof b.standing === 'string' && b.standing) return 'dm';
-    return 'guard';
-  }
-  if (b.source === 'find-steed' && cant && !steering(s, e)) return 'protect';
-  if (b.auto !== true && who && !gone && !cant) return 'player';
-  return cant && QUIET.has(b.kind) ? 'guard' : 'free';
+    if (commandedNow(s, e)) mode = who && !gone ? 'player' : 'dm';
+    else if (typeof b.standing === 'string' && b.standing) mode = 'dm';
+    else mode = 'guard';
+  } else if (b.source === 'find-steed' && cant && !steering(s, e)) mode = 'protect';
+  else if (b.auto !== true && who && !gone && !cant) mode = 'player';
+  // SRD Summon Dragon, Giant Insect ("If you don't issue any, it takes the Dodge action and uses its movement to avoid
+  // danger") and Animate Objects ("If you issue no commands, the creature takes the Dodge action and moves only to avoid
+  // harm"): with nobody to give a command (its master can't speak, or its player is not there) it Dodges. Played by the
+  // DM (no player) or let go to the brain (`auto`), the commands are the DM's or the brain's: it fights.
+  else mode = (cant || gone) && QUIET.has(b.kind) ? 'guard' : 'free';
+  if (mode === 'player' || mode === 'dm') return mode;
+  // A controlled mount its rider can steer (on its own turn: the rider recovered after the mount's place) moves and acts
+  // only as its rider directs (SRD Mounted Combat: "It moves on your turn as you direct it, and it has only three action
+  // options"): the brain leaves it where it stands and takes the Dodge action (review of #368, M1).
+  if (steering(s, e)) return 'hold';
+  // A creature carrying a rider who is away, offline or helpless (down or Incapacitated) does not carry it into danger:
+  // it takes the Dodge action and stays where it is, as the table rule for a stepped-away creature has it (E20 `dodge`:
+  // "it takes the Dodge action on its turn and stays where it is"), for the one it carries (review of #368, M3). Find
+  // Steed's 'protect' already stays under a rider.
+  const r = riderOn(s, e);
+  if (r && mode !== 'protect' && (!up(r) || !!incapacitatedBy(r) || !!awayHow(s, r) || absent(s, ownerOf(s, r), null, opts))) return 'hold';
+  return mode;
 }
 // Does the DM's auto-play play this creature's turn? Every creature with no bond, as before; a companion when the brain
 // plays it (not when it waits for its player or for the DM's hand). The client asks this (app.js, idled()).
@@ -200,7 +219,7 @@ export function autoPlays(s, id, opts) {
   if (!e) return false;
   if (!e.bond) return true;
   const m = brainMode(s, e, opts);
-  return m === 'guard' || m === 'protect' || m === 'free';
+  return m === 'guard' || m === 'protect' || m === 'free' || m === 'hold';
 }
 // What it knows: a party companion acts only on what the party knows (hidden-information.md): creatures the players are
 // not told of are not in the state it reads, so it neither steps away from one nor is kept off its space (a move onto
@@ -211,9 +230,12 @@ function knownTo(s, e) {
 }
 export function companionStep(s, id, opts = {}) {
   const e = s.entities[id];
-  if (!e || !e.bond || current(s) !== id || !up(e) || s.pending) return null;
+  if (!e || !e.bond || current(s) !== id || s.pending) return null;
   const mode = brainMode(s, e, opts);
-  if (mode !== 'guard' && mode !== 'protect' && mode !== 'free') return null;
+  if (mode !== 'guard' && mode !== 'protect' && mode !== 'free' && mode !== 'hold') return null;
+  // Dropped in its own turn (an Opportunity Attack as it stepped away): its turn is over (review of #368, L3).
+  if (!up(e)) return { type: 'endTurn', actor: id };
+  if (mode === 'hold') return s.encounter.budget.action > 0 && !e.cond?.dodging && !incapacitatedBy(e) ? { type: 'dodge', actor: id } : { type: 'endTurn', actor: id };
   const k = knownTo(s, e), m = masterOf(s, e);
   const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
   const leash = typeof e.bond.leash === 'number' && m && (e.side === 'party' || !unknown(s, m)) ? { m, feet: e.bond.leash } : null;
@@ -229,26 +251,28 @@ export function companionStep(s, id, opts = {}) {
 const rolled = (p) => p.roll === 'melee' || p.roll === 'ranged' || p.aim === 'multi';
 
 // The Dodge action, then away from any foe within 5 feet, then the end of its turn. "Moves only to avoid harm": it moves
-// only while a foe it knows of stands within 5 feet of it, and only to a place farther from every foe than where it
-// is (the farthest it can reach; then the cheapest). It never goes past its leash (it would vanish).
+// only while a foe it knows of stands within 5 feet of it, and only as far as it must: to the cheapest place it can
+// reach that is out of 5 feet of every foe it knows of (then the farthest from them, then the order moveOptions lists
+// places in). Where no such place is in reach it stays: a step that ends beside a foe would only give it an Opportunity
+// Attack (review of #368, L1). It never goes past its leash (it would vanish).
 function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
-  if (b.action > 0 && !e.cond?.dodging) return { type: 'dodge', actor: id };
+  if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
   if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));
-  const here = near(e.pos);
   let best = null;
   for (const [, v] of moveOptions(s, e)) {
     if (!v.canStop || (leash && apartAt(s, e, v.h, leash.m, leash.m.pos) * FT > leash.feet)) continue;
     const d = near(v.h);
-    if (d > here && (!best || d > best.d || (d === best.d && v.cost < best.cost))) best = { d, cost: v.cost, h: v.h };
+    if (d > 1 && (!best || v.cost < best.cost || (v.cost === best.cost && d > best.d))) best = { d, cost: v.cost, h: v.h };
   }
   return best ? { type: 'move', actor: id, to: best.h } : end;
 }
 
 // Find Steed with its master Incapacitated: to its master's side if it is not there, placed to reach a foe beside her if
 // it can; then an attack on a foe within 5 feet of its master (the nearest to it, then the most hurt, then by id); with
-// none, the Dodge action. A steed carrying its master does not move: it would only carry her about.
+// none, the Dodge action. A steed carrying anyone (its master, or another rider) does not move: it would only carry
+// them about.
 function protect(s, e, m, foes) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   const close = foes.filter((f) => apart(s, m, f) <= 1).sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
@@ -262,7 +286,7 @@ function protect(s, e, m, foes) {
       if (w) return { type: 'attack', actor: id, target: t.id, attack: w.id };
     }
   }
-  if (e.rider !== m.id && b.move >= FT) {
+  if (!riderOn(s, e) && b.move >= FT) {
     const score = (pos) => [apartAt(s, e, pos, m, m.pos) <= 1 ? 0 : 1, close.some((f) => apartAt(s, e, pos, f, f.pos) * FT <= reach) ? 0 : 1, apartAt(s, e, pos, m, m.pos)];
     const less = (x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
     const here = score(e.pos);

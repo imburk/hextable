@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep, autoPlays, brainMode, companionStep } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
-import { apart } from "../src/space.js";
+import { apart, apartAt } from "../src/space.js";
+import { moveOptions } from "../src/engine.js";
 import { DM, U1, U2, U3, ok, json, GRIDS, SPOTS, CENTER, spawned, spawn, cellsNear, near, turnOf, table, fight, autoTurn } from "./c7-brain-kit.js";
 
 // ---------- a never-commanded Skeleton ----------
@@ -208,3 +209,103 @@ test("the brain never changes the state it reads, and a creature with no bond is
     assert.equal(companionStep(s, "fighter"), null);
   }
 });
+
+// ---------- fix round 1 (review of #368) ----------
+for (const grid of GRIDS) {
+  test(`${grid}: M1: a Find Steed its rider can steer again, on its own turn, is only held still and Dodges: nothing it sends is refused`, () => {
+    for (const how of ["auto", "offline"]) {
+      const { s, steed } = steedTable(grid);
+      const p = cellsNear(s, steed, "goblin-warrior")[0];
+      s.entities.cleric.pos = { ...p, z: p.z ?? 0 };
+      ok(apply(s, { type: "mount", actor: "cleric", mount: steed }, U2));
+      fight(s, grid);
+      turnOf(s, "cleric");
+      ok(apply(s, { type: "condition", actor: "cleric", condition: "stunned" }, DM));
+      ok(apply(s, { type: "endTurn", actor: "cleric" }, DM));
+      turnOf(s, steed);
+      ok(apply(s, { type: "condition", actor: "cleric", condition: "stunned", on: false }, DM));     // she can steer it again
+      if (how === "auto") ok(apply(s, { type: "companion", actor: steed, auto: true }, U2));
+      const opts = how === "offline" ? { offline: (u) => u === "u2" } : {};
+      assert.equal(brainMode(s, s.entities[steed], opts), "hold", how);
+      const from = json(s.entities[steed].pos), sent = [];
+      for (let n = 0; n < 5 && current(s) === steed; n++) { const a = aiStep(s, steed, opts); sent.push(a.type); ok(apply(s, a, DM)); }
+      assert.deepEqual(sent, ["dodge", "endTurn"], how);
+      assert.equal(json(s.entities[steed].pos), from, "it did not carry her anywhere");
+    }
+  });
+
+  test(`${grid}: M3: a steed carrying a rider who stepped away, is offline or helpless stays where it is and takes the Dodge action`, () => {
+    // Its master stepped away while riding it (the table rule `dodge`): it is played, but it stays.
+    {
+      const { s, steed } = steedTable(grid);
+      const p = cellsNear(s, steed, "goblin-warrior")[0];
+      s.entities.cleric.pos = { ...p, z: p.z ?? 0 };
+      ok(apply(s, { type: "mount", actor: "cleric", mount: steed }, U2));
+      fight(s, grid);
+      ok(apply(s, { type: "stepAway", actor: "cleric", how: "dodge" }, DM));
+      turnOf(s, steed);
+      assert.equal(brainMode(s, s.entities[steed]), "hold");
+      const from = json(s.entities[steed].pos);
+      assert.deepEqual(autoTurn(s, steed).map((x) => x.a.type), ["dodge", "endTurn"]);
+      assert.equal(json(s.entities[steed].pos), from);
+    }
+    // Another rider (the fighter, Ann) Stunned on it, its master's player letting the brain play it: it stays.
+    {
+      const { s, steed } = steedTable(grid);
+      const p = cellsNear(s, steed, "goblin-warrior")[0];
+      s.entities.fighter.pos = { ...p, z: p.z ?? 0 };
+      ok(apply(s, { type: "mount", actor: "fighter", mount: steed }, DM));
+      ok(apply(s, { type: "companion", actor: steed, auto: true }, U2));
+      fight(s, grid);
+      ok(apply(s, { type: "condition", actor: "fighter", condition: "stunned" }, DM));
+      turnOf(s, steed);
+      assert.equal(brainMode(s, s.entities[steed]), "hold");
+      // And with Ann's player offline (her character able), the same.
+      ok(apply(s, { type: "condition", actor: "fighter", condition: "stunned", on: false }, DM));
+      assert.notEqual(brainMode(s, s.entities[steed]), "hold");
+    }
+  });
+
+  test(`${grid}: L1: a never-commanded skeleton steps only as far as it must: the cheapest place out of every foe's reach`, () => {
+    const { s, skel, gob } = skeletonTable(grid);
+    fight(s, grid);
+    turnOf(s, skel);
+    ok(apply(s, aiStep(s, skel), DM));                                   // the Dodge action
+    const a = aiStep(s, skel);
+    assert.equal(a.type, "move");
+    const G = s.map, opts = [...moveOptions(s, s.entities[skel]).values()].filter((v) => v.canStop && apartAt(s, s.entities[skel], v.h, s.entities[gob], s.entities[gob].pos) > 1);
+    const chosen = opts.find((v) => v.h.q === a.to.q && v.h.r === a.to.r && v.h.z === a.to.z);
+    assert.ok(chosen && G);
+    assert.equal(chosen.cost, Math.min(...opts.map((v) => v.cost)), "no farther than it must");
+  });
+
+  test(`${grid}: L2: a summon whose player is offline or stepped away has no commands: it takes the Dodge action; let go to the brain or played by the DM it fights`, () => {
+    const s = table(grid);
+    const wolf = near(s, "wizard", "wolf", {}, { min: 1, max: 2 });
+    ok(apply(s, { type: "bond", actor: wolf, to: "wizard", kind: "summon", turn: "after" }, DM));
+    near(s, wolf, "goblin-warrior");
+    fight(s, grid);
+    turnOf(s, wolf);
+    const e = () => s.entities[wolf];
+    assert.equal(brainMode(s, e()), "player");
+    assert.equal(brainMode(s, e(), { offline: (u) => u === "u3" }), "guard", "offline: nobody commands it");
+    ok(apply(s, { type: "stepAway", actor: "wizard", how: "dodge" }, DM));
+    assert.equal(brainMode(s, e()), "guard", "stepped away");
+    ok(apply(s, { type: "stepBack", actor: "wizard" }, DM));
+    ok(apply(s, { type: "companion", actor: wolf, auto: true }, U3));
+    assert.equal(brainMode(s, e()), "free", "let go to the brain");
+    ok(apply(s, { type: "companion", actor: wolf, auto: false }, U3));
+    ok(apply(s, { type: "release", entity: "wizard" }, DM));
+    assert.equal(brainMode(s, e()), "free", "the DM's");
+  });
+
+  test(`${grid}: L3: a companion that drops in its own turn: the brain ends its turn`, () => {
+    const { s, skel } = skeletonTable(grid);
+    fight(s, grid);
+    turnOf(s, skel);
+    ok(apply(s, { type: "harm", actor: skel, amount: 999 }, DM));
+    assert.deepEqual(aiStep(s, skel), { type: "endTurn", actor: skel });
+    ok(apply(s, aiStep(s, skel), DM));
+    assert.notEqual(current(s), skel);
+  });
+}

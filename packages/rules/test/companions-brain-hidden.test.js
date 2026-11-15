@@ -145,54 +145,51 @@ for (const grid of GRIDS) {
   });
 }
 
-// Review of #368, M2: a hiding creature on the way, not only at the end. The skeleton's step and a player's own move
-// are laid out on what the party knows; where the route runs into the lurker, the move stops on the last place before it
-// and the lurker is found. Until then every player gets the same as in the world where the lurker stands far off.
+// Review of #368, M2: a hiding creature on the way, not only at the end. A companion's move (an `auto` wolf going for a
+// goblin across the field) and a player's own move are laid out on what the party knows; where the route runs into the
+// lurker, the move stops on the last place before it and the lurker is found. Until then every player gets the same as
+// in the world where the lurker stands far off.
 for (const grid of GRIDS) {
   test(`${grid}: a hiding creature at each point of the route: the move stops before it and finds it; until then players see the same`, () => {
     const make = () => {
       const s = table(grid);
       ok(apply(s, { type: "setting", key: "unseenTurns", value: "quiet" }, DM));
-      const skel = near(s, "cleric", "skeleton", { name: "Skeleton" }, { min: 2, max: 3 });
-      ok(apply(s, { type: "bond", actor: skel, to: "cleric", kind: "undead", orders: "command" }, DM));
-      near(s, skel, "goblin-warrior", { name: "Goblin" });
-      return { s, skel, place: (cell) => { const g = spawn(s, "goblin-warrior", cell, { name: "Lurker" }); s.entities[g].hiding = { dc: 30 }; return g; } };
+      const wolf = near(s, "cleric", "wolf", { name: "Wolf" }, { min: 1, max: 2 });
+      ok(apply(s, { type: "bond", actor: wolf, to: "cleric", kind: "pet" }, DM));
+      ok(apply(s, { type: "companion", actor: wolf, auto: true }, U2));
+      spawn(s, "goblin-warrior", SPOTS[grid].far, { name: "Goblin" });
+      return { s, wolf, place: (cell) => { const g = spawn(s, "goblin-warrior", cell, { name: "Lurker" }); s.entities[g].hiding = { dc: 30 }; return g; } };
     };
-    const farFrom = (w) => cellsNear(w.s, w.skel, "goblin-warrior", { min: 5, max: 6 }).find(Boolean);
-    const toTurn = (w) => {
-      ok(apply(w.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
-      turnOf(w.s, w.skel);
-      ok(apply(w.s, aiStep(w.s, w.skel), DM));                           // the Dodge action
-    };
-    // The route with the lurker far off.
-    const B = make(); B.place(farFrom(B)); toTurn(B);
-    const step = aiStep(B.s, B.skel);
-    assert.equal(step.type, "move");
-    const rb = ok(apply(B.s, step, DM)), path = rb.events.filter((e) => e.type === "moved" && e.id === B.skel).flatMap((e) => e.path);
-    assert.ok(path.length >= 2, `a route of some length: ${json(path)}`);
+    // A lurker's place out of the wolf's way: behind the party, away from the goblin.
+    const farFrom = (w) => cellsNear(w.s, "fighter", "goblin-warrior", { min: 1, max: 2 }).find(Boolean);
+    const start = (w) => ok(apply(w.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
+    const B = make(); B.place(farFrom(B)); start(B);
+    turnOf(B.s, B.wolf);
+    const step = aiStep(B.s, B.wolf);
+    assert.equal(step.type, "move", json(step));
+    const rb = ok(apply(B.s, step, DM)), path = rb.events.filter((e) => e.type === "moved" && e.id === B.wolf).flatMap((e) => e.path);
+    assert.ok(path.length >= 3, `a route of some length: ${json(path)}`);
     let tried = 0;
     const occupied = new Set(path.map((c, i) => (apply(structuredClone(make().s), { type: "spawn", monster: "goblin-warrior", at: { q: c.q, r: c.r } }, DM).ok ? -1 : i)).filter((i) => i >= 0));
     for (const [i, cell] of path.entries()) {
+      if (occupied.has(i)) continue;                                              // an ally's place the route passes through
       const A = make(), C = make();
-      if (!apply(structuredClone(A.s), { type: "spawn", monster: "goblin-warrior", at: { q: cell.q, r: cell.r } }, DM).ok) continue;   // an ally's place the route passes through
-      tried++;
       const ga = A.place({ q: cell.q, r: cell.r }), gc = C.place(farFrom(C));
       assert.equal(ga, gc);
-      ok(apply(A.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
-      ok(apply(C.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
-      if (!A.s.encounter.order.some((o) => o.id === ga)) continue;                  // that cell is outside the arena
-      for (let n = 0; n < 80 && current(A.s) !== A.skel; n++) {
+      const sa = start(A), sc = start(C);
+      if (!A.s.encounter.order.some((o) => o.id === ga)) continue;                // that place is outside the arena
+      tried++;
+      assert.deepEqual(seen(A.s, sa), seen(C.s, sc), `point ${i}: the fight starts the same`);
+      for (let n = 0; n < 80 && current(A.s) !== A.wolf; n++) {
         const id = current(A.s), ra = ok(apply(A.s, { type: "endTurn", actor: id }, DM)), rc = ok(apply(C.s, { type: "endTurn", actor: id }, DM));
         assert.deepEqual(seen(A.s, ra), seen(C.s, rc), `point ${i}: ${id}'s turn`);
       }
-      const da = aiStep(A.s, A.skel);
-      assert.deepEqual(seen(A.s, ok(apply(A.s, da, DM))), seen(C.s, ok(apply(C.s, aiStep(C.s, C.skel), DM))), `point ${i}: the Dodge`);
-      const ma = aiStep(A.s, A.skel);
+      const ma = aiStep(A.s, A.wolf);
       assert.deepEqual(ma, step, `point ${i}: the same step is chosen`);
       const ra = apply(A.s, ma, DM);
       assert.ok(ra.ok, `point ${i}: the move is not refused (${ra.error})`);
       assert.ok(ra.events.some((e) => e.type === "unhidden" && e.id === ga), `point ${i}: the lurker is found: ${json(ra.events.map((e) => e.type))}`);
-      const went = ra.events.filter((e) => e.type === "moved" && e.id === A.skel).flatMap((e) => e.path);
+      const went = ra.events.filter((e) => e.type === "moved" && e.id === A.wolf).flatMap((e) => e.path);
       // The last place before it where it can stop (a place an ally holds is passed through, not stopped on).
       let j = i - 1;
       while (j >= 0 && occupied.has(j)) j--;
