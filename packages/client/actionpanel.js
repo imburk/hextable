@@ -610,6 +610,7 @@ export function initActionPanel(ctx) {
       case 'spell': return ctx.castSpell(e, r.spell, r.armed);
       case 'meta': return ctx.metamagic?.(e)?.onClick();
       case 'chooser': return ctx.openFeature(e, r.feature);
+      case 'comp': return ctx.comp?.run(e, r);
       case 'fly': return ctx.fly(e, r.delta);
       case 'follow': if (r.armed) { ctx.setMode(ctx.move); return ctx.act(r.send); } return ctx.setMode({ kind: 'follow' });
       case 'ritual': return ctx.castSpell(e, r.spell, r.armed);
@@ -625,6 +626,7 @@ export function initActionPanel(ctx) {
       default: return;
     }
   }
+  for (const id of ['features', 'bonus', 'move']) ctx.comp?.bindPane(panes[id]);
   for (const id of LISTS) {
     panes[id].addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-row]'); if (!b) return;
@@ -823,7 +825,7 @@ export function initActionPanel(ctx) {
       card.hidden = !e;
       if (!e) { tabsEl.hidden = true; return; }
       $('c-name').textContent = shownName(S, e);
-      $('c-sub').textContent = e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
+      $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
       $('c-hp').querySelector('i').style.width = `${ctx.hpFraction(e) * 100}%`;
       const showNumbers = full && (my || e.side === 'party');
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
@@ -839,6 +841,7 @@ export function initActionPanel(ctx) {
         $('btn-sheet').parentElement.prepend(letIt);
       }
       letIt.hidden = !(my && e.bond); letIt.dataset.id = e.id; letIt.querySelector('input').checked = !!e.bond?.auto;
+      { const why = my && e.bond ? ctx.dry?.({ type: 'companion', actor: e.id, auto: !e.bond.auto }) ?? '' : ''; letIt.querySelector('input').disabled = !!why; letIt.title = why; letIt.classList.toggle('off', !!why); }
       const myTurn = !!enc && cur === e.id && up(e);
       $('c-res').innerHTML = statusHtml(S, e, { mine: my, full, formLabel: ctx.formLabel(e), budget: myTurn && full ? ctx.budget(e) : null });
       renderHow(S, e);
@@ -846,7 +849,7 @@ export function initActionPanel(ctx) {
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
       const fly = ctx.flyInfo(e);
-      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: attackRows(S, e).length > 0, features: featureRows(S, e).length > 0, items: itemRows(S, e, { dm }).any };
+      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: attackRows(S, e).length > 0, features: featureRows(S, e).length > 0 || (ctx.comp?.rows(e).features.length ?? 0) > 0, items: itemRows(S, e, { dm }).any };
       tabsNow = visibleTabs(ctxNow, has);
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
@@ -869,9 +872,18 @@ export function initActionPanel(ctx) {
           const b = bonusRows(S, e, { mode, fly }); list = b.rows;
           head = (b.available ? '' : `<p class="ap-why-line">No Bonus Action: ${esc(b.why)}</p>`) + (list.length ? '' : '<p class="ap-why-line">Nothing this creature has costs a Bonus Action.</p>');
         } else list = tabRows(S, e, tab, { mode, fly });
-        if (tab === 'move') head = moveHead(S, e);
+        // Companions (companions.js): rows beside the others, and the picker one of them opened.
+        const cr = ctx.comp?.rows(e);
+        if (cr) {
+          if (tab === 'features') list = [...list, ...cr.features];
+          if (tab === 'bonus') { const have = new Set(list.map((r) => r.id)); list = [...list, ...cr.features.filter((r) => r.time === 'bonus' && !have.has(r.id))]; if (list.length && !/ap-why-line/.test(head)) head = head.replace('Nothing this creature has costs a Bonus Action.', ''); }
+          if (tab === 'move') list = [...list, ...cr.move];
+          head += ctx.comp.picker(e);
+        }
+        if (tab === 'move') head = moveHead(S, e) + (ctx.comp?.picker(e) ?? '');
         rowsBy[tab] = list;
         setHtml(panes[tab], listHtml(head, list));
+        ctx.comp?.after(panes[tab]);
       }
       if (tab === 'spells') spellsPane(S, e, mode);
       if (tab === 'items') itemsPane(S, e, dm, mode);
