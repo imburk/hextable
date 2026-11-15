@@ -14,7 +14,7 @@ import { test } from "node:test";
 import { aiStep, autoPlays, brainMode } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
 import { view, viewEvents } from "../src/view.js";
-import { DM, U1, U2, U3, GRIDS, CENTER, SPOTS, ok, json, cellsNear, near, spawn, spawned, table, turnOf } from "./c7-brain-kit.js";
+import { DM, U1, U2, U3, GRIDS, CENTER, SPOTS, ok, json, cellsNear, near, spawn, spawned, table, turnOf, fight } from "./c7-brain-kit.js";
 
 const PLAYERS = [U1, U2, U3];
 // Outside the fight's arena (radius 6 round CENTER): the valley's open ground to the east, the square room's corridor.
@@ -142,5 +142,85 @@ for (const grid of GRIDS) {
     assert.equal(brainMode(A.s, A.s.entities[A.steed]), "free", "not 'protect': the party does not know of its master");
     const ra = run(A.s, 60, [A.steed]), rb = run(B.s, 60, [B.steed]);
     assert.deepEqual(ra.map((x) => x.v), rb.map((x) => x.v), "every player's events and view after every action");
+  });
+}
+
+// Review of #368, M2: a hiding creature on the way, not only at the end. The skeleton's step and a player's own move
+// are laid out on what the party knows; where the route runs into the lurker, the move stops on the last place before it
+// and the lurker is found. Until then every player gets the same as in the world where the lurker stands far off.
+for (const grid of GRIDS) {
+  test(`${grid}: a hiding creature at each point of the route: the move stops before it and finds it; until then players see the same`, () => {
+    const make = () => {
+      const s = table(grid);
+      ok(apply(s, { type: "setting", key: "unseenTurns", value: "quiet" }, DM));
+      const skel = near(s, "cleric", "skeleton", { name: "Skeleton" }, { min: 2, max: 3 });
+      ok(apply(s, { type: "bond", actor: skel, to: "cleric", kind: "undead", orders: "command" }, DM));
+      near(s, skel, "goblin-warrior", { name: "Goblin" });
+      return { s, skel, place: (cell) => { const g = spawn(s, "goblin-warrior", cell, { name: "Lurker" }); s.entities[g].hiding = { dc: 30 }; return g; } };
+    };
+    const farFrom = (w) => cellsNear(w.s, w.skel, "goblin-warrior", { min: 5, max: 6 }).find(Boolean);
+    const toTurn = (w) => {
+      ok(apply(w.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
+      turnOf(w.s, w.skel);
+      ok(apply(w.s, aiStep(w.s, w.skel), DM));                           // the Dodge action
+    };
+    // The route with the lurker far off.
+    const B = make(); B.place(farFrom(B)); toTurn(B);
+    const step = aiStep(B.s, B.skel);
+    assert.equal(step.type, "move");
+    const rb = ok(apply(B.s, step, DM)), path = rb.events.filter((e) => e.type === "moved" && e.id === B.skel).flatMap((e) => e.path);
+    assert.ok(path.length >= 2, `a route of some length: ${json(path)}`);
+    let tried = 0;
+    const occupied = new Set(path.map((c, i) => (apply(structuredClone(make().s), { type: "spawn", monster: "goblin-warrior", at: { q: c.q, r: c.r } }, DM).ok ? -1 : i)).filter((i) => i >= 0));
+    for (const [i, cell] of path.entries()) {
+      const A = make(), C = make();
+      if (!apply(structuredClone(A.s), { type: "spawn", monster: "goblin-warrior", at: { q: cell.q, r: cell.r } }, DM).ok) continue;   // an ally's place the route passes through
+      tried++;
+      const ga = A.place({ q: cell.q, r: cell.r }), gc = C.place(farFrom(C));
+      assert.equal(ga, gc);
+      ok(apply(A.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
+      ok(apply(C.s, { type: "startEncounter", center: CENTER[grid], radius: 7 }, DM));
+      if (!A.s.encounter.order.some((o) => o.id === ga)) continue;                  // that cell is outside the arena
+      for (let n = 0; n < 80 && current(A.s) !== A.skel; n++) {
+        const id = current(A.s), ra = ok(apply(A.s, { type: "endTurn", actor: id }, DM)), rc = ok(apply(C.s, { type: "endTurn", actor: id }, DM));
+        assert.deepEqual(seen(A.s, ra), seen(C.s, rc), `point ${i}: ${id}'s turn`);
+      }
+      const da = aiStep(A.s, A.skel);
+      assert.deepEqual(seen(A.s, ok(apply(A.s, da, DM))), seen(C.s, ok(apply(C.s, aiStep(C.s, C.skel), DM))), `point ${i}: the Dodge`);
+      const ma = aiStep(A.s, A.skel);
+      assert.deepEqual(ma, step, `point ${i}: the same step is chosen`);
+      const ra = apply(A.s, ma, DM);
+      assert.ok(ra.ok, `point ${i}: the move is not refused (${ra.error})`);
+      assert.ok(ra.events.some((e) => e.type === "unhidden" && e.id === ga), `point ${i}: the lurker is found: ${json(ra.events.map((e) => e.type))}`);
+      const went = ra.events.filter((e) => e.type === "moved" && e.id === A.skel).flatMap((e) => e.path);
+      // The last place before it where it can stop (a place an ally holds is passed through, not stopped on).
+      let j = i - 1;
+      while (j >= 0 && occupied.has(j)) j--;
+      assert.deepEqual(went.map((h) => [h.q, h.r]), path.slice(0, j + 1).map((h) => [h.q, h.r]), `point ${i}: it stops on the last place before the lurker`);
+    }
+    assert.ok(tried >= 2, `points of the route tried: ${tried}`);
+  });
+
+  test(`${grid}: a player's own move with a hiding creature on the way stops before it and finds it, as the brain's does`, () => {
+    const make = (cell) => {
+      const s = table(grid);
+      spawn(s, "goblin-warrior", SPOTS[grid].far);
+      fight(s, grid);
+      turnOf(s, "cleric");
+      return s;
+    };
+    const B = make(), G = B.map, c = B.entities.cleric;
+    // A move of 15 to 20 ft that the party can make; then a lurker on its second step.
+    const dest = cellsNear(B, "cleric", "goblin-warrior", { min: 3, max: 4 }).find(Boolean);
+    const rb = ok(apply(B, { type: "move", actor: "cleric", to: dest }, U2)), path = rb.events.filter((e) => e.type === "moved").flatMap((e) => e.path);
+    assert.ok(path.length >= 3);
+    const A = make();
+    const g = spawn(A, "goblin-warrior", { q: path[1].q, r: path[1].r }, { name: "Lurker" });
+    A.entities[g].hiding = { dc: 30 };
+    const r = apply(A, { type: "move", actor: "cleric", to: dest }, U2);
+    assert.ok(r.ok, r.error);
+    assert.ok(r.events.some((e) => e.type === "unhidden" && e.id === g));
+    assert.deepEqual(r.events.filter((e) => e.type === "moved").flatMap((e) => e.path).map((h) => [h.q, h.r]), [[path[0].q, path[0].r]], "one step, then it is found");
+    assert.ok(G && c);
   });
 }
