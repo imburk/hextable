@@ -131,6 +131,22 @@ async function desktop(browser, url) {
         if (!same(await posOf(page, id), from)) throw new Error('the fighter moved');
       });
 
+      await run.do('the feedback panel: "wasd" typed in its textarea is text, nothing moves, and Space and Shift do nothing to the view', async () => {
+        if (!(await page.$('#fb-btn'))) throw new Error('no feedback button');
+        const from = await posOf(page, id), cam = await page.evaluate(() => JSON.stringify(window.hextable.R.cameraAngles()));
+        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await page.fill('#fb-text', ''); await page.focus('#fb-text');
+        await page.keyboard.type('wasd '); await page.keyboard.down('Shift'); await page.keyboard.type('WASD'); await page.keyboard.up('Shift');
+        await sleep(500);
+        const v = await page.inputValue('#fb-text');
+        await page.fill('#fb-text', '');
+        await page.click('#fb-close'); await waitShown(page, '#fb-panel', false);
+        if (v !== 'wasd WASD') throw new Error(`the textarea holds "${v}"`);
+        if (!same(await posOf(page, id), from)) throw new Error('the fighter moved');
+        if (await page.evaluate(() => JSON.stringify(window.hextable.R.cameraAngles())) !== cam) throw new Error('the view turned');
+        await blur(page);
+      });
+
       await run.do('Settings lists the keys of the preset, and the preset is kept on this device', async () => {
         await openTab(page, 'settings');
         await page.click('#set-keys-show');
@@ -169,15 +185,34 @@ async function desktop(browser, url) {
         await page.keyboard.press('Control+z');
         await wait(page, ([i, w]) => { const p = window.hextable.state.entities[i].pos; return p.q !== w.q || p.r !== w.r; }, [id, byKey], 4000).catch(async () => { throw new Error(`Ctrl+Z did not take the step back: ${await page.textContent('#toast')}`); });
         await calm(page);
-        await page.evaluate((i) => { const R = window.hextable.R; window.hextable.select(i); R.focus(i, true); R.face(R.cameraAngles().yaw + Math.PI / 2, true); }, id);      // side on, so the pawn does not stand in front of the hex
-        await sleep(400);
-        const pt = await page.evaluate((h) => window.hextable.R.screenOf({ ...h, z: 0 }), want);
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error('the hex is not on the map to click');
-        await page.evaluate(() => { const R = window.hextable.R; window.__tap = R.onTap; window.__hits = []; R.onTap = (h) => { window.__hits.push(h); window.__tap(h); }; });
-        await page.mouse.click(pt.x, pt.y);
-        await sleep(300);
-        const hits = await page.evaluate(() => { window.hextable.R.onTap = window.__tap; return window.__hits; });
-        if (!hits.length || !same(hits[0].hex, want)) throw new Error(`the click at ${Math.round(pt.x)},${Math.round(pt.y)} reported ${JSON.stringify(hits)}, not ${JSON.stringify(want)}`);
+        // A real click on the same hex. The view is put where the hex can be clicked: centred on the walker as Space does (R.focus, at
+        // once) and turned until the hex's own screen point is on the canvas and not under a label, a panel or the toast. The tap is
+        // only let through to the app if the renderer says it is that hex, so a click that lands elsewhere moves nothing and is tried again.
+        await page.evaluate(([w]) => {
+          const R = window.hextable.R; document.getElementById('toast').hidden = true;
+          window.__tap = R.onTap; window.__hits = [];
+          R.onTap = (h) => { window.__hits.push(h); if (h.hex && h.hex.q === w.q && h.hex.r === w.r && !h.id) window.__tap(h); };
+        }, [want]);
+        let clicked = null;
+        try {
+          for (const turn of [Math.PI / 2, -Math.PI / 2, Math.PI / 3, -Math.PI / 3, (2 * Math.PI) / 3, (-2 * Math.PI) / 3, Math.PI, 0]) {
+            for (const zoom of [1, 0.8]) {
+              const base = await page.evaluate(([i, t, z]) => { const R = window.hextable.R; window.hextable.select(i); R.focus(i, true); R.face(window.__yaw0 ??= R.cameraAngles().yaw, true); R.face(window.__yaw0 + t, true); if (z !== 1) R.zoom(z); return true; }, [id, turn, zoom]);
+              if (!base) continue;
+              await wait(page, () => window.hextable.R.cam.goal === null && window.hextable.R.cam.yawGoal == null, null, 4000).catch(() => {});
+              await sleep(250);
+              const pt = await page.evaluate((h) => window.hextable.R.screenOf({ ...h, z: 0 }), want);
+              if (!pt || pt.x < 10 || pt.y < 10 || pt.x > 1270 || pt.y > 790 || !(await onCanvas(page, pt.x, pt.y))) continue;
+              await page.evaluate(() => { window.__hits = []; });
+              await page.mouse.click(pt.x, pt.y);
+              await wait(page, () => window.__hits.length > 0, null, 2000).catch(() => {});
+              const hits = await page.evaluate(() => window.__hits);
+              if (hits.length && same(hits[0].hex, want) && !hits[0].id) { clicked = pt; break; }
+            }
+            if (clicked) break;
+          }
+        } finally { await page.evaluate(() => { window.hextable.R.onTap = window.__tap; delete window.__yaw0; }); }
+        if (!clicked) throw new Error(`no view put ${JSON.stringify(want)} where a click reaches it`);
         await wait(page, ([i, w]) => { const p = window.hextable.state.entities[i].pos; return p.q === w.q && p.r === w.r; }, [id, want], 4000).catch(async () => { throw new Error(`the click did not move there: ${await page.textContent('#toast')} ${JSON.stringify(await posOf(page, id))} want ${JSON.stringify(want)}`); });
         await calm(page);
         const clickMove = await state(page, (S) => S.encounter.budget.move);

@@ -1,0 +1,35 @@
+/* The feedback button and its panel (feedback.js, docs/specs/feedback.md). Colour, type and radius come from the theme tokens only.
+   The button sits at the left edge under the turn order and the hint line, clear of the dock (bottom), the camera buttons (right) and
+   the drawer (right unless the player put it left, when a modal drawer hides it). In the lobby it moves to the bottom-left corner. */
+#fb-btn { position: fixed; z-index: 13; left: calc(6px + var(--inset-l, 0px)); top: calc(max(10px, env(safe-area-inset-top)) + 150px); width: 40px; height: 40px; padding: 0; display: grid; place-items: center; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 50%; opacity: .85; cursor: pointer; }
+#fb-btn:hover, #fb-btn[aria-expanded="true"] { opacity: 1; }
+#fb-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; opacity: 1; }
+body:has(#lobby:not([hidden])) #fb-btn { top: auto; left: 6px; bottom: max(12px, env(safe-area-inset-bottom)); }
+body:has(#rp:not([hidden])) #fb-btn, body:has(#rp:not([hidden])) #fb-panel { display: none; }      /* never over a reaction question */
+body.drawer-modal[data-drawer="left"]:not(.drawer-pretable) #fb-btn { display: none; }
+
+#fb-panel { position: fixed; z-index: 14; left: 12px; bottom: 12px; width: min(380px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; background: var(--panel-2, var(--panel)); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 14px; box-shadow: 0 8px 30px #0007; display: grid; gap: 8px; }
+#fb-panel[hidden] { display: none; }
+#fb-panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#fb-panel h2 { margin: 0; font-size: 18px; color: var(--accent); }
+#fb-close { width: 44px; min-height: 44px; padding: 0; font-size: 22px; }
+#fb-form { display: grid; gap: 8px; } #fb-form[hidden], #fb-done[hidden] { display: none; }
+#fb-panel label { font-size: 14px; color: var(--ink); }
+#fb-text { width: 100%; box-sizing: border-box; resize: vertical; min-height: 96px; font: inherit; font-size: 16px; background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+#fb-count { justify-self: end; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: -4px; }
+#fb-kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#fb-kinds label { position: relative; display: block; }
+#fb-kinds input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+#fb-kinds span { display: grid; place-items: center; min-height: 44px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+#fb-kinds input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#fb-kinds input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+#fb-inc-label { display: flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 44px; } #fb-inc { flex: none; width: 22px; height: 22px; min-height: 0; padding: 0; margin: 0; }
+#fb-see summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; }
+#fb-see p { margin: 4px 0; font-size: 13px; color: var(--muted); }
+#fb-preview { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; user-select: text; }
+#fb-msg { margin: 0; font-size: 14px; min-height: 0; } #fb-msg:empty { display: none; } #fb-msg.bad { color: var(--bad); }
+#fb-actions, #fb-actions2 { display: flex; gap: 8px; } #fb-actions button, #fb-actions2 button { flex: 1; min-height: 44px; }
+#fb-send, #fb-done-close { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#fb-send:disabled { opacity: .5; }
+#fb-thanks { margin: 0; font-size: 16px; }
+@media (max-width: 899px) { #fb-panel { left: 8px; right: 8px; width: auto; bottom: 8px; } }
