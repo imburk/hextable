@@ -842,10 +842,11 @@ casting and casts each spell.
   'reform'` / `'replace'` (C5) for the one familiar or steed, `mount` (C6) for riding, a part's `ends: { on: 'damaged' }`
   for Phantom Steed, and a `count` that depends on the caster's modifier and the objects' sizes for Animate Objects (the
   step makes one; the DM adds the rest with `spawn`). Find Steed's before-or-after choice is stage A1.
-- **Casting from the UI.** The client cannot send `summon` until C8; spell casts from the UI hand to the DM until engine job C3b lands; this PR merges after C3b.
+- **Casting from the UI.** The client cannot send `summon` until C8; until then a UI cast of these spells is a manual hand-off (C3b) with one public line.
 - **Unseen Servant stays `manual`, with no block.** It needs `turn: 'none'` and `orders: 'command'` (the linter refuses
   both until C5 and C6) and a block with only Strength 2 (the monster linter wants all six scores, and inventing the
   other five is not allowed). Its manual text already carries the SRD's numbers.
+
 ### C3b, a summon cast with no picks (#332)
 
 Found in the review of #331: from C3 a cast of a spell with a `summon` step and no `summon` field was refused ("Pick
@@ -881,7 +882,7 @@ cast at all. Before C3 these spells were `manual` and were never refused. Settle
   creature in the space, on hexes and squares, through a fight). One existing test changed: the C3 refusal of a cast
   with no `summon` now sends `summon: null`.
 - **For the client job (C8):** the chooser must omit `summon` when nothing is picked, never send `summon: null` (that is
-  refused). Until the chooser exists, the plain cast button works for these spells; the DM's log shows
+  refused), and for Summon Dragon still send `choice` (the Shared Resistances pick; a cast without it is refused "Choose a damage type": the client's `chosen()` defaults to the first option). Until the chooser exists, the plain cast button works for these spells; the DM's log shows
   the line to act on.
 
 ## Amendments of 14 November

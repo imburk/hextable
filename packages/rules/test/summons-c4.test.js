@@ -324,3 +324,24 @@ test("a foe's cast with no pick, seen or hidden, tells the players no line (what
     assert.ok(!viewEvents(ok(apply(twin, { type: "cast", actor: "mira", spell: "fireball", slot: 3, hex: { q: 9, r: 9 } }, DM)).events, twin, PAT).some((x) => x.type === "manual"));
   }
 });
+
+test("the DM's no-pick line: Phantom Steed's Speed 60 by spawn, Animate Objects by the modifier, identical bakes listed once", () => {
+  const line = (cls, id, slot, more) => { const s = table(cls, [id]); return ok(castAt(s, id, slot, undefined, more)).events.find((x) => x.type === "manual" && x.partial).text; };
+  // Phantom Steed: `spawn` makes the pack's Riding Horse (Speed 60); the 100 ft. is the DM's by hand (no DM tool sets a Speed).
+  const ps = line("wizard", "phantom-steed", 3);
+  assert.match(ps, /Riding Horse \(AC 11, 13 Hit Points, Speed 60 ft\., Large\)/);
+  assert.match(ps, /The spell gives it Speed 100 ft\., which `spawn` does not set: the DM notes that by hand/);
+  assert.ok(!/Speed 100 ft\. \(/.test(ps) && /It goes in an unoccupied space/.test(ps) && !/Each goes/.test(ps));
+  // Animate Objects: up to the modifier (Int 16 at 17th level: +3), not "the creature"; sizes with the same numbers listed once.
+  const ao = line("wizard", "animate-objects", 5);
+  assert.match(ao, /The DM adds up to 3 objects \(a Large counts as two, a Huge as three\)/);
+  assert.equal((ao.match(/Animated Object \(AC 15/g) ?? []).length, 3, "Tiny, Small and Medium share one entry; Large and Huge differ in Hit Points");
+  assert.match(ao, /Animated Object \(AC 15, 10 Hit Points, Speed 30 ft\., Tiny, Small or Medium\)/);
+  assert.ok(!/made nothing\. The DM adds the creature/.test(ao) && !/engine makes one/.test(ao));
+  // Find Steed: the three creature types share their numbers, so one entry.
+  const base = table("paladin", ["find-steed"]);
+  const fs = ok(castAt(base, "find-steed", 2, undefined)).events.find((x) => x.type === "manual" && x.partial).text;
+  assert.equal((fs.match(/Otherworldly Steed as a/g) ?? []).length, 1);
+  assert.match(fs, /Otherworldly Steed as a celestial, fey or fiend \(AC 12, 25 Hit Points, Speed 60 ft\., Large\)/);
+  assert.match(fs, /with turn after/);
+});

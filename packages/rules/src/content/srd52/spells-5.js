@@ -11,7 +11,7 @@ export const spells5 = [
     target: {"self":true},
     effects: [{"summon": "animated-object", "variants": ["tiny", "small", "medium", "large", "huge"], "bond": {"kind": "object", "turn": "after", "orders": "free", "at0": "vanish"}}],
     tier: "assist", checked: true,
-    text: "Animates a nonmagical object as an allied construct for up to a minute of Concentration: the engine makes one per casting, of the size picked. The DM adds the rest up to the caster's spellcasting modifier (Large counts two, Huge three) with spawn and bond, removes them when the spell ends, checks the objects, commands within 500 feet, and the reverting to an object at 0 Hit Points.",
+    text: "Animates nonmagical objects as allied constructs for up to a minute of Concentration, up to the caster's spellcasting modifier in number (Large counts two, Huge three). The DM adds any the engine did not make, removes them when the spell ends, checks they are nonmagical, unworn, uncarried, unfixed and not Gargantuan, and handles commands within 500 feet and reverting to an object at 0 Hit Points.",
   },
   {
     id: "antilife-shell", name: "Antilife Shell", source: "SRD 5.2.1",
