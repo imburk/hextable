@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: the Hextable starting page (#356)</title>
+<!-- A picture to react to (docs/specs/start-page.md). Nothing here runs the game; every button says what it would do.
+     Self-contained: no network, no fonts fetched (the game's font names are listed first, with fallbacks). -->
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #111614; color: #e8e4d8; font: 15px/1.4 'Segoe UI', system-ui, sans-serif; }
+[hidden] { display: none !important; }
+
+/* ---------- the mockup's own controls (not part of the design) ---------- */
+#mock { position: sticky; top: 0; z-index: 9; background: #0b0f0d; border-bottom: 1px solid #333; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+#mock h1 { font-size: 14px; margin: 0; flex-basis: 100%; font-weight: 600; color: #bbb; }
+#mock fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+#mock legend { float: left; font-size: 12px; color: #999; margin-right: 4px; padding: 0; }
+#mock label { position: relative; }
+#mock input { position: absolute; opacity: 0; inset: 0; margin: 0; }
+#mock span { display: inline-block; font-size: 12px; padding: 4px 8px; border: 1px solid #444; border-radius: 4px; color: #ccc; cursor: pointer; }
+#mock input:checked + span { background: #ddd; color: #111; border-color: #ddd; }
+#mock input:focus-visible + span { outline: 2px solid #8cf; outline-offset: 1px; }
+#note { max-width: 1280px; margin: 10px auto 0; padding: 0 12px; font-size: 13px; color: #aaa; }
+#stage { padding: 12px; display: flex; justify-content: center; }
+
+/* ---------- themes: tokens copied from packages/client/themes.js ---------- */
+.frame { --bg: #1d2622; --panel: #26322dee; --panel-2: #31403a; --ink: #efe9d8; --muted: #a9b3a6; --accent: #d7a84a; --accent-ink: #1d2622; --line: #4a5a52; --good: #7fc48a; --bad: #e0685a;
+  --display: 'Vollkorn SC', Georgia, serif; --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; --radius: 6px; }
+.frame[data-theme=sunlit] { --bg: #8fd0e8; --panel: #fffdf4f2; --panel-2: #eef4dc; --ink: #23412f; --muted: #5f7a68; --accent: #2f9e6b; --accent-ink: #ffffff; --line: #c9dab5; --good: #2f9e6b; --bad: #d9483b;
+  --display: 'Baloo 2', 'Trebuchet MS', sans-serif; --body: 'Nunito', 'Segoe UI', system-ui, sans-serif; --radius: 14px; color-scheme: light; }
+.frame[data-theme=pocket] { --bg: #c7e8c1; --panel: #2b2d42f2; --panel-2: #3a3d5c; --ink: #f8f7ff; --muted: #b8b8d1; --accent: #ffd23f; --accent-ink: #2b2d42; --line: #545880; --good: #8be28b; --bad: #ff6b6b;
+  --display: 'Silkscreen', 'Courier New', monospace; --body: 'Nunito', 'Segoe UI', system-ui, sans-serif; --radius: 2px; }
+
+/* ---------- the frame: a phone (390 x 844) or a desktop window ---------- */
+.frame { container: page / inline-size; background: var(--bg); color: var(--ink); font-family: var(--body); border: 1px solid #444; width: 100%; max-width: 1280px; min-height: 800px; overflow: auto; position: relative; }
+.frame[data-size=phone] { width: 390px; max-width: 100%; height: 844px; min-height: 0; border-radius: 22px; }
+.page { padding: 16px 16px 72px; max-width: 1040px; margin: 0 auto; }
+
+/* ---------- the design (what start.css would hold) ---------- */
+.page button, .page input, .page select { font: inherit; color: inherit; }
+.page button { min-height: 44px; padding: 8px 14px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.page button:focus-visible, .page input:focus-visible, .page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.page .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.page .text { background: transparent; border-color: transparent; text-decoration: underline; text-underline-offset: 3px; padding: 8px 6px; }
+.page .off { opacity: .45; cursor: not-allowed; }
+.page input { min-height: 44px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; width: 100%; min-width: 0; font-size: max(16px, 1em); }
+.page input.code { text-transform: uppercase; letter-spacing: .15em; }
+.page label { display: block; font-size: 14px; color: var(--muted); margin: 8px 0 4px; }
+.help { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+.head h1 { font-family: var(--display); color: var(--accent); font-size: 32px; margin: 0; line-height: 1.1; }
+.head p { margin: 4px 0 8px; color: var(--muted); }
+.group > h2 { font-family: var(--display); font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 12px 0 6px; }
+.group > .help { margin: -4px 0 10px; }
+/* text that sits on the page background, not on a panel, uses --ink: Sunlit's --muted is too faint on its sky */
+.head p, .group > h2, .group > .help, .foot .stamp, .foot .text { color: var(--ink); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; font-family: var(--display); }
+.pair { display: flex; gap: 8px; } .pair input { flex: 1; } .pair button { flex: none; }
+.wide { width: 100%; margin-top: 8px; }
+.or { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; margin: 10px 0 4px; }
+.or::before, .or::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.line { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; color: var(--muted); margin-top: 2px; }
+.line span { min-width: 0; } .line .text { flex: none; }
+.line b { color: var(--ink); font-weight: 600; }
+.carry { border-color: var(--accent); }
+.carry .item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
+.carry .item + .item { border-top: 1px solid var(--line); }
+.carry .item p { margin: 0; flex: 1 1 12em; }
+.tools { list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.tools li + li { border-top: 1px solid var(--line); }
+.tools button.row { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 0; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.tools .row strong { font-size: 16px; }
+.tools .row small { grid-column: 1; color: var(--muted); font-size: 13px; }
+.tools .row .tag { grid-row: 1 / span 2; grid-column: 2; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.tools .row .go { grid-row: 1 / span 2; grid-column: 2; font-size: 20px; color: var(--muted); }
+.tools li.coming { border-left: 3px dashed var(--line); }
+.tools li.coming strong { font-weight: 600; }
+.tools .more { padding: 0 14px 12px; font-size: 14px; }
+.tools .more p { margin: 0 0 4px; }
+.foot { margin-top: 20px; text-align: center; }
+.foot .stamp { font-size: 12px; color: var(--muted); margin: 4px 0 0; user-select: text; }
+.msg { margin: 8px 0 0; font-size: 14px; }
+.msg.bad { color: var(--bad); }
+/* what a button would do: the mockup's in-place note */
+.say { margin: 8px 0 0; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: var(--radius); font-size: 13px; background: var(--panel-2); color: var(--ink); }
+.say::before { content: 'Would: '; font-weight: 700; color: var(--accent); }
+li > .say { margin: 0 14px 12px; }
+
+/* desktop: two columns, Play left and Tools right */
+@container page (min-width: 720px) {
+  .page { padding: 32px 32px 72px; }
+  .head { display: flex; align-items: baseline; gap: 16px; } .head p { margin: 0 0 18px; }
+  .cols { display: grid; grid-template-columns: 7fr 5fr; gap: 28px; align-items: start; }
+  .playcards { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; align-items: start; }
+  .carry .items { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; } .carry .item + .item { border-top: 0; border-left: 1px solid var(--line); padding-left: 24px; }
+  .foot { text-align: left; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; } .foot .stamp { margin: 0; }
+}
+.playcards { display: flex; flex-direction: column; } @container page (min-width: 720px) { .playcards { display: grid; } }
+.frame[data-state=pages] .alone { order: -1; }
+
+/* alternative A: tabs */
+.tabs { display: flex; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
+.tabs button { flex: 1; border: 0; border-radius: 0; background: var(--panel-2); }
+.tabs button[aria-selected=true] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+/* alternative C: hub */
+.hub { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@container page (min-width: 720px) { .hub { grid-template-columns: repeat(4, 1fr); } }
+.hub button { min-height: 110px; font-size: 17px; font-family: var(--display); background: var(--panel); }
+.hub button small { display: block; font-family: var(--body); font-size: 12px; color: var(--muted); }
+/* alternative D: today's card */
+.today { max-width: 380px; margin: 0 auto; }
+.today .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.today select { min-height: 44px; width: 100%; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
+@media (prefers-reduced-motion: no-preference) { .say, .more { animation: fade .15s ease-out; } @keyframes fade { from { opacity: 0; } } }
+</style>
+</head>
+<body>
+<form id="mock" aria-label="Mockup controls">
+  <h1>Mockup of the starting page (#356). Not the game: every button says what it would do.</h1>
+  <fieldset><legend>Layout</legend>
+    <label><input type="radio" name="layout" value="b" checked><span>Recommended: Play and Tools</span></label>
+    <label><input type="radio" name="layout" value="a"><span>A: tabs</span></label>
+    <label><input type="radio" name="layout" value="c"><span>C: hub of cards</span></label>
+    <label><input type="radio" name="layout" value="d"><span>D: today + Tools</span></label></fieldset>
+  <fieldset><legend>Size</legend>
+    <label><input type="radio" name="size" value="phone"><span>Phone 390 x 844</span></label>
+    <label><input type="radio" name="size" value="desk"><span>Desktop</span></label></fieldset>
+  <fieldset><legend>State</legend>
+    <label><input type="radio" name="state" value="first" checked><span>First visit</span></label>
+    <label><input type="radio" name="state" value="returning"><span>Returning</span></label>
+    <label><input type="radio" name="state" value="waiting"><span>Waiting for the DM</span></label>
+    <label><input type="radio" name="state" value="offline"><span>Can't reach server</span></label>
+    <label><input type="radio" name="state" value="pages"><span>No table server (Pages)</span></label></fieldset>
+  <fieldset><legend>Theme</legend>
+    <label><input type="radio" name="theme" value="classic" checked><span>Classic</span></label>
+    <label><input type="radio" name="theme" value="sunlit"><span>Sunlit</span></label>
+    <label><input type="radio" name="theme" value="pocket"><span>Pocket</span></label></fieldset>
+</form>
+<p id="note">States apply to the recommended layout; the alternatives are drawn in their first-visit state. Fonts fall back to system fonts here (the game loads its own).</p>
+
+<div id="stage">
+<div class="frame" id="frame" data-size="desk" data-state="first" data-theme="classic">
+
+<!-- ================= B: the recommendation ================= -->
+<div class="page" data-layout="b">
+  <header class="head"><h1>Hextable</h1><p>A 3D tabletop for 5E compatible play. Roam free; when a fight starts, turns begin.</p></header>
+
+  <section class="card carry" aria-labelledby="carry-h" data-show="returning">
+    <h2 id="carry-h" style="margin:0 0 4px;font-size:15px;font-family:var(--display)">Carry on</h2>
+    <div class="items">
+      <div class="item"><p>Table <b>KX7Q2M</b>, remembered on this device</p><button class="primary" data-say="Rejoins table KX7Q2M at once, with the name and seat this device had. No typing.">Rejoin</button><button class="text" data-say="First tap: the button reads 'Tap again to forget'. Second tap: this device forgets the table (the table itself goes on).">Forget</button></div>
+      <div class="item"><p>Your solo game, saved on this device</p><button class="primary" data-say="Opens your saved solo game where you left it (this is #lobby-solo, moved here while a game is saved).">Continue</button></div>
+    </div>
+  </section>
+
+  <div class="cols">
+  <section class="group" aria-labelledby="play-h">
+    <h2 id="play-h">Play</h2>
+    <div class="playcards">
+    <form class="card" aria-labelledby="others-h" onsubmit="return false">
+      <h3 id="others-h">Play with others</h3>
+      <div data-show="first returning offline">
+        <label for="b-name">Your name</label>
+        <input id="b-name" autocomplete="off" maxlength="24" data-first="" data-returning="Isaac">
+        <p class="help">What the others see. Kept on this device.</p>
+        <label for="b-code">Table code</label>
+        <div class="pair"><input id="b-code" class="code" maxlength="6" placeholder="ABC123" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" enterkeyhint="go" aria-describedby="b-code-help"><button class="primary" data-off="offline" data-say="Joins the table with that code under your name. The DM sees you waiting and lets you in. A blank name is marked: 'Type the name the others will see.'">Join</button></div>
+        <p class="help" id="b-code-help">The six letters your DM gave you.</p>
+        <p class="or">or be the DM</p>
+        <button class="primary wide" data-off="offline" data-say="Starts a table on the server with you as the DM, on the map below, and shows you a six-letter code to give your players.">Host a table</button>
+        <p class="help">You get a code to give your players.</p>
+        <div class="line"><span>Map: <b>The starter valley</b> (squares)</span><button class="text" data-say="Opens the Map and party sheet: the starting map (the valley or a stock map), squares or hexes for the valley, and the solo party. One choice, used by Host and by Play alone.">Change</button></div>
+        <div data-show="offline"><p class="msg bad">Can't reach the table server. Check your connection. Playing alone and the tools still work.</p><button data-say="Asks the server again; when it answers, Join, Host and Rejoin come back.">Try again</button></div>
+      </div>
+      <div data-show="waiting">
+        <p class="msg" role="status">Asked to join table <b>KX7Q2M</b>. Waiting for the DM to let you in.</p>
+        <button class="wide" data-say="Stops waiting and closes the connection; the DM's list of people waiting loses you. Your name and the code stay filled in.">Cancel</button>
+      </div>
+      <div data-show="pages">
+        <p class="msg">Playing with others needs a table server. This copy of Hextable runs in your browser only.</p>
+        <p class="help">If this build is given a server's address, a link goes here: "Play with friends at …".</p>
+      </div>
+    </form>
+
+    <section class="card alone" aria-labelledby="alone-h">
+      <h3 id="alone-h">Play alone</h3>
+      <p class="help" style="margin:0 0 8px">You run the party and the game runs the monsters. Saved on this device.</p>
+      <button class="primary wide" data-show="first offline waiting pages" data-say="Starts a new solo game at once with the party and map below (#lobby-solo). One tap to try the game.">Play alone</button>
+      <div data-show="returning"><button class="wide" data-say="First tap: 'Tap again to replace it'. Second tap: a new solo game with the party below; the saved one is erased.">New solo game</button><p class="help">This replaces your saved game.</p></div>
+      <div class="line"><span>Party: <b>Brenna, Pip, Odessa, Tavin</b></span><button class="text" data-say="Opens the Map and party sheet at the party: how many (1 to 6), and for each place a starter or one of My characters, or Create new.">Change</button></div>
+    </section>
+    </div>
+  </section>
+
+  <section class="group" aria-labelledby="tools-h">
+    <h2 id="tools-h">Tools</h2>
+    <p class="help">Make things for a game. No game needs to be running.</p>
+    <ul class="tools">
+      <li><button class="row" data-say="Opens My characters: New character (the build screen), Import a file, and for each one Edit, Rename, Duplicate, Export, Delete. Later: Import from Fantasy Grounds (stage S4)."><strong>My characters <span data-show="returning">(3)</span><span data-show="first waiting offline pages">(0)</span></strong><small>Make, edit and keep characters on this device. Export one to take to any table.</small><span class="go" aria-hidden="true">›</span></button></li>
+      <li><button class="row" data-say="Opens the Make a map step: Continue the map you were making, New map on squares, New map on hexes, Open a map file, Start from a stock map. Then the map editor, in a private workshop that never touches your solo game."><strong>Make a map</strong><small>Paint a map, or trace one over a picture. Export it as a file to use in your game.</small><span class="go" aria-hidden="true">›</span></button></li>
+      <li class="coming"><button class="row" aria-expanded="false" aria-controls="m1"><strong>Adventure modules</strong><small>A whole adventure in one file.</small><span class="tag">Coming <span aria-hidden="true">▾</span></span></button>
+        <div class="more" id="m1" hidden><p>One file that holds the maps, encounters, handouts and notes of an adventure, added to a game in one step.</p><p class="help">Until then: make the maps here and export each as a file.</p></div></li>
+      <li class="coming"><button class="row" aria-expanded="false" aria-controls="m2"><strong>Homebrew</strong><small>Your own spells, monsters and items.</small><span class="tag">Coming <span aria-hidden="true">▾</span></span></button>
+        <div class="more" id="m2" hidden><p>Your own spells, monsters and items, checked against what the game can play, for a DM to add to a table.</p><p class="help">Until then: the DM's Quick entry adds a creature by hand.</p></div></li>
+      <li class="coming"><button class="row" aria-expanded="false" aria-controls="m3"><strong>Markets and shops</strong><small>Shops and loot made ahead.</small><span class="tag">Coming <span aria-hidden="true">▾</span></span></button>
+        <div class="more" id="m3" hidden><p>Shop lists and loot made ahead of a game, then brought in by the DM.</p></div></li>
+      <li class="coming"><button class="row" aria-expanded="false" aria-controls="m4"><strong>World atlas</strong><small>Places and routes between maps.</small><span class="tag">Coming <span aria-hidden="true">▾</span></span></button>
+        <div class="more" id="m4" hidden><p>A map of a region with places and routes, so the party can travel between battle maps.</p></div></li>
+    </ul>
+  </section>
+  </div>
+
+  <footer class="foot">
+    <button class="text" data-say="Opens the menu drawer on its Settings tab: theme, floors look, dice, which side the drawer opens. The same drawer as in a game.">Settings</button>
+    <button class="text" data-say="Opens the menu drawer on its About tab: what Hextable is, the version, the SRD 5.2 attribution and the licences.">About</button>
+    <p class="stamp">Build 15 Nov 2026, 11:13 (after change #354)</p>
+  </footer>
+</div>
+
+<!-- ================= A: two tabs ================= -->
+<div class="page" data-layout="a" hidden>
+  <header class="head"><h1>Hextable</h1><p>A 3D tabletop for 5E compatible play.</p></header>
+  <div class="tabs" role="tablist" aria-label="Play or Tools"><button role="tab" aria-selected="true" aria-controls="a-play" id="a-t1">Play</button><button role="tab" aria-selected="false" aria-controls="a-tools" id="a-t2">Tools</button></div>
+  <div id="a-play" role="tabpanel" aria-labelledby="a-t1">
+    <div class="card"><h3>Play with others</h3><label for="a-name">Your name</label><input id="a-name"><label for="a-code">Table code</label><div class="pair"><input id="a-code" class="code" placeholder="ABC123"><button class="primary" data-say="Joins the table (as in the recommendation).">Join</button></div><p class="or">or be the DM</p><button class="primary wide" data-say="Hosts a table (as in the recommendation).">Host a table</button></div>
+    <div class="card"><h3>Play alone</h3><button class="primary wide" data-say="Starts a solo game.">Play alone</button></div>
+  </div>
+  <div id="a-tools" role="tabpanel" aria-labelledby="a-t2" hidden>
+    <ul class="tools"><li><button class="row" data-say="Opens My characters. Two taps from the page: the tab, then the row."><strong>My characters</strong><small>Make and keep characters.</small><span class="go">›</span></button></li><li><button class="row" data-say="Opens Make a map."><strong>Make a map</strong><small>Paint or trace a map.</small><span class="go">›</span></button></li><li class="coming"><button class="row" data-say="Explains the coming tool."><strong>Adventure modules</strong><small>Coming</small><span class="tag">Coming</span></button></li><li class="coming"><button class="row" data-say="Explains the coming tool."><strong>Homebrew</strong><small>Coming</small><span class="tag">Coming</span></button></li></ul>
+  </div>
+  <p class="help" style="margin-top:16px">Why not: the Tools tab hides the owner's new category behind one word, and costs a tab bar at the top of a phone.</p>
+</div>
+
+<!-- ================= C: hub of cards ================= -->
+<div class="page" data-layout="c" hidden>
+  <header class="head"><h1>Hextable</h1><p>A 3D tabletop for 5E compatible play.</p></header>
+  <div class="hub">
+    <button data-say="Opens a screen with Your name, Table code and Join: two taps for the commonest job.">Join a table<small>With a code</small></button>
+    <button data-say="Opens a screen with name and map, then Host.">Host a table<small>Be the DM</small></button>
+    <button data-say="Starts or continues a solo game.">Play alone<small>On this device</small></button>
+    <button data-say="Opens My characters.">My characters<small>Make and keep</small></button>
+    <button data-say="Opens Make a map.">Make a map<small>Paint or trace</small></button>
+    <button class="off" data-say="Explains the coming tool; at a glance this card looks like a dead button.">Modules<small>Coming</small></button>
+    <button class="off" data-say="Explains the coming tool.">Homebrew<small>Coming</small></button>
+    <button class="off" data-say="Explains the coming tool.">Markets<small>Coming</small></button>
+  </div>
+  <p class="help" style="margin-top:16px">Why not: Play and Tools look alike, the code field is a tap away, and coming cards look broken.</p>
+</div>
+
+<!-- ================= D: today's card with Tools added ================= -->
+<div class="page" data-layout="d" hidden>
+  <div class="card today">
+    <h1 style="font-family:var(--display);color:var(--accent);margin:0">Hextable</h1>
+    <p class="help">Roam free. When a fight starts, the arena locks and turns begin. Play on hexes or on squares.</p>
+    <label for="d-name">Your name</label><input id="d-name" placeholder="Name">
+    <label for="d-map">Starting map (when you host or play solo)</label><select id="d-map"><option>The starter valley</option></select>
+    <div class="grid2" style="margin-top:6px"><button class="primary" data-say="Picks the valley on squares.">Valley on squares</button><button data-say="Picks the valley on hexes.">Valley on hexes</button></div>
+    <button class="primary wide" data-say="Hosts a table.">Host a table</button>
+    <label for="d-code">Table code</label><div class="pair"><input id="d-code" class="code" placeholder="ABC123"><button class="primary" data-say="Joins.">Join</button></div>
+    <button class="wide" data-say="Opens the solo party.">Solo party (4): Brenna, Pip, Odessa, Tavin</button>
+    <button class="wide" data-say="Starts solo.">Play solo on this device</button>
+    <h2 style="font-size:15px;margin:16px 0 6px">Tools</h2>
+    <button class="wide" data-say="Opens My characters.">My characters</button><button class="wide" data-say="Opens Make a map.">Make a map</button>
+    <button class="wide" data-say="Opens About.">About Hextable</button>
+  </div>
+  <p class="help" style="margin-top:16px">Why not: name and map still come first for everyone, and the tools sit below the fold on a phone.</p>
+</div>
+
+</div>
+</div>
+<div id="live" role="status" aria-live="polite" style="position:absolute;left:-9999px"></div>
+
+<script>
+// A few lines: the mockup's switches, the "Would:" notes, coming rows and tabs. Nothing real runs.
+const F = document.getElementById('frame'), say = document.createElement('p'); say.className = 'say';
+const set = () => { const v = (n) => document.querySelector(`#mock [name=${n}]:checked`).value;
+  F.dataset.size = v('size'); F.dataset.state = v('state'); F.dataset.theme = v('theme');
+  F.querySelectorAll('[data-layout]').forEach((p) => { p.hidden = p.dataset.layout !== v('layout'); });
+  F.querySelectorAll('[data-show]').forEach((e) => { e.hidden = !e.dataset.show.split(' ').includes(v('state')); });
+  F.querySelectorAll('[data-off]').forEach((e) => e.classList.toggle('off', e.dataset.off === v('state')));
+  const n = document.getElementById('b-name'); n.value = v('state') === 'returning' ? 'Isaac' : '';
+  say.remove(); };
+document.querySelector(`#mock [name=size][value=${innerWidth < 760 ? 'phone' : 'desk'}]`).checked = true;
+document.getElementById('mock').addEventListener('change', set); set();
+F.addEventListener('click', (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.getAttribute('role') === 'tab') { b.parentNode.querySelectorAll('[role=tab]').forEach((t) => { t.setAttribute('aria-selected', t === b); document.getElementById(t.getAttribute('aria-controls')).hidden = t !== b; }); return; }
+  if (b.hasAttribute('aria-expanded')) { const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', open); document.getElementById(b.getAttribute('aria-controls')).hidden = !open; return; }
+  if (!b.dataset.say) return;
+  say.textContent = b.classList.contains('off') ? 'Nothing: greyed while the table server cannot be reached; the sentence under it says why.' : b.dataset.say;
+  (b.closest('li, .item, .pair, .line') || b).after(say); document.getElementById('live').textContent = say.textContent; });
+</script>
+</body>
+</html>
