@@ -1,6 +1,7 @@
 # Spec: companions and summons
 
-Status: draft by an agent (#279), to be reviewed by the design owner. Covers the debt lines S6
+Status: draft by an agent (#279), amended to the owner's answers of 14 November 2026 (issue #193; see
+"Questions for the owner" and "Amendments of 14 November"). Covers the debt lines S6
 (summoned creatures and their stat blocks) and the companion parts of C8 (Wild Companion,
 Faithful Steed), Pact of the Chain, the Find Familiar, Find Steed, Summon and Conjure spells, and
 mounted combat (P3's "mounted"). Every number below is from `reference/srd52/srd52-flow.txt`;
@@ -83,6 +84,8 @@ bond: {
   source: 'find-steed',  // the spell or feature that made it; absent for a DM bond
   fx: 'fx12' | null,     // the lasting effect that keeps it; ending that effect ends it (Decision 4)
   turn: 'own' | 'after' | 'none',          // Decision 3
+  order: 'after' | 'before',               // Find Steed when not ridden: acts after or before its master (Decision 3); default 'after'
+  orderNext: 'after' | 'before' | null,    // a choice made in the middle of a round, taken up at the next round's start
   orders: 'free' | 'command',              // Decision 6
   at0: 'vanish' | 'dies',                  // what 0 Hit Points does (Decision 4)
   ends: ['masterDies', 'longRest'],        // other things that end it (Find Steed, Wild Companion)
@@ -90,7 +93,8 @@ bond: {
   noAttack: true,        // a familiar can't attack (attack and attack-kind act are refused)
   mount: 'controlled',   // it serves as a controlled mount for its master (Find Steed)
   slot: 4,               // the spell level its block was baked at
-  commanded: null,       // Decision 6
+  commanded: null,       // Decision 6: set when the master commands it this turn; its turn is then the player's
+  standing: null,        // Decision 6: the last order or general command given; the DM plays it on this when not commanded
   auto: false,           // the controller lets the engine's companion brain play it (Decision 9)
 }
 ```
@@ -122,8 +126,11 @@ to free it (it stays on the map, on its own side, with no bond). A DM bond has n
 `ends`; `turn` defaults to `own` and `orders` to `free`. Bonding across sides is refused ("A
 companion fights on its master's side.").
 
-A master may have at most **20** bonded creatures (Animate Dead at a level 9 slot makes 13, plus
-a familiar and a steed). More is refused, to keep a table's state and the fight order bounded.
+A master may have at most **30** bonded creatures (question 7). The SRD limits are the reason: Animate
+Dead makes 1 creature from a 3rd-level slot and 2 more per slot level above 3, so 13 from a 9th-level
+slot; Create Undead makes 3 Ghouls at 6th level and 6 at 9th; Animate Objects makes up to the
+spellcasting modifier (a Large counts as 2, a Huge as 3). Several castings, a familiar and a steed fit in
+30. More is refused, to keep a table's state and the fight order bounded.
 
 ### Decision 2: the `summon` step
 
@@ -177,12 +184,19 @@ made. The entry's `init` copies the master's, so the tracker shows them on one c
 | `turn` | Who | In a fight |
 |---|---|---|
 | `own` | Find Familiar, Animate Dead, Create Undead, DM pets | rolls Initiative as any creature (`rollInit`) |
-| `after` | Summon Dragon, Giant Insect, Animate Objects, Find Steed when not ridden | no roll; `after: master`; made during the master's turn it acts straight after it this round |
+| `after` | Summon Dragon, Giant Insect, Animate Objects | no roll; `after: master`; made during the master's turn it acts straight after it this round |
+| `after`, with `bond.order` | Find Steed when not ridden | no roll; on the master's count, straight after it (`order: 'after'`, the default) or straight before it (`order: 'before'`), as the master's player chooses each round (below) |
 | `none` | Unseen Servant; any controlled mount while ridden | no entry of its own; moves on the master's or rider's turn (Decisions 6, 8) |
 
-Find Steed "shares your Initiative count" and does not say before or after; the spec puts it
-after (question 3). When its rider is Incapacitated it gets its own turn straight after the
-rider, played by the companion brain (Decision 9), as the spell says.
+Find Steed "shares your Initiative count" and does not say before or after. **The master's player chooses,
+per round, whether the steed acts before or after the master; the default is after** (question 3).
+The choice is `bond.order`; a choice made at any time is kept in `bond.orderNext` and **takes effect at
+the start of the next round, never in the middle of one**, so that moving the steed behind or ahead of a
+master who is already mid-turn can never give it a second turn or take its turn away. While the steed is
+ridden it has no entry (`none`) and the choice waits: a controlled mount moves on its rider's turn (the
+SRD: it takes the rider's Initiative when mounted, and can move and act the turn it is mounted), and on
+dismounting it takes its place by `order`. When its rider is Incapacitated it gets its own turn
+straight after the rider, played by the companion brain (Decision 9), as the spell says.
 
 A fight starting with a companion in the arena and its master outside it: an `after` companion
 rolls its own Initiative and a `note` says so; it is placed after its master if the master joins
@@ -276,14 +290,28 @@ the master's Bonus Action. New action, by the master's controller or the DM:
 It spends the Bonus Action in a fight (nothing outside one), checks each id is the master's,
 bonded with `orders: 'command'` and within the source's command range (60 ft for Animate Dead,
 120 for Create Undead, 500 for Animate Objects; from the step's `bond.range`), and sets
-`bond.commanded = { order, at: turnKey }`. One command for any number of them, as the SRD says.
+`bond.commanded = { order, at: turnKey }` and `bond.standing`. One command for any number of them, as the SRD says.
 
-On an `orders: 'command'` creature's turn, while `commanded` is null, the engine accepts only
-`dodge`, `move` and `endTurn` for it ("Waiting for a command, it can only Dodge and keep out of
-harm."). Once commanded, it is played freely, and **the command stands until a new one or a
-`{ type: 'command', actor, ids, order: null }`** (the SRD: "continues to follow it until its task is
-complete", which the engine cannot judge; question 4). Whether what it does follows the order is
-the DM's, as at a table.
+**Whose turn it is, for an `orders: 'command'` creature** (question 4, amended). The SRD for Animate Dead
+and Create Undead: "You decide what action the creature will take and where it will move on its next
+turn, or you can issue a general command, such as to guard a chamber or corridor. If you issue no
+commands, the creature takes the Dodge action and moves only to avoid harm. Once given an order, the
+creature continues to follow it until its task is complete." Animate Objects says only that it
+takes a Bonus Action to command and that with no command it takes the Dodge action and moves only to
+avoid harm (it has no "continues to follow" sentence; the engine treats it as the other two, a table
+reading the DM can overrule).
+
+- **Commanded this turn** (the master spent the Bonus Action): the creature's turn is in the **player's
+  hands** that turn: `ownerOf` gives its master's player, who picks its action and move.
+- **Not commanded this turn, an order stands** (`bond.standing` set by an earlier command or general
+  command): **the DM plays it** on that order. Whether what it does follows the order is the DM's, as
+  at a table.
+- **Never commanded**: it takes the Dodge action and moves only to avoid harm; the engine accepts only
+  `dodge`, `move` and `endTurn` for it, and the companion brain plays it (Decision 9).
+
+A command sets `bond.commanded` for the turn it is given for and `bond.standing` to its `order` text
+(`order: null` clears the standing order, and the creature goes back to Dodging). `commanded` is
+cleared when that creature's turn ends. The standing order stays until a new command or the clear.
 
 The Unseen Servant (`turn: 'none'`) moves only by command: the command gives it 15 ft of movement
 to use on the master's turn (`move` with the servant as actor, from a `budget.servant` of 15 that
@@ -360,24 +388,26 @@ A rider stores `riding: { on: mountId, controlled: true | false }`; its mount st
   on a failure the rider is dismounted Prone in the nearest unoccupied space within 5 ft (`fell`
   in `dismounted`). When the mount vanishes or dies the rider is dismounted where it stands (and
   falls if that is in the air, by the existing gravity pass).
-- **Find Steed** is a controlled mount for its master (`bond.mount: 'controlled'`). If its master
-  is Incapacitated while riding, the steed gets a turn straight after the master's that round and
-  the companion brain plays it (Decision 9).
+- **Find Steed** is a controlled mount for its master (`bond.mount: 'controlled'`). Ridden, it keeps
+  moving on its rider's turn and has no entry; not ridden, it acts before or after its master as
+  `bond.order` says (Decision 3). If its master is Incapacitated while riding, the steed gets a turn
+  straight after the master's that round and the companion brain plays it (Decision 9).
 
 ### Decision 9: the companion brain, and who presses the buttons
 
 `ai.js` gains `companionStep(s, id)`, called by `aiStep` for a bonded creature:
 
-- `orders: 'command'` and not commanded: Dodge, then move away from the nearest foe if one is
-  within 5 ft, then end the turn.
+- `orders: 'command'`, never commanded (`standing` null): Dodge, then move away from the nearest foe if
+  one is within 5 ft, then end the turn. With a standing order and no command this turn, the DM plays
+  it by hand (the brain does not guess an order); a creature commanded this turn waits for its player.
 - A Find Steed whose master is Incapacitated: move next to the master if it can, attack a foe
   within 5 ft of the master (Otherworldly Slam), else Dodge.
 - Otherwise (`auto: true`, or no player controls it): play it as `aiStep` plays a monster, never
   against its own side, and never `attack` for `noAttack`.
 
 The DM's auto-play in the client (`app.js`:377) runs the brain for a creature on its turn when its
-`ownerOf` is null (the DM's), or `bond.auto` is set, or it is uncommanded under `orders:
-'command'`, or it is the Incapacitated master's steed. Otherwise the turn waits for its player as
+`ownerOf` is null (the DM's), or `bond.auto` is set, or it is never commanded under `orders:
+'command'`, or it is the Incapacitated master's steed. A creature commanded this turn is not auto-played: its turn is its player's (Decision 6). Otherwise the turn waits for its player as
 a party character's does. The player sets `auto` with `{ type: 'companion', actor: id, auto: true |
 false }` (its controller or the DM).
 
@@ -432,10 +462,10 @@ and dropping fields it does not know.
 | Entry | Tier after this work | How | Still the DM's |
 |---|---|---|---|
 | Find Familiar | assist | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing; Octopus (no block) |
-| Find Steed | auto (with C6) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'`, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
+| Find Steed | auto (with C6) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
 | Summon Dragon | auto | `summon: 'draconic-spirit'`, Concentration part; Shared Resistances as a `modifier` step on `self` with the spell's `choice` | its "verbal commands" |
 | Giant Insect | auto | `summon: 'giant-insect'`, `variants` | as above |
-| Animate Dead | assist | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert | bones and the Skeleton; whether orders are kept |
+| Animate Dead | assist | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert; commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
 | Create Undead | assist | as Animate Dead, Ghoul (Ghast, Wight, Mummy by slot), range 120; "only at night" is the DM's | as above |
 | Animate Objects | assist | `summon: 'animated-object'` with `variants` as size, at points the caster names | which objects (map things are not checked), the count by size against the modifier, reverting to the object |
 | Phantom Steed | auto | `summon: 'riding-horse'`, `over: { speed: { walk: 100 } }`, part ends on damage, `mount` via the mounts list | travel pace, the vanishing tack, the minute to dismount |
@@ -460,13 +490,13 @@ After every row the valley plays as before.
 | # | Task | Lane | Files it may touch | Acceptance test |
 |---|---|---|---|---|
 | C1 | **The bond.** `bond` field, `ownerOf`, `control(s, e, ctx)` and every caller listed in Decision 1; the DM's `bond` action and `companion { auto }`; `vanish()` with `hp0`, `master`, `leash`, `dismissed`; `bonded`/`unbonded`/`vanished` in `viewEvents`; `describeStep` labels; version bump with an empty migration. | engine | `engine/shared.js`, `engine/companions.js` (new), `engine.js` (spread the new handlers), `engine/resolve.js`, `engine/attacks.js`, `engine/movement.js`, `engine/casting.js`, `engine/features.js`, `engine/characters.js`, `engine/rests.js`, `reactions.js`, `view.js`, `history.js`, `migrate.js`, `packages/client/app.js` (`mine()` only), `packages/rules/test/companions.test.js` (new) | a player moves a wolf the DM bonded to their character and is refused for another player's; releasing the master hands the wolf to the DM and claiming gives it back; a `noAttack` creature's attack is refused and the state is unchanged; a familiar at 0 vanishes, a DM-bonded Zombie dies; a foe's bonded wolf sends no `bond` to a player; every existing test passes untouched |
-| C2 | **The turn and lasting effects.** `after` in `initiativeSort`, `startEncounter` and `joinEncounter`; the `summon` part in `durations.js`; `ends: ['longRest']` in rests. | engine | `engine/world.js`, `engine/resolve.js`, `durations.js`, `engine/rests.js`, `view.js` (order only), tests | three `after` companions stay behind their master through a whole fight with ties and joins; a companion made in the master's turn acts next; ending the effect removes the creature and the order entry; `after` is not sent for a foe |
+| C2 | **The turn and lasting effects.** `after` in `initiativeSort`, `startEncounter` and `joinEncounter`; the `summon` part in `durations.js`; `ends: ['longRest']` in rests. (The per-round `before`/`after` choice for Find Steed is stage A1 of the amendments.) | engine | `engine/world.js`, `engine/resolve.js`, `durations.js`, `engine/rests.js`, `view.js` (order only), tests | three `after` companions stay behind their master through a whole fight with ties and joins; a companion made in the master's turn acts next; ending the effect removes the creature and the order entry; `after` is not sent for a foe |
 | C3 | **Summon blocks and the step.** `summons.js` (bake), the `summons` pack list and its linter, summon amounts, `summon` in `STEPS`, `KIT.summon`, `placeCreature` shared with `spawn`, the cast action's `summon` field, `summoned` in `viewEvents`; one entry, `giant-insect`, and Giant Insect moved to `auto`. | engine | `summons.js` (new), `content/schema.js`, `content/index.js`, `content/srd52/summons.js` (new), `content/srd52/spells-4.js` (Giant Insect only), `effects.js`, `engine/resolve.js`, `engine/world.js`, `engine/dm.js`, `engine/casting.js`, `view.js`, tests | Giant Insect cast at levels 4 to 9, each variant: the baked block lints as a monster, with AC 11 + level, HP 30 + 10 x (level - 4), Fly only for the wasp, the master's attack bonus on Poison Jab; a point out of range, unseen or occupied is refused and nothing changes; Concentration broken ends it; on `square-room` a Large insect fills 2 by 2 and is refused where it does not fit |
 | C4 | **Blocks and spells, data.** `otherworldly-steed`, `draconic-spirit`, `animated-object`, and an Unseen Servant block from the spell's numbers; Find Familiar, Find Steed (without riding until C6), Summon Dragon, Phantom Steed, Animate Objects, Unseen Servant moved to their tiers, each `checked` against the SRD lines above. | content | `content/srd52/summons.js`, `content/srd52/spells-1.js` to `spells-5.js` (those entries only), tests | `npm run content` reports them at the tiers in the table above, with no problems; a test casts each and checks the numbers against the lines cited |
-| C5 | **Commands, corpses and familiars.** `command`, the uncommanded lock, the servant's 15 ft; `on: 'corpse'`, Animate Dead and Create Undead with the 24-hour bond and reassert; `dismiss` and `recall` with the pocket; `one: 'reform'` and `'replace'`; touch delivery through the familiar's Reaction (`cast { deliver }`). | engine | `engine/companions.js`, `engine/casting.js`, `effects.js`, `engine/resolve.js`, `durations.js`, `view.js`, `content/srd52/spells-3.js` and `spells-6.js` (those two spells), tests | an uncommanded Zombie may only Dodge and move; one command for three costs one Bonus Action; a corpse 15 ft away is refused at range 10; after 24 hours the Zombie is a foe with a `manual` event; a pocketed familiar is in no player view and comes back with its Hit Points within 30 ft; Shocking Grasp delivered by an owl within 100 ft uses the owl's Reaction and is refused at 105 ft |
+| C5 | **Commands, corpses and familiars.** `command` (with `commanded` and `standing`, amended Decision 6), the never-commanded lock, the servant's 15 ft; `on: 'corpse'`, Animate Dead and Create Undead with the 24-hour bond and reassert; `dismiss` and `recall` with the pocket; `one: 'reform'` and `'replace'`; touch delivery through the familiar's Reaction (`cast { deliver }`). | engine | `engine/companions.js`, `engine/casting.js`, `effects.js`, `engine/resolve.js`, `durations.js`, `view.js`, `content/srd52/spells-3.js` and `spells-6.js` (those two spells), tests | a never-commanded Zombie may only Dodge and move; a Zombie with a standing order and no command this turn is the DM's, and one commanded this turn is its player's (needs A2); one command for three costs one Bonus Action; a corpse 15 ft away is refused at range 10; after 24 hours the Zombie is a foe with a `manual` event; a pocketed familiar is in no player view and comes back with its Hit Points within 30 ft; Shocking Grasp delivered by an owl within 100 ft uses the owl's Reaction and is refused at 105 ft |
 | C6 | **Riding.** `mount`, `dismount`, `riding`/`rider`, the mount's footprint for the rider, `budget.mount`, moving together (walk, push, teleport, fall), falling off, Opportunity Attacks for the pair; `mount: 'trained'` on the eight mounts; Find Steed as a controlled mount and its Incapacitated turn. | engine | `engine/movement.js`, `engine/world.js`, `engine/resolve.js`, `space.js`, `vision.js` (eye height), `content/schema.js` (the `mount` field), `content/srd52/monsters-*.js` (eight entries, that field only), tests on hexes and on `square-room` | on both grids: mounting costs half Speed; a Medium rider on a warhorse moves 60 ft with the warhorse's movement and still has its own to dismount; the warhorse can Dash but its attack is refused; a goblin beside the pair gets one Reaction and may choose either; Thunderwave pushing the horse makes the rider save DC 10 and land Prone on a failure; a flying steed vanishing drops its rider who falls; a fireball touching one hex of the horse catches the rider |
-| C7 | **The companion brain.** `companionStep`; the client's auto-play rule. | engine + client | `ai.js`, `packages/client/app.js` (the auto-play condition only), tests | an uncommanded Skeleton Dodges and steps away; an Incapacitated paladin's steed comes to her and attacks the goblin beside her; a player's familiar waits for its player unless `auto` is set |
-| C8 | **Screens.** The cast chooser for a summon (form, type, variant, then taps for each point, or corpses); the companion's turn in the player's bar and tracker (one row under its master for `after`); buttons for Command (with the order text), Dismiss, Recall, Mount, Dismount, Let it act; the pocket on the sheet. | client | `packages/client/actionpanel.js`, `classes.js`, `tracker.js`, `app.js`, `index.html`, `style.css`, `scripts/smoke/companions.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=companions`: at both sizes, with touch at 390 x 844, a wizard summons an owl, the owl's turn comes to the same player, the owl is dismissed and recalled; a paladin summons a steed, mounts, rides 60 ft and dismounts; no page errors |
+| C7 | **The companion brain.** `companionStep`; the client's auto-play rule (never-commanded and not-commanded-this-turn, Decision 9). | engine + client | `ai.js`, `packages/client/app.js` (the auto-play condition only), tests | a never-commanded Skeleton Dodges and steps away; an Incapacitated paladin's steed comes to her and attacks the goblin beside her; a player's familiar waits for its player unless `auto` is set |
+| C8 | **Screens.** The cast chooser for a summon (form, type, variant, then taps for each point, or corpses); the companion's turn in the player's bar and tracker (one row under its master for `after`); buttons for Command (with the order text; the prompt that hands a commanded creature's turn to its player, A2), the master's before or after choice for a steed (A1), Dismiss, Recall, Mount, Dismount, Let it act; the pocket on the sheet. | client | `packages/client/actionpanel.js`, `classes.js`, `tracker.js`, `app.js`, `index.html`, `style.css`, `scripts/smoke/companions.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=companions`: at both sizes, with touch at 390 x 844, a wizard summons an owl, the owl's turn comes to the same player, the owl is dismissed and recalled; a paladin summons a steed, mounts, rides 60 ft and dismounts; no page errors |
 | C9 | **The rest of the features.** Wild Companion (a slot or a Wild Shape use), Faithful Steed's free cast, Pact of the Chain (Magic action, extra forms, forgo an attack), Investment of the Chain Master, Life Bond (a hook on healing from spells, shared with Blessed Healer, C8 in the debt log). | engine | `engine/features.js`, `engine/attacks.js`, `engine/rolls.js`, `summons.js`, `content/schema.js`, `content/srd52/classes/*` (those features), tests | each feature's SRD text is played by a test; the class entries report their new tiers |
 | C10 | **Drawing.** A rider drawn on its mount at the mount's height, the pair moving as one, `vanished` fading out (as `removed`), the tracker's `after` rows. | render | `render.js`, `render-three.js`, `three-build.js`, `scripts/smoke/companions.mjs` | the smoke pass's screenshots at both sizes show the rider on the horse on hexes and on squares |
 
@@ -480,7 +510,7 @@ familiars; after C4 the summon spells play; after C6 riding does.
 
 - What a familiar hears and says, telepathy, seeing through its eyes beyond the shared party view.
 - Octopus as a familiar form (no stat block in the SRD 5.2.1).
-- Whether a commanded creature's actions follow its order; general orders ("guard the hall").
+- Whether a creature's actions follow its standing order or general command ("guard the hall"); the DM plays it.
 - Skeletons from bones (no bones on the map); which objects Animate Objects picks and how they
   count by size; an Animated Object's damage carried over to its object.
 - Gear left behind when a companion vanishes.
@@ -506,27 +536,36 @@ familiars; after C4 the summon spells play; after C6 riding does.
 
 ## Questions for the owner
 
-Each has a default; work proceeds on the default.
+Each had a default. All seven were answered by the owner on 14 November 2026 (issue #193, comments of
+20:05 and 20:25 ET); the text states what stands now.
 
-1. **A familiar's sight.** *Default: a party companion is one of the party's eyes all the time*, as
-   every party member is and as `sight.md` assumes. The SRD gives the master its senses only for a
-   Bonus Action, until the start of the next turn. The stricter reading would need eyes per player,
-   which the shared players' view does not have.
-2. **Where a rider is.** *Default: in the mount's whole space*, for reach, range and areas (a
-   Medium knight on a Large horse reaches from any of its hexes, and a fireball on one hex of the
-   horse catches the knight). The SRD does not say; the other reading picks one cell of the mount
-   for the rider.
-3. **Find Steed's turn when not ridden.** *Default: straight after its master*, on the same count,
-   as the Summon spells do. The SRD says only "shares your Initiative count".
-4. **Commands that stand.** *Default: an Animate Dead or Animate Objects creature, once commanded,
-   is played freely until a new command or the command is cleared*; before any command it may only
-   Dodge and move. The stricter reading (a Bonus Action every turn for anything but Dodge) is one
-   line to change.
-5. **Undead past 24 hours.** *Default: the bond ends, the creature joins the foes, and the DM is
-   told.* The SRD says only that it stops obeying.
-6. **XP for a foe's summons.** *Default: a creature with a bond does not count toward a fight's XP*
-   (`counts: false` in the conclusion; the DM can tick it). The summon blocks give XP 0 already.
-7. **The cap.** *Default: 20 bonded creatures per master.*
+1. **A familiar's sight.** *Answered 14 November 2026: yes.* A party companion is one of the party's eyes
+   all the time, as every party member is and as `sight.md` assumes (default confirmed). The SRD gives
+   the master its senses only for a Bonus Action, until the start of the next turn; the stricter reading
+   would need eyes per player, which the shared players' view does not have.
+2. **Where a rider is.** *Answered 14 November 2026: yes.* The rider takes up the mount's whole space for
+   reach, range and areas (default confirmed): a Medium knight on a Large horse reaches from any of its
+   hexes, and a fireball on one hex of the horse catches the knight.
+3. **Find Steed's turn when not ridden.** *Answered 14 November 2026: CHANGED.* Not "always straight
+   after its master". The master's player chooses, per round, whether the steed acts before or after the
+   master; the default is after. The choice takes effect at the start of the next round, so a change in
+   the middle of a round can never give a double or lost turn. A ridden controlled mount keeps moving on
+   its rider's turn (SRD: it takes the rider's Initiative on mounting and can move and act the turn it is
+   mounted). Decision 3; stage A1.
+4. **Commands that stand.** *Answered 14 November 2026: AMENDED.* A command given with the Bonus Action
+   puts the creature's turn in the player's hands that turn. With no Bonus Action spent, the DM plays it on
+   its last standing order or general command. With none ever given, it Dodges and moves only to avoid
+   harm. (SRD, Animate Dead and Create Undead: "Once given an order, the creature continues to follow it
+   until its task is complete" and "If you issue no commands, the creature takes the Dodge action and
+   moves only to avoid harm"; Animate Objects has the second only.) Decision 6; stage A2.
+5. **Undead past 24 hours.** *Answered 14 November 2026: yes* (default confirmed). The bond ends, the
+   creature joins the foes, and the DM is told.
+6. **XP for a foe's summons.** *Answered 14 November 2026: CHANGED.* A foe's summons DO count toward a
+   fight's XP like any foe; the DM can untick one; a summon block with XP 0 stays 0. This retires
+   `counts: false` for bonded foes and the difference between a seen and an unseen husk's XP (review of
+   #317, L3). Stage A3.
+7. **The cap.** *Answered 14 November 2026: CHANGED to 30* bonded creatures per master (the default was
+   20). The reason is the SRD's limits (Decision 1). Stage A4.
 
 ## Build notes
 
@@ -593,7 +632,7 @@ Settled in the review of #313:
   lasting effect: Grappled ends (nobody holds on), any other loses its `source` and the DM is told. A part
   of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
 - **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
-  may tick it.
+  may tick it. *Superseded 14 November: a foe's summons count; stage A3.*
 
 ### C2, the turn and lasting effects (#316)
 
@@ -645,9 +684,64 @@ Settled in the review of #313:
   master finished the rest (a master at 0 Hit Points does not).
 - **From the C1 reviews.** The record an unseen vanish leaves has no `bond`: it does not count toward
   `BOND_MAX` or stop its master being bonded, and `companionsOf` also passes by a `vanished` record kept from
-  before. A consequence: in a fight it counts toward the XP, as any unseen death does. The DM's note says so,
+  before. A consequence: in a fight it counts toward the XP, as any unseen death does (after 14 November every foe's summon counts, seen or not; stage A3). The DM's note says so,
   and the DM may untick it. `effectStart`/`effectEnd`'s `why` becomes "it ended" also when it names a creature
   the effect was on that players do not know of.
 - **What players are sent.** `after` only on an Open entry whose master is Open (`view.js`: the order, the
   `encounterStart` order and `joined`); a foe's companion's entry stays `{ id }`.
 - **No state version bump:** `after` on an entry is optional, and nothing else in the shape changed.
+
+## Amendments of 14 November
+
+The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change four things in the engine.
+**None of these is built yet**: this PR changes the spec only. Each is a small stage, to run after the
+stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each follows the spec's form.
+
+### A1, the master's before or after choice for a steed (not built)
+
+- **Choice.** A per-round choice on a bonded companion: `bond.order` (`'after'` default, or `'before'`)
+  and `bond.orderNext`, one action `{ type: 'companionOrder', actor, id, order }` by the master's
+  controller or the DM, which only writes `orderNext` (and `order` too when no fight is going on). The
+  engine copies `orderNext` to `order` **only at a round's start**, where it already settles the order;
+  never in the middle of a round. The order entry gains `before: masterId` beside `after: masterId`;
+  `initiativeSort` puts it straight before its master.
+- **Reasons.** A mid-round switch would put a creature that has acted ahead of a master whose turn is
+  now (a second turn) or behind a master who has just gone (a lost one). A ridden steed has no entry, so the
+  choice waits until it is dismounted.
+- **Cost.** One field pair, one action, a change to `initiativeSort`, `joinEncounter` and `followMasters`.
+  The C2 safety rules apply unchanged: a join in the middle of a round uses `insertSlot` and moves
+  nothing else; `followMasters` moves a companion only when that is safe in the middle of the round. A
+  twin-run hidden-information check: two runs of the same fight that differ only in a hidden foe's
+  steed choice send the same players' view (`before` is kept on an entry only when both it and its master are
+  Open, as `after` is). Tests: a choice mid-round changes nothing until the next round; before and after
+  give no double or lost turn across a full fight with ties and joins.
+
+### A2, a Bonus Action command puts the turn in the player's hands (not built)
+
+- **Choice.** In `command` (C5), a command spends the Bonus Action and sets `bond.commanded` for that turn;
+  `ownerOf` for that creature's turn is its master's player when `commanded` is set and the DM's
+  otherwise (a standing order, or none: Decision 6). `bond.standing` keeps the last order. A prompt
+  to the player at the start of the commanded creature's turn: "Brenna's zombie is yours this turn."
+  This is an action (`command` gains `standing`/clear) and a prompt, and **client work** (C8: the prompt,
+  the player's bar for that creature, the DM's auto-play skipping it).
+- **Reasons.** The SRD puts the choice of action and move in the commander's hands for a commanded turn,
+  and leaves an order that stands to carry on by itself.
+- **Cost.** A control rule that depends on the turn, not only on the bond, in `ownerOf`'s callers;
+  tests that a never-commanded Zombie is the DM's and may only Dodge and move, one commanded this turn is its
+  player's and refused for another player, and one with only a standing order is the DM's.
+
+### A3, XP for a foe's summons (not built)
+
+- **Choice.** `counts` in a fight's conclusion (`rewards.js`) is no longer `false` for a bonded foe
+  (`counts: !up(e)` only): a summon is listed and counted like any foe, with the pack's `xp` (0 for a
+  summon block stays 0); the DM may untick any. The seen and unseen husk difference goes: a husk counts as
+  any unseen death does and a seen vanished one counts too.
+- **Reasons.** The owner's answer; a foe's summons are foes. It removes the L3 difference noted in the
+  review of #317.
+- **Cost.** One expression in `rewards.js`, the tests that pin `counts: false`, and the notes in C1 and C2.
+
+### A4, the cap (not built)
+
+- **Choice.** `BOND_MAX` (`engine/companions.js`) becomes 30.
+- **Reasons.** The SRD limits in Decision 1.
+- **Cost.** One constant and the test that pins 20.
