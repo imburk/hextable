@@ -651,3 +651,21 @@ Settled in the review of #313:
 - **What players are sent.** `after` only on an Open entry whose master is Open (`view.js`: the order, the
   `encounterStart` order and `joined`); a foe's companion's entry stays `{ id }`.
 - **No state version bump:** `after` on an entry is optional, and nothing else in the shape changed.
+
+### Turns kept and lost, after C2 (#320)
+
+- **The rule the order keeps:** every creature that is up and stays up acts exactly once a round. Those before
+  the turn going on have had theirs and those after it have not, so nothing that comes back in is seated before
+  the turn, and nobody already past it is moved after it.
+- **Taken back in while the creature whose turn it is was moved to the end (E20, `end`/`endKeep`):** the
+  creature is seated straight behind it in the end block, as one moved there right after it (its record becomes
+  an end record `{ n, keep: false, round }`, the later end records shifted one place on). Before, it was seated
+  at the end of those in their own places, behind the turn, and lost its turn that round (review of #317, round
+  3, M1). Next round it gets its own place back, as any creature moved to the end for one round.
+- **A record of the old form** (`moved[x].after`, from a save) is seated the same way, and behind the turn going
+  on if its anchor is gone or has had its turn since; two such records behind each other are seated anchor first.
+- **The record keeps its own copies** (`engine.js`, `record`): a timeline entry is a deep copy of its event. The
+  `placed` event held its creature's `pos` object (`dm.js`), so the entry changed with the creature, and undo and
+  redo, which put the state back field by field, could not give the record back as it was (review of #317, round
+  3, L3: redo after a `spawn` and a `place` of the new creature gave a different `to`).
+- **No state version bump:** the shape is unchanged.

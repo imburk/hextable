@@ -286,10 +286,11 @@ export function heldBack(s, e, ev) {
   settleOrder(s);
 }
 
-// Lay the order out again from who was moved where: everyone else in initiative order as it stands,
-// a creature moved after another just after it, then those moved to the end, first moved first.
-// The turn stays with the creature whose turn it is. A creature joining the fight sorts the whole
-// order by initiative (joinEncounter, world.js); this puts the moved ones back.
+// Lay the order out again from who was moved where: everyone else in the order as it stands, a creature
+// taken back in after another just after it, then those moved to the end, first moved first. The turn stays
+// with the creature whose turn it is. A creature joining the fight is put in without moving anyone
+// (insertSlot, world.js), before those moved to the end; the order is sorted whole only at the start of a
+// fight and at a round start that gives a place back (newRound, below), and this then puts the moved ones back.
 export function settleOrder(s) {
   const enc = s.encounter, moved = enc?.moved;
   if (!moved) return;
@@ -305,8 +306,33 @@ export function settleOrder(s) {
   // on stays where it stands for the rest of the round (`placed`): seating it again behind its anchor on every
   // later turn would carry it with the anchor when a companion's place changes (a bond, a free), past creatures
   // that have had their turn, and give them a second one (review of #317, round 2, B1 and B2).
+  // A creature taken back in while the creature whose turn it is was moved to the end of the round (`end`,
+  // `endKeep`) is seated straight behind it in that end block, as one moved there right after it: seated in
+  // initiative order it would sit behind the turn, among those who have had theirs, and lose its own (#320).
+  // Every creature that is up and stays up acts once a round: those before the turn have acted, those after
+  // it have not, so a creature brought back in goes after the turn and nobody already past it moves.
+  const atEnd = (id) => moved[id] && !moved[id].after && !moved[id].placed && enc.order.some((o) => o.id === id);
+  // An anchor that is itself waiting to be seated (two records of the old form, from a save) is seated first.
+  const back = [], waiting = enc.order.filter((x) => moved[x.id]?.after);
+  while (waiting.length) {
+    const i = Math.max(0, waiting.findIndex((o) => !waiting.some((w) => w.id === moved[o.id].after)));
+    back.push(...waiting.splice(i, 1));
+  }
+  for (const o of back) {
+    // Behind the creature it was taken back in after; if that one is gone or has had its turn (a record of the old
+    // form kept since), behind the creature whose turn it is.
+    const ai = enc.order.findIndex((x) => x.id === moved[o.id].after);
+    const anchor = ai >= 0 && (!cur || ai >= enc.turn) ? moved[o.id].after : cur;
+    if (anchor && atEnd(anchor)) {
+      const n = moved[anchor].n;
+      for (const m of Object.values(moved)) if (m.n > n) m.n++;
+      moved[o.id] = { n: n + 1, keep: false, round: moved[o.id].round };
+      continue;
+    }
+    if (anchor) moved[o.id].after = anchor;
+  }
   const rest = enc.order.filter((o) => !moved[o.id] || moved[o.id].placed);
-  for (const o of enc.order.filter((x) => moved[x.id]?.after)) {
+  for (const o of back.filter((x) => moved[x.id].after)) {
     let at = rest.findIndex((x) => x.id === moved[o.id].after);
     // Behind the companions that take their turn straight after that creature's (or after its master's, if it is
     // one), not between them (review of #317, L4).
