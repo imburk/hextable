@@ -75,7 +75,7 @@ const TL = createTimeline({
   pace: pace(),
   gridOf: (st) => gridOf(st?.map),
   onBeat: (ev, ctx) => beat(ev, ctx),
-  onShow: (state, events) => { if (S) R.setState(state, events, { instant: TL.pace === 'instant' || snapping }); },
+  onShow: (state, events) => { if (S) R.setState(shownState(state), events, { instant: TL.pace === 'instant' || snapping }); },
   onDone: (u) => { if (S && u.meta.first && selId) R.focus(selId, true); },
   onIdle: () => { R.settle(); idled(); },        // whatever the renderer is still easing (a door, a fall) is brought to its end state
 });
@@ -98,6 +98,26 @@ const isDM = () => T?.you?.role === 'dm';
 const mine = (e) => !!e && (isDM() || ownerOf(S, e) === T.you.userId);
 // A creature's name in the log. One that has left the state (a companion that vanished) is still called what it was, by the name seen last.
 const known = new Map();
+// The state as the screen draws it: a companion's name reads as its master's ("Brenna's wolf", tracker.js shownName). The renderer's pawn
+// labels and the reaction question take the name from the creature, so they are given a copy with those names put in. Only a bonded creature
+// whose shown name differs is copied; the rest of the state is the same object.
+function shownState(st) {
+  if (!st) return st;
+  let ents = null;
+  for (const e of Object.values(st.entities ?? {})) {
+    if (!e.bond) continue;
+    const nm = shownName(st, e);
+    if (nm !== e.name) (ents ??= { ...st.entities })[e.id] = { ...e, name: nm };
+  }
+  return ents ? { ...st, entities: ents } : st;
+}
+// What a summoned creature is: its name without its master's ("Giant Wasp"), else its template's.
+const summonedName = (st, e) => {
+  const m = st.entities[e?.bond?.to];
+  const base = (m && e.name.startsWith(`${m.name}'s `) ? e.name.slice(m.name.length + 3) : e?.name ?? '').replace(/ \d+$/, '');
+  const t = MONSTERS[e?.tpl]?.name ?? (typeof CONTENT.summons[e?.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : null);
+  return base || t || 'creature';
+};
 const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? 'Someone');
 
 function toast(msg, info = false) {
@@ -278,7 +298,8 @@ function words(ev) {
     case 'tempHp': return ev.kept ? [`${n(ev.id)} keeps ${ev.tempHp} Temporary Hit Points.`, ''] : ev.amount > 0 ? [`${n(ev.id)} gains ${ev.amount} Temporary Hit Points.`, 'good'] : [`${n(ev.id)} loses their Temporary Hit Points.`, ''];
     case 'claimed': return [`${ev.userName || 'The DM'} now plays ${n(ev.id)}.`];
     case 'released': return [`${n(ev.id)} is free for someone to play.`];
-    case 'spawned': return [`${n(ev.id)} appears.`];
+    case 'spawned': return ev.quiet ? null : [`${n(ev.id)} appears.`];
+    case 'summoned': { const e = S.entities[ev.id], w = e ? summonedName(S, e) : 'creature'; return [`${n(ev.by)} summons ${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}.`]; }
     case 'bonded': return [`${n(ev.id)} is now ${n(ev.to)}'s ${ev.kind}${ev.side ? ` and fights on the ${ev.side}'s side` : ''}.`];
     case 'unbonded': return [`${n(ev.id)} is no longer ${ev.from !== undefined ? `${n(ev.from)}'s` : 'anyone\'s'} companion.`];
     case 'companion': return [`${n(ev.id)} ${ev.auto ? 'acts on its own now' : 'waits for its player\'s orders'}.`];
@@ -404,7 +425,8 @@ function onUpdate(state, events, fresh) {
   const urgent = !!(S.prompt || S.pending);
   snapping = first || tookBack || urgent;
   // A companion that vanished fades like a creature removed: the renderer reads that event (the engine sends `vanished` for it).
-  const beats = events.flatMap((ev) => (ev.type === 'vanished' ? [ev, { type: 'removed', id: ev.id }] : [ev]));
+  // A creature summoned appears as one spawned does: the renderer reads `spawned` (the `quiet` one has no log line of its own).
+  const beats = events.flatMap((ev) => (ev.type === 'vanished' ? [ev, { type: 'removed', id: ev.id }] : ev.type === 'summoned' ? [ev, { type: 'spawned', id: ev.id, quiet: true }] : [ev]));
   TL.push(S, beats, { first, fresh: first, flush: tookBack || urgent, instant: tookBack || urgent });
   snapping = false;
   syncPlaying();
@@ -417,7 +439,10 @@ function idled() {
   refresh();
   syncCards();
   const cur = S.entities[current(S)];
-  if (cur && cur.kind === 'npc' && isDM() && $('dm-auto').checked && !tookBack) {
+  // The DM's auto-play (companions.md, Decision 9): a companion is played on the DM's screen only when it is the DM's own (`ownerOf` null) or set to
+  // act on its own (`bond.auto`); otherwise its turn waits for its player. (What the brain does for a never-commanded one is C7: not built.)
+  const plays = cur && cur.kind === 'npc' && (!cur.bond || !ownerOf(S, cur) || cur.bond.auto === true);
+  if (plays && isDM() && $('dm-auto').checked && !tookBack) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update.
@@ -594,7 +619,7 @@ function refresh() {
 // The log by combat (logview.js). A roll's line ends with small glyphs of the faces this viewer was sent.
 const glyphs = (dice) => ` <span class="dgs">${dice.slice(0, MAX_DICE).map((d) => `<span class="dg${d.drop ? ' drop' : ''}${d.neg ? ' neg' : ''}" data-s="${d.sides}" title="d${d.sides}">${d.value}</span>`).join('')}</span>`;
 const LV = initLogView({
-  root: $('log'), list: $('log-list'), prefs, isDM: () => isDM(), nameOf: (id) => S?.entities[id]?.name ?? 'Someone', clockText,
+  root: $('log'), list: $('log-list'), prefs, isDM: () => isDM(), nameOf: (id) => (S?.entities[id] ? shownName(S, S.entities[id]) : 'Someone'), clockText,
   line: (e, inFight) => `<li class="lg-line ${esc(e.cls)}" data-kind="${inFight && (e.kind === 'explore' || e.kind === 'combat') ? 'combat' : e.kind}">${esc(e.text)}${e.dice ? glyphs(e.dice) : ''}</li>`,
   ask: (fight) => T.history({ fight }),
 });
@@ -608,7 +633,7 @@ function renderSheet() {
   $('sheet-body').innerHTML = `
     <h2>${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
-    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? 'Creature')}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
+    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
     ${CLS.sheetBanner(e)}
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
@@ -815,9 +840,10 @@ $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.2
 // The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
 const DOT = mountDot({ transport: () => T, parent: $('tools'), before: $('btn-undo') });
 const linkOf = (e) => {
-  if (!e.owner || T.solo) return null;
-  const m = (T.lobby?.members ?? []).find((x) => x.id === e.owner);
-  return { ...seenState(T.links?.get(e.owner), m?.online, Date.now(), T.linkCfg), who: m?.name };
+  const who = ownerOf(S, e);      // a companion shows its master's player
+  if (!who || T.solo) return null;
+  const m = (T.lobby?.members ?? []).find((x) => x.id === who);
+  return { ...seenState(T.links?.get(who), m?.online, Date.now(), T.linkCfg), who: m?.name };
 };
 const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, act, toast, link: linkOf,
   pick: (id) => { select(id); R.focus(id); refresh(); if (!D.wide) D.close(); },      // on a phone the map is what was asked for
@@ -958,7 +984,7 @@ const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => se
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
-const RP = initReactionPrompt({ act, state: () => S, isDM });
+const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs });
