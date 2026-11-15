@@ -1049,7 +1049,7 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
   can be spawned, summoned, teleported or walked into the pair's space. `moveOptions` and `walk` leave the other of the
   pair out of the way (`partnerOf`, world.js). **Not built:** the rider's raised height and eye (Decision 8: "its height
   is the mount's height plus its own"; sight and cover look from the rider's own `pos.z`, the mount's floor). That is
-  `vision.js` and sight, outside this stage's files; it belongs with C6b or C10.
+  `vision.js` and sight; it goes to C6b.
 - **`mount { actor, mount }`.** Checked before anything changes, in this order: the `mount` id (a player naming a creature
   the party does not know of, or one that is nothing, is told "No such creature."; engine.js does not walk `mount`, so
   the handler does), not itself, neither already riding or ridden, both up and the rider not Prone, the rider's turn in
@@ -1080,14 +1080,13 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
 - **What a controlled mount may be sent.** Checked in `control` (shared.js), as the command lock is: `move`, `dash` and
   `disengage` (and what is set about it or answered for it: `reactions`, `companion`, `react`, `stepAway`, `stepBack`);
   anything else, its attack and its actions included, is "A controlled mount can only Dash, Disengage or Dodge.".
-  The rider's player may send its `move`, `dash`, `disengage` (and `dodge`, to be told the line below) though the mount
-  is not theirs; its Reactions and instructions stay its own controller's (a warhorse of the DM's: the DM's).
-  **Its Dodge is not built:** `dodge` is attacks.js, outside this stage, and spends `budget.action` (the rider's); it is
-  refused, "A controlled mount's Dodge is not in the engine yet: the DM gives it the Dodge by hand.". attacks.js needs
-  `dodge` to spend `budget.mount.action` for a mount (`steering`, shared.js).
+  The rider's player may send its `move`, `dash`, `disengage` and `dodge` though the mount is not theirs; its Reactions
+  and instructions stay its own controller's (a warhorse of the DM's: the DM's). Its Dash, Disengage and Dodge
+  (`mountAct`, resolve.js; `dodge` in attacks.js calls it for a mount) spend `budget.mount.action`, never the rider's
+  action and never as a Bonus Action; its Dodge lasts until the start of its rider's next turn (`mountTurnStarts`).
 - **Moving.** `move` with the rider as actor moves its controlled mount; `move` with the mount as actor the same. In a
   fight only on the rider's turn, from `budget.mount` (`turnBudget`, shared.js, read by `moveOptions` and `walk`), by the
-  mount's speeds and costs; the rider's own movement is left for dismounting. `dash` and `disengage` with the mount as
+  mount's speeds and costs; the rider's own movement is left for dismounting. `dash`, `disengage` and `dodge` with the mount as
   actor spend its action (not as a Bonus Action). The rider of an independent mount can't move it ("goes where it
   likes: dismount to move on foot"); the mount moves on its own turn and carries the rider. **Plain walking together is
   built** (the issue allowed it): leaving it out would leave every ridden pair unable to move. A walking mount carries
@@ -1132,17 +1131,14 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
   Twin runs (riding.test.js) on hexes and squares: a hidden goblin mounting a hidden wolf, riding it and getting down
   gives players the same events and view as a table where neither exists; a player naming a hidden mount gets "No such
   creature." as for an id that is nothing.
-- **No state version bump.** Every new field is optional and absent means none, so a save from before loads and plays as
-  before (tested). Raising `VERSION` to 24 would make an older server refuse a save with riders instead of loading
-  them as two creatures overlapping, but it fails a pinned test in `packages/server/test/map-format.test.js` (line 31),
-  outside this stage's files: the lead's to raise, with the six rules tests that pin 23. `migrate` drops a pair that is
+- **No state version bump** (agreed with the lead). Every new field is optional and absent means none, so a save from
+  before loads and plays as before (tested). An older build that loads a save with riders reads them as two creatures
+  in one space. `migrate` drops a pair that is
   not whole (both halves), fills a missing `riding.size`, and drops a malformed `budget.mount` or `enc.rode`.
-- **Labels.** `describeStep` (history.js, outside this stage's files) has no label for `mount` and `dismount`, so
-  history.test.js "every action the engine handles has a label of its own" fails until it gets them: `case 'mount':
-  label = `${who} mounted ${name(a.mount)}``, `case 'dismount': label = `${who} dismounted``, and `mount` among the
-  creature fields `finish` checks. riding.test.js has the label test as a `todo`.
-- **For the client job (C8, C10).** Actions: `mount { actor, mount }`, `dismount { actor, to? }`; `move`, `dash` and
-  `disengage` with the mount as actor (or `move` with the rider). Fields: `riding.on`, `riding.controlled`, `rider`;
+- **Labels.** `describeStep` (history.js): "Brenna mounted Warhorse", "Brenna dismounted"; the mount is among the
+  creatures a label must know of before players are shown it.
+- **For the client job (C8, C10).** Actions: `mount { actor, mount }`, `dismount { actor, to? }`; `move`, `dash`,
+  `disengage` and `dodge` with the mount as actor (or `move` with the rider). Fields: `riding.on`, `riding.controlled`, `rider`;
   `encounter.budget.mount` (`move`, `action`, `dashes`) on the rider's turn. A ridden controlled mount's order entry is
   passed by: draw it with its rider. A rider stands on its mount's anchor and fills its footprint; draw it on top.
 
