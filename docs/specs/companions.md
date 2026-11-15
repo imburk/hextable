@@ -834,6 +834,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   Built in #337: the log says "Ven summons a Giant Wasp." (the master's name taken off the creature's, else the template's); pawn labels and the reaction
   question take the shown name ("Brenna's goblin") through `shownState()` in app.js; the card falls back to `e.name`; the tracker already draws the order as
   sent, so the wasp stands straight after Ven; the DM's auto-play leaves a player's companion to its player unless `bond.auto` is set.
+- **Scenes (#344)**: scene `say` and `askCheck` (`scenes.js`) test who plays the creature with `ownerOf`, not `e.owner`: a player may speak as, and ask a check for, their own character or a companion they play (a creature that takes commands only on a turn commanded for it; otherwise the DM's). Another player's companion, a foe's bonded creature and a hidden one are refused in the words for a creature that is nobody's. What a familiar hears or says stays the DM's (manual); this is the ownership test only. The client's `scenes.js` may now offer a companion.
 
 ### C4, blocks and spells, data (#328)
 

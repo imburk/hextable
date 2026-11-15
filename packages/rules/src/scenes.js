@@ -25,6 +25,7 @@
 // checks asked for in a scene are rolled by the engine's own `check` action.
 import { ASSET_ID } from './map.js';
 import { SKILLS } from './content/schema.js';
+import { ownerOf } from './engine/shared.js';
 
 export const SCENE_LIMITS = { title: 80, name: 60, notes: 2000, present: 20, say: 500, lines: 200, chronicle: 8000, said: 5000 };
 
@@ -133,7 +134,7 @@ export function sceneActions(fail) {
       ev.push({ type: 'sceneNpc', scene: sc.id, npc: rec.id, name, change: had ? 'edited' : 'added', ...(had ? { changed } : {}), ...(!sc.open && { prep: true }) });
     },
     // Something said. { type: 'say', as: <own character's id> | <npc id> | null, text }
-    // `as: null` is out of character. A player speaks only as their own character; the DM as anyone
+    // `as: null` is out of character. A player speaks only as their own character or a companion they play (ownerOf: engine/shared.js); the DM as anyone
     // in the scene. Everyone at the table receives it, and it goes on the timeline.
     say(s, a, ctx, ev) {
       const text = cleanText(a.text, SCENE_LIMITS.say);
@@ -150,7 +151,7 @@ export function sceneActions(fail) {
         const e = typeof a.as === 'string' && !npc ? s.entities[a.as] : null;
         // The same answer for someone else's character, an NPC, a creature players cannot see and an id that is nothing.
         if (npc) { dm || fail('You can speak only as your own character.'); name = npc.name; }
-        else if (e && e.side === 'party' && (dm || e.owner === ctx.userId)) name = e.name;
+        else if (e && e.side === 'party' && (dm || ownerOf(s, e) === ctx.userId)) name = e.name;
         else fail(dm ? 'Nobody of that name is in the scene.' : 'You can speak only as your own character.');
         as = a.as;
       }
@@ -158,10 +159,11 @@ export function sceneActions(fail) {
       ev.push({ type: 'say', from: dm ? 'dm' : ctx.userId, as, name, text, ...(sc ? { scene: sc.id, line } : {}) });
     },
     // A player asks the DM to let their character make a check. { type: 'askCheck', actor, skill }
+    // Whose: their own character, or a companion they play (`ownerOf`; a command-orders creature only on a turn commanded for it).
     // It is a request, not a roll: the DM answers with the `check` action and a DC of their own.
     askCheck(s, a, ctx, ev) {
       const e = s.entities[a.actor];
-      (e && (ctx.role === 'dm' || (e.owner && e.owner === ctx.userId))) || fail('You can ask only for your own character.');
+      (e && (ctx.role === 'dm' || (ownerOf(s, e) && ownerOf(s, e) === ctx.userId))) || fail('You can ask only for your own character.');
       Object.hasOwn(SKILLS, a.skill) || fail('Unknown skill.');
       ev.push({ type: 'checkAsked', actor: e.id, skill: a.skill, by: ctx.role === 'dm' ? 'dm' : ctx.userId });
     },
