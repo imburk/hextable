@@ -503,16 +503,18 @@ movement drawn with an edge, and one line that says what just happened.** Reason
   dead): a row at the top of the list, in the bad colour with a sign: **"Brenna is dying
   (0 HP)"**, and under it the ways the selected creature has now: each healing spell and
   each healing item it can use on her (`spellWhy`, `potionTargets`), as rows that arm with
-  Brenna already chosen. Then, until E-P3, a greyed row **"Stabilise with Medicine (DC 10)"**
-  with the reason **"Not in the game yet: ask the DM."** Outside a fight it adds one line:
-  "Out of a fight nobody rolls death saves; Brenna stays dying until healed or the DM
-  steps in." (DEBT W10.)
+  Brenna already chosen, or, when it has none, the line **"Wren has no healing spell or
+  item."** Then, until E-P3, a greyed row **"Stabilise with Medicine (DC 10)"**
+  with the reason **"Not in the game yet: ask the DM."** Outside a fight the row adds:
+  "Outside a fight Brenna stays dying until healed or the DM steps in." (Death saves are
+  rolled only in a fight, DEBT W10.)
 - **The rogue's Hide in a fight** also appears in Bonus from level 2 (Cunning Action), as
   today; the Bonus segment of the turn bar leads there.
 
 ### Decision 7: down, and dead
 
-- **Down** (the Down tab, today's words kept): the death saves become six marks, three
+- **Down** (the Down tab, today's words kept; the turn bar is hidden, since an
+  Unconscious creature has nothing to spend): the death saves become six marks, three
   for successes and three for failures, filled as they come (**✓ ✓ ○** / **✗ ○ ○**, with
   words for a screen reader: "Death saves: 2 successes, 1 failure"). Under them: today's
   line. Then **"Your friends can heal you."** On my turn, End turn stays (the turn must
@@ -608,9 +610,9 @@ Every label and helper line, as it appears. New ids are marked.
 | Lead, leading | Leading · two abreast · **Change** | |
 | Lead, another leads | Pip leads · **Take the lead** | |
 | Friend down | ⚠ Brenna is dying (0 HP) | |
-| | Heal her: (the spell or item rows) | |
+| | Heal her: (the spell or item rows) · Wren has no healing spell or item. | |
 | | Stabilise with Medicine (DC 10) — Not in the game yet: ask the DM. | |
-| | Out of a fight nobody rolls death saves; Brenna stays dying until healed or the DM steps in. | |
+| | Outside a fight Brenna stays dying until healed or the DM steps in. | |
 | Down | Death saves: ✓ ✓ ○ ✗ ○ ○ (spoken: Death saves: 2 successes, 1 failure) | `#ap-down` |
 | | Your friends can heal you. · You can't act while Unconscious. | |
 | Stable | **You are stable.** You stay at 0 Hit Points and Unconscious but no longer roll death saves. Healing brings you back up. | |
