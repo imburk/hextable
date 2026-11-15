@@ -1,0 +1,406 @@
+// Companions, stage C5c (docs/specs/companions.md, Decisions 1, 2, 6, 10 and 11): a familiar dismissed to its master's
+// pocket dimension or forever and recalled (`dismiss`, `recall`), one per master (`one: 'reform'` for Find Familiar,
+// `one: 'replace'` for Find Steed), and a touch spell delivered by the familiar with its Reaction (`cast { deliver }`).
+// Every rule is from reference/srd52/srd52-flow.txt, Find Familiar (26772-26822) and Find Steed (26824-26853). With
+// refusals, a twin run for a hidden master, old saves, and undo, redo, replay, save and load.
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { apply, current, makeEntity, ownerOf } from "../src/engine.js";
+import { view, viewEvents } from "../src/view.js";
+import { derive } from "../src/derive.js";
+import { newGame } from "../src/scenario.js";
+import { gridOf } from "../src/grid.js";
+import { apart, FT, gap } from "../src/space.js";
+import { createHistory, describeStep, mark } from "../src/history.js";
+import { migrate } from "../src/migrate.js";
+import { newMap } from "../src/map.js";
+import { CONTENT, PACKS } from "../src/content/index.js";
+import { lintPack } from "../src/content/schema.js";
+
+const DM = { role: "dm", userId: "dm" };
+const PAT = { role: "player", userId: "pat" };
+const BO = { role: "player", userId: "bo" };
+const ok = (r) => { assert.ok(r.ok, r.error); return r; };
+const json = (s) => JSON.stringify(s);
+function refused(s, action, ctx, words) {
+  const before = json(s), r = apply(s, action, ctx);
+  assert.equal(r.ok, false, `${action.type} should be refused`);
+  if (words) assert.match(r.error, words);
+  assert.equal(json(s), before, "a refused action changes nothing");
+  return r;
+}
+const ABIL = { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 };
+const sheet = (cls, spells, name = "Ven") => ({ name, class: cls, level: 17, abilities: ABIL, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells });
+// Free cells near `near`, where a creature of that size could be put.
+function spots(s, near, r = 3, monster = "wolf") {
+  const G = gridOf(s.map), out = [];
+  for (const h of G.range(near, r)) if (apply(structuredClone(s), { type: "spawn", monster, at: h }, DM).ok) out.push(h);
+  return out;
+}
+// A free cell whose distance from `from` is exactly `feet` by `measure`.
+function at(s, from, feet, measure, monster = "wolf") {
+  const G = gridOf(s.map);
+  return [...G.range(from.pos, Math.ceil(feet / FT) + 2)].find((h) => measure(h) === feet && apply(structuredClone(s), { type: "spawn", monster, at: h }, DM).ok);
+}
+// The valley with Ven, a party wizard of level 17 played by Pat, beside the fighter (played by Bo).
+function table(grid, cls = "wizard", spells = ["find-familiar", "shocking-grasp", "giant-insect"]) {
+  const s = newGame(5, grid ? { grid } : {});
+  s.settings.autoEngage = false;
+  const d = derive(sheet(cls, spells));
+  s.entities.ven = makeEntity(d.record, { id: "ven", kind: "pc", side: "party", pos: { ...spots(s, s.entities.fighter.pos, 2)[0], z: 0 } });
+  ok(apply(s, { type: "claim", entity: "ven", user: "pat", userName: "Pat" }, PAT));
+  ok(apply(s, { type: "claim", entity: "fighter", user: "bo", userName: "Bo" }, BO));
+  return s;
+}
+const made = (r) => r.events.find((e) => e.type === "summoned").id;
+function familiar(s, form = "owl", ctx = PAT, actor = "ven") {
+  const free = spots(s, s.entities[actor].pos, 2).filter((h) => gap(s, s.entities[actor].pos, h) * FT <= 10);
+  return made(ok(apply(s, { type: "cast", actor, spell: "find-familiar", slot: 1, summon: { form, type: "fey", at: [free.at(-1)] } }, ctx)));
+}
+const spawn = (s, monster, where, name) => ok(apply(s, { type: "spawn", monster, at: where, ...(name ? { name } : {}) }, DM)).events.find((e) => e.type === "spawned").id;
+const endTurn = (s) => ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+function toTurn(s, id) {
+  for (let i = 0; i < 60 && s.encounter && current(s) !== id; i++) endTurn(s);
+  assert.equal(current(s), id, `${id}'s turn came`);
+}
+// Ven and the fighter on an open stone field, big enough to stand 105 ft apart on either grid.
+function field(grid) {
+  const s = table(grid), probe = gridOf(newMap({ id: "x", name: "x", ...(grid ? { grid } : {}), starts: [{ q: 0, r: 0 }], levels: [{ id: "g", name: "g", z: 0, tiles: { "0,0": { t: "stone" } } }] }));
+  const tiles = Object.fromEntries([...probe.range({ q: 0, r: 0 }, 30)].map((h) => [`${h.q},${h.r}`, { t: "stone" }]));
+  ok(apply(s, { type: "loadMap", map: newMap({ id: "field", name: "Field", ...(grid ? { grid } : {}), starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }] }) }, DM));
+  for (const id of Object.keys(s.entities)) if (!["ven", "fighter"].includes(id)) delete s.entities[id];
+  s.entities.ven.pos = { q: -12, r: 0, z: 0 }; s.entities.fighter.pos = { q: -12, r: 2, z: 0 };
+  return s;
+}
+// Put the familiar at a cell at exactly `feet` from Ven (by the nearest parts, as `deliver` measures), a goblin beside it.
+function reach(s, owl, feet) {
+  const o = s.entities[owl], v = s.entities.ven;
+  const h = at(s, v, feet, (h) => apart(s, v, { ...o, pos: { ...h, z: 0 } }) * FT);
+  assert.ok(h, `a cell ${feet} ft from Ven`);
+  o.pos = { ...h, z: 0 };
+  return spawn(s, "goblin-warrior", spots(s, o.pos, 1).find((x) => apart(s, v, { ...o, pos: { ...x, z: 0 } }) * FT >= feet - 5), "Gob");
+}
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+
+  // ---------- touch delivery ----------
+
+  test(`Shocking Grasp delivered by an owl within 100 ft uses the owl's Reaction; refused at 105 ft, with no Reaction, or Incapacitated${on}`, () => {
+    const base = field(grid), owl = familiar(base, "owl", DM);
+    const gob = reach(base, owl, 100);
+    ok(apply(base, { type: "startEncounter", center: base.entities[owl].pos, radius: 24 }, DM));
+    toTurn(base, "ven");
+    assert.ok(!base.entities[owl].reactionUsed);
+    let s = structuredClone(base);
+    const r = ok(apply(s, { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: owl }, PAT));
+    const atk = r.events.find((e) => e.type === "attack");
+    assert.deepEqual([atk.actor, atk.target, atk.name], ["ven", gob, "Shocking Grasp"], "the caster's attack roll on the goblin beside the owl");
+    assert.ok(r.events.some((e) => e.type === "delivered" && e.id === owl && e.by === "ven" && e.spell === "shocking-grasp"));
+    assert.equal(s.entities[owl].reactionUsed, true, "the owl's Reaction is spent");
+    assert.equal(s.encounter.budget.action, 0, "the cast is Ven's action");
+    assert.deepEqual(viewEvents(r.events, s, PAT).find((e) => e.type === "delivered"), { type: "delivered", id: owl, by: "ven", spell: "shocking-grasp" }, "the party's own delivery is told to the party");
+    // Without the owl the goblin is out of reach.
+    refused(structuredClone(base), { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob }, PAT, /reaches touch \(5 ft\)/);
+    // No Reaction left.
+    s = structuredClone(base); s.entities[owl].reactionUsed = true;
+    refused(s, { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: owl }, PAT, /already used its Reaction/);
+    // Incapacitated (Stunned).
+    s = structuredClone(base); ok(apply(s, { type: "condition", actor: owl, condition: "stunned" }, DM));
+    refused(s, { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: owl }, PAT, /Stunned and can't take a Reaction/);
+    // Not a touch spell; not a familiar; the goblin out of the owl's reach.
+    s = structuredClone(base); s.entities.ven.spells.push("fire-bolt");
+    refused(s, { type: "cast", actor: "ven", spell: "fire-bolt", target: gob, deliver: owl }, PAT, /range of Touch/);
+    refused(structuredClone(base), { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: "fighter" }, PAT, /is not Ven's familiar/);
+    refused(structuredClone(base), { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: 7 }, PAT, /Name the familiar/);
+    // 105 ft: refused, changing nothing.
+    const far = field(grid), owl2 = familiar(far, "owl", DM), gob2 = reach(far, owl2, 105);
+    ok(apply(far, { type: "startEncounter", center: far.entities[owl2].pos, radius: 24 }, DM));
+    toTurn(far, "ven");
+    refused(far, { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob2, deliver: owl2 }, PAT, /105 ft from Ven\. A familiar delivers a touch within 100 ft/);
+  });
+
+  // ---------- the pocket dimension ----------
+
+  test(`a pocketed familiar is in no player view, and comes back with its Hit Points within 30 ft on an unoccupied space${on}`, () => {
+    const s = table(grid), owl = familiar(s);
+    ok(apply(s, { type: "setHp", actor: owl, hp: 0 + 1 }, DM));
+    s.entities[owl].gear = ["a note"];
+    const was = s.entities[owl].pos;
+    const r = ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    assert.ok(!s.entities[owl], "off the map");
+    assert.equal(s.entities.ven.pocket[owl].hp, 1);
+    assert.deepEqual(s.entities.ven.pocket[owl].gear, [], "what it carried stays behind");
+    assert.ok(s.map.objects.some((o) => o.def === "pile" && o.at.q === was.q && o.at.r === was.r && o.contents.some((c) => c.name === "a note")), "in its space");
+    assert.deepEqual(viewEvents(r.events, s, PAT).filter((e) => e.type === "pocketed"), [{ type: "pocketed", id: owl, by: "ven", name: "Ven's Owl" }]);
+    for (const u of [PAT, BO]) {
+      const v = view(s, u);
+      assert.equal(v.entities[owl], undefined, "no creature on the map for players");
+      assert.equal(v.entities.ven.pocket[owl].hp, 1, "the party's own pocket is on its master's open record");
+    }
+    // Back: beyond 30 ft refused, an occupied space refused, then within 30 ft.
+    const v = s.entities.ven;
+    const far = at(s, v, 35, (h) => gap(s, v.pos, h) * FT, "owl");
+    refused(s, { type: "recall", actor: "ven", id: owl, at: far }, PAT, /35 ft away\. Ven's Owl comes back within 30 ft/);
+    refused(s, { type: "recall", actor: "ven", id: owl, at: s.entities.fighter.pos }, PAT, /is occupied/);
+    refused(s, { type: "recall", actor: "ven", id: owl, at: s.entities.fighter.pos }, BO, /isn't yours to control/);
+    refused(s, { type: "recall", actor: "ven", id: "m999", at: far }, PAT, /No such creature/);
+    refused(s, { type: "dismiss", actor: "ven", id: owl }, PAT, /already in a pocket dimension/);
+    const near = at(s, v, 30, (h) => gap(s, v.pos, h) * FT, "owl");
+    const back = ok(apply(s, { type: "recall", actor: "ven", id: owl, at: near }, PAT));
+    assert.equal(s.entities[owl].hp, 1, "the same Hit Points");
+    assert.deepEqual([s.entities[owl].pos.q, s.entities[owl].pos.r], [near.q, near.r]);
+    assert.equal(s.entities.ven.pocket, undefined, "an empty pocket leaves no field");
+    assert.deepEqual(viewEvents(back.events, s, PAT).filter((e) => e.type === "recalled"), [{ type: "recalled", id: owl, by: "ven", at: { ...s.entities[owl].pos } }]);
+    assert.equal(ownerOf(s, s.entities[owl]), "pat", "still Pat's");
+    refused(s, { type: "recall", actor: "ven", id: owl, at: near }, PAT, /is not in a pocket dimension/);
+  });
+
+  test(`dismiss forever removes the familiar, on the map or from the pocket; the master's death leaves it in the pocket${on}`, () => {
+    let s = table(grid), owl = familiar(s);
+    const r = ok(apply(s, { type: "dismiss", actor: "ven", id: owl, forever: true }, PAT));
+    assert.ok(!s.entities[owl] && !s.entities.ven.pocket);
+    assert.ok(r.events.some((e) => e.type === "vanished" && e.id === owl && e.why === "dismissed"));
+    s = table(grid); owl = familiar(s);
+    ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    // The SRD ends a familiar with nothing at its master's death: it stays in the pocket (and can't be recalled by a dead master).
+    s.entities.ven.dead = true; s.entities.ven.hp = 0;
+    ok(apply(s, { type: "advanceTime", minutes: 1 }, DM));
+    assert.ok(s.entities.ven.pocket[owl]);
+    refused(s, { type: "recall", actor: "ven", id: owl, at: spots(s, s.entities.ven.pos, 2)[0] }, PAT, /is down/);
+    s.entities.ven.dead = false; s.entities.ven.hp = 5;
+    refused(s, { type: "dismiss", actor: "ven", id: owl, forever: "yes" }, PAT, /forever: true/);
+    const gone = ok(apply(s, { type: "dismiss", actor: "ven", id: owl, forever: true }, PAT));
+    assert.equal(s.entities.ven.pocket, undefined);
+    assert.deepEqual(viewEvents(gone.events, s, PAT), [{ type: "vanished", id: owl, name: "Ven's Owl", why: "dismissed" }]);
+  });
+
+  test(`dismiss and recall are Magic actions: in a fight on the master's turn with its action left, the familiar leaving and rejoining the order${on}`, () => {
+    const s = table(grid), owl = familiar(s), f = s.entities.fighter;
+    spawn(s, "goblin-warrior", spots(s, f.pos, 5).filter((h) => gridOf(s.map).dist(h, f.pos) >= 5)[0], "Gob");
+    ok(apply(s, { type: "startEncounter", center: s.entities.ven.pos, radius: 6 }, DM));
+    assert.ok(s.encounter.order.some((o) => o.id === owl), "the familiar rolled its own Initiative");
+    toTurn(s, "fighter");
+    refused(s, { type: "dismiss", actor: "ven", id: owl }, PAT, /isn't Ven's turn/);
+    toTurn(s, "ven");
+    const r = ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    assert.ok(!s.encounter.order.some((o) => o.id === owl), "out of the order");
+    assert.equal(s.encounter.budget.action, 0);
+    assert.ok(r.events.some((e) => e.type === "pocketed"));
+    const near = spots(s, s.entities.ven.pos, 2).find((h) => gap(s, s.entities.ven.pos, h) * FT <= 30);
+    refused(s, { type: "recall", actor: "ven", id: owl, at: near }, PAT, /already used an action/);
+    endTurn(s);
+    toTurn(s, "ven");
+    // Action Surge's extra action is not for a Magic action (as casting reads it).
+    const t = structuredClone(s); t.encounter.flags["surge:ven"] = true; t.encounter.flags["magic:ven"] = true;
+    refused(t, { type: "recall", actor: "ven", id: owl, at: near }, PAT, /Action Surge/);
+    const back = ok(apply(s, { type: "recall", actor: "ven", id: owl, at: near }, PAT));
+    assert.ok(back.events.some((e) => e.type === "joined" && e.id === owl), "it joins the fight again");
+    assert.ok(s.encounter.order.some((o) => o.id === owl));
+    // A free familiar is played freely: the C5a lock is not for it.
+    toTurn(s, owl);
+    assert.equal(ownerOf(s, s.entities[owl]), "pat");
+    ok(apply(s, { type: "dash", actor: owl }, PAT));
+  });
+
+  // ---------- one per master ----------
+
+  test(`a second Find Familiar gives the one familiar its new form, where it is; a second Find Steed replaces the old${on}`, () => {
+    const s = table(grid), owl = familiar(s);
+    ok(apply(s, { type: "setHp", actor: owl, hp: 1 }, DM));
+    ok(apply(s, { type: "condition", actor: owl, condition: "poisoned" }, DM));
+    const pos = { ...s.entities[owl].pos }, n = Object.keys(s.entities).length, seq = s.seq;
+    refused(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "cat", type: "fiend", at: [spots(s, s.entities.ven.pos, 2)[0]] } }, PAT, /name no space/);
+    const r = ok(apply(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "cat", type: "fiend" } }, PAT));
+    const c = s.entities[owl], cat = CONTENT.monsters.cat;
+    assert.equal(Object.keys(s.entities).length, n, "no new creature");
+    assert.equal(s.seq, seq, "no new id");
+    assert.deepEqual([c.tpl, c.type, c.name, c.maxHp, c.hp, c.ac], ["cat", "fiend", "Ven's Cat", cat.hp, cat.hp, cat.ac], "the new form's statistics, at its full Hit Points");
+    assert.deepEqual(c.pos, pos, "where it was");
+    assert.ok(c.cond.poisoned, "what is going on with it stays");
+    assert.deepEqual([c.bond.to, c.bond.kind, c.bond.source], ["ven", "familiar", "find-familiar"]);
+    assert.deepEqual(viewEvents(r.events, s, PAT).find((e) => e.type === "reformed"), { type: "reformed", id: owl, by: "ven", form: "cat", name: "Ven's Cat" });
+    // In the pocket it takes the new form there.
+    ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    ok(apply(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "hawk", type: "celestial" } }, PAT));
+    assert.equal(s.entities.ven.pocket[owl].tpl, "hawk");
+    assert.ok(!s.entities[owl]);
+
+    // Find Steed: the old one goes (`replaced`), the new one may stand in its space.
+    const p = table(grid, "paladin", ["find-steed"]);
+    const free = spots(p, p.entities.ven.pos, 4, "giant-spider").filter((h) => gap(p, p.entities.ven.pos, h) * FT <= 30);
+    const old = made(ok(apply(p, { type: "cast", actor: "ven", spell: "find-steed", slot: 2, summon: { type: "fey", at: [free.at(-1)] } }, PAT)));
+    const where = { ...p.entities[old].pos };
+    const r2 = ok(apply(p, { type: "cast", actor: "ven", spell: "find-steed", slot: 3, summon: { type: "fiend", at: [{ q: where.q, r: where.r }] } }, PAT));
+    const steed = made(r2);
+    assert.ok(!p.entities[old] && p.entities[steed], "one steed");
+    assert.ok(r2.events.some((e) => e.type === "vanished" && e.id === old && e.why === "replaced"));
+    assert.deepEqual([p.entities[steed].type, p.entities[steed].maxHp, p.entities[steed].pos.q, p.entities[steed].pos.r], ["fiend", 35, where.q, where.r]);
+    assert.deepEqual(viewEvents(r2.events, p, PAT).find((e) => e.type === "vanished"), { type: "vanished", id: old, name: "Ven's Otherworldly Steed", why: "replaced" });
+  });
+
+  test(`dismissing a summon: Concentration's ends at once, a steed's spell gives no way, and nothing is dismissed forever but a familiar${on}`, () => {
+    const s = table(grid), free = spots(s, s.entities.ven.pos, 4, "giant-spider").filter((h) => gap(s, s.entities.ven.pos, h) * FT <= 60);
+    const bug = made(ok(apply(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [free.at(-1)] } }, PAT)));
+    refused(s, { type: "dismiss", actor: "ven", id: bug, forever: true }, PAT, /Only a familiar/);
+    const r = ok(apply(s, { type: "dismiss", actor: "ven", id: bug }, PAT));
+    assert.ok(!s.entities[bug] && r.events.some((e) => e.type === "vanished" && e.why === "ended"), "the effect ended, and the insect with it");
+    assert.ok(!s.effects.some((x) => x.spell === "giant-insect"));
+    const p = table(grid, "paladin", ["find-steed"]);
+    const at2 = spots(p, p.entities.ven.pos, 4, "giant-spider").filter((h) => gap(p, p.entities.ven.pos, h) * FT <= 30).at(-1);
+    const steed = made(ok(apply(p, { type: "cast", actor: "ven", spell: "find-steed", slot: 2, summon: { type: "fey", at: [at2] } }, PAT)));
+    refused(p, { type: "dismiss", actor: "ven", id: steed }, PAT, /Find Steed gives Ven no way to end it early/);
+    // Another master's companion, a stranger, an id that is nothing: refused, with nothing told of a foe's bond.
+    refused(p, { type: "dismiss", actor: "ven", id: "fighter" }, PAT, /is not Ven's companion/);
+    refused(p, { type: "dismiss", actor: "ven", id: "nobody" }, PAT, /No such creature/);
+    refused(p, { type: "dismiss", actor: "ven", id: steed }, BO, /isn't yours to control/);
+    // A DM's familiar (no spell made it) has no pocket dimension.
+    const wolf = spawn(p, "wolf", spots(p, p.entities.fighter.pos, 2).at(-1), "Wolf");
+    ok(apply(p, { type: "bond", actor: wolf, to: "fighter", kind: "familiar" }, DM));
+    refused(p, { type: "dismiss", actor: "fighter", id: wolf }, BO, /can't be dismissed/);
+  });
+
+  test(`a pocketed familiar still counts toward the cap of 30${on}`, () => {
+    const s = table(grid), owl = familiar(s);
+    ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    const free = spots(s, s.entities.ven.pos, 5);
+    for (let i = 0; i < 29; i++) { const w = spawn(s, "rat", free[i], `Rat ${i}`); ok(apply(s, { type: "bond", actor: w, to: "ven" }, DM)); }
+    const one = spawn(s, "rat", free[29], "Rat 29");
+    refused(s, { type: "bond", actor: one, to: "ven" }, DM, /at most 30 companions/);
+    // Taken out of the pocket for good, there is room again.
+    ok(apply(s, { type: "dismiss", actor: "ven", id: owl, forever: true }, PAT));
+    ok(apply(s, { type: "bond", actor: one, to: "ven" }, DM));
+  });
+}
+
+// ---------- what players are sent ----------
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+  // A hidden foe wizard with a familiar the DM hid: two runs, one where it dismisses the familiar to its pocket, reforms
+  // it there and recalls it to the same space, and one where it does nothing. Players get the same.
+  test(`a hidden foe master's dismiss, pocket and recall: players' events, views, record and seq as with none${on}`, () => {
+    const run = (doing) => {
+      const s = table(grid), log = [];
+      const d = derive(sheet("wizard", ["find-familiar"], "Hex"));
+      const place = spots(s, s.entities.fighter.pos, 5).at(-1);
+      s.entities.hex = makeEntity(d.record, { id: "hex", kind: "npc", side: "foe", pos: { ...place, z: 0 } });
+      log.push(ok(apply(s, { type: "reveal", actor: "hex", hidden: true }, DM)));
+      const owl = familiar(s, "owl", DM, "hex");
+      log.push(ok(apply(s, { type: "reveal", actor: owl, hidden: true }, DM)));
+      const where = { q: s.entities[owl].pos.q, r: s.entities[owl].pos.r };
+      if (doing) {
+        log.push(ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM)));
+        assert.ok(s.entities.hex.pocket[owl]);
+        const pv = json(view(s, PAT));
+        assert.ok(!pv.includes(owl) && !pv.includes("pocket"), "a pocketed foe familiar is in no player view");
+        log.push(ok(apply(s, { type: "cast", actor: "hex", spell: "find-familiar", slot: 1, summon: { form: "owl", type: "fiend" } }, DM)));
+        log.push(ok(apply(s, { type: "recall", actor: "hex", id: owl, at: where }, DM)));
+        assert.ok(s.entities[owl].hidden, "still hidden");
+      }
+      log.push(ok(apply(s, { type: "advanceTime", minutes: 1 }, DM)));
+      return { s, seen: [PAT, BO].map((u) => log.map((r) => json(viewEvents(r.events, s, u))).filter((x) => x !== "[]")), view: [PAT, BO].map((u) => json(view(s, u))), tl: [PAT, BO].map((u) => json(viewEvents(s.timeline, s, u))), seq: s.seq };
+    };
+    const A = run(true), B = run(false);
+    assert.ok(A.s.timeline.some((e) => e.type === "pocketed") && A.s.timeline.some((e) => e.type === "recalled"), "the DM's record has them");
+    assert.deepEqual(A.seen, B.seen, "the events players get");
+    assert.deepEqual(A.view, B.view, "their view");
+    assert.deepEqual(A.tl, B.tl, "the record");
+    assert.equal(A.seq, B.seq);
+  });
+
+  test(`a seen foe familiar going to the pocket is seen to vanish; back, it is seen to appear; its master is never named${on}`, () => {
+    const s = table(grid);
+    const d = derive(sheet("wizard", ["find-familiar"], "Hex"));
+    s.entities.hex = makeEntity(d.record, { id: "hex", kind: "npc", side: "foe", pos: { ...spots(s, s.entities.fighter.pos, 5).at(-1), z: 0 } });
+    ok(apply(s, { type: "reveal", actor: "hex", hidden: true }, DM));
+    const owl = familiar(s, "owl", DM, "hex");
+    const where = { q: s.entities[owl].pos.q, r: s.entities[owl].pos.r };
+    const r = ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM));
+    assert.deepEqual(viewEvents(r.events, s, PAT), [{ type: "vanished", id: owl }]);
+    const b = ok(apply(s, { type: "recall", actor: "hex", id: owl, at: where }, DM));
+    assert.deepEqual(viewEvents(b.events, s, PAT), [{ type: "spawned", id: owl }]);
+    assert.ok(!("bond" in view(s, PAT).entities[owl]));
+    const label = describeStep({ type: "recall", actor: "hex", id: owl, at: where }, b.events, mark(s), s);
+    assert.equal(label.label, "Hex called Owl 1 back");
+    assert.equal(label.shown, null, "players are not told whose it is");
+  });
+}
+
+// ---------- the vocabulary ----------
+
+test("`one` in the content vocabulary: Find Familiar reforms, Find Steed replaces, and the linter holds the rest", () => {
+  assert.equal(CONTENT.spells["find-familiar"].effects[0].one, "reform");
+  assert.equal(CONTENT.spells["find-steed"].effects[0].one, "replace");
+  assert.deepEqual(["find-familiar", "find-steed"].map((id) => CONTENT.spells[id].tier), ["assist", "assist"], "telepathy for one, riding for the other, are still the DM's");
+  const [srd] = PACKS, ff = srd.spells.find((x) => x.id === "find-familiar");
+  const withFF = (change) => { const sp = structuredClone(ff); change(sp.effects[0]); return lintPack({ ...srd, spells: [sp, ...srd.spells.filter((x) => x.id !== ff.id)] }).join("\n"); };
+  assert.equal(withFF(() => {}), "");
+  assert.match(withFF((st) => { st.one = "both"; }), /`one` is reform or replace/);
+  assert.match(withFF((st) => { st.on = "space"; st.count = 2; }), /`one` makes one creature/);
+  assert.match(withFF((st) => { delete st.forms; st.summon = "owl"; st.one = "reform"; }), /lists `forms`/);
+});
+
+// ---------- old saves, undo, redo, replay, save and load ----------
+
+test("old saves without a pocket load unchanged and play on", () => {
+  for (const grid of [null, "square"]) {
+    const s = table(grid), owl = familiar(s);
+    const saved = json(s), loaded = JSON.parse(saved);
+    migrate(loaded);
+    assert.equal(json(loaded), saved, "loads unchanged");
+    ok(apply(loaded, { type: "dismiss", actor: "ven", id: owl }, PAT));
+    assert.ok(loaded.entities.ven.pocket[owl]);
+  }
+});
+
+for (const grid of [null, "square"]) {
+  test(`undo, redo and replay give back exactly what the pocket, a reform and a delivery did, and a save with a familiar in the pocket loads byte-exact${grid ? " (squares)" : " (hexes)"}`, () => {
+    const build = () => {
+      const s = table(grid), owl = familiar(s);
+      const gob = spawn(s, "goblin-warrior", spots(s, s.entities[owl].pos, 1)[0], "Gob");
+      return { s, owl, gob };
+    };
+    const { s, owl, gob } = build();
+    const h = createHistory({ limit: 200 }), states = [json(s)], done = [], labels = [];
+    let saved = null, savedAt = -1;
+    const play = (a, ctx = DM) => {
+      const before = mark(s), r = ok(apply(s, a, ctx));
+      const label = describeStep(a, r.events, before, s);
+      h.record(before, s, label);
+      labels.push(label); done.push(a); states.push(json(s));
+    };
+    const where = () => ({ ...spots(s, s.entities.ven.pos, 2).find((x) => gap(s, s.entities.ven.pos, x) * FT <= 30) });
+    play({ type: "dismiss", actor: "ven", id: owl });
+    play({ type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "cat", type: "fey" } });
+    play({ type: "startEncounter", center: s.entities.ven.pos, radius: 6 });
+    let rounds = 0;
+    for (let i = 0; i < 40 && s.encounter && rounds < 4; i++) {
+      if (current(s) === "ven") {
+        rounds++;
+        if (s.entities.ven.pocket) { play({ type: "recall", actor: "ven", id: owl, at: where() }); if (!saved) { saved = json(s); savedAt = done.length; } }
+        else if (rounds === 2 && apart(s, s.entities[owl], s.entities[gob]) <= 1) play({ type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: owl });
+        else play({ type: "dismiss", actor: "ven", id: owl });
+      }
+      play({ type: "endTurn", actor: current(s) });
+    }
+    assert.ok(saved, "the familiar was recalled in the fight");
+    assert.ok(labels.some((l) => l.label === "Ven dismissed Ven's Owl to a pocket dimension" && l.shown === l.label));
+    assert.ok(labels.some((l) => l.label === "Ven called Ven's Cat back"));
+    for (let i = done.length - 1; i >= 0; i--) { h.undo(s); assert.equal(json(s), states[i], `undo ${i}`); }
+    for (let i = 1; i <= done.length; i++) { h.redo(s); assert.equal(json(s), states[i], `redo ${i}`); }
+    const again = build().s;
+    for (const a of done) ok(apply(again, a, DM));
+    assert.equal(json(again), states.at(-1), "replayed, the same");
+    // A save taken with the familiar in the pocket, mid-fight.
+    const mid = states.findIndex((x, i) => i > 3 && JSON.parse(x).entities.ven.pocket && JSON.parse(x).encounter);
+    assert.ok(mid > 0, "a state in the fight with the familiar in the pocket");
+    for (const [snap, from] of [[states[mid], mid], [saved, savedAt]]) {
+      const loaded = JSON.parse(snap);
+      migrate(loaded);
+      assert.equal(json(loaded), snap, "loads unchanged");
+      for (const a of done.slice(from)) ok(apply(loaded, a, DM));
+      assert.equal(json(loaded), states.at(-1), "played on from the save, the same");
+    }
+  });
+}
