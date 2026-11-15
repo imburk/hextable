@@ -218,9 +218,14 @@ async function pacingTable(browser, url) {
         const pushes = await host.evaluate(() => window.hextable.pushes);
         if (!pushes.some((x) => x.npc)) throw new Error('no monster acted');
         if (pushes.some((x) => x.npc && x.busy)) throw new Error(`a monster acted while the picture was playing: ${JSON.stringify(pushes)}`);
-        await calm(host); await calm(phone);
-        const same = await Promise.all([host, phone].map((p) => p.evaluate(() => JSON.stringify([window.hextable.state.encounter?.round, window.hextable.state.encounter?.turn, ...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party').map((e) => [e.id, e.hp, e.pos.q, e.pos.r])]))));
-        if (same[0] !== same[1]) throw new Error('the phone and the DM disagree once both are still');
+        // The monsters keep playing while the DM's auto switch is on, so the two pictures are only comparable once the DM has stopped them: switch it off,
+        // let the DM's picture finish, take the DM's state (it can no longer change), and wait for the phone to arrive at that same state.
+        await host.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        await calm(host); await sleep(700); await calm(host);
+        const picture = () => JSON.stringify([window.hextable.state.encounter?.round, window.hextable.state.encounter?.turn, ...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party').map((e) => [e.id, e.hp, e.pos.q, e.pos.r])]);
+        const dm = await host.evaluate(picture);
+        const reached = await wait(phone, ([f, want]) => (0, eval)(`(${f})()`) === want && window.hextable.waiting === 0 && !window.hextable.timeline.busy(), [picture.toString(), dm], 20000).then(() => true, () => false);
+        if (!reached) throw new Error(`the phone and the DM disagree once both are still: DM ${dm}, phone ${await phone.evaluate(picture)}`);
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }
   });

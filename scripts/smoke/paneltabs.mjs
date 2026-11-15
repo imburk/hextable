@@ -247,11 +247,26 @@ export async function martial(browser, url, label, opts) {
         const small = await page.$$eval('#cp button', (b) => b.filter((x) => x.getBoundingClientRect().height < 40).map((x) => x.textContent));
         if (small.length) throw new Error(`a button is too small to touch (${why}): ${small}`);
       };
+      // Tap a creature. The renderer picks the first pawn the ray through the tap meets, so a party member standing between the camera and the target
+      // takes the tap (the app then sets the mode back to Move and the attack never goes). The tap is let through to the app only when the renderer
+      // says it is this creature; a tap that lands on another pawn is dropped and the view is turned until the target is in the clear. The check that
+      // the attack was sent stays with the step.
       const tapCreature = async (target) => {
-        await settle(page, target);
-        const pt = await ev((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error('the target is off screen or under a panel');
-        await tapAt(page, touch, pt.x, pt.y);
+        await ev((t) => { const R = window.hextable.R; window.__tap = R.onTap; window.__hits = []; R.onTap = (h) => { window.__hits.push(h.id ?? null); if (h.id === t) window.__tap(h); }; }, target);
+        try {
+          const turns = [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2, (2 * Math.PI) / 3, (-2 * Math.PI) / 3, Math.PI];
+          for (let k = 0; k < turns.length; k++) {
+            if (k > 0) await ev(([t, turn]) => { const R = window.hextable.R; R.focus(t, true); R.face((window.__yaw0 ??= R.cameraAngles().yaw) + turn, true); }, [target, turns[k]]);
+            await settle(page, target);
+            const pt = await ev((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
+            if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;      // off screen or under a panel: another view
+            await ev(() => { window.__hits = []; });
+            await tapAt(page, touch, pt.x, pt.y);
+            await wait(page, () => window.__hits.length > 0, null, 3000).catch(() => {});
+            if ((await ev(() => window.__hits)).includes(target)) return;
+          }
+          throw new Error(`no view of the map puts ${target} where a tap reaches it (taps landed on ${JSON.stringify(await ev(() => window.__hits))})`);
+        } finally { await ev(() => { window.hextable.R.onTap = window.__tap; delete window.__yaw0; }); }
       };
       // A goblin next to `who`, in the fight, on the free hex around it that shows furthest from it on the screen (one behind its pawn cannot be tapped); returns its id.
       const foeBeside = async (who) => {

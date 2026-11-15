@@ -188,13 +188,15 @@ export async function arenaEdge(browser, url, label, { three, grid, ...opts }) {
           return best && { x: best.p.x, y: best.p.y };
         });
         if (!t) throw new Error('no hex outside the arena is on screen to tap');
+        // The flash lasts 1.1 s of the renderer's clock, and a loaded machine can take longer than that to get from the tap to the check below: hold it
+        // (as the screenshot below does) from before the tap, so what is checked is that a refused move lit the cells, not that the check was quick.
+        await page.evaluate(() => { const R = window.hextable.R.inner ?? window.hextable.R; window.__pin = setInterval(() => { if (R.flashAt !== null) R.flashAt = R.now - 0.12; }, 16); });
         await sleep(300); await tapAt(page, touch, t.x, t.y);
         await wait(page, () => /arena is locked/i.test(document.getElementById('toast').textContent) && !document.getElementById('toast').hidden, null, 5000);
         const txt = await page.evaluate(() => document.getElementById('toast').textContent);
         if (!/until the fight ends/.test(txt) || !/lit area/.test(txt)) throw new Error(`the toast says: ${txt}`);
         const f = await R((r) => ({ n: r.flash.n, at: r.flashAt }));
         if (!(f.n > 0) || f.at === null) throw new Error(`no flash: ${JSON.stringify(f)}`);
-        await page.evaluate(() => { const R = window.hextable.R.inner ?? window.hextable.R; window.__pin = setInterval(() => { if (R.flashAt !== null) R.flashAt = R.now - 0.12; }, 16); });
         await sleep(400); await shot('3-refused-flash'); await page.evaluate(() => clearInterval(window.__pin));
         await wait(page, () => (window.hextable.R.inner ?? window.hextable.R).flashAt === null, null, 5000);       // and it goes out by itself
       });
