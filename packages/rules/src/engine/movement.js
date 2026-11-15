@@ -402,6 +402,16 @@ export const handlers = {
     const e = ent(s, a.actor); control(s, e, ctx);
     up(e) || fail(`${e.name} is down.`);
     e.cond.prone || fail(`${e.name} is not Prone.`);
+    // A controlled mount knocked Prone (or mounted Prone) in its rider's turn stands from its own movement (fix round 2).
+    if (s.encounter && inFight(s, e.id) && steering(s, e) && current(s) !== e.id) {
+      const bud = turnBudget(s, e) || fail(`${e.name} acts on ${steering(s, e).name}'s turn.`);
+      const speed = speedOf(s, e), cost = Math.floor(speed / 2 / FT) * FT;
+      speed > 0 || fail(`${e.name} has a Speed of 0 and cannot stand up.`);
+      !below(bud.move, cost) || fail(`Standing up takes ${cost} ft of movement; ${e.name} has ${feetLeft(s, bud.move)} ft left.`);
+      bud.move -= cost;
+      delete e.cond.prone;
+      return ev.push({ type: 'stood', id: e.id });
+    }
     if (s.encounter && inFight(s, e.id)) {
       current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
       const speed = speedOf(s, e), cost = Math.floor(speed / 2 / FT) * FT;

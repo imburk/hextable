@@ -565,3 +565,130 @@ for (const grid of GRIDS) {
     assert.equal(s.encounter.budget.mount.move, 30);
   });
 }
+
+// ---------- fix round 2 (re-review of #350) ----------
+
+// Every living mount gets exactly one turn's worth a round (its own turn, or its budget on a rider's turn), never none
+// and never two, whatever the DM does to the riders in between. The re-review's recipe: three warhorses, four riders
+// mounting, dismounting, dashing and moving them, and the DM harming, stunning, mending and freeing riders at random.
+const STRESS_ROUNDS = 2400;
+function stress(grid, rounds) {
+  const t = table(grid), s = t.s, P = t.P;
+  s.entities.fighter.pos = { ...P.fighter, z: 0 };
+  const horses = [t.horse, beside(s, "cleric", "warhorse", "Horse 2"), beside(s, "wizard", "warhorse", "Horse 3")];
+  for (const h of horses) s.entities[h].side = "party";
+  const riders = ["fighter", "rogue", "cleric", "wizard"];
+  t.goblin = spawn(s, "goblin-warrior", P.goblin);
+  const start = () => ok(act({ type: "startEncounter", center: grid === "square" ? { q: 7, r: 7 } : { q: -2, r: 2 }, radius: 7 }));
+  let x = 12345;
+  const rnd = (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; };
+  const worth = new Map(), live = new Map();          // `${fight}:${round}` -> Map(mount -> worth); and which mounts were up all round
+  const key = () => `${s.encounter.id}:${s.encounter.round}`;
+  const add = (k, id) => { if (!worth.has(k)) worth.set(k, new Map()); worth.get(k).set(id, (worth.get(k).get(id) ?? 0) + 1); };
+  let budgetSeen = null, done = 0, lastKey = null, fights = 0;
+  const finished = [];
+  const after = (r) => {
+    if (!s.encounter) return;
+    for (const ev of r.events) if (ev.type === "turn" && horses.includes(ev.id)) add(`${s.encounter.id}:${ev.round}`, ev.id);
+    const b = s.encounter.budget?.mount, m = s.entities[current(s)]?.riding?.on;
+    if (b && b !== budgetSeen && m && (b.move > 0 || b.action > 0)) add(key(), m);
+    budgetSeen = b ?? null;
+    // A round counts once the next round of the same fight has begun (a fight that ends part-way through a round is not counted).
+    if (key() !== lastKey) { if (lastKey && lastKey.split(":")[0] === String(s.encounter.id)) { finished.push(lastKey); done++; } lastKey = key(); }
+  };
+  function act(a, ctx = DM) { const r = apply(s, a, ctx); if (r.ok) after(r); return r; }
+  start(); lastKey = key();
+  while (done < rounds) {
+    if (!s.encounter) { fights++; for (const id of riders) if (s.entities[id].hp <= 0 && !s.entities[id].dead) ok(apply(s, { type: "mend", actor: id, amount: 50 }, DM)); start(); budgetSeen = null; lastKey = key(); continue; }
+    const cur = current(s), e = s.entities[cur];
+    // The DM, now and then, on anyone's turn.
+    const who = riders[rnd(4)], d = rnd(20);
+    if (s.entities[who]?.dead) act({ type: "setHp", actor: who, hp: 10 });             // keep four riders in play
+    else if (s.entities[who]) {
+      if (d === 0) act({ type: "harm", actor: who, amount: s.entities[who].hp });
+      else if (d === 1) act({ type: "condition", actor: who, condition: "stunned" });
+      else if (d === 2 || d === 3) act({ type: "condition", actor: who, condition: "stunned", on: false });
+      else if (d >= 4 && d <= 7 && s.entities[who].hp <= 0) act({ type: "mend", actor: who, amount: 20 });
+      else if (d === 5 && s.entities[who].riding) act({ type: "dismount", actor: who });
+    }
+    if (!s.encounter || current(s) !== cur) continue;
+    if (riders.includes(cur) && e && rnd(3)) {
+      const c = rnd(5);
+      if (!e.riding && c < 3) for (const h of horses) { if (act({ type: "mount", actor: cur, mount: h }).ok) break; }
+      else if (e.riding && c === 0) act({ type: "dismount", actor: cur });
+      else if (e.riding && c === 1) act({ type: "dash", actor: e.riding.on });
+      else if (e.riding && c === 2) { const p = s.entities[cur].pos; act({ type: "move", actor: cur, to: { q: p.q + (rnd(3) - 1), r: p.r + (rnd(3) - 1) } }); }
+    }
+    if (!s.encounter || current(s) !== cur) continue;
+    act({ type: "endTurn", actor: cur });
+  }
+  return { worth, finished, horses, fights };
+}
+for (const grid of GRIDS) {
+  test(`${grid}: fix round 2, M1: stress, ${STRESS_ROUNDS} rounds: no mount-round lost, none doubled`, () => {
+    const { worth, finished, horses } = stress(grid, STRESS_ROUNDS);
+    let lost = 0, doubled = 0;
+    const bad = [];
+    for (const k of finished) for (const h of horses) {
+      const n = worth.get(k)?.get(h) ?? 0;
+      if (n === 0) { lost++; if (bad.length < 5) bad.push(`${k} ${h}: none`); }
+      if (n > 1) { doubled++; if (bad.length < 5) bad.push(`${k} ${h}: ${n}`); }
+    }
+    assert.equal(lost, 0, `lost: ${bad.join("; ")}`);
+    assert.equal(doubled, 0, `doubled: ${bad.join("; ")}`);
+    assert.ok(finished.length >= STRESS_ROUNDS);
+  });
+}
+
+for (const grid of GRIDS) {
+  // The re-review's repro: the Warhorse's place last; Ann rides it; in round 2 she is Stunned (or downed) before her
+  // turn, her turn goes by, then the DM takes her down (a), or she recovers before the round ends (b).
+  for (const [name, hurt, after] of [
+    ["stunned, then the DM takes her down", { type: "condition", actor: "fighter", condition: "stunned" }, { type: "dismount", actor: "fighter" }],
+    ["stunned, then the stun ends", { type: "condition", actor: "fighter", condition: "stunned" }, { type: "condition", actor: "fighter", condition: "stunned", on: false }],
+    ["downed, then the DM takes her down", { type: "harm", actor: "fighter", amount: 12 }, { type: "dismount", actor: "fighter" }],
+    ["downed, then mended", { type: "harm", actor: "fighter", amount: 12 }, { type: "mend", actor: "fighter", amount: 5 }],
+  ]) test(`${grid}: fix round 2, M1: the rider ${name} after her turn: the horse still takes its turn that round`, () => {
+    const { s, horse } = fight(grid);
+    const o = s.encounter.order, h = o.splice(o.findIndex((x) => x.id === horse), 1)[0];
+    o.push(h); s.encounter.turn = o.findIndex((x) => x.id === "fighter");
+    ok(mount(s, "fighter", horse, U1));
+    const r0 = s.encounter.round, turns = [];
+    const play = (a) => { const r = ok(apply(s, a, DM)); for (const e of r.events) if (e.type === "turn") turns.push([e.round, e.id]); return r; };
+    for (let i = 0; i < 40 && s.encounter.round === r0; i++) play({ type: "endTurn", actor: current(s) });
+    play(hurt);
+    // Past her turn in round 2, but before the end of the round.
+    for (let i = 0; i < 40 && turns.filter(([r, id]) => r === r0 + 1 && id === "fighter").length === 0 && !(s.encounter.round === r0 + 1 && s.encounter.order.findIndex((x) => x.id === "fighter") < s.encounter.turn); i++) play({ type: "endTurn", actor: current(s) });
+    if (current(s) === "fighter") play({ type: "endTurn", actor: "fighter" });
+    play(after);
+    for (let i = 0; i < 40 && s.encounter.round === r0 + 1; i++) play({ type: "endTurn", actor: current(s) });
+    assert.equal(turns.filter(([r, id]) => r === r0 + 1 && id === horse).length, 1, "one turn of its own in round 2");
+  });
+
+  test(`${grid}: the owner's rule (15 November): a mount mounted after its turn gives nothing more that round; the switch gives the SRD's reading`, async () => {
+    const { MOUNT_ONCE_A_ROUND, mountTurnBudget } = await import("../src/engine/resolve.js");
+    assert.equal(MOUNT_ONCE_A_ROUND, true);
+    const { s, horse } = fight(grid);
+    (s.encounter.rode ??= {})[horse] = s.encounter.round;
+    assert.deepEqual(mountTurnBudget(s, s.entities[horse]), { move: 0, action: 0, dashes: 0 }, "owner's rule");
+    assert.deepEqual(mountTurnBudget(s, s.entities[horse], false), { move: 60, action: 1, dashes: 0 }, "the SRD's literal reading");
+  });
+
+  test(`${grid}: fix round 2: a mount knocked Prone in its rider's turn stands from its own movement`, () => {
+    const { s, horse } = fight(grid);
+    ok(mount(s, "fighter", horse, U1));
+    ok(apply(s, { type: "condition", actor: horse, condition: "prone" }, DM));
+    const r = ok(apply(s, { type: "stand", actor: horse }, U1));
+    assert.ok(r.events.some((e) => e.type === "stood" && e.id === horse));
+    assert.equal(s.encounter.budget.mount.move, 30);
+    assert.equal(s.encounter.budget.move, 15, "the rider's own movement is untouched");
+  });
+
+  test(`${grid}: fix round 2: bonding a ridden mount to take commands makes the ride independent`, () => {
+    const { s, horse } = fight(grid);
+    ok(mount(s, "fighter", horse, U1));
+    ok(apply(s, { type: "bond", actor: horse, to: "rogue", kind: "pet", orders: "command" }, DM));
+    assert.equal(s.entities.fighter.riding.controlled, false);
+    assert.equal(s.encounter.budget.mount, undefined);
+  });
+}

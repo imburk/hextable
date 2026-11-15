@@ -1141,7 +1141,11 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
     the rider is beside it already (its space is the mount's). As for a move onto a hidden creature's space when beside
     it, there is no dismount and the creature is found (`revealed`, `unhidden`); nothing is spent. A non-party rider
     (the DM's) lands by the true state. The earlier fallback to the nearest free space is gone. Twin runs on both grids.
-  - **M1, one turn's worth a round per mount** (**new rule**; it answers the owner's question in the notes above). A
+  - **M1, one turn's worth a round per mount** (**new rule**, confirmed by the owner's decision of 15 November: a mount
+    gets one turn's worth a round, and mounted after it has used it, it gives its new rider nothing until the next round.
+    This is deliberately stricter than the SRD's "A controlled mount can move and act even on the turn that you mount
+    it" (2120-2121). The SRD's reading is one constant away: `MOUNT_ONCE_A_ROUND` in resolve.js, read by
+    `mountTurnBudget`, both behaviours tested). A
     mount that has had its turn this round gets nothing more this round, however many riders it has. That covers its own
     turn (its place is behind the turn going on, which settleOrder keeps true) and a rider's turn (`enc.rode`, now set
     whenever it gets `budget.mount`, and on a ridden mount's own turn). Mounted after that, it carries its rider with
@@ -1164,6 +1168,22 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
     `budget.mount`, as `beginTurn` does for any creature.
   - **To DEBT:** L2 (a stepped-away rider takes its mount's turns with it: W14) and L5 (the growth refusal text and its
     wider reach: W13).
+- **Fix round 2 (re-review of #350).**
+  - **M1, a mount never loses its turn** (repair). Invariant, tested by the re-review's stress recipe (three warhorses,
+    four riders mounting, dismounting, dashing and moving them, the DM harming, stunning, mending and freeing riders at
+    random, 2,400 rounds on each grid): every mount has exactly one turn's worth each round, never none, never two. A
+    mount's place is passed by only if it has had its worth this round (`enc.rode`, set when it gets `budget.mount`
+    and on a ridden mount's own turn) or its steering rider's turn is still to come. If its rider's place comes round
+    while the rider can't steer (down, Incapacitated) and the mount's own place has gone by waiting for it, the mount is
+    seated straight behind its rider (`mountOwed`) and takes its own turn. If the rider recovers after its own place,
+    the mount's place, still to come, is not passed by. A DM's free `dismount` no longer marks the mount as having had
+    its turn; one that has not had it is seated behind the creature whose turn it is (`dismountOrder`). On its own turn
+    a steered mount moves from its own budget (`turnBudget`), and may `endTurn`.
+  - **L2, a Prone mount in its rider's turn** (repair). `stand` with the mount as actor, by the rider's player or the
+    DM, costs half its Speed from `budget.mount`.
+  - **L3, a ride that becomes commanded** (repair). Bonded to take commands while ridden, the ride turns independent
+    (`riding.controlled: false`) and its `budget.mount` goes.
+  - **L1** (DEBT S6 said the opposite of the code) is corrected; **L4** (the away mode) is W14.
 - **For the client job (C8, C10).** Actions: `mount { actor, mount }`, `dismount { actor, to? }`; `move`, `dash`,
   `disengage` and `dodge` with the mount as actor (or `move` with the rider). Fields: `riding.on`, `riding.controlled`, `rider`;
   `encounter.budget.mount` (`move`, `action`, `dashes`) on the rider's turn. A ridden controlled mount's order entry is

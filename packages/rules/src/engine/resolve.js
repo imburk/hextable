@@ -177,10 +177,11 @@ export function advanceTurn(s, ev) {
     enc.turn++;
     if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; newRound(s); roundStarted(s, ev); }
     const e = s.entities[enc.order[enc.turn].id];
+    if (e && !e.dead && e.riding) mountOwed(s, e);
     if (!e || e.dead) { idle++; continue; }
-    // A controlled mount has no turn of its own while it is ridden: it moves and acts on its rider's (stage C6a). One
-    // its rider got down from has had its turn this round on the rider's.
-    if (riddenNow(s, e) || enc.rode?.[e.id] === enc.round) { idle++; continue; }
+    // A controlled mount has no turn of its own while it is ridden: it moves and acts on its rider's (stage C6a). Its
+    // place is passed by when it has had its turn's worth this round, or when the rider steering it is still to come.
+    if (enc.rode?.[e.id] === enc.round || riderToCome(s, e)) { idle++; continue; }
     if (e.hp <= 0) {
       if (!e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
       if (e.hp <= 0) { idle++; continue; }
@@ -302,8 +303,30 @@ export function mountAct(s, m, a, what, ev) {
 
 // The controlled mount this creature rides in the fight going on, or null.
 const ridden = (s, r) => { const m = r?.riding?.controlled ? mountOf(s, r) : null; return m && steering(s, m) === r && inFight(s, m.id) ? m : null; };
-// Is this a controlled mount whose rider is in the fight going on? Its own place in the order is then passed by.
-const riddenNow = (s, m) => { const r = steering(s, m); return !!r && inFight(s, r.id); };
+// Is this a controlled mount whose rider, steering it, has its turn still to come this round? Its own place is then
+// passed by: its turn's worth is on its rider's turn. One whose rider's turn has gone by without giving it its worth
+// (the rider was down or Incapacitated then) takes its own turn (fix round 2, M1).
+const riderToCome = (s, m) => {
+  const r = steering(s, m), enc = s.encounter;
+  return !!r && inFight(s, r.id) && enc.order.findIndex((o) => o.id === r.id) > enc.turn;
+};
+// The rider's place has come round and it can't steer its controlled mount now (down, Incapacitated): a mount that has
+// not had its turn's worth this round and whose own place has gone by (passed by, waiting for its rider) is seated
+// straight behind its rider, so that it takes its own turn this round (fix round 2, M1). Nobody else's place moves.
+function mountOwed(s, r) {
+  const enc = s.encounter, m = r.riding?.controlled ? mountOf(s, r) : null;
+  if (!m || m.dead || steering(s, m) === r || enc.rode?.[m.id] === enc.round || enc.moved?.[m.id]) return;
+  const mi = enc.order.findIndex((o) => o.id === m.id), ri = enc.order.findIndex((o) => o.id === r.id);
+  if (mi < 0 || ri < 0 || mi > ri) return;
+  const [o] = enc.order.splice(mi, 1);
+  enc.order.splice(enc.order.findIndex((x) => x.id === r.id) + 1, 0, o);
+  enc.turn = enc.order.findIndex((x) => x.id === r.id);
+}
+// The owner's question (re-review of #350, M2; open): a controlled mount mounted after it has had its turn this round,
+// its own or on another rider's. true: it carries its new rider but gets no more this round, one turn's worth a round
+// (fix round 1, M1). false: it moves and acts again, as the SRD's "A controlled mount can move and act even on the turn
+// that you mount it" reads with no exception. Either answer is this one constant (riding.test.js tests both).
+export const MOUNT_ONCE_A_ROUND = true;
 // What a controlled mount has on its rider's turn (`budget.mount`): its Speed, and one action, for Dash, Disengage
 // or Dodge ("it has only three action options during that turn"). None if it is Incapacitated.
 export const mountBudget = (s, m) => ({ move: speedOf(s, m), action: incapacitated(m) ? 0 : 1, dashes: 0 });
@@ -320,9 +343,9 @@ export function mountHadTurn(s, m) {
 }
 // The turn's worth a controlled mount has on its rider's turn: its budget, marking the round as its turn's (`enc.rode`),
 // or none if it has had its turn this round.
-export function mountTurnBudget(s, m) {
+export function mountTurnBudget(s, m, once = MOUNT_ONCE_A_ROUND) {
   const enc = s.encounter;
-  if (mountHadTurn(s, m)) return { move: 0, action: 0, dashes: 0 };
+  if (once && mountHadTurn(s, m)) return { move: 0, action: 0, dashes: 0 };
   (enc.rode ??= {})[m.id] = enc.round;
   return mountBudget(s, m);
 }
@@ -353,19 +376,24 @@ function mountTurnStarts(s, r, ev) {
 // A controlled mount's rider got down (or the pair came apart) in the fight: "The Initiative of a controlled mount
 // changes to match yours when you mount it", so its place is now straight behind its rider (and the rider's `after`
 // companions), on the rider's count, unless its bond ties it to its master (Decision 3, A1: the bond keeps its place).
-// If the rider's turn has come this round, the mount has had its own on it and takes no other this round (`enc.rode`).
+// A mount that has had its turn's worth this round (`enc.rode`) takes no other. One that has not (its rider's turn went
+// by while it could not steer, and the DM took it down) still takes its turn this round: if the place behind its rider
+// has gone by, it is seated straight behind the creature whose turn it is (fix round 2, M1).
 export function dismountOrder(s, m, r) {
   const enc = s.encounter;
   if (!enc) return;
   const cur = enc.turn >= 0 ? current(s) : null;
   const ri = enc.order.findIndex((o) => o.id === r.id), o = enc.order.find((x) => x.id === m.id);
-  if (!o) return;
-  if (ri >= 0 && ri <= enc.turn) (enc.rode ??= {})[m.id] = enc.round;
-  if (ri < 0 || tieOf(o) || enc.moved?.[m.id] || enc.moved?.[r.id]) return;
-  enc.order.splice(enc.order.indexOf(o), 1);
+  if (!o || ri < 0 || enc.moved?.[m.id] || enc.moved?.[r.id]) return;
+  const had = enc.rode?.[m.id] === enc.round, mi = enc.order.indexOf(o);
+  if (tieOf(o) && (had || mi > enc.turn)) return;                   // the bond keeps its place (A1)
+  if (!had && mi > enc.turn && ri < enc.turn) return;               // its own place is still to come: it takes its turn there
+  enc.order.splice(mi, 1);
   let i = enc.order.findIndex((x) => x.id === r.id);
-  while (i + 1 < enc.order.length && enc.order[i + 1].after === r.id) i++;
-  o.init = enc.order.find((x) => x.id === r.id).init;
+  if (!had && i < enc.order.findIndex((x) => x.id === cur)) i = enc.order.findIndex((x) => x.id === cur);
+  const lead = enc.order[i].id;
+  while (i + 1 < enc.order.length && enc.order[i + 1].after === lead) i++;
+  if (lead === r.id) o.init = enc.order.find((x) => x.id === r.id).init;
   enc.order.splice(i + 1, 0, o);
   if (cur) enc.turn = enc.order.findIndex((x) => x.id === cur);
 }
@@ -382,6 +410,11 @@ export function settleRiders(s, ev) {
     const apart = whole && (m.pos.q !== e.pos.q || m.pos.r !== e.pos.r || (m.pos.z ?? 0) !== (e.pos.z ?? 0));
     if (whole && !apart) {
       if (e.riding.size !== m.size && SIZES[m.size]) e.riding.size = m.size;
+      // Bonded to take commands while ridden: no longer a controlled mount (fix round 1, M3), so the ride says so.
+      if (e.riding.controlled && m.bond?.orders === 'command') {
+        e.riding.controlled = false;
+        if (s.encounter?.budget?.mount && current(s) === e.id) delete s.encounter.budget.mount;
+      }
       const prone = !!(e.cond?.prone || m.cond?.prone);
       if (prone && !e.riding.told) {
         e.riding.told = true;

@@ -106,13 +106,14 @@ export const steering = (s, m) => {
 };
 // What a controlled mount may be sent, by its rider's player (DIRECTED) or by anyone who may play it (RIDDEN): its moves,
 // Dash, Disengage and Dodge, and, by whoever plays it, what is set about it or answered for it.
-const DIRECTED = new Set(['move', 'dash', 'disengage', 'dodge']);
-const RIDDEN = new Set(['move', 'dash', 'disengage', 'dodge', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+const DIRECTED = new Set(['move', 'dash', 'disengage', 'dodge', 'stand', 'endTurn']);
+const RIDDEN = new Set(['move', 'dash', 'disengage', 'dodge', 'stand', 'endTurn', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
 // Whose turn a creature moves on, and from which budget, in the fight going on: its own turn and `budget`, or, for a
 // controlled mount, its rider's turn and `budget.mount`. Null when it is not its turn to move (or there is no fight).
 export function turnBudget(s, e) {
   const enc = s?.encounter;
   if (!enc || !enc.budget) return null;
+  if (current(s) === e.id) return enc.budget;                          // its own turn (a mount whose rider's turn went by)
   const r = steering(s, e);
   if (r) return current(s) === r.id && enc.budget.mount && typeof enc.budget.mount === 'object' ? enc.budget.mount : null;
   return current(s) === e.id ? enc.budget : null;
