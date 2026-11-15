@@ -1,0 +1,61 @@
+{
+ "made": "origin/main 191d556 (before C7), by the scenarios in companions-brain-replay.test.js",
+ "runs": [
+  {
+   "name": "hex valley seed 1",
+   "steps": 96,
+   "refused": 0,
+   "actions": "4bab07ed510ccdf6958a320fbb7e71e5887fd85ff7926742b4d5ba2f57f04656",
+   "state": "49a2589c1d0ff49b9e134e2a03aed25577b405a7dc25a452d83a814d0f47b2fe",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 2",
+   "steps": 83,
+   "refused": 0,
+   "actions": "dc8eaa5223697de50cad8825687b05371048b1b50eb69e3369a1cfa9485777af",
+   "state": "666e11902046786680c97209f511ed881f8616bb15ab9b4d20b1a60b9f33c40e",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 3",
+   "steps": 92,
+   "refused": 0,
+   "actions": "4bfd82a51183c6cdca6f311f111427625de61ef140658907713993d813ca9355",
+   "state": "89ec18f4284cc0afe205bf5e0f4c0d37b1b72d8ad00d688f5928aa26eca05b16",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 5, sight los",
+   "steps": 118,
+   "refused": 0,
+   "actions": "f47a6d8d78761c14a6ac8771db4804b211cb86e4f1b88cffeb62993e87b68d70",
+   "state": "92ec0e6d967cf421ed8e59574beb050c5d6fdce5b345dfa7675100ff0cea06a7",
+   "ended": true
+  },
+  {
+   "name": "square valley seed 1",
+   "steps": 94,
+   "refused": 0,
+   "actions": "44c26360d39d170a3cbf10544bb4ff114eefff8fe5c531de655b37bf2215ef08",
+   "state": "24971632ff7e54ca775760f927f273c4b8d0e3a91b76e5df9120d9ec87c025e1",
+   "ended": true
+  },
+  {
+   "name": "square valley seed 7",
+   "steps": 81,
+   "refused": 0,
+   "actions": "3a4d8b6c6b2ed26e1554da9640c877e9937a69bc7cf4cbe1bccdce9a517d314b",
+   "state": "32572fc1ae6dacd0189053a7389b68f9fc07f4d171718cf0f782dcbf0c465951",
+   "ended": true
+  },
+  {
+   "name": "square-room",
+   "steps": 34,
+   "refused": 0,
+   "actions": "245eb18f1334020d9198546cd2b57de455b3707753db348925b73a1ed8b6de49",
+   "state": "c2710fdd4399af85b3a9e5b14df719f7dfd28f79ae8ec38e5d3fa240ed0ff873",
+   "ended": true
+  }
+ ]
+}
