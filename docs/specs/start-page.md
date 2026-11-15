@@ -191,8 +191,8 @@ Those three are not in question; the layouts differ in how Play and Tools are sh
 │ TOOLS                        │      │ My characters (3)          › │
 │ Make things for a game. No   │      │ …                            │
 │ game needs to be running.    │      └──────────────────────────────┘
-│ My characters (0)          › │
 │ ── fold ─────────────────────│
+│ My characters (0)          › │
 │ Make a map                 › │
 │ Adventure modules   Coming ▾ │
 │ Homebrew            Coming ▾ │
@@ -231,7 +231,11 @@ Those three are not in question; the layouts differ in how Play and Tools are sh
 ```
 
 - **Five seconds:** two headings, Play and Tools, both on screen; under Play, "with
-  others" and "alone"; under Tools a list that starts with My characters.
+  others" and "alone"; under Tools a list that starts with My characters. Measured in
+  the mockup at 390 x 844 on a first visit, the Tools heading and its line are on the
+  first screen (top at 780 px) and My characters is a short scroll; for a returning
+  person the Carry on band pushes Tools below the first screen, which is the right
+  trade (their job is in the band).
 - **Taps:** join 1 (after typing), rejoin 1, continue 1, new solo 1, host 1, My
   characters 1, make a map 2.
 - **Name:** inside "Play with others", the only card that needs it.
@@ -493,7 +497,10 @@ Statuses, each in `#lobby-msg` (`role="status"`) or under its field:
 - **Reduced motion.** No slides with `prefers-reduced-motion: reduce`; steps appear
   at once. Otherwise a 150 ms fade.
 - **Colour.** Coming rows are not told apart by colour alone: the word "Coming" and the
-  dashed edge carry it. All three themes' text on panel is above 4.5:1.
+  dashed edge carry it. Text on a panel uses `--ink` or `--muted`; text that sits on the
+  page background itself (the line under the title, the group headings, the footer and
+  the stamp) uses `--ink`, because Sunlit's `--muted` (#5f7a68) on its sky (#8fd0e8) is
+  too faint to read (the mockup's theme switch shows it).
 
 ## Build plan
 
