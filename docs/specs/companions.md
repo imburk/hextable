@@ -1319,8 +1319,8 @@ what goes beyond the SRD is marked **new rule** (the brain's choices are a stand
     `'free'`. **New rule**: offline and stepped away count as "no player controls it" (T27).
   - `autoPlays` is true for every creature with no bond (as before) and for `guard`, `protect` and `free`.
 - **`guard`**: the Dodge action if it has its action, then, only while a foe it knows of is within 5 ft, a move to the
-  place it can reach that is farthest from every foe it knows of (then the cheapest), only if that is farther than where
-  it stands, never past its leash; then the end of its turn. It sends only `dodge`, `move` and `endTurn`, all in the
+  cheapest place it can reach out of 5 ft of every foe it knows of (fix round 1, L1), never past its leash; then the end
+  of its turn. It sends only `dodge`, `move` and `endTurn`, all in the
   lock's list (`UNLOCKED`, shared.js), so the DM's auto-play no longer stalls on a locked creature (review of #338, M2).
   Stepping away provokes an Opportunity Attack, as any move out of reach does (**new rule** in the sense that "avoid
   harm" is read as "get out of reach": the brain trades one attack at Disadvantage for the turns of attacks after).
@@ -1369,6 +1369,46 @@ what goes beyond the SRD is marked **new rule** (the brain's choices are a stand
   `auto` familiar, a DM pet, an independent brown bear and the warhorses of the C6b loop: the brain always has a step, a
   turn ends within 25 steps, nothing it sends is refused, every creature up all round has exactly one turn's worth.
 - **No state version bump**: nothing in the state changed.
+- **Changed in fix round 1 (review of #368).** Rules that are new, not repairs, are marked **new rule**.
+  - *M1* (repair): a controlled mount its rider can steer, on its own turn (the rider recovered after the mount's place),
+    is never played as a monster: the brain's new mode `'hold'` takes the Dodge action and leaves it where it stands, so
+    it sends nothing the engine refuses ("A controlled mount can only Dash, Disengage or Dodge.") and never moves the
+    pair. SRD Mounted Combat (2118-2121): "It moves on your turn as you direct it, and it has only three action options".
+  - *M2* (repair, engine: movement.js `move`): a party creature's move (a player's own, and so the brain's) is laid out
+    on what the party knows when a creature it does not know of (the `lurker` rule of `move`: hidden by the DM out of a
+    fight, hiding from the mover, or unseen by the party under `los`/`light`) stands anywhere near. Where that route runs
+    into one, the move stops on the last place before it where the mover can stop, and the creature is found
+    (`revealed`, `unhidden { why: 'found' }`), as hidden-information.md section 5 has it for a move onto its place.
+    Before, the engine laid the route out on the true state: it refused the move ("Too far") or bent it round the
+    creature, which told the players something stood there. A creature the DM plays walks by the true state, as
+    before. Twin runs: a lurker at each point of a companion's route, and on a player's own route, on both grids.
+  - *M3* (**new rule**): a companion carrying a rider who is stepped away, offline (its player's connection) or helpless
+    (down or Incapacitated) does not carry it into danger: `'hold'`, the Dodge action and no move. This is the E20 table
+    rule `dodge` ("it takes the Dodge action on its turn and stays where it is") applied to the one that carries it; the
+    other reading (follow the last standing instruction) has nothing to read for a free companion. `protect` already
+    stayed under its master and now stays under any rider. A creature with no bond carrying such a rider is the monster
+    AI's, unchanged (DEBT W24).
+  - *L1* (**new rule**, the brain's reading of "moves only to avoid harm"): a never-commanded creature steps to the
+    cheapest place out of 5 ft of every foe it knows of (then the farthest from them), not the farthest place; where no
+    such place is in reach it stays (a step that ends beside a foe would only give it an Opportunity Attack).
+  - *L2* (repair, to the SRD's words): a summon or animated object whose player is offline or stepped away has nobody to
+    command it: it takes the Dodge action (`guard`), as Summon Dragon, Giant Insect ("If you don't issue any, it takes
+    the Dodge action and uses its movement to avoid danger") and Animate Objects ("If you issue no commands, the creature
+    takes the Dodge action and moves only to avoid harm") say. Let go to the brain (`auto`) or played by the DM (no
+    player), it fights: the commands are the brain's or the DM's. Find Familiar, Find Steed and Phantom Steed have no such
+    line (a familiar "acts independently"; Phantom Steed says nothing of its acts): played freely, as before.
+  - *L3* (repair): a companion that drops in its own turn (an Opportunity Attack as it steps away) gets `endTurn` from the
+    brain, so the auto-play does not wait on it. A creature with no bond still gets null (the monster AI is unchanged;
+    W24).
+  - *L8*: engine.js re-exports `commandedNow` and `steering` (one line); ai.js imports them from there.
+  - Not changed, to DEBT: L4 (a rider grown past its mount, Huge on Large, can't be set down: `riderLanding` looks only
+    one cell round the mount; world.js, W26), L5 and L7 (W23, W21 as they stood), L6 (setHp's refusal stays a refusal),
+    L8's cover from a rider between attacker and target (W27).
+  - *The stress loop* (`c7-stress-kit.js`): players go offline and come back (also mid-round), `auto` is switched on and
+    off, the steed is killed or removed under its rider, the cleric starts fights on her steed and steps away on it; hard
+    bounds on brain steps a turn (25), turns a round (4 a creature) and actions a run. 200 rounds a grid by default;
+    2,400 with `HEXTABLE_STRESS=full` (run once each in this round: no stall, no endless turn, no refusal from the brain,
+    no lost or doubled turn, no overlap; hex 1 minute, square 2 minutes 12 seconds).
 - **For the client job (C8).** `autoPlays(state, id, { offline })` says whether the DM's auto-play plays a turn;
   `brainMode` says why (`player`, `dm`, `guard`, `protect`, `free`), for a line such as "Zombie 1 has an order that stands:
   the DM plays it". A companion whose turn is `'dm'` waits for the DM's hand as a party character waits for its player.

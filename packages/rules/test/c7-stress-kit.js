@@ -257,7 +257,9 @@ export function check(grid) {
     assert.ok(finished.length >= ROUNDS);
     // What the loop reached: each of the brain's ways of playing, and the monster AI (fewer in the short run).
     const most = FULL ? 5 : 1;
-    for (const m of ["guard", "protect", "free", "hold", "monster"]) assert.ok((stats.modes[m] ?? 0) >= most, `the loop played '${m}': ${json(stats.modes)}`);
+    for (const m of ["guard", "protect", "free", "monster"]) assert.ok((stats.modes[m] ?? 0) >= most, `the loop played '${m}': ${json(stats.modes)}`);
+    // 'hold' is rare by nature (a steed whose rider is there to steer it has no turn of its own): once is enough.
+    assert.ok((stats.modes.hold ?? 0) >= 1, `the loop played 'hold': ${json(stats.modes)}`);
     for (const m of ["player", "dm"]) assert.ok((stats.waits[m] ?? 0) >= most, `companions left to their player or the DM: ${json(stats.waits)}`);
     assert.ok(stats.offline >= most && stats.rode >= most, `players offline ${stats.offline}, rides ${stats.rode}`);
 }
