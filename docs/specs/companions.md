@@ -504,7 +504,7 @@ After every row the valley plays as before.
 | C3 | **Summon blocks and the step.** `summons.js` (bake), the `summons` pack list and its linter, summon amounts, `summon` in `STEPS`, `KIT.summon`, `placeCreature` shared with `spawn`, the cast action's `summon` field, `summoned` in `viewEvents`; one entry, `giant-insect`, and Giant Insect moved to `auto`. | engine | `summons.js` (new), `content/schema.js`, `content/index.js`, `content/srd52/summons.js` (new), `content/srd52/spells-4.js` (Giant Insect only), `effects.js`, `engine/resolve.js`, `engine/world.js`, `engine/dm.js`, `engine/casting.js`, `view.js`, tests | Giant Insect cast at levels 4 to 9, each variant: the baked block lints as a monster, with AC 11 + level, HP 30 + 10 x (level - 4), Fly only for the wasp, the master's attack bonus on Poison Jab; a point out of range, unseen or occupied is refused and nothing changes; Concentration broken ends it; on `square-room` a Large insect fills 2 by 2 and is refused where it does not fit |
 | C4 | **Blocks and spells, data.** `otherworldly-steed`, `draconic-spirit`, `animated-object`, and an Unseen Servant block from the spell's numbers; Find Familiar, Find Steed (without riding until C6), Summon Dragon, Phantom Steed, Animate Objects, Unseen Servant moved to their tiers, each `checked` against the SRD lines above. | content | `content/srd52/summons.js`, `content/srd52/spells-1.js` to `spells-5.js` (those entries only), tests | `npm run content` reports them at the tiers in the table above, with no problems; a test casts each and checks the numbers against the lines cited |
 | C5 | **Commands, corpses and familiars.** `command` (with `commanded` and `standing`, amended Decision 6), the never-commanded lock, the servant's 15 ft; `on: 'corpse'`, Animate Dead and Create Undead with the 24-hour bond and reassert; `dismiss` and `recall` with the pocket; `one: 'reform'` and `'replace'`; touch delivery through the familiar's Reaction (`cast { deliver }`). | engine | `engine/companions.js`, `engine/casting.js`, `effects.js`, `engine/resolve.js`, `durations.js`, `view.js`, `content/srd52/spells-3.js` and `spells-6.js` (those two spells), tests | a never-commanded Zombie may only Dodge and move; a Zombie with a standing order and no command this turn is the DM's, and one commanded this turn is its player's (needs A2); one command for three costs one Bonus Action; a corpse 15 ft away is refused at range 10; after 24 hours the Zombie is a foe with a `manual` event; a pocketed familiar is in no player view and comes back with its Hit Points within 30 ft; Shocking Grasp delivered by an owl within 100 ft uses the owl's Reaction and is refused at 105 ft |
-| C6 | **Riding.** `mount`, `dismount`, `riding`/`rider`, the mount's footprint for the rider, `budget.mount`, moving together (walk, push, teleport, fall), falling off, Opportunity Attacks for the pair; `mount: 'trained'` on the eight mounts; Find Steed as a controlled mount and its Incapacitated turn. | engine | `engine/movement.js`, `engine/world.js`, `engine/resolve.js`, `space.js`, `vision.js` (eye height), `content/schema.js` (the `mount` field), `content/srd52/monsters-*.js` (eight entries, that field only), tests on hexes and on `square-room` | on both grids: mounting costs half Speed; a Medium rider on a warhorse moves 60 ft with the warhorse's movement and still has its own to dismount; the warhorse can Dash but its attack is refused; a goblin beside the pair gets one Reaction and may choose either; Thunderwave pushing the horse makes the rider save DC 10 and land Prone on a failure; a flying steed vanishing drops its rider who falls; a fireball touching one hex of the horse catches the rider |
+| C6 | **Riding.** *C6a built (#346): `mount`, `dismount`, `riding`/`rider`, the footprint, `budget.mount`, plain walking together, the eight mounts; C6b is the rest.* `mount`, `dismount`, `riding`/`rider`, the mount's footprint for the rider, `budget.mount`, moving together (walk, push, teleport, fall), falling off, Opportunity Attacks for the pair; `mount: 'trained'` on the eight mounts; Find Steed as a controlled mount and its Incapacitated turn. | engine | `engine/movement.js`, `engine/world.js`, `engine/resolve.js`, `space.js`, `vision.js` (eye height), `content/schema.js` (the `mount` field), `content/srd52/monsters-*.js` (eight entries, that field only), tests on hexes and on `square-room` | on both grids: mounting costs half Speed; a Medium rider on a warhorse moves 60 ft with the warhorse's movement and still has its own to dismount; the warhorse can Dash but its attack is refused; a goblin beside the pair gets one Reaction and may choose either; Thunderwave pushing the horse makes the rider save DC 10 and land Prone on a failure; a flying steed vanishing drops its rider who falls; a fireball touching one hex of the horse catches the rider |
 | C7 | **The companion brain.** `companionStep`; the client's auto-play rule (never-commanded and not-commanded-this-turn, Decision 9). | engine + client | `ai.js`, `packages/client/app.js` (the auto-play condition only), tests | a never-commanded Skeleton Dodges and steps away; an Incapacitated paladin's steed comes to her and attacks the goblin beside her; a player's familiar waits for its player unless `auto` is set |
 | C8 | **Screens.** The cast chooser for a summon (form, type, variant, then taps for each point, or corpses); the companion's turn in the player's bar and tracker (one row under its master for `after`); buttons for Command (with the order text; the prompt that hands a commanded creature's turn to its player, A2), the master's before or after choice for a steed (A1), Dismiss, Recall, Mount, Dismount, Let it act; the pocket on the sheet. | client | `packages/client/actionpanel.js`, `classes.js`, `tracker.js`, `app.js`, `index.html`, `style.css`, `scripts/smoke/companions.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=companions`: at both sizes, with touch at 390 x 844, a wizard summons an owl, the owl's turn comes to the same player, the owl is dismissed and recalled; a paladin summons a steed, mounts, rides 60 ft and dismounts; no page errors |
 | C9 | **The rest of the features.** Wild Companion (a slot or a Wild Shape use), Faithful Steed's free cast, Pact of the Chain (Magic action, extra forms, forgo an attack), Investment of the Chain Master, Life Bond (a hook on healing from spells, shared with Blessed Healer, C8 in the debt log). | engine | `engine/features.js`, `engine/attacks.js`, `engine/rolls.js`, `summons.js`, `content/schema.js`, `content/srd52/classes/*` (those features), tests | each feature's SRD text is played by a test; the class entries report their new tiers |
@@ -1031,6 +1031,163 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
 - **Left** (in DEBT): an unseen familiar can't go to or come from the pocket in a fight (above); Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
   pocket (rests.js); a seen foe familiar's new form reaches players only through their view, with no event; the client has
   no Dismiss, Recall or Deliver (C8).
+
+### C6a, riding, the first half (#346)
+
+Stage C6 is built in two parts: C6a (this) and C6b (moving the pair under a push, a teleport and a fall; falling off;
+Opportunity Attacks for the pair; Find Steed as a controlled mount with the Incapacitated rider's rules, and the
+summon step's `bond.mount`). What was settled while building C6a, where Decision 8 left room (SRD 5.2.1 2099-2133):
+
+- **State.** A rider: `riding: { on: mountId, controlled: true | false, size }`; its mount: `rider: riderId`; one rider
+  per mount, a rider is never a mount and a mount never rides. `size` is the mount's size, copied onto the ride so that
+  `space.js` can give the rider the mount's footprint without the game state; it is kept in step with the mount after
+  every action (`settleRiders`, resolve.js, run from `settleBonds`). The rider's position is the mount's anchor.
+- **Space.** `shapeOf` (space.js) gives a rider the mount's shape, so `footprint`, `overlapAt` and `apartAt` measure a
+  rider by the whole mount on hexes (a Large mount: 3 hexes) and on squares (2 by 2): reach, range, areas and the
+  overlap check, with no caller changed. The rider's own `size` (`sizeOf`) is unchanged: its height, what it can
+  grapple. Two creatures share a space only through riding: everything else still sees both as occupying it, so nothing
+  can be spawned, summoned, teleported or walked into the pair's space. `moveOptions` and `walk` leave the other of the
+  pair out of the way (`partnerOf`, world.js). **Not built:** the rider's raised height and eye (Decision 8: "its height
+  is the mount's height plus its own"; sight and cover look from the rider's own `pos.z`, the mount's floor). That is
+  `vision.js` and sight; it goes to C6b.
+- **`mount { actor, mount }`.** Checked before anything changes, in this order: the `mount` id (a player naming a creature
+  the party does not know of, or one that is nothing, is told "No such creature."; engine.js does not walk `mount`, so
+  the handler does), not itself, neither already riding or ridden, both up and the rider not Prone, the rider's turn in
+  a fight, a Speed above 0, the mount at least one size larger, the pair known to the party together (below), willing
+  (to a player: on the rider's side, and trained or the rider's steed; the DM may mount any pair, judging willingness and
+  anatomy), within 5 ft (`apart`, the nearest parts, by the table's square rule on squares), no wall between, both in
+  the fight or both out of it, and in a fight not mounted already this turn and with half the rider's Speed (rounded
+  down to 5 ft, as standing up) left. The rider stops following anyone, a mount following its rider stops; then
+  `mounted { id, mount, controlled }`, and the rider's move into the space springs traps and zones as a step does.
+- **Controlled or independent.** Controlled when the mount is on the rider's side and trained (`mount: 'trained'` on its
+  pack monster: the eight SRD mounts, nothing else; the linter refuses it on any other monster) or the rider's steed
+  (`bond.mount: 'controlled'`, which no step can set until C6b); otherwise independent. A mount of another side is
+  never controlled: it "lets you ride but ignores your control", and its numbers (`budget.mount`) would otherwise go to
+  the rider's player.
+- **Once a turn.** "During your move, you can mount a creature ... or dismount": in a fight a creature mounts at most once
+  a turn and dismounts at most once a turn (`enc.flags` `mounted:<id>`, `dismounted:<id>`). So a mount's movement and
+  action, which "can move and act even on the turn that you mount it", come at most once a turn: getting down and up
+  again to have them twice is refused. Getting down from one mount and onto another is allowed.
+- **A controlled mount's turn is its rider's.** Its order entry stays where it is, and `advanceTurn` passes it by while
+  it is ridden (`riddenNow`), so it gets no `turn` of its own. At the start of its rider's turn its own turn starts too
+  (`mountTurnStarts`: what ends at the start of its turn ends, a zone it starts in works on it, its Reaction comes back,
+  a recharge) and the turn's budget gains `mount: { move, action, dashes }` (its Speed and one action, none if it is
+  Incapacitated); at its rider's turn end its Disengage ends and what ends at the end of its turn ends. Mounted in the
+  middle of the rider's turn, it gets `budget.mount` then ("can move and act even on the turn that you mount it"), but
+  only if it has not had its turn this round: see fix round 1, M1.
+- **What a controlled mount may be sent.** Checked in `control` (shared.js), as the command lock is: `move`, `dash` and
+  `disengage` (and what is set about it or answered for it: `reactions`, `companion`, `react`, `stepAway`, `stepBack`);
+  anything else, its attack and its actions included, is "A controlled mount can only Dash, Disengage or Dodge.".
+  The rider's player may send its `move`, `dash`, `disengage` and `dodge` though the mount is not theirs; its Reactions
+  and instructions stay its own controller's (a warhorse of the DM's: the DM's). Its Dash, Disengage and Dodge
+  (`mountAct`, resolve.js; `dodge` in attacks.js calls it for a mount) spend `budget.mount.action`, never the rider's
+  action and never as a Bonus Action; its Dodge lasts until the start of its rider's next turn (`mountTurnStarts`).
+- **Moving.** `move` with the rider as actor moves its controlled mount; `move` with the mount as actor the same. In a
+  fight only on the rider's turn, from `budget.mount` (`turnBudget`, shared.js, read by `moveOptions` and `walk`), by the
+  mount's speeds and costs; the rider's own movement is left for dismounting. `dash`, `disengage` and `dodge` with the mount as
+  actor spend its action (not as a Bonus Action). The rider of an independent mount can't move it ("goes where it
+  likes: dismount to move on foot"); the mount moves on its own turn and carries the rider. **Plain walking together is
+  built** (the issue allowed it): leaving it out would leave every ridden pair unable to move. A walking mount carries
+  its rider step by step (`carry`, world.js; a `moved` for each of the two), traps and zones go off for either (a zone
+  the rider enters stops the walk as one the mount enters does), a fight joined on the way takes both in, and the
+  column brings up a ridden mount with its rider (`catchUp`). A rider follows no one (`follow` refused, `partyFollow`
+  leaves it out) and a mount can't follow its own rider; a ridden mount may follow another, carrying its rider. Outside
+  a fight the pair walks at the mount's pace. **Opportunity Attacks for the pair are C6b:** the mount's are made as
+  always; when the rider is carried (or gets down) out of a foe's reach, the DM is told (`manual`, the DM's) that an
+  Opportunity Attack against the rider is theirs to make.
+- **`dismount { actor, to? }`.** The rider's turn in a fight, not dismounted already this turn, half its Speed; `to` is a
+  space it can stand in within 5 ft of any part of the mount, no wall between, within a step of the mount's height, in
+  the arena when fighting, not the mount's own space, and unoccupied; without `to`, the nearest such space (fixed order,
+  so it replays). A space held by a creature the party does not know of: see fix round 1, B1. `dismounted { id, mount, at }`; traps and
+  zones go off where it lands.
+- **The mount's place after.** A controlled mount whose rider gets down in a fight goes straight behind its rider (and
+  the rider's `after` companions), on the rider's count ("The Initiative of a controlled mount changes to match yours
+  when you mount it"), unless its bond ties it to its master (`after` or `before`: then the bond keeps its place, A1).
+  If the rider's turn has come this round, the mount has had its turn on it and takes no other this round (`enc.rode`,
+  cleared at the next round's start). Nobody else's place moves. A test plays a mount and a dismount across three
+  rounds on both grids and counts `turn` events: every creature one a round, the ridden horse none.
+- **A1.** While a steed is ridden its master's before or after choice waits: `takeUpOrders` leaves its `orderNext` and
+  `followMasters` leaves its entry; both take effect at the first round's start after it is ridden no more.
+- **Pairs kept whole** (`settleRiders`, after every action; and see fix round 1, M2, for a downed rider). A rider whose mount is gone (vanished, removed) or dead, or
+  that no longer stands on its mount's anchor (one of the two was pushed, teleported, fell, or set down by the DM: the
+  pair is not moved together under those until C6b), is down from it where it stands: `dismounted { why: 'gone' |
+  'apart' }`, and for `apart` the DM is told that staying on (DC 10 Dexterity) or falling Prone is theirs to set. A
+  rider or mount that becomes Prone while riding: the DM is told once (`riding.told`, cleared when neither is Prone) of
+  the DC 10 Dexterity save against falling off. A rider is held up by a mount that is aloft (`aloft`, world.js), so a
+  flying mount's rider does not fall.
+- **Known together** (Decision 10: riding is plain to see). A pair the party knows of only half of can't be made: the DM
+  is told "The party knows of only one of X and Y: reveal or hide both before one rides the other.". Once made, either
+  can still come to be unknown alone (the DM hides one, a rider Hides, sight differs): the view then sends the ride of
+  neither (below), but players still see a seen controlled mount take no turns of its own and move on a turn they cannot
+  see. This is what a table would see (a horse whose rider is invisible), and it is not a twin of "no rider"; see DEBT.
+- **What players are sent.** A seen record gains `riding: { on }` and `rider` only where the other is not hidden; an open
+  (party) record is sent whole but `riding` or `rider` is dropped, not scrubbed to 'someone', when the other is hidden.
+  `mounted { id, mount, controlled? }` (`controlled` for the party's own rider) and `dismounted { id, mount, at, why? }`
+  only where both are known. `budget.mount` goes with the budget, which players get only on an open creature's turn; a
+  controlled mount is always on its rider's side. `enc.rode` and the flags that name a hidden creature are not sent.
+  Twin runs (riding.test.js) on hexes and squares: a hidden goblin mounting a hidden wolf, riding it and getting down
+  gives players the same events and view as a table where neither exists; a player naming a hidden mount gets "No such
+  creature." as for an id that is nothing.
+- **No state version bump** (agreed with the lead). Every new field is optional and absent means none, so a save from
+  before loads and plays as before (tested). An older build that loads a save with riders reads them as two creatures
+  in one space. `migrate` drops a pair that is
+  not whole (both halves), fills a missing `riding.size`, and drops a malformed `budget.mount` or `enc.rode`.
+- **Labels.** `describeStep` (history.js): "Brenna mounted Warhorse", "Brenna dismounted"; the mount is among the
+  creatures a label must know of before players are shown it.
+- **Fix round 1 (review of #350).** Rules that are new, not repairs, are marked **new rule**.
+  - **B1, where a rider gets down** (repair, by hidden-information.md section 5). A party rider chooses its landing by
+    what the party knows: a space held only by a creature the party does not know of counts as free, so the default
+    landing is the same with or without it. If the space chosen (by default, or named in `to`) holds such a creature,
+    the rider is beside it already (its space is the mount's). As for a move onto a hidden creature's space when beside
+    it, there is no dismount and the creature is found (`revealed`, `unhidden`); nothing is spent. A non-party rider
+    (the DM's) lands by the true state. The earlier fallback to the nearest free space is gone. Twin runs on both grids.
+  - **M1, one turn's worth a round per mount** (**new rule**, confirmed by the owner's decision of 15 November: a mount
+    gets one turn's worth a round, and mounted after it has used it, it gives its new rider nothing until the next round.
+    This is deliberately stricter than the SRD's "A controlled mount can move and act even on the turn that you mount
+    it" (2120-2121). The SRD's reading is one constant away: `MOUNT_ONCE_A_ROUND` in resolve.js, read by
+    `mountTurnBudget`, both behaviours tested). A
+    mount that has had its turn this round gets nothing more this round, however many riders it has. That covers its own
+    turn (its place is behind the turn going on, which settleOrder keeps true) and a rider's turn (`enc.rode`, now set
+    whenever it gets `budget.mount`, and on a ridden mount's own turn). Mounted after that, it carries its rider with
+    `budget.mount` all 0, and the rider is told (`note`; the DM's `manual` for a foe). A stress loop with three riders
+    checks it on both grids.
+  - **M2 and L1, a rider that can't direct its mount** (**new rule**). A controlled mount whose rider is at 0 Hit Points
+    or Incapacitated is steered by no one (`steering` is null). It acts as an independent mount, on its own turn,
+    carrying its rider, until the rider can direct it again; its turn's worth for the round still holds (M1). The DM's
+    `dismount` takes down a rider who is down, Incapacitated or at Speed 0, at no cost, on any turn (`dismounted { why:
+    'dm' }`); a player is refused, and told the DM can. The SRD has no rule for an Unconscious rider beyond "if you're
+    knocked Prone" (2132-2133, the DC 10 save, C6b): Unconscious includes Prone, so the existing `manual` hand-off to
+    the DM stays.
+  - **M3, a commanded creature as a mount** (**new rule**). A creature that takes commands (`orders: 'command'`) is
+    never a controlled mount: mounting it makes an independent ride, and one bonded so while ridden stops being steered.
+    It obeys its master's commands (Decision 6), not a rider's. Refusing the mount was the other choice; this keeps a DM's
+    zombie horse rideable without lifting its lock.
+  - **L3, not changed.** An Opportunity Attack against the rider after its mount Disengaged is still handed to the DM.
+    Decision 8 gives each of the two "its own Disengage" (the mount's covers the mount).
+  - **L4, a Prone mount stands** (repair). At the start of its rider's turn it stands up for half its Speed, out of
+    `budget.mount`, as `beginTurn` does for any creature.
+  - **To DEBT:** L2 (a stepped-away rider takes its mount's turns with it: W14) and L5 (the growth refusal text and its
+    wider reach: W13).
+- **Fix round 2 (re-review of #350).**
+  - **M1, a mount never loses its turn** (repair). Invariant, tested by the re-review's stress recipe (three warhorses,
+    four riders mounting, dismounting, dashing and moving them, the DM harming, stunning, mending and freeing riders at
+    random, 2,400 rounds on each grid): every mount has exactly one turn's worth each round, never none, never two. A
+    mount's place is passed by only if it has had its worth this round (`enc.rode`, set when it gets `budget.mount`
+    and on a ridden mount's own turn) or its steering rider's turn is still to come. If its rider's place comes round
+    while the rider can't steer (down, Incapacitated) and the mount's own place has gone by waiting for it, the mount is
+    seated straight behind its rider (`mountOwed`) and takes its own turn. If the rider recovers after its own place,
+    the mount's place, still to come, is not passed by. A DM's free `dismount` no longer marks the mount as having had
+    its turn; one that has not had it is seated behind the creature whose turn it is (`dismountOrder`). On its own turn
+    a steered mount moves from its own budget (`turnBudget`), and may `endTurn`.
+  - **L2, a Prone mount in its rider's turn** (repair). `stand` with the mount as actor, by the rider's player or the
+    DM, costs half its Speed from `budget.mount`.
+  - **L3, a ride that becomes commanded** (repair). Bonded to take commands while ridden, the ride turns independent
+    (`riding.controlled: false`) and its `budget.mount` goes.
+  - **L1** (DEBT S6 said the opposite of the code) is corrected; **L4** (the away mode) is W14.
+- **For the client job (C8, C10).** Actions: `mount { actor, mount }`, `dismount { actor, to? }`; `move`, `dash`,
+  `disengage` and `dodge` with the mount as actor (or `move` with the rider). Fields: `riding.on`, `riding.controlled`, `rider`;
+  `encounter.budget.mount` (`move`, `action`, `dashes`) on the rider's turn. A ridden controlled mount's order entry is
+  passed by: draw it with its rider. A rider stands on its mount's anchor and fills its footprint; draw it on top.
 
 ## Amendments of 14 November
 
