@@ -58,7 +58,7 @@ function applyTheme() {
   for (const [k, v] of Object.entries(THEMES[themeId].ui)) document.documentElement.style.setProperty(k, v);
 }
 applyTheme();
-const R = createRenderer(rendererKind(location.search, prefs.get('hextable.renderer')), $('gl'), $('labels'), THEMES[themeId]);      // 'gl' (default) or 'none' (?renderer=none): renderer.js
+const R = createRenderer(rendererKind(location.search, prefs.get('hextable.renderer')), $('gl'), $('labels'), THEMES[themeId]);      // 'three' (default), 'gl' (?renderer=gl) or 'none' (?renderer=none): renderer.js
 
 // The timeline (docs/specs/renderer.md, decisions 2 and 3): the events of an update play as beats, one after another. The log
 // line and the floating text of an event come on its beat, the picture is brought to what the beats have shown, and in `wait`

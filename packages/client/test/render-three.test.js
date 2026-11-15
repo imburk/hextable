@@ -30,7 +30,20 @@ test('three is a kind, chosen by the address then the preference', () => {
   assert.equal(rendererKind('?renderer=three', undefined), 'three');
   assert.equal(rendererKind('', 'three'), 'three');
   assert.equal(rendererKind('?renderer=gl', 'three'), 'gl');
-  assert.equal(rendererKind('', undefined), 'gl');
+  assert.equal(rendererKind('', undefined), 'three');        // the default since R14 step 1 (#348)
+  assert.equal(rendererKind('', 'gl'), 'gl');
+});
+test('the stand-in reads the Three.js renderer\'s insides through, for the smoke script, and shows a loading state', async () => {
+  const shown = [], el = (id) => ({ hidden: true, classList: { toggle() {} }, querySelector: () => ({ textContent: '', hidden: true }) });
+  globalThis.document = { createElement: () => ({ getContext: () => ({}) }), getElementById: (id) => { const e = el(id); shown.push(e); return e; } };
+  try {
+    const r = createRenderer('three', {}, {}, theme);
+    assert.equal(shown[0].hidden, false, 'a loading message is up from the first frame');
+    r.dispose(); await r.ready;
+    r.inner = { cam: { dist: 3 }, G: 'grid', stats: () => 'inner' };
+    assert.equal(r.cam.dist, 3); assert.equal(r.G, 'grid'); assert.equal(typeof r.screenOf, 'function');
+    r.onTap = () => 1; assert.equal(typeof r.inner.onTap, 'function');
+  } finally { delete globalThis.document; }
 });
 test('the Three.js renderer and its stand-in have every member of the interface', () => {
   for (const m of METHODS) { assert.equal(typeof ThreeRenderer.prototype[m], 'function', `ThreeRenderer.${m}`); assert.equal(typeof LazyThree.prototype[m], 'function', `LazyThree.${m}`); }
