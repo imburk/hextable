@@ -678,7 +678,7 @@ Settled in the review of #313:
   anchor, that carried it past creatures that had had their turn and gave them a second one (review of #317,
   round 2, B1 and B2). A record of the old form, from a save, is seated once the same way.
 - **The DM's bond** takes `turn: 'after'`; `turn: 'none'` and `orders: 'command'` are still refused (C5, C6). *Since C5a
-  (#PRNUM) it takes `orders: 'command'`; `turn: 'none'` is still refused.*
+  (#338) it takes `orders: 'command'`; `turn: 'none'` is still refused.*
 - **The `summon` part.** A creature a spell keeps is a part `{ target, summon: true }` of the lasting effect its
   `bond.fx` names. `durations.js` `holds(s, e)` says whether that part still stands. `settleBonds` vanishes the
   creature (`why: 'ended'`) after the action once it does not: Concentration lost, its time run out, or
@@ -968,7 +968,7 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
 - **No state version bump:** `bond.order`, `bond.orderNext` and an entry's `before` are optional; a save or record
   without them plays as `after`, unchanged (C2's rule).
 
-### A2, a Bonus Action command puts the turn in the player's hands (built, #PRNUM)
+### A2, a Bonus Action command puts the turn in the player's hands (built, #338)
 
 - **Choice.** In `command` (C5), a command spends the Bonus Action and sets `bond.commanded` for that turn;
   `ownerOf` for that creature's turn is its master's player when `commanded` is set and the DM's
@@ -982,7 +982,7 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   tests that a never-commanded Zombie is the DM's and may only Dodge and move, one commanded this turn is its
   player's and refused for another player, and one with only a standing order is the DM's.
 
-#### Build notes: C5a, the command and who plays a commanded creature (A2; #PRNUM)
+#### Build notes: C5a, the command and who plays a commanded creature (A2; #338)
 
 Stage C5 is built in three parts: C5a (this), C5b (corpses: `on: 'corpse'`, Animate Dead, Create Undead, the 24-hour bond
 and reassert) and C5c (`dismiss` and `recall` with the pocket, `one: 'reform'` and `'replace'`, touch delivery through the
