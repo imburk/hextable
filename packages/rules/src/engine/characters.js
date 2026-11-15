@@ -68,6 +68,9 @@ export const handlers = {
     Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed, ...(e.reactions ? { reactions: e.reactions } : {}) });
     for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots already spent stay spent
     if (e.look && !a.record.look) fresh.look = e.look;
+    // A rider remade on its mount (or a mount under its rider) rides on (companions.md, Decision 8; DEBT W13).
+    if (e.riding !== undefined) fresh.riding = e.riding;
+    if (e.rider !== undefined) fresh.rider = e.rider;
     // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's; a record typed in brings none.
     delete fresh.pocket;
     if (e.pocket !== undefined) fresh.pocket = e.pocket;
