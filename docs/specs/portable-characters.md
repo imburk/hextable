@@ -5,7 +5,11 @@ Status: draft by an agent, to be reviewed by the design owner. Issue #237, part 
 decisions for online play recorded in #244 (the official server, monikers,
 reputation, the lobby, admission, forks and the hash). Nothing here is built.
 No code is written by this spec. Decision 8 is the online layer; it is not
-scheduled and the first seven decisions are built without it.
+scheduled and the first seven decisions are built without it. **Amended 15 November
+2026** (#347) to the owner's answers that came with the shops questions: **customs**,
+a highlight in the DM's review for large amounts of coins and for magical gear, and
+**coins that leave with a character** (see "Questions for the owner", 15 and 16, and
+`shops.md`, where coins come from).
 
 The owner asked for four things:
 
@@ -155,7 +159,8 @@ ending `.hextable-character.json`, at most 96 KB, with this shape:
   edits: [ { at: 'YYYY-MM-DD', fields: ['abilities', 'spells'] } ],   // changes made outside play, by the player: self-reported (Decision 3)
   keys: { '<keyId>': '<public key, base64>' },   // the public keys of the servers that signed blocks
   needs: { packs: [{ id: 'srd52', version: 1 }], homebrew: [{ id, pack, hash }] },   // what the sheet names beyond the SRD, for the report (Decision 5)
-  parked: [ { kind: 'spell', id, name } ]        // things a table could not take and left aside (Decision 5)
+  parked: [ { kind: 'spell', id, name } ],       // things a table could not take and left aside (Decision 5); a kind 'coins' holds an amount, never text
+  coins: { gp: 120, sp: 4 }                      // optional: what the character carries, only kinds it has, each a whole number up to 10,000,000 (`shops.md` Decision 5; the player's claim, never proof)
 }
 ```
 
@@ -295,7 +300,7 @@ a DM is ever copied in**, which keeps names, jokes and plot out of the file.
 | `reset` | `setSheet` with an `actor` changes the level by more than one, or changes class | `from`, `to`, `basis: 'dm'` |
 | `xp` | A conclusion is published (`xp` events from `publish` in `rewards.js`) | `n` gained, `foes`: how much of it came from foes and how much from the DM's bonus lines (the engine holds both: `xp.base` and `xp.bonus`) |
 | `item` | `gear` events for the character: loot from a conclusion, `give`, an item taken back | `item`: a pack id (magic items) or the word `item` for a name-only gear string (the name is not copied), `why`: `loot`, `dm`, `taken` |
-| `left` | The character is sent off or leaves (Decision 5) | `level`, `xp`, `kept`: the items it leaves with, `stayed`: those left at the table |
+| `left` | The character is sent off or leaves (Decision 5) | `level`, `xp`, `coins`: the worth of the coins it leaves with, in copper pieces (one number), `kept`: the items it leaves with, `stayed`: those left at the table |
 | `revoked` | An undo or rewind took back entries that a signed block had already sealed | `n`: the block |
 
 The "which DM" of the owner's list: **the DM's moniker, always**, not opt-in.
@@ -470,8 +475,9 @@ and approved by the DM".
    - `verifyChain` gives a verdict, never throwing on a hostile chain (it is
      bounded: at most 400 entries, 100 blocks, 8 distinct keys).
 4. The DM sees the pending member in the lobby with one line ("Kerrin, level 12
-   Wizard, signed by an unknown server, 3 differences") and a Review button that
-   opens the report and the level meter. The offering player sees the part of the
+   Wizard, signed by an unknown server, 3 differences, customs: coins and a Rare
+   item") and a Review button that opens the report and the level meter. The
+   customs part of the line is there only when the file is highlighted (below). The offering player sees the part of the
    report that concerns their own file (see "Who sees what").
 5. **Accept** sends the engine action `admit` (below) with the report's choices;
    **Decline** drops the offer. Either way the player is told the outcome about
@@ -487,14 +493,16 @@ and approved by the DM".
 #### The engine action
 
 ```js
-{ type: 'admit', sheet, user, userName, at?, standIns?: [ ... ] }   // DM only; the server builds it, a player cannot send it
+{ type: 'admit', sheet, user, userName, at?, standIns?: [ ... ], coins? }   // DM only; the server builds it, a player cannot send it; `coins` is what customs let in
 ```
 
 It does what `setSheet` without an `actor` does (`validate`, `derive`,
 `addCharacter`) and then claims the character for the offering member, so the
 player has exactly one. It refuses what `setSheet` and `claim` refuse (twelve
 characters at most, no room to stand, a second character for the same player).
-The server composes it from the checked offer and calls `apply()` with the
+`coins` is what the DM's choice at customs let in (below): the engine sets it as the
+creature's purse (`shops.md` Decision 5), and what was held back stays in the file's
+`parked`. The server composes it from the checked offer and calls `apply()` with the
 DM's role; the 4 KB cap on actions (`MAX_ACTION_BYTES`) does not apply to a
 call the server makes itself, and `validate` already caps a sheet at 20,000
 characters. A new handler goes in `engine/characters.js` and joins the table of
@@ -518,7 +526,38 @@ do about it.
 | **Level range** | The sheet's level and `born.level` against the adventure's `level` setting if the DM set one, else against what the DM sees in the meter. A character above the adventure's level is offered as a **fork** rewound to that level (Decision 8); one below it may be raised at the table and recorded as such (the lead's assumption, awaiting the owner). | Refuse, accept, fork, or raise. |
 | **History** | `verifyChain` verdict and the meter (Decision 6): official, signed here, signed by a key this table trusts, signed by an unknown key, self-reported, inconsistent, broken. With `characters: 'own-trusted'` a verdict below "signed by a trusted key" is highlighted and needs the DM's explicit tick. A broken chain is refused whatever the setting says. On the official server a file that does not lead to the stored hash is refused as official and may be offered only as an unofficial character. | Accept (with the tick), refuse. |
 | **Sheet rules the engine cannot play** | What `validate` says about *this* engine: a sheet built for a later version, a feature with no engine support at this version. | Refuse; or, with the stand-in rule, the nearest legal sheet. |
+| **Customs** | The file's `coins` and magic items, looked at as a customs officer looks at a bag, against the thresholds below. **Highlighted** (never a block on its own) when the coins are worth a lot for the character's level, when the sheet holds magical gear that is rare or a lot of it, or when the file carries more coins than the last signed `left` block it holds says it left a table with. The report shows the amounts and items by name. | **Accept** as it is; **accept with the coins held back** above a limit the DM types (the default is the threshold); **accept without the coins**; **hold back** a flagged item (taken off the playing copy and written to `parked`, as for missing content); **refuse** the character. |
 | **Imported** | `born.how` is `imported-fgxml` (or a later importer's value, or `pregen`): the DM is told the stand-ins that import made (the count in `born`, not the importer's text). | Accept. |
+
+**Customs** (the owner, 15 November 2026: "A DM needs to be able to screen money
+when importing a character, customs if you will. We should add a highlight when
+bringing in characters for large amounts of cash and magical gear." His worry: with
+character archiving, "someone hoarding money though they always find a way"). The
+owner asked for the highlight; the thresholds are not his and are **(design choice,
+lead's proposal)**, constants in one object, `CUSTOMS`, in `compat.js`, so they can
+be changed without touching a screen:
+
+| Highlight | When |
+|---|---|
+| **Coins** | the coins are worth more than **500 GP for each level of the character** (level 1: 500 GP; level 12: 6,000 GP; level 20: 10,000 GP), by the Coin Values (`shops.md` Decision 5) |
+| **Magical gear** | the sheet has **any item of Rare rarity or higher**, or **more than three items of Uncommon rarity or higher** (Common items are never highlighted); rarity is the pack's (`CONTENT.items[id].rarity`) |
+| **More than it left with** | the file holds a signed `left` block (Decision 3) and the coins in the file are worth **more than that block's `coins`** by more than 100 GP: "more than when it last left a table", a gain no recorded table explains |
+
+What it proves and does not, in the spirit of Decision 2: **coins in a file are the
+player's claim.** Only the `left` block's total is a signed fact, and only about the
+moment it left that table; the lineage does not record spending or earning coins
+(only the `item` entries record gear), so customs can compare and say "more than
+before" but never say a sum is honest. It is the DM's screen, not a guard, and the
+screen says so ("The player says so"). **It is information for the DM**: the
+highlight changes no verdict, the meter and the history grade are untouched, and a
+file that passes everything else is not held up by it. What the DM chose is written
+down like the other choices (the `joined` entry's `adjusted` count and the DM's
+chronicle line, never public). The **offering player sees the customs part of the
+report about their own file** ("Your coins and one Rare item will be shown to the
+DM"), because a pending member is shown what concerns their own file (Decision 7).
+**Coins and gear are never in the public summary** of Decision 8 (id, moniker, name,
+class, level, the meter's figures), so a character's wealth is not shown in the
+lobby.
 
 **Stand-ins, modelled on the Fantasy Grounds importer.** The importer's
 `adjustments` (`{ what, from, to, why }`) are the pattern: where a sheet needs a
@@ -556,17 +595,24 @@ changes how a fight plays.
 **What leaves.** The `takeaway` setting decides:
 
 - `everything` (the default, the owner's answer): the sheet as it stands, level
-  and items and attunement, and the XP, **with the DM's sign-off at send-off**.
+  and items and attunement, the XP and **the coins it carries** (the owner, 15
+  November, confirming the default of `shops.md` question 6: "yes, as items do"),
+  **with the DM's sign-off at send-off**.
 - `level-only`: the sheet with the items it gained at this table taken off
   (the record knows them: `item` entries). They are listed in `stayed` and
-  stay on the table's record, not in the file.
+  stay on the table's record, not in the file. **The coins** leave as the
+  character arrived: for each kind, the lesser of what it carries now and what was
+  admitted, so what it earned at this table stays (the record does not follow coins
+  one by one, so this is the one rule that needs no history) **(design choice,
+  lead's proposal)**.
 - `nothing`: the file leaves with the sheet it arrived with plus the history
-  of what happened (`left` with the original sheet), no gains. A table that
+  of what happened (`left` with the original sheet), no gains, and the coins it
+  arrived with (the lesser of then and now, as above). A table that
   wants a character to be "a guest" says this.
 
 Whatever the setting, **the DM decides at the moment of leaving**. The
-send-off screen (Decision 6) lists level, XP and each item gained here with a
-tick for each, ticked as the setting says; the DM changes the ticks and
+send-off screen (Decision 6) lists level, XP, the coins (one tick, with the amount)
+and each item gained here with a tick for each, ticked as the setting says; the DM changes the ticks and
 confirms, and the server builds the file from that and seals `left`. The
 player sees the result before it is made and may say no to taking it. The DM
 cannot take away what the player arrived with: the send-off only removes
@@ -681,10 +727,13 @@ meter to make visible.
   that screening before the DM is asked (Decision 8).
 - **The review**: the meter, the verdict in words, then the differences grouped
   by what the DM can do, each with its choice (Refuse, Accept, Stand in) and a
-  default; at the bottom Accept and Decline. On a phone the review is one
+  default; **customs, when the file is highlighted, comes first and is marked as a
+  banner** ("Customs: 3,200 GP in coins, a Ring of Spell Storing (Rare)"), with its
+  choices (Decision 5) and the coins' limit as a number the DM can type; at the
+  bottom Accept and Decline. On a phone the review is one
   column, tick rows at least 44 px, and the choices are text buttons.
 - **The send-off**: reached from the sheet's menu and from the player's Leave:
-  the ticked list of level, XP and gained items; Confirm; the file is made and
+  the ticked list of level, XP, coins and gained items; Confirm; the file is made and
   the player is offered the download.
 
 ### Decision 7: privacy
@@ -851,10 +900,10 @@ One table for the engine and server lanes. "Touches" is the file that changes.
 | # | Addition | Kind | Who may send | Touches | State version |
 |---|---|---|---|---|---|
 | A1 | `lineage.js`: canonical JSON, SHA-256 hashes, `lineageStep`, block building and `verifyChain`, `meter` | pure rules | n/a | `packages/rules/src/lineage.js`, `tests` | no |
-| A2 | `characterfile.js`: envelope shape, limits, parse and build | pure rules | n/a | `packages/rules/src/characterfile.js`, `tests` | no |
-| A3 | `compat.js`: the differences and the stand-in rules | pure rules | n/a | `packages/rules/src/compat.js`, `tests` | no |
+| A2 | `characterfile.js`: envelope shape, limits, parse and build (the optional `coins`) | pure rules | n/a | `packages/rules/src/characterfile.js`, `tests` | no |
+| A3 | `compat.js`: the differences, the stand-in rules and customs (`CUSTOMS`) | pure rules | n/a | `packages/rules/src/compat.js`, `tests` | no |
 | A4 | Settings `characters`, `takeaway`, `level` | settings | DM (`setting`) | `engine/dm.js` (`SETTINGS`) | no (absent means default) |
-| A5 | Action `admit` | action | DM (the server composes it) | `engine/characters.js`, `tests` | no |
+| A5 | Action `admit` (with `coins`) | action | DM (the server composes it) | `engine/characters.js`, `tests` | no |
 | A6 | Server key, `GET /api/server`, the built-in official public key, the DM's per-table trust list | server | n/a | `packages/server/src/identity.js` (new), `index.js` | no |
 | A7 | Per-table record `chars`, sealing, `reconcile`, `revoked`, fork check | server | n/a | `tables.js` | no |
 | A8 | Messages `offer`, `offerResult`, `take` (the file for the owner or DM), frame limit raised for a player while `characters` is not `new` | server messages | pending member, member, DM | `tables.js`, `index.js`, `packages/server/README.md` | no |
@@ -876,15 +925,18 @@ checked at 390 x 844 with touch and at 1280 x 800.
 | # | Task | Lane | Model | Touches | Done when |
 |---|---|---|---|---|---|
 | P1 | **Lineage, pure.** A1: canonical JSON (keys sorted, integers only), `sheetHash`, `lineageStep` for `levelUp`, `reset`, `xp`, `item`, `verifyChain` with verdicts, `meter` segments. Ed25519 and SHA-256 through `globalThis.crypto.subtle`. | engine | Opus | `packages/rules/src/lineage.js`, `packages/rules/test/lineage.test.js` | A chain made in the test verifies; changing any byte of an entry, a signature, `prev`, `head` or the sheet gives `broken` (or `editedSinceLastBlock` for the sheet alone); a key nobody trusts gives `signed-unknown` and the same meter weight as `self-reported`; a levelUp whose XP is below `xpFor(to)` has `basis: 'dm'`; a 5,000-entry or deeply nested hostile chain is refused in bounded time and never throws; two runs give identical bytes. |
-| P2 | **The file, pure.** A2 and A3: envelope limits and parse, `compat` with the kinds of Decision 5 and the stand-in rules. | engine | Opus | `packages/rules/src/characterfile.js`, `compat.js`, tests | A file with an unknown top-level key, a sheet over 20,000 characters, an `at` that is not a date, or a free-text field is refused; a sheet naming a spell the table lacks gives "missing content, can: refuse / accept without / stand in" and the stand-in removes exactly that spell and lists it in `parked`; a level-3 sheet whose subclass is missing gets the SRD subclass as a marked stand-in; no stand-in is ever silent. |
+| P2 | **The file, pure.** A2 and A3: envelope limits and parse, `compat` with the kinds of Decision 5 and the stand-in rules. | engine | Opus | `packages/rules/src/characterfile.js`, `compat.js`, tests | A file with an unknown top-level key, a sheet over 20,000 characters, an `at` that is not a date, or a free-text field is refused; a sheet naming a spell the table lacks gives "missing content, can: refuse / accept without / stand in" and the stand-in removes exactly that spell and lists it in `parked`; a level-3 sheet whose subclass is missing gets the SRD subclass as a marked stand-in; no stand-in is ever silent; customs highlights 6,001 GP at level 12 and not 6,000, a Rare item and not a Common one, four Uncommon items and not three, and coins 101 GP over a signed `left` block's total and not 100, each with the amounts in its sentence; a file with `coins` of 10^9 or a negative or fractional kind is refused. |
 | P3 | **Server identity and sealing.** A6 and the signing half of A7: `identity.js`, the key file, `GET /api/server`, the built-in official public key (the verdict `official`), a `chars` record per table, seals at `joined`, `levelUp`, conclusions and `left`, `reconcile` and `revoked`, the fork check. | server | Opus | `packages/server/src/identity.js` (new), `index.js`, `tables.js`, `packages/server/README.md`, `packages/server/test/` | A level-up at a table appends an entry and a signed block with the server's key id and the day; undoing it appends a `revoked` block, never deletes; the key is read from `DATA_DIR` across a restart and the start-up line prints the key id; the private key is in no table file, export or undo file (a test greps them); the server refuses to sign when its key could not be written. |
-| P4 | **Settings and `admit`.** A4 and A5. | engine | Opus | `engine/dm.js`, `engine/characters.js`, `tests` | `setting characters own` is accepted and refused for a player; `admit` makes a party character, claims it for the member, refuses a second character for the same member, a thirteenth character and a sheet `validate` refuses, and changes nothing when it refuses. |
-| P5 | **The offer, server side.** A8 (offer, offerResult, frame limit) and the review result kept with the pending member. | server | Opus | `tables.js`, `index.js`, `packages/server/README.md`, `packages/server/test/` | A pending member's offer is checked by the server and stored; the DM's `lobby` message gets a summary and the report, never a player's; an offer over 96 KB, a second within ten seconds, or one at a table whose `characters` is `new` is refused; accepting sends `admit` and the player has the character; declining says why; a pending member sees only the report about their own file. |
+| P4 | **Settings and `admit`.** A4 and A5. The coins part needs the purse of `shops.md` P3; until then a file's coins are listed and held back in full. | engine | Opus | `engine/dm.js`, `engine/characters.js`, `tests` | `setting characters own` is accepted and refused for a player; `admit` makes a party character, claims it for the member, refuses a second character for the same member, a thirteenth character and a sheet `validate` refuses, and changes nothing when it refuses. |
+| P5 | **The offer, server side.** A8 (offer, offerResult, frame limit) and the review result kept with the pending member. | server | Opus | `tables.js`, `index.js`, `packages/server/README.md`, `packages/server/test/` | A pending member's offer is checked by the server and stored; the DM's `lobby` message gets a summary and the report, never a player's; an offer over 96 KB, a second within ten seconds, or one at a table whose `characters` is `new` is refused; accepting sends `admit` and the player has the character; declining says why; a pending member sees only the report about their own file, which includes their own customs highlight and no one else's. |
 | P6 | **My characters, client.** The start-screen list, New portable character, import and export of files, the build screen without a game, Import from Fantasy Grounds with no table. | client | Sonnet | `packages/client/index.html`, `style.css`, `mycharacters.js` (new), `buildsheet.js`, `importfg.js` (an entry point only), `transport.js` (one storage key), `tests/` | At 390 x 844 a player builds a level 12 character with no game, saves it, exports it, imports it on a second "device" (a cleared storage) and the file is the same; its sheet passes `validate`; the file has `born: { level: 12, by: 'self' }`; opening and re-saving it with a changed spell list adds an `edits` entry that names `spells` and no values. |
 | P7 | **The level meter.** The component and its wording table. | client | Sonnet | `packages/client/levelmeter.js` (new), `style.css`, `tests/` | The wording test passes for every verdict and no string contains "verified" without a signer; each segment kind is told apart without colour (patterns tested by their class names and by the words); a created-at-12 file and a grown-from-1 file give different first lines and notches. |
-| P8 | **Join with a character and the DM's review.** The lobby choice, the offer, the pending line, the review screen with the report, Accept and Decline, and the table settings. | client | Sonnet | `index.html`, `style.css`, `app.js` (small), `tablecontrols.js`, `reviewchar.js` (new), `transport.js` (message pass-through), `tests/` | A DM and a player in two windows: the player offers a file; the DM sees the summary and the review at both sizes; Accept puts the character in the party owned by that player; Decline tells the player why; the pending player's screen shows no table setting. |
-| P9 | **Send-off.** The `take` message, the send-off screen, `takeaway`, the DM's ticks, the player's confirmation, the file and the `left` block; Leave offers it first. | server, client | Opus (server), Sonnet (client) | `tables.js`, `packages/server/README.md`, `sendoff.js` (new), `app.js` (small), `tests/` | A character that gained a level and a magic item at a table leaves with both under `everything`, with the level only under `level-only`, and with neither under `nothing`; the DM's ticks change that; the file verifies back at the same server as "signed here"; a stand-in subclass is marked in the file. |
+| P8 | **Join with a character and the DM's review.** The lobby choice, the offer, the pending line, the review screen with the report, Accept and Decline, and the table settings. | client | Sonnet | `index.html`, `style.css`, `app.js` (small), `tablecontrols.js`, `reviewchar.js` (new), `transport.js` (message pass-through), `tests/` | A DM and a player in two windows: the player offers a file; the DM sees the summary and the review at both sizes; Accept puts the character in the party owned by that player; Decline tells the player why; the pending player's screen shows no table setting; a file with 7,000 GP at level 12 shows the customs banner first, with its choices, at both sizes, and accepting with the coins held back above 6,000 GP admits the character with 6,000 GP and lists the rest as parked. |
+| P9 | **Send-off.** The `take` message, the send-off screen, `takeaway`, the DM's ticks, the player's confirmation, the file and the `left` block; Leave offers it first. | server, client | Opus (server), Sonnet (client) | `tables.js`, `packages/server/README.md`, `sendoff.js` (new), `app.js` (small), `tests/` | A character that gained a level and a magic item at a table leaves with both under `everything`, with the level only under `level-only`, and with neither under `nothing`; the DM's ticks change that; the file verifies back at the same server as "signed here"; a stand-in subclass is marked in the file; coins leave under `everything`, only as they arrived under `level-only` and `nothing`, and the `left` block's `coins` is the worth of what left. |
 | P10 | **Stretch: a character in two files.** Detecting that the incoming chain forks a block this server sealed, and showing it. Also the DM's "trust this server" tick and the operator list shown in settings. | server, client | Sonnet | `tables.js`, `reviewchar.js` | A file with a block removed and returned to its sealing server is reported "continued here by another copy"; the trust tick adds the key id to the table's list and the next file from that key reads "signed by a server you trust". |
+
+Customs and the coins in a file wait for the purse of `shops.md` (P3 there); the rest
+of P2 to P9 do not.
 
 Decision 8 (the official server, monikers, the hash and summary store, reputation,
 the lobby, the adventure setup and forks) has no tasks yet: it needs the owner's
@@ -965,6 +1017,14 @@ Each is a thing a reviewer of the pull requests above must check.
     are collected. Anonymous statistics must be non-attributable (a coarse
     bucket, a minimum count, hour-rounded UTC start) and their opt-out must change
     nothing about a player's reputation.
+16. **Customs reads a claim and says so.** `coins` in a file is untrusted input:
+    each kind a whole number from 0 to 10,000,000, at most five kinds, no other key;
+    a hostile value refuses the file whole. The customs result is built by the server
+    and sent to the DM and to the offering player only; it is in no player's view, no
+    lobby summary and no public summary, and a test builds a table with a rich
+    pending file and asserts that no other player's message holds its coins or items.
+    The DM's choice (held back, without, refused) is made by the server's `admit`,
+    never by a client's claim.
 
 ## Risks
 
@@ -982,6 +1042,11 @@ Each is a thing a reviewer of the pull requests above must check.
   screen says so.
 - **Storage.** 20 characters of up to 96 KB is under 2 MB, inside a typical 5 MB
   quota but shared with `hextable.solo`; the panel shows the room left.
+- **Customs is a screen, not a guard.** A player who hides coins in a second file, or
+  spends and re-earns elsewhere, is not stopped; the highlight is there so the DM sees
+  what a file says and decides. The thresholds are guesses until a real table uses
+  them (the owner has not set numbers), and a table that finds them noisy changes
+  one constant.
 - **Two tables, one copy.** Fork warnings may annoy honest players. The wording
   stays neutral ("continued here by another copy").
 
@@ -989,8 +1054,11 @@ Each is a thing a reviewer of the pull requests above must check.
 
 Questions 1, 4, 5, 6 (in part), 7, 8, 9, 10 and 11 were answered or overtaken by
 the owner's decisions in #244; their answers are in "What the owner has settled"
-and Decision 8, and are recorded here so nobody asks again. Each open question
-has a default, and work proceeds on the default.
+and Decision 8, and are recorded here so nobody asks again. Questions 15 and 16 were
+answered on 15 November 2026 (issue #193, the comment "Q&A lead, 15 November, 08:00
+ET", with the shops questions). Each open question has a default, and work proceeds
+on the default. Questions 2, 3, 6, 10, 12, 13 and 14 are with the owner to click
+through at his leisure and stay on their defaults until he answers.
 
 **Answered**
 
@@ -1010,6 +1078,23 @@ has a default, and work proceeds on the default.
    their history starts with one self-reported line.**
 11. *A signed day.* **Date only in the history; anonymous statistics use UTC
     timestamps.**
+15. *Customs: should the DM be able to screen money and gear when a character is
+    imported?* **Answered 15 November 2026: yes.** The owner: "A DM needs to be able
+    to screen money when importing a character, customs if you will. We should add a
+    highlight when bringing in characters for large amounts of cash and magical gear."
+    His worry: with character archiving, "someone hoarding money though they always
+    find a way." What changed: a **Customs** row in Decision 5's "What is compared",
+    with the DM's choices, the offering player's view of it, and the privacy rule
+    (never in the public summary); the file's optional `coins`; `admit` takes `coins`;
+    `CUSTOMS` in `compat.js`; tasks P2, P4 and P8; review point 16. The **thresholds**
+    (500 GP a level, Rare or higher or more than three Uncommon, 100 GP over the last
+    signed `left`) are the lead's proposal, not the owner's, and wait for his
+    confirmation. Character archiving is his thought aloud, not a design in this spec.
+16. *Do coins leave with a character?* **Answered 15 November 2026: yes, as items do,
+    under `takeaway` and the DM's send-off** (the default of `shops.md` question 6,
+    confirmed). What changed: "What leaves" in Decision 5, the send-off's coin tick, the
+    `left` block's `coins`, task P9. How `level-only` and `nothing` treat coins is the
+    lead's proposal.
 
 **Still open**
 
