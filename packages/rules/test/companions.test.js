@@ -354,7 +354,6 @@ test("nothing in the rules reads `.owner` to decide control, but ownerOf", () =>
     "engine/sheets.js": 1,       // a character remade keeps its player
     "engine/characters.js": 1,   // likewise
     "history.js": 1,             // a rewind keeps who holds which character
-    "scenes.js": 3,              // scene lines and asking for a check: a player's own character (reported, #311)
   };
   for (const f of files) {
     const n = (readFileSync(new URL(f, src), "utf8").match(/\.owner\b/g) ?? []).length;
