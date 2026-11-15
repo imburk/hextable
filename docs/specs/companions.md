@@ -818,6 +818,40 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   "Creature"; use `e.name`, or `CONTENT.summons[e.tpl]`); the model to draw is the client's choice by `tpl`. Its
   turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`, C8/C10).
 
+### C3b, a summon cast with no picks (#332)
+
+Found in the review of #331: from C3 a cast of a spell with a `summon` step and no `summon` field was refused ("Pick
+where ..."), and the client cannot send one until the cast chooser (C8), so from the table Giant Insect could not be
+cast at all. Before C3 these spells were `manual` and were never refused. Settled:
+
+- **What counts as no picks: `a.summon === undefined` only.** That is the manual path. Any other value is refused as
+  before, with nothing changed: `null`, a string, a number, an array, an object with a key it does not take, a missing
+  or empty `at` or the wrong number of spaces, a missing variant. A `summon` on a spell that summons nothing is still
+  refused, `null` included.
+- **The manual path** is any spell's: the slot spent (and the turn's one slot, the action), Concentration started where
+  the spell has it (ending the old one), its lasting effect timed as usual, with no parts (it keeps nothing, and ends
+  when its time runs out or its caster drops it). Nothing is made and `seq` moves only for the effect. Checks that do
+  not depend on the picks still hold: a companion can't cast a summon, and a master at the cap of 30 is refused.
+- **The DM is told, alone** (`manual`, `partial: true`, emitted by the summon step in `resolve.js`, `summonHandOver`):
+  the level it was cast at; each choice of the block baked at that level with the master's numbers (name, AC, Hit
+  Points, speeds, size), or the pack monster, or the forms; a creature type to pick where the step has `types`; the
+  master's spell attack, spell save DC and Proficiency Bonus the block is baked with; the count; the spell's range and
+  that the space must be one the caster can see (in the arena in a fight); the DM's `spawn` that makes it and that it
+  is bonded with `bond`; and, for a spell that lasts, that the creature so added is not kept by the spell (the DM's
+  `bond` takes no `fx`), so the DM removes it when the spell ends. A player caster gets the `cast` and `effectStart`
+  any spell of theirs gives, and no line: a cast with picks tells them nothing more either. An `assist` or `manual`
+  entry's own tier note follows as before (partial too). A step after the summon step (#331's Find Familiar line) runs
+  as it does with picks.
+- **A hidden caster is not revealed**, as with picks (the spell is aimed at its caster only in form). A twin run (a
+  hidden foe's cast without picks against the same foe's plain manual spell aimed at nothing, same level, duration
+  and Concentration) gives players byte-identical events, views, record and counter, on hexes and squares
+  (`summons-fallback.test.js`).
+- **A cast with picks is unchanged** (checked byte for byte against main for party and foe casts with a hidden
+  creature in the space, on hexes and squares, through a fight). One existing test changed: the C3 refusal of a cast
+  with no `summon` now sends `summon: null`.
+- **For the client job:** until the chooser exists, the plain cast button works for these spells; the DM's log shows
+  the line to act on.
+
 ## Amendments of 14 November
 
 The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change four things in the engine.

@@ -187,7 +187,7 @@ for (const grid of [null, "square"]) {
     refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "moth", at: [good] } }, PAT, /centipede, spider, wasp/);
     refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { at: [good] } }, PAT, /Choose what/);
     refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [good, good] } }, PAT, /one space/);
-    refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4 }, PAT, /Pick where/);
+    refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: null }, PAT, /Pick where/);      // no field at all is the manual path (#332)
     refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", type: "fey", at: [good] } }, PAT, /no choice of creature type/);
     refused(s, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [good], how: 1 } }, PAT, /not "how"/);
     refused(s, { type: "cast", actor: "ven", spell: "produce-flame", summon: { at: [good] } }, PAT);

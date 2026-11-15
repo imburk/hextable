@@ -982,6 +982,40 @@ function overRecord(record, over) {
   for (const [k, v] of Object.entries(over.speed)) { if (k === 'walk') r.speed = v; else (r.speeds ??= {})[k] = v; }
   return r;
 }
+// A summon cast with no `summon` field (engine/casting.js, summonFor; #332): nothing is made. The DM is told what
+// this casting would make and with which numbers (each choice of the block baked at this level with the master's
+// numbers, as the step would bake it), where it may go and how to add it. The line is the DM's alone (`partial`):
+// the numbers are the block's, and a player caster is told nothing a cast with picks would not tell them.
+const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
+const or = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
+function summonHandOver(m, step, src, ev) {
+  const { slot, caster, count } = src.summon, block = !!CONTENT.summons[step.summon];
+  const stats = (made, also = '') => {
+    const r = overRecord(made.record, step.over), moves = Object.entries(r.speeds ?? {}).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} ${v} ft.`);
+    return `${made.name}${also} (AC ${r.ac}, ${r.hp} Hit Points, Speed ${[`${r.speed} ft.`, ...moves].join(', ')}, ${r.size[0].toUpperCase()}${r.size.slice(1)})`;
+  };
+  let what;
+  if (step.forms !== undefined) {
+    what = Array.isArray(step.forms) ? or(step.forms.map((f) => CONTENT.monsters[f]?.name ?? f)) : `any ${step.forms.type} of Challenge Rating ${step.forms.cr}`;
+  } else {
+    const picks = [];
+    for (const variant of step.variants ?? [undefined]) for (const type of (block ? step.types : null) ?? [undefined]) {
+      const pick = { ...(variant !== undefined ? { variant } : {}), ...(type !== undefined ? { type } : {}) };
+      picks.push(stats(summonMade(step, pick, slot, caster), type !== undefined ? ` as a ${type}` : ''));
+    }
+    what = or(picks);
+  }
+  const choose = step.forms !== undefined || step.variants || (block && step.types);
+  const types = step.types && !block ? `, of a creature type the caster picks (${or(step.types)})` : '';
+  const numbers = block ? ` Its numbers are baked from ${m.name}'s: spell attack ${signed(caster.attack)}, spell save DC ${caster.dc}, Proficiency Bonus ${signed(caster.pb)}.` : '';
+  const spawn = block ? `spawn with monster ${step.summon}, slot ${slot}${step.variants ? ', the variant' : ''}${step.types ? ', kind (its creature type)' : ''} and caster ${m.id}`
+    : `spawn with the monster${step.forms !== undefined ? ' picked' : ` ${step.summon}`}`;
+  ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true,
+    text: `${src.name} was cast at level ${slot} with nothing picked for the engine to summon, so it made nothing. The DM adds ${count === 1 ? `the creature${choose ? ' the caster picks' : ''}` : `${count} creatures${choose ? ', of the kind the caster picks' : ''}`}: ${what}${types}.${numbers}`
+      + ` Each goes in an unoccupied space within ${src.range} ft. that ${m.name} can see (inside the arena in a fight). The DM's ${spawn} makes it; bond it to ${m.name} as a ${step.bond?.kind ?? 'companion'}.`
+      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}` });
+}
+
 // Make the creatures `src.summon` names (checked when the spell was cast, engine/casting.js): each an ordinary
 // creature from the baked block or the pack monster, on its master's side, with a bond to it. One made by a
 // spell that lasts is a part of that spell's lasting effect (`{ target, summon: true }`), so ending the effect
@@ -992,6 +1026,7 @@ function overRecord(record, over) {
 function summon(s, m, step, src, ev) {
   const pick = src.summon;
   if (!pick) return ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name} names no spaces for the engine to summon into. The DM adds the creature.` });
+  if (!pick.at) return summonHandOver(m, step, src, ev);
   const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over);
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
   const b = step.bond;

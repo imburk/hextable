@@ -232,10 +232,23 @@ function evokerFor(e, sp, a, slot, via, targets) {
 // stop it (refusing would tell the player it is there): the creature appears beside it instead (resolve.js).
 // A master has at most BOND_MAX companions (shared.js; owner's question 7), and a companion has none of its own.
 // Returns { variant?, type?, form?, at: [positions] }, or null for a spell that summons nothing.
+// With no `summon` field at all (`a.summon === undefined`: a cast from a client that has no chooser for it yet, C8,
+// or a DM casting for a foe from the same panel), the cast is not refused: it takes the manual path a summon spell
+// had before C3 (#332). The slot is spent and Concentration starts as for any spell; the step makes nothing and
+// tells the DM what to add, with the numbers the block would be baked with (resolve.js, `summon`). Returns
+// { count } then. A companion still can't cast one and the cap still holds: neither depends on the picks.
+// Any other value (null, a string, an array, an object with a key it does not take or no spaces) is refused.
 function summonFor(s, e, sp, a, slot, range, ctx) {
   const step = sp.def.effects.find((x) => 'summon' in x);
   if (!step) { a.summon === undefined || fail(`${sp.name} summons nothing.`); return null; }
   const p = a.summon;
+  const c = step.count;
+  const count = c === undefined ? 1 : Number.isInteger(c) ? c : (c.base ?? 0) + c.slot * (slot - (c.above ?? 0));
+  if (p === undefined) {
+    !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
+    roomForCompanions(s, e, count);
+    return { count };
+  }
   (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Pick where ${sp.name} summons: { at: [a space] }.`);
   for (const k of Object.keys(p)) ['variant', 'type', 'form', 'at'].includes(k) || fail(`A summon names variant, type, form and at, not "${k}".`);
   const out = {};
@@ -249,8 +262,6 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
     fits || fail(`Choose a form ${sp.name} can take.`);
     out.form = p.form;
   } else p.form === undefined || fail(`${sp.name} has no choice of form.`);
-  const c = step.count;
-  const count = c === undefined ? 1 : Number.isInteger(c) ? c : (c.base ?? 0) + c.slot * (slot - (c.above ?? 0));
   (Array.isArray(p.at) && p.at.length === count) || fail(count === 1 ? `Pick one space for ${sp.name}.` : `Pick ${count} spaces for ${sp.name}, one for each creature.`);
   !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
   roomForCompanions(s, e, count);
