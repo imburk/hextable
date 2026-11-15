@@ -134,6 +134,22 @@ for (const grid of [null, "square"]) {
     }
   });
 
+  test(`what a corpse carried stays in its space; an effect still on it ends; its companions are freed${on}`, () => {
+    const s = table(grid), c = corpse(s, "bandit", 5), pos = { ...s.entities[c].pos };
+    s.entities[c].gear = ["Shortsword"];
+    const pet = spawn(s, "wolf", free(s, s.entities.fighter.pos, 6).at(-1));
+    s.entities[c].dead = false; s.entities[c].hp = 1;
+    ok(apply(s, { type: "bond", actor: pet, to: c, kind: "pet" }, DM));
+    ok(apply(s, { type: "setHp", actor: c, hp: 0 }, DM));
+    const fx = startEffect(s, { name: "Mark", spell: "hunters-mark", source: "fighter", conc: false, duration: "1 hour" });
+    fx.parts.push({ target: c, modifier: { on: "attack", op: "advantage" } });
+    const r = ok(raise(s, [c]));
+    const pile = s.map.objects.find((o) => o.def === "pile" && o.at.q === pos.q && o.at.r === pos.r);
+    assert.ok(pile && pile.contents.some((x) => x.name === "Shortsword"), "the gear lies where the corpse lay");
+    assert.ok(!s.effects.some((x) => x.id === fx.id), "the effect that was on it ends");
+    assert.ok(!s.entities[pet].bond && r.events.some((e) => e.type === "unbonded" && e.id === pet));
+  });
+
   test(`a non-Humanoid, a Large, a dusty, a living and a player's corpse are refused with nothing changed${on}`, () => {
     const s = table(grid);
     const wolf = corpse(s, "wolf", 5), big = corpse(s, "bandit", 10), dust = corpse(s, "guard", 5), alive = spawn(s, "bandit", free(s, s.entities.nia.pos, 2).at(-1));

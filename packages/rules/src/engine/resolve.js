@@ -849,14 +849,14 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
 // `seePiles` keeps such a pile the DM's (they open it, with the map editor, when the party finds it), and so
 // every pile it dropped unseen before. Players are told nothing: their view is as if it had simply died
 // unseen with nothing on it (review of #313, M1).
-function leaveGear(s, e, ev, unseen) {
+function leaveGear(s, e, ev, unseen, went = 'vanished') {
   if (unseen) for (const o of s.map.objects) if (isPile(o) && o.by === e.id) o.left = true;
   const items = [...(Array.isArray(e.gear) ? e.gear : []).map((g) => ({ name: String(g) })),
     ...(Array.isArray(e.sheet?.items) ? e.sheet.items : []).filter((x) => x && typeof x === 'object').map(({ id: _k, equipped: _q, attuned: _a, ...spec }) => spec)];
   if (!items.length) return;
   const sf = under(s.map, e.pos);
   if (!sf) {
-    ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name} vanished with nothing under it. What it carried is the DM's to place: ${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}.` });
+    ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name} ${went} with nothing under it. What it carried is the DM's to place: ${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}.` });
     return;
   }
   const by = unseen ? e.id : null;
@@ -875,7 +875,7 @@ function leaveGear(s, e, ev, unseen) {
   // Seen by the party, `seen` lets the line reach them though the creature is gone (view.js, `object`).
   ev.push({ type: 'object', object: o.id, name: objectName(o), state: o.state, stateName: CONTENT.objects.pile.states[o.state]?.name, actor: e.id, verb: 'drop', ...(placed ? { placed: true } : {}) });
   if (unseen) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true,
-    text: `${e.name} vanished where the party could not see it. What it carried (${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}) lies in ${o.id}, which only you see: when the party finds it, open it to them with the map editor: the pile without \`by\` or \`left\`, and with the id of the cell's own pile (\`pile-<level>-<q>_<r>\`, no \`-h\`), or onto that pile if there is one.` });
+    text: `${e.name} ${went} where the party could not see it. What it carried (${items.map((x) => x.name ?? CONTENT.items[x.item]?.name ?? x.item).join(', ')}) lies in ${o.id}, which only you see: when the party finds it, open it to them with the map editor: the pile without \`by\` or \`left\`, and with the id of the cell's own pile (\`pile-<level>-<q>_<r>\`, no \`-h\`), or onto that pile if there is one.` });
 }
 
 // What a companion the party could see leaves undone ends with it. A part on it, or one that was to end with
@@ -1174,7 +1174,7 @@ function raise(s, m, step, src, ev) {
     // As the DM's `remove` does, and what was still on it ends as for a creature that vanished where the party saw it.
     settleSeen(s, t, ev, 'is gone');
     for (const x of Object.values(s.entities)) if (x.bond?.to === t.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: t.id }); }
-    leaveGear(s, t, ev, !seen);
+    leaveGear(s, t, ev, !seen, 'rose as undead');
     // On a fight's card that is not yet published it is named as one the party saw go (A3), if it did.
     const due = !s.encounter && s.conclusion && !s.conclusion.published ? s.conclusion.foes.find((f) => f.id === t.id && !f.gone) : null;
     if (due && seen) Object.assign(due, { gone: true, shown: seenName(t) });
