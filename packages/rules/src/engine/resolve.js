@@ -7,7 +7,7 @@ import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/ind
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
-import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
+import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { seenName, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
@@ -18,7 +18,7 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { aloft, below, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 
@@ -46,8 +46,18 @@ export function fall(s, t, feet, ev) {
 // On squares each step costs what the table's diagonal rule says (`diagonals`; no last square on
 // what is left, as there is for a creature's own move), and every part of a big creature must
 // cross no wall and pass no corner, as when it walks.
+// A ridden pair (stage C6b): a push or pull of the mount is an effect moving it against its will, so its rider makes the
+// DC 10 Dexterity save before the first step (SRD 5.2.1 "Falling Off", 2126-2131): on a success it is carried along, on a
+// failure it falls off Prone beside where the mount stood and the mount goes on alone. A push of the rider itself the
+// SRD gives no rule for (it is not the mount that is moved): the engine does not move it, and the DM is told.
 function push(s, t, feet, dir, from, ev) {
+  if (mountOf(s, t)) {
+    ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
+      text: `${t.name} would be ${dir === 'toward' ? 'pulled' : 'pushed'} ${feet} ft while riding ${mountOf(s, t).name}. The SRD has no rule for a rider moved off its mount this way, so the engine leaves ${t.name} riding: the DM moves ${t.name} (dismount, then place) if it should go.` });
+    return;
+  }
   const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
+  let rider = riderOf(s, t), asked = false;
   const square = G.kind === 'square', rule = s.settings.diagonals ?? 'real';
   let left = feet, odd = false;
   const stride = (a, b) => (!square || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT);
@@ -67,18 +77,28 @@ function push(s, t, feet, dir, from, ev) {
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
+    if (rider && !asked) { asked = true; if (!ridesThrough(s, t, dir === 'toward' ? 'pulled' : 'pushed', ev)) rider = null; }
     if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
     const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
+    if (rider) carry(s, t);
     entered(s, ev, KIT, zonesBefore);                                    // pushed into a zone: it goes off once this effect is done
   }
   if (!path.length) return;
   ev.push({ type: 'moved', id: t.id, path, forced: true });
-  lookAround(s, ev, [t]);
+  if (rider) ev.push({ type: 'moved', id: rider.id, path: path.map((h) => ({ ...h })), forced: true });
+  lookAround(s, ev, rider ? [t, rider] : [t]);
 }
 // The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
 // runs the step's `blocked` steps instead when it has them.
 function teleport(s, t, step, to, ev) {
+  // One of a riding pair teleports alone, so the ride ends (stage C6b; teleportApart).
+  if (mountOf(s, t) || riderOf(s, t)) {
+    const body = mountOf(s, t) ? { ...t, riding: undefined } : t, G = gridOf(s.map);
+    if (step.blocked && living(s).some((o) => o.id !== t.id && !paired(o, t) && overlapAt(o, o.pos, body, to, G))) return false;
+  }
+  const parted = teleportApart(s, t, ev);
+  if (parted) { const went = teleport(s, t, step, to, ev); parted(); return went; }
   const G = gridOf(s.map), taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos, G));
   let at = to;
   if (taken(at)) {
@@ -230,7 +250,10 @@ function beginTurn(s, e, ev) {
   if (prompt) ev.push(prompt);
   recharge(s, e, ev);
   mountTurnStarts(s, e, ev);
-  if (riderOf(s, e)) (enc.rode ??= {})[e.id] = enc.round;            // a ridden mount on its own turn: its turn's worth for the round (M1)
+  // A ridden mount on its own turn: its turn's worth for the round (M1). So too one that could be a controlled mount (a
+  // trained animal, a steed) and is ridden by no one now: mounted later this round and then put off its rider, it is
+  // seated again (dismountOrder) and must not take a second turn (stage C6b).
+  if (riderOf(s, e) || mountable(e)) (enc.rode ??= {})[e.id] = enc.round;
   if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
     delete e.cond.prone;
     enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
@@ -397,42 +420,124 @@ export function dismountOrder(s, m, r) {
   enc.order.splice(i + 1, 0, o);
   if (cur) enc.turn = enc.order.findIndex((x) => x.id === cur);
 }
-// After every action (from settleBonds): the pairs are kept whole. A rider whose mount is gone or dead, or whose mount
-// and it no longer stand on one anchor (one of them was pushed, teleported, fell or was set down by the DM), is down
-// from it where it stands. Moving the pair together under a push, a teleport or a fall, and the DC 10 Dexterity save
-// against falling off, are stage C6b: until then the DM is told, never anything made up. A rider or mount knocked
-// Prone is the same save: the DM is told once. The rider's footprint follows the mount's size.
-export function settleRiders(s, ev) {
-  for (const e of Object.values(s.entities)) {
-    if (!e.riding) continue;
-    const id = e.riding.on, m = typeof id === 'string' && Object.hasOwn(s.entities, id) ? s.entities[id] : null;
-    const whole = !!m && m.rider === e.id && !m.vanished && !m.dead && !e.dead && !e.vanished;
-    const apart = whole && (m.pos.q !== e.pos.q || m.pos.r !== e.pos.r || (m.pos.z ?? 0) !== (e.pos.z ?? 0));
-    if (whole && !apart) {
-      if (e.riding.size !== m.size && SIZES[m.size]) e.riding.size = m.size;
-      // Bonded to take commands while ridden: no longer a controlled mount (fix round 1, M3), so the ride says so.
-      if (e.riding.controlled && m.bond?.orders === 'command') {
-        e.riding.controlled = false;
-        if (s.encounter?.budget?.mount && current(s) === e.id) delete s.encounter.budget.mount;
-      }
-      const prone = !!(e.cond?.prone || m.cond?.prone);
-      if (prone && !e.riding.told) {
-        e.riding.told = true;
-        ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
-          text: `${e.cond?.prone ? e.name : m.name} is Prone while ${e.name} rides ${m.name}. ${e.name} makes a DC 10 Dexterity saving throw or falls off, landing Prone within 5 ft of ${m.name} (SRD "Falling Off"). Falling off is not in the engine yet: the DM has ${e.name} roll and, on a failure, sends dismount and the Prone condition.` });
-      } else if (!prone && e.riding.told) delete e.riding.told;
-      continue;
-    }
-    const controlled = e.riding.controlled === true;
-    delete e.riding;
-    if (m && m.rider === e.id) delete m.rider;
-    if (m && controlled && s.encounter && inFight(s, m.id) && !m.dead) dismountOrder(s, m, e);
-    if (s.encounter?.budget?.mount && current(s) === e.id) delete s.encounter.budget.mount;
-    ev.push({ type: 'dismounted', id: e.id, mount: id, at: { q: e.pos.q, r: e.pos.r, z: e.pos.z ?? 0 }, why: apart ? 'apart' : 'gone' });
-    if (apart) ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
-      text: `${e.name} and ${m.name} were moved apart, so ${e.name} is no longer riding. Moving a rider with its mount (a push, a teleport, a fall) and the DC 10 Dexterity save against falling off are not in the engine yet: if ${e.name} should have stayed on, or fallen Prone, the DM sets that by hand.` });
+// ---------- falling off, and the pair moved (stage C6b; SRD 5.2.1 "Falling Off", 2126-2133) ----------
+// "If an effect is about to move your mount against its will while you're on it, you must succeed on a DC 10 Dexterity
+// saving throw or fall off, landing with the Prone condition in an unoccupied space within 5 feet of the mount. While
+// mounted, you must make the same save if you're knocked Prone or the mount is."
+export const RIDE_DC = 10;
+// Could this creature be a controlled mount (a trained animal, a steed; Decision 8)? Only such a mount's place in the order moves.
+const mountable = (e) => (CONTENT.monsters[e.tpl]?.mount === 'trained' && !e.form) || e.bond?.mount === 'controlled';
+// The ride ends: the two fields go, a controlled mount takes its place in the order back (dismountOrder), the rider's
+// turn loses the mount's budget. Then `dismounted` (at where the rider is now, which the caller has set).
+function unride(s, r, m) {
+  const controlled = r.riding?.controlled === true;
+  delete r.riding;
+  if (m && m.rider === r.id) delete m.rider;
+  if (m && controlled && s.encounter && inFight(s, m.id) && !m.dead) dismountOrder(s, m, r);
+  if (s.encounter?.budget?.mount && current(s) === r.id) delete s.encounter.budget.mount;
+}
+const offEvent = (r, id, why, more = {}) => ({ type: 'dismounted', id: r.id, mount: id, at: { q: r.pos.q, r: r.pos.r, z: r.pos.z ?? 0 }, why, ...more });
+// A creature left with nothing under it falls now, as the gravity pass after every action would make it (engine.js):
+// a rider whose flying mount vanished, teleported away or was moved off from under it.
+function drop(s, e, ev) {
+  if (e.dead || ground(s.map, e.pos) || aloft(s, e)) return;
+  const sf = under(s.map, e.pos);
+  if (!sf) return;
+  const feet = e.pos.z - sf.z;
+  e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
+  fall(s, e, feet, ev);
+  lookAround(s, ev, [e]);
+  checkEnd(s, ev);
+}
+// The rider's DC 10 Dexterity save against falling off. True if it stays on.
+function staysOn(s, r, ev) {
+  const { used, ...sv } = savingThrow(s, r, 'dex', RIDE_DC, null, null, null, null, ev);
+  ev.push({ type: 'save', id: r.id, abil: 'dex', dc: RIDE_DC, ...sv, against: 'Falling Off' });
+  useUp(s, ev, used ?? []);
+  return sv.success;
+}
+// The rider comes off: into the unoccupied space within 5 ft of its mount nearest it, chosen by what its side knows
+// (world.js, riderLanding). A space held by a creature the party did not know of: the rider finds it, as a move onto
+// it would (revealed, unhidden), and the next space is chosen with it known. `prone`: it lands Prone (falling off);
+// otherwise it is set down on its feet (it no longer fits on its mount). False, with the DM told, if there is no space:
+// it stays on.
+function putOff(s, r, m, why, ev, prone) {
+  let spot = riderLanding(s, r, m);
+  for (let n = 0; spot?.lurker && n < 50; n++) { reveal(s, spot.lurker, ev); unhide(s, spot.lurker, ev, 'found', r); spot = riderLanding(s, r, m); }
+  if (!spot) {
+    ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
+      text: `${r.name} ${prone ? 'falls off' : 'can no longer ride'} ${m.name}, but there is no unoccupied space within 5 ft of ${m.name} for ${r.name} to land in, so ${r.name} stays on. The DM places ${r.name}${prone ? ' (Prone)' : ''} if room is made.` });
+    return false;
   }
+  const zonesBefore = snapshot(s);
+  unride(s, r, m);
+  r.pos = { ...spot.p };
+  ev.push(offEvent(r, m.id, why, prone ? { fell: true } : {}));
+  if (prone) { if (up(r)) condition(s, r, 'prone', ev); else r.cond.prone = {}; }
+  entered(s, ev, KIT, zonesBefore);
+  lookAround(s, ev, [r]);
+  return true;
+}
+// A mount `m` is about to be moved against its will (a push or a pull) with its rider on it: the rider's save. False if
+// it fell off (it is then off, beside where the mount stood).
+export function ridesThrough(s, m, why, ev) {
+  const r = riderOf(s, m);
+  if (!r) return false;
+  if (staysOn(s, r, ev)) return true;
+  putOff(s, r, m, why, ev, true);
+  return !!riderOf(s, m);
+}
+// One creature of a pair teleports (SRD 5.2.1 "Teleportation", 34458-34461: "If you're touching another creature when
+// you teleport, that creature doesn't teleport with you unless the teleportation effect says otherwise."), so the ride
+// ends. Called before it goes; `after` is run once it has, and says where the rider is.
+export function teleportApart(s, t, ev) {
+  const m = mountOf(s, t), r = m ? t : riderOf(s, t);
+  if (!r) return null;
+  const mount = m ?? t;
+  unride(s, r, mount);
+  return () => { ev.push(offEvent(r, mount.id, 'teleport')); if (r !== t) drop(s, r, ev); };
+}
+// After every action (from settleBonds): the pairs are kept whole, and what the SRD says about falling off is done.
+// - A mount gone (vanished, dismissed, removed) or dead: its rider is down from it where it stands (`gone`), and falls
+//   if that is in the air (a flying mount's rider).
+// - The two not on one anchor (the DM set one down elsewhere): the ride ends (`apart`) and the DM is told; a rider left
+//   in the air falls.
+// - A rider or mount knocked Prone ("While mounted, you must make the same save if you're knocked Prone or the mount
+//   is"): the DC 10 Dexterity save once (`riding.told` until neither is Prone); on a failure the rider falls off, Prone
+//   (`fell`, why `prone`). A rider at 0 Hit Points is Unconscious and Prone, so it fails the save and falls.
+// - A rider no longer smaller than its mount (one grew or shrank): it can't be carried any more (SRD 2101-2103: "at
+//   least one size larger"), so it is set down beside it, on its feet (why `size`).
+// The rider's footprint follows the mount's size.
+export function settleRiders(s, ev) {
+  for (const e of Object.values(s.entities)) if (e.riding) settleRide(s, e, ev);
   for (const m of Object.values(s.entities)) if (m.rider !== undefined && !(typeof m.rider === 'string' && s.entities[m.rider]?.riding?.on === m.id)) delete m.rider;
+}
+const rank = (x) => Object.keys(SIZES).indexOf(SIZES[x.size] ? x.size : 'medium');
+export function settleRide(s, e, ev) {
+  if (!e.riding) return;
+  const id = e.riding.on, m = typeof id === 'string' && Object.hasOwn(s.entities, id) ? s.entities[id] : null;
+  const whole = !!m && m.rider === e.id && !m.vanished && !m.dead && !e.dead && !e.vanished;
+  const split = whole && (m.pos.q !== e.pos.q || m.pos.r !== e.pos.r || (m.pos.z ?? 0) !== (e.pos.z ?? 0));
+  if (!whole || split) {
+    unride(s, e, m);
+    ev.push(offEvent(e, id, split ? 'apart' : 'gone'));
+    if (split) ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
+      text: `${e.name} and ${m.name} were set down apart, so ${e.name} is no longer riding. If ${e.name} should have stayed on, the DM mounts ${e.name} again.` });
+    drop(s, e, ev);
+    return;
+  }
+  if (e.riding.size !== m.size && SIZES[m.size]) e.riding.size = m.size;
+  // Bonded to take commands while ridden: no longer a controlled mount (fix round 1, M3), so the ride says so.
+  if (e.riding.controlled && m.bond?.orders === 'command') {
+    e.riding.controlled = false;
+    if (s.encounter?.budget?.mount && current(s) === e.id) delete s.encounter.budget.mount;
+  }
+  if (rank(m) < rank(e) + 1) { if (!e.riding.told) { if (!putOff(s, e, m, 'size', ev, false)) e.riding.told = true; } return; }
+  const prone = !!(e.cond?.prone || m.cond?.prone);
+  if (prone && !e.riding.told) {
+    e.riding.told = true;
+    if (!staysOn(s, e, ev)) putOff(s, e, m, 'prone', ev, true);
+  } else if (!prone && e.riding.told) delete e.riding.told;
 }
 
 // ---------- stepping away (docs/specs/table-ui.md, "E20: stepping away") ----------

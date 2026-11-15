@@ -522,8 +522,17 @@ for (const grid of GRIDS) {
     const { s, horse } = fight(grid);
     ok(mount(s, "fighter", horse, U1));
     ok(apply(s, { type: "endTurn", actor: "fighter" }, U1));
-    ok(apply(s, { type: "harm", actor: "fighter", amount: s.entities.fighter.hp }, DM));
-    assert.ok(s.entities.fighter.riding, "still riding: falling off is the DM's (C6b)");
+    // C6b: at 0 Hit Points she is Unconscious and Prone, so she makes the DC 10 Dexterity save against falling off
+    // and fails it (Unconscious: Dexterity saves fail). She is off, Prone, beside the horse. The rest of this test
+    // keeps her on the horse, Incapacitated but not Prone (Stunned), for the DM's lift.
+    const down = ok(apply(s, { type: "harm", actor: "fighter", amount: s.entities.fighter.hp }, DM));
+    assert.equal(s.entities.fighter.riding, undefined, "fell off (C6b)");
+    assert.ok(down.events.some((e) => e.type === "dismounted" && e.id === "fighter" && e.fell === true && e.why === "prone"));
+    ok(apply(s, { type: "mend", actor: "fighter", amount: 10 }, DM));
+    ok(apply(s, { type: "condition", actor: "fighter", condition: "prone", on: false }, DM));
+    s.entities.fighter.pos = { ...s.entities[horse].pos };
+    s.entities.fighter.riding = { on: horse, controlled: true, size: "large" }; s.entities[horse].rider = "fighter";
+    ok(apply(s, { type: "condition", actor: "fighter", condition: "stunned" }, DM));
     const r0 = s.encounter.round, turns = [];
     for (let i = 0; i < 40 && s.encounter.round < r0 + 2; i++) { const r = ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); for (const e of r.events) if (e.type === "turn") turns.push(e.id); }
     assert.ok(turns.includes(horse), "the horse takes its own turns while its rider is down");
@@ -660,7 +669,10 @@ for (const grid of GRIDS) {
     // Past her turn in round 2, but before the end of the round.
     for (let i = 0; i < 40 && turns.filter(([r, id]) => r === r0 + 1 && id === "fighter").length === 0 && !(s.encounter.round === r0 + 1 && s.encounter.order.findIndex((x) => x.id === "fighter") < s.encounter.turn); i++) play({ type: "endTurn", actor: current(s) });
     if (current(s) === "fighter") play({ type: "endTurn", actor: "fighter" });
-    play(after);
+    // C6b: a downed rider has fallen off already (Unconscious and Prone: the DC 10 Dexterity save fails), so the DM has
+    // nothing to take her down from.
+    if (hurt.type === "harm") assert.equal(s.entities.fighter.riding, undefined, "a downed rider falls off (C6b)");
+    if (after.type !== "dismount" || s.entities.fighter.riding) play(after);
     for (let i = 0; i < 40 && s.encounter.round === r0 + 1; i++) play({ type: "endTurn", actor: current(s) });
     assert.equal(turns.filter(([r, id]) => r === r0 + 1 && id === horse).length, 1, "one turn of its own in round 2");
   });
