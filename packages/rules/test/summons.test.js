@@ -127,8 +127,10 @@ test("the pack lints clean with its summon blocks; the linter catches summon amo
   const withStep = (change) => { const sp = clone(gi); change(sp, sp.effects[0]); return lintPack({ ...srd, spells: [sp, ...srd.spells.filter((x) => x.id !== "giant-insect")] }).join("\n"); };
   assert.match(withStep((sp, st) => { st.one = "replace"; }), /stage C5/);
   assert.match(withStep((sp, st) => { st.bond.turn = "none"; }), /stages C5 and C6/);
-  assert.match(withStep((sp, st) => { st.bond.orders = "command"; }), /commands come with stage C5/);
-  assert.match(withStep((sp, st) => { st.on = "corpse"; }), /corpses comes with stage C5/);
+  // Since C5b (#340) commands and corpses run: a command needs its range, and a step on corpses names corpses only
+  // (companions-corpses.test.js has the rest).
+  assert.match(withStep((sp, st) => { st.bond.orders = "command"; }), /how far they reach/);
+  assert.match(withStep((sp, st) => { st.on = "corpse"; }), /on corpses has no `variants`/);
   assert.match(withStep((sp, st) => { st.variants = ["centipede", "wasp"]; }), /variants must be the block's/);
   assert.match(withStep((sp, st) => { st.summon = "owlbear-spirit"; }), /neither a summon block nor a pack monster/);
   assert.match(withStep((sp) => { sp.target = { creature: { count: 1 } }; }), /aimed at its caster/);

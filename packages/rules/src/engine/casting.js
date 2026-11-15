@@ -317,7 +317,7 @@ function corpsesFor(s, e, sp, step, p, slot, range, ctx) {
     (isCorpse(t) || own(t)) || fail(`${t.name} is neither a corpse nor a creature ${e.name} made with ${sp.name}.`);
     if (isCorpse(t)) {
       !t.remains || fail(`Nothing is left of ${t.name} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no corpse.`);
-      (t.kind !== 'pc' && !t.owner) || fail(`${t.name} is a player's character: whether it rises is the DM's.`);
+      (t.kind !== 'pc' && (!!t.bond || !ownerOf(s, t))) || fail(`${t.name} is a player's character: whether it rises is the DM's.`);
       (CORPSE.sizes.includes(t.size) && creatureType(t) === CORPSE.type) || fail(`${t.name} is not the corpse of a Medium or Small Humanoid.`);
     }
     const d = apart(s, e, t);

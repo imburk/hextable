@@ -144,7 +144,8 @@ for (const grid of [null, "square"]) {
       refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [big] } }, ctx, /not the corpse of a Medium or Small Humanoid/);
       refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [dust] } }, ctx, /dust: there is no corpse/);
     }
-    if (apart(s, s.entities.nia, s.entities[alive]) * FT <= 10) refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [alive] } }, PAT, /neither a corpse nor a creature Nia made/);
+    assert.ok(apart(s, s.entities.nia, s.entities[alive]) * FT <= 10);
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [alive] } }, PAT, /neither a corpse nor a creature Nia made/);
     // A dead player's character is the player's record: refused, the DM's to decide.
     const pc = structuredClone(s);
     pc.entities.rogue.pos = { ...pc.entities[wolf].pos };
@@ -223,7 +224,8 @@ for (const grid of [null, "square"]) {
     // A Zombie the DM bonded to Nia was not made with the spell.
     const dmz = spawn(s, "zombie", free(s, s.entities.nia.pos, 1)[0] ?? free(s, s.entities.nia.pos, 2)[0]);
     ok(apply(s, { type: "bond", actor: dmz, to: "nia", kind: "undead", orders: "command" }, DM));
-    if (apart(s, s.entities.nia, s.entities[dmz]) * FT <= 10) refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [dmz] } }, PAT, /neither a corpse nor/);
+    assert.ok(apart(s, s.entities.nia, s.entities[dmz]) * FT <= 10);
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [dmz] } }, PAT, /neither a corpse nor/);
     const r = ok(raise(s, zs.slice(0, 4)));
     assert.equal(r.events.filter((e) => e.type === "reasserted").length, 4);
     ok(raise(s, zs, { slot: 4 }));
@@ -255,10 +257,9 @@ for (const grid of [null, "square"]) {
     assert.equal(s.entities[z].bond.standing, "guard Nia");
     // Moved far away by hand (outside 60 ft): refused.
     const G = gridOf(s.map), far = [...G.range(s.entities.nia.pos, 14)].find((h) => G.dist(h, s.entities.nia.pos) === 13 && apply(structuredClone(s), { type: "place", actor: z, to: h }, DM).ok);
-    if (far) {
-      ok(apply(s, { type: "place", actor: z, to: far }, DM));
-      refused(s, { type: "command", actor: "nia", ids: [z] }, PAT, /A command reaches 60 ft/);
-    }
+    assert.ok(far, "a cell 65 ft away");
+    ok(apply(s, { type: "place", actor: z, to: far }, DM));
+    refused(s, { type: "command", actor: "nia", ids: [z] }, PAT, /A command reaches 60 ft/);
   });
 
   test(`the cap: a master with 29 companions raises one corpse, not two${on}`, () => {
@@ -329,6 +330,7 @@ for (const grid of [null, "square"]) {
       ok(apply(s, { type: "reveal", actor: "mage", hidden: true }, DM));
       const seen = corpse(s, "bandit", 5, "mage"), unseen = corpse(s, "bandit", 10, "mage", { hidden: true });
       s.entities[seen].name = "Corwin"; s.entities[unseen].name = "Dorrit";
+      assert.ok(json(view(s, PAT)).includes("Corwin") && !json(view(s, PAT)).includes("Dorrit"), "the party sees one corpse, not the other");
       const tell = (rs) => { out.push(...rs); sent.push([PAT, U2].map((u) => [json(rs.flatMap((r) => viewEvents(r.events, s, u))), json(view(s, u))])); };
       if (engine) tell([ok(apply(s, { type: "cast", actor: "mage", spell: "animate-dead", slot: 4, summon: { ids: [seen, unseen] } }, DM))]);
       else {
@@ -350,6 +352,7 @@ for (const grid of [null, "square"]) {
     assert.deepEqual(A.sent, B.sent, "players' events and view after each action");
     assert.deepEqual(A.tl, B.tl, "the record");
     assert.equal(A.seq, B.seq, "the counter");
+    assert.equal((json(A.sent[0]).match(/spawned/g) ?? []).length, 4, "both players see two creatures appear");
     const all = json(A.sent) + json(A.tl);
     for (const w of ["Morwen", '\\"mage\\"', "Corwin", "Dorrit", '"summoned"', '"bond"', "Animate Dead"]) assert.ok(!all.includes(w), `nothing says ${w}`);
     assert.ok(A.dm.some((e) => e.type === "summoned" && e.by === "mage"), "the DM is told who raised them");
