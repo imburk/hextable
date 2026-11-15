@@ -218,3 +218,32 @@ for (const grid of GRIDS) {
     ok(apply(s, { type: "setHp", actor: horse, hp: 3 }, DM));
   });
 }
+
+// ---------- found by the C7 stress loop: a mount that vanishes leaves its rider down in the same action ----------
+for (const grid of GRIDS) {
+  test(`${grid}: the fighter on the cleric's Find Steed: the cleric dies, the steed vanishes, and the fighter is down from it in that same action`, () => {
+    const { s, horse } = table(grid);
+    ok(apply(s, { type: "dismount", actor: "fighter" }, U1));
+    ok(apply(s, { type: "remove", actor: horse }, DM));
+    if (grid === "square") ok(apply(s, { type: "place", actor: "fighter", to: { q: 7, r: 7 } }, DM));
+    const c = s.entities.cleric;
+    c.spells.push("find-steed"); c.slots[2] = 1;
+    const G = gridOf(s.map), f = s.entities.fighter;
+    let steed = null;
+    for (const h of G.range(f.pos, 3)) {
+      const t = structuredClone(s), r = apply(t, { type: "cast", actor: "cleric", spell: "find-steed", slot: 2, summon: { type: "celestial", at: [h] } }, DM);
+      if (!r.ok) continue;
+      const id = r.events.find((e) => e.type === "summoned").id;
+      if (apart(t, t.entities.fighter, t.entities[id]) > 1) continue;
+      steed = ok(apply(s, { type: "cast", actor: "cleric", spell: "find-steed", slot: 2, summon: { type: "celestial", at: [h] } }, DM)).events.find((e) => e.type === "summoned").id;
+      break;
+    }
+    assert.ok(steed, "a steed beside the fighter");
+    ok(apply(s, { type: "mount", actor: "fighter", mount: steed }, DM));
+    const r = ok(apply(s, { type: "harm", actor: "cleric", amount: 999 }, DM));
+    const types = r.events.map((e) => e.type);
+    assert.ok(types.includes("vanished"), json(types));
+    assert.equal(r.events.find((e) => e.type === "dismounted" && e.id === "fighter")?.why, "gone", json(types));
+    assert.equal(s.entities.fighter.riding, undefined, "no half a pair after the action");
+  });
+}
