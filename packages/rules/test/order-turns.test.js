@@ -10,6 +10,7 @@ import { newGame } from "../src/scenario.js";
 import { gridOf } from "../src/grid.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { migrate } from "../src/migrate.js";
+import { readFileSync } from "node:fs";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -97,47 +98,6 @@ for (const grid of [null, "square"]) {
     assert.ok(!s.encounter.moved, "no record left");
   });
 
-  test(`a record of the old form (\`after\`) behind a creature moved to the end, from a save, is seated behind it${on}`, () => {
-    const { s, A, B, turns, et } = heldWhileAtEnd(grid);
-    // What a save from before #317 holds after B was taken back in: `after` and no `placed`, B where it stood.
-    delete s.encounter.held[B]; delete s.entities[B].away;
-    s.encounter.moved[B] = { after: "rogue", keep: false, round: 1 };
-    const t = migrate(structuredClone(s));
-    Object.assign(s, t);
-    et();                                                                    // the rogue ends its turn: B is seated behind it first
-    while (s.encounter.round === 1) et();
-        assert.deepEqual(turns[1].filter((x) => x === B), [B]);
-    while (s.encounter.round === 2) et();
-    assert.deepEqual(turns[2], ["rogue", A, B, "wizard", "fighter", "cleric"]);
-    assert.ok(!s.encounter.moved);
-  });
-
-  test(`a record of the old form behind a creature in its own place is seated once, then placed${on}`, () => {
-    const { s, A, B, turns, act, et } = six(grid);
-    act({ type: "stepAway", actor: B, how: "hold" });
-    while (current(s) !== "wizard") et();
-    delete s.encounter.held[B]; delete s.entities[B].away;
-    s.encounter.moved = { [B]: { after: "wizard", keep: false, round: 1 } };
-    et();
-    assert.deepEqual(s.encounter.moved[B], { keep: false, round: 1, placed: true });
-    assert.deepEqual(ids(s), ["rogue", A, "wizard", B, "fighter", "cleric"]);
-    while (s.encounter.round === 1) et();
-    assert.deepEqual(turns[1], [A, "wizard", B, "fighter", "cleric"]);
-  });
-
-  test(`a record of the old form whose anchor has had its turn since is seated behind the turn going on${on}`, () => {
-    const { s, A, B, turns, act, et } = six(grid);
-    act({ type: "stepAway", actor: B, how: "hold" });
-    while (current(s) !== "fighter") et();
-    delete s.encounter.held[B]; delete s.entities[B].away;
-    s.encounter.moved = { [B]: { after: "wizard", keep: false, round: 1 } };
-    et();
-    assert.deepEqual(ids(s), ["rogue", A, "wizard", "fighter", B, "cleric"]);
-    assert.equal(current(s), B);
-    while (s.encounter.round === 1) et();
-    assert.deepEqual(turns[1], [A, "wizard", "fighter", B, "cleric"]);
-  });
-
   test(`a placed creature's own place is given back at the next round's start${on}`, () => {
     const { s, A, B, turns, act, et } = six(grid);
     act({ type: "stepAway", actor: B, how: "hold" });
@@ -200,6 +160,58 @@ for (const grid of [null, "square"]) {
     }
   });
 }
+
+// Saves written by the code from before C2 (dbceeb5), where a creature taken back in keeps `moved[x].after` all
+// round and is seated straight behind its anchor on every turn. Loaded at each turn of round 1 after it came back,
+// and played on: each save gives the turns still owed, no more and no fewer (review of #321, B1).
+const OLD = JSON.parse(readFileSync(new URL("./fixtures/old-stepback-saves.json", import.meta.url), "utf8")).saves;
+function oldSave(key, i) {
+  const { grid, base, at } = OLD[key], { d, ents } = at[i];
+  const s = { ...structuredClone(base), ...structuredClone(d), entities: { ...structuredClone(base.entities), ...structuredClone(ents) } };
+  s.map = newGame(5, grid ? { grid } : {}).map; s.timeline = [];
+  return migrate(s);
+}
+function playOn(s) {
+  const turns = {};
+  while (s.encounter.round < 3) logTurns(turns, ok(apply(s, { type: "endTurn", actor: current(s) }, DM)).events);
+  return turns;
+}
+test("old saves with a creature taken back in after another, loaded at each turn of the round: the turns still owed, once each (B1)", () => {
+  const { A, B } = OLD["hex-own"];
+  const owed = { wizard: [B, "fighter", "cleric"], [B]: ["fighter", "cleric"], fighter: ["cleric"], cleric: [] };
+  OLD["hex-own"].at.forEach(({ cur }, i) => {
+    const s = oldSave("hex-own", i);
+    assert.equal(current(s), cur);
+    assert.deepEqual(s.encounter.moved[B], { after: "wizard", keep: false, round: 1 }, "the old form");
+    assert.deepEqual(ids(s), ["rogue", A, "wizard", B, "fighter", "cleric"]);
+    const turns = playOn(s);
+    assert.deepEqual(turns[1] ?? [], owed[cur], `saved on ${cur}'s turn`);
+    assert.deepEqual(turns[2], ["rogue", A, B, "wizard", "fighter", "cleric"], "its own place back next round");
+    assert.ok(!s.encounter.moved);
+  });
+  // Seated once at the first settle, then kept where it stands.
+  const s = oldSave("hex-own", 0);
+  ok(apply(s, { type: "endTurn", actor: "wizard" }, DM));
+  assert.deepEqual(s.encounter.moved[B], { keep: false, round: 1, placed: true });
+});
+
+test("an old save taken while a creature moved to the end takes its turn, with one taken back in behind it: that one acts too (M1, B1)", () => {
+  const { A, B } = OLD["hex-end"], s = oldSave("hex-end", 0);
+  assert.equal(current(s), "rogue");
+  assert.deepEqual(ids(s), [A, "wizard", "fighter", "cleric", B, "rogue"], "as the old code left it: behind the turn");
+  const turns = playOn(s);
+  assert.deepEqual(turns[1], [B]);
+  assert.deepEqual(turns[2], ["rogue", A, B, "wizard", "fighter", "cleric"]);
+});
+
+test("an old record whose anchor is gone: behind the turn going on, or where it stands if the turn is its own", () => {
+  const { B } = OLD["hex-own"];
+  for (const [i, owed] of [[0, [B, "fighter", "cleric"]], [1, ["fighter", "cleric"]]]) {
+    const s = oldSave("hex-own", i);
+    s.encounter.moved[B].after = "nobody";                                   // the anchor's entry gone from the order
+    assert.deepEqual(playOn(s)[1] ?? [], owed);
+  }
+});
 
 // Seeded random fights: joins, bonds, frees, kills, every way of stepping away, stepping back, and `place`. In
 // every round nobody has two turns, and everybody who was in the order and up when it began, stayed up and in

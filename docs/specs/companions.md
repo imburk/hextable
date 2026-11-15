@@ -662,8 +662,12 @@ Settled in the review of #313:
   an end record `{ n, keep: false, round }`, the later end records shifted one place on). Before, it was seated
   at the end of those in their own places, behind the turn, and lost its turn that round (review of #317, round
   3, M1). Next round it gets its own place back, as any creature moved to the end for one round.
-- **A record of the old form** (`moved[x].after`, from a save) is seated the same way, and behind the turn going
-  on if its anchor is gone or has had its turn since; two such records behind each other are seated anchor first.
+- **A record of the old form** (`moved[x].after`, from a save written before C2) is seated behind its anchor
+  wherever the turn is, as the old code kept it all round: an anchor that has had its turn means the creature has
+  had its own too, or is taking it (review of #321, B1). Behind an anchor moved to the end it goes into the end
+  block as above. Only if the anchor is gone from the order is it seated behind the creature whose turn it is,
+  and if that is itself, it stays where it stands. Two such records behind each other are seated anchor first.
+  `test/fixtures/old-stepback-saves.json` holds real saves of that code, taken at each turn of a round.
 - **The record keeps its own copies** (`engine.js`, `record`): a timeline entry is a deep copy of its event. The
   `placed` event held its creature's `pos` object (`dm.js`), so the entry changed with the creature, and undo and
   redo, which put the state back field by field, could not give the record back as it was (review of #317, round

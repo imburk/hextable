@@ -319,17 +319,20 @@ export function settleOrder(s) {
     back.push(...waiting.splice(i, 1));
   }
   for (const o of back) {
-    // Behind the creature it was taken back in after; if that one is gone or has had its turn (a record of the old
-    // form kept since), behind the creature whose turn it is.
-    const ai = enc.order.findIndex((x) => x.id === moved[o.id].after);
-    const anchor = ai >= 0 && (!cur || ai >= enc.turn) ? moved[o.id].after : cur;
-    if (anchor && atEnd(anchor)) {
+    // Behind the creature it was taken back in after, wherever the turn is: a record of the old form is kept all
+    // round with the creature seated straight behind its anchor, so an anchor that has had its turn means the
+    // creature has had its own too, or is taking it. Only if the anchor is gone is it seated behind the creature
+    // whose turn it is, and if it is that creature itself, it stays where it stands.
+    const gone = !enc.order.some((x) => x.id === moved[o.id].after);
+    const anchor = !gone ? moved[o.id].after : cur !== o.id ? cur : null;
+    if (!anchor) { delete moved[o.id].after; moved[o.id].placed = true; continue; }
+    if (atEnd(anchor)) {
       const n = moved[anchor].n;
       for (const m of Object.values(moved)) if (m.n > n) m.n++;
       moved[o.id] = { n: n + 1, keep: false, round: moved[o.id].round };
       continue;
     }
-    if (anchor) moved[o.id].after = anchor;
+    moved[o.id].after = anchor;
   }
   const rest = enc.order.filter((o) => !moved[o.id] || moved[o.id].placed);
   for (const o of back.filter((x) => moved[x.id].after)) {
