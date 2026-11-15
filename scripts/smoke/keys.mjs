@@ -23,7 +23,7 @@ async function press(page, key, id) {
   const from = await posOf(page, id);
   await page.keyboard.press(key);
   await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 4000)
-    .catch(async () => { throw new Error(`${key} did not move ${id} from ${JSON.stringify(from)}: ${await page.evaluate(() => JSON.stringify({ k: window.hextable.keys.held, w: window.hextable.keys.walking, p: window.hextable.keys.waiting, busy: window.hextable.timeline.busy(), toast: document.getElementById('toast').textContent, active: document.activeElement?.tagName }))}`); });
+    .catch(async () => { throw new Error(`${key} did not move ${id} from ${JSON.stringify(from)}: ${await page.evaluate(() => JSON.stringify({ k: window.hextable.keys.held, w: window.hextable.keys.walking, why: window.hextable.keys.lastStop, mode: window.hextable.mode.kind, sel: window.hextable.state && Object.keys(window.hextable.state.entities).length, p: window.hextable.keys.waiting, busy: window.hextable.timeline.busy(), toast: document.getElementById('toast').textContent, active: document.activeElement?.tagName }))}`); });
   await calm(page);
   return posOf(page, id);
 }
@@ -63,10 +63,13 @@ async function desktop(browser, url) {
       if (!dir) throw new Error('no open line on the valley for the fighter');
 
       await run.do('hexes: four presses of W walk four steps, each the neighbour keys.js names for the view, and the view turns to face them', async () => {
-        await page.evaluate(() => { window.hextable.R.face(0.4, true); });         // a view not on a grid direction: the first W must pick by the rule
+        // A view 20 degrees off the open line's direction: the first W must pick by the rule (the nearest neighbour, which is on the line).
+        await page.evaluate(async (d0) => { const K = await import('./keys.js'), R = window.hextable.R; R.face(K.yawFacing(R.G, d0[0], d0[1]) + 0.35, true); }, dir);
         for (let n = 0; n < 4; n++) {
           if (n === 1) await faceAlong(page, dir);
-          const want = await expected(page, id, 1, 0), got = await press(page, 'w', id);
+          const want = await expected(page, id, 1, 0);
+          if (n === 0) { const start = await posOf(page, id); if (want.q !== start.q + dir[0] || want.r !== start.r + dir[1]) throw new Error(`keys.js names ${JSON.stringify(want)} 20 degrees off the line ${JSON.stringify(dir)}`); }
+          const got = await press(page, 'w', id);
           if (!same(got, want)) throw new Error(`step ${n + 1}: walked to ${JSON.stringify(got)}, keys.js says ${JSON.stringify(want)}`);
         }
         const r = await page.evaluate(async (d0) => { const K = await import('./keys.js'), R = window.hextable.R; return { yaw: R.cameraAngles().yaw, want: K.yawFacing(R.G, d0[0], d0[1]) }; }, dir);

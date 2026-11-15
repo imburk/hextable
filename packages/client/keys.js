@@ -128,9 +128,11 @@ export function createWalker(io) {
   const held = new Set(), looks = new Set(), lifted = new Set();      // lifted: keys let go before the walk's first step went
   let shift = false, walk = null, last = null;
   const has = (a) => (held.has(a) ? 1 : 0);
+  let why0 = null;                     // the last reason a walk ended, for the smoke pass's messages
   function stop(why) {
     held.clear(); lifted.clear();
     if (!walk) return;
+    why0 = why;
     walk = null; io.stopped?.(why);
   }
   function lookNow(dt) {
@@ -206,6 +208,7 @@ export function createWalker(io) {
     tick,
     get walking() { return !!walk; },
     get waiting() { return !!walk?.pending; },
+    get lastStop() { return why0; },
     get held() { return [...held, ...looks]; },
   };
 }
