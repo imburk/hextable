@@ -60,7 +60,7 @@ async function threeParity(browser, url, label, opts) {
       await run.do('both renderers load the valley, the Three.js one from vendor/ and only on request', async () => {
         const asked = { gl: [], three: [] };
         for (const k of ['gl', 'three']) pages[k].on('request', (r) => { if (r.url().includes('/vendor/')) asked[k].push(r.url()); });
-        await open(pages.gl, url); await playSolo(pages.gl);
+        await open(pages.gl, `${url}?renderer=gl`); await playSolo(pages.gl);
         await open(pages.three, `${url}?renderer=three`); await playSolo(pages.three);
         await wait(pages.three, () => window.hextable.R.kind === 'three', null, 20000);
         if (asked.gl.length) throw new Error(`the default renderer fetched ${asked.gl.join(', ')}`);

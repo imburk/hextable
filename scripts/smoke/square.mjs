@@ -245,10 +245,10 @@ async function squares(browser, url, label, opts) {
 export default async function (browser, url) {
   await squares(browser, url, 'squares at 1280x800', { viewport: { width: 1280, height: 800 } });
   await squares(browser, url, 'squares at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  // The edge of a fight on the default renderer, on squares and on hexes (the Three.js renderer's runs are in three.mjs).
+  // The edge of a fight on the classic renderer (?renderer=gl), on squares and on hexes (the Three.js renderer's runs are in three.mjs).
   const D = { viewport: { width: 1280, height: 800 } }, P = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
-  await arenaEdge(browser, url, 'arena edge: default renderer, squares, 1280x800', { ...D, three: false, grid: 'square' });
-  await arenaEdge(browser, url, 'arena edge: default renderer, squares, 390x844 with touch', { ...P, three: false, grid: 'square' });
-  await arenaEdge(browser, url, 'arena edge: default renderer, hexes, 1280x800', { ...D, three: false, grid: 'hex' });
-  await arenaEdge(browser, url, 'arena edge: default renderer, hexes, 390x844 with touch', { ...P, three: false, grid: 'hex' });
+  await arenaEdge(browser, url, 'arena edge: classic renderer (?renderer=gl), squares, 1280x800', { ...D, three: false, grid: 'square' });
+  await arenaEdge(browser, url, 'arena edge: classic renderer (?renderer=gl), squares, 390x844 with touch', { ...P, three: false, grid: 'square' });
+  await arenaEdge(browser, url, 'arena edge: classic renderer (?renderer=gl), hexes, 1280x800', { ...D, three: false, grid: 'hex' });
+  await arenaEdge(browser, url, 'arena edge: classic renderer (?renderer=gl), hexes, 390x844 with touch', { ...P, three: false, grid: 'hex' });
 }

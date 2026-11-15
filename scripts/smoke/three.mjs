@@ -120,7 +120,7 @@ export async function arenaEdge(browser, url, label, { three, grid, ...opts }) {
       const act = async (a) => { await page.evaluate((x) => window.hextable.act(x), a); await sleep(350); await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000); };
       const shot = async (n) => { if (shots) await page.screenshot({ path: join(shots, `arena-edge-${tag}-${n}.png`) }); };
       await run.do('open a solo game and wait for the renderer', async () => {
-        await open(page, `${url}${three ? '?renderer=three' : ''}`, { grid }); await playSolo(page);
+        await open(page, `${url}?renderer=${three ? 'three' : 'gl'}`, { grid }); await playSolo(page);
         if (three) await wait(page, () => window.hextable.R.kind === 'three', null, 30000);
         await act({ type: 'setting', key: 'autoEngage', value: false });
         if (grid === 'square') { await act({ type: 'loadMap', map: squareRoom() }); await wait(page, () => window.hextable.state.map.id === 'square-room'); }
