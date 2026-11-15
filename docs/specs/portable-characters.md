@@ -6,7 +6,9 @@ decisions for online play recorded in #244 (the official server, monikers,
 reputation, the lobby, admission, forks and the hash). Nothing here is built.
 No code is written by this spec. Decision 8 is the online layer; it is not
 scheduled and the first seven decisions are built without it. **Amended 15 November
-2026** (#347) to the owner's answers that came with the shops questions: **customs**,
+2026** (#347) to the owner's answers to questions 2, 3, 6, 10, 12, 13 and 14 (bring-your-own
+characters on from the start, a required level range, an operator trust list, reputation
+information in the public summary) and to those that came with the shops questions: **customs**,
 a highlight in the DM's review for large amounts of coins and for magical gear, and
 **coins that leave with a character** (see "Questions for the owner", 15 and 16, and
 `shops.md`, where coins come from).
@@ -411,7 +413,8 @@ decide whose signatures count?
   DM sees the key id and the server name the file claims). The list is kept in
   the table's record, not the state, and is never sent to players. A trusted
   key makes a history *signed by a server this table trusts*, never *official*;
-  an operator-wide `TRUSTED_KEYS` list is not built (question 12).
+  an operator-wide `TRUSTED_KEYS` list is in (question 12, answered 15 November: a self-hosting
+  operator may list trusted keys for all their tables; it never makes anything official).
 - **Fork check.** On the **official** server the check is the stored hash
   (Decision 8): a file whose history does not lead to the recorded fingerprint
   is detected, whether edited, rolled back or an older copy. On an unofficial
@@ -441,8 +444,8 @@ players like the others (it is not a secret that a table takes own characters):
 
 | Setting | Values | Default | Meaning |
 |---|---|---|---|
-| `characters` | `new`, `own-trusted`, `own` | `new` | `new`: today's behaviour, the DM makes or assigns the characters; offering a file is not shown. `own-trusted`: own characters may be offered, and the DM is told when the history's verdict is not official, signed by this table, or signed by a key it trusts, who may still choose to accept. `own`: own characters may be offered, any history. |
-| `level` | none, or 1 to 20 | none | The adventure's character level (Decision 8, "Admission"). With none set, the DM reads the meter and decides. |
+| `characters` | `new`, `own-trusted`, `own` | `own-trusted` | **Default changed 15 November 2026** (question 2: bring-your-own characters on from the start, the DM still reviews each; the choice of `own-trusted` over `own` is the lead's proposal, since it is the one that tells the DM when a history is not official). `new`: today's behaviour, the DM makes or assigns the characters; offering a file is not shown. `own-trusted`: own characters may be offered, and the DM is told when the history's verdict is not official, signed by this table, or signed by a key it trusts, who may still choose to accept. `own`: own characters may be offered, any history. |
+| `level` | a range `{ min, max }`, 1 to 20 | **required** while `characters` is not `new` | The adventure's character level range (Decision 8, "Admission"); question 3, answered 15 November 2026: **a level range is required**. Until the DM sets one (or a module's `level` supplies it), an offer is held and the DM is told "Set a level range before admitting characters"; a character above `max` is forked to it, one below `min` may be raised (question 14). A single level is `min = max` **(design choice, lead's proposal for how "required" is enforced and shaped)**. |
 | `takeaway` | `everything`, `level-only`, `nothing` | `everything` | What a character leaves with (below). |
 
 Settings are chosen by the DM in the table settings (`tablecontrols.js`) and
@@ -526,7 +529,7 @@ do about it.
 | **Different version of content** | The `needs.packs` versions (`pack.version` in `content/srd52/pack.js`) against the table's; for homebrew, the `hash` of the entry against the table's entry with the same id. | **Accept** (the table's version plays), or **refuse**. A homebrew entry with the same id and a different hash is flagged separately: it is a different thing with the same name, and the table's entry is the one that plays. |
 | **Tier differences** | The sheet's features and items by tier (`auto`, `assist`, `manual`; `derive(sheet).record.feats`, `CONTENT.items[x].tier`). Not a fault, a fact: "of this character's 21 features, 4 need you to apply them by hand." | Accept. Information, never a block on its own. |
 | **Table rules** | The table's `settings` against the `rules` snapshot a block records (the settings that touch characters: `conclusion`, `xpShare`, `passiveFind`, `vertical`, `climbing`, `cover`, `creatureCover`; the list is a constant in `compat.js`). The snapshot is a signed claim like the rest: it says which rules the previous table played under. | Accept. Information: "levelled at a table where Experience Points were shared in full; here they are split." |
-| **Level range** | The sheet's level and `born.level` against the adventure's `level` setting if the DM set one, else against what the DM sees in the meter. A character above the adventure's level is offered as a **fork** rewound to that level (Decision 8); one below it may be raised at the table and recorded as such (the lead's assumption, awaiting the owner). | Refuse, accept, fork, or raise. |
+| **Level range** | The sheet's level and `born.level` against the table's `level` range, which is required (the owner, 15 November 2026: Settings table). A character above the adventure's level is offered as a **fork** rewound to that level (Decision 8); one below the range may be raised at the table and recorded as such (design choice, lead's proposal). | Refuse, accept, fork, or raise. |
 | **History** | `verifyChain` verdict and the meter (Decision 6): official, signed here, signed by a key this table trusts, signed by an unknown key, self-reported, inconsistent, broken. With `characters: 'own-trusted'` a verdict below "signed by a trusted key" is highlighted and needs the DM's explicit tick. A broken chain is refused whatever the setting says. On the official server a file that does not lead to the stored hash is refused as official and may be offered only as an unofficial character. | Accept (with the tick), refuse. |
 | **Sheet rules the engine cannot play** | What `validate` says about *this* engine: a sheet built for a later version, a feature with no engine support at this version. | Refuse; or, with the stand-in rule, the nearest legal sheet. |
 | **Customs** | The file's `coins` and magic items, looked at as a customs officer looks at a bag, against the thresholds below. **Highlighted** (never a block on its own) when the coins are worth a lot for the character's level, when the sheet holds magical gear that is rare or a lot of it, or when the file carries more coins than the last signed `left` block it holds says it left a table with. The report shows the amounts and items by name. | **Accept** as it is; **accept with the coins held back** above a limit the DM types (the default is the threshold); **accept without the coins**; **hold back** a flagged item (taken off the playing copy and written to `parked`, as for missing content); **refuse** the character. |
@@ -802,9 +805,16 @@ from before a loss or a death, is detected. New entries are signed and the store
 fingerprint moves forward. It cannot restore a lost file (server-side backups
 could be a paid upgrade, outside this spec) and it cannot show a character in the
 lobby while its owner is offline. The default is therefore to keep, beside the
-hash, a **small public summary**: id, owner's moniker, name, class, level and the
-meter's figures. That summary is public by design (it is what the lobby shows),
-so it holds nothing else.
+hash, a **small public summary**: id, owner's moniker, name, class, level, the
+meter's figures and, since 15 November 2026 (question 13), **the reputation
+information**. That summary is public by design (it is what the lobby shows), so it holds
+nothing else, and **nothing in it is personal information** (the owner: "Nothing should be
+pii"). Which reputation fields exactly is the lead's proposal: the owner's moniker's
+reputation **grade** (one word from a closed list), the **number of tables completed**
+and the **date of the first record** (a date only), the same figures the meter already
+shows for history. No score a person could be ranked or identified by, no table, DM or
+player names, no times; the consent, visibility and contest rules of review point 15 apply
+before any of it is collected.
 
 **Unique ids and forks.** Every character has a unique id (`cid`), and **every
 fork is a unique character**: when a character is forked, one keeps the original
@@ -1059,9 +1069,9 @@ Questions 1, 4, 5, 6 (in part), 7, 8, 9, 10 and 11 were answered or overtaken by
 the owner's decisions in #244; their answers are in "What the owner has settled"
 and Decision 8, and are recorded here so nobody asks again. Questions 15 and 16 were
 answered on 15 November 2026 (issue #193, the comment "Q&A lead, 15 November, 08:00
-ET", with the shops questions). Each open question has a default, and work proceeds
-on the default. Questions 2, 3, 6, 10, 12, 13 and 14 are with the owner to click
-through at his leisure and stay on their defaults until he answers.
+ET", with the shops questions), and questions 2, 3, 6, 10, 12, 13 and 14 on the same
+day (the comment "Beej (lead 4), 15 November, 09:45 ET"). Every question now has an
+answer; the lead's proposals inside them are marked.
 
 **Answered**
 
@@ -1099,29 +1109,39 @@ through at his leisure and stay on their defaults until he answers.
     `left` block's `coins`, task P9. How `level-only` and `nothing` treat coins is the
     lead's proposal.
 
-**Still open**
+**Also answered 15 November 2026** (issue #193, the comment "Beej (lead 4), 15 November, 09:45 ET";
+the owner's page of questions)
 
-2. **Default table policy.** *Default: `characters: 'new'`, today's behaviour;
-   a DM turns own characters on.*
-3. **Level limits for own characters.** Now answered in part: the DM sets the
-   adventure's level and a higher character is forked. *Default for what is left:
-   an unset level means no limit and the DM refuses in the review; a character
-   below the level may be raised at the table (the lead's assumption).*
-6. **Who sees the block-by-block details.** The meter and grade are public (the
-   owner's decision). *Default: Details (each day, table, DM) are shown to the
-   owner and the DM only.* Say if they should be public too.
-10. **Fork id rule.** *Default: the original keeps its id, the fork gets the new
-    one; on the official server an id is in one adventure at a time; the first of
-    two diverged histories seen keeps the id.* Awaiting the owner's
-    confirmation. On unofficial servers a copy at two tables is allowed and
-    flagged neutrally.
-12. **Operator trust lists.** *Default: none built; only the DM's per-table trust
-    tick.* Say if a self-hosting operator should be able to list keys for all
-    their tables (it would not make anything official).
-13. **The public summary's contents.** *Default: id, moniker, name, class, level
-    and the meter's figures.* Say if more or less may be public.
-14. **Raising a lower-level character at the table.** *Default: allowed,
-    recorded as raised by the DM (`basis: 'dm'`).*
+2. *Default table policy.* **Changed: bring-your-own characters is on from the start; the DM
+   still reviews each.** What changed: the `characters` default is `own-trusted`
+   (Decision 5's settings table); a table that wants today's behaviour sets `new`.
+3. *Level limits for own characters.* **Changed: a level range is required.** What changed:
+   the `level` setting is a required range while own characters are allowed, with the
+   "offer held until set" rule; a higher character is forked, a lower may be raised
+   (Decision 5 and 8). The enforcement is the lead's proposal.
+6. *Who sees the block-by-block details.* **Default confirmed: the owner and the DM
+   only.** What changed: nothing.
+10. *Fork id rule.* **Confirmed, in the owner's words:** "We talked about a hash, that coupled
+    with an id is what makes someone special. When you twin a character you're creating a
+    copy and that copy will now have an id and a hash. since it's essentially copy and paste,
+    the new one would have the new id. It's not like a biological split where the character
+    itself splits." So: the original keeps its id, the copy gets a new one; on the official
+    server an id is in one adventure at a time; the first of two diverged histories seen
+    keeps the id. On unofficial servers a copy at two tables is allowed and flagged
+    neutrally. What changed: nothing; the wording is his.
+12. *Operator trust lists.* **Changed: yes.** A self-hosting operator may list trusted keys
+    for all their tables. What changed: Decision 4's "not built" becomes an operator-wide
+    `TRUSTED_KEYS` list beside the DM's per-table tick (task P10 and A6); a key on it makes
+    a history "signed by a server this table trusts", never official, and the DM can still
+    see which list it came from. The list's file and format are the lead's proposal: a file
+    in `DATA_DIR`, key ids and names only, read at start-up.
+13. *The public summary's contents.* **Changed, more.** The owner: "start with teh default but
+    we need the rep info in there as well. Nothing should be pii". Read as the default
+    fields plus the reputation information, and no personal information. What changed:
+    Decision 8's summary (above); the exact reputation fields are the lead's proposal and
+    wait for his confirmation.
+14. *Raising a lower-level character at the table.* **Default confirmed: allowed, recorded
+    as raised by the DM (`basis: 'dm'`).** What changed: nothing.
 
 ## Build note: My characters and the solo party (#308)
 
