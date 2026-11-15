@@ -296,7 +296,7 @@ export async function screens(browser, url, label, opts) {
         await clickRow('spells', 'Find Familiar'); await chooser();
         await page.click('#cc-chooser [data-cc-cast="picks"]', { force: true });                                  // nothing picked yet: refused in words, nothing sent
         if (!/Choose/.test(await toastText(page))) throw new Error(`toast: ${await toastText(page)}`);
-        await page.click('#cc-chooser [data-cc-pick="form|owl"]'); await page.click('#cc-chooser [data-cc-pick="type|fey"]');
+        await page.selectOption('#cc-sel-form', 'owl'); await page.click('#cc-chooser [data-cc-pick="type|fey"]');
         spots = await free(4);
         await tapHex(spots[0]);
         await shot(page, `companions-chooser-familiar-${tag}`);
@@ -310,10 +310,10 @@ export async function screens(browser, url, label, opts) {
       });
       await run.do('Summon Dragon: variant, the Shared Resistances choice sent, one tap', async () => {
         await clickRow('spells', 'Summon Dragon'); await chooser();
-        const vs = await page.$$eval('#cc-chooser [data-cc-pick]', (b) => b.map((x) => x.dataset.ccPick));
-        const v = vs.find((x) => x.startsWith('variant|')), c = vs.filter((x) => x.startsWith('choice|'))[1];
-        if (!v || !c) throw new Error(`picks: ${vs}`);
-        await page.click(`#cc-chooser [data-cc-pick="${v}"]`); await page.click(`#cc-chooser [data-cc-pick="${c}"]`);
+        const v = await page.$$eval('#cc-chooser [data-cc-pick^="variant|"]', (b) => b[0]?.dataset.ccPick);
+        const cs = await page.$$eval('#cc-chooser [data-cc-pick^="choice|"]', (b) => b.map((x) => x.dataset.ccPick));
+        if (!v || cs.length < 2) throw new Error(`picks: ${v} ${cs}`);
+        await page.click(`#cc-chooser [data-cc-pick="${v}"]`); await page.click(`#cc-chooser [data-cc-pick="${cs[1]}"]`);
         spots = await free(6, 5); await tapHex(spots[3]);
         await page.click('#cc-chooser [data-cc-cast="picks"]');
         { const t0 = await toastText(page); if (t0) console.log('   toast:', t0); }
@@ -395,7 +395,7 @@ export async function screens(browser, url, label, opts) {
           const c = h.state.entities[v];
           for (const x of G.range(c.pos, 3)) { if (G.dist(c.pos, x) !== 1) continue; h.act({ type: 'spawn', monster: 'warhorse', at: x }); if (Object.values(h.state.entities).some((e) => e.tpl === 'warhorse')) break; }
           const id = Object.values(h.state.entities).find((e) => e.tpl === 'warhorse')?.id;
-          h.act({ type: 'bond', actor: id, to: v, kind: 'steed' });
+          h.act({ type: 'bond', actor: id, to: v, kind: 'steed', turn: 'after' });
           return id;
         }, ven);
         if (!horse) throw new Error('no horse');
@@ -411,6 +411,11 @@ export async function screens(browser, url, label, opts) {
         await page.click(rowOf('features', 'Dismount'));
         await wait(page, (v) => !window.hextable.state.entities[v].riding, ven);
         await calm(page);
+        // the steed's side of Ven's turn: shown as `orderNext ?? order ?? 'after'`, and changed by a tap
+        await page.click(rowOf('features', 'acts after you'));
+        await wait(page, (hh) => window.hextable.state.entities[hh].bond.order === 'before', horse);
+        await calm(page);
+        if (!(await page.isVisible(rowOf('features', 'acts before you')))) throw new Error('the row did not say "before"');
       });
       await run.do('Command…: the order is typed (the map keys stay quiet), a Skeleton-like zombie is commanded, and its turn is handed to its player', async () => {
         await panelTab(page, 'features');
@@ -470,10 +475,134 @@ export async function screens(browser, url, label, opts) {
   });
 }
 
+// The same at a hosted table: the player's phone drives the chooser and the buttons, the DM is in a second context, and the phone is sent nothing of a creature the DM hid.
+export async function screensTable(browser, url) {
+  await scenario('companions: a phone player summons, commands and rides at a hosted table', async (run) => {
+    const hostCtx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const phoneCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const host = await hostCtx.newPage(), phone = await phoneCtx.newPage();
+      run.watch(host, ' (host)'); run.watch(phone, ' (phone)');
+      let ven;
+      const tapHex = (hex, id) => phone.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [hex, id ?? null]);
+      const near = (r) => host.evaluate(async ([v, rad]) => {
+        const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+        const S = window.hextable.state, G = gridOf(S.map), c = S.entities[v], out = [];
+        for (const h of G.range(c.pos, rad)) if (G.dist(c.pos, h) >= 1 && apply(structuredClone({ ...S, timeline: [] }), { type: 'spawn', monster: 'wolf', at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h);
+        return out;
+      }, [ven, r]);
+      await run.do('host a table, the phone joins and plays a wizard the DM adds', async () => {
+        await open(host, url);
+        await host.fill('#lobby-name', 'Smoke DM'); await host.click('#lobby-host');
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
+        const code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
+        await open(phone, url);
+        await phone.fill('#lobby-name', 'Smoke Player'); await phone.fill('#lobby-code', code); await phone.click('#lobby-join');
+        await wait(phone, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await openTab(host, 'dm');
+        await host.click('#dm-table button:has-text("Let in")');
+        await waitShown(phone, '#lobby', false);
+        await wait(phone, () => window.hextable.state?.entities?.fighter);
+        await closeMenu(host);
+        await host.evaluate(async () => {
+          const { derive } = await import('./shared/derive.js'), h = window.hextable;
+          h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' });
+          const r = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 20, wis: 12, cha: 10 }, skills: ['arcana'], armour: 'leather-armor', weapons: ['quarterstaff'], spells: ['find-familiar', 'summon-dragon', 'animate-dead'] });
+          h.act({ type: 'addCharacter', record: r.record, at: { q: 0, r: 0, z: 0 } });
+        });
+        await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'));
+        ven = await phone.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ven').id);
+        await phone.locator('#party button:has-text("Play as Ven")').click();
+        await wait(host, (v) => !!window.hextable.state.entities[v].owner, ven);
+        await calm(phone);
+      });
+      await run.do('a creature the DM hid is nowhere on the phone', async () => {
+        const hid = await host.evaluate(() => { const h = window.hextable, f = Object.values(h.state.entities).find((e) => e.side === 'foe' && !e.hidden); h.act({ type: 'spawn', monster: 'wolf', at: { q: f.pos.q + 2, r: f.pos.r }, name: 'Secretwolf', hidden: true }); return true; });
+        await sleep(400); await calm(phone);
+        const seen = await phone.evaluate(() => JSON.stringify(window.hextable.state) + document.body.innerText);
+        if (/Secretwolf/.test(seen)) throw new Error('the phone was sent a hidden creature');
+      });
+      await run.do('the phone casts Find Familiar through the chooser (a form, a type, a tap)', async () => {
+        await panelTab(phone, 'spells'); await phone.click(rowOf('spells', 'Find Familiar'));
+        await phone.waitForSelector('#cc-chooser:not([hidden])');
+        await phone.selectOption('#cc-sel-form', 'owl'); await phone.click('#cc-chooser [data-cc-pick="type|fey"]');
+        const spots = await near(2); await tapHex(spots[0]);
+        await phone.tap('#cc-chooser [data-cc-cast="picks"]');
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'find-familiar'));
+        await calm(phone);
+        await shot(phone, 'companions-table-familiar-phone');
+      });
+      await run.do('Summon Dragon, then Animate Dead on a corpse the player taps', async () => {
+        await panelTab(phone, 'spells'); await phone.click(rowOf('spells', 'Summon Dragon'));
+        await phone.waitForSelector('#cc-chooser:not([hidden])');
+        const v = await phone.$$eval('#cc-chooser [data-cc-pick^="variant|"]', (b) => b[0].dataset.ccPick);
+        await phone.click(`#cc-chooser [data-cc-pick="${v}"]`);
+        const spots = await near(3); await tapHex(spots[spots.length - 1]);
+        await phone.tap('#cc-chooser [data-cc-cast="picks"]');
+        { const t0 = await toastText(phone); if (t0) console.log('   toast:', t0); }
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(() => { throw new Error('the dragon was not made'); });
+        await host.evaluate(async (v) => {
+          const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map), c = h.state.entities[v];
+          for (const x of G.range(c.pos, 3)) if (G.dist(c.pos, x) === 2 && apply(structuredClone({ ...h.state, timeline: [] }), { type: 'spawn', monster: 'bandit', at: x }, { role: 'dm', userId: 'dm' }).ok) { h.act({ type: 'spawn', monster: 'bandit', at: x }); break; }
+        }, ven);
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.tpl === 'bandit'));
+        const bandit = await host.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.tpl === 'bandit').id);
+        await host.evaluate((id) => window.hextable.act({ type: 'harm', actor: id, amount: 999 }), bandit);
+        await wait(phone, (b) => window.hextable.state.entities[b]?.dead, bandit);
+        await calm(phone);
+        await phone.click(rowOf('spells', 'Animate Dead'));
+        await phone.waitForSelector('#cc-chooser:not([hidden])');
+        const pos = await phone.evaluate((b) => window.hextable.state.entities[b].pos, bandit);
+        await tapHex(pos, bandit);
+        console.log('   taps:', await phone.textContent('#cc-chooser .cc-taps'));
+        await phone.tap('#cc-chooser [data-cc-cast="picks"]');
+        { const t0 = await toastText(phone); if (t0) console.log('   toast:', t0); }
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'animate-dead'));
+        await calm(phone);
+      });
+      await run.do('the player commands the zombie, and the DM is shown the order as text', async () => {
+        await phone.evaluate((v) => window.hextable.select(v), ven);
+        await panelTab(phone, 'features');
+        await phone.click(rowOf('features', 'Command…'));
+        await phone.tap('#ap-features [data-cc-order]');
+        await phone.keyboard.type('guard <i>it</i>');
+        await phone.tap('#ap-features [data-cc-send="command"]');
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.commanded?.order === 'guard <i>it</i>'));
+        await calm(host);
+        await openTab(host, 'log');
+        if (!/commands/.test(await logText(host))) throw new Error('no line for the command');
+        if (await host.evaluate(() => !!document.querySelector('#log-list i'))) throw new Error('the order was drawn as markup');
+        await closeMenu(host);
+      });
+      await run.do('the player mounts a warhorse the DM bonded, and gets down', async () => {
+        await host.evaluate(async (v) => {
+          const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map), c = h.state.entities[v];
+          for (const x of G.range(c.pos, 3)) if (G.dist(c.pos, x) === 1 && apply(structuredClone({ ...h.state, timeline: [] }), { type: 'spawn', monster: 'warhorse', at: x }, { role: 'dm', userId: 'dm' }).ok) { h.act({ type: 'spawn', monster: 'warhorse', at: x }); break; }
+        }, ven);
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.tpl === 'warhorse'));
+        const horse = await host.evaluate((v) => { const id = Object.values(window.hextable.state.entities).find((e) => e.tpl === 'warhorse').id; window.hextable.act({ type: 'bond', actor: id, to: v, kind: 'steed' }); return id; }, ven);
+        await wait(phone, (hh) => window.hextable.state.entities[hh]?.bond, horse);
+        await calm(phone);
+        await panelTab(phone, 'features');
+        await phone.click(rowOf('features', 'Mount…'));
+        await phone.tap('#ap-features [data-cc-mount]:has-text("Warhorse")');
+        await wait(host, (v) => window.hextable.state.entities[v].riding, ven);
+        await calm(phone);
+        await shot(phone, 'companions-table-mounted-phone');
+        await phone.click(rowOf('features', 'Dismount'));
+        await wait(host, (v) => !window.hextable.state.entities[v].riding, ven);
+      });
+    } finally { await hostCtx.close(); await phoneCtx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await solo(browser, url, 'companions: solo, desktop', { viewport: { width: 1280, height: 800 } });
   await solo(browser, url, 'companions: solo, phone with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await leftovers(browser, url, 'companions: summoned, names, tracker and auto-play, desktop', { viewport: { width: 1280, height: 800 } });
   await leftovers(browser, url, 'companions: summoned, names, tracker and auto-play, phone with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await table(browser, url);
+  await screens(browser, url, 'companions: the screens, solo, desktop', { viewport: { width: 1280, height: 800 } });
+  await screens(browser, url, 'companions: the screens, solo, phone with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await screensTable(browser, url);
 }

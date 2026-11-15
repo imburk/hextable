@@ -203,6 +203,13 @@ export function initCompanions(ctx) {
     el.id = 'cc-chooser'; el.hidden = true; el.setAttribute('role', 'group');
     document.body.append(el);
     el.addEventListener('click', onChooser);
+    el.addEventListener('change', (ev) => {
+      const sel = ev.target.closest('[data-cc-select]'), m = modeNow(), S = S0(), e = m && S.entities[m.actor]; if (!sel || !m || !e) return;
+      const k = sel.dataset.ccSelect;
+      if (k === 'slot') { m.slot = Number(sel.value); const n = summonPlan(S, e, m.id, m.slot).taps.count ?? 0; m.at.length = Math.min(m.at.length, n); }
+      else if (sel.value) m.pick[k] = sel.value; else delete m.pick[k];
+      ctx.render();
+    });
     return el;
   }
   const modeNow = () => { const m = ctx.mode(); return m?.kind === 'summon' ? m : null; };
@@ -235,21 +242,23 @@ export function initCompanions(ctx) {
     const m = modeNow(), p = panel(), S = S0(), e = m && S.entities[m.actor];
     if (!m || !e) { p.hidden = true; if (p.dataset.sig) { p.dataset.sig = ''; p.textContent = ''; } return null; }
     const plan = summonPlan(S, e, m.id, m.slot), sp = SPELLS[m.id], slots = slotsFor(e, sp), miss = summonMissing(plan, m);
-    const group = (c) => `<div class="cc-group" role="group" aria-label="${esc(c.title)}"><span class="cc-t">${esc(c.title)}</span>${c.options.map((o) => {
+    // A long list (thirty forms) is a menu, a short one buttons: both are plain controls a keyboard and a thumb reach.
+    const group = (c) => c.options.length > 6 ? `<div class="cc-group"><label class="cc-t" for="cc-sel-${esc(c.key)}">${esc(c.title)}</label><select id="cc-sel-${esc(c.key)}" data-cc-select="${esc(c.key)}"><option value="">Choose…</option>${c.options.map((o) =>
+      `<option value="${esc(o.v)}"${(m.pick[c.key] ?? (c.extra ? c.options[0].v : '')) === o.v ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>`
+      : `<div class="cc-group" role="group" aria-label="${esc(c.title)}"><span class="cc-t">${esc(c.title)}</span>${c.options.map((o) => {
       const on = (m.pick[c.key] ?? (c.extra ? c.options[0].v : '')) === o.v;
       return `<button type="button" data-cc-pick="${esc(c.key)}|${esc(o.v)}" aria-pressed="${on}">${esc(o.label)}</button>`;
     }).join('')}</div>`;
     const taps = plan.taps.kind === 'points' ? `${plan.taps.count === 1 ? 'Tap a space' : `Tap ${plan.taps.count} spaces`} on the map: ${m.at.length} of ${plan.taps.count}${plan.taps.note ? `. ${plan.taps.note}` : ''}`
       : plan.taps.kind === 'corpses' ? `Tap up to ${plan.taps.max} corpse${plan.taps.max === 1 ? '' : 's'} on the map to raise (or up to ${plan.taps.again} of yours to keep): ${m.ids.length} chosen${m.ids.length ? `: ${m.ids.map((id) => esc(S.entities[id]?.name ?? 'someone')).join(', ')}` : ''}`
       : esc(plan.taps.note);
-    const html = `<div class="cc-head"><b>${esc(plan.name)}</b><span class="cc-sub">${esc(e.name)}</span></div>` +
-      (slots.length > 1 ? `<div class="cc-group" role="group" aria-label="Cast at level"><span class="cc-t">Cast at level</span>${slots.map((l) => `<button type="button" data-cc-slot="${l}" aria-pressed="${l === m.slot}">${l}</button>`).join('')}</div>` : '') +
-      plan.choices.map(group).join('') + `<p class="cc-taps" role="status">${taps}</p>` +
+    const html = `<div class="cc-head"><b>${esc(plan.name)}</b><span class="cc-sub">${esc(e.name)}</span></div><div class="cc-body">` +
+      (slots.length > 1 ? `<div class="cc-group"><label class="cc-t" for="cc-sel-slot">Cast at level</label><select id="cc-sel-slot" data-cc-select="slot">${slots.map((l) => `<option value="${l}"${l === m.slot ? ' selected' : ''}>${l}</option>`).join('')}</select></div>` : '') +
+      plan.choices.map(group).join('') + `<p class="cc-taps" role="status">${taps}</p>${miss ? `<small class="cc-miss">${esc(miss)}</small>` : ''}</div>` +
       `<div class="cc-go"><button type="button" data-cc-cast="picks" aria-disabled="${miss ? 'true' : 'false'}"${miss ? ' class="off"' : ''}>Cast</button>` +
       `${m.at.length || m.ids.length ? '<button type="button" data-cc-undo>Undo last</button>' : ''}` +
-      `<button type="button" data-cc-cast="bare" title="Cast it and let the DM add what it makes">Cast, DM adds it</button><button type="button" data-cc-cancel>Cancel</button></div>` +
-      `${miss ? `<small class="cc-miss">${esc(miss)}</small>` : ''}`;
-    if (p.dataset.sig !== html) { p.dataset.sig = html; const keep = document.activeElement?.closest?.('#cc-chooser') ? document.activeElement.getAttribute('data-cc-pick') : null; p.innerHTML = html; if (keep) p.querySelector(`[data-cc-pick="${CSS.escape(keep)}"]`)?.focus({ preventScroll: true }); }
+      `<button type="button" data-cc-cast="bare" title="Cast it and let the DM add what it makes">Cast, DM adds it</button><button type="button" data-cc-cancel>Cancel</button></div>`;
+    if (p.dataset.sig !== html) { p.dataset.sig = html; const a = document.activeElement?.closest?.('#cc-chooser') ? document.activeElement : null, keep = a ? (a.dataset.ccPick ? `[data-cc-pick="${CSS.escape(a.dataset.ccPick)}"]` : a.dataset.ccSelect ? `[data-cc-select="${CSS.escape(a.dataset.ccSelect)}"]` : null) : null; p.innerHTML = html; if (keep) p.querySelector(keep)?.focus({ preventScroll: true }); }
     p.hidden = false;
     // Where the map shows the picks: the chosen spaces, and the corpses that can be tapped.
     const area = m.at.map((h) => `${h.q},${h.r}`);
