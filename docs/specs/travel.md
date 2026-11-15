@@ -1,6 +1,11 @@
 # Spec: travel, and the atlas of maps
 
-Status: draft by an agent (#293), to be reviewed by the design owner. Covers the owner's requests
+Status: draft by an agent (#293), to be reviewed by the design owner. **Amended 15 November
+2026** (#347) to the owner's answers to all twelve questions (issue #193, the comment "Q&A
+lead, 15 November, 08:30 ET"): four changed the design (parked places go stale after 10
+days; the pin and route editor is in the first build; day and night light by the world
+clock comes with travel; waiting players watch the place in play live), the rest are
+confirmed on their defaults; see "Questions for the owner". Covers the owner's requests
 of 14 November: large moves between places (a keep far from a port city), arriving by teleport,
 leaving by teleport, or riding, walking or sailing there, "without moving 10,000 squares"; and,
 added the same day, an **atlas of nested maps**: a continent map that shows where each group of
@@ -151,16 +156,20 @@ play) is thrown away. That is enough for "next session we are in the cave". It i
    adds (extended travel, mounts, food reminders).
 5. **An arrival picks an entry** of the destination's map: the gate, the harbour, the circle.
 6. **A fight can start at any level**, always on a battle map bound to the spot.
-7. **The party can split** across places; the first build follows one group at a time, and does
-   not close the door on running groups at once later.
+7. **The party can split** across places; the first build follows one group at a time, with the
+   others **watching it live**, and does not close the door on running groups at once later.
 8. **Teleport, Teleportation Circle and Word of Recall** play by the engine, with the familiarity
    table rolled by the engine for the DM.
-9. **The atlas is prep**: a private world pack, imported, never in the repo.
-10. **Nothing changes for a table that does not use it**: a single map with no world plays exactly
+9. **The atlas is prep**: a private world pack, imported, never in the repo, and the DM can place
+   pins and draw routes on it in the game itself (Decision 13).
+10. **Outdoor light follows the world clock**: a map can say a level or a place is outdoors, and
+    its light is the hour's (Decision 14).
+11. **Nothing changes for a table that does not use it**: a single map with no world plays exactly
     as today, and `loadMap` without the new fields does exactly what it does now. Hex and square
     battle maps mix freely in one atlas. One `apply()`, pure and replayable, views by allow list.
 
-Not in this spec: generating a map (M14; this spec names where it plugs in), weather, a ship's
+Not in this spec: generating a map (M14; this spec names where it plugs in), weather (day and night
+light by the clock is in, Decision 14), a ship's
 crew as creatures, chases, downtime, shops (the shops spec, #292), moving between planes (Plane
 Shift stays `manual`).
 
@@ -366,14 +375,15 @@ name on a group of starts. A map made today keeps working.
   existing `place`, given a node) puts creatures at a pin or an entry of any node. A character
   added later (`addCharacter`) is added where the DM says, by the same fields.
 - **Clicking a marker.** The **DM** may click any: it sends `goTo { node }` and the table's focus
-  moves there (Decision 5). A **player** may click their own group's: it shows their group's place
-  (in the first build that is what their screen already shows, Decision 5); another group's marker
-  shows its names and the name of where it is, nothing more.
+  moves there (Decision 5). A **player** may click any marker: it shows who is in it and the name of
+  where it is (for a place known to them), nothing more. A player's screen already shows the place
+  in play, live, whichever group they are in (Decision 5), so a marker is for knowing who is where,
+  not for looking.
 - **Clicking a pin.** On a navigation node in play, a pin offers Go there (`jump`), Go in
   (`enter`) if it leads down, and, on a child, Go out (`leave`). Who may send them is the table rule
   `atlasMoves`: `dm` or `players` (the default: players may move their own group's characters on
-  a navigation node when it is in play and there is no fight; the DM always may) **(design choice:
-  question 9)**. Journeys between nodes (Decision 6) are always started by the DM.
+  a navigation node when it is in play and there is no fight; the DM always may) **(confirmed by
+  the owner, question 9)**. Journeys between nodes (Decision 6) are always started by the DM.
 
 ### Decision 5: a split party: one place in play at a time first, concurrency later
 
@@ -390,7 +400,9 @@ s.parked: { [nodeId]: {                  // every other node that holds anything
   effects: [ ... ],                       // lasting effects that stay with it
   scene: null | { ... },                  // its scene, prepared or set aside
   encounter: null, pending: null,         // always null in V1; there so a parked place has the shape a V2 place needs
-  since: clock,                           // when it was parked
+  since: clock,                           // when it was parked (what the dawns it missed are counted from)
+  kept: clock | null,                     // when the DM last said it is as it should be (below)
+  stale: clock | null,                    // set when it went stale and the DM has not yet chosen
 } }
 ```
 
@@ -402,29 +414,86 @@ s.parked: { [nodeId]: {                  // every other node that holds anything
   entering a parked node unparks it, and entering a node for the first time builds it from the
   pack. **Plain `loadMap` with no `node`** does what it does today (the old map is thrown away),
   world or not.
+- **Stale places** (the owner, 15 November: "it's only a valid state for a 10 day per the world
+  clock, otherwise life moves on"). A parked battle place **goes stale** when 10 days of the world
+  clock (14,400 minutes, `TRAVEL_LIMITS.staleDays`) have passed since it was parked or since the
+  DM last kept it, whichever is later. A navigation node and a scene hold nothing that goes stale.
+  It is checked wherever the clock moves (`advanceTime`, a rest, a journey's stretch, a jump with
+  minutes), by one pure function that marks every parked battle place that has crossed the line
+  and sends the DM, and only the DM, one event, `placeStale { node, days }`, shown in the Travel
+  section ("The keep has been left for 10 days") and as a chip on the place. **Nothing resets by
+  itself.** The owner chose that the place is marked stale, the DM is told, and the DM decides:
+  - **Keep it as left**: `keepPlace { node }`. The mark clears and the ten days count again from
+    now (`kept`). The place is exactly as it was.
+  - **Reset it to how it was prepared**: `resetPlace { node }`. The place is rebuilt from the world
+    pack as a first visit builds it (the map, the creatures that are not the party's, the zones and
+    effects laid on it, doors and what was seen), and the party creatures in it, if any, are set down
+    at the entry they came by, or the node's default **(design choice, lead's proposal)**. The DM
+    is told in one sentence what was dropped. Refused for a node the pack lacks (`gone`).
+  - **Edit it by hand**: go there (`goTo`) and use the DM's ordinary map and creature edits; going
+    there with `stale: 'edit'` keeps the place as left and clears the mark.
+  - **Going to a stale place asks first.** `goTo`, `enter`, `loadMap { node }` and a journey's
+    arrival into a stale place are refused with the question ("The keep has been left for 12 days.
+    Keep it as it was, put it back as prepared, or edit it first.") until the action carries
+    `stale: 'keep' | 'reset' | 'edit'`. A creature that arrives by a portal or a spell the DM was
+    not at the table for (`travel` step, Decision 9) goes in with the place **kept as left**, the
+    mark cleared and the DM told, because the engine may not choose to reset for them.
+  - A stale place still counts toward the 16 (below); `forgetPlace` still drops one.
+  - **Noted, not decided.** The owner also thought aloud: "Can the state be archived". As an idea
+    for the design: a parked place put away, not counted in the 16, and brought back later. It
+    is not in this spec, and it is not blocked by it: W10 (a parked place kept as its
+    differences from the pack's) is the nearest piece. The owner has not decided it.
 - **What goes and what stays.** Movers are named (`who`, default the whole group); everyone else
   stays. A creature bonded to a mover (`companions.md` Decision 1) goes with its master, a mount
   with its rider, a pocketed familiar with its master's pocket. An effect stays with its node if it
   is a zone or changed ground laid on the node's cells (E8), or if its source and all its targets
   stay. An effect whose source and targets end up in different nodes **ends**, with an `effectEnd`
   "the party moved on", as `loadMap` does today; a zone that follows a mover (Spirit Guardians)
-  goes with it **(design choice: question 4)**.
+  goes with it **(confirmed by the owner, question 4)**.
 - **Catching up on unparking.** Nothing is simulated for the time a node was parked (no monster
   walks). Then, before anything else: `tick` ends its lasting effects whose time is up, and each
   creature there gets the **dawns** it missed, `dawnsBetween(since, s.clock)`, through the same
   code as `rest` and `advanceTime` (`rests.js` `dawn`, made to take a list of creatures).
 - **Away.** A party creature in a parked node is **away**. It is not in `s.entities`, so nothing in
   play can touch it, and rests, levelling and gear changes do not reach it until the focus comes
-  to it **(design choice: question 3)**.
-- **What players see.** Today every player is sent one view, built once (`sight.md` S7: "the party
-  sees as one"). V1 builds **one view per group** instead: players whose characters are in the node
-  in play get the live view, as now; players whose characters are parked get a **frozen view of
-  their own node**: its map as shown to them when it was parked, their own group, its markers on
-  the atlas, and nothing live of the node in play (no map, no creatures, no events but table-wide
-  ones). A player with characters in two groups gets the focus's view. In-character lines (`say`)
-  carry the node they were said in and reach only the players of that node's group; out-of-character
-  lines reach everyone. This is a change to `view.js` and to the server's one-view-for-all, and it
-  is the hidden-information review point of the first build.
+  to it (confirmed by the owner, question 3).
+- **What players see** (the owner, 15 November: waiting players **watch the other group's scene live**
+  rather than a frozen view of their own place). Today every player is sent one view, built once
+  (`sight.md` S7: "the party sees as one"). In V1 every player is sent **the live player view of
+  the place in play**, the one `sight.md` S7 builds for the group that is there: the map as that
+  group has seen it (what it sees now and what it remembers), the creatures it can see, the
+  events it was told, and the table's out-of-character talk. A player whose characters are in the
+  node in play gets it as a member of the group. A player whose characters are parked gets the same
+  view marked `watching`, with their own group's marker on the atlas and their characters as
+  read-only away sheets; a player with characters in two groups gets the view as a member. The
+  view of a parked place is not built and not kept: a parked place is frozen, so there is no
+  "as shown when it was parked" copy to store.
+  - **Never DM-only content.** What a watching player is sent is exactly what a player of the
+    group in play is sent, by the allow list, and no more: no hidden creature, unrevealed room or
+    secret door, no DC, secret roll or `unseen` entry, no DM note or whisper, no encounter table or
+    wayside, nothing the group cannot see. Things sent to one player only (a handout shown to a
+    named player, a private note, one character's own sheet-only information) go to the players
+    they are shown to, as today, and a watcher is not added to them. **This replaces the old
+    hidden-information point of this decision** (V1 sent a parked group nothing of the place in
+    play, and one view per group was the review point): the point is now that the single view built
+    for the group in play reaches watchers unchanged, and the test is that nothing outside it does.
+  - **In-character speech.** A line said in character in the place in play (`say`, which carries
+    its node) is sent to **every** player, so the watchers hear the group they watch. A line said in
+    character by a parked group's player reaches only the players of that node and the DM: their
+    characters are not where the table is. Out-of-character lines reach everyone, as before.
+  - **What their characters know** (a point for review, not decided by the engine). The engine
+    does not model what a character knows: a watching player has seen and heard a scene their
+    characters were not in, and nothing stops them acting on it. It is the same thing as at any
+    table where one group's scene is played in front of the others, and the rule is the table's:
+    the player knows, the character does not. The screen says so in the band ("Your characters are
+    not here. What you watch is not what they know."), the DM's party bar shows who is watching,
+    and the engine records nothing. A table rule, `watching: 'live' | 'off'` (default `live`, the
+    owner's wish), lets a DM who finds it spoils a scene turn the watching off; players then see
+    the band and out-of-character talk only **(design choice, lead's proposal; the owner chose live
+    and was not asked for the switch)**.
+  - This is a change to `view.js` and to the server's one-view-for-all, and it is the
+    hidden-information review point of the first build, though smaller than the frozen views it
+    replaces: one view to build and diff, not one per group.
 - **Initiative.** One fight at a time, in the node in play. A fight elsewhere waits until the focus
   comes to it.
 - **Undo** is the one table history, as now: undoing a `goTo` cuts back.
@@ -454,8 +523,9 @@ content. The handlers would not change. What would:
   to `rng.js`, `history.js` and the table server.
 - **Waiting.** A reaction prompt pauses the whole table today (`pending`); it would pause one node.
   The monster AI and the timeline's pace run per node.
-- **Hidden information.** As V1 (one view per group), but every view live, rebuilt on every change
-  of its node.
+- **Hidden information.** As V1 (the player view of a group, never DM-only content), but each group's
+  view is live and rebuilt on every change of its node, and a player is sent their own group's view
+  and may be shown another's too.
 - **The screens.** The DM needs to watch two fights at once: two panes or a switch, and every
   per-fight control (tracker, conclusion, rewards) per node.
 - **Size.** As V1: the same records, all live.
@@ -464,9 +534,9 @@ content. The handlers would not change. What would:
 work, and its parked records have V2's shape, so V2 later is "more than one node unparked" plus the
 lens, per-node clocks, seeds and histories: a spec amendment and a large engine stage (W12), not a
 rewrite. **What V1 forecloses**, until V2: two fights at the same time; a parked group doing
-anything (moving, checks, rests) while the focus is elsewhere; a fight that spans two places; a
-player watching another group live. What it does not foreclose: a split party, cutting between
-groups as often as the DM likes, and every group's place kept as it was.
+anything (moving, checks, rests) while the focus is elsewhere; a fight that spans two places. What
+it does not foreclose: a split party, cutting between groups as often as the DM likes, every
+group's place kept as it was, and, since 15 November, players watching the group in play live.
 
 ### Decision 6: a journey is a stretch of time on a route, played as a scene
 
@@ -694,12 +764,14 @@ Stride can later use the same `node` field; they stay as they are in this spec.
 | Action | Who | What it does |
 |---|---|---|
 | `worldIndex { index }` | server | records the index of the world the DM imported (Decision 2) |
-| `loadMap { map?, node?, entry?, who? }` | DM | today's action; with `node`, parks the node in play and enters `node` at `entry`, taking `who` (default the group) |
+| `loadMap { map?, node?, entry?, who?, stale? }` | DM | today's action; with `node`, parks the node in play and enters `node` at `entry`, taking `who` (default the group); `stale` as for `goTo` |
 | `enter { pin, who? }`, `leave { who?, keep? }`, `jump { pin, who?, minutes? }` | DM, or players for their own characters under `atlasMoves: 'players'` | drop into a pin's child, climb to the parent, move between pins (Decisions 1 and 4); refused in a fight |
 | `place { who, node, pin?, entry? }` | DM | the existing `place`, given a node: put creatures anywhere in the atlas |
-| `goTo { node }` | DM | move the table's focus to another group (Decision 5) |
+| `goTo { node, stale? }` | DM | move the table's focus to another group (Decision 5); into a stale place it carries `stale: 'keep' \| 'reset' \| 'edit'` or is refused with the question |
 | `forgetPlace { node }` | DM | drop a parked node's changes (Decision 5) |
-| `nodeAdd { node }` | DM | add a node in play: a battle map from the stock maps or the editor, a scene, a pin on a navigation node; recorded in `s.world.nodes` with `added: true`, exported with the table, not written back to the pack |
+| `keepPlace { node }`, `resetPlace { node }` | DM | the DM's answer to a stale place: keep it as left (the ten days count again), or rebuild it from the pack with the party set down at its entry (Decision 5) |
+| `nodeAdd { node }` | DM | add a node in play: a battle map from the stock maps or the editor, a scene, a site; recorded in `s.world.nodes` with `added: true`, exported with the table, not written back to the pack. A pin on a navigation node is `atlasEdit`'s |
+| `atlasEdit { op, ... }` | DM | the atlas editor's one action (Decision 13): add, move, rename and remove a pin; add and remove a route; add a navigation node from an uploaded picture; set a node's scale. Edits the index, marked `edited` |
 | `showPlace { node, known }`, `showRoute { route, known }` | DM | tell the players of a node or route they have not been to (a rumour, a map they bought) |
 | `journey { route, dir?, who?, pace? }` | DM | start a journey (Decision 6) |
 | `journeyStep { hours?, gallop?, push? }` | DM | move it on |
@@ -708,7 +780,8 @@ Stride can later use the same `node` field; they stay as they are in this spec.
 | `familiarity { actor, node, level }`, `sigil { actor, circle, known }`, `link { actor, item, node }` | DM | what a character knows of a place, for Teleport (Decision 9) |
 
 Players also send `cast` for the teleport spells. Names are checked against the existing handlers:
-none is taken (`place` is extended, not added).
+none is taken (`place` is extended, not added; `keepPlace`, `resetPlace` and `atlasEdit` are new).
+A `staleCheck` runs inside the actions that move the clock; it is not an action.
 
 ### Decision 11: undo, saving and exporting
 
@@ -728,12 +801,16 @@ none is taken (`place` is extended, not added).
   maps) and the known lists by pack id; a node the new version lacks keeps its parked record and is
   marked `gone` (a false destination, for Teleport). The DM is told what changed.
 - **The state version** goes from 21 to 22, with a migration adding `world: null, place: null,
-  parked: {}, journey: null`.
+  parked: {}, journey: null`. (The stale marks are fields of a parked record, so they add no
+  version of their own; the table rule `watching` is a setting, absent meaning `live`.)
+- **Atlas edits** (Decision 13) live in the index in the state, so undo, saving and the table
+  export carry them with no other change; the pack in `table.world` is never rewritten.
 
 ### Decision 12: what players are sent
 
-The players' views (`view.js`, one per group in V1, Decision 5) gain, by allow list, nothing that is
-not listed here:
+The players' view (`view.js`: in V1 one live view, that of the group in play, for every player, with
+`watching` for those whose characters are elsewhere, Decision 5) gains, by allow list, nothing that
+is not listed here:
 
 | Thing | A player is sent |
 |---|---|
@@ -742,12 +819,15 @@ not listed here:
 | Pins | of a known navigation node: those that lead to known nodes, and those the DM shows; renumbered, without `battle` |
 | Entries | of a known battle node: those a party creature arrived by, those of kind `gate`, `dock` or `circle` whose cells the party has seen, and those the DM shows; by name and kind, renumbered; never `near` or `far` |
 | Routes | only those travelled or shown, between known nodes, with `mode`, `miles`, `hours` or `minutes`; never `encounters`, tables or `wayside` |
+| The place in play | to every player, the live player view of the group there (Decision 5): the same map, creatures and events whichever group the player's characters are in; for a player whose characters are parked it comes marked `watching` and, under the table rule `watching: 'off'`, as the band alone. Never anything a player of that group is not sent |
 | Markers | every group of the party: who is in it and the known node (and pin) it is at. Never anything else of a node they are not in |
 | The journey | `{ route, mode, pace, travellers, done, total }` when the route is known, in hours. Never `next`, never the table. A stop is sent as stopped, not why |
 | Encounter checks | nothing, unless the route's `roll` is `open` (then the roll and the row's `text`) |
-| Teleport | its outcome as the travellers live it: where they are, the damage. The 1d100 is the DM's; Off Target's miles and direction are told in words, not numbers **(design choice: question 6)** |
+| Teleport | its outcome as the travellers live it: where they are, the damage. The 1d100 is the DM's; Off Target's miles and direction are told in words, not numbers **(confirmed by the owner, question 6)** |
 | Away party members | the full record of each (they are Open party records), drawn as read-only sheets |
-| Parked nodes | to the players of the group in it: the frozen view of Decision 5. To everyone else: the name and who of the party is there |
+| Parked nodes | a parked place is never sent as a place, to anyone: no map, no creatures, no events (its players watch the place in play instead). To everyone: the name of the node, if known, and who of the party is there |
+| Stale places and the stale choice | the DM only: `placeStale`, the choice and `keepPlace` / `resetPlace` events. A player is told nothing of a place going stale |
+| The atlas editor | edits are the DM's; a player sees an edited atlas only through the known-node and shown-pin rules above (a pin the DM just placed that leads nowhere known is not sent) |
 | Sigils, familiarity, sanctuary | for party creatures only, to their players and the DM |
 
 - **Player ids for nodes, pins and entries.** A player's `enter`, `jump` or `cast { node, entry }`
@@ -758,9 +838,118 @@ not listed here:
 - **Acceptance tests** (in `view.test.js`): a world with a node called by a canary id and name,
   never visited or shown, leaks neither to any player message through a journey, a split, a drop-in,
   a Teleport and an undo; a route's table and its monsters reach no player; a `roll: 'engine'` check
-  that finds wolves sends nothing until the fight; with the party split, the players at the keep are
-  sent nothing of the port city's map, creatures, events or in-character lines; a player's `enter`
-  on a guessed `pl` id is refused as unknown.
+  that finds wolves sends nothing until the fight; with the party split, the players at the port city
+  are sent the keep's view exactly as the players at the keep are sent it (the same messages), and
+  a canary of DM-only content at the keep (a hidden creature, an unrevealed room, a secret roll, a
+  DM note, a handout shown to one named player, a stale notice) reaches none of them; they are sent
+  nothing of the port city's own parked map or creatures, and the in-character lines said at the
+  port reach only the players of the port; with `watching: 'off'` they are sent the band only; a
+  player's `enter` on a guessed `pl` id is refused as unknown.
+
+### Decision 13: the atlas editor is in the first build
+
+**Question.** Is a world pack made only outside the game, or can the DM place pins on an uploaded
+picture and draw routes in the game?
+
+**What changed.** The first draft kept the in-game editor for a later stage (question 8). The
+owner answered on 15 November 2026 that the **pin and route editor is wanted in the first
+build**. The engine side is W5b and the screen is W9b (Build plan); a world pack made outside
+and checked by `npm run world` is still the way to bring a large atlas in.
+
+Everything below except the fact that the editor is in the first build is **(design choice,
+lead's proposal)**; the owner chose the stage, not the design.
+
+- **One action, `atlasEdit { op, ... }`** (DM only), taking over "a pin on a navigation node" from
+  `nodeAdd`, which keeps battle maps, scenes and sites. Its operations:
+  - `pin`: add (`node`, `at: [x, y]` on the picture, `name`, `to?`, `entry?`), move, rename,
+    re-point (`to`, `entry`) and remove a pin; a pin is dropped by a tap and moved by a drag;
+  - `route`: add (`from`, `to`, `mode`, and `miles`, `hours` or `minutes`, `terrain?`, `road?`,
+    `back?`), change and remove a route. Drawn by tapping the two pins; `miles` is filled from the
+    picture's scale when the two pins are on one node and the scale is set;
+  - `node`: add a **navigation node** from a picture the DM uploads (the existing asset upload,
+    M9; its size is the asset rules'), with a name, a `scale` (`world`, `region`, `city`,
+    `district`, `site`), a `parent`, and optionally `terrain`; rename and remove one that no
+    creature is in and no parked record holds;
+  - `scale`: set a node's miles or feet per 100 pixels by tapping two points on the picture and
+    typing the distance between them (as tracing a map sets its scale, `maps-and-objects.md` M10).
+- **Where it writes.** The edit is made to the **index** in `s.world` (pins and routes are in it,
+  Decision 2), marked `edited: true` (a node or pin the DM made also `added: true`, as `nodeAdd`
+  does). `table.world` and the pack's maps and pictures are not rewritten. It is therefore undoable
+  like any action, saved with the table and carried in the table export, and **"Save the atlas"**
+  in the Packs screen writes a new world file from the pack and the index together
+  (`*.hextable-world.json`, the format of Decision 2) so a DM can reuse what they drew. Replacing a
+  world with a newer version keeps the DM's added nodes and pins (Decision 11) and lists the ones
+  whose target the new version lacks.
+- **What it does not edit** in the first build: encounter tables and their monsters (text in the
+  pack, checked by `npm run world`), a vessel's definition, and a route's `wayside` list; binding a
+  battle map to a pin is a picker over the pack's maps and the stock maps (the "Fight here"
+  chooser's data, Decision 7).
+- **Limits.** The same `WORLD_LIMITS` as an imported pack (300 nodes, 100 pins a node, 500 routes,
+  depth 8, names 60 letters); an edit past one is refused with a sentence and changes nothing.
+  Ids are made by the engine from the name (kebab, `-2` on a clash) and never typed.
+- **What players are sent.** Nothing new: a pin or route is sent by the known-node rules of
+  Decision 12, so a pin the DM has just placed that leads to an unknown place stays unseen until
+  the DM shows it (`showPlace`) or the party has been there.
+- **The screen.** The atlas view of "The screens" gains an **Edit** mode for the DM: tap to drop
+  a pin, drag to move it, a bottom sheet for its name, target and entry; Route (tap pin, tap pin);
+  Add a map (pick a picture); Scale (two taps and a distance); pinch to zoom as in the atlas.
+  Touch targets 44 pixels or more at 390 x 844.
+
+**Reasons.** The owner wants to build the world in the game. Editing the index keeps `apply()`
+pure and every edit undoable, and leaves the pack as the DM imported it.
+
+**Cost.** One engine action with a linter's checks (W5b), one client mode (W9b), and a world-file
+writer for "Save the atlas".
+
+### Decision 14: outdoor light follows the world clock
+
+**Question.** The engine has a world clock (it starts at 08:00, `scenario.js`) and takes dawn as
+06:00 (`rests.js`), and the renderer already tints the picture by the hour (`lightAt(clock)` in
+`render.js`), but a level's light is fixed: `sight.md` Decision 3 says a level is `bright`, `dim`
+or `dark` as the map sets it. Should light outdoors change with the hour?
+
+**What changed.** The first draft left day and night out (question 7). The owner answered on
+15 November 2026 that outdoor light should follow the world clock, **with travel**: it is its own
+decision and stage (W6b), because a journey moves the clock by days and a party walking into
+dusk is the case that matters. The SRD gives no hours of light; what the engine does with the clock
+is below, and all of it is **(design choice, lead's proposal)** except that the light follows the
+clock and comes with travel.
+
+- **The flag.** A level or a region may say `daylight: true` ("this is outdoors"). It is optional,
+  so a map without it is lit exactly as before and the map `format` stays 2; `lintMap` refuses a
+  level or region that gives both `daylight` and `light` ("A place is either outdoors or lit as it
+  is set"). The map editor sets it with the same Light selector that sets ambient light
+  (`sight.md`: "Same as the level"), as an extra choice, "Outdoors (follows the hour)".
+- **The hours.** From the clock's minute of the day: **bright from 06:00 to 18:00**; **dim**
+  (twilight) from 18:00 to 20:00 and from 04:30 to 06:00; **dark** from 20:00 to 04:30, or **dim**
+  when the table rule `night` is `moon` (moonlight, `sight.md`'s "dusk, moonlight"; the default
+  is `dark`, so torches matter). The hours are close to the renderer's own colour grade (its night
+  value is reached by 21:30) and the engine's dawn at 06:00; both read the same table from one pure
+  function, so the picture and the rules cannot disagree.
+- **What it feeds.** The ambient light of a `daylight` place is the hour's, in place of the fixed
+  value: `ambientAt` (`sight.js`) takes the clock; sources add light as now (a torch in the dark is
+  still a torch); a region's own `light` still wins over its level's `daylight`, so a lit hall on
+  an outdoor level stays lit. Under the `light` sight rule this decides who can see whom, Dim
+  Light's Disadvantage on Perception, and what players are sent, exactly as `sight.md` has it.
+- **Cost of the cache.** The party's view (`vision.js`) is kept and rebuilt when something it
+  depends on changes. The hour's band (bright, dim, dark) becomes one of those things: it is
+  rebuilt when the band changes, not each minute, and never on a map with no `daylight` place.
+- **Telling the table.** When the band changes on a map that has a `daylight` place in play, one
+  event, `lightBand { band }`, goes to every player and the log says "Dusk falls.", "Night falls.",
+  "Dawn breaks."; the clock chip already shows the time.
+- **The stock maps.** The starter valley is **not** flagged, so a game that rests through a night
+  plays exactly as it does now (every row of this spec keeps the valley as it plays today). The
+  stock maps W7 tags for roads, forests, hills and shores are flagged, since a fight on the road at
+  night is the case this is for; the owner may flag the valley too.
+- **Not here.** Weather, seasons, the moon's phases and indoor windows. A level that is partly
+  open to the sky uses a region.
+
+**Reasons.** The owner asked for it, the clock and the picture already exist, and a flag keeps
+every existing map as it is.
+
+**Cost.** One optional field and its linter and editor row, `ambientAt` taking the clock, one
+cache key, one event and its log line, a table rule, and tests on `sight.md`'s cases at the three
+bands (W6b). `sight.md` Decision 3 gets a pointer when W6b is built.
 
 ## The screens
 
@@ -769,7 +958,8 @@ not listed here:
   there, Go in and, on a child, Go out (as the table rule allows); a marker's tap shows who is in it
   and, for the DM, Go to. A breadcrumb at the top (The continent > The port city > A tavern) climbs
   back. Places with no pin are a list under it. On a phone it is full screen with the breadcrumb and
-  a bottom sheet for the pin or marker tapped.
+  a bottom sheet for the pin or marker tapped. For the DM an **Edit** mode (Decision 13): drop and
+  move pins, draw routes, add a map from a picture, set its scale.
 - **The battle map** is the existing 3D view, entered from the atlas; its breadcrumb's last step is
   the map's name, and Go out returns to the atlas.
 - **The DM's Travel section** in the drawer (`table-ui.md` Decision 2): the nodes (in play, parked
@@ -780,11 +970,15 @@ not listed here:
 - **The road scene** is the existing scene screen (`packages/client/scenes.js`) with a header of the
   route, pace and progress, and the atlas with the moving marker one tap away.
 - **Away** characters are listed in the party bar as "At the keep", with a read-only sheet. A parked
-  group's players see their frozen place with a band: "The table is with the others."
+  group's players watch the place in play, live, under a band: "Watching Ada and Brenna at the keep.
+  Your characters are at the port city. What you watch is not what they know." (Decision 5; with
+  `watching: 'off'` the band is all they see). The DM's party bar marks who is watching. A stale
+  place carries a chip in the Travel section with Keep, Reset and Edit; going to it asks first.
 - **The Packs screen** imports a world pack, shows the linter's problems in plain sentences, and
   lists what it holds. The atlas is made outside the game: in a text editor, by a script, or by an
   AI model writing the JSON (as `homebrew.md` describes for packs), checked by `npm run world --
-  file.json`. An in-game atlas editor (placing pins on an uploaded picture) is question 8.
+  file.json`, or in the game with the atlas editor (Decision 13, in the first build), whose
+  **Save the atlas** writes the pack and the DM's edits back out as a world file.
 
 ## Build plan
 
@@ -797,24 +991,31 @@ the valley plays as before, and a table without a world is unchanged.
 | # | Task | Lane | Files it may touch | Done when |
 |---|---|---|---|---|
 | W1 | **Entries.** `entries` and `start.entry` in `lintMap` and `mapEdit`; `loadMap { entry }`; marching order at arrival; a start's `z` from its level (P18) | **engine** | `map.js`, `engine/dm.js`, `packages/rules/test/map.test.js`, `test/travel.test.js` (new) | the keep with a `gate` and a `roof` entry sets the party down at each; an unknown entry and one nobody can stand on are refused with nothing changed; every stock map still loads as before |
-| W2 | **Nodes and parking (V1).** `s.place`, `s.parked`, the holding map, `loadMap { node, who }`, `enter`, `leave`, `goTo`, `forgetPlace`, `nodeAdd`, `place { node }`, catching up (`tick`, `dawn` for a list of creatures), the parked cap, the fight refusal off battle nodes; state version 22; `describeStep` labels | **engine** | new `places.js`, new `engine/travel.js`, `engine.js` (spread the handlers), `engine/dm.js`, `engine/rests.js` (export `dawn` for a list), `engine/resolve.js` (the fight refusal), `map.js` (`holdingMap`), `migrate.js`, `history.js`, tests | leave the keep with a door open and a goblin tied up, come back: both as left; a Wand's charges come back for each dawn an away member missed; a split party cut back and forth; `startEncounter` on a navigation node is refused and nothing changes; undo of an arrival restores both nodes exactly; a valley table is unchanged by the migration but for the four new fields |
+| W2 | **Nodes and parking (V1).** `s.place`, `s.parked`, the holding map, `loadMap { node, who }`, `enter`, `leave`, `goTo`, `forgetPlace`, `nodeAdd`, `place { node }`, catching up (`tick`, `dawn` for a list of creatures), the parked cap, the fight refusal off battle nodes; **the stale rule** (`staleDays`, the check wherever the clock moves, `placeStale`, `keepPlace`, `resetPlace`, `stale` on `goTo`, `enter` and `loadMap`); state version 22; `describeStep` labels | **engine** | new `places.js`, new `engine/travel.js`, `engine.js` (spread the handlers), `engine/dm.js`, `engine/rests.js` (export `dawn` for a list), `engine/resolve.js` (the fight refusal), `map.js` (`holdingMap`), `migrate.js`, `history.js`, tests | leave the keep with a door open and a goblin tied up, come back: both as left; a Wand's charges come back for each dawn an away member missed; a split party cut back and forth; `startEncounter` on a navigation node is refused and nothing changes; undo of an arrival restores both nodes exactly; a valley table is unchanged by the migration but for the four new fields; a place parked for 9 days 23 hours is not stale and one parked for 10 days is, the DM alone is told, going to it without `stale` is refused with the question and nothing changes, `keep` clears the mark and starts the ten days again, `reset` rebuilds it from the pack and sets the party down at its entry, nothing ever resets by itself, and a portal arrival keeps it as left |
 | W3 | **The world pack.** `worldpack.js`: budget, linter, `WORLD_LIMITS`, the index; `worldIndex`; the server's `world` message, storage beside the state, the fill of `map` into actions, assets on import; the solo transport the same; `npm run world` | **engine** + server | new `packages/rules/src/worldpack.js`, `engine/travel.js`, `packages/server/src/tables.js` (named for this row), `packages/server/src/index.js`, `packages/server/README.md`, `packages/client/transport.js` (the solo fill), `scripts/world.mjs` (new), `package.json` (the script line), tests | a pack with a continent, a city plan, two battle maps and a route imports; one with a bad map, a monster not in the pack, 301 nodes, depth 9 or a `__proto__` key is refused with a plain sentence; a client's own `map` in an `enter` is replaced by the pack's |
-| W4 | **One view per group.** groups, markers, the frozen view of a parked group, `say` by node, player ids for nodes, pins and entries, the allow list of Decision 12 | **engine** + server | `view.js`, `engine.js` (the id translation), `scenes.js` (`say` carries its node), `packages/server/src/tables.js` (a view per group), `packages/client/transport.js`, tests in `view.test.js` and the server's | the acceptance tests of Decision 12 pass; with no world, every player is sent exactly what they are sent today |
+| W4 | **The view of the place in play for everyone, and the groups' markers.** groups, markers, the live player view of the group in play sent to every player and marked `watching` for those whose characters are parked, the table rule `watching`, `say` by node, player ids for nodes, pins and entries, the allow list of Decision 12 | **engine** + server | `view.js`, `engine.js` (the id translation), `scenes.js` (`say` carries its node), `packages/server/src/tables.js` (a view per group), `packages/client/transport.js`, tests in `view.test.js` and the server's | the acceptance tests of Decision 12 pass, including that a watcher is sent exactly what a player of the group in play is sent and that no DM-only canary reaches one; with no world, every player is sent exactly what they are sent today |
 | W5 | **Moving on navigation maps.** `jump` with route, scale or given minutes; pins' routes; the `atlasMoves` table rule | **engine** | `engine/travel.js`, `engine/dm.js` (the setting), `travelrules.js` (new: the SRD's numbers, pure), tests | a jump of 1,500 feet across a city plan with a scale takes 5 minutes at Normal pace; the ferry takes its 20; a player moves their own character and is refused for another's, and for anyone under `atlasMoves: 'dm'` |
+| W5b | **The atlas editor, engine.** `atlasEdit` (pins, routes, a navigation node from an uploaded picture, a node's scale), its linter checks inside `WORLD_LIMITS`, the `edited` and `added` marks, the world file written from the pack and the index, `describeStep` labels. First build (the owner, 15 November) | **engine** | `engine/travel.js`, `worldpack.js` (the writer), `history.js`, tests | a pin dropped on the city plan is sent to no player until the DM shows it; a route between two pins takes its `miles` from the scale; a pin past 100 on a node, a node past 300 and a route past 500 are refused with nothing changed; undo takes an edit back; the pack in `table.world` is unchanged; the world file written from a table with edits imports into a fresh table and gives the same atlas |
 | W6 | **Journeys.** `journey`, `journeyStep`, `journeyEnd`, the road scene, pace and its limits from terrain, roads and slow travellers, vessels, special movement, the travel day and extended travel saves, gallop, the pace effect on checks, the food and water reminder, arrival | **engine** | `engine/travel.js`, `travelrules.js`, `engine/rests.js` (rest on the road, gallop reset), `scenes.js` (a scene owned by a journey), `view.js` (journey), tests | 48 miles of grassland road at Normal is 16 hours over two travel days; Fast is refused on a mountain route and allowed with a road on a hill; a traveller at half Speed forces Slow; a ninth hour asks each traveller for a DC 11 Constitution save; a 1-hour spell ends on the road; a Wand regains charges at the dawn passed; `journeyEnd { arrive: 'now' }` arrives with the clock unmoved |
+| W6b | **Day and night light.** `daylight` on a level and a region in `lintMap` and the map editor's Light selector, the one pure table of the hour's bands shared with the renderer's grade, `ambientAt` taking the clock, the `vision.js` cache key, the table rule `night`, the `lightBand` event and its log line, the stock maps W7 tags. Comes with travel (the owner, 15 November) | **engine** + client (the editor row) | `sight.js`, `vision.js`, `map.js`, `engine/dm.js` (the setting), `view.js` (the event), `packages/client/editor.js` (the selector), `packages/client/render.js` and `render-three.js` (read the shared table), `docs/specs/sight.md` (a pointer under Decision 3), tests | on a `daylight` level the party sees a goblin at 12:00 and not at 22:00 without a torch, and sees it with one; a region with its own `light` on that level is unchanged at night; the same map at the three bands passes `sight.md`'s cases; a map with no `daylight` is byte for byte as before, valley included; the view is rebuilt when the band changes and not each minute; a table that rests through the night gets "Night falls." once |
 | W7 | **Fights at any level.** the "Fight here" chooser's data (bound `battle` maps, stock maps by `terrain`), sites as child nodes, `keep`; encounter checks, `roll` modes, `journeyFight`, the encounter distance, `journeyResume`; `terrain` tags and `near`/`far` entries on the stock maps | **engine** + content | `engine/travel.js`, `engine/dm.js` (foe placing shared with `spawn`), `view.js`, `scripts/gen-maps.mjs`, `packages/rules/src/content/maps/*.js` (regenerated), `docs/maps.md`, tests on hexes and on `undercroft` | a fight called on the city plan offers the bound street map first and the stock maps tagged `urban` next; after it, `leave` returns the group to its pin with the clock moved by the rounds; a seeded road check finds 1d4+1 wolves placed 2d8 x 10 feet from the party on `forest-road`, and nothing of it reaches a player before the fight |
 | W8 | **Teleport spells.** `with` and `node` on the `teleport` step, the `travel` step, familiarity and the 1d100 table, Off Target and Similar Area handed to the DM, mishaps, the portal and the permanent circle objects, sigils, sanctuary, `familiarity`/`sigil`/`link` | **engine** + content | `content/schema.js` (the step fields, a spec amendment), `effects.js`, `engine/resolve.js` (`KIT`), `engine/casting.js`, `engine/travel.js`, `view.js`, `content/srd52/spells-4.js`, `spells-5.js`, `spells-6.js`, `spells-7.js` (Dimension Door, Teleportation Circle, Word of Recall, Teleport only), `content/srd52/objects.js` (the two generic definitions), tests | Teleport to a very familiar place with the seed set to roll 03 is a Mishap: 3d10 each and a reroll; at 30 it is On Target at the named entry; eight willing passengers go, a ninth is refused; a portal takes two of five through and the table stays; the fifth through takes the table; Word of Recall without a sanctuary spends the slot and does nothing; `npm run content` shows the four at their new tiers |
-| W9 | **The screens.** the atlas view with pins, markers and the breadcrumb; Go in, Go out, Go there; the DM's Travel section and the Fight here chooser; the road scene's header; away characters and the frozen band; the Packs screen's world import | client | new `packages/client/atlas.js`, `atlas.css`, new `packages/client/travel.js`, `drawer.js`, `scenes.js`, `app.js`, `index.html`, `scripts/smoke/travel.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=travel` at both sizes, touch at 390 x 844: import a world, see two groups' markers on the continent map, drop into the port city's plan, jump to the tavern pin, go in, fight on the tavern map, go out, set out on the road, fight wolves, arrive at the keep's gate; a player sees only the places they have been and their own group's place; no page errors |
+| W9 | **The screens.** the atlas view with pins, markers and the breadcrumb; Go in, Go out, Go there; the DM's Travel section and the Fight here chooser; the road scene's header; away characters and the watching band, with the party bar's mark of who watches; the stale chip with Keep, Reset and Edit; the Packs screen's world import | client | new `packages/client/atlas.js`, `atlas.css`, new `packages/client/travel.js`, `drawer.js`, `scenes.js`, `app.js`, `index.html`, `scripts/smoke/travel.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=travel` at both sizes, touch at 390 x 844: import a world, see two groups' markers on the continent map, drop into the port city's plan, jump to the tavern pin, go in, fight on the tavern map, go out, set out on the road, fight wolves, arrive at the keep's gate; a player sees only the places they have been, and a player whose group is parked watches the group in play live under the band, and a DM-only canary never reaches them; no page errors |
+| W9b | **The atlas editor, screen.** the atlas view's Edit mode: drop and drag pins, a sheet for name and target, Route by two taps, Add a map from a picture, Scale by two taps and a distance, Save the atlas. First build (the owner, 15 November) | client | `packages/client/atlas.js`, `atlas.css`, `scripts/smoke/travel.mjs` | at both sizes, touch at 390 x 844: add a map from a picture, drop three pins, point one at a battle map, draw a route, set the scale, save the atlas and import the file into a fresh table; the DM's edit shows to a player only once shown; no page errors |
 | W10 | **Smaller parked nodes**, only if table files prove too big: an unedited parked map kept as its differences from the pack's | **engine** | `places.js`, tests | a parked keep with three doors changed is under 2 KB of state and comes back identical |
 | W11 | **Vehicles that carry creatures** on a battle map (P3), after companions C6 | **engine** | `engine/movement.js`, `engine/world.js`, `space.js`, `content/schema.js` (`carries`), tests on both grids | a cart moved 30 feet takes its two passengers along; a passenger pushed off falls |
 | W12 | **V2: places at once**, only if the owner wants it, after a spec amendment: the place lens, per-node clocks, seed streams and histories, per-node waiting, two fights | **engine** | `engine.js`, `places.js`, `rng.js`, `history.js`, `durations.js`, `view.js`, `packages/server/src/tables.js`, the client's tracker and drawer | to be written in the amendment |
 
 **What can run side by side.** W1 first. W2 after W1. W3 can start with W2 (merge one first: both
-hold `engine/travel.js`). W4 after W2 and W3. W5 and W6 after W4. W7 and W8 after W6, side by side
-if they do not both hold `view.js` (merge one first). W9 after W5, its journey and fight parts after
-W6 and W7. W10, W11 and W12 when needed. The work can stop after any row: after W2 a DM can keep
-several places with `loadMap { node }`; after W5 the atlas works; after W6 the party travels; after
-W8 it teleports.
+hold `engine/travel.js`). W4 after W2 and W3. W5 and W6 after W4. W5b after W5 (it holds
+`engine/travel.js` too: merge one first). W6b after W6, beside W7 and W8 (it holds `sight.js`,
+`vision.js` and `map.js`, and shares `view.js` with them: merge one first). W7 and W8 after W6, side
+by side if they do not both hold `view.js` (merge one first). W9 after W5, its journey and fight
+parts after W6 and W7; W9b after W9 and W5b. W10, W11 and W12 when needed. The work can stop after
+any row: after W2 a DM can keep several places with `loadMap { node }`; after W5 the atlas works;
+after W9b a DM can build one in the game; after W6 the party travels; after W6b the road has a
+night; after W8 it teleports. The editor (W5b, W9b) is in the first build, not a later stage, and
+the light (W6b) comes with the journeys (W6): both are the owner's answers of 15 November.
 
 ## What stays manual
 
@@ -824,9 +1025,8 @@ W8 it teleports.
 - A ship's crew, its damage, the wind and the weather.
 - Spending rations and water (until gear has quantities).
 - What happens in a parked place while the party is away; two fights at once (V2).
-- Day and night light on outdoor maps: a level's light does not follow the clock. A later stage could
-  give outdoor levels `daylight: true` and the hours of light **(design choice; the SRD gives no
-  hours; the engine takes dawn as 06:00 already)**: question 7.
+- Weather, seasons and the moon: day and night light by the clock is in (Decision 14); the SRD
+  gives no hours, so the hours are a design choice.
 
 ## Risks
 
@@ -839,42 +1039,96 @@ W8 it teleports.
 - **The holding map.** Rules that run after every action (gravity, watching for hidden creatures,
   lookAround) run on it too; it must be plain enough that they do nothing there. W2 tests a long
   stay on a navigation node with every after-action pass.
-- **One view per group** breaks the "party sees as one" assumption that the sight work and the
-  server's one-build-for-all rely on. W4 is the review point; with no world it must give exactly
-  today's single view.
+- **A watching player is sent a scene their characters were not in.** The owner chose it. The
+  view is the player view of the group in play, never DM-only content (W4 is the review point,
+  and its canary test the guard); what the character knows is the table's to rule, said in the
+  band, with the `watching` switch for a DM who wants it off. With no world every player is sent
+  exactly what they are sent today. The "party sees as one" assumption of `sight.md` S7 holds,
+  since there is one view for all, not one per group.
+- **Stale is a notice, not a rule of the world.** Nothing resets by itself; a DM who ignores the
+  chips keeps every place as left. A reset throws away a place's changes (the DM is told what),
+  and undo brings them back while the history lasts.
+- **The atlas editor writes into the index in the state.** A bad edit is a bad state, so every
+  operation is checked by the same limits as an imported pack and changes nothing when refused.
+- **Daylight changes who sees whom.** On a flagged map, the hour is a rule. The valley is not
+  flagged so that it plays as before; the cache is rebuilt by band, not by minute, and W6b tests
+  that a map with no `daylight` is byte for byte unchanged.
 - **Undo size.** Arrivals carry a map each way; measured in W2.
 - **The server fills actions.** A new path between the table record and `apply()`; it must run after
   the size check and before the history records the action. W3 tests both orders.
 
 ## Questions for the owner
 
-Each has a default; work proceeds on the default.
+All twelve were answered by the owner on 15 November 2026 (issue #193, the comment "Q&A
+lead, 15 November, 08:30 ET"; the 14 November comment numbered eight of them differently,
+and this list keeps the spec's own numbers). Eight are confirmed on their defaults, four
+changed the design. Where an answer left a detail open, the spec marks the proposal
+"(design choice, lead's proposal)" for the owner to confirm.
 
-1. **Split party: one place at a time or several at once.** *Default: V1, one place in play (the
-   table's focus) and the others parked, with V2's shape kept so V2 can follow.* V2 (places running
-   at once) costs per-place clocks, dice and undo; W12.
-2. **Parked places in full.** *Default: the whole map is kept, 16 battle places at most, and the DM
-   lets one go to make room.* Compaction (W10) only if table files prove too big.
-3. **Away characters.** *Default: an away character is parked with its place and cannot rest, level
-   up or change gear until the table is with it.*
-4. **Effects across places.** *Default: an effect that would span two places ends at the parting*, as
-   `loadMap` does today, except what moves with a traveller.
-5. **The travel day.** *Default: 8 hours of travel since the travellers' last Long Rest*, then the
-   extended travel saves; a crewed vessel's passengers make none. The SRD says "per day".
-6. **Off Target in numbers.** *Default: players are told in words; the DM gets the miles and the
-   direction.*
-7. **Day and night.** *Default: not in this spec*; light stays as the map sets it.
-8. **An atlas editor in the game** (placing pins on an uploaded picture, drawing routes). *Default:
-   not in the first build; a world pack is made outside and checked by `npm run world`*. The DM can
-   still add a node or a pin in play with `nodeAdd`. A pin editor is the natural next client stage.
-9. **Who moves on a navigation map.** *Default: players move their own characters between pins and
-   in and out of places when the table is on that map and not fighting; the DM can switch it to
-   DM-only (`atlasMoves`).* Journeys are always started by the DM.
-10. **Who chooses the pace.** *Default: the DM*, on the party's word at the table.
-11. **Familiarity by visits.** *Default: first arrival is "viewed once", second "seen casually",
-    "very familiar" only by the DM.*
-12. **A parked group's screen.** *Default: their own place, frozen, with a band saying the table is
-    with the others; they hear only out-of-character talk from the other place.*
+1. **Split party: one place at a time or several at once.** *Answered 15 November 2026:
+   default confirmed, V1: one place in play (the table's focus) and the others parked,
+   with V2's shape kept so V2 can follow.* V2 (places running at once) costs per-place
+   clocks, dice and undo; W12. What changed: nothing (but see question 12: the parked
+   group now watches).
+2. **Parked places in full.** *Answered 15 November 2026: default confirmed (the whole map
+   is kept, 16 battle places at most, the DM lets one go to make room), with a caveat.* The
+   owner: "it's only a valid state for a 10 day per the world clock, otherwise life moves
+   on." Asked what happens when the 10 days run out, he chose: the place is marked stale,
+   the DM is told, and the DM decides (keep it as left, reset it to how it was prepared, or
+   edit it by hand); nothing resets by itself. What changed: Decision 5 gains "Stale
+   places", the parked record gains `kept` and `stale`, and `keepPlace`, `resetPlace` and
+   `stale` on `goTo` are added (Decision 10, W2). What a reset does to the party creatures in
+   the place and when the ten days restart are the lead's proposals. He also thought aloud:
+   "Can the state be archived." That is an idea, not a decision: a parked place put away,
+   not counted in the 16, and brought back later. It is recorded in Decision 5 as noted and
+   not built; compaction (W10) remains only if table files prove too big.
+3. **Away characters.** *Answered 15 November 2026: default confirmed: an away character
+   is parked with its place and cannot rest, level up or change gear until the table is
+   with it.* What changed: nothing.
+4. **Effects across places.** *Answered 15 November 2026: default confirmed, an effect that
+   would span two places ends at the parting, as `loadMap` does today, except what moves
+   with a traveller*, after a discussion. His view, for the record: "The effect is either
+   temporal or proximic or both, it should apply per the rules. I'm concerned that we're
+   creating code rather than conditions. If it's proximic at application then every
+   character would carry it with them. If it's proximic to a character or object then it's
+   a distance check. If it's temporal, then the clock tells us everything." The lead
+   explained that the draft's rule is a shortcut (parked places are frozen and have no
+   distance between them) and is not always the rules (Bless needs range only when cast), and
+   offered his rule, his rule later, or the default; he chose the default. What changed:
+   nothing; his rule is not designed here.
+5. **The travel day.** *Answered 15 November 2026: default confirmed, 8 hours of travel
+   since the travellers' last Long Rest*, then the extended travel saves; a crewed vessel's
+   passengers make none. The SRD says "per day". What changed: nothing.
+6. **Off Target in numbers.** *Answered 15 November 2026: default confirmed: players are told
+   in words; the DM gets the miles and the direction.* What changed: nothing.
+7. **Day and night.** *Answered 15 November 2026: changed.* Wanted **with travel**: outdoor
+   light follows the world clock. What changed: its own Decision 14 and stage W6b; the
+   `daylight` flag, the hours of each band, the table rule `night`, the cache key, the
+   `lightBand` event, and which stock maps are flagged are the lead's proposals, and the
+   valley stays unflagged so it plays as before. "What stays manual" and Goal 10 follow.
+8. **An atlas editor in the game** (placing pins on an uploaded picture, drawing routes).
+   *Answered 15 November 2026: changed.* The pin and route editor is wanted **in the first
+   build**, not later. What changed: Decision 13, `atlasEdit` (Decision 10), stages W5b and
+   W9b, "Save the atlas", the Packs screen and the atlas view's Edit mode. The design of the
+   editor is the lead's proposal; the owner chose the stage.
+9. **Who moves on a navigation map.** *Answered 15 November 2026: default confirmed:
+   players move their own characters between pins and in and out of places when the table is
+   on that map and not fighting; the DM can switch it to DM-only (`atlasMoves`).* Journeys are
+   always started by the DM. What changed: nothing.
+10. **Who chooses the pace.** *Answered 15 November 2026: default confirmed, the DM*, on the
+    party's word at the table. What changed: nothing.
+11. **Familiarity by visits.** *Answered 15 November 2026: "whichever is easier."* The default
+    stays: first arrival is "viewed once", second "seen casually", "very familiar" only by
+    the DM. What changed: nothing now. If W8's builder finds that the DM setting it all is
+    simpler, W8 says so in its pull request and amends Decision 9 then; that is the
+    owner's answer applied, not a new question.
+12. **A parked group's screen.** *Answered 15 November 2026: changed.* Waiting players
+    **watch the other group's scene live** rather than a frozen view of their own place.
+    The lead's assumption, not asked: they see what that group's players see, never
+    DM-only things. What changed: Decision 5 "What players see" (one live view for all, the
+    old hidden-information point rewritten, in-character speech, what their characters know
+    flagged for review, the `watching` switch), Decision 12, the Screens, W4, W9, the risks
+    and the V2 notes. The frozen view and the "as shown when parked" copy are gone.
 
 ## Adventure modules
 

@@ -1,6 +1,12 @@
 # Spec: renderer
 
-Status: draft by an agent, to be reviewed by the design owner.
+Status: draft by an agent, to be reviewed by the design owner. **Amended
+15 November 2026** (#347) to the owner's answers (issue #193, "Q&A lead, 15 November,
+08:50 ET"): **Three.js becomes the default renderer and the hand-written one is
+removed (R14)**, and the download of about 458 KB gzipped is accepted. Where this
+spec says the hand-written renderer "stays the default", that is now the plan
+until R14 lands, not the end state. The first release tag, `v0.1.0`, is cut when
+Three.js is the default (the owner, 15 November, "Beej (lead 4)").
 
 Covers how the game is drawn: floors, walls and rooms built from the map
 document, creatures with models, sizes and height, doors, traps and spell
@@ -464,10 +470,16 @@ and which would otherwise be written and debugged here without tests; the cost
 is about 150 to 250 KB more to download once, the vendoring step, and a pinned
 version to keep. Everything specific to Hextable (rooms, timeline, sight,
 picking) is written first, in plain modules, inside the current renderer,
-where it gives visible improvement now and carries over without change. The
-hand-written renderer stays the default until the Three.js one passes the
-same checks on a phone and a desktop, then it is removed in one pull request;
-two renderers are not kept alive side by side for long.
+where it gives visible improvement now and carries over without change.
+
+**Amended 15 November 2026: the owner chose that Three.js becomes the default
+and the hand-written renderer is removed (R14)**, over "keep today's for now" and
+"Three.js once it has models and shadows", having been told it has no models yet
+(real shadows have since landed in R15). So the default switch is no longer held
+for models. What is kept from the earlier plan: it must first pass the same checks
+on a phone and a desktop as the hand-written one (the R14 conditions below);
+then the switch and the removal are one pull request, and two renderers are not
+kept alive side by side for long.
 
 The case for keeping the hand-written renderer is honest too: if the owner
 decides models are far off, or that pawns and simple animated shapes are
@@ -571,7 +583,12 @@ little.
 - **Three.js is a large file we did not write**, pinned and vendored. Upgrades
   are deliberate and reviewed.
 - **Two renderers for a while.** The interface keeps the period short; the
-  task list ends with removing one.
+  task list ends with removing one, and the owner has now decided which (R14,
+  15 November 2026).
+- **Everyone downloads Three.js.** With Three.js the default, every player loads
+  about 458 KB gzipped once (accepted by the owner, 15 November 2026), and a
+  device without WebGL 2 loses the 3D view that the old renderer's WebGL 1 gave
+  it (R14 proposes a message).
 
 ## Tasks
 
@@ -593,7 +610,7 @@ Ordered so that the first three each give a visible improvement on their own.
 | R11 | The Three.js renderer at parity, behind the interface, selectable as a preference | any agent | new `client/render-three.js` | Every check of R1 to R9 passes on a phone and a desktop within the frame budget |
 | R12 | Models: theme model packs, glTF loading, size scaling, clips mapped to beats, fallbacks; a starter pack after the owner verifies licences | any agent; licences by the design owner | `render-three.js`, `themes.js`, `assets/models/` | A goblin, a skeleton and the four heroes walk, strike and fall; a Large ogre fills three hexes |
 | R13 | Sight S8: remembered tiles shaded, light per corner, light sources, last-seen markers, "see as the party" | any agent, after sight S7 | the renderer in use | A player can tell what is in view from what is remembered, and a torch lights a cave |
-| R14 | Remove the hand-written renderer | any agent | `render.js`, `app.js` | One renderer remains; every check still passes |
+| R14 | **Make Three.js the default and remove the hand-written renderer** (the owner, 15 November 2026). Three steps in one pull request, or two if the checks want it: (1) the default `kind` becomes `'three'` in `renderer.js`, the preference `hextable.renderer` keeps working for a device, and `?renderer=gl` goes; (2) `render.js` and the `'gl'` kind are deleted, and `three-build.js` takes over the building code it duplicated; (3) the smoke script, which reads `window.hextable.R` (`cam`, `floorData`, `actors`, `doors`...) of the old renderer, reads the Three.js renderer's own surface, and `LazyThree`'s stand-in is reconsidered. **The 458 KB gzipped download is accepted** (the owner, 15 November), with every player now loading it. Two details are the lead's proposal, to confirm: (a) a device with no WebGL 2 sees a plain message in place of the table ("This game needs WebGL 2; try a current Chrome, Safari or Firefox"), where the old renderer used to be the fallback (it ran on WebGL 1); the table still works for the DM's other controls; (b) while the library loads for the first time the canvas is blank, so the loading line stays up until the first frame and the library is requested at page load, not after the table opens. | any agent (renderer) | `renderer.js`, `render.js` (deleted), `render-three.js`, `three-build.js`, `app.js`, `themes.js`, `scripts/smoke*`, `test/render*.test.js`, `docs/DESIGN.md` (the reason), `docs/DEBT.md` (P23, P24, P25 and T23 struck where fixed) | One renderer remains and it is Three.js; every check of R1 to R9 and R15 still passes on a phone and a desktop at 390 x 844 and 1280 x 800; every smoke pass runs; no import of `render.js` is left; a device without WebGL 2 sees the message and no page error; first load shows no blank canvas without a loading line; `v0.1.0` can then be tagged. |
 | R15 | Real shadows on the Three.js renderer: a sun's depth pass, floors that read it, soft edges, off by default on a phone, the governor drops them before the pixel ratio | any agent (renderer) | `render-three.js`, `governor.js`, `settings.js` | A pawn and a wall throw a shadow on the floor on hexes and on squares; a phone starts without them |
 
 R1 to R5 need no library and no engine change beyond one setting. R6 to R9
@@ -817,7 +834,7 @@ can run in parallel after R2. R10 decides the rest.
   the default renderer reports `stats()`. The smoke script still reads the default renderer's insides through
   `window.hextable.R` (`cam`, `floorData`, `actors`, `doors`...): that is its documented test surface and the app does not use it.
 - **R11 the Three.js renderer** (`three-r11`). `?renderer=three` (or the preference `hextable.renderer`) selects kind `'three'`; the default
-  stays `'gl'`. Files: `render-three.js` (the class, about 600 lines), `three-build.js` (pure: Builder, terrain, walls, cave, arena edge,
+  stays `'gl'` until R14 (the owner, 15 November 2026: Three.js becomes the default). Files: `render-three.js` (the class, about 600 lines), `three-build.js` (pure: Builder, terrain, walls, cave, arena edge,
   overlay, pawns, from floors.js and the rules; tested in Node, `test/render-three.test.js`), and in `renderer.js` a stand-in, `LazyThree`,
   because `createRenderer` answers at once and the library does not: it keeps the latest of each setter and the camera moves, loads
   `render-three.js` with a dynamic `import()` (so `vendor/` is fetched only then), replays them with the last state shown at once, and falls
