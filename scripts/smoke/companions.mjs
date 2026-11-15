@@ -303,7 +303,6 @@ export async function screens(browser, url, label, opts) {
         const small = await page.$$eval('#cc-chooser button', (b) => b.filter((x) => x.getBoundingClientRect().height < 43).map((x) => x.textContent));
         if (touch && small.length) throw new Error(`under 44 px: ${small}`);
         await page.click('#cc-chooser [data-cc-cast="picks"]');
-        const t0 = await toastText(page); if (t0) console.log('   toast:', t0);
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'find-familiar')).catch(async (e) => { throw new Error(`${e.message}; toast: ${await toastText(page)}; chooser: ${await page.evaluate(() => document.getElementById('cc-chooser').hidden)}; ents: ${await page.evaluate(() => JSON.stringify(Object.values(window.hextable.state.entities).filter((e) => e.bond).map((e) => [e.name, e.bond])))}; tl: ${await page.evaluate(() => JSON.stringify(window.hextable.state.timeline.slice(-3)))}`); });
         if (!(await page.evaluate(() => document.getElementById('cc-chooser').hidden))) throw new Error('the chooser stayed open');
         await calm(page);
@@ -316,7 +315,6 @@ export async function screens(browser, url, label, opts) {
         await page.click(`#cc-chooser [data-cc-pick="${v}"]`); await page.click(`#cc-chooser [data-cc-pick="${cs[1]}"]`);
         spots = await free(6, 5); await tapHex(spots[3]);
         await page.click('#cc-chooser [data-cc-cast="picks"]');
-        { const t0 = await toastText(page); if (t0) console.log('   toast:', t0); }
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(async (e) => { throw new Error(`${e.message}; spots ${JSON.stringify(spots)}; chooser: ${await page.evaluate(() => document.getElementById('cc-chooser').textContent.slice(-160))}`); });
         await calm(page);
         await shot(page, `companions-dragon-${tag}`);
@@ -376,16 +374,12 @@ export async function screens(browser, url, label, opts) {
           await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await calm(page);
         }
         await page.evaluate((v) => window.hextable.select(v), ven); await calm(page);
-        console.log('   order', await page.evaluate(() => { const e = window.hextable.state.encounter; return e && JSON.stringify([e.turn, e.order.map((o) => o.id)]); }), ven);
         await clickRow('features', 'Shocking Grasp through');
-        { const t0 = await toastText(page); if (t0) console.log('   toast row:', t0); console.log('   mode', await page.evaluate(() => document.getElementById('hint-text').textContent)); }
         const fpos = await state(page, (S, f) => S.entities[f].pos, foe);
         await tapHex(fpos, foe);
-        { const t0 = await toastText(page); if (t0) console.log('   toast tap:', t0); }
         await wait(page, () => /delivers/.test(document.getElementById('log-list')?.textContent ?? '') || window.hextable.state.timeline?.some?.((x) => x.type === 'delivered') || true);
         await calm(page);
         const got = await page.evaluate(() => window.hextable.state.timeline.some((x) => x.type === 'delivered'));
-        if (!got) console.log('   dbg', await page.evaluate(() => JSON.stringify({ dt: window.hextable.state.settings.diceThrow, cur: window.hextable.state.encounter && window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id, tray: !document.getElementById('dice-tray')?.hidden, hint: document.getElementById('hint-text').textContent, tl: window.hextable.state.timeline.slice(-4).map((x) => x.type), log: document.getElementById('log-list')?.textContent.slice(-200) })));
         if (!got) throw new Error(`no delivery: ${await toastText(page)}`);
         if (await state(page, (S) => !!S.encounter)) { await page.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(page, () => !window.hextable.state.encounter); }
       });
@@ -539,7 +533,6 @@ export async function screensTable(browser, url) {
         await phone.click(`#cc-chooser [data-cc-pick="${v}"]`);
         const spots = await near(3); await tapHex(spots[spots.length - 1]);
         await phone.tap('#cc-chooser [data-cc-cast="picks"]');
-        { const t0 = await toastText(phone); if (t0) console.log('   toast:', t0); }
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(() => { throw new Error('the dragon was not made'); });
         await host.evaluate(async (v) => {
           const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map), c = h.state.entities[v];
@@ -554,9 +547,7 @@ export async function screensTable(browser, url) {
         await phone.waitForSelector('#cc-chooser:not([hidden])');
         const pos = await phone.evaluate((b) => window.hextable.state.entities[b].pos, bandit);
         await tapHex(pos, bandit);
-        console.log('   taps:', await phone.textContent('#cc-chooser .cc-taps'));
         await phone.tap('#cc-chooser [data-cc-cast="picks"]');
-        { const t0 = await toastText(phone); if (t0) console.log('   toast:', t0); }
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'animate-dead'));
         await calm(phone);
       });
