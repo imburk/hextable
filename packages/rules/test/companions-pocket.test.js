@@ -220,6 +220,10 @@ for (const grid of [null, "square"]) {
     assert.ok(c.cond.poisoned, "what is going on with it stays");
     assert.deepEqual([c.bond.to, c.bond.kind, c.bond.source], ["ven", "familiar", "find-familiar"]);
     assert.deepEqual(viewEvents(r.events, s, PAT).find((e) => e.type === "reformed"), { type: "reformed", id: owl, by: "ven", form: "cat", name: "Ven's Cat" });
+    // A cast with no picks (the client until C8) changes nothing, and tells the DM what the spell does to the one it has.
+    const t = structuredClone(s), hand = ok(apply(t, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1 }, PAT));
+    assert.equal(t.entities[owl].tpl, "cat");
+    assert.ok(hand.events.some((e) => e.type === "manual" && e.partial && /Ven already has Ven's Cat: by the spell it takes the new form/.test(e.text)));
     // In the pocket it takes the new form there.
     ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
     ok(apply(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "hawk", type: "celestial" } }, PAT));

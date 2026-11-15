@@ -1066,7 +1066,7 @@ function overRecord(record, over) {
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const or = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`);
 const an = (w) => `${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}`;
-function summonHandOver(m, step, src, ev) {
+function summonHandOver(s, m, step, src, ev) {
   const { slot, caster, count } = src.summon, block = !!CONTENT.summons[step.summon], def = SPELLS[src.spell]?.def;
   const cap = (w) => `${w[0].toUpperCase()}${w.slice(1)}`;
   // The numbers `spawn` gives: a block baked for this casting, or the pack monster as it is (`over`, a Speed the spell
@@ -1106,13 +1106,18 @@ function summonHandOver(m, step, src, ev) {
   const adds = objects ? `up to ${Math.max(caster.mod, 0)} objects (a Large counts as two, a Huge as three), of the size the caster picks`
     : count === 1 ? `the creature${choose ? ' the caster picks' : ''}` : `${count} creatures${choose ? ', of the kind the caster picks' : ''}`;
   const b = step.bond ?? {};
+  // One per master (C5c): what the casting does to the one the master has, which the cast with picks would have done.
+  const olds = (src.summon.had ?? []).map((id) => s.entities[id]?.name ?? m.pocket?.[id]?.name ?? id);
+  const had = !olds.length ? '' : step.one === 'reform'
+    ? ` ${m.name} already has ${olds[0]}: by the spell it takes the new form instead, where it is. The cast with \`summon: { form, type }\` (no space) does that; or the DM edits it.`
+    : ` ${m.name} already has ${or(olds)}: by the spell the new one replaces it. The cast with picks does that; by hand the DM removes the old one.`;
   // Players are told only that the DM has something to add: no numbers, and nothing that says a creature exists.
   // (A hidden caster's line is dropped by the view, as any manual line of a creature the party does not know of.)
   ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name}: the DM adds what it summons.` });
   ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true,
     text: `${src.name} was cast at level ${slot} with nothing picked for the engine to summon, so it made nothing. The DM adds ${adds}: ${what}${types}.${over}${numbers}`
       + ` ${count === 1 && !objects ? 'It goes' : 'Each goes'} in an unoccupied space within ${src.range} ft. that ${m.name} can see (inside the arena in a fight). The DM's ${spawn} makes ${count === 1 && !objects ? 'it' : 'each'}; bond ${count === 1 && !objects ? 'it' : 'each'} to ${m.name} as ${an(b.kind ?? 'companion')}${b.turn ? ` with turn ${b.turn}` : ''}.`
-      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}${rest}${tier}` });
+      + `${src.fx ? ` A creature added so is not kept by the spell: the DM removes it when ${src.name} ends.` : ''}${had}${rest}${tier}` });
 }
 
 // Make the creatures `src.summon` names (checked when the spell was cast, engine/casting.js): each an ordinary
@@ -1127,7 +1132,7 @@ function summon(s, m, step, src, ev) {
   if (!pick) return ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name} names no spaces for the engine to summon into. The DM adds the creature.` });
   if (step.on === 'corpse') return pick.ids ? raise(s, m, step, src, ev) : corpseHandOver(m, step, src, ev);
   if (pick.reform) return reform(s, m, step, src, ev);
-  if (!pick.at) return summonHandOver(m, step, src, ev);
+  if (!pick.at) return summonHandOver(s, m, step, src, ev);
   const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over);
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
   const b = step.bond;
@@ -1163,7 +1168,7 @@ export function oneOf(s, m, step, spell) {
 }
 // What a familiar keeps when it takes a new form (`reform`): where it is and what is going on with it. The rest is the new
 // form's statistics, Hit Points at the new form's maximum ("the familiar has the statistics of the chosen form").
-const KEPT_ON_REFORM = ['cond', 'reactionUsed', 'gear', 'hidden', 'hiding', 'follow', 'light', 'look', 'away', 'reactions'];
+const KEPT_ON_REFORM = ['cond', 'reactionUsed', 'gear', 'hidden', 'hiding', 'follow', 'light', 'look', 'away'];
 // Find Familiar cast while the master has a familiar (`one: 'reform'`; SRD "One Familiar Only": "you instead cause it to
 // adopt a new eligible form"): the same creature, same id, where it is (on the map, or in the pocket dimension), takes the
 // form and creature type picked. It is made again from the new form's block, so its statistics and Hit Points (at the

@@ -254,7 +254,7 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   if (p === undefined) {
     !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
     roomForCompanions(s, e, adds);
-    return { count };
+    return { count, ...(old.length ? { had: old.map((x) => x.id) } : {}) };
   }
   (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Pick where ${sp.name} summons: { at: [a space] }.`);
   for (const k of Object.keys(p)) ['variant', 'type', 'form', 'at'].includes(k) || fail(`A summon names variant, type, form and at, not "${k}".`);

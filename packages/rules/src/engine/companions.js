@@ -6,7 +6,8 @@
 // Built here: the DM's `bond` action (pets, hirelings' mounts, a foe's familiar), `companion { auto }`, the
 // master's before or after choice (`companionOrder`, A1) and `command` (stage C5a, amendment A2: who plays a
 // commanded creature is in shared.js, ownerOf, control and the lock; the command is taken up at the start of the
-// creature's turn, resolve.js). Bonds made by spells (`fx`, `source`, `ends`, `leash`) come from the summon step;
+// creature's turn, resolve.js), and a familiar's `dismiss` and `recall` with its pocket dimension (stage C5c; the pocket
+// itself is in resolve.js, pocket and unpocket). Bonds made by spells (`fx`, `source`, `ends`, `leash`) come from the summon step;
 // no turn at all is not run yet, and the DM's bond refuses it. A turn straight after the
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
 import { BOND_MAX, companionsOf, ent, control, fail, ft, inFight, need, pocketOf, roomForCompanions } from './shared.js';

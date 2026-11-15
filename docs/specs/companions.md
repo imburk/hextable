@@ -131,7 +131,8 @@ Dead makes 1 creature from a 3rd-level slot and 2 more per slot level above 3, s
 slot; Create Undead makes 3 Ghouls at 6th level and 6 at 9th; Animate Objects makes up to the
 spellcasting modifier (a Large counts as 2, a Huge as 3). Several castings, a familiar and a steed fit in
 30. More is refused, to keep a table's state and the fight order bounded. A dead companion does not count toward the 30
-(since C5b, #341: a Zombie or a pet at 0 keeps its bond so that the DM can bring it back).
+(since C5b, #341: a Zombie or a pet at 0 keeps its bond so that the DM can bring it back). A familiar in its master's
+pocket dimension does count (since C5c, #342): it is still the master's, only not on the map.
 
 ### Decision 2: the `summon` step
 
@@ -331,6 +332,9 @@ A pocketed familiar is moved out of `state.entities` into `master.pocket = { [id
 nothing on the map, in sight or in the fight sees it, and back by `recall` with the same id and
 Hit Points. `dismiss` of a non-familiar summon whose spell has a duration ends its effect (as
 `endEffect`); of one without (Animate Dead), it frees it as the DM's `bond { to: null }` does.
+*As built in C5c (#342): only a summon kept by a Concentration effect of its master's is dismissed, at no cost, as
+dropping Concentration; any other is refused (the SRD gives Find Steed, Phantom Steed or Animate Dead no way to end it
+early, and the DM's `bond { to: null }` frees one). See the C5c build notes.*
 
 ### Decision 7: Animate Dead and Create Undead work on corpses
 
@@ -431,7 +435,8 @@ Nothing here changes the allow lists' principle (`hidden-information.md`); it ad
 | `vanished { id, why }` | as `removed`; `why` only for an Open creature |
 | `bonded`, `unbonded` (DM) | for Open creatures only |
 | `commanded { by, ids, order }` | when `by` is Open (the party's own commands); never for a foe master (they are mental) |
-| `pocketed { id, by }`, `recalled { id, at }` | when `by` is Open; a recalled foe familiar is seen as `spawned` |
+| `pocketed { id, by }`, `recalled { id, at }` | when `by` is Open; a recalled foe familiar is seen as `spawned` (as built, C5c: a pocketed one the party saw is seen as `vanished`) |
+| `reformed { id, by, form, name, pocket? }`, `delivered { id, by, spell }` (C5c) | the party's own only (both Open) |
 | `mounted { id, mount }`, `dismounted { id, at, fell? }` | when both are known to them (riding is plain to see) |
 
 - **Sight.** A party companion is a party creature, so it is one of the **eyes** of the party's
@@ -464,8 +469,8 @@ and dropping fields it does not know.
 
 | Entry | Tier after this work | How | Still the DM's |
 |---|---|---|---|
-| Find Familiar | assist | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing; Octopus (no block) |
-| Find Steed | auto (with C6); **C4 set assist**: `one` (C5) and `mount` (C6) are not in the vocabulary yet | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
+| Find Familiar | assist (**C5c built, #342**) | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing, seeing through its eyes; Octopus (no block) |
+| Find Steed | auto (with C6); **C4 set assist**; **C5c added `one: 'replace'` (#342)**, still assist: `mount` (C6) is not in the vocabulary yet, nor Life Bond's healing hook (C9) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
 | Summon Dragon | auto | `summon: 'draconic-spirit'`, Concentration part; Shared Resistances as a `modifier` step on `self` with the spell's `choice` | its "verbal commands" |
 | Giant Insect | auto | `summon: 'giant-insect'`, `variants` | as above |
 | Animate Dead | assist (**C5b built, #341**) | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert (`reassert`, up to four and two more a slot level); commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
@@ -894,6 +899,96 @@ cast at all. Before C3 these spells were `manual` and were never refused. Settle
 - **For the client job (C8):** the chooser must omit `summon` when nothing is picked, never send `summon: null` (that is
   refused), and for Summon Dragon still send `choice` (the Shared Resistances pick; a cast without it is refused "Choose a damage type": the client's `chosen()` defaults to the first option). Until the chooser exists, the plain cast button works for these spells; the DM's log shows
   the line to act on.
+
+#### Build notes: C5c, dismiss, recall and the pocket, one per master, touch delivery (#342)
+
+What was settled while building it, where Decisions 1, 2, 6 and 10 left room. **This amends the `summon` step** with the
+key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 named it.
+
+- **Which creatures.** The pocket dimension, `one` and touch delivery are a familiar's: a companion of `bond.kind:
+  'familiar'` that a spell made (`bond.source` set: Find Familiar, and later Wild Companion and Pact of the Chain, which cast
+  it). One the DM bonded as a familiar (the Vampire Familiar, a pet) has no `source`: no spell gives it a pocket dimension or
+  lets it deliver a touch, and it is refused. `one` acts on the master's companions of the step's `bond.kind` made by this
+  same spell (`oneOf`, resolve.js), on the map and, for `reform`, in the pocket.
+- **`dismiss { actor, id, forever? }`** (companions.js). A familiar: a Magic action (in a fight on the master's turn, with
+  its action left, not Action Surge's extra one, and marked a Magic action as casting marks it; outside a fight free, but the
+  master must be up and able to act), to the pocket or, with `forever: true`, for good (`vanished`, `why: 'dismissed'`). One
+  already in the pocket may be dismissed forever from there; dismissed again without `forever` it is refused. Any other
+  companion: refused with `forever`; dismissed only when its `bond.fx` names a lasting effect of the master's that needs
+  Concentration, which "you can end ... at any time (no action required)" (SRD Concentration), so that effect ends as by
+  `endEffect` and `settleBonds` vanishes the creature (`ended`); anything else is refused ("Find Steed gives Ven no way to
+  end it early"). **This narrows Decision 6**, which freed a creature with no duration as the DM's `bond { to: null }` does:
+  no SRD spell lets its caster do that (Animate Dead's control ends only with its 24 hours), so the engine does not; the
+  DM's `bond { to: null }` still frees one.
+- **Into the pocket** (`pocket`, resolve.js). What it wore or carried stays in its space (`leaveGear`, SRD: "it leaves
+  behind in its space anything it was wearing or carrying"); its own lasting effects and Concentration end and a part of
+  another's on it ends, as for a seen vanish (`settleSeen`, also for a familiar the party could not see: the pocket is real,
+  so a grapple it held on someone ends); those following it stop; it leaves the fight's order as a vanish takes it out (if
+  it was its turn, the turn passes) and the fight's flags that name it go; Grappled, Prone, Dodging and Disengaged and its
+  hiding are left behind; other conditions stay with it. Its record, Hit Points and all, moves from `state.entities` to
+  `master.pocket[id]`. `pocketed { id, by, name, seen?, party? }`. Then `checkEnd`: a foe's last companion up going to its
+  pocket can end a fight. Not in `encounter.gone` (A3): it did not die and is not counted for XP.
+- **`recall { actor, id, at }`** (companions.js). A Magic action as `dismiss`. `id` must be in this master's pocket. `at`
+  is checked as a summon's space (C3): a player names a place the party has seen; the familiar fits there (a flyer given `z`
+  in the air); nothing the master knows of stands there ("That hex is occupied."); within 30 ft of the master by `gap` from
+  its anchor (as a summon's range); in a fight the master is in, inside the arena. No sight is needed: the SRD says only
+  "an unoccupied space within 30 feet of you". A creature the master does not know of does not stop it: the familiar
+  appears in the nearest unoccupied space, or stays in the pocket if there is none, and the DM is told (`manual`, partial),
+  as for a summon. It comes back with the same record, id and Hit Points (`unpocket`); `recalled { id, by, at }`; a party
+  one looks around; in the arena of a fight going on it joins through `joinEncounter` with the C2 rules (a familiar rolls
+  its own Initiative, `joined`). An empty pocket leaves no field.
+- **Ids.** engine.js does not walk `id` (other actions use it for other things): `dismiss` and `recall` check it as
+  `companionOrder` does. To a player a creature the party does not know of, and an id that is in no pocket of this master,
+  is "No such creature."; one it knows of that is not this master's is "not Ven's companion".
+- **The cap** counts the pocket (`roomForCompanions`, shared.js), and a creature with a familiar in its pocket has
+  companions, so the DM's `bond` refuses to make it one.
+- **The master dies**: nothing happens to a familiar (Find Familiar has no `masterDies`); it stays in the pocket, and a
+  dead master can't recall it. `companionsOf`, `ownerOf`, `followMasters`, `settleBonds` and the fight order read
+  `state.entities` only, so a pocketed familiar is none of theirs until it is back.
+- **`one: 'reform'`** (Find Familiar; SRD "One Familiar Only": "you instead cause it to adopt a new eligible form"). The cast
+  names the form and type and **no space** (one named is refused: the familiar does not move); there is no cap check, since
+  nothing is added. On the map the new form must fit where the familiar stands. The same creature, same id, takes the new
+  form where it is, on the map or in the pocket (`reform`, resolve.js): it is made again from the new form's block, so its
+  statistics are the new form's and **its Hit Points are the new form's maximum** ("the familiar has the statistics of the
+  chosen form"; it takes no damage over). It keeps its place (and its place in a fight), conditions, Reaction, what it
+  carries, light, look, `hidden`, hiding and whom it follows; its bond is the step's again, keeping `auto` and `order`; a
+  party one is renamed for its form ("Ven's Cat"), a foe's numbered as a summon is. `reformed { id, by, form, name, pocket? }`.
+  No `seq` is used.
+- **`one: 'replace'`** (Find Steed: "If you already have a steed from this spell, the steed is replaced by the new one").
+  The old one may be named as the new one's space (it is passed by in the space check), leaves first (`vanish`, `why:
+  'replaced'`) and the new one is made as any summon. The cap counts the new one less the old.
+- **A cast with no picks** (#332's path) while the master has one: nothing changes, and the DM's line says what the spell
+  does to the one it has and that the cast with picks does it.
+- **The linter.** `one` is `reform` or `replace`; not on corpses; only with a `count` of one; `reform` only with `forms`.
+  Find Familiar has `one: 'reform'`, Find Steed `one: 'replace'`. Both stay `assist`: telepathy and seeing through its eyes
+  are the DM's; riding (C6) and Life Bond (C9) wait. `spellProfile` (effects.js) does not list `one`; the client (C8) reads it
+  from the spell's step.
+- **Touch delivery** (`cast { deliver: familiarId }`, casting.js; SRD: "your familiar can deliver the touch. Your familiar
+  must be within 100 feet of you, and it must take a Reaction to deliver the touch when you cast the spell"). The spell has
+  a range of Touch and is aimed at a creature; the familiar is the caster's (above), up, within 100 ft of the caster by the
+  nearest parts of the two (`apart`, the table's square rule on squares), not Incapacitated and, in a fight, with its
+  Reaction left. Its targets are reached from the familiar (the touch range and the wall check, `creatures`, from it). The
+  Reaction is spent with the spell, before a Counterspell can stop it. **Outside a fight** it is checked that the familiar
+  could take a Reaction but none is spent: there are no turns to give it back. **The attack roll** is the caster's (its spell
+  attack bonus, conditions and senses) made from the familiar's space with the familiar's size: distance, cover and what can
+  be seen are worked out from there (`atk.via`, resolve.js, `rollToHit`; neither creature counts as cover for the other).
+  That is the engine's reading; the SRD says only that the familiar delivers the touch. The player who sends the cast is the
+  one who would be asked, so nothing is asked. engine.js walks `deliver` as a creature field. `delivered { id, by, spell }`.
+- **What players are sent.** The party's master's record is Open, `pocket` included (the party shares sheets). A foe's is
+  Seen or Hidden, and `pocket` is on no Seen allow list, so a foe's pocketed familiar is in no player view. `pocketed` goes
+  as `{ id, by, name }` for the party's own; for a foe's the party saw, as `vanished { id }` (what any creature that
+  disappears gives them); for one they did not see, nothing. `recalled` goes whole when `by` is Open, otherwise as `spawned
+  { id }` where they can see it. `reformed` and `delivered` go only when both are the party's. Twin runs
+  (companions-pocket.test.js) of a hidden foe master who dismisses its hidden familiar, reforms it in the pocket and recalls
+  it to the same space, against one who does nothing, give players the same events, views, record and `seq` on hexes and
+  squares. Labels: "Ven dismissed Ven's Owl to a pocket dimension", "Ven dismissed Ven's Owl forever", "Ven called Ven's
+  Owl back".
+- **No state version bump.** `pocket` is optional and absent means none; a save without it loads and plays as before. An
+  older build that loads a save with a familiar in a pocket keeps the field and cannot recall it.
+- **Left** (in DEBT): the DM's `remove` of a master (dm.js), and raising its corpse (C5b), take its record and its pocket
+  with it, with no event for the familiar; Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
+  pocket (rests.js); a seen foe familiar's new form reaches players only through their view, with no event; the client has
+  no Dismiss, Recall or Deliver (C8).
 
 ## Amendments of 14 November
 
