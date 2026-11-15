@@ -29,7 +29,9 @@ const spotOf = (e, pos) => ({ pos, size: e.size, cond: {}, side: e.side });
 // Where a teleport step takes `e` when its caster names `hex`: checked before anything is spent.
 // `hex.z` asks for a height (in the air, say); otherwise the surface in that column nearest `e`.
 // A player may name only a place the party has been shown, and is told nothing about any other.
-export function teleportSpot(s, e, step, hex, name, player = false) {
+export function teleportSpot(s, e0, step, hex, name, player = false) {
+  // A rider teleports by its own size: it leaves its mount, which stays (stage C6b; SRD 5.2.1 34458-34461).
+  const e = e0.riding ? { ...e0, riding: undefined } : e0;
   (hex && Number.isInteger(hex.q) && Number.isInteger(hex.r)) || fail(`Pick where ${name} takes ${e.name}.`);
   const to = (Number.isFinite(hex.z) ? { q: hex.q, r: hex.r, z: hex.z } : landing(s.map, hex, e.pos.z)) || fail("There's nothing there to stand on.");
   if (player && unseenAt(s.map, to)) fail(`Pick a place the party has seen for ${name}.`);

@@ -504,7 +504,7 @@ After every row the valley plays as before.
 | C3 | **Summon blocks and the step.** `summons.js` (bake), the `summons` pack list and its linter, summon amounts, `summon` in `STEPS`, `KIT.summon`, `placeCreature` shared with `spawn`, the cast action's `summon` field, `summoned` in `viewEvents`; one entry, `giant-insect`, and Giant Insect moved to `auto`. | engine | `summons.js` (new), `content/schema.js`, `content/index.js`, `content/srd52/summons.js` (new), `content/srd52/spells-4.js` (Giant Insect only), `effects.js`, `engine/resolve.js`, `engine/world.js`, `engine/dm.js`, `engine/casting.js`, `view.js`, tests | Giant Insect cast at levels 4 to 9, each variant: the baked block lints as a monster, with AC 11 + level, HP 30 + 10 x (level - 4), Fly only for the wasp, the master's attack bonus on Poison Jab; a point out of range, unseen or occupied is refused and nothing changes; Concentration broken ends it; on `square-room` a Large insect fills 2 by 2 and is refused where it does not fit |
 | C4 | **Blocks and spells, data.** `otherworldly-steed`, `draconic-spirit`, `animated-object`, and an Unseen Servant block from the spell's numbers; Find Familiar, Find Steed (without riding until C6), Summon Dragon, Phantom Steed, Animate Objects, Unseen Servant moved to their tiers, each `checked` against the SRD lines above. | content | `content/srd52/summons.js`, `content/srd52/spells-1.js` to `spells-5.js` (those entries only), tests | `npm run content` reports them at the tiers in the table above, with no problems; a test casts each and checks the numbers against the lines cited |
 | C5 | **Commands, corpses and familiars.** `command` (with `commanded` and `standing`, amended Decision 6), the never-commanded lock, the servant's 15 ft; `on: 'corpse'`, Animate Dead and Create Undead with the 24-hour bond and reassert; `dismiss` and `recall` with the pocket; `one: 'reform'` and `'replace'`; touch delivery through the familiar's Reaction (`cast { deliver }`). | engine | `engine/companions.js`, `engine/casting.js`, `effects.js`, `engine/resolve.js`, `durations.js`, `view.js`, `content/srd52/spells-3.js` and `spells-6.js` (those two spells), tests | a never-commanded Zombie may only Dodge and move; a Zombie with a standing order and no command this turn is the DM's, and one commanded this turn is its player's (needs A2); one command for three costs one Bonus Action; a corpse 15 ft away is refused at range 10; after 24 hours the Zombie is a foe with a `manual` event; a pocketed familiar is in no player view and comes back with its Hit Points within 30 ft; Shocking Grasp delivered by an owl within 100 ft uses the owl's Reaction and is refused at 105 ft |
-| C6 | **Riding.** *C6a built (#346): `mount`, `dismount`, `riding`/`rider`, the footprint, `budget.mount`, plain walking together, the eight mounts; C6b is the rest.* `mount`, `dismount`, `riding`/`rider`, the mount's footprint for the rider, `budget.mount`, moving together (walk, push, teleport, fall), falling off, Opportunity Attacks for the pair; `mount: 'trained'` on the eight mounts; Find Steed as a controlled mount and its Incapacitated turn. | engine | `engine/movement.js`, `engine/world.js`, `engine/resolve.js`, `space.js`, `vision.js` (eye height), `content/schema.js` (the `mount` field), `content/srd52/monsters-*.js` (eight entries, that field only), tests on hexes and on `square-room` | on both grids: mounting costs half Speed; a Medium rider on a warhorse moves 60 ft with the warhorse's movement and still has its own to dismount; the warhorse can Dash but its attack is refused; a goblin beside the pair gets one Reaction and may choose either; Thunderwave pushing the horse makes the rider save DC 10 and land Prone on a failure; a flying steed vanishing drops its rider who falls; a fireball touching one hex of the horse catches the rider |
+| C6 | **Riding.** *C6a built (#346): `mount`, `dismount`, `riding`/`rider`, the footprint, `budget.mount`, plain walking together, the eight mounts. C6b built (#362): falling off, pushes, teleports, a mount gone, the pair's Opportunity Attacks, Find Steed, the raised eye; see its build notes.* `mount`, `dismount`, `riding`/`rider`, the mount's footprint for the rider, `budget.mount`, moving together (walk, push, teleport, fall), falling off, Opportunity Attacks for the pair; `mount: 'trained'` on the eight mounts; Find Steed as a controlled mount and its Incapacitated turn. | engine | `engine/movement.js`, `engine/world.js`, `engine/resolve.js`, `space.js`, `vision.js` (eye height), `content/schema.js` (the `mount` field), `content/srd52/monsters-*.js` (eight entries, that field only), tests on hexes and on `square-room` | on both grids: mounting costs half Speed; a Medium rider on a warhorse moves 60 ft with the warhorse's movement and still has its own to dismount; the warhorse can Dash but its attack is refused; a goblin beside the pair gets one Reaction and may choose either; Thunderwave pushing the horse makes the rider save DC 10 and land Prone on a failure; a flying steed vanishing drops its rider who falls; a fireball touching one hex of the horse catches the rider |
 | C7 | **The companion brain.** `companionStep`; the client's auto-play rule (never-commanded and not-commanded-this-turn, Decision 9). | engine + client | `ai.js`, `packages/client/app.js` (the auto-play condition only), tests | a never-commanded Skeleton Dodges and steps away; an Incapacitated paladin's steed comes to her and attacks the goblin beside her; a player's familiar waits for its player unless `auto` is set |
 | C8 | **Screens.** The cast chooser for a summon (form, type, variant, then taps for each point, or corpses); the companion's turn in the player's bar and tracker (one row under its master for `after`); buttons for Command (with the order text; the prompt that hands a commanded creature's turn to its player, A2), the master's before or after choice for a steed (A1), Dismiss, Recall, Mount, Dismount, Let it act; the pocket on the sheet. | client | `packages/client/actionpanel.js`, `classes.js`, `tracker.js`, `app.js`, `index.html`, `style.css`, `scripts/smoke/companions.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=companions`: at both sizes, with touch at 390 x 844, a wizard summons an owl, the owl's turn comes to the same player, the owl is dismissed and recalled; a paladin summons a steed, mounts, rides 60 ft and dismounts; no page errors |
 | C9 | **The rest of the features.** Wild Companion (a slot or a Wild Shape use), Faithful Steed's free cast, Pact of the Chain (Magic action, extra forms, forgo an attack), Investment of the Chain Master, Life Bond (a hook on healing from spells, shared with Blessed Healer, C8 in the debt log). | engine | `engine/features.js`, `engine/attacks.js`, `engine/rolls.js`, `summons.js`, `content/schema.js`, `content/srd52/classes/*` (those features), tests | each feature's SRD text is played by a test; the class entries report their new tiers |
@@ -1188,6 +1188,81 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
   `disengage` and `dodge` with the mount as actor (or `move` with the rider). Fields: `riding.on`, `riding.controlled`, `rider`;
   `encounter.budget.mount` (`move`, `action`, `dashes`) on the rider's turn. A ridden controlled mount's order entry is
   passed by: draw it with its rider. A rider stands on its mount's anchor and fills its footprint; draw it on top.
+
+### C6b, riding, the second half (#362)
+
+What was settled while building C6b. Every rule is from `reference/srd52/srd52-flow.txt`; rules that go beyond the SRD
+are marked **new rule**.
+
+- **Falling off** (SRD 5.2.1 2126-2133): "If an effect is about to move your mount against its will while you're on
+  it, you must succeed on a DC 10 Dexterity saving throw or fall off, landing with the Prone condition in an unoccupied
+  space within 5 feet of the mount. While mounted, you must make the same save if you're knocked Prone or the mount
+  is." `RIDE_DC = 10` (resolve.js). The save is a `save { against: 'Falling Off' }` event. A failure: `dismounted
+  { fell: true, why }` and the Prone condition, in the space `riderLanding` (world.js) picks.
+  - *Knocked Prone* (rider or mount): `settleRide`, after every action, saves once per Prone (`riding.told`, kept until
+    neither is Prone). A rider dropped to 0 Hit Points is Unconscious and Prone, and Unconscious fails Dexterity saves,
+    so it falls off: the C6a hand-off for a downed rider (fix round 1, M2) is now the SRD's own rule. Getting onto a
+    mount that is Prone already is not being knocked Prone while mounted: no save for that Prone.
+  - *Pushed or pulled* (`push`, resolve.js): the save is made once the first step is found ("about to move"). On a
+    success the pair moves together (`moved { forced }` for both, the same path); on a failure the rider lands beside
+    where the mount stood and the mount goes on alone. A push of the rider itself has no SRD rule (it is not the mount
+    that is moved): it is not moved and the DM is told (DEBT W15).
+  - *No space to land in*: the rider stays on and the DM is told; never a made-up space.
+  - *The SRD has no Reaction to land on one's feet* (that was the 2014 rule): the issue asked for one, it is not in
+    5.2.1, so it is not built (DEBT W17).
+- **Where it lands** (`riderLanding`, world.js, shared with `dismount`): the nearest space within 5 ft of any part of
+  the mount, by the rider's own size, on ground within a step, in the arena in a fight, chosen by what the rider's side
+  knows (hidden-information.md, section 5). A space held by a creature the party did not know of: the rider finds it
+  (`revealed`, and `unhidden { why: 'found' }` for one that took the Hide action), as a move onto it does, and the next
+  space is chosen with it known. Twin runs: until the reveal, players get the same view and events as in a world with
+  no creature there; the reveal is the one a `move` onto that space gives.
+- **Teleports** (SRD 5.2.1 34458-34461: "If you're touching another creature when you teleport, that creature doesn't
+  teleport with you unless the teleportation effect says otherwise."). The engine's teleport step moves only its
+  caster (effects.js), so there is no forced teleport of a mount. A rider that teleports gets down (`dismounted
+  { why: 'teleport' }` where it arrives; `teleportSpot` measures it by its own size, casting.js); a mount that
+  teleports leaves its rider where it was (and in the air, it falls). Fey Step ("the steed teleports, with its rider")
+  stays the DM's (its data is `manual`, summons.js). A teleport `blocked` by a creature is refused before the ride ends.
+- **A mount gone from under its rider** (dead, vanished, dismissed to a pocket, removed): the rider is down where it
+  stands (`why: 'gone'`), and if that is in the air (a flying mount) it falls at once, as the gravity pass would
+  (`drop`): `fell`, 1d6 per 10 ft, Prone. A pair set down apart by the DM (`place`): `why: 'apart'`, the DM told, a
+  rider left in the air falls.
+- **Size** (SRD 2101-2103: "at least one size larger"): a rider no longer smaller than its mount (one grew or shrank)
+  is set down beside it on its feet (`why: 'size'`; **new rule**: the SRD says nothing of how it gets off). `overlapAt`
+  (space.js) never counts the two of a pair as in each other's way (`paired`), so a push, a teleport check or a growth
+  check that passes the real creature does not see its partner. DEBT W13 for the growth checks that pass a bare body.
+- **Opportunity Attacks for the pair.** The mount provokes when it leaves a foe's reach with its own movement (its
+  Disengage covers the pair: review of #350, L3). The rider does not: it is "moved without using your movement" (SRD
+  2088-2090). The attacker has one Reaction and may make the attack against the mount or the rider (**new rule**,
+  Decision 8; not in the SRD 5.2.1 text): `ask` offers `{ reaction: 'opportunity-attack' }` (the mount) and
+  `{ reaction: 'opportunity-attack-rider', against }` (the rider, `OPPORTUNITY_RIDER`, movement.js); `always` attacks
+  the creature that provoked, the mount; a DM's creature set to ask: the DM is told of both. The rider is offered only
+  if the attacker could attack it (hostile, in reach, a clear line, seen) and, for a party attacker, the party knows of
+  it: a prompt never names a hidden creature (twin run: the prompt is the one for a horse with no rider). A rider
+  knocked down or Prone by the attack falls off there, and the mount walks on alone. A rider's own dismount out of
+  reach is still the DM's (DEBT W19).
+- **Find Steed** (26824-26853: "it functions as a controlled mount while you ride it ... If you have the Incapacitated
+  condition, the steed takes its turn immediately after yours and acts independently, focusing on protecting you").
+  The summon bond takes `mount: 'controlled'` (schema.js: only that value, never with `orders: 'command'`); the spell's
+  data has it and stays **assist** (Life Bond, the steed protecting its rider, its look). The steed shares its
+  master's count (`turn: 'after'`), so an Incapacitated rider's steed, steered by no one (C6a, fix round 1, M2), takes
+  its own turn straight after its rider's; one whose place is before its master is seated behind it (`mountOwed`).
+- **The rider's raised eye** (Decision 8: "its height is the mount's height plus its own"): `raised` (vision.js) lifts a
+  rider by its mount's height (`riding.size`) for what the party sees and is seen by. Sight and cover for attacks are
+  sight.js, outside this job (DEBT W16).
+- **DEBT W12** (a hidden half of a pair): explained, not changed. **W13**: half fixed (above). **W14**: fixed: a rider
+  set aside by stepping away (not by a stand-in) steers nothing, so its mount takes its own turns (`steering`).
+- **One turn's worth a round** (the owner's ruling of 15 November, `MOUNT_ONCE_A_ROUND` unchanged). Two repairs the
+  stress loop found: a trained animal or steed that takes its own turn unridden marks the round (`enc.rode`), so mounted
+  and then put off its rider the same round it is not seated for a second turn; and a mount whose rider falls off
+  during the mount's own turn keeps its place (`dismountOrder`), so nobody between is passed by. Tested by
+  riding-c6b-stress.test.js: 2,400 rounds on each grid with pushes, Misty Step, Prone riders and mounts, mounts killed
+  and removed, the DM's harm, stuns, mends and step-aways: every creature up and in the fight all round has exactly
+  one turn's worth, and nobody ever overlaps anyone but its own rider or mount.
+- **State.** No new field and no version bump: `riding.told` (C6a) now means "this Prone was saved against". A save
+  from main (C6a) loads unchanged and plays (fixture `test/fixtures/c6a-riding-saves.json`).
+- **For the client job (C8, C10).** New: `dismounted.fell` and `why` `prone`, `pushed`, `pulled`, `teleport`, `size`;
+  `save { against: 'Falling Off' }`; `moved { forced }` for both of a pushed pair; an Opportunity Attack prompt may have
+  a second option `{ reaction: 'opportunity-attack-rider', name, against }`, answered with `react { take }` as any.
 
 ## Amendments of 14 November
 
