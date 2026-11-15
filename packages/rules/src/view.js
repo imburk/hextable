@@ -515,6 +515,11 @@ export function viewEvents(events, state, viewer) {
           : { type: 'summoned', id: ev.id, by: ev.by, kind: ev.kind, ...(by === 'open' && ev.fx !== undefined ? { fx: ev.fx } : {}) });
         break;
       }
+      // A master's undead kept under its control for another 24 hours (Animate Dead, Create Undead; stage C5b): the
+      // party's own only, as a bond is; a foe's control is mental and never told.
+      case 'reasserted':
+        if (cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'fx']));
+        break;
       case 'joined':
         out.push(cls(ev.id) === 'open' ? afterOpen(ev) : { type: ev.type, id: ev.id });
         break;

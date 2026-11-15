@@ -61,9 +61,9 @@ export const spells6 = [
     time: "minute", range: 10, components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
-    effects: [{"manual":"Create Undead: castable only at night: up to three corpses of Medium or Small Humanoids in range each become a Ghoul under the caster's control (SRD monster stat block). As a Bonus Action each turn the caster can command any of them within 120 feet; with no command a creature Dodges. It obeys for 24 hours, and recasting the spell on it before then renews control (over up to three creatures) instead of animating new ones. A level 7 slot gives four Ghouls, level 8 five Ghouls or two Ghasts or Wights, level 9 six Ghouls, three Ghasts or Wights, or two Mummies. The DM adds and runs them."}],
-    tier: "manual", checked: true,
-    text: "At night, turns up to three humanoid corpses into ghouls under the caster's control for 24 hours; more or tougher undead with higher slots.",
+    effects: [{"summon":"ghoul","on":"corpse","count":{"slot":1,"base":3,"above":6},"bond":{"kind":"undead","turn":"own","orders":"command","range":120,"at0":"dies"}}],
+    tier: "assist", checked: true,
+    text: "At night, up to three corpses of Medium or Small Humanoids in range each become a Ghoul the caster controls for 24 hours (a Bonus Action commands those within 120 feet); casting it on the caster's own Ghouls first renews control over as many. Levels 7 to 9 give four to six Ghouls. The DM checks that it is night, whether a standing order is kept, and the other higher-slot choices: two Ghasts or Wights at level 8; three Ghasts or Wights, or two Mummies, at level 9 (cast with no picks, then spawn and bond them as undead with orders command).",
   },
   {
     id: "disintegrate", name: "Disintegrate", source: "SRD 5.2.1",

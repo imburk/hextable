@@ -130,7 +130,8 @@ A master may have at most **30** bonded creatures (question 7). The SRD limits a
 Dead makes 1 creature from a 3rd-level slot and 2 more per slot level above 3, so 13 from a 9th-level
 slot; Create Undead makes 3 Ghouls at 6th level and 6 at 9th; Animate Objects makes up to the
 spellcasting modifier (a Large counts as 2, a Huge as 3). Several castings, a familiar and a steed fit in
-30. More is refused, to keep a table's state and the fight order bounded.
+30. More is refused, to keep a table's state and the fight order bounded. A dead companion does not count toward the 30
+(since C5b, #341: a Zombie or a pet at 0 keeps its bond so that the DM can bring it back).
 
 ### Decision 2: the `summon` step
 
@@ -147,6 +148,8 @@ lent from `engine/resolve.js`:
   over: { speed: { walk: 100 } },         // fields replaced on the made creature (Phantom Steed)
   one: 'replace' | 'reform',              // one per master: a new one replaces the old (steed) or the old one takes the new form (familiar)
   bond: { kind, turn, orders, at0, ends?, leash?, noAttack?, mount? } }
+// Since C5b (#341): `reassert` (on corpses: how many of its own creatures a casting keeps under control; `count` if left
+// out), the bond's command `range` (feet, with `orders: 'command'`), and on the made creature's bond `lapse: 'foe'`.
 ```
 
 The cast action carries what the caster chose and where:
@@ -465,8 +468,8 @@ and dropping fields it does not know.
 | Find Steed | auto (with C6); **C4 set assist**: `one` (C5) and `mount` (C6) are not in the vocabulary yet | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
 | Summon Dragon | auto | `summon: 'draconic-spirit'`, Concentration part; Shared Resistances as a `modifier` step on `self` with the spell's `choice` | its "verbal commands" |
 | Giant Insect | auto | `summon: 'giant-insect'`, `variants` | as above |
-| Animate Dead | assist | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert; commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
-| Create Undead | assist | as Animate Dead, Ghoul (Ghast, Wight, Mummy by slot), range 120; "only at night" is the DM's | as above |
+| Animate Dead | assist (**C5b built, #341**) | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert (`reassert`, up to four and two more a slot level); commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
+| Create Undead | assist (**C5b built, #341**) | as Animate Dead, Ghoul, range 120; three to six Ghouls by slot, reassert as many; "only at night" is the DM's | as above; the Ghasts, Wights and Mummies of a level 8 or 9 slot (a cast with no picks, then `spawn` and `bond`) |
 | Animate Objects | assist | `summon: 'animated-object'` with `variants` as size, at points the caster names | which objects (map things are not checked), the count by size against the modifier, reverting to the object |
 | Phantom Steed | auto; **C4 set assist**: a part's `ends: damaged` and `mount` (C6) are not in the vocabulary yet | `summon: 'riding-horse'`, `over: { speed: { walk: 100 } }`, part ends on damage, `mount` via the mounts list | travel pace, the vanishing tack, the minute to dismount |
 | Unseen Servant | assist; **C4 left manual**: `turn: 'none'`, commands and a block of one score are not in the vocabulary | a block built from the spell's numbers (AC 10, HP 1, Str 2), `turn: 'none'`, `orders: 'command'`, `leash: 60`, `noAttack`, Invisible | its other ability scores (none in the SRD), the tasks |
@@ -746,7 +749,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   speeds (`{ speed: { walk: 100 } }`). `bond` takes `kind`, `turn` (`own` or `after`), `orders` (`free`), `at0`,
   `ends` (`masterDies`, `longRest`), `leash`, `noAttack`. **Refused by the linter until the stage that runs them:**
   `one` (C5), `on: 'corpse'` (C5), `turn: 'none'` (C5, C6), `orders: 'command'` and a command `range` (C5), `mount`
-  (C6). The step is only in a spell, once, in the spell's own list (not under a roll), the spell aimed at its
+  (C6). *Since C5b (#341) `on: 'corpse'`, `orders: 'command'` and the bond's `range` are taken; see the C5b build notes.* The step is only in a spell, once, in the spell's own list (not under a roll), the spell aimed at its
   caster and with a range in feet; a monster's action may not have one. The pack check (when the pack's summon
   blocks are given to `lintPack`) wants the step's `variants` and `types` to be exactly the block's, the spell's
   level at least the block's, and every form a pack monster.
@@ -1048,7 +1051,7 @@ familiar's Reaction). What was settled while building C5a, where Decision 6 and 
 - **The DM's bond** now takes `orders: 'command'` (C1 refused it until the engine ran commands; one assertion of
   companions.test.js changed for it). It takes no `range`: the DM's commanded creature is commanded at any distance. The
   source's range comes from the summon step's `bond.range` in C5b (the linter still refuses `orders: 'command'` and a
-  range in a step until then).
+  range in a step until then). *Since C5b (#341) it takes them.*
 - **The Unseen Servant's 15 ft is not built.** It needs `turn: 'none'` (a creature with no entry of its own, moved on its
   master's turn: `move` with the servant as actor from a `budget.servant` the command fills), which is movement.js and the
   fight order, not in this stage's files, and the servant has no block yet (C4 left it manual). What is left for it: the
@@ -1062,6 +1065,112 @@ familiar's Reaction). What was settled while building C5a, where Decision 6 and 
   words are not in a label.
 - **No state version bump.** `bond.standing`, `bond.commanded.turn` and the events are new and optional; a bond without
   `commanded` or `standing` (a save from before) is never commanded for `orders: 'command'` and unchanged for `'free'`.
+
+#### Build notes: C5b, corpses, Animate Dead and Create Undead (#341)
+
+What was settled while building it, where Decisions 2 and 7 left room. **This amends the `summon` step** (CLAUDE.md: a
+step's vocabulary is an engine change) with one key, `reassert`, below.
+
+- **The step.** `{ summon: <pack monster>, on: 'corpse', count, reassert?, bond: { kind, turn, orders: 'command', range,
+  at0 } }`. The linter now takes `on: 'corpse'`, a bond's `orders: 'command'` and its `range` (feet, a multiple of 5, 1 to
+  5280; required with `orders: 'command'` and refused without it), and refuses on corpses `forms`, `types`, `variants` and
+  `over` (there is nothing to pick but the corpses) and any bond that does not take commands. `turn: 'none'`, `one` and
+  `mount` are still refused (C5c, C6), and so is a `range` on the step itself. Both spells use the pack's own Zombie and
+  Ghoul as they are: no summon block was added.
+- **`reassert`, the amendment.** The SRD gives the two spells different numbers for keeping control: Animate Dead
+  animates one creature at level 3 but reasserts control over up to four, two more of each per slot level; Create
+  Undead animates and reasserts the same three to six. The step's `count` cannot say both, and the engine may not read
+  the spell's id, so the step gains `reassert`: a summon amount of creatures (a whole number, or `{ slot, base, above }`,
+  linted at every level like `count`), only on corpses, `count` when left out. Animate Dead: `count: { slot: 2, base: 1,
+  above: 3 }`, `reassert: { slot: 2, base: 4, above: 3 }`; Create Undead: `count: { slot: 1, base: 3, above: 6 }`.
+- **What `on: 'corpse'` means** is Decision 7's, kept in the engine (`CORPSE`, resolve.js), not in data: the corpse of a
+  Medium or Small Humanoid, and control for 24 hours. Both SRD spells that raise corpses say exactly that; a third that
+  said otherwise would need a step key.
+- **The cast.** `summon: { ids: [...] }` and nothing else. Either corpses (1 to `count` at this level: "up to" for both
+  spells; Animate Dead's one corpse at level 3 is one) or living creatures the caster made with this same spell
+  (`bond.to` the caster, `bond.source` the spell; 1 to `reassert`), never both ("either animates corpses or keeps ...
+  under control, not both in one casting"). Each id must be a creature's own record; to a player one the party does not
+  know of is "No such creature." (an unseen corpse, a hidden one, a foe's bond is never told; any creature it knows of
+  that is neither is "neither a corpse nor a creature Nia made with Animate Dead"). A corpse is `dead` and not
+  `vanished` (the husk an unseen vanish leaves is "gone: there is no corpse", to the DM; a player does not know of it),
+  with no `remains` (dust, a frozen statue), not a player's character or a player's own creature (that record is the
+  player's: the DM may `remove` it and `spawn`), and Medium or Small and Humanoid (`creatureType`, so a record's own
+  `type` first). Each is within the spell's range by the nearest parts (as a spell aimed at a creature) with no wall
+  between (`walled`). No sight is needed: the SRD says "within range". The cap counts the corpses to raise; a reassert
+  adds none. A companion can't cast either. Both spells take a minute to cast, so neither is cast in a fight (as before).
+- **A corpse rises.** Its record leaves as the DM's `remove` takes a creature (`removed { id, name, seen?, party? }`; its
+  companions freed, `unbonded`; those following it stop), and what was still on it ends as for a seen vanish
+  (`settleSeen`, "Bandit 1 is gone"). What it carried goes onto the pile in its cell (`leaveGear`, as a vanish leaves it:
+  a pile the party could not see is marked `left`). On a fight's card not yet published, one the party saw is marked
+  `gone` with the name it was shown (A3). The creature is made in the corpse's space, or the nearest unoccupied one if a
+  creature stands there now (a `partial` line to the DM). It is named as a summon: "Nia's Zombie" for the party, "Zombie
+  2" for a foe, counted by `tpl` as `spawn` counts, so nothing in its name says what corpse it was or whose it is. Bond:
+  `{ to, kind: 'undead', source, fx, turn: 'own', orders: 'command', range, at0: 'dies', ends: [], lapse: 'foe', slot,
+  commanded: null, auto: false }`; never commanded, so the C5a lock holds until its master commands it. `summoned { id,
+  by, kind, fx, corpse }` (`corpse` is the DM's: view.js picks what it sends) and `effectStart`.
+- **Its 24 hours.** Each creature has a lasting effect of its own, named for the spell, from its master, 24 hours, with
+  one part `{ target, bond: true }` (`holds` in durations.js reads it as it reads a `summon` part). One effect per
+  creature, not one per casting: the DM's `remove` ends every effect with a part on the creature removed, which would
+  free every other creature of the same casting.
+- **When it runs out** (`settleBonds`: the bond names an effect that no longer holds it, and `lapse: 'foe'`, a new
+  optional bond field): the bond goes (`unbonded { id, from, why: 'lapsed' }`), the creature stays where it is, alive,
+  and is a foe, also in the middle of a fight (the SRD gives it no say; it keeps its place in the order). The DM is told
+  (`manual`, `partial`); a party master's player is told, with no numbers, that it "no longer obeys" (they would know:
+  the control is their caster's own). A foe's lapse tells players nothing. One that is dead by then is only freed.
+- **Reasserting** within the 24 hours: each named creature gets a new 24-hour effect and its old one ends ("Nia renewed
+  it"); `reasserted { id, by, fx }`, sent to players only when both are Open. After a lapse the creature is no longer the
+  caster's, so a reassert on it is refused.
+- **No picks** (`a.summon === undefined`, #332's path): nothing changes but the slot; the DM is told what the casting
+  could have done (how many corpses, the creature's AC, Hit Points and Speed, how many it could have reasserted) and how
+  to do it by hand (`remove`, `spawn`, `bond` as undead with orders command; such a creature has no command range and no
+  timed 24 hours), and the entry's tier note follows. The player's line is "Animate Dead: the DM applies it.": no number,
+  and nothing that says a corpse or a creature exists. No cap check on this path: the caster may have meant to reassert.
+- **What players are sent.** A foe master the party does not know of: the corpse's `removed` is never sent (as the DM's
+  `remove`), the creature is `spawned { id }` where they can see it, and the effects are not theirs. Twin runs
+  (companions-corpses.test.js) of a hidden foe necromancer raising a corpse the party saw die and one the DM hid, against
+  the same necromancer's plain manual spell with the DM removing each corpse and spawning a Zombie in its space by hand,
+  then a day passing, give players the same events, views, record and `seq`, on hexes and squares; nothing names the
+  necromancer, either corpse, a master or a bond.
+- **XP** (A3): a foe's raised creature killed in a fight counts with the pack monster's XP (a Zombie's 50).
+- **Left to the DM**, as the spell texts say: bones and the Skeleton (no bones on the map); "only at night"; Create
+  Undead's Ghasts, Wights and Mummies at levels 8 and 9; whether a creature keeps to a standing order; the Zombie's
+  Undead Fortitude (the pack's trait text). The client cannot yet name corpses (C8).
+- **No state version bump.** `bond.range`, `bond.lapse`, a `bond` part and the `reasserted` event are optional; a save
+  without them plays as before, and a DM-bonded undead (no `fx`) never lapses. Without a bump, an older build that loads
+  a save made with this one does not refuse it, and gets the raised creatures wrong: its `holds` reads only `summon`
+  parts, so after the first action its `settleBonds` vanishes every raised creature as a summon whose effect ended. Such
+  a save should be loaded by this build or a later one.
+
+Settled in the review of #341:
+
+- **A corpse still in the fight's order is refused** (M1): "Bandit 1 fell in this fight and is still in its order: it can
+  be raised once the fight is over." Divine Intervention casts Animate Dead as a Magic action, so in a fight. Refusing is
+  what the DM's `remove` does for a creature in the fight, and it keeps A3 right: the corpse keeps its place and counts
+  toward the fight's XP. Taking it out and keeping it in `encounter.gone` was the other choice. It was not taken: `gone`
+  means "the party saw it go", and an unseen corpse put there would be named on the card. Raised after the fight, a seen
+  corpse's line is marked `gone` with the name it was shown, so the card still has it. A corpse that is not in the order
+  (one that fell outside the arena) is not refused by this rule (not tested).
+- **Names a player is told** (M2). Every refusal of `corpsesFor` names a creature as the party sees it (`seenName`: a foe
+  in Wild Shape is the Beast); the DM is told its own name. The wall check is the same as `walled`, with the seen name.
+- **Ids.** A sparse list (`new Array(1)`) is refused as one that names no creature (`Array.from`, so the holes are read).
+- **A dead companion does not count toward the cap of 30** (one rule for every kind of bond: `roomForCompanions`,
+  shared.js, used by a summon, a corpse spell and the DM's `bond`). A raised creature at 0 is dead and keeps its bond
+  (`at0: 'dies'`), its 24 hours and its player. Undead Fortitude is the DM's (the Zombie's trait text), and the DM brings
+  a Zombie that stands back with `setHp`: it is then exactly as before, bonded, its player's, and it obeys commands. While
+  it is dead, a reassert that names it is told "is dead, so there is nothing to keep under control" (and that the DM may
+  bring it back with setHp). Its 24 hours still run, and when they end its bond goes with no `manual` line (a corpse has
+  nothing to obey). (A first fix freed a dead raised creature at once; re-review of #341, M-A: a revived Zombie then came
+  back unbonded and uncontrolled, so it was dropped for this rule.)
+- **A lapse runs `checkEnd`**, so a fight that its new foe changes is settled at once. A party creature that is not a
+  character does not keep the party standing (`partyOf`), so a lapse can only keep a fight going, never end it. A mid-fight
+  lapse is tested: the creature turns foe, keeps its place, and the fight goes on.
+- **A DM-made NPC from a sheet** (`kind: 'npc'`, a derived record, no `type` or `tpl`) is refused as not a Humanoid: a sheet
+  carries no creature type, and `creatureType` gives Humanoid only to a player's character. Such a corpse is the DM's to
+  raise by hand (`remove`, `spawn`, `bond`).
+- **A dead caster's creatures** stay bonded to it, and so its player's (`ownerOf`), until their 24 hours end. The SRD ends
+  control only with the time: nothing in the spells ends it at the caster's death.
+- **Names repeat.** A party caster's creatures are all "Nia's Zombie"; ids tell them apart, and the DM may rename them.
+  (A foe's are numbered, as `spawn` numbers them.)
 
 ### A3, XP for a foe's summons (built, #329)
 

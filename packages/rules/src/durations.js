@@ -6,7 +6,8 @@
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
-//          or { target, temp: true }, or { target, summon: true }. `born` names the turn it was made in (turnKey).
+//          or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
+//          raised creature under control). `born` names the turn it was made in (turnKey).
 // A `summon` part is the creature a spell made (docs/specs/companions.md, Decision 4): its bond names the
 // effect (`bond.fx`), and once the part has ended, or the effect has, the creature vanishes ('ended'). Ending
 // the part takes nothing off here: the creature leaves the map in settleBonds (engine/resolve.js), after the
@@ -61,8 +62,11 @@ function endPart(s, ev, fx, p) {
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }
 const targetsOf = (fx) => [...new Set(fx.parts.map((p) => p.target))];
-// Does the lasting effect its bond names still keep this creature on the map? (a `summon` part on it, not ended)
-export const holds = (s, e) => effectsOf(s).some((fx) => fx.id === e.bond?.fx && fx.parts.some((p) => p.summon === true && p.target === e.id && !p.ended));
+// Does the lasting effect its bond names still keep this creature? (a `summon` part on it, not ended: on the map; or a
+// `bond` part, Animate Dead's and Create Undead's 24 hours of control, Decision 7: under its master's control. What
+// follows when it does not is settleBonds', engine/resolve.js: a summon vanishes, a creature held by a bond part stays
+// and is freed, a foe.)
+export const holds = (s, e) => effectsOf(s).some((fx) => fx.id === e.bond?.fx && fx.parts.some((p) => (p.summon === true || p.bond === true) && p.target === e.id && !p.ended));
 
 export function endEffect(s, ev, fx, why) {
   if (!effectsOf(s).includes(fx)) return;

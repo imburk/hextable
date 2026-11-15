@@ -5,14 +5,14 @@ import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
-import { footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
+import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
-import { unknown } from '../vision.js';
+import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, up } from './shared.js';
-import { aimArea, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
+import { aimArea, creatureType, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonMade } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
 
 // ---------- teleportation ----------
@@ -242,8 +242,8 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   const step = sp.def.effects.find((x) => 'summon' in x);
   if (!step) { a.summon === undefined || fail(`${sp.name} summons nothing.`); return null; }
   const p = a.summon;
-  const c = step.count;
-  const count = c === undefined ? 1 : Number.isInteger(c) ? c : (c.base ?? 0) + c.slot * (slot - (c.above ?? 0));
+  const count = summonCount(step.count, slot);
+  if (step.on === 'corpse') return corpsesFor(s, e, sp, step, p, slot, range, ctx);
   if (p === undefined) {
     !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
     roomForCompanions(s, e, count);
@@ -284,6 +284,63 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   }
   out.at = at;
   return out;
+}
+
+// On corpses (Decision 7; stage C5b, #340): `a.summon` = { ids: [...] }, naming either dead Medium or Small Humanoids
+// within the spell's range, each to rise as the step's creature (`count` of them at most), or living creatures the
+// caster made with this same spell and still controls, to take back under control for another 24 hours (`reassert` of
+// them at most, `count` if the step gives none), never both in one casting. Each within range by the nearest parts
+// (as a spell aimed at a creature) and with no wall in the way. A player names only creatures the party knows of: any
+// other id, or one that is no creature's own record, is "No such creature.", so nothing is said of an unseen corpse
+// or of a foe's bond. A corpse already used is gone (its record went), and the husk an unseen vanish leaves
+// (`vanished`) is no corpse: the creature did not die, it went. A player's character is not a corpse to raise: its
+// record is the player's (the DM may remove it and spawn the creature). No `summon` field at all is the manual path
+// (#332) as for any summon spell, with no cap check: the caster may have meant to reassert. Returns { ids, raise } or
+// { count, reassert } for the manual path.
+function corpsesFor(s, e, sp, step, p, slot, range, ctx) {
+  const count = summonCount(step.count, slot), again = summonCount(step.reassert ?? step.count, slot);
+  !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
+  if (p === undefined) return { count, reassert: again };
+  (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Name the corpses for ${sp.name}: { ids: [...] }.`);
+  for (const k of Object.keys(p)) k === 'ids' || fail(`${sp.name} names corpses or its own creatures (ids), not "${k}".`);
+  // Array.from, so a sparse list's holes are refused as non-ids rather than skipped (review of #341, L1).
+  (Array.isArray(p.ids) && p.ids.length > 0 && p.ids.length <= BOND_MAX && Array.from(p.ids).every((x) => typeof x === 'string') && new Set(p.ids).size === p.ids.length)
+    || fail(`Name the corpses for ${sp.name}, each once: up to ${count} at this level, or up to ${again} of ${e.name}'s own creatures of it to keep under control.`);
+  const player = ctx.role !== 'dm';
+  // A player is told of a creature by the name the party sees (a foe in Wild Shape is the Beast; review of #341, M2).
+  const nm = (t) => (player ? seenName(t) : t.name);
+  const list = Array.from(p.ids, (id) => {
+    const t = Object.hasOwn(s.entities, id) ? s.entities[id] : fail('No such creature.');
+    !player || !unknown(s, t) || fail('No such creature.');
+    return t;
+  });
+  const isCorpse = (t) => t.dead && !t.vanished, own = (t) => !t.dead && t.bond?.to === e.id && t.bond.source === sp.id;
+  for (const t of list) {
+    if (t.vanished) fail(`${nm(t)} is gone: there is no corpse.`);
+    (isCorpse(t) || own(t)) || fail(`${nm(t)} is neither a corpse nor a creature ${e.name} made with ${sp.name}.`);
+    if (isCorpse(t)) {
+      !t.remains || fail(`Nothing is left of ${nm(t)} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no corpse.`);
+      (t.kind !== 'pc' && (!!t.bond || !ownerOf(s, t))) || fail(`${nm(t)} is a player's character: whether it rises is the DM's.`);
+      // A dead Undead (a raised creature at 0 keeps its bond, `at0: 'dies'`): no Humanoid's corpse, and nothing to keep under
+      // control while it is dead. The DM may bring it back (Undead Fortitude is the DM's) with `setHp`.
+      creatureType(t) !== 'undead' || fail(`${nm(t)} is dead, so there is nothing to keep under control, and it is no Humanoid's corpse to raise. If it still stands (the DM's call), the DM brings it back with setHp.`);
+      (CORPSE.sizes.includes(t.size) && creatureType(t) === CORPSE.type) || fail(`${nm(t)} is not the corpse of a Medium or Small Humanoid.`);
+      // A corpse still in the fight's order (cast as a Magic action through Divine Intervention, so in a fight) is refused,
+      // as the DM's `remove` refuses a creature in the fight: taking it out would leave its place in the order and its share
+      // of the fight's XP (A3) to nothing (review of #341, M1).
+      !inFight(s, t.id) || fail(`${nm(t)} fell in this fight and is still in its order: it can be raised once the fight is over.`);
+    }
+    const d = apart(s, e, t);
+    d * FT <= range || fail(`${nm(t)} is ${ft(d)} away. ${sp.name} reaches ${range} ft.`);
+    unblocked(s, e, t) || fail(`There is a wall between ${e.name} and ${nm(t)}.`);
+  }
+  const raise = isCorpse(list[0]);
+  list.every((t) => isCorpse(t) === raise) || fail(`${sp.name} either animates corpses or keeps ${e.name}'s own creatures under control, not both in one casting.`);
+  if (raise) {
+    list.length <= count || fail(`${sp.name} animates ${count === 1 ? 'one corpse' : `up to ${count} corpses`} at level ${slot}.`);
+    roomForCompanions(s, e, list.length);
+  } else list.length <= again || fail(`${sp.name} keeps up to ${again} of ${e.name}'s creatures under control at level ${slot}.`);
+  return { ids: list.map((t) => t.id), raise };
 }
 
 // ---------- casting a spell from a magic item (DEBT C14, #284) ----------

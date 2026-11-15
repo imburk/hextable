@@ -294,13 +294,20 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
 // ---------- the summon step and summon blocks (docs/specs/companions.md, Decisions 1, 2 and 5) ----------
 // What a bond made by a spell may say. The lists are Decision 1's (engine/companions.js keeps the same; a test
 // holds them equal). Not yet run by the engine, so refused here rather than kept and not played: a turn of
-// none (stages C5, C6), commands and their range (C5), riding (C6), one per master (C5), corpses (C5).
+// none (stages C5, C6), riding (C6), one per master (C5c). Commands with their range and corpses run since C5b
+// (#340): `on: 'corpse'` (Decision 7) with `reassert`, the most creatures a casting takes back under control
+// (Animate Dead's "up to four", two more per slot level; the C5b amendment), and a bond's `orders: 'command'`
+// with its command `range` in feet.
 export const SUMMON_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
 export const SUMMON_TURNS = ['own', 'after'];
 export const SUMMON_ENDS = ['masterDies', 'longRest'];
-const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'on', 'over', 'bond'];
-const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'at0', 'ends', 'leash', 'noAttack'];
-const SUMMON_LATER = { one: 'one per master (`one`) comes with stage C5', mount: 'riding (`mount`) comes with stage C6', range: 'commands and their range come with stage C5' };
+const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'bond'];
+const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack'];
+const SUMMON_LATER = { one: 'one per master (`one`) comes with stage C5', mount: 'riding (`mount`) comes with stage C6' };
+// A summon amount of creatures: a whole number from 1 to SUMMON_MOST, or { slot, base?, above? } (checked at every level in lintSpell).
+const okCount = (c) => (isInt(c) && c >= 1 && c <= SUMMON_MOST)
+  || (!!c && typeof c === 'object' && !Array.isArray(c) && isInt(c.slot) && c.slot > 0 && Object.keys(c).every((k) => ['slot', 'base', 'above'].includes(k))
+    && (c.base === undefined || isInt(c.base)) && (c.above === undefined || isInt(c.above)));
 // The most creatures one casting makes (the cap of a master's companions, owner's question 7).
 export const SUMMON_MOST = 30;
 function lintSummonStep(st, say) {
@@ -314,23 +321,34 @@ function lintSummonStep(st, say) {
   } else if (!ID.test(st.summon ?? '') || st.summon === 'form') say('`summon` names a summon block or a pack monster');
   if (st.types !== undefined && !(allOf(CREATURE_TYPES)(st.types) && st.types.length >= 1 && new Set(st.types).size === st.types.length)) say('`types` lists creature types the caster picks from');
   if (st.variants !== undefined && !(Array.isArray(st.variants) && st.variants.length >= 2 && st.variants.every((x) => ID.test(x ?? '')) && new Set(st.variants).size === st.variants.length)) say('`variants` lists the choices the caster picks from');
-  if (st.on !== undefined && st.on !== 'space') say(st.on === 'corpse' ? 'a summon step on corpses comes with stage C5' : '`on` is "space"');
+  if (st.on !== undefined && !['space', 'corpse'].includes(st.on)) say('`on` is "space" or "corpse"');
   if (st.count !== undefined) {
     if (st.on === undefined) say('`count` goes with `on`');
-    const okCount = (isInt(st.count) && st.count >= 1 && st.count <= SUMMON_MOST)
-      || (st.count && typeof st.count === 'object' && isInt(st.count.slot) && st.count.slot > 0 && Object.keys(st.count).every((k) => ['slot', 'base', 'above'].includes(k))
-        && (st.count.base === undefined || isInt(st.count.base)) && (st.count.above === undefined || isInt(st.count.above)));
-    if (!okCount) say(`\`count\` is a whole number from 1 to ${SUMMON_MOST}, or { slot, base?, above? }`);
+    if (!okCount(st.count)) say(`\`count\` is a whole number from 1 to ${SUMMON_MOST}, or { slot, base?, above? }`);
+  }
+  // On corpses (Decision 7): the caster names dead Medium or Small Humanoids, each made into the one creature the step
+  // names, or its own creatures of this spell to take back under control (`reassert`, as many as `count` if left out).
+  // Nothing to pick but the corpses: no forms, variants, types or `over`. The bond takes commands with a range.
+  if (st.reassert !== undefined) {
+    if (st.on !== 'corpse') say('`reassert` is for a summon step on corpses');
+    if (!okCount(st.reassert)) say(`\`reassert\` is a whole number from 1 to ${SUMMON_MOST}, or { slot, base?, above? }`);
+  }
+  if (st.on === 'corpse') {
+    for (const k of ['forms', 'types', 'variants', 'over']) if (st[k] !== undefined) say(`a summon step on corpses has no \`${k}\`: the caster names the corpses only`);
+    if (st.bond && typeof st.bond === 'object' && st.bond.orders !== 'command') say('a summon step on corpses makes creatures that take commands (`orders: "command"`)');
   }
   // `over`: fields replaced on the made creature. Only its speeds so far (Phantom Steed's Speed 100).
   if (st.over !== undefined && !(st.over && typeof st.over === 'object' && Object.keys(st.over).length === 1 && st.over.speed
     && Object.keys(st.over.speed).length && Object.entries(st.over.speed).every(([m, v]) => MOVE_MODES.includes(m) && isInt(v) && v >= 0 && v % 5 === 0))) say('`over` replaces { speed: { walk, fly, ... } } on the made creature, in feet');
   const b = st.bond;
-  if (!b || typeof b !== 'object' || Array.isArray(b)) return say('a summon step needs `bond`: { kind, turn, orders?, at0, ends?, leash?, noAttack? }');
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return say('a summon step needs `bond`: { kind, turn, orders?, range?, at0, ends?, leash?, noAttack? }');
   for (const k of Object.keys(b)) if (!SUMMON_BOND_KEYS.includes(k)) say(SUMMON_LATER[k] ? `a summon bond: ${SUMMON_LATER[k]}` : `a summon bond has no "${k}"`);
   if (!SUMMON_KINDS.includes(b.kind)) say(`a summon bond's kind is one of ${SUMMON_KINDS.join(', ')}`);
   if (!SUMMON_TURNS.includes(b.turn)) say(b.turn === 'none' ? 'a summon bond with no turn of its own comes with stages C5 and C6' : `a summon bond's turn is one of ${SUMMON_TURNS.join(', ')}`);
-  if (b.orders !== undefined && b.orders !== 'free') say(b.orders === 'command' ? 'commands come with stage C5' : 'a summon bond\'s orders are "free"');
+  if (b.orders !== undefined && !['free', 'command'].includes(b.orders)) say('a summon bond\'s orders are "free" or "command"');
+  // A command reaches so many feet from the master (60 for Animate Dead, 120 for Create Undead): given with commands, and only then.
+  if (b.orders === 'command' && !(isInt(b.range) && b.range > 0 && b.range % 5 === 0 && b.range <= 5280)) say('a summon bond that takes commands says how far they reach: `range` in feet, a multiple of 5');
+  if (b.orders !== 'command' && b.range !== undefined) say('a summon bond\'s `range` is for one that takes commands (`orders: "command"`)');
   if (!['vanish', 'dies'].includes(b.at0)) say('a summon bond says what 0 Hit Points does: `at0` vanish or dies');
   if (b.ends !== undefined && !(allOf(SUMMON_ENDS)(b.ends) && b.ends.length && new Set(b.ends).size === b.ends.length)) say(`a summon bond's \`ends\` lists ${SUMMON_ENDS.join(', ')}`);
   if (b.leash !== undefined && !(isInt(b.leash) && b.leash > 0 && b.leash % 5 === 0 && b.leash <= 5280)) say('a summon bond\'s `leash` is feet, a multiple of 5');
@@ -497,10 +515,12 @@ function lintSpell(e, say) {
     if (!(isInt(e.range) && e.range > 0)) say('a spell with a summon step needs a range in feet');
     if (e.reaction !== undefined || e.zone !== undefined) say('a summon step is not for a reaction or a zone');
     // A `count` that grows with the slot makes 1 to SUMMON_MOST creatures at every level the spell can be cast at.
-    const c = seen.summons[0].count;
-    if (c && typeof c === 'object' && isInt(e.level)) for (let l = Math.max(1, e.level); l <= 9; l++) {
-      const n = (c.base ?? 0) + c.slot * (l - (c.above ?? 0));
-      if (!(isInt(n) && n >= 1 && n <= SUMMON_MOST)) { say(`a summon step's \`count\` makes ${n} creatures at level ${l}: it must be 1 to ${SUMMON_MOST} at every level the spell is cast at`); break; }
+    for (const field of ['count', 'reassert']) {
+      const c = seen.summons[0][field];
+      if (c && typeof c === 'object' && isInt(e.level)) for (let l = Math.max(1, e.level); l <= 9; l++) {
+        const n = (c.base ?? 0) + c.slot * (l - (c.above ?? 0));
+        if (!(isInt(n) && n >= 1 && n <= SUMMON_MOST)) { say(`a summon step's \`${field}\` makes ${n} creatures at level ${l}: it must be 1 to ${SUMMON_MOST} at every level the spell is cast at`); break; }
+      }
     }
   }
 }
