@@ -130,7 +130,8 @@ A master may have at most **30** bonded creatures (question 7). The SRD limits a
 Dead makes 1 creature from a 3rd-level slot and 2 more per slot level above 3, so 13 from a 9th-level
 slot; Create Undead makes 3 Ghouls at 6th level and 6 at 9th; Animate Objects makes up to the
 spellcasting modifier (a Large counts as 2, a Huge as 3). Several castings, a familiar and a steed fit in
-30. More is refused, to keep a table's state and the fight order bounded.
+30. More is refused, to keep a table's state and the fight order bounded. A dead companion does not count toward the 30
+(since C5b, #341: a Zombie or a pet at 0 keeps its bond so that the DM can bring it back).
 
 ### Decision 2: the `summon` step
 
@@ -1152,10 +1153,14 @@ Settled in the review of #341:
 - **Names a player is told** (M2). Every refusal of `corpsesFor` names a creature as the party sees it (`seenName`: a foe
   in Wild Shape is the Beast); the DM is told its own name. The wall check is the same as `walled`, with the seen name.
 - **Ids.** A sparse list (`new Array(1)`) is refused as one that names no creature (`Array.from`, so the holes are read).
-- **A destroyed raised creature is freed at once** (`at0: 'dies'`; `settleBonds`, `destroyed`): its bond and its 24-hour
-  effect end (`unbonded { why: 'destroyed' }`), so it no longer counts toward its master's 30, and a reassert that names it
-  is told "is dead: a destroyed Undead is no corpse to raise ...". If the DM brings it back (`setHp`), it is unbonded and
-  the DM's.
+- **A dead companion does not count toward the cap of 30** (one rule for every kind of bond: `roomForCompanions`,
+  shared.js, used by a summon, a corpse spell and the DM's `bond`). A raised creature at 0 is dead and keeps its bond
+  (`at0: 'dies'`), its 24 hours and its player. Undead Fortitude is the DM's (the Zombie's trait text), and the DM brings
+  a Zombie that stands back with `setHp`: it is then exactly as before, bonded, its player's, and it obeys commands. While
+  it is dead, a reassert that names it is told "is dead, so there is nothing to keep under control" (and that the DM may
+  bring it back with setHp). Its 24 hours still run, and when they end its bond goes with no `manual` line (a corpse has
+  nothing to obey). (A first fix freed a dead raised creature at once; re-review of #341, M-A: a revived Zombie then came
+  back unbonded and uncontrolled, so it was dropped for this rule.)
 - **A lapse runs `checkEnd`**, so a fight that its new foe changes is settled at once. A party creature that is not a
   character does not keep the party standing (`partyOf`), so a lapse can only keep a fight going, never end it. A mid-fight
   lapse is tested: the creature turns foe, keeps its place, and the fight goes on.

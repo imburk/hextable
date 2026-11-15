@@ -471,16 +471,49 @@ for (const grid of [null, "square"]) {
     for (const ids of [new Array(1), [, "x"]]) refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids } }, PAT, /Name the corpses/);
   });
 
-  test(`a destroyed Zombie is freed at once: it no longer counts toward the cap, and is not reasserted${on}`, () => {
+  // Review of #341: Undead Fortitude is the DM's (the Zombie's trait text), so a Zombie at 0 is dead and keeps its bond
+  // (`at0: 'dies'`); the DM rules that it stands and brings it back with setHp, and it is exactly as before.
+  test(`a Zombie at 0 brought back by the DM is still bonded, its player's, with its 24 hours, and obeys a command${on}`, () => {
     const s = table(grid), c = corpse(s, "bandit", 5);
     const [z] = made(ok(raise(s, [c])));
     const fx = s.entities[z].bond.fx;
-    const r = ok(apply(s, { type: "setHp", actor: z, hp: 0 }, DM));
-    assert.ok(s.entities[z].dead && !s.entities[z].bond, "dead, and no longer bonded");
-    assert.ok(!s.effects.some((x) => x.id === fx), "its 24 hours end");
-    assert.ok(r.events.some((e) => e.type === "unbonded" && e.id === z && e.why === "destroyed"));
-    assert.ok(!Object.values(s.entities).some((e) => e.bond?.to === "nia"), "nothing counts toward Nia's 30");
-    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [z] } }, PAT, /is dead: a destroyed Undead/);
+    ok(apply(s, { type: "setHp", actor: z, hp: 0 }, DM));
+    assert.ok(s.entities[z].dead && s.entities[z].bond?.to === "nia", "dead, still bonded");
+    assert.ok(s.effects.some((x) => x.id === fx), "its 24 hours run on");
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [z] } }, PAT, /is dead, so there is nothing to keep under control.*setHp/);
+    ok(apply(s, { type: "setHp", actor: z, hp: 1 }, DM));
+    const e = s.entities[z];
+    assert.ok(!e.dead && e.bond.to === "nia" && e.bond.fx === fx && e.side === "party");
+    assert.equal(ownerOf(s, e), "pat");
+    assert.ok(s.effects.some((x) => x.id === fx));
+    ok(apply(s, { type: "command", actor: "nia", ids: [z], order: "guard" }, PAT));
+    ok(apply(s, { type: "search", actor: z }, PAT));
+    // A dead one's 24 hours still run out: the bond ends with no manual line (a corpse has nothing to obey).
+    ok(apply(s, { type: "setHp", actor: z, hp: 0 }, DM));
+    const r = ok(apply(s, { type: "advanceTime", minutes: DAY + 1 }, DM));
+    assert.ok(!s.entities[z].bond && s.entities[z].side === "party");
+    assert.ok(!r.events.some((x) => x.type === "manual"));
+  });
+
+  test(`the cap of 30 does not count a dead raised creature or a dead pet${on}`, () => {
+    const s = table(grid), cs = [corpse(s, "bandit", 5), corpse(s, "bandit", 5)];
+    const [z] = made(ok(raise(s, [cs[0]])));
+    const wolves = [];
+    for (let i = 0; i < 29; i++) {
+      const w = spawn(s, "wolf", free(s, s.entities.fighter.pos, 9).at(-1));
+      ok(apply(s, { type: "bond", actor: w, to: "nia", kind: "pet" }, DM));
+      wolves.push(w);
+    }
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [cs[1]] } }, PAT, /at most 30 companions/);
+    ok(apply(s, { type: "setHp", actor: z, hp: 0 }, DM));
+    assert.ok(s.entities[z].bond, "the dead Zombie keeps its bond");
+    const [z2] = made(ok(raise(s, [cs[1]])));
+    assert.ok(z2, "a dead raised creature leaves room");
+    const extra = spawn(s, "wolf", free(s, s.entities.fighter.pos, 9).at(-1));
+    refused(s, { type: "bond", actor: extra, to: "nia", kind: "pet" }, DM, /at most 30 companions/);
+    ok(apply(s, { type: "setHp", actor: wolves[0], hp: 0 }, DM));
+    assert.ok(s.entities[wolves[0]].bond, "a dead pet keeps its bond");
+    ok(apply(s, { type: "bond", actor: extra, to: "nia", kind: "pet" }, DM));
   });
 
   test(`a lapse in the middle of a fight: the Zombie turns foe, keeps its place, and the fight goes on${on}`, () => {

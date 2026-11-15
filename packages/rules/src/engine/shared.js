@@ -203,7 +203,9 @@ export const less = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== 
 export const BOND_MAX = SUMMON_MOST;
 // A husk left by an unseen vanish (resolve.js, vanishUnseen) has no bond; one kept from before stage C2 is passed by too.
 export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x.bond?.to === id && !x.vanished);
-// Refused, with the one text for it, unless master `m` has room for `n` more companions.
+// Refused, with the one text for it, unless master `m` has room for `n` more companions. A dead companion does not count
+// (any kind: a Zombie or a pet that dies keeps its bond, `at0: 'dies'`, so the DM can bring it back with `setHp`; review
+// of #341). Only the cap skips them: they are still `m`'s companions everywhere else.
 export function roomForCompanions(s, m, n = 1) {
-  companionsOf(s, m.id).length + n <= BOND_MAX || fail(`${m.name} can have at most ${BOND_MAX} companions.`);
+  companionsOf(s, m.id).filter((x) => !x.dead).length + n <= BOND_MAX || fail(`${m.name} can have at most ${BOND_MAX} companions.`);
 }

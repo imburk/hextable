@@ -321,8 +321,9 @@ function corpsesFor(s, e, sp, step, p, slot, range, ctx) {
     if (isCorpse(t)) {
       !t.remains || fail(`Nothing is left of ${nm(t)} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no corpse.`);
       (t.kind !== 'pc' && (!!t.bond || !ownerOf(s, t))) || fail(`${nm(t)} is a player's character: whether it rises is the DM's.`);
-      // A raised creature destroyed (at0 'dies'): dead, not a creature to keep under control, and no Humanoid's corpse.
-      creatureType(t) !== 'undead' || fail(`${nm(t)} is dead: a destroyed Undead is no corpse to raise, and there is nothing left of it to keep under control.`);
+      // A dead Undead (a raised creature at 0 keeps its bond, `at0: 'dies'`): no Humanoid's corpse, and nothing to keep under
+      // control while it is dead. The DM may bring it back (Undead Fortitude is the DM's) with `setHp`.
+      creatureType(t) !== 'undead' || fail(`${nm(t)} is dead, so there is nothing to keep under control, and it is no Humanoid's corpse to raise. If it still stands (the DM's call), the DM brings it back with setHp.`);
       (CORPSE.sizes.includes(t.size) && creatureType(t) === CORPSE.type) || fail(`${nm(t)} is not the corpse of a Medium or Small Humanoid.`);
       // A corpse still in the fight's order (cast as a Magic action through Divine Intervention, so in a fight) is refused,
       // as the DM's `remove` refuses a creature in the fight: taking it out would leave its place in the order and its share
