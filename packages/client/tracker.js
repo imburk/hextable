@@ -18,9 +18,24 @@ const WORD = { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healt
 // creatures hidden from the players. `init` is there only where the view sent it (open creatures; everyone for the DM).
 export function trackerRows(S, { dm = false } = {}) {
   const enc = S?.encounter;
-  if (enc) return enc.order.map((o, i) => (o.someone ? { unseen: true, now: i === enc.turn } : S.entities[o.id] ? { e: S.entities[o.id], init: typeof o.init === 'number' ? o.init : undefined, now: i === enc.turn } : null)).filter(Boolean);
+  if (enc) {
+    const inOrder = new Set(enc.order.map((o) => o.id));
+    return enc.order.flatMap((o, i) => {
+      if (o.someone) return [{ unseen: true, now: i === enc.turn }];
+      const e = S.entities[o.id]; if (!e) return [];
+      const item = { e, init: typeof o.init === 'number' ? o.init : undefined, now: i === enc.turn };
+      // A controlled mount that is being ridden has no turn of its own: it is drawn with its rider (companions.md, C6).
+      const m = e.riding && S.entities[e.riding.on];
+      return m && !inOrder.has(m.id) ? [item, { e: m, now: false, carried: true }] : [item];
+    });
+  }
   const all = Object.values(S?.entities ?? {});
-  return [...all.filter((e) => e.side === 'party'), ...(dm ? all.filter((e) => e.hidden && e.side !== 'party') : [])].map((e) => ({ e, now: false }));
+  const party = all.filter((e) => e.side === 'party');
+  // A companion stands under its master, as this viewer was sent it.
+  const kids = (m) => party.filter((c) => c.bond?.to === m.id);
+  const head = party.filter((e) => !(e.bond && S.entities[e.bond.to]?.side === 'party'));
+  const ordered = head.flatMap((m) => [m, ...kids(m)]);
+  return [...ordered, ...party.filter((e) => !ordered.includes(e)), ...(dm ? all.filter((e) => e.hidden && e.side !== 'party') : [])].map((e) => ({ e, now: false }));
 }
 
 // What a creature is called on screen. A companion the viewer was sent the bond of (the party's own) reads as its master's: "Brenna's wolf".
@@ -53,6 +68,15 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
   let sf = null; try { sf = e.pos && S.map ? under(S.map, e.pos) : null; } catch { /* no surface: say nothing */ }
   if (sf && e.pos.z - sf.z >= FT) tags.push(`\u2191 ${Math.floor((e.pos.z - sf.z) / FT) * FT} ft`);
   if (e.hidden) tags.push('Hidden from players');
+  // Companions (C8): whose it is, whose turn it is, the words of its order (typed by a person: escaped below with every tag), and riding.
+  if (e.bond && S.entities[e.bond.to]) {
+    tags.push(`Companion of ${S.entities[e.bond.to].name}`);
+    if (enc && now) tags.push(e.bond.commanded ? 'Its turn: commanded' : 'Its own turn');
+    const w = typeof e.bond.commanded?.order === 'string' ? e.bond.commanded.order : typeof e.bond.standing === 'string' ? e.bond.standing : '';
+    if (w) tags.push(`Order: ${w}`);
+  }
+  if (e.riding && S.entities[e.riding.on]) tags.push(`Riding ${S.entities[e.riding.on].name}`);
+  if (item.carried) tags.push('Carries its rider: no turn of its own');
   if (full && enc && inFight(S, e.id) && e.reactionUsed) tags.push('Reaction used');
   const conds = Object.keys(e.cond || {}).filter((c) => e.cond[c] && c !== 'stable').map((c) => conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : ''));
   if (e.cond?.stable && !stable) conds.push('Stable');
@@ -64,7 +88,7 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
   const ctl = (dm ? `${typeof e.maxHp === 'number' ? '<button type="button" data-do="dmg" aria-label="Damage by the typed amount">\u2212</button><button type="button" data-do="heal" aria-label="Heal by the typed amount">+</button>' : ''}` +
       `${enc && now ? '<button type="button" data-do="skip">Skip turn</button>' : ''}${e.hidden ? '<button type="button" data-do="reveal">Reveal</button>' : ''}` : '') +
     (e.abil ? `<button type="button" data-do="sheet" aria-label="Sheet: ${esc(nm)}">Sheet</button>` : '');
-  return `<li data-id="${esc(e.id)}" data-side="${esc(e.side)}" class="${now ? 'now' : ''} ${out ? 'out' : ''}"${now ? ' aria-current="step"' : ''}>
+  return `<li data-id="${esc(e.id)}" data-side="${esc(e.side)}" class="${now ? 'now' : ''} ${out ? 'out' : ''}${e.bond && !item.carried ? ' tr-comp' : ''}${item.carried ? ' tr-carried' : ''}"${now ? ' aria-current="step"' : ''}>
       ${dm && typeof e.maxHp === 'number' ? `<input type="checkbox" class="tr-tick" aria-label="Select ${esc(nm)}" ${ticked.has(e.id) ? 'checked' : ''}>` : '<span class="tr-nobox"></span>'}
       <span class="tr-init">${init !== undefined ? init : ''}</span>
       <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(nm)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>

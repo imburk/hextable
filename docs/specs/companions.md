@@ -1373,6 +1373,34 @@ what goes beyond the SRD is marked **new rule** (the brain's choices are a stand
   `brainMode` says why (`player`, `dm`, `guard`, `protect`, `free`), for a line such as "Zombie 1 has an order that stands:
   the DM plays it". A companion whose turn is `'dm'` waits for the DM's hand as a party character waits for its player.
 
+### C8, the screens (#367)
+
+What was built in `packages/client/companions.js` (new), `companions.css` (new) and small hooks in `actionpanel.js`, `tracker.js` and `app.js`. The client decides nothing: every
+button is greyed with the engine's own words, taken from `dry(action)` in app.js, which runs the action on a copy of the state the screen holds (a player's view, with
+the timeline left out) and returns the refusal. A copy that cannot be run (a player's view holds no dice seed) gives no answer and the button stays open for the engine to decide
+when it is pressed. One answer per state is kept until the next update.
+
+- **The cast chooser.** A summon spell's row in Spells (and Explore rituals) opens a panel instead of arming the spell. It reads `spellProfile`'s `summon` and the step's `one`:
+  a pick for each of `variants`, `types` and `forms` (a menu where there are more than six), the spell's own `choice` (Summon Dragon's Shared Resistances; the first is sent
+  if none is tapped), a level when more than one slot level is left, then taps: one space for each creature (`count` worked out from the slot; a tap again takes it back; one
+  more tap replaces the last), or corpses on the map for Animate Dead and Create Undead (`summon: { ids }`; any creature may be tapped and the engine's words say why not,
+  so the client does not re-state the corpse rule), or no tap for Find Familiar's reform of the familiar the master has. "Cast" runs the cast through `dry` first and shows
+  the refusal in the panel's toast with the picks kept; "Cast, DM adds it" sends the cast with **no `summon` key** (never `null`), and `choice` where the spell needs it, which is the
+  engine's hand-off to the DM. Cancel and Escape leave at any step. A flyer's height (`z`) and the caster's `look` are not sent.
+- **Companion rows**, in the Features tab (a Command row also in Bonus on a turn, the riding rows in Move): `Command…` (a picker with a box for each commandable companion, each
+  greyed with its own reason, and one order field of up to 80 characters), the steed's side (`orderNext ?? order ?? 'after'`; a tap sends the other one), `Dismiss…` (a familiar: to
+  its pocket or for good; another companion: `dismiss`), `Recall…` (arms a tap on the map: `recall { at }`), `Let it act…` (and the checkbox on the companion's own card),
+  `Mount…`, `Dismount`, and for each familiar and each Touch spell of the master `<Spell> through <familiar>`, which arms the spell with `cast { deliver }`.
+- **Mount candidates** are the living, un-hidden creatures of the rider's side that are not characters, as the view sent them; the engine says which it may ride.
+- **The turn.** A companion's card says "its turn" or "commanded this turn", with its order; the tracker draws a companion under its master (outside a fight) with the tags
+  "Companion of ...", "Its turn: commanded", "Order: ..." (escaped as every tag is) and "Riding ..."; a ridden mount that has no entry is drawn under its rider. `commandedTurn`
+  selects that creature for its player and toasts the prompt's text.
+- **Keys.** The order field is a text input, so keys.js and the tab digits stay quiet while it has the focus; the typed text survives the panel's redraws.
+- **Log.** `commanded`, `companionOrder`, `pocketed`, `recalled`, `reformed`, `delivered`, `reasserted`, `mounted`, `dismounted`, `commandedTurn`, and the `lapsed`, `replaced` and
+  `ended` reasons. `commanded` and `commandedTurn` may hold typed words and are `typed` in `LINE_KINDS`; the others are `engine`.
+- **Not built:** the pocket on the sheet; a rider drawn on its mount (C10); a flyer's `z` for a summon; the chooser for a spell cast through an item or a feature (`via`); targeting a
+  creature from horseback with an attack (W16); the highlights of a delivered touch are the caster's reach.
+
 ## Amendments of 14 November
 
 The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change four things in the engine.

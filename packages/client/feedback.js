@@ -64,11 +64,12 @@ export const LINE_KINDS = {
   summoned: 'engine', bonded: 'engine', unbonded: 'engine', companion: 'engine', vanished: 'engine', fell: 'engine', size: 'engine', speed: 'engine',
   revealed: 'engine', concealed: 'engine', hid: 'engine', unhidden: 'engine', light: 'engine', follow: 'engine', formation: 'engine', marchingOrder: 'engine',
   rewound: 'engine', levelReady: 'engine', conclusionSkipped: 'engine', conclusionReady: 'engine', xp: 'engine', conclusionEdited: 'engine',
+  companionOrder: 'engine', pocketed: 'engine', recalled: 'engine', reformed: 'engine', delivered: 'engine', reasserted: 'engine', mounted: 'engine', dismounted: 'engine',
   undone: 'fixed', redone: 'fixed',
   note: 'typed', chronicle: 'typed', claimed: 'typed', released: 'typed', map: 'typed', region: 'typed', check: 'typed', object: 'typed', noticed: 'typed', triggered: 'typed',
   gear: 'typed', item: 'typed', equip: 'typed', attuning: 'typed', attuned: 'typed', conclusion: 'typed',
   say: 'typed', privateNote: 'typed', handoutShown: 'typed', handout: 'typed', handoutHidden: 'typed', handoutRemoved: 'typed',
-  sceneStart: 'typed', sceneEdit: 'typed', sceneEnd: 'typed', sceneNpc: 'typed', checkAsked: 'typed',
+  sceneStart: 'typed', sceneEdit: 'typed', sceneEnd: 'typed', sceneNpc: 'typed', checkAsked: 'typed', commanded: 'typed', commandedTurn: 'typed',
 };
 const FIXED = { undone: 'Taken back.', redone: 'Done again.' };
 

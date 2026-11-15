@@ -69,9 +69,9 @@ scrubbing (engine words; a refusal that echoed typed text is a known gap).
 
 | Class | Types |
 |---|---|
-| engine | `encounterStart` `encounterEnd` `turn` `joined` `attack` `damage` `heal` `cast` `act` `recharge` `save` `down` `died` `deathSave` `std` `cond` `condEnd` `manual` `effectStart` `effectEnd` `concentration` `stood` `time` `rest` `tempHp` `spawned` `summoned` `bonded` `unbonded` `companion` `vanished` `fell` `size` `speed` `revealed` `concealed` `hid` `unhidden` `light` `follow` `formation` `marchingOrder` `rewound` `levelReady` `conclusionSkipped` `conclusionReady` `xp` `conclusionEdited` |
+| engine | `encounterStart` `encounterEnd` `turn` `joined` `attack` `damage` `heal` `cast` `act` `recharge` `save` `down` `died` `deathSave` `std` `cond` `condEnd` `manual` `effectStart` `effectEnd` `concentration` `stood` `time` `rest` `tempHp` `spawned` `summoned` `bonded` `unbonded` `companion` `companionOrder` `pocketed` `recalled` `reformed` `delivered` `reasserted` `mounted` `dismounted` `vanished` `fell` `size` `speed` `revealed` `concealed` `hid` `unhidden` `light` `follow` `formation` `marchingOrder` `rewound` `levelReady` `conclusionSkipped` `conclusionReady` `xp` `conclusionEdited` |
 | fixed | `undone` `redone` |
-| typed | `note` `chronicle` `claimed` `released` `map` `region` `check` `object` `noticed` `triggered` `gear` `item` `equip` `attuning` `attuned` `conclusion` `say` `privateNote` `handoutShown` `handout` `handoutHidden` `handoutRemoved` `sceneStart` `sceneEdit` `sceneEnd` `sceneNpc` `checkAsked` |
+| typed | `note` `chronicle` `claimed` `released` `map` `region` `check` `object` `noticed` `triggered` `gear` `item` `equip` `attuning` `attuned` `conclusion` `say` `privateNote` `handoutShown` `handout` `handoutHidden` `handoutRemoved` `sceneStart` `sceneEdit` `sceneEnd` `sceneNpc` `checkAsked` `commanded` `commandedTurn` |
 
 ### Names
 

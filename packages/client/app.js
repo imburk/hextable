@@ -4,7 +4,7 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
-import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
@@ -18,6 +18,7 @@ import { createTracker, shownName } from './tracker.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
 import { initActionPanel } from './actionpanel.js';
+import { initCompanions, isSummon, orderText } from './companions.js';
 import { initFormation, formationWhy, leads, whyNoFormation, followersOf } from './formation.js';
 import { initDrawer } from './drawer.js';
 import { initSettings } from './settings.js';
@@ -305,10 +306,20 @@ function words(ev) {
     case 'spawned': return ev.quiet ? null : [`${n(ev.id)} appears.`];
     case 'summoned': { const e = S.entities[ev.id], w = e ? summonedName(S, e) : 'creature'; return [`${n(ev.by)} summons ${/^[aeiou]/i.test(w) ? 'an' : 'a'} ${w}.`]; }
     case 'bonded': return [`${n(ev.id)} is now ${n(ev.to)}'s ${ev.kind}${ev.side ? ` and fights on the ${ev.side}'s side` : ''}.`];
-    case 'unbonded': return [`${n(ev.id)} is no longer ${ev.from !== undefined ? `${n(ev.from)}'s` : 'anyone\'s'} companion.`];
+    case 'unbonded': if (ev.why === 'lapsed') return [`${n(ev.id)} no longer obeys ${ev.from !== undefined ? n(ev.from) : 'its master'}.`]; return [`${n(ev.id)} is no longer ${ev.from !== undefined ? `${n(ev.from)}'s` : 'anyone\'s'} companion.`];
+    case 'commanded': return [`${n(ev.by)} commands ${ev.ids.length === 1 ? n(ev.ids[0]) : `${ev.ids.length} companions`}${typeof ev.order === 'string' && ev.order ? `: "${ev.order}"` : ''}.`];
+    case 'commandedTurn': return [String(ev.text ?? `${n(ev.id)} is yours this turn.`)];
+    case 'companionOrder': return [`${n(ev.id)} will act ${ev.order} ${n(ev.by)}${ev.next ? ' from the next round' : ''}.`];
+    case 'pocketed': return [`${n(ev.by)} sends ${ev.name ?? n(ev.id)} to a pocket dimension.`];
+    case 'recalled': return [`${n(ev.by)} calls ${n(ev.id)} back.`];
+    case 'reformed': return [`${n(ev.id)} takes a new form: ${ev.name ?? ev.form}.`];
+    case 'delivered': return [`${n(ev.id)} delivers ${n(ev.by)}'s ${SPELLS[ev.spell]?.name ?? 'spell'}.`];
+    case 'reasserted': return [`${n(ev.by)} keeps ${n(ev.id)} under control again.`];
+    case 'mounted': return [`${n(ev.id)} mounts ${n(ev.mount)}.`];
+    case 'dismounted': return [`${n(ev.id)} ${ev.fell ? 'falls off' : 'dismounts from'} ${n(ev.mount)}${{ prone: ': knocked Prone', pushed: ': pushed', pulled: ': pulled', teleport: ': teleported', size: ': its size changed' }[ev.why] ?? ''}.`, ev.fell ? 'bad' : ''];
     case 'companion': return [`${n(ev.id)} ${ev.auto ? 'acts on its own now' : 'waits for its player\'s orders'}.`];
     case 'vanished': {
-      const w = { hp0: 'drops to 0 Hit Points and vanishes', master: 'vanishes: its master is gone', leash: 'strays too far and vanishes', dismissed: 'is dismissed' }[ev.why] ?? 'vanishes';
+      const w = { hp0: 'drops to 0 Hit Points and vanishes', master: 'vanishes: its master is gone', leash: 'strays too far and vanishes', dismissed: 'is dismissed', replaced: 'is replaced by a new one', ended: 'ends with its spell' }[ev.why] ?? 'vanishes';
       return [`${ev.name && !known.has(ev.id) ? ev.name : n(ev.id)} ${w}.`, ev.why === 'hp0' ? 'bad' : ''];
     }
     case 'map': return [`The scene changes: ${ev.name}.`];
@@ -392,6 +403,9 @@ function beat(ev, ctx) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
     R.floater(f[0], f[1], f[2], ctx.instant ? floatRun.n++ * 0.28 : 0);
   }
+  // A commanded creature's turn is its player's (A2): say so, and hand the card to them. `commandedTurn` is sent to that player alone.
+  if (ev.type === 'commandedTurn' && S.entities[ev.id] && mine(S.entities[ev.id])) { select(ev.id); R.focus(ev.id); toast(String(ev.text ?? 'Its turn is yours.'), true); }
+  else if (['pocketed', 'recalled', 'mounted', 'dismounted'].includes(ev.type) && line && S.entities[ev.by ?? ev.id] && mine(S.entities[ev.by ?? ev.id])) toast(line[0], true);
   if (ev.type === 'turn' && ev.id) { if (mine(S.entities[ev.id]) && S.entities[ev.id].kind === 'pc') select(ev.id); R.focus(ev.id); }
   else if (ev.type === 'moved' && ev.id === selId) R.focus(selId);
   else if (ev.type === 'map') R.focus(selId ?? Object.values(S.entities).find((e) => e.side === 'party')?.id, true);     // a new place: look at the party
@@ -402,11 +416,11 @@ function onUpdate(state, events, fresh) {
   const first = !S || fresh;
   if (first) known.clear();
   for (const e of Object.values(S?.entities ?? {})) known.set(e.id, shownName(S, e));      // what a creature that vanishes in these events was called
-  S = state;
+  S = state; stamp++; dryCache.clear();
   for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
   TL.setPace(pace());
   if (first) {
-    LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); DF.fresh(); CC.fresh(); D.reset();
+    LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
     if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
@@ -457,16 +471,32 @@ function idled() {
   }
 }
 
+// ---------- companions (companions.js): what the engine would answer ----------
+// The engine's own answer to an action, on a copy of the state this screen holds: '' if it would be accepted, else its words. A copy that cannot be
+// run (a player's view holds no dice) is no answer, and the button is left open for the engine to decide when it is pressed. One answer a state.
+let stamp = 0; const dryCache = new Map();
+function dry(action) {
+  if (!S || !T) return '';
+  const k = JSON.stringify(action), hit = dryCache.get(k);
+  if (hit !== undefined) return hit;
+  let why = '';
+  try { const r = apply(structuredClone({ ...S, timeline: [] }), action, { role: T.you.role, userId: T.you.userId }); why = r.ok ? '' : r.error; } catch { why = ''; }
+  dryCache.set(k, why);
+  return why;
+}
+const CP = initCompanions({ state: () => S, act: (a) => act(a), toast: (m) => toast(m), dry, setMode: (m) => setMode(m), move: MOVE, mode: () => mode, render: () => refresh(), selected: () => selId });
+
 // ---------- rendering the UI ----------
 // Cast a spell that has nothing to aim on the spot, or arm it (or put it down again if it is armed).
 // A spell cast from an item (the Items tab arms it with `mode.item = { key, which, base, level? }`) is sent as `use` with the same aim fields; a class's own casting as `cast`.
 // An item casts at the lowest caster level, at `level` when extra charges raise it.
 const castAct = (aim) => (mode.item
   ? { type: 'use', actor: selId, item: mode.item.key, which: mode.item.which, ...(mode.item.level > mode.item.base ? { level: mode.item.level } : {}), ...aim }
-  : { type: 'cast', actor: selId, spell: mode.id, ...aim });
+  : { type: 'cast', actor: selId, spell: mode.id, ...(mode.deliver ? { deliver: mode.deliver } : {}), ...aim });
 const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level ?? mode.item.base) : CLS.most(e, sp, targetCount(sp.def, e.level)));
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
+  if (isSummon(id)) return armed ? setMode(MOVE) : CP.openChooser(e, id);       // a summon asks for its picks first (companions.js)
   if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) });
   else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
 }
@@ -598,6 +628,8 @@ function refresh() {
   if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
+  if (mode.kind === 'recall') hint = CP.hintFor(mode);
+  { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   showPick();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
@@ -773,6 +805,7 @@ R.onTap = ({ hex, id }) => {
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
+  if (CP.tap(mode, hex, id)) return;
   if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
@@ -791,7 +824,7 @@ R.onTap = ({ hex, id }) => {
     const sp = SPELLS[mode.id];
     if (sp.area) { mode.aim = hex; return refresh(); }
     if (!tapped) return setMode(MOVE);
-    if (!targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
+    if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = spellMost(e, sp);
     if (most <= 1) return act(castAct({ target: id, ...chosen(sp) }));
     const picked = mode.picked ?? (mode.picked = []);
@@ -1056,7 +1089,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
-const AP = initActionPanel({ prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
+const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
   openFeature: (e, id) => CLS.openFeature(e, id), openAttack: (e, id) => CLS.openAttack(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
