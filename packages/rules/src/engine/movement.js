@@ -369,7 +369,42 @@ export const handlers = {
     // is. Refusing the move would tell the player something is there without saying what.
     // That is a creature the DM hid (never in a fight) or one hiding from it.
     // Under the los and light rules, for a party member, also one the party cannot see.
-    const lurker = living(s).find((o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e) && key(o.pos) === tk);
+    const unseen = (o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e);
+    const lurker = living(s).find((o) => unseen(o) && key(o.pos) === tk);
+    // On the way there (stage C7, review of #368, M2): a party mover's route is the one the party can see, laid out as if
+    // a creature it does not know of were not there. Where that route runs into one, the move stops on the last place
+    // before it and the creature is found, as when the move ends on it. Refusing the move ("Too far"), or bending the route
+    // round it, would tell the players something stands there without saying what. (A creature the DM plays walks by
+    // what is true, as before.)
+    if (!lurker && e.side === 'party') {
+      const lurkers = living(s).filter((o) => o.id !== e.id && unseen(o));
+      if (lurkers.length) {
+        const known = moveOptions({ ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o))) }, e);
+        const kn = known.get(tk);
+        if (kn?.canStop) {
+          const G = gridOf(s.map), steps = route(known, tk), mover = e;
+          const at = steps.findIndex(({ h }) => lurkers.some((o) => overlapAt(o, o.pos, mover, h, G)));
+          if (at === -1) {
+            if (!fighting && e.follow) unfollow(s, e, ev);
+            const had = !!s.encounter, walked = walk(s, e, known, tk, ev, fighting, bud ?? undefined);
+            if (!walked) return;
+            if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); const r = riderOf(s, e); if (r) march(s, r, walked, ev); }
+            checkEnd(s, ev);
+            return;
+          }
+          const o = lurkers.find((x) => overlapAt(x, x.pos, mover, steps[at].h, G));
+          let stop = at - 1;
+          while (stop >= 0 && !(known.get(key(steps[stop].h))?.canStop)) stop--;
+          if (stop < 0) return bumped(s, o, e, ev);                       // its first step runs into it: no move, but it is found
+          if (!fighting && e.follow) unfollow(s, e, ev);
+          const walked = walk(s, e, known, key(steps[stop].h), ev, fighting, bud ?? undefined);
+          if (!walked) return;
+          bumped(s, o, e, ev);
+          checkEnd(s, ev);
+          return;
+        }
+      }
+    }
     if (lurker) {
       if (apart(s, e, lurker) <= 1) return bumped(s, lurker, e, ev);   // already beside it: no move, but it is found
       const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && gridOf(s.map).dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)

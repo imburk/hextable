@@ -5,6 +5,7 @@ import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surf
 import { barriers, objectBlocks, objectDef, objectSegment } from './walls.js';
 import { has } from './modifiers.js';
 import { obscuredAt, terrainsOf } from './terrain.js';
+import { SIZES } from './content/sizes.js';
 
 const CORNER = 0.9;                                        // of the way out: a little inside the true corner, so a wall on the hex's own edge is not "in front of" it
 const EYE = FT / 2;                                        // lines run from mid-body to mid-body
@@ -96,7 +97,14 @@ export const squareCover = (s) => (SQUARE_COVERS.includes(s.settings?.squareCove
 // The cover a target has from an attacker, or from a point an effect starts at: 'none', 'half',
 // 'threeQuarters' or 'total'. For big creatures the most exposed pairing of their hexes counts.
 // `from` is a creature or a position; `others` are creatures that might stand in the way.
+// A rider sits on its mount (docs/specs/companions.md, Decision 8): it sees, and is seen and aimed at, from the mount's
+// height above its own floor (`riding.size`, kept in step with the mount), as vision.js `raised` has it for what the
+// party is sent (stage C6b; this is DEBT W16, stage C7). Only the record in the state is lifted: a copy (vision.js
+// passes riders raised already; a caller trying a creature at another place passes a copy) is taken as it is, so
+// nobody is lifted twice. Distances (reach, range, the reach of a sense) are measured from the creature as it stands.
+const lift = (s, e) => (e?.riding && e.pos && SIZES[e.riding.size] && s?.entities?.[e.id] === e ? { ...e, pos: { ...e.pos, z: (e.pos.z ?? 0) + SIZES[e.riding.size].height } } : e);
 export function coverOf(s, from, target, others = []) {
+  from = lift(s, from); target = lift(s, target);
   const map = s.map, rules = s.settings ?? {}, G = gridOf(map);
   if (G.kind === 'square' && squareCover(s) === 'obstacle') return obstacleCover(s, from, target, others);
   const n = CORNERS[G.kind];
@@ -328,6 +336,7 @@ export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) 
   if (viewer === target || (viewer.id && viewer.id === target.id)) return { see: 'yes' };
   const senses = viewer.senses ?? {}, d = apart(s, viewer, target) * FT;
   if ((senses.blindsight ?? 0) >= d && coverOf(s, viewer, target) !== 'total') return { see: 'yes' };
+  viewer = lift(s, viewer); target = lift(s, target);
   if (has(viewer, 'blinded')) return { see: 'no', why: 'blinded' };
   if (!inViewOf(s.map, viewer, target)) return { see: 'no', why: 'out of sight' };
   const truesight = (senses.truesight ?? 0) >= d;

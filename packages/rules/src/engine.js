@@ -24,7 +24,7 @@ import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
-export { ARENA_RADIUS, blocked, castAbilOf, clear, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, ownerOf, spellStats, unblocked, up } from './engine/shared.js';
+export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
 export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
 export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)

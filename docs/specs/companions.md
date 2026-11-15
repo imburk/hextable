@@ -506,7 +506,7 @@ After every row the valley plays as before.
 | C4 | **Blocks and spells, data.** `otherworldly-steed`, `draconic-spirit`, `animated-object`, and an Unseen Servant block from the spell's numbers; Find Familiar, Find Steed (without riding until C6), Summon Dragon, Phantom Steed, Animate Objects, Unseen Servant moved to their tiers, each `checked` against the SRD lines above. | content | `content/srd52/summons.js`, `content/srd52/spells-1.js` to `spells-5.js` (those entries only), tests | `npm run content` reports them at the tiers in the table above, with no problems; a test casts each and checks the numbers against the lines cited |
 | C5 | **Commands, corpses and familiars.** `command` (with `commanded` and `standing`, amended Decision 6), the never-commanded lock, the servant's 15 ft; `on: 'corpse'`, Animate Dead and Create Undead with the 24-hour bond and reassert; `dismiss` and `recall` with the pocket; `one: 'reform'` and `'replace'`; touch delivery through the familiar's Reaction (`cast { deliver }`). | engine | `engine/companions.js`, `engine/casting.js`, `effects.js`, `engine/resolve.js`, `durations.js`, `view.js`, `content/srd52/spells-3.js` and `spells-6.js` (those two spells), tests | a never-commanded Zombie may only Dodge and move; a Zombie with a standing order and no command this turn is the DM's, and one commanded this turn is its player's (needs A2); one command for three costs one Bonus Action; a corpse 15 ft away is refused at range 10; after 24 hours the Zombie is a foe with a `manual` event; a pocketed familiar is in no player view and comes back with its Hit Points within 30 ft; Shocking Grasp delivered by an owl within 100 ft uses the owl's Reaction and is refused at 105 ft |
 | C6 | **Riding.** *C6a built (#346): `mount`, `dismount`, `riding`/`rider`, the footprint, `budget.mount`, plain walking together, the eight mounts. C6b built (#362): falling off, pushes, teleports, a mount gone, the pair's Opportunity Attacks, Find Steed, the raised eye; see its build notes.* `mount`, `dismount`, `riding`/`rider`, the mount's footprint for the rider, `budget.mount`, moving together (walk, push, teleport, fall), falling off, Opportunity Attacks for the pair; `mount: 'trained'` on the eight mounts; Find Steed as a controlled mount and its Incapacitated turn. | engine | `engine/movement.js`, `engine/world.js`, `engine/resolve.js`, `space.js`, `vision.js` (eye height), `content/schema.js` (the `mount` field), `content/srd52/monsters-*.js` (eight entries, that field only), tests on hexes and on `square-room` | on both grids: mounting costs half Speed; a Medium rider on a warhorse moves 60 ft with the warhorse's movement and still has its own to dismount; the warhorse can Dash but its attack is refused; a goblin beside the pair gets one Reaction and may choose either; Thunderwave pushing the horse makes the rider save DC 10 and land Prone on a failure; a flying steed vanishing drops its rider who falls; a fireball touching one hex of the horse catches the rider |
-| C7 | **The companion brain.** `companionStep`; the client's auto-play rule (never-commanded and not-commanded-this-turn, Decision 9). | engine + client | `ai.js`, `packages/client/app.js` (the auto-play condition only), tests | a never-commanded Skeleton Dodges and steps away; an Incapacitated paladin's steed comes to her and attacks the goblin beside her; a player's familiar waits for its player unless `auto` is set |
+| C7 | *Built (#366); see its build notes.* **The companion brain.** `companionStep`; the client's auto-play rule (never-commanded and not-commanded-this-turn, Decision 9). | engine + client | `ai.js`, `packages/client/app.js` (the auto-play condition only), tests | a never-commanded Skeleton Dodges and steps away; an Incapacitated paladin's steed comes to her and attacks the goblin beside her; a player's familiar waits for its player unless `auto` is set |
 | C8 | **Screens.** The cast chooser for a summon (form, type, variant, then taps for each point, or corpses); the companion's turn in the player's bar and tracker (one row under its master for `after`); buttons for Command (with the order text; the prompt that hands a commanded creature's turn to its player, A2), the master's before or after choice for a steed (A1), Dismiss, Recall, Mount, Dismount, Let it act; the pocket on the sheet. | client | `packages/client/actionpanel.js`, `classes.js`, `tracker.js`, `app.js`, `index.html`, `style.css`, `scripts/smoke/companions.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=companions`: at both sizes, with touch at 390 x 844, a wizard summons an owl, the owl's turn comes to the same player, the owl is dismissed and recalled; a paladin summons a steed, mounts, rides 60 ft and dismounts; no page errors |
 | C9 | **The rest of the features.** Wild Companion (a slot or a Wild Shape use), Faithful Steed's free cast, Pact of the Chain (Magic action, extra forms, forgo an attack), Investment of the Chain Master, Life Bond (a hook on healing from spells, shared with Blessed Healer, C8 in the debt log). | engine | `engine/features.js`, `engine/attacks.js`, `engine/rolls.js`, `summons.js`, `content/schema.js`, `content/srd52/classes/*` (those features), tests | each feature's SRD text is played by a test; the class entries report their new tiers |
 | C10 | **Drawing.** A rider drawn on its mount at the mount's height, the pair moving as one, `vanished` fading out (as `removed`), the tracker's `after` rows. | render | `render.js`, `render-three.js`, `three-build.js`, `scripts/smoke/companions.mjs` | the smoke pass's screenshots at both sizes show the rider on the horse on hexes and on squares |
@@ -1281,6 +1281,137 @@ are marked **new rule**.
 - **For the client job (C8, C10).** New: `dismounted.fell` and `why` `prone`, `pushed`, `pulled`, `teleport`, `size`;
   `save { against: 'Falling Off' }`; `moved { forced }` for both of a pushed pair; an Opportunity Attack prompt may have
   a second option `{ reaction: 'opportunity-attack-rider', name, against }`, answered with `react { take }` as any.
+
+### C7, the companion brain (#366)
+
+What was settled while building C7, where Decision 9 left room. Every rule is from `reference/srd52/srd52-flow.txt`;
+what goes beyond the SRD is marked **new rule** (the brain's choices are a stand-in for the DM's, so most of them are).
+
+- **The SRD lines it plays.** Animate Dead (24057-24062) and Create Undead (25686-25690): "If you issue no commands, the
+  creature takes the Dodge action and moves only to avoid harm. Once given an order, the creature continues to follow it
+  until its task is complete." Animate Objects (24101-24103): "If you issue no commands, the creature takes the Dodge
+  action and moves only to avoid harm." Summon Dragon (31262-31266) and Giant Insect (27436-27440): "It obeys your verbal
+  commands (no action required by you). If you don't issue any, it takes the Dodge action and uses its movement to avoid
+  danger." Find Familiar (26789-26790): "Your familiar acts independently of you, but it obeys your commands." Find Steed
+  (26844-26846): "If you have the Incapacitated condition, the steed takes its turn immediately after yours and acts
+  independently, focusing on protecting you." Mounted Combat (2122-2124): "an independent mount ... retains its place in
+  the Initiative order and moves and acts as it likes." Incapacitated (33653-33656): "You can't take any action, Bonus
+  Action, or Reaction. ... Speechless. You can't speak."
+- **Where it is.** `ai.js`: `brainMode(s, e, opts)`, `autoPlays(s, id, opts)`, `companionStep(s, id, opts)`. `aiStep`
+  hands any creature with a `bond` to `companionStep` before anything else; for a creature with no bond nothing changed
+  (proved by `companions-brain-replay.test.js`: seven fights on the hex valley, the square valley and the square room,
+  every creature played by `aiStep`, recorded on main before C7, choose the same actions byte for byte and end in the same
+  state). The brain reads the state and returns an ordinary action; the DM's auto-play sends it through `apply()`. It
+  rolls nothing and never changes the state. ai.js imports `commandedNow` and `steering` from `engine/shared.js`
+  directly (engine.js does not re-export them and was not in this job's files), as reactions.js and scenes.js import
+  `ownerOf`.
+- **Who plays a companion's turn** (`brainMode`):
+  - `orders: 'command'`: commanded for this turn, its player's (`'player'`), or the DM's by hand when the master has no
+    player or its player is offline or stepped away (`'dm'`: nobody else knows what was meant); with a standing order
+    (`bond.standing`), the DM's by hand (`'dm'`; Decision 9: "the brain does not guess an order"; the issue's "follows
+    it" is read as Decision 9 has it, DEBT W21); with neither, `'guard'`.
+  - Find Steed (`bond.source: 'find-steed'`) whose master is Incapacitated or down, and not steering it: `'protect'`.
+  - Otherwise its player's, unless `bond.auto`, or no player controls it (its master is the DM's, or its player left the
+    table and the server released the master), or its master's player is offline (`opts.offline(userId)`, from the
+    client's lobby; the rules package knows nothing of connections) or stepped away (E20, any `how`), or its master can't
+    give commands (down or Incapacitated: "Speechless"). Then a summon or animated object whose master can't speak
+    (`kind` `summon` or `object`) is `'guard'` (SRD: "If you don't issue any, it takes the Dodge action"); anything else is
+    `'free'`. **New rule**: offline and stepped away count as "no player controls it" (T27).
+  - `autoPlays` is true for every creature with no bond (as before) and for `guard`, `protect` and `free`.
+- **`guard`**: the Dodge action if it has its action, then, only while a foe it knows of is within 5 ft, a move to the
+  cheapest place it can reach out of 5 ft of every foe it knows of (fix round 1, L1), never past its leash; then the end
+  of its turn. It sends only `dodge`, `move` and `endTurn`, all in the
+  lock's list (`UNLOCKED`, shared.js), so the DM's auto-play no longer stalls on a locked creature (review of #338, M2).
+  Stepping away provokes an Opportunity Attack, as any move out of reach does (**new rule** in the sense that "avoid
+  harm" is read as "get out of reach": the brain trades one attack at Disadvantage for the turns of attacks after).
+- **`protect`**: an attack (its first action aimed at one creature, melee first) on a foe it knows of within 5 ft of its
+  master that it can reach, the nearest to it first, then the most hurt, then by id; if it can reach none, a move to the
+  place beside its master from which it reaches one (else beside her, else nearer her); then the attack; with no foe to
+  attack, the Dodge action. A steed carrying its master does not move (it would only carry her about). Healing Touch and
+  the other Bonus Actions are not used (they are the DM's, as C6b left them). **New rule**: what "focusing on protecting
+  you" means is the brain's reading.
+- **`free`**: the monster AI's play (the round-1 Hide, areas, Multiattack, approach, attack), against foes only, on what
+  it knows; for `noAttack` (a familiar) no action with an attack roll and no Multiattack is offered (DEBT S6, C1), and
+  with nothing else to do it guards.
+- **What it knows** (hidden-information.md). A party companion acts only on the creatures the party knows of: it reads a
+  copy of the state without the creatures `unknown` (vision.js) gives, so it neither steps away from a hiding goblin nor
+  is kept off its cell; a move onto it is stopped and finds it by the engine's own rule. A foe's companion knows what the
+  monster AI knows. A foe's companion whose master the party does not know of plays as if it had no master (no
+  `protect`, no Dodge for a master who can't speak, no leash), so its choices say nothing of the master (DEBT W23). Twin
+  runs (`companions-brain-hidden.test.js`, hexes and squares): a hiding goblin on the cell a party skeleton steps to, and
+  far off, give every player the same events and view until the move finds it; a foe's wolf with a hidden Stunned master
+  and the same wolf with no bond, and a foe's Find Steed with a hidden Stunned caster and the DM's unbonded steed, give
+  every player the same events and view all fight.
+- **The client** (`app.js`, `idled()`): it plays a creature when `autoPlays(S, id, { offline })` (offline from the
+  lobby's members) and passes the same `offline` to `aiStep`. Nothing else in the client changed.
+- **Follow-ups from the review of C6b (#363).**
+  - *W13*: the growth checks in `setSize`, `editCharacter` (characters.js), `remake` (sheets.js, used by `setSheet`,
+    `levelUp` and rests) and Wild Shape (features.js) test the creature itself at its new size (`{ ...e, size }`), so the
+    other half of a ridden pair is never in its way (`paired`). A rider grown to its mount's size is set down beside it
+    (`why: 'size'`, now reached by actions); a ridden mount that would grow into a third creature is refused as before.
+    `editCharacter` and `remake` keep `riding` and `rider` on the remade record (they dropped them, which broke the ride).
+  - *W16*: `sight.js` `coverOf` and `sees` (so `canSee`, attacks, spells and Opportunity Attacks) look from a rider's raised
+    eye and at its raised body: the record in the state is lifted by its mount's height (`riding.size`), as vision.js
+    `raised` does for the party's view. A copy (vision.js passes riders raised already) is not lifted again. Distances
+    (the reach of a sense) are measured from the creature as it stands.
+  - *W18*: the DM's `setHp` refuses to bring a dead creature back where a living one stands on its body ("Warhorse stands
+    where Brenna's body lies: move one of them before bringing Brenna back."), changing nothing; the DM moves one first.
+    The engine does not pick a place for the body to get up in.
+  - *Found by the stress loop* (resolve.js, `settleBonds`): a mount that vanished in `settleBonds` (a Find Steed whose
+    master died, with someone else riding it) left its rider half a pair until the next action; `settleRiders` now runs
+    again in the same action when anything vanished, so the rider is down (`why: 'gone'`) at once. The same on main.
+- **Tests** (all new files): `companions-brain.test.js` (the C7 row's cases on both grids), `companions-brain-hidden.test.js`
+  (twin runs), `companions-brain-history.test.js` (undo, redo, replay and a save and load of a brain-played fight; saves
+  from main, `fixtures/c7-companion-saves.json`, load unchanged and play on), `companions-brain-replay.test.js` (the
+  monster AI byte-identical), `companions-c7-followups.test.js` (W13, W16, W18, the vanished mount), and the stress loop
+  `companions-brain-stress.test.js` (hexes) and `companions-brain-stress-square.test.js` (c7-stress-kit.js): 2,400 rounds
+  a grid of the DM's auto-play with a locked skeleton, a commanded zombie, a Find Steed whose master is often Stunned, an
+  `auto` familiar, a DM pet, an independent brown bear and the warhorses of the C6b loop: the brain always has a step, a
+  turn ends within 25 steps, nothing it sends is refused, every creature up all round has exactly one turn's worth.
+- **No state version bump**: nothing in the state changed.
+- **Changed in fix round 1 (review of #368).** Rules that are new, not repairs, are marked **new rule**.
+  - *M1* (repair): a controlled mount its rider can steer, on its own turn (the rider recovered after the mount's place),
+    is never played as a monster: the brain's new mode `'hold'` takes the Dodge action and leaves it where it stands, so
+    it sends nothing the engine refuses ("A controlled mount can only Dash, Disengage or Dodge.") and never moves the
+    pair. SRD Mounted Combat (2118-2121): "It moves on your turn as you direct it, and it has only three action options".
+  - *M2* (repair, engine: movement.js `move`): a party creature's move (a player's own, and so the brain's) is laid out
+    on what the party knows when a creature it does not know of (the `lurker` rule of `move`: hidden by the DM out of a
+    fight, hiding from the mover, or unseen by the party under `los`/`light`) stands anywhere near. Where that route runs
+    into one, the move stops on the last place before it where the mover can stop, and the creature is found
+    (`revealed`, `unhidden { why: 'found' }`), as hidden-information.md section 5 has it for a move onto its place.
+    Before, the engine laid the route out on the true state: it refused the move ("Too far") or bent it round the
+    creature, which told the players something stood there. A creature the DM plays walks by the true state, as
+    before. Twin runs: a lurker at each point of a companion's route, and on a player's own route, on both grids.
+  - *M3* (**new rule**): a companion carrying a rider who is stepped away, offline (its player's connection) or helpless
+    (down or Incapacitated) does not carry it into danger: `'hold'`, the Dodge action and no move. This is the E20 table
+    rule `dodge` ("it takes the Dodge action on its turn and stays where it is") applied to the one that carries it; the
+    other reading (follow the last standing instruction) has nothing to read for a free companion. `protect` already
+    stayed under its master and now stays under any rider. A creature with no bond carrying such a rider is the monster
+    AI's, unchanged (DEBT W24).
+  - *L1* (**new rule**, the brain's reading of "moves only to avoid harm"): a never-commanded creature steps to the
+    cheapest place out of 5 ft of every foe it knows of (then the farthest from them), not the farthest place; where no
+    such place is in reach it stays (a step that ends beside a foe would only give it an Opportunity Attack).
+  - *L2* (repair, to the SRD's words): a summon or animated object whose player is offline or stepped away has nobody to
+    command it: it takes the Dodge action (`guard`), as Summon Dragon, Giant Insect ("If you don't issue any, it takes
+    the Dodge action and uses its movement to avoid danger") and Animate Objects ("If you issue no commands, the creature
+    takes the Dodge action and moves only to avoid harm") say. Let go to the brain (`auto`) or played by the DM (no
+    player), it fights: the commands are the brain's or the DM's. Find Familiar, Find Steed and Phantom Steed have no such
+    line (a familiar "acts independently"; Phantom Steed says nothing of its acts): played freely, as before.
+  - *L3* (repair): a companion that drops in its own turn (an Opportunity Attack as it steps away) gets `endTurn` from the
+    brain, so the auto-play does not wait on it. A creature with no bond still gets null (the monster AI is unchanged;
+    W24).
+  - *L8*: engine.js re-exports `commandedNow` and `steering` (one line); ai.js imports them from there.
+  - Not changed, to DEBT: L4 (a rider grown past its mount, Huge on Large, can't be set down: `riderLanding` looks only
+    one cell round the mount; world.js, W26), L5 and L7 (W23, W21 as they stood), L6 (setHp's refusal stays a refusal),
+    L8's cover from a rider between attacker and target (W27).
+  - *The stress loop* (`c7-stress-kit.js`): players go offline and come back (also mid-round), `auto` is switched on and
+    off, the steed is killed or removed under its rider, the cleric starts fights on her steed and steps away on it; hard
+    bounds on brain steps a turn (25), turns a round (4 a creature) and actions a run. 200 rounds a grid by default;
+    2,400 with `HEXTABLE_STRESS=full` (run once each in this round: no stall, no endless turn, no refusal from the brain,
+    no lost or doubled turn, no overlap; hex 1 minute, square 2 minutes 12 seconds).
+- **For the client job (C8).** `autoPlays(state, id, { offline })` says whether the DM's auto-play plays a turn;
+  `brainMode` says why (`player`, `dm`, `guard`, `protect`, `free`), for a line such as "Zombie 1 has an order that stands:
+  the DM plays it". A companion whose turn is `'dm'` waits for the DM's hand as a party character waits for its player.
 
 ### C8, the screens (#367)
 

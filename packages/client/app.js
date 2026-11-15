@@ -9,7 +9,7 @@ import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
-import { aiStep } from './shared/ai.js';
+import { aiStep, autoPlays } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './render.js';
@@ -459,14 +459,15 @@ function idled() {
   refresh();
   syncCards();
   const cur = S.entities[current(S)];
-  // The DM's auto-play (companions.md, Decision 9): a companion is played on the DM's screen only when it is the DM's own (`ownerOf` null) or set to
-  // act on its own (`bond.auto`); otherwise its turn waits for its player. (What the brain does for a never-commanded one is C7: not built.)
-  const plays = cur && cur.kind === 'npc' && (!cur.bond || !ownerOf(S, cur) || cur.bond.auto === true);
+  // The DM's auto-play (companions.md, Decision 9; the brain, C7): a companion is played when the brain plays it (`autoPlays`, ai.js: the DM's own,
+  // `bond.auto`, never commanded, its master's player offline or stepped away, its master Incapacitated); otherwise it waits for its player or the DM.
+  const offline = (uid) => !T.solo && (T.lobby?.members ?? []).some((m) => m.id === uid && m.online === false);
+  const plays = cur && cur.kind === 'npc' && autoPlays(S, cur.id, { offline });
   if (plays && isDM() && $('dm-auto').checked && !tookBack) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update.
-    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id); if (a) { aiSent = cur.id; act(a); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
+    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id, { offline }); if (a) { aiSent = cur.id; act(a); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
   }
 }
 

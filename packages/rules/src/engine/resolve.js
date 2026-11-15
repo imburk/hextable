@@ -1280,6 +1280,7 @@ function vanishUnseen(s, e, why, ev) {
 // from its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
 export function settleBonds(s, ev) {
   settleRiders(s, ev);
+  const n = ev.length;
   for (const e of Object.values(s.entities).filter((x) => x.bond)) {
     if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
     const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
@@ -1288,6 +1289,9 @@ export function settleBonds(s, ev) {
     else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);
     else if (m && !e.dead && Number.isFinite(b.leash) && apart(s, e, m) * FT > b.leash) vanish(s, e, 'leash', ev);
   }
+  // A mount that vanished just now (a Find Steed whose master died with someone else on it) leaves its rider down where
+  // it stands in this same action, not at the next one (found by the C7 stress loop: the ride was half a pair between).
+  if (ev.slice(n).some((x) => x.type === 'vanished')) settleRiders(s, ev);
   // A companion whose place behind its master can now be taken (its master joined, or came to be known to the
   // party) takes it, if that is safe in the middle of the round (world.js, followMasters).
   followMasters(s, true);
