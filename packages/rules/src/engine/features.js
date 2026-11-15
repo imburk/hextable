@@ -441,7 +441,9 @@ function shapeShift(s, e, f, act, a, ev) {
   (!m.speed.fly || F.fly) || fail(`At ${e.name}'s level ${f.name} can't take a form with a Fly Speed.`);
   (e.uses[f.id] ?? 0) >= 1 || fail(`${e.name} has no uses of ${f.name} left.`);
   if (time && fighting) need(s, e, time);
-  const body = { size: tpl.size };
+  // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
+  // its way (space.js, `paired`; DEBT W13).
+  const body = { ...e, size: tpl.size };
   (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for a ${m.name} there.`);
   !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} becoming a ${m.name}.`);
 

@@ -58,7 +58,9 @@ export const handlers = {
     e.kind === 'pc' || fail(`${e.name} is not a character.`);
     const problems = lintRecord(a.record, { spells: SPELLS });
     problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
-    const body = { size: a.record.size ?? 'medium' };
+    // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
+    // its way (space.js, `paired`; DEBT W13).
+    const body = { ...e, size: a.record.size ?? 'medium' };
     (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
     !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
     const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
@@ -121,7 +123,9 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can change a creature\'s size.');
     const e = ent(s, a.actor);
     Object.hasOwn(SIZES, a.size) || fail('Unknown size.');
-    const body = { size: a.size };
+    // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
+    // its way (space.js, `paired`; DEBT W13).
+    const body = { ...e, size: a.size };
     (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${a.size} there.`);
     !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
     e.size = a.size;

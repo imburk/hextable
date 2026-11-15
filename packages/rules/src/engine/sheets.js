@@ -74,7 +74,9 @@ export function remake(s, e, record, sheet, ev) {
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
   const problems = lintRecord(record, { spells: SPELLS });
   problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
-  const body = { size: record.size ?? 'medium' };
+  // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
+  // its way (space.js, `paired`; DEBT W13).
+  const body = { ...e, size: record.size ?? 'medium' };
   (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
   !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
   const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
