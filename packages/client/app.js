@@ -39,6 +39,7 @@ import { initTableControls, importLine, gridWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
+import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 
 const $ = (id) => document.getElementById(id);
@@ -166,8 +167,10 @@ function preview(e, a) {
 }
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
 let flick = null, closeTray = null, armed = null;
+let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action) {
   if (skipping()) return;
+  acted++;
   action = CLS.decorate(action);
   if (!toThrow(action)) return T.send(action);
   closeTray?.();
@@ -430,6 +433,7 @@ function onUpdate(state, events, fresh) {
   // A creature summoned appears as one spawned does: the renderer reads `spawned` (the `quiet` one has no log line of its own).
   const beats = events.flatMap((ev) => (ev.type === 'vanished' ? [ev, { type: 'removed', id: ev.id }] : ev.type === 'summoned' ? [ev, { type: 'spawned', id: ev.id, quiet: true }] : [ev]));
   TL.push(S, beats, { first, fresh: first, flush: tookBack || urgent, instant: tookBack || urgent });
+  KB.update((id) => events.some((ev) => ev.id === id || ev.actor === id), urgent);      // the keys' step waits for this (keyboard.md)
   snapping = false;
   syncPlaying();
 }
@@ -982,8 +986,54 @@ addEventListener('keydown', (ev) => {
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); return redo(); }
   if (ev.key === 'Escape' && skipping()) return;
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
-  if (ev.key === 'q') R.rotate(-Math.PI / 12); if (ev.key === 'e') R.rotate(Math.PI / 12);
+  if (!S || !$('lobby').hidden) return;
+  if (ev.key === 'Shift') { KB.shift(true); return; }
+  const a = actionOf(ev, keyMap());
+  if (!a || leaveAlone(ev, document) || (a === 'recentre' && closeTray)) return;      // the dice tray keeps Space
+  ev.preventDefault();
+  KB.shift(ev.shiftKey);
+  if (ACTIONS[a].kind === 'press') PRESS[a](); else KB.down(a, ev.repeat);
 });
+
+// ---------- keyboard movement, the follow camera and key maps (docs/specs/keyboard.md, keys.js) ----------
+// A walk key sends the ordinary move for one space through the tap's own path; the walker sends the next only once this one is answered.
+const keyMap = () => presetOf(prefs.get('hextable.keys'));
+const lastDir = {};            // each creature's last direction of travel by the keys, as a camera yaw
+const walkable = () => { const e = S?.entities[selId]; return e && mine(e) && mode.kind === 'move' && !S.prompt && !S.pending && $('lobby').hidden ? selId : null; };
+const KB = createWalker({
+  now: () => performance.now(),
+  actor: walkable,
+  start() {
+    if (walkable() || !S || mode.kind !== 'move') return walkable();
+    const own = Object.values(S.entities).find((e) => e.kind === 'pc' && !e.dead && mine(e) && (!isDM() || e.side === 'party'));
+    if (own) { select(own.id); refresh(); }
+    return walkable();
+  },
+  fight: () => !!S?.encounter,
+  yaw: () => R.cameraAngles().yaw,
+  turns: () => R.cameraAngles().turns ?? 0,
+  turnKey: () => (S?.encounter ? `${S.encounter.id ?? 0}:${S.encounter.round}:${S.encounter.turn}` : 'none'),
+  grid: () => gridOf(S.map),
+  busy: () => (TL.pace === 'wait' && TL.busy()) || waiting > 0 || !!armed,
+  send(id, d) { const e = S.entities[id], n = acted; R.onTap({ hex: { q: e.pos.q + d.dq, r: e.pos.r + d.dr }, id: null }); return acted > n; },
+  look(dy, dp) { if (dy) R.rotate(dy); if (dp) R.tilt(dp); },
+  stepped(id, d, follow, ahead) {
+    if (ahead) lastDir[id] = yawFacing(gridOf(S.map), d.dq, d.dr);      // a step back or to the side leaves the view (and Space) where it was
+    if (ahead && follow) R.face(lastDir[id], reducedMotion());
+    const b = S.encounter?.budget;
+    if (b && current(S) === id) toast(`${name(id)}: Move ${Math.floor(b.move)} ft left`, true);
+  },
+});
+const PRESS = {
+  rotateLeft: () => R.rotate(-Math.PI / 12), rotateRight: () => R.rotate(Math.PI / 12),
+  zoomIn: () => R.zoom(0.9), zoomOut: () => R.zoom(1.1),
+  sheet: () => D.open('sheet'),
+  recentre() { if (!S?.entities[selId]) return; const rm = reducedMotion(); R.focus(selId, rm); if (lastDir[selId] !== undefined) R.face(lastDir[selId], rm); KB.resume(); },
+};
+addEventListener('keyup', (ev) => { if (ev.key === 'Shift') KB.shift(false); const a = actionOf({ code: ev.code }, keyMap()); if (a) KB.up(a); });
+addEventListener('blur', () => KB.release());
+document.addEventListener('visibilitychange', () => { if (document.hidden) KB.release(); });
+setInterval(() => KB.tick(), 30);
 
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
@@ -1019,7 +1069,7 @@ const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { d
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };
+window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; }, get keys() { return KB; } /* the keyboard walker, for the smoke pass */ };
 
 // ---------- the splash ----------
 // The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to
@@ -1046,7 +1096,7 @@ function start(transport, map = null) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
-    CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
+    KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (render.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);

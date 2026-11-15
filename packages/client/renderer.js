@@ -10,7 +10,7 @@
 import { Renderer } from './render.js';
 
 // Methods, then properties, of the interface. Properties are read or set from outside; callbacks are set by the app.
-export const METHODS = ['setState', 'settle', 'setTheme', 'setCeiling', 'setHighlights', 'focus', 'rotate', 'zoom', 'floater', 'planeHex', 'planePoint', 'screenOf', 'screenPoint', 'screenAxes', 'cameraAngles', 'zonesAt', 'hasPicture', 'setPins', 'setBars', 'stats', 'dispose'];
+export const METHODS = ['setState', 'settle', 'setTheme', 'setCeiling', 'setHighlights', 'focus', 'rotate', 'face', 'tilt', 'zoom', 'floater', 'planeHex', 'planePoint', 'screenOf', 'screenPoint', 'screenAxes', 'cameraAngles', 'zonesAt', 'hasPicture', 'setPins', 'setBars', 'stats', 'dispose'];
 export const PROPS = ['inset', 'onTap', 'onHover', 'onPoint', 'onDrag', 'onPicture', 'assetUrl'];
 export const MEMBERS = [...METHODS, ...PROPS];
 export const KINDS = ['gl', 'none', 'three'];
@@ -38,6 +38,8 @@ export class EmptyRenderer {
   setHighlights(hl) { this.hl = hl; }
   focus() {}
   rotate() {}
+  face() {}
+  tilt() {}
   zoom() {}
   floater() {}
   planeHex() { return null; }
@@ -45,7 +47,7 @@ export class EmptyRenderer {
   screenOf() { return null; }
   screenPoint() { return null; }
   screenAxes() { return { right: [1, 0], up: [0, -1] }; }
-  cameraAngles() { return { yaw: 0, pitch: 0.95 }; }
+  cameraAngles() { return { yaw: 0, pitch: 0.95, turns: 0 }; }
   zonesAt() { return []; }
   hasPicture() { return false; }
   setPins() {}
@@ -109,6 +111,8 @@ export class LazyThree {
   setBars(...a) { if (this.inner) this.inner.setBars(...a); else this.kept.setBars = a; }
   focus(...a) { if (this.inner) this.inner.focus(...a); else this.moves.push(['focus', a]); }
   rotate(...a) { if (this.inner) this.inner.rotate(...a); else this.moves.push(['rotate', a]); }
+  face(...a) { if (this.inner) this.inner.face(...a); else this.moves.push(['face', a]); }
+  tilt(...a) { if (this.inner) this.inner.tilt(...a); else this.moves.push(['tilt', a]); }
   zoom(...a) { if (this.inner) this.inner.zoom(...a); else this.moves.push(['zoom', a]); }
   floater(...a) { this.inner?.floater(...a); }
   planeHex(...a) { return this.inner ? this.inner.planeHex(...a) : null; }
@@ -116,7 +120,7 @@ export class LazyThree {
   screenOf(...a) { return this.inner ? this.inner.screenOf(...a) : null; }
   screenPoint(...a) { return this.inner ? this.inner.screenPoint(...a) : null; }
   screenAxes() { return this.inner ? this.inner.screenAxes() : { right: [1, 0], up: [0, -1] }; }
-  cameraAngles() { return this.inner ? this.inner.cameraAngles() : { yaw: 0.5, pitch: 0.95 }; }
+  cameraAngles() { return this.inner ? this.inner.cameraAngles() : { yaw: 0.5, pitch: 0.95, turns: 0 }; }
   zonesAt(...a) { return this.inner ? this.inner.zonesAt(...a) : []; }
   hasPicture(...a) { return this.inner ? this.inner.hasPicture(...a) : false; }
   stats() { return this.inner ? this.inner.stats() : { frameMs: 0, quality: 0, pixelRatio: 1, drawCalls: 0 }; }

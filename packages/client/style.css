@@ -278,3 +278,8 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 #lobby-remember { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; } #lobby-remember[hidden] { display: none; }
 #lobby-remember p { margin: 0; color: var(--ink); } #lobby-rejoin { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #lobby-new[hidden] { display: none; } #lobby-card button.leave.sure { outline-offset: 2px; }
+/* The keys list in Settings (docs/specs/keyboard.md) */
+.keys-list { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0 0 8px; font-size: 14px; }
+.keys-list dt { margin: 0; }
+.keys-list dd { margin: 0; text-align: right; white-space: nowrap; }
+.keys-list kbd { display: inline-block; min-width: 1.6em; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; font: 12px/1.4 ui-monospace, monospace; text-align: center; }

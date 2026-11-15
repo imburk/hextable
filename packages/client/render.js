@@ -284,7 +284,7 @@ export class Renderer {
     this.onFlash = (ev) => this.#flashEdge(ev.detail); window.addEventListener('hextable-arena-flash', this.onFlash); this.ghosts = []; this.fell = new Set(); this.now = clock(); this.blobMesh = new Mesh(gl); this.#makeBlob();
     this.actors = new Map();                  // id -> {mesh, x, y, z, yaw, way, el, key}
     this.ceiling = Infinity;
-    this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null };
+    this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null, yawGoal: null }; this.turns = 0;      // turns: manual turns of the view so far (keyboard.md: a manual turn suspends following)
     this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null };
     this.G = HEX;                             // the grid the map is drawn on (gridOf(map) once there is one)
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;   // px of screen bottom covered by UI
@@ -503,7 +503,7 @@ export class Renderer {
   }
   // Which way is screen-right and screen-up on the ground, as unit vectors in map feet: for nudging a picture.
   // The camera's turn about the board and its height above it (radians), read-only: the dice lie in the board's plane as seen from here.
-  cameraAngles() { return { yaw: this.cam.yaw, pitch: this.cam.pitch }; }
+  cameraAngles() { return { yaw: this.cam.yaw, pitch: this.cam.pitch, turns: this.turns }; }
   screenAxes() {
     const C = this.C ?? this.#camera(), u = (a) => { const l = Math.hypot(a[0], a[2]) || 1; return [a[0] / l, a[2] / l]; };
     return { right: u(C.r), up: u(C.f) };
@@ -525,7 +525,14 @@ export class Renderer {
     return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
   }
   screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
-  rotate(d) { this.cam.yaw += d; }
+  rotate(d) { this.cam.yaw += d; this.#turned(); }
+  // The follow camera (docs/specs/keyboard.md): turn, eased, to look along `yaw`; `snap` at once (reduced motion). A manual turn cancels it.
+  face(yaw, snap = false) {
+    const c = this.cam, goal = c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw));
+    if (snap) { c.yaw = goal; c.yawGoal = null; } else c.yawGoal = goal;
+  }
+  tilt(d) { this.cam.pitch = Math.max(0.45, Math.min(1.45, this.cam.pitch + d)); this.#turned(); }
+  #turned() { this.cam.yawGoal = null; this.turns++; }
   zoom(f) { this.cam.dist = Math.max(7, Math.min(48, this.cam.dist * f)); }
 
   // How the drawing is doing: the median frame time (ms) over the last 120 frames, the governor's step (0 is full quality), the pixel
@@ -948,6 +955,7 @@ export class Renderer {
   #frame(dt) {
     const gl = this.gl, th = this.theme, c = this.cam;
     this.#animate((this.now = clock()));
+    if (c.yawGoal != null) { const d = c.yawGoal - c.yaw; if (Math.abs(d) < 0.002) { c.yaw = c.yawGoal; c.yawGoal = null; } else c.yaw += d * Math.min(1, dt * 6); }
     if (c.goal) { c.x += (c.goal.x - c.x) * Math.min(1, dt * 5); c.z += (c.goal.z - c.z) * Math.min(1, dt * 5); if (Math.hypot(c.goal.x - c.x, c.goal.z - c.z) < 0.02) c.goal = null; }
     for (const a of this.actors.values()) {
       // A pawn glides hex by hex; a long walk speeds up so it never drags, and each step is a small hop.
@@ -1143,7 +1151,7 @@ export class Renderer {
       if (pts.size === 1) {
         moved += Math.abs(dx) + Math.abs(dy);
         if (moved < 8) return;
-        if (e.buttons === 2 || e.shiftKey) { c.yaw -= dx * 0.008; c.pitch = Math.max(0.45, Math.min(1.45, c.pitch + dy * 0.006)); }
+        if (e.buttons === 2 || e.shiftKey) { c.yaw -= dx * 0.008; c.pitch = Math.max(0.45, Math.min(1.45, c.pitch + dy * 0.006)); this.#turned(); }
         else {
           const k = c.dist * 0.0021; c.goal = null;
           c.x -= (Math.cos(c.yaw) * dx + Math.sin(c.yaw) * dy) * k; c.z -= (-Math.sin(c.yaw) * dx + Math.cos(c.yaw) * dy) * k;
@@ -1151,7 +1159,7 @@ export class Renderer {
       } else if (pts.size === 2) {
         moved = 99;
         const [a, b] = [...pts.values()], dist = Math.hypot(a[0] - b[0], a[1] - b[1]), ang = Math.atan2(a[1] - b[1], a[0] - b[0]);
-        if (pinch) { this.zoom(pinch.dist / dist); c.yaw += ang - pinch.ang; }      // the map turns the way the fingers turn
+        if (pinch) { this.zoom(pinch.dist / dist); c.yaw += ang - pinch.ang; if (ang !== pinch.ang) this.#turned(); }      // the map turns the way the fingers turn
         pinch = { dist, ang };
       }
     }, on);
