@@ -9,7 +9,7 @@ import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../spac
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, up, walled } from './shared.js';
+import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, up, walled } from './shared.js';
 import { aimArea, creatureType, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
@@ -301,10 +301,9 @@ function corpsesFor(s, e, sp, step, p, slot, range, ctx) {
   const count = summonCount(step.count, slot), again = summonCount(step.reassert ?? step.count, slot);
   !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
   if (p === undefined) return { count, reassert: again };
-  const most = Math.max(count, again);
   (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Name the corpses for ${sp.name}: { ids: [...] }.`);
   for (const k of Object.keys(p)) k === 'ids' || fail(`${sp.name} names corpses or its own creatures (ids), not "${k}".`);
-  (Array.isArray(p.ids) && p.ids.length > 0 && p.ids.length <= most && p.ids.every((x) => typeof x === 'string') && new Set(p.ids).size === p.ids.length)
+  (Array.isArray(p.ids) && p.ids.length > 0 && p.ids.length <= BOND_MAX && p.ids.every((x) => typeof x === 'string') && new Set(p.ids).size === p.ids.length)
     || fail(`Name the corpses for ${sp.name}, each once: up to ${count} at this level, or up to ${again} of ${e.name}'s own creatures of it to keep under control.`);
   const player = ctx.role !== 'dm';
   const list = p.ids.map((id) => {
