@@ -8,7 +8,7 @@ import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
-import { unknown } from '../vision.js';
+import { seenName, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
@@ -872,6 +872,7 @@ function settleSeen(s, e, ev) {
 export function vanish(s, e, why, ev) {
   const seen = !unknown(s, e), party = e.side === 'party', name = e.name;
   if (!seen) return vanishUnseen(s, e, why, ev);
+  const shown = seenName(e);                          // what players were shown of it, for the fight's rewards (A3)
   settleSeen(s, e, ev);
   for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
   if (e.follow) unfollow(s, e, ev);
@@ -886,11 +887,19 @@ export function vanish(s, e, why, ev) {
       if (i <= enc.turn) enc.turn--;                  // its own turn: the one before stands, and the turn passes below
       if (enc.moved) { delete enc.moved[e.id]; if (!Object.keys(enc.moved).length) delete enc.moved; }
       if (enc.held) delete enc.held[e.id];
+      // A foe that took part counts toward the fight's XP as any foe does (companions.md, amendment A3): its record
+      // goes, so the fight keeps what the conclusion needs of it (rewards.js, concludeFight). Only a creature the
+      // party saw vanish comes here; one it could not see stays as a husk in the order (vanishUnseen) and counts there.
+      if (e.side === 'foe') (enc.gone ??= []).push({ id: e.id, name, shown, tpl: e.tpl ?? null });
     }
     // Flags that name it (`hit:<id>:<target>`, `attacked:<id>`) go with it: once it is gone nothing can tell
     // whether players may know of it (view.js filters flags by the creatures there are; review of #313, L2).
     for (const k of Object.keys(enc.flags ?? {})) if (k.split(':').includes(e.id)) delete enc.flags[k];
   }
+  // The last foe of a fight to fall vanishes after the fight's conclusion is made (settleBonds runs after the
+  // action): marked there, so the card names it as it names a corpse (review of #330, M1).
+  const due = !enc && s.conclusion && !s.conclusion.published ? s.conclusion.foes.find((f) => f.id === e.id && !f.gone) : null;
+  if (due) Object.assign(due, { gone: true, shown });
   delete s.entities[e.id];
   ev.push({ type: 'vanished', id: e.id, name, why, seen: true, ...(party ? { party: true } : {}) });
   if (why === 'hp0' && e.bond?.kind === 'object')

@@ -7,7 +7,7 @@
 // Bonds made by spells (`fx`, `source`, `ends`, `leash`), no turn at all, and commands come with later
 // stages; until then the DM's bond refuses what the engine would not run. A turn straight after the
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
-import { ent, control, fail, inFight } from './shared.js';
+import { companionsOf, ent, control, fail, inFight, roomForCompanions } from './shared.js';
 import { followMasters, lookAround, unfollow } from './world.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
@@ -18,12 +18,10 @@ export const BOND_AT0 = ['vanish', 'dies'];
 // What 0 Hit Points does by default: the SRD's familiar, steed, spirits, servant and animated object
 // disappear; undead and ordinary animals die (Decision 4). The DM may say otherwise (`at0`).
 const AT0_BY_KIND = { familiar: 'vanish', steed: 'vanish', summon: 'vanish', servant: 'vanish', object: 'vanish', undead: 'dies', pet: 'dies' };
-// At most this many creatures bonded to one master (owner's question 7).
-export const BOND_MAX = 20;
 const FIELDS = ['kind', 'turn', 'orders', 'at0', 'noAttack'];
 
-// A husk left by an unseen vanish (resolve.js, vanishUnseen) has no bond; one kept from before stage C2 is passed by too.
-export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x.bond?.to === id && !x.vanished);
+// The cap and companionsOf live in shared.js, used by the DM's `bond` here and by a cast's summon (casting.js).
+export { BOND_MAX, companionsOf } from './shared.js';
 
 export const handlers = {
   // { type: 'bond', actor, to, kind?, turn?, orders?, at0?, noAttack? }: the DM binds a creature to a
@@ -51,7 +49,7 @@ export const handlers = {
     !e.bond || fail(`${e.name} is already ${s.entities[e.bond.to]?.name ?? 'someone'}'s companion. Free it first ({ to: null }).`);
     !m.bond || fail(`${m.name} is a companion itself and can't have companions.`);
     !companionsOf(s, e.id).length || fail(`${e.name} has companions of its own.`);
-    companionsOf(s, m.id).length < BOND_MAX || fail(`${m.name} has ${BOND_MAX} companions already.`);
+    roomForCompanions(s, m);
     const kind = a.kind ?? 'pet';
     BOND_KINDS.includes(kind) || fail(`A companion's kind can be: ${BOND_KINDS.join(', ')}.`);
     const turn = a.turn ?? 'own';

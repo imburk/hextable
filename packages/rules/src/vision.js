@@ -127,6 +127,9 @@ export function partyView(s) {
 
 // May the players not be told of this creature? The DM hid it, it is hiding, it is somewhere not
 // revealed, or (under the los and light rules) nobody in the party can see it.
+// The name players are told for a creature: one not of the party in a form (Wild Shape) is the Beast (view.js).
+export const seenName = (e) => (e.form && e.side !== 'party' ? e.form.name ?? e.name : e.name);
+
 export const unknown = (s, e) => !!e && e.side !== 'party' && (concealed(s.map, e) || (sightRule(s) !== 'rooms' && !partyView(s).creatures.has(e.id)));
 
 // ---------- memory ----------
