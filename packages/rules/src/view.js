@@ -65,6 +65,13 @@ function seenRecord(e) {
 // told. Under `quiet` nothing is said: the order shows no one's turn (`turn: -1`).
 export const unseenTurns = (state) => state.settings?.unseenTurns ?? 'say';
 
+// An order entry's `after` or `before` (companions.md, Decision 3 and A1), kept only where its master is the party's too.
+function tiedOpen(o, open) {
+  const out = {};
+  for (const k of ['after', 'before']) if (typeof o[k] === 'string' && open(o[k])) out[k] = o[k];
+  return out;
+}
+
 function viewEncounter(state) {
   const enc = state.encounter;
   if (!enc) return null;
@@ -73,8 +80,9 @@ function viewEncounter(state) {
   let slot = -1;                                    // where an unseen turn shows: after the last seen creature before it
   enc.order.forEach((o, i) => {
     const c = classify(state, o.id);
-    // `after` (a companion's turn straight after its master's, companions.md Decision 3) only where both are the party's.
-    if (c === 'open') order.push({ id: o.id, init: o.init, dex: o.dex, ...(typeof o.after === 'string' && classify(state, o.after) === 'open' ? { after: o.after } : {}) });
+    // `after` (a companion's turn straight after its master's, companions.md Decision 3) and `before` (straight before
+    // it, the master's player's choice, A1) only where both are the party's.
+    if (c === 'open') order.push({ id: o.id, init: o.init, dex: o.dex, ...tiedOpen(o, (id) => classify(state, id) === 'open') });
     else if (c === 'seen') order.push({ id: o.id });
     if (i < enc.turn && c !== 'hidden') slot = order.length;
   });
@@ -414,7 +422,7 @@ export function viewEvents(events, state, viewer) {
   };
   const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
   // A copy of an order entry or a `joined` of one of theirs, with `after` only where its master is theirs too.
-  const afterOpen = (o) => { const { after, ...rest } = o; return { ...rest, ...(typeof after === 'string' && cls(after) === 'open' ? { after } : {}) }; };
+  const afterOpen = (o) => { const { after, before, ...rest } = o; return { ...rest, ...tiedOpen({ after, before }, (id) => cls(id) === 'open') }; };
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
   // Cells named by an area, only where they are sent, under every rule (under `rooms` too, DEBT
   // P26: an area reaching into a region not yet revealed does not show its cells there).
@@ -543,6 +551,9 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'companion':
         if (cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', 'auto']));
+        break;
+      case 'companionOrder':                           // a before or after choice (A1): the party's own only, as a bond is
+        if (cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'next']));
         break;
       case 'concentration':
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));

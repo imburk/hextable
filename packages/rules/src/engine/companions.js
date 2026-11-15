@@ -9,12 +9,16 @@
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
 import { companionsOf, ent, control, fail, inFight, roomForCompanions } from './shared.js';
 import { followMasters, lookAround, unfollow } from './world.js';
+import { unknown } from '../vision.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
 export const BOND_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
 export const BOND_TURNS = ['own', 'after', 'none'];
 export const BOND_ORDERS = ['free', 'command'];
 export const BOND_AT0 = ['vanish', 'dies'];
+// Whether a companion whose turn is on its master's count acts straight after the master (the default) or straight
+// before it: the master's player's choice, per round (A1; owner's answer to question 3).
+export const BOND_SIDES = ['after', 'before'];
 // What 0 Hit Points does by default: the SRD's familiar, steed, spirits, servant and animated object
 // disappear; undead and ordinary animals die (Decision 4). The DM may say otherwise (`at0`).
 const AT0_BY_KIND = { familiar: 'vanish', steed: 'vanish', summon: 'vanish', servant: 'vanish', object: 'vanish', undead: 'dies', pet: 'dies' };
@@ -77,6 +81,34 @@ export const handlers = {
     ev.push({ type: 'bonded', id: e.id, to: m.id, kind, ...(turned ? { side: e.side } : {}) });
     followMasters(s, true);                          // in a fight, a turn after its master's: behind it now if that is safe, else from the next round
     if (turned && e.side === 'party') lookAround(s, ev, [e]);      // what a party member sees, the party sees
+  },
+
+  // { type: 'companionOrder', actor, id, order }: the master's player (or the DM) chooses whether the companion `id`
+  // acts straight after its master `actor` or straight before it (A1; Find Steed "shares your Initiative count").
+  // In a fight the choice waits in `bond.orderNext` and takes effect at the start of the next round (resolve.js,
+  // takeUpOrders), never in the middle of one; outside a fight it is `bond.order` at once. A ridden steed (C6) has no
+  // place of its own, so its choice waits until it has one. A companion that rolls its own Initiative has no master's
+  // count to act beside, and is refused rather than keep a choice the engine would not play.
+  companionOrder(s, a, ctx, ev) {
+    const m = ent(s, a.actor); control(s, m, ctx);
+    typeof a.id === 'string' || fail('Name the companion ({ id }).');
+    // Only the creatures' own ids: a name such as `constructor` is no creature (and is not looked up on the prototype).
+    const e = Object.hasOwn(s.entities, a.id) ? s.entities[a.id] : fail('No such creature.');
+    // To a player a creature the party does not know of is no creature at all (as engine.js does for `actor`): `id`
+    // is not one of the fields it walks, since other actions use it for other things.
+    ctx.role === 'dm' || !unknown(s, e) || fail('No such creature.');
+    // A player is told only that it is not this master's companion, whether it has no bond or another's: a foe's bond
+    // is never told to players (Decision 10; review of #335, M1). The DM is told which.
+    if (ctx.role !== 'dm' && e.bond?.to !== m.id) fail(`${e.name} is not ${m.name}'s companion.`);
+    e.bond || fail(`${e.name} is no one's companion.`);
+    e.bond.to === m.id || fail(`${e.name} is not ${m.name}'s companion.`);
+    BOND_SIDES.includes(a.order) || fail(`A companion acts straight after its master or straight before it: { order: 'after' } or { order: 'before' }.`);
+    e.bond.turn !== 'own' || fail(`${e.name} rolls its own Initiative, so it has no place beside ${m.name}'s.`);
+    const now = e.bond.order ?? 'after', fight = !!s.encounter;
+    if (!fight) { e.bond.order = a.order; delete e.bond.orderNext; }
+    else if (a.order === now) delete e.bond.orderNext;                 // back to what this round has: nothing waits
+    else e.bond.orderNext = a.order;
+    ev.push({ type: 'companionOrder', id: e.id, by: m.id, order: a.order, ...(fight ? { next: true } : {}) });
   },
 
   // { type: 'companion', actor, auto }: whether the engine's companion brain may play this companion's

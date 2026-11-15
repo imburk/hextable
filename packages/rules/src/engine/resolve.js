@@ -16,7 +16,7 @@ import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
-import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 
@@ -124,10 +124,13 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   // Each rolls, in the order the creatures are kept, but a companion whose turn is its master's and whose master
   // is in the fight: it takes the master's count, straight after it (Decision 3). One whose master is not here rolls.
   // Only where the party knows of both: else it rolls as an unbonded creature would (world.js, joinLead).
+  // Straight after it, or straight before it where its master's player chose that (`bond.order`, A1): the start of
+  // a fight is a round's start, so a choice waiting in `orderNext` is taken up first.
+  takeUpOrders(s);
   const faces = {}, ids = new Set(who.map((e) => e.id)), m0 = who.filter((e) => !e.bond).map((e) => ({ id: e.id }));
   const behind = (e) => (ids.has(e.bond?.to) && !s.entities[e.bond.to].bond ? joinLead(s, m0, e)?.id ?? null : null);
-  const slots = who.map((e) => (behind(e) ? { id: e.id, init: null, dex: e.abil.dex, after: behind(e) } : rollInit(s, e, faces)));
-  for (const o of slots) if (o.after) o.init = slots.find((x) => x.id === o.after).init;
+  const slots = who.map((e) => (behind(e) ? { id: e.id, init: null, dex: e.abil.dex, [sideOf(e)]: behind(e) } : rollInit(s, e, faces)));
+  for (const o of slots) if (tieOf(o)) o.init = slots.find((x) => x.id === tieOf(o)).init;
   s.encounter.order = initiativeSort(slots);
   ev.push({ type: 'encounterStart', fight: s.encounter.id, where: s.encounter.where, center, radius, order: s.encounter.order.map((o) => ({ ...o, ...faces[o.id] })) });
   for (const e of who) if (!behind(e)) ownCount(s, e, m0, ev);
@@ -339,8 +342,10 @@ export function settleOrder(s) {
     let at = rest.findIndex((x) => x.id === moved[o.id].after);
     // Behind the companions that take their turn straight after that creature's (or after its master's, if it is
     // one), not between them (review of #317, L4).
-    const lead = at < 0 ? null : rest[at].after ?? rest[at].id;
-    while (at >= 0 && rest[at + 1]?.after === lead) at++;
+    // A creature taken back in after a companion that acts before its master (A1) goes behind that master's whole
+    // group, the master and its `after` companions too, so the group is not split.
+    const lead = at < 0 ? null : tieOf(rest[at]) ?? rest[at].id;
+    while (at >= 0 && rest[at + 1] && (tieOf(rest[at + 1]) === lead || rest[at + 1].id === lead)) at++;
     rest.splice(at < 0 ? rest.length : at + 1, 0, o);
     delete moved[o.id].after;
     moved[o.id].placed = true;
@@ -356,6 +361,7 @@ export function settleOrder(s) {
 function newRound(s) {
   const enc = s.encounter;
   delete enc.held;
+  takeUpOrders(s);                                     // a before or after choice made last round takes effect now (A1)
   // A companion whose place behind its master could not change in the middle of the last round (bonded or
   // freed then, or a master who joined after it) takes it now (followMasters, world.js).
   if (followMasters(s, false)) enc.turn = 0;
@@ -368,6 +374,21 @@ function newRound(s) {
   if (back) { initiativeSort(enc.order); enc.turn = 0; }
   settleOrder(s);
   enc.turn = 0;
+  // A companion whose master (or itself) was set aside last round only, and so could not change sides above, does so
+  // now that the place is given back: nobody has had a turn in this round yet.
+  followMasters(s, false);
+  enc.turn = 0;
+}
+// A before or after choice for a companion (`companionOrder`, companions.js; A1) is kept in `bond.orderNext` while a
+// fight goes on and taken up here, at a round's start, never in the middle of one: moving a companion round a master
+// who is mid-turn could give it a second turn or take its turn away. Every bond, in the fight or not: one that joins
+// later this round joins by the round's choice.
+function takeUpOrders(s) {
+  for (const e of Object.values(s.entities)) {
+    if (!e.bond?.orderNext) continue;
+    e.bond.order = e.bond.orderNext;
+    delete e.bond.orderNext;
+  }
 }
 
 // The turn of a creature set aside, played for it: the Dodge action if it can still take an action,
