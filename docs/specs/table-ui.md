@@ -2,7 +2,10 @@
 
 Status: draft by an agent, to be reviewed by the design owner. Issue #181
 (the owner's notes after a play session in which the party was wiped); it
-absorbs #173 (menu with Settings and About).
+absorbs #173 (menu with Settings and About). **Amended 15 November 2026** (#347)
+to the owner's answers to its seven questions and the wording of the defeat card:
+six defaults and the card's words are confirmed, and one answer changed the design,
+the rule for who leads the party (Decision 6; question 4).
 
 Covers what the player and the DM touch around the map: the slide-out drawer,
 the combat tracker, the context action panel, what happens when a fight is
@@ -62,7 +65,7 @@ check. "No" means a search of `packages/` found nothing.
 | **Loot, items, inventory** | `e.gear`: a list of short strings on every creature (`makeEntity`), checked as names (`derive.js`: at most 60 strings of at most 60 characters). Used by name only: `hasKey`, `hasTool`. Weapons and armour as data (`content/srd52/equipment.js`), lights as data (`content/lights.js`). A map `chest` object with open and closed states (`objects.js`). | Loot record, coins, quantities, weight, magic items as content, containers with contents, piles on the map, anything an item does when used (potion, scroll, wand charges). |
 | **Giving, dropping** | `give { actor, item, take? }`, **DM only** (`engine.js`). Event `gear { id, item, taken? }`. The DM's log shows it (`describe`, "X receives Y."). | `gear` is **not in `AS_IS` in `view.js`**, so players are sent nothing when gear changes, and their log never shows it. No action for a player to hand an item over, drop it, or pick it up. |
 | **Rests** | `rest` (long: Hit Points, slots, features with uses, Hit Dice, one Exhaustion level) and `shortRest` (spend Hit Point Dice, features that return on a short rest), both **DM only** and refused in a fight (`engine.js`). The DM's Short Rest panel is `initShortRest` in `features.js`. Event `rest { short? }`. | A way for a player to ask for one. |
-| **Follow, lead** | `follow { actor, leader }` and `follow { actor, leader: null }` by whoever controls `actor`; `marchingOrder` and **`partyFollow` DM only**. The bar's Follow, Stop following and Lead the party buttons are in `refresh()` in `app.js`; Lead is shown only to the DM. | Lead the party for a player. |
+| **Follow, lead** | `follow { actor, leader }` and `follow { actor, leader: null }` by whoever controls `actor`; `marchingOrder` DM only; `partyFollow { leader }` by the DM **or whoever controls the leader** (E21, #303: first built DM only, then opened by the owner's "a player may lead"). The Follow, Stop following and Lead the party buttons are in `refresh()` and the Explore tab (`app.js`, `actionpanel.js`); since E22 (#304) Lead is offered to whoever controls the selected party creature outside a fight. | What 15 November decided (Decision 6): Lead always shown to every player, the last tap leads, the DM takes or gives the lead (T3b). |
 | **Searching** | One action, `search { actor }`: a single Wisdom (Perception) check against everything hidden within 15 ft: secret doors and traps (objects with `find`), and enemies hiding (`hiding.dc`). In a fight it costs the Action. Table setting `passiveFind` (`off`, `traps`, `all`) lets passive Perception find things without it. Events `check { search: true, found }`, `noticed`, `triggered`, `unhidden`. | Two kinds of search. A "trap suspected" flag: nothing in the state says a player suspects something. |
 | **Opening doors** | `use { actor, object, verb }`; `usesFor(S, e)` lists what is in reach with a `why` when it cannot be done now (not your turn, no key, no action). The bar shows each as a button. Event `object`. | Nothing missing. |
 | **Hide, Dash, Disengage, Dodge** | Actions `hide`, `dash`, `disengage`, `dodge`; `hideProblem(S, e)` and `blocked(S, e, time)` give the reason. | Help, Ready, Utilize, Influence: not in the engine. |
@@ -676,8 +679,10 @@ using only what the view and the engine's helpers say:
 2. **Following.** If `e.follow` is set, "Stop following Brenna" is first of
    the walking rows; else "Follow...", which arms a tap on a party member
    exactly as today (`mode.kind === 'follow'`, with the nearest ally
-   offered). "Lead the party" is shown to the DM only (`partyFollow` is DM
-   only); for players it is not shown rather than shown greyed.
+   offered). "Lead the party" is **always shown, to every player and to the DM**
+   (the owner, 15 November), never hidden: it is greyed with its reason when it
+   cannot be done (in a fight, nobody to lead, the character is down). The rule it
+   follows is "The lead" below.
 3. **Hurt.** If `e.hp` is at or below half of `e.maxHp` (your own numbers),
    healing you can do now: Cure Wounds / Healing Word, Second Wind, Lay On
    Hands, as shortcuts that jump to the same rows in Spells and Features.
@@ -896,6 +901,45 @@ same callbacks. `button()` in `app.js` is replaced by a row builder that
 adds the visible `why` line and `aria-disabled` instead of `opacity: .45`
 alone.
 
+#### The lead
+
+The owner's rule, 15 November 2026. His question: "what happens if two people select lead
+the party? ... what if the leader runs off for a bathroom break, are they stuck? DM
+intervention or does lead party always display and then we get into a who clicked last
+(that's team dynamics and part of the game, so I'm ok with it)." Confirmed with him as:
+**"Lead the party" is always shown to every player; whoever taps it last leads; the DM can
+take or give the lead at any time.**
+
+- **Always shown.** The row is in the Explore tab for every player with a party character
+  selected, and for the DM, whatever the party is doing. It is greyed with its reason when
+  the engine would refuse ("Nobody falls into line in the middle of a fight.", alone, the
+  character is down), and never hidden, so nobody has to ask the DM for it.
+- **The last tap leads.** Lead sends `partyFollow { leader }` for a character the player
+  controls, and takes effect at once, with no confirmation and no consent from whoever led
+  before: every other party member who is up, the old leader included, falls in behind the
+  new one. Two players tapping together are two actions and the server applies them in the
+  order they arrive, so the later leads. The owner called this team dynamics and part of
+  the game; nothing arbitrates it. This is what `partyFollow` already does (E21).
+- **A leader who steps away is not a jam.** Anyone can take the lead by tapping, any
+  follower can stop following (`follow { actor, leader: null }`, as now), and the DM can give
+  the lead to anyone.
+- **The DM takes or gives the lead.** The DM sends `partyFollow { leader }` with any party
+  character, to lead with that character themself or to hand the lead to a player's, and
+  the marching order list in the DM tab has a Give the lead button on each row. "At any
+  time" is read as at any time **outside a fight**, since following and formations are
+  refused in a fight as they are now (E21: "Nobody falls into line in the middle of a fight.")
+  **(design choice, lead's proposal: the owner said "at any time" and was not asked about a
+  fight)**.
+- **Everyone can see who leads, and when it changes.** The leader's pawn and chip carry a
+  lead mark; the log says "Tor takes the lead." (it reads the existing `formation` and
+  `follow` events, which players are already sent); and the player who led before gets a toast
+  with the same words **(design choice, lead's proposal)**. A party's lead is public to the
+  party and nothing else is sent.
+- **The formation popup** (E22) still opens for the player who just took the lead, who may
+  Cancel; the shape it keeps is the new leader's own, as E21 has it.
+
+No engine change is needed: a test pins the rule (task T3b).
+
 ### Decision 7: preferences and settings
 
 **Rule.** A thing that changes how *this person's screen* looks or behaves is
@@ -980,6 +1024,7 @@ checked at 390 x 844 with touch and at 1280 x 800 (`npm run smoke` by hand).
 | T1 | **The drawer, Settings, About.** Closes #173. `#btn-menu`, `#drawer` with tabs Turns (the existing tracker for now), Sheet, Log, Handouts, DM, Settings, About; the existing panels re-parented by id; side and pin preferences; Theme select replaces `#btn-look`; device preferences moved into Settings; floors, cut-away and caves become stored preferences (address parameters still win); `about.js` text; the splash line and an About link on `#lobby`. | client agent | `packages/client/index.html`, `style.css`, `app.js`, `themes.js`, `drawer.js` (new), `about.js` (new), `handouts.js` and `scenes.js` (only the `openPanel` they are given), `scripts/smoke.mjs`, `docs/` | Every old button's job is reachable; the drawer opens from the right and, with the preference, from the left; on a phone it stops above the dock and the dock stays usable; Escape, scrim, swipe and burger close it; focus returns to the burger; About shows the SRD text exactly as `reference/srd52/README.md` has it; the smoke script still passes; nothing is lost from the list in Decision 2. |
 | T2 | **The tracker in the drawer.** Rows as in Decision 3: initiative for own side, unseen ghost row, Dying counts, Reaction used for own side only, DM's controls kept and folded behind Edit on a phone; `#order` opens the drawer on the tracker; the turn is announced once per turn through the live region. | client agent | `packages/client/tracker.js`, `style.css`, `index.html`, `app.js` (small) | A player's tracker, with a hidden creature acting, shows no number and no name that the view did not send; the DM's shows all; tapping a row selects, focuses and, on a phone, closes the drawer; works at both sizes; a test in `tests/` drives `rows`/`rowHTML` from a `playerView` and from the full state. |
 | T3 | **The action panel shell.** `actionpanel.js`: the head, status line with how-it-ends cards, and tabs by `panelContext`; the **Explore** and **Reactions** tabs from what exists (`usesFor`, Follow, Search, Hide, `reactionsHtml`); one temporary tab, "All", holding today's `#actions` bar unchanged so nothing is lost before T4; compact and raised heights; the `panelTab` preference. E15 and E16 optional beside it. | client agent (engine lane for E15, E16) | `packages/client/index.html`, `style.css`, `app.js`, `actionpanel.js` (new), `reactionsheet.js`, `features.js` (export only) | Exploring shows Explore first with the ranking of Decision 6, the DM's rest buttons, no Lead the party for a player; on another's turn Reactions is greyed with a reason or, with a pending prompt, active and pulsing while `#rp` still answers; the map stays tappable at both sizes; `panelContext` and `rankExplore` have tests. |
+| T3b | **The lead rule.** Decision 6's "The lead": Lead the party always shown in the Explore tab (greyed with its reason, never hidden), the lead mark on the leader's chip and pawn, the log line and the toast to the previous leader, Give the lead on each row of the DM's marching order. The engine needs no change: one test pins that a second `partyFollow` by another controller takes the lead and puts the old leader behind, that the DM may give it to any party character outside a fight, and that a fight refuses it. After E22 (built). | client agent (the test: engine lane reviews) | `packages/client/actionpanel.js`, `app.js` (`describe`, the toast, the lead mark), `tracker.js`, `formation.js` (the DM's row), `packages/client/test/`, `packages/rules/test/` (the pinning test only), `scripts/smoke/formation.mjs` | at both sizes, two players and the DM: both see Lead the party at all times; each tap takes the lead and the log says who; the previous leader is told; the DM gives it to a third character; in a fight the row is greyed with the engine's sentence; no page errors |
 | T4e | **Spell kinds.** E12 (and E14 `stand` if taken). | engine lane | `packages/rules/src/effects.js`, `engine.js` (only if E14), `tests/` | `spellKinds` returns kinds for every spell; the test prints the split; no pack file changed. |
 | T4a | **Attacks, Bonus, Move, Features tabs.** Rows with visible reasons; Bonus built as the filter described; Move with the budget, standard actions, objects in reach, fly; Features with pips and recharge text; "All" removed once these cover what it held. | client agent | `actionpanel.js`, `app.js` (the `refresh()` bar code is removed), `features.js`, `classes.js` (only where it returns buttons), `style.css`, `tests/` | Every button the old bar built has a row; a greyed row names its reason on screen; Second Wind, Dash, Disengage, Hide, Search, objects and fly rows behave as before; the choosers still open; monsters' `actions` list under Attacks. |
 | T4b | **Spells and Items tabs.** The slot strip, sort, filters, the Kind chip from `sp.kinds`, Cantrips and Prepared, Can cast now, the Class chip hidden until #175, Metamagic entry, Items as gear and light. | client agent | `actionpanel.js`, `style.css`, `tests/` | The slot strip is visible whatever the sort; sort and each filter work and combine; a spell greyed shows its reason, including "Nobody within N ft"; a spell armed collapses the panel on a phone and cancelling restores it; sort order is remembered. |
@@ -1033,35 +1078,56 @@ hidden meanwhile.
 
 ## Questions for the owner
 
-Only those whose answer changes the design. Each has a default, and work
-proceeds on the default.
+Only those whose answer changes the design. All seven were answered by the owner on 15
+November 2026 (issue #193, the comment "Q&A lead, 15 November, 09:15 ET", body item 5): six
+defaults confirmed, one changed.
 
 1. **Should monsters finish off the dying?** By the SRD an attack within 5 ft
    on a creature at 0 Hit Points is a critical hit that adds failures. With
-   defeat as Decision 1 puts it, the AI leaves the dying alone. *Default: it
-   does, no change to the AI; the DM can `harm` by hand. E19 if you want it.*
+   defeat as Decision 1 puts it, the AI leaves the dying alone. *Answered 15 November 2026:
+   default confirmed: monsters do not finish off the dying.* The draft's "it does" meant
+   that the AI does leave the dying alone, with no change to the AI; the DM can `harm` by
+   hand, and E19 is built only if the owner later asks for it. What changed: nothing.
 2. **Rewind and the dice.** After "go back to the start of the fight", should
    the dice **repeat** (the same choices give the same results, like Undo) or
-   **continue** (new dice)? *Default: continue.*
+   **continue** (new dice)? *Answered 15 November 2026: default confirmed: continue (new
+   dice).* What changed: nothing.
 3. **How XP is shared.** The SRD gives each monster's XP and says the GM
-   awards it, and says nothing about dividing it. *Default: divided equally
-   among the characters who took part and did not die; `xpShare` `full`
-   gives each the whole amount.* Should a character who fell and was brought
-   back still share? *Default: yes, if alive at the end.*
-4. **Can a player lead the party?** `partyFollow` is DM only; the owner's
-   Explore tab lists "lead the party". Letting a player send everyone else
-   falling in behind them overrides other players' characters. *Default:
-   DM only; the row is not shown to players, who can still Follow.*
-5. **Two searches or one.** *Default: one (Decision 6).* Say if the two
-   labels matter for how the table talks, and the one button can carry
-   both words.
+   awards it, and says nothing about dividing it. *Answered 15 November 2026: default
+   confirmed: divided equally among the characters who took part and did not die
+   (`xpShare` `full` gives each the whole amount); a character who fell and was brought
+   back still shares, if alive at the end.* What changed: nothing.
+4. **Can a player lead the party?** `partyFollow` was DM only; the owner's Explore tab lists
+   "lead the party". Letting a player send everyone else falling in behind them overrides
+   other players' characters. *Answered 15 November 2026: changed; the default ("DM only")
+   is replaced.* The owner: "what happens if two people select lead the party? ... what if
+   the leader runs off for a bathroom break, are they stuck? DM intervention or does lead
+   party always display and then we get into a who clicked last (that's team dynamics and
+   part of the game, so I'm ok with it)." Confirmed with him as: **"Lead the party" is always
+   shown to every player; whoever taps it last leads; the DM can take or give the lead at any
+   time.** What changed: Decision 6's Explore row and its new subsection "The lead"; the
+   "Where we are" row; task T3b. Overtaken in part: E21 and E22 (built on 14 November, the
+   owner's "a player may lead") already let whoever controls the leader send `partyFollow`
+   and offered Lead to controllers outside a fight, so the engine already behaves as the
+   answer says and what is left is the always-shown row, the lead mark, the log line and
+   the DM's Give the lead. "At any time" is read as outside a fight (the lead's proposal).
+5. **Two searches or one.** *Answered 15 November 2026: default confirmed: one (Decision
+   6).* The one button can carry both words. What changed: nothing.
 6. **Should the drawer open itself?** At the start of a fight, or when the
-   DM publishes rewards. *Default: no, the burger carries a badge; the
-   defeat and rewards cards open themselves because they are the table's
-   turning points.*
+   DM publishes rewards. *Answered 15 November 2026: default confirmed: no, the burger
+   carries a badge; the defeat and rewards cards open themselves because they are the
+   table's turning points.* What changed: nothing.
 7. **Items that do things.** The Items tab lists names until potions and
-   scrolls exist as content with effects. Is that worth a milestone ahead of
-   Reactions? *Default: later (E18), after Roadmap milestone 2.*
+   scrolls exist as content with effects. *Answered 15 November 2026: default confirmed:
+   later (E18), after Roadmap milestone 2.* What changed: nothing in the spec. Overtaken:
+   E18 (using items, #276) and its follow-up (#284) were built before this answer was
+   given, so the owner's "later" describes a state that had already passed; the item
+   effects they built stay.
+
+**Also confirmed on 15 November 2026 (body item 6): the wording of the defeat card, as
+written in Decision 1:** "The party has fallen." and "The DM will decide what happens next."
+for players, with the DM's three choices "Go back to the start of the fight", "Go back to
+the last rest" and "Carry on from here". What changed: nothing.
 
 ## Build notes
 
@@ -1208,7 +1274,7 @@ What was settled while building, where it differs from the text above, and what 
 - **Tabs drawn today.** Explore (not in a fight), Reactions (another's turn), Down (one tab, from the death-save count), and **All**, which holds `#actions`
   exactly as `refresh()` builds it (same ids, same buttons, same toasts). The strip of tabs is hidden when there is only one (on your own turn in a fight: All
   alone, so the card is as it was). The tabs the spec lists and T4a/T4b will fill are in `panelContext` already; the shell draws only those with rows.
-- **Explore order.** Objects in reach (doable first), then Follow or Stop following (and Lead the party for the DM only), then healing shortcuts when under half and the
+- **Explore order.** Objects in reach (doable first), then Follow or Stop following (and Lead the party, for the DM only when T3 was built and now for everyone: Decision 6, "The lead"), then healing shortcuts when under half and the
   DM's rests (the rests come up here when a party member is under half or has used slots, else at the end), Search, Light a torch, Hide, rituals, Check. Search:
   with `passiveFind` `off` it is in the top four; with a `noticed` or `triggered` event in the last two updates it is moved up to at most the fourth place; otherwise it
   sits after the rows above. The first four rows are large buttons in a two-by-two grid, the rest under More. A greyed row writes its reason under its name
