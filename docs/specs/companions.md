@@ -820,6 +820,9 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
 - **The creature**: `tpl: 'giant-insect'` is not in `MONSTERS` (the client's `MONSTERS[e.tpl]?.name` falls back to
   "Creature"; use `e.name`, or `CONTENT.summons[e.tpl]`); the model to draw is the client's choice by `tpl`. Its
   turn is its master's player's (`ownerOf`); in the tracker it stands straight after its master (`after`, C8/C10).
+  Built in #337: the log says "Ven summons a Giant Wasp." (the master's name taken off the creature's, else the template's); pawn labels and the reaction
+  question take the shown name ("Brenna's goblin") through `shownState()` in app.js; the card falls back to `e.name`; the tracker already draws the order as
+  sent, so the wasp stands straight after Ven; the DM's auto-play leaves a player's companion to its player unless `bond.auto` is set.
 
 ### C4, blocks and spells, data (#328)
 
