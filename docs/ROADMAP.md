@@ -13,7 +13,7 @@ What is known to be missing is in [DEBT.md](DEBT.md); designs are in [specs](spe
 - **Maps.** Levels, height, walls, doors, regions, objects and traps, creature sizes; six stock maps (five on hexes, one on squares); a map editor with tracing and Universal VTT import.
 - **Sharing.** Handouts, private notes, table files, export of a table with its files.
 - **DM tools.** Undo and redo, rewind to the start of a fight or rest, a chronicle, a marching order and followers, defeat and rewards at the end of a fight.
-- **Two renderers.** The default view and a Three.js one at parity, with the Three.js library vendored.
+- **Two renderers.** The default view and a Three.js one at parity, with the Three.js library vendored. The owner has decided that Three.js becomes the default and the older renderer is removed ([spec](specs/renderer.md), R14); see the first release below.
 - **Table UI, first part.** A drawer with settings, About and the tracker; the defeat card; the rewards form and card.
 
 ## Next
@@ -29,6 +29,11 @@ In this order:
 | 5 | More of the SRD plays by the rules | Effect steps for the spells the DM applies by hand; summoned creatures, monster spellcasting and legendary actions |
 | 6 | A real table | Play sessions with real groups on real phones, and fix what breaks |
 
+Alongside the milestones, not renumbering them: **R14, Three.js as the default
+and removal of the hand-written renderer** (the owner, 15 November 2026), a
+renderer job that touches no rules and can run any time. **The first release tag,
+`v0.1.0`, is cut when Three.js is the default.**
+
 ## Later
 
 - 3D character models, then animation (a renderer plan is drafted in specs)
@@ -38,4 +43,4 @@ In this order:
 - Portable characters: a character file with a signed history and a level meter, joined to a table by the DM's choice ([spec](specs/portable-characters.md)); its pure parts (jobs P1 and P2) can start any time, the rest after milestone 2
 - Square grid: maps on squares beside hexes, through one geometry interface ([spec](specs/square-grid.md), option B recommended, the owner to choose); its first jobs (S0 to S3) change no behaviour and can start any time; the lobby now offers the starter valley on squares or hexes and there is one square stock map (S12, #269)
 - Homebrew packs per table, a plain-language reader and a spell builder an AI can drive ([spec](specs/homebrew.md)); the pure parts (jobs B1 to B4) can start any time, the table and client jobs after milestone 2
-- The official service for online play (monikers, official character records, a lobby, reputation, anonymous statistics, AI stand-ins), a separate project: founding spec, interface draft and how the two leads work together in [service](service/FOUNDING.md) (#254)
+- The official service for online play (monikers, official character records, a lobby, reputation, anonymous statistics, AI stand-ins), a separate project: founding spec, interface draft and how the two leads work together in [service](service/FOUNDING.md) (#254). The service is also where a shared library of adventure modules would live, planned for now and not built ([adventure modules](specs/adventure-module.md), Decision 9)
