@@ -434,6 +434,71 @@ for (const grid of [null, "square"]) {
     assert.equal(json(loaded), states.at(-1), "loaded mid-fight");
   });
 
+  // Review of #341, M1: Divine Intervention casts Animate Dead as a Magic action, so in a fight. A corpse still in the
+  // fight's order is refused (as the DM's `remove` refuses a creature in the fight), so its place and its XP stay; once
+  // the fight is over it can be raised, and the card still has it.
+  test(`a corpse still in the fight's order is refused, even through Divine Intervention; its XP stays on the card${on}`, () => {
+    const s = table(grid), G = gridOf(s.map);
+    const cleo = makeEntity(derive({ name: "Cleo", class: "cleric", level: 10, abilities: ABIL, skills: ["insight", "religion"], spells: ["animate-dead"] }).record,
+      { id: "cleo", kind: "pc", side: "party", pos: { ...free(s, s.entities.fighter.pos, 2)[1], z: 0 } });
+    s.entities.cleo = cleo;
+    ok(apply(s, { type: "claim", entity: "cleo", user: "u2", userName: "U2" }, U2));
+    const gob = spawn(s, "goblin-warrior", free(s, s.entities.fighter.pos, 6).filter((h) => G.dist(h, cleo.pos) >= 3)[0]);
+    const band = spawn(s, "bandit", free(s, cleo.pos, 3).find((h) => G.dist(h, cleo.pos) === 1));
+    ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 8 }, DM));
+    ok(apply(s, { type: "setHp", actor: band, hp: 0 }, DM));
+    assert.ok(s.encounter.order.some((o) => o.id === band), "the corpse is in the order");
+    toTurn(s, "cleo");
+    refused(s, { type: "cast", actor: "cleo", spell: "animate-dead", via: "divine-intervention", summon: { ids: [band] } }, U2, /fell in this fight and is still in its order/);
+    ok(apply(s, { type: "setHp", actor: gob, hp: 0 }, DM));
+    assert.ok(!s.encounter, "the fight is won");
+    const xp = (id) => s.conclusion.foes.find((f) => f.id === id);
+    assert.ok(xp(band)?.counts && xp(band).xp === 25 && xp(gob)?.counts, json(s.conclusion.foes));
+    const [z] = made(ok(apply(s, { type: "cast", actor: "cleo", spell: "animate-dead", slot: 3, summon: { ids: [band] } }, U2)));
+    assert.equal(s.entities[z].tpl, "zombie");
+    assert.ok(xp(band)?.counts && xp(band).gone && xp(band).xp === 25, "still on the card, named as the party saw it go");
+  });
+
+  test(`a player is told of a Wild-Shaped foe by the Beast's name; sparse ids are refused${on}`, () => {
+    const s = table(grid), f = spawn(s, "bandit", free(s, s.entities.nia.pos, 3)[0]);
+    s.entities[f].name = "Morgrim the Druid"; s.entities[f].form = { name: "Brown Bear" };
+    const r = refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [f] } }, PAT, /^Brown Bear is neither a corpse/);
+    assert.ok(!r.error.includes("Morgrim"));
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [f] } }, DM, /^Morgrim the Druid is neither/);
+    const far = corpse(s, "bandit", 15);
+    s.entities[far].name = "Morgrim"; s.entities[far].form = { name: "Brown Bear" };
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [far] } }, PAT, /^Brown Bear is 15 ft away/);
+    for (const ids of [new Array(1), [, "x"]]) refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids } }, PAT, /Name the corpses/);
+  });
+
+  test(`a destroyed Zombie is freed at once: it no longer counts toward the cap, and is not reasserted${on}`, () => {
+    const s = table(grid), c = corpse(s, "bandit", 5);
+    const [z] = made(ok(raise(s, [c])));
+    const fx = s.entities[z].bond.fx;
+    const r = ok(apply(s, { type: "setHp", actor: z, hp: 0 }, DM));
+    assert.ok(s.entities[z].dead && !s.entities[z].bond, "dead, and no longer bonded");
+    assert.ok(!s.effects.some((x) => x.id === fx), "its 24 hours end");
+    assert.ok(r.events.some((e) => e.type === "unbonded" && e.id === z && e.why === "destroyed"));
+    assert.ok(!Object.values(s.entities).some((e) => e.bond?.to === "nia"), "nothing counts toward Nia's 30");
+    refused(s, { type: "cast", actor: "nia", spell: "animate-dead", slot: 3, summon: { ids: [z] } }, PAT, /is dead: a destroyed Undead/);
+  });
+
+  test(`a lapse in the middle of a fight: the Zombie turns foe, keeps its place, and the fight goes on${on}`, () => {
+    const s = table(grid), c = corpse(s, "bandit", 5), G = gridOf(s.map);
+    const [z] = made(ok(raise(s, [c])));
+    spawn(s, "goblin-warrior", free(s, s.entities.fighter.pos, 6).filter((h) => G.dist(h, s.entities.nia.pos) >= 3)[0]);
+    ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 8 }, DM));
+    const fx = s.effects.find((x) => x.id === s.entities[z].bond.fx);
+    fx.until = { clock: s.clock + 0.05 };                       // its time runs out at the next round's start (by hand: 24 hours is 14,400 rounds)
+    const order = s.encounter.order.map((o) => o.id), round = s.encounter.round;
+    let seen = [];
+    for (let i = 0; i < 40 && s.encounter && s.encounter.round === round; i++) seen.push(...endTurn(s).events);
+    assert.ok(s.encounter, "the fight goes on");
+    assert.equal(s.entities[z].side, "foe"); assert.ok(!s.entities[z].bond);
+    assert.deepEqual(s.encounter.order.map((o) => o.id), order, "it keeps its place");
+    assert.ok(seen.some((e) => e.type === "manual" && e.partial && /joined the foes/.test(e.text)));
+  });
+
   test(`old saves: a DM-bonded Zombie with no 24 hours stays bonded; a save loads unchanged${on}`, () => {
     const s = table(grid), z = spawn(s, "zombie", free(s, s.entities.nia.pos, 2)[0]);
     ok(apply(s, { type: "bond", actor: z, to: "nia", kind: "undead", orders: "command" }, DM));

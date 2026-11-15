@@ -991,6 +991,7 @@ export function settleBonds(s, ev) {
     if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
     const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
     if ((e.dead || e.hp <= 0) && b.at0 === 'vanish') vanish(s, e, 'hp0', ev);
+    else if (b.lapse === 'foe' && e.dead) destroyed(s, e, ev);
     else if (b.fx && !holds(s, e)) { if (b.lapse === 'foe') lapse(s, e, m, ev); else vanish(s, e, 'ended', ev); }
     else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);
     else if (m && !e.dead && Number.isFinite(b.leash) && apart(s, e, m) * FT > b.leash) vanish(s, e, 'leash', ev);
@@ -1006,6 +1007,14 @@ export function settleBonds(s, ev) {
 // its place in the order. The DM is told (`manual`, the DM's alone); the party's own caster's player is told that it
 // no longer obeys, which they would know (the control is the caster's own); nothing reaches players of a foe's. One
 // that is dead by then is only freed: a corpse has nothing to obey.
+// A raised creature destroyed (it dies at 0, `at0: 'dies'`): a corpse has nothing to obey, so its control ends at once,
+// its bond and its 24 hours with it, and it no longer counts toward its master's companions (review of #341, L2).
+function destroyed(s, e, ev) {
+  const from = e.bond.to, fx = effectsOf(s).find((x) => x.id === e.bond.fx);
+  delete e.bond;
+  if (fx) endEffect(s, ev, fx, `${e.name} was destroyed`);
+  ev.push({ type: 'unbonded', id: e.id, from, why: 'destroyed' });
+}
 function lapse(s, e, m, ev) {
   const from = e.bond.to, src = SPELLS[e.bond.source]?.name ?? 'the spell', was = e.side, mine = !!m && m.side === 'party';
   delete e.bond;
@@ -1020,6 +1029,9 @@ function lapse(s, e, m, ev) {
   if (mine) ev.push({ type: 'manual', actor: m.id, name: src, text: `${e.name} no longer obeys ${who}: ${src}'s 24 hours of control are over.` });
   ev.push({ type: 'manual', actor: null, name: src, partial: true,
     text: `${e.name} is no longer under ${who}'s control: ${src}'s 24 hours ran out without the spell being cast on it again. It obeys no command and ${was === 'foe' ? 'is the DM\'s to play as it likes' : 'has joined the foes, the DM\'s to play'}.` });
+  // A new foe in a fight going on: whether the fight still stands is settled now, not at the next action. (A party
+  // creature that is not a character does not keep the party standing, partyOf, so this can only keep a fight going.)
+  checkEnd(s, ev);
 }
 
 // ---------- the summon step (docs/specs/companions.md, Decision 2; stage C3) ----------

@@ -7,9 +7,9 @@ import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
 import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
-import { unknown } from '../vision.js';
+import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, up, walled } from './shared.js';
+import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
 import { aimArea, creatureType, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
@@ -303,26 +303,35 @@ function corpsesFor(s, e, sp, step, p, slot, range, ctx) {
   if (p === undefined) return { count, reassert: again };
   (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Name the corpses for ${sp.name}: { ids: [...] }.`);
   for (const k of Object.keys(p)) k === 'ids' || fail(`${sp.name} names corpses or its own creatures (ids), not "${k}".`);
-  (Array.isArray(p.ids) && p.ids.length > 0 && p.ids.length <= BOND_MAX && p.ids.every((x) => typeof x === 'string') && new Set(p.ids).size === p.ids.length)
+  // Array.from, so a sparse list's holes are refused as non-ids rather than skipped (review of #341, L1).
+  (Array.isArray(p.ids) && p.ids.length > 0 && p.ids.length <= BOND_MAX && Array.from(p.ids).every((x) => typeof x === 'string') && new Set(p.ids).size === p.ids.length)
     || fail(`Name the corpses for ${sp.name}, each once: up to ${count} at this level, or up to ${again} of ${e.name}'s own creatures of it to keep under control.`);
   const player = ctx.role !== 'dm';
-  const list = p.ids.map((id) => {
+  // A player is told of a creature by the name the party sees (a foe in Wild Shape is the Beast; review of #341, M2).
+  const nm = (t) => (player ? seenName(t) : t.name);
+  const list = Array.from(p.ids, (id) => {
     const t = Object.hasOwn(s.entities, id) ? s.entities[id] : fail('No such creature.');
     !player || !unknown(s, t) || fail('No such creature.');
     return t;
   });
   const isCorpse = (t) => t.dead && !t.vanished, own = (t) => !t.dead && t.bond?.to === e.id && t.bond.source === sp.id;
   for (const t of list) {
-    if (t.vanished) fail(`${t.name} is gone: there is no corpse.`);
-    (isCorpse(t) || own(t)) || fail(`${t.name} is neither a corpse nor a creature ${e.name} made with ${sp.name}.`);
+    if (t.vanished) fail(`${nm(t)} is gone: there is no corpse.`);
+    (isCorpse(t) || own(t)) || fail(`${nm(t)} is neither a corpse nor a creature ${e.name} made with ${sp.name}.`);
     if (isCorpse(t)) {
-      !t.remains || fail(`Nothing is left of ${t.name} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no corpse.`);
-      (t.kind !== 'pc' && (!!t.bond || !ownerOf(s, t))) || fail(`${t.name} is a player's character: whether it rises is the DM's.`);
-      (CORPSE.sizes.includes(t.size) && creatureType(t) === CORPSE.type) || fail(`${t.name} is not the corpse of a Medium or Small Humanoid.`);
+      !t.remains || fail(`Nothing is left of ${nm(t)} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no corpse.`);
+      (t.kind !== 'pc' && (!!t.bond || !ownerOf(s, t))) || fail(`${nm(t)} is a player's character: whether it rises is the DM's.`);
+      // A raised creature destroyed (at0 'dies'): dead, not a creature to keep under control, and no Humanoid's corpse.
+      creatureType(t) !== 'undead' || fail(`${nm(t)} is dead: a destroyed Undead is no corpse to raise, and there is nothing left of it to keep under control.`);
+      (CORPSE.sizes.includes(t.size) && creatureType(t) === CORPSE.type) || fail(`${nm(t)} is not the corpse of a Medium or Small Humanoid.`);
+      // A corpse still in the fight's order (cast as a Magic action through Divine Intervention, so in a fight) is refused,
+      // as the DM's `remove` refuses a creature in the fight: taking it out would leave its place in the order and its share
+      // of the fight's XP (A3) to nothing (review of #341, M1).
+      !inFight(s, t.id) || fail(`${nm(t)} fell in this fight and is still in its order: it can be raised once the fight is over.`);
     }
     const d = apart(s, e, t);
-    d * FT <= range || fail(`${t.name} is ${ft(d)} away. ${sp.name} reaches ${range} ft.`);
-    walled(s, e, t);
+    d * FT <= range || fail(`${nm(t)} is ${ft(d)} away. ${sp.name} reaches ${range} ft.`);
+    unblocked(s, e, t) || fail(`There is a wall between ${e.name} and ${nm(t)}.`);
   }
   const raise = isCorpse(list[0]);
   list.every((t) => isCorpse(t) === raise) || fail(`${sp.name} either animates corpses or keeps ${e.name}'s own creatures under control, not both in one casting.`);
