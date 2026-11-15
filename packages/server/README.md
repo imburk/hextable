@@ -305,6 +305,29 @@ with no entries.
   (`active`, milliseconds) is saved with the table; tables saved before it existed start the
   clock when the server loads them.
 
+## Player feedback (#353)
+
+`POST /feedback` takes one report from the game's feedback button (`docs/specs/feedback.md`):
+JSON, at most 24 KB, checked field by field (`packages/server/src/feedback.js`), 5 a minute and
+30 an hour per address (`LIMIT_FEEDBACK_MINUTE`, `LIMIT_FEEDBACK_HOUR`; the address is found as
+described under Limits; IPv6 counts by /64). Each report is one JSON line in `DATA_DIR/feedback.jsonl`; at 5 MB
+(`FEEDBACK_MAX_BYTES`) it moves to the next free `feedback.N.jsonl`, five files in all (`FEEDBACK_FILES`), and when all are
+full new reports are refused (nothing is deleted). The answer is `{ "ref": "FB-XXXXXX" }`. CORS is
+open for this route only, without credentials.
+
+To also file each report as a GitHub issue labelled `feedback`, set `FEEDBACK_GITHUB_REPO`
+(`owner/name`) and `FEEDBACK_GITHUB_TOKEN` (a fine-grained token with Issues: write on that
+repository, nothing else). The token is never logged or sent to a client. A failure to file is
+logged and the local line is kept. The server as a whole files at most 20 issues an hour and 100 a day
+(`LIMIT_FEEDBACK_FORWARD_HOUR`, `LIMIT_FEEDBACK_FORWARD_DAY`).
+
+## Which build is running (`GET /build.json`)
+
+The server answers `/build.json` itself (`src/build-info.js`): `{ commit, when, pr?, subject?, source: "server", from, started }`.
+The commit and the first line of the commit message come from `RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_COMMIT_MESSAGE`, which Railway
+provides "if the deploy originated from a GitHub trigger" ([Railway variables reference](https://docs.railway.com/variables/reference)); without them
+(`from: "image"`) it is the `dist/build.json` written when the image was built. No other environment variable is read or shown.
+
 ## Table files (assets)
 
 Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/maps-and-objects.md`,

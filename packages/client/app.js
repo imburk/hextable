@@ -39,6 +39,7 @@ import { initTableControls, importLine, gridWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
+import { initFeedback } from './feedback.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -381,7 +382,8 @@ function floatOf(ev) {
 function beat(ev, ctx) {
   if (!S) return;
   played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
-  LV.add(ev, describe(ev), S.clock);
+  const line = describe(ev);
+  LV.add(ev, line, S.clock); FB.shown(line, ev.type);
   const f = floatOf(ev);
   if (f) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
@@ -849,13 +851,16 @@ const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, 
   pick: (id) => { select(id); R.focus(id); refresh(); if (!D.wide) D.close(); },      // on a phone the map is what was asked for
   openSheet: (id) => { select(id); D.open('sheet'); refresh(); } });
 // The drawer holds every panel (drawer.js); what it shows is rendered here once its tab is the one open.
+// The feedback button (feedback.js): a report is built only from what was shown or sent here.
+const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
+
 const D = initDrawer({ prefs, state: () => S, isDM, change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 $('btn-sheet').onclick = () => D.open('sheet');
 $('order').onclick = () => D.open('turns');
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
-const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
+const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version, buildLine: FB.buildLine() }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
 const setTheme = (id) => { if (!THEMES[id]) return; themeId = id; prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); };
 const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM });
 // Where the drawer covers the map, a DM tool that asks for a tap on the map closes it first.
@@ -1074,6 +1079,7 @@ function start(transport, map = null) {
     refresh();
   };
   T.on.welcome = (you) => { SC.resync(); $('lobby').hidden = you.approved; if (!you.approved) { $('lobby-remember').hidden = true; $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; } };
+  FB.attach(T);                 // feedback.js notes the actions sent and the answers (nothing else is read from the transport)
   T.start();
 }
 // The lobby says what this device holds: a remembered table (Rejoin or Forget) and a saved solo game (Continue or New game).

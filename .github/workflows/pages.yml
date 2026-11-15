@@ -26,7 +26,10 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+      # The solo game here has no table server of its own: the feedback button posts to the public one (it must run a build with POST /feedback).
       - run: npm run build
+        env:
+          HEXTABLE_FEEDBACK_URL: https://hextable-production.up.railway.app
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
