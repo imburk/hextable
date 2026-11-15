@@ -1073,10 +1073,8 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
   (`mountTurnStarts`: what ends at the start of its turn ends, a zone it starts in works on it, its Reaction comes back,
   a recharge) and the turn's budget gains `mount: { move, action, dashes }` (its Speed and one action, none if it is
   Incapacitated); at its rider's turn end its Disengage ends and what ends at the end of its turn ends. Mounted in the
-  middle of the rider's turn, it gets `budget.mount` then. The SRD says it "can move and act even on the turn that you
-  mount it", so a mount whose own turn came earlier in the round, mounted later in it, moves and acts again on its
-  rider's turn: that is the SRD's, not a gained turn (it has no second `turn`). **Owner's question:** whether a mount
-  that has acted on its own count this round should get `budget.mount` when mounted after it.
+  middle of the rider's turn, it gets `budget.mount` then ("can move and act even on the turn that you mount it"), but
+  only if it has not had its turn this round: see fix round 1, M1.
 - **What a controlled mount may be sent.** Checked in `control` (shared.js), as the command lock is: `move`, `dash` and
   `disengage` (and what is set about it or answered for it: `reactions`, `companion`, `react`, `stepAway`, `stepBack`);
   anything else, its attack and its actions included, is "A controlled mount can only Dash, Disengage or Dodge.".
@@ -1100,8 +1098,7 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
 - **`dismount { actor, to? }`.** The rider's turn in a fight, not dismounted already this turn, half its Speed; `to` is a
   space it can stand in within 5 ft of any part of the mount, no wall between, within a step of the mount's height, in
   the arena when fighting, not the mount's own space, and unoccupied; without `to`, the nearest such space (fixed order,
-  so it replays). A space held by a creature the party does not know of is not refused to a player (it would tell them
-  something is there): the rider gets down in the nearest free one instead. `dismounted { id, mount, at }`; traps and
+  so it replays). A space held by a creature the party does not know of: see fix round 1, B1. `dismounted { id, mount, at }`; traps and
   zones go off where it lands.
 - **The mount's place after.** A controlled mount whose rider gets down in a fight goes straight behind its rider (and
   the rider's `after` companions), on the rider's count ("The Initiative of a controlled mount changes to match yours
@@ -1111,7 +1108,7 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
   rounds on both grids and counts `turn` events: every creature one a round, the ridden horse none.
 - **A1.** While a steed is ridden its master's before or after choice waits: `takeUpOrders` leaves its `orderNext` and
   `followMasters` leaves its entry; both take effect at the first round's start after it is ridden no more.
-- **Pairs kept whole** (`settleRiders`, after every action). A rider whose mount is gone (vanished, removed) or dead, or
+- **Pairs kept whole** (`settleRiders`, after every action; and see fix round 1, M2, for a downed rider). A rider whose mount is gone (vanished, removed) or dead, or
   that no longer stands on its mount's anchor (one of the two was pushed, teleported, fell, or set down by the DM: the
   pair is not moved together under those until C6b), is down from it where it stands: `dismounted { why: 'gone' |
   'apart' }`, and for `apart` the DM is told that staying on (DC 10 Dexterity) or falling Prone is theirs to set. A
@@ -1137,6 +1134,36 @@ summon step's `bond.mount`). What was settled while building C6a, where Decision
   not whole (both halves), fills a missing `riding.size`, and drops a malformed `budget.mount` or `enc.rode`.
 - **Labels.** `describeStep` (history.js): "Brenna mounted Warhorse", "Brenna dismounted"; the mount is among the
   creatures a label must know of before players are shown it.
+- **Fix round 1 (review of #350).** Rules that are new, not repairs, are marked **new rule**.
+  - **B1, where a rider gets down** (repair, by hidden-information.md section 5). A party rider chooses its landing by
+    what the party knows: a space held only by a creature the party does not know of counts as free, so the default
+    landing is the same with or without it. If the space chosen (by default, or named in `to`) holds such a creature,
+    the rider is beside it already (its space is the mount's). As for a move onto a hidden creature's space when beside
+    it, there is no dismount and the creature is found (`revealed`, `unhidden`); nothing is spent. A non-party rider
+    (the DM's) lands by the true state. The earlier fallback to the nearest free space is gone. Twin runs on both grids.
+  - **M1, one turn's worth a round per mount** (**new rule**; it answers the owner's question in the notes above). A
+    mount that has had its turn this round gets nothing more this round, however many riders it has. That covers its own
+    turn (its place is behind the turn going on, which settleOrder keeps true) and a rider's turn (`enc.rode`, now set
+    whenever it gets `budget.mount`, and on a ridden mount's own turn). Mounted after that, it carries its rider with
+    `budget.mount` all 0, and the rider is told (`note`; the DM's `manual` for a foe). A stress loop with three riders
+    checks it on both grids.
+  - **M2 and L1, a rider that can't direct its mount** (**new rule**). A controlled mount whose rider is at 0 Hit Points
+    or Incapacitated is steered by no one (`steering` is null). It acts as an independent mount, on its own turn,
+    carrying its rider, until the rider can direct it again; its turn's worth for the round still holds (M1). The DM's
+    `dismount` takes down a rider who is down, Incapacitated or at Speed 0, at no cost, on any turn (`dismounted { why:
+    'dm' }`); a player is refused, and told the DM can. The SRD has no rule for an Unconscious rider beyond "if you're
+    knocked Prone" (2132-2133, the DC 10 save, C6b): Unconscious includes Prone, so the existing `manual` hand-off to
+    the DM stays.
+  - **M3, a commanded creature as a mount** (**new rule**). A creature that takes commands (`orders: 'command'`) is
+    never a controlled mount: mounting it makes an independent ride, and one bonded so while ridden stops being steered.
+    It obeys its master's commands (Decision 6), not a rider's. Refusing the mount was the other choice; this keeps a DM's
+    zombie horse rideable without lifting its lock.
+  - **L3, not changed.** An Opportunity Attack against the rider after its mount Disengaged is still handed to the DM.
+    Decision 8 gives each of the two "its own Disengage" (the mount's covers the mount).
+  - **L4, a Prone mount stands** (repair). At the start of its rider's turn it stands up for half its Speed, out of
+    `budget.mount`, as `beginTurn` does for any creature.
+  - **To DEBT:** L2 (a stepped-away rider takes its mount's turns with it: W14) and L5 (the growth refusal text and its
+    wider reach: W13).
 - **For the client job (C8, C10).** Actions: `mount { actor, mount }`, `dismount { actor, to? }`; `move`, `dash`,
   `disengage` and `dodge` with the mount as actor (or `move` with the rider). Fields: `riding.on`, `riding.controlled`, `rider`;
   `encounter.budget.mount` (`move`, `action`, `dashes`) on the rider's turn. A ridden controlled mount's order entry is
