@@ -10,7 +10,7 @@
 // itself is in resolve.js, pocket and unpocket). Bonds made by spells (`fx`, `source`, `ends`, `leash`) come from the summon step;
 // no turn at all is not run yet, and the DM's bond refuses it. A turn straight after the
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
-import { BOND_MAX, companionsOf, ent, control, fail, ft, inFight, need, pocketOf, roomForCompanions } from './shared.js';
+import { BOND_MAX, companionsOf, ent, control, fail, ft, inFight, need, pocketOf, roomForCompanions, up } from './shared.js';
 import { followMasters, lookAround, nearestFree, placeCreature, unfollow } from './world.js';
 import { unknown } from '../vision.js';
 import { apart, footprint, FT, gap, landing, unseenAt } from '../space.js';
@@ -66,8 +66,9 @@ function companionNamed(s, m, id, ctx) {
 // started acting, and the engine cannot keep that from them: it refuses rather than pretend. Only the DM or the master's
 // player can send it, and a party's familiar is never unseen, so a refusal tells no player anything. The DM does it outside
 // the fight, or once the party can see it.
-function unseenInFight(s, e, what) {
-  if (!s.encounter || e.side === 'party' || !unknown(s, e)) return;
+// Only a creature in the fight: one in its order, or, coming back (`joining`), one that will join it, in the arena.
+function unseenInFight(s, e, what, joining = false) {
+  if (!s.encounter || e.side === 'party' || !(joining ? !!s.encounter.arena[col(e.pos)] : inFight(s, e.id)) || !unknown(s, e)) return;
   fail(`${e.name} is out of the party's sight in this fight. The engine can't ${what} without the players noticing a turn more or fewer, so it does not: do it outside the fight, or once the party can see it.`);
 }
 // A Magic action (Decision 6: dismiss and recall). In a fight: the master's turn, with its action left, and not the extra
@@ -230,17 +231,27 @@ export const handlers = {
       // A spell with a duration that its caster may end (SRD Spells, Duration): Concentration, ended at any time with no
       // action; or a time span, dismissed with no action required by a caster who is not Incapacitated. An Instantaneous
       // spell (Find Steed, Animate Dead: its 24 hours of control are the engine's effect, not the spell's duration) is not.
-      const fx = e.bond.fx ? effectsOf(s).find((x) => x.id === e.bond.fx) : null, sp = SPELLS[fx?.spell ?? e.bond.source];
-      const lasts = !!fx && fx.source === m.id && (fx.conc || (!!sp && sp.def.duration !== 'instant' && !fx.bound));
-      lasts || fail(`${e.name} can't be dismissed: ${sp?.name ?? 'what made it'} is instantaneous, so it does not end when ${m.name} wishes.`);
+      const fx = e.bond.fx ? effectsOf(s).find((x) => x.id === e.bond.fx) ?? null : null, sp = SPELLS[fx?.spell ?? e.bond.source];
+      // Each reason it can't be, in its own words.
+      if (!fx && typeof e.bond.source !== 'string') fail(`${e.name} was bonded by the DM, and no spell keeps it, so there is nothing to dismiss. The DM frees it with bond { to: null }.`);
+      if (!fx && sp?.def.duration === 'instant') fail(`${e.name} can't be dismissed: ${sp.name} is instantaneous, so it does not end when ${m.name} wishes.`);
+      fx || fail(`${e.name} can't be dismissed: nothing that lasts keeps it now. The DM frees it with bond { to: null }.`);
+      fx.source === m.id || fail(`${e.name} is kept by ${fx.name}, which is not ${m.name}'s to dismiss.`);
+      (fx.conc || (!!sp && sp.def.duration !== 'instant' && !fx.bound)) || fail(`${e.name} can't be dismissed: ${sp?.name ?? fx.name} is instantaneous, so it does not end when ${m.name} wishes.`);
       if (!fx.conc) { const by = incapacitatedBy(m); !by || fail(`${m.name} is ${by}, and a spell is dismissed only by a caster who isn't Incapacitated.`); }
+      // Ending the effect ends every creature it keeps: none of them may be one the party can't see in the fight (M1).
+      for (const pt of fx.parts) if (pt.summon && !pt.ended && Object.hasOwn(s.entities, pt.target)) unseenInFight(s, s.entities[pt.target], 'end it');
       endEffect(s, ev, fx, `${m.name} dismissed ${e.name}`);
       return;                                        // settleBonds vanishes it (`ended`) after the action
     }
     if (held && a.forever !== true) fail(`${e.name} is already in a pocket dimension.`);
     // On the map, in a fight, out of the party's sight: refused (review of #343, M1; see unseenInFight).
     if (!held) unseenInFight(s, e, 'send it away');
-    magicAction(s, m);
+    // The DM may release a familiar from the pocket of a master who can't act (dead, at 0 Hit Points, Incapacitated): with
+    // no one to recall it, it is otherwise stuck there, and the DM's `remove` of the master is refused while it is
+    // (review of #343, M-1). It costs the master nothing. A player still can't: that is the master's Magic action.
+    const release = ctx.role === 'dm' && held && a.forever === true && (!up(m) || !!incapacitatedBy(m));
+    if (!release) magicAction(s, m);
     if (held) unpocketForever(s, m, e.id, ev);
     else if (a.forever === true) vanish(s, e, 'dismissed', ev);
     else pocket(s, m, e, ev);
@@ -279,7 +290,7 @@ export const handlers = {
     // out on a copy of the creatures with it in that space, so nothing changes.
     if (s.encounter && p.side !== 'party') {
       const probe = { ...s, entities: { ...s.entities, [p.id]: { ...p, pos: { ...(free ?? to), z: (free ?? to).z ?? 0 } } } };
-      unseenInFight(probe, probe.entities[p.id], 'bring it back');
+      unseenInFight(probe, probe.entities[p.id], 'bring it back', true);
     }
     magicAction(s, m);
     if (!free) {

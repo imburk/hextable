@@ -263,7 +263,7 @@ for (const grid of [null, "square"]) {
     // A DM's familiar (no spell made it) has no pocket dimension.
     const wolf = spawn(p, "wolf", spots(p, p.entities.fighter.pos, 2).at(-1), "Wolf");
     ok(apply(p, { type: "bond", actor: wolf, to: "fighter", kind: "familiar" }, DM));
-    refused(p, { type: "dismiss", actor: "fighter", id: wolf }, BO, /can't be dismissed/);
+    refused(p, { type: "dismiss", actor: "fighter", id: wolf }, BO, /was bonded by the DM, and no spell keeps it, so there is nothing to dismiss/);
   });
 
   test(`a pocketed familiar still counts toward the cap of 30${on}`, () => {
@@ -463,6 +463,100 @@ for (const grid of [null, "square"]) {
     assert.ok(r.events.some((e) => e.type === "vanished" && e.id === owl && e.why === "master" && e.pocket === true && !e.seen));
     assert.ok(r.events.some((e) => e.type === "manual" && e.partial && /pocket dimension when Hex's corpse rose/.test(e.text)), "the DM is told");
     for (const u of VIEWERS) assert.ok(!json(viewEvents(r.events, s, u)).includes(owl) && !json(view(s, u)).includes(owl), "players learn nothing of the foe's familiar");
+  });
+}
+
+// ---------- review of #343, round 3 ----------
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+  const fightOn = (s, center, radius = 14) => {
+    spawn(s, "goblin-warrior", spots(s, s.entities.fighter.pos, 3).filter((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 2)[0], "Gob");
+    ok(apply(s, { type: "startEncounter", center, radius }, DM));
+  };
+
+  // M-1: a master who can't act can't recall or dismiss; the DM may still release its familiar from the pocket for good.
+  test(`the DM releases a familiar from the pocket of a dead, dying or Stunned master; a player can't; then the master can be removed${on}`, () => {
+    for (const how of ["dead", "down", "stunned"]) {
+      const s = table(grid), owl = familiar(s);
+      ok(apply(s, { type: "dismiss", actor: "ven", id: owl }, PAT));
+      if (how === "stunned") ok(apply(s, { type: "condition", actor: "ven", condition: "stunned" }, DM));
+      else { s.entities.ven.hp = 0; if (how === "dead") s.entities.ven.dead = true; else s.entities.ven.cond.stable = true; }
+      refused(s, { type: "remove", actor: "ven" }, DM, /in a pocket dimension/);
+      refused(s, { type: "dismiss", actor: "ven", id: owl, forever: true }, PAT, how === "stunned" ? /Stunned and can't act/ : /is down/);
+      refused(s, { type: "dismiss", actor: "ven", id: owl }, DM, /already in a pocket dimension/);
+      const r = ok(apply(s, { type: "dismiss", actor: "ven", id: owl, forever: true }, DM));
+      assert.deepEqual(r.events.map((e) => [e.type, e.id, e.why]), [["vanished", owl, "dismissed"]], how);
+      assert.equal(s.entities.ven.pocket, undefined, how);
+      ok(apply(s, { type: "remove", actor: "ven" }, DM));
+      assert.ok(!s.entities.ven);
+    }
+  });
+
+  // M-2: the same refusal for a summon its master dismisses: a hiding foe master's hiding wasp, in a fight.
+  test(`in a fight, a summon the party can't see is not dismissed: refused, and players get the same as with nothing${on}`, () => {
+    const setup = () => {
+      const s = table(grid);
+      const d = derive(sheet("wizard", ["giant-insect"], "Hex"));
+      s.entities.hex = makeEntity(d.record, { id: "hex", kind: "npc", side: "foe", type: "humanoid", pos: { ...spots(s, s.entities.fighter.pos, 5).at(-1), z: 0 } });
+      const free = spots(s, s.entities.hex.pos, 4, "giant-spider").filter((h) => gap(s, s.entities.hex.pos, h) * FT <= 60);
+      const wasp = made(ok(apply(s, { type: "cast", actor: "hex", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [free.at(-1)] } }, DM)));
+      return { s, wasp };
+    };
+    const run = (trying) => {
+      const { s, wasp } = setup(), log = [];
+      ok(apply(s, { type: "reveal", actor: "hex", hidden: true }, DM));
+      ok(apply(s, { type: "reveal", actor: wasp, hidden: true }, DM));
+      const gob = spawn(s, "goblin-warrior", spots(s, s.entities.fighter.pos, 3).filter((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 2)[0], "Gob");
+      ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 14 }, DM));
+      const by = Object.fromEntries(s.encounter.order.map((o) => [o.id, o]));
+      s.encounter.order = ["hex", gob, wasp, "fighter", "ven"].filter((i) => by[i]).map((i, k) => ({ ...by[i], init: 30 - k * 2 }));
+      for (const o of s.encounter.order) { delete o.after; delete o.before; }
+      s.entities.hex.hiding = { dc: 10 }; s.entities[wasp].hiding = { dc: 10 };
+      s.encounter.turn = 0;
+      assert.ok(s.encounter.order.some((o) => o.id === wasp) && unknownTo(s, wasp));
+      if (trying) {
+        refused(s, { type: "dismiss", actor: "hex", id: wasp }, DM, /out of the party's sight in this fight\. The engine can't end it without the players noticing/);
+        for (const u of VIEWERS) refused(s, { type: "dismiss", actor: "hex", id: wasp }, u, /No such creature/);
+      }
+      for (let i = 0; i < 8 && current(s) !== "ven"; i++) log.push(endTurn(s));
+      return { seen: VIEWERS.map((u) => log.map((r) => json(viewEvents(r.events, s, u))).filter((x) => x !== "[]")), view: VIEWERS.map((u) => json(view(s, u))), tl: VIEWERS.map((u) => json(viewEvents(s.timeline, s, u))), seq: s.seq, all: json(s) };
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A.seen, B.seen); assert.deepEqual(A.view, B.view); assert.deepEqual(A.tl, B.tl);
+    assert.equal(A.seq, B.seq); assert.equal(A.all, B.all);
+    // Seen, it is dismissed in the fight as before; outside a fight, a hidden one is too.
+    const { s, wasp } = setup();
+    fightOn(s, s.entities.fighter.pos);
+    toTurn(s, "hex");
+    assert.ok(!unknownTo(s, wasp));
+    ok(apply(s, { type: "dismiss", actor: "hex", id: wasp }, DM));
+    assert.ok(!s.entities[wasp]);
+    const out = setup();
+    ok(apply(out.s, { type: "reveal", actor: out.wasp, hidden: true }, DM));
+    ok(apply(out.s, { type: "dismiss", actor: "hex", id: out.wasp }, DM));
+    assert.ok(!out.s.effects.some((x) => x.spell === "giant-insect"));
+    // Each refusal in its own words: a lasting effect that is another's, one that is gone.
+    const t = setup();
+    const fx = t.s.effects.find((x) => x.spell === "giant-insect");
+    const other = structuredClone(t.s); other.effects.find((x) => x.id === fx.id).source = "fighter";
+    refused(other, { type: "dismiss", actor: "hex", id: t.wasp }, DM, /is kept by Giant Insect, which is not Hex's to dismiss/);
+    const gone = structuredClone(t.s); gone.entities[t.wasp].bond.fx = "fx999";
+    refused(gone, { type: "dismiss", actor: "hex", id: t.wasp }, DM, /nothing that lasts keeps it now/);
+  });
+
+  // Only a familiar in the fight: one outside the arena, out of its order, is not refused.
+  test(`an unseen familiar outside the arena is dismissed by a master in the fight${on}`, () => {
+    const s = table(grid), owl = foeMaster(s);
+    const far = [...gridOf(s.map).range(s.entities.fighter.pos, 14)].find((h) => gridOf(s.map).dist(h, s.entities.fighter.pos) >= 9 && apply(structuredClone(s), { type: "spawn", monster: "owl", at: h }, DM).ok);
+    assert.ok(far, "a cell far from the party");
+    s.entities[owl].pos = { ...far, z: 0 };
+    ok(apply(s, { type: "reveal", actor: owl, hidden: true }, DM));
+    fightOn(s, s.entities.fighter.pos, 6);
+    assert.ok(s.encounter.order.some((o) => o.id === "hex") && !s.encounter.order.some((o) => o.id === owl) && unknownTo(s, owl));
+    toTurn(s, "hex");
+    ok(apply(s, { type: "dismiss", actor: "hex", id: owl }, DM));
+    assert.ok(s.entities.hex.pocket[owl]);
   });
 }
 

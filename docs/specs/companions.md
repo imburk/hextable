@@ -925,7 +925,9 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   Steed is instantaneous, so it does not end when Ven wishes"): Find Steed, and Animate Dead and Create Undead, whose 24
   hours of control are the engine's effect and not the spell's duration. Decision 6 said such a creature is freed as by the
   DM's `bond { to: null }`; no SRD spell lets its caster do that, so it is refused, and the DM's `bond { to: null }` still
-  frees one (review of #343, M2).
+  frees one (review of #343, M2). Each refusal says why in its own words (review of #343, round 3): one the DM bonded ("no
+  spell keeps it, so there is nothing to dismiss"), one of an Instantaneous spell, one whose lasting effect is gone ("nothing
+  that lasts keeps it now"), one kept by an effect that is not the master's.
 - **Into the pocket** (`pocket`, resolve.js). What it wore or carried stays in its space (`leaveGear`, SRD: "it leaves
   behind in its space anything it was wearing or carrying"); its own lasting effects and Concentration end and a part of
   another's on it ends, as for a seen vanish (`settleSeen`, also for a familiar the party could not see: the pocket is real,
@@ -1005,16 +1007,25 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   older build that loads a save with a familiar in a pocket keeps the field and cannot recall it. **A later migration that
   changes creature records must walk the records in every master's `pocket` too** (review of #343, L3).
 - **An unseen familiar in a fight is refused** (review of #343, M1). In the middle of a fight, `dismiss` (to the pocket or
-  forever) of a familiar on the map that the party cannot see, and `recall` of one that would come back where the party
-  cannot see it (worked out on a copy of the creatures with it in that space), are refused, changing nothing: "Owl 1 is out
+  forever) of a familiar in the fight's order that the party cannot see, `recall` of one that would come back into the arena
+  where the party cannot see it (worked out on a copy of the creatures with it in that space), and `dismiss` of a summon
+  whose lasting effect keeps any creature in the order that the party cannot see (round 3, M-2), are refused, changing nothing: "Owl 1 is out
   of the party's sight in this fight. The engine can't send it away without the players noticing a turn more or fewer, so
   it does not: do it outside the fight, or once the party can see it." Its leaving or coming back would change the turns
   players are told of (an unseen creature's turn reaches them as `{ turn, someone }`, and a recall rolls its Initiative),
   and the engine cannot keep that from them, so it refuses rather than pretend. An unseen vanish keeps a husk in the order,
   but a husk is dead and takes no turn, which would not match a living familiar either. Only the DM or the master's player
   can send these, and a party's familiar is never unseen, so the refusal tells no player anything. Unaffected: the party's
-  own familiars, any familiar the party can see, `dismiss` forever of one already in the pocket, and everything outside a
-  fight. A twin run of the review's case (a hiding foe master and its hiding owl in a fight with a seen goblin between them)
+  own familiars, any familiar the party can see, one outside the arena and out of the order (a master in the fight may
+  dismiss it), `dismiss` forever of one already in the pocket, and everything outside a fight. **Not changed by this PR:**
+  the DM's `endEffect` of a hidden foe's summon, and its master's Concentration ending (dropped, broken by damage or a new
+  spell), end an unseen summon through `settleBonds` and `vanish`, which keeps the husk as `vanishUnseen` does (C1): dead,
+  in the order. A dead husk takes no turn, so players get one `{ turn, someone }` fewer a round from then on, as after an
+  unseen creature's death (round 3: noted for the coordinator, not widened here).
+- **The DM releases a familiar from a helpless master's pocket** (review of #343, round 3, M-1). `dismiss` with `forever`
+  of a familiar in the pocket, sent by the DM, of a master that can't act (dead, at 0 Hit Points, Incapacitated), costs the
+  master nothing and needs nothing of it, so the DM's `remove` of the master is never stuck. A player can't: for them it is
+  the master's Magic action. A twin run of the review's case (a hiding foe master and its hiding owl in a fight with a seen goblin between them)
   gives three players the same events, views, record and `seq` with the attempt as without, on hexes and squares.
 - **Left** (in DEBT): an unseen familiar can't go to or come from the pocket in a fight (above); Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
   pocket (rests.js); a seen foe familiar's new form reaches players only through their view, with no event; the client has
