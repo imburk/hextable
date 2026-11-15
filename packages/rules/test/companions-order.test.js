@@ -88,7 +88,8 @@ test("refusals change nothing: a bad order, a creature that is not bonded, anoth
   bond(s, pet, "rogue", { turn: "after" });
   bond(s, roller, "fighter", { turn: "own" });
   for (const order of ["first", undefined, null, 1, "After"]) refused(s, { type: "companionOrder", actor: "fighter", id: steed, order }, U1, /after its master or straight before/);
-  refused(s, { type: "companionOrder", actor: "fighter", id: loose, order: "before" }, U1, /no one's companion/);
+  refused(s, { type: "companionOrder", actor: "fighter", id: loose, order: "before" }, U1, /is not .*'s companion/);
+  refused(s, { type: "companionOrder", actor: "fighter", id: loose, order: "before" }, DM, /no one's companion/);   // the DM is told which
   refused(s, { type: "companionOrder", actor: "fighter", id: pet, order: "before" }, U1, /not Fighter's companion|not .*'s companion/);
   refused(s, { type: "companionOrder", actor: "fighter", id: roller, order: "before" }, U1, /rolls its own Initiative/);
   refused(s, { type: "companionOrder", actor: "fighter", id: steed, order: "before" }, U2);          // the rogue's player
@@ -384,5 +385,89 @@ for (const grid of [null, "square"]) {
     assert.equal(json(loaded), saved, "loads unchanged");
     for (const a of done.slice(savedAt)) ok(apply(loaded, a, DM));
     assert.equal(json(loaded), states.at(-1), "played on from the save, the same");
+  });
+}
+
+// ---------- review of #335 ----------
+
+test("a player is refused in the same words for a seen creature bonded to a hidden master and for an unbonded one (M1)", () => {
+  for (const grid of [null, "square"]) {
+    const run = (bonded) => {
+      const s = table(grid), f = s.entities.fighter;
+      const mage = spawn(s, "goblin-warrior", spot(s, f.pos, 6, 4), "Mage");
+      s.entities[mage].hiding = true;
+      const wolf = spawn(s, "wolf", spot(s, f.pos, 1, 2), "Wolf");
+      // Both states hold the same ids and the same seq: the twin only lacks the bond.
+      if (bonded) bond(s, wolf, mage, { turn: "after", kind: "steed" });
+      else { bond(s, wolf, mage, { turn: "after", kind: "steed" }); bond(s, wolf, null); }
+      const out = [];
+      for (const order of ["before", "after", "sideways"]) {
+        const before = json(s), r = apply(s, { type: "companionOrder", actor: "fighter", id: wolf, order }, U1);
+        assert.equal(r.ok, false);
+        assert.equal(json(s), before, "a refused action changes nothing");
+        out.push(r.error, json(r.events ?? []));
+      }
+      return out;
+    };
+    const A = run(true), B = run(false);
+    assert.deepEqual(A, B, "the same refusal and the same events");
+    assert.match(A[0], /is not .*'s companion/);
+  }
+});
+
+test("an id that names no creature's own record (constructor, __proto__, toString) is refused, not thrown, and changes nothing (L1)", () => {
+  const s = table(null);
+  for (const id of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) for (const ctx of [U1, DM]) {
+    refused(s, { type: "companionOrder", actor: "fighter", id, order: "before" }, ctx, /No such creature/);
+  }
+});
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+
+  // newRound's second followMasters (A1): a master set aside last round blocks the first call, which runs before the
+  // places moved for that round are given back; the second, after them, lets the choice take effect at this round's start.
+  test(`a master set aside every round: its steed's choice still takes effect at the next round's start${on} (review of #335, M2)`, () => {
+    const { s, steed } = steedFight(grid);
+    ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 6 }, DM));
+    if (current(s) === "fighter") endTurn(s);
+    ok(apply(s, { type: "stepAway", actor: "fighter", how: "end" }, DM));
+    choose(s, "fighter", steed, "before");
+    const all = toRound(s, 2);
+    assert.equal(entry(s, steed).before, "fighter", "before its master from round 2");
+    assert.equal(entry(s, steed).after, undefined);
+    toRound(s, 4, all);
+    assert.equal(entry(s, steed).before, "fighter");
+    const by = {};
+    for (const e of all) if (e.type === "turn" && e.id) (by[e.round] ??= []).push(e.id);
+    for (const [round, who] of Object.entries(by)) assert.equal(new Set(who).size, who.length, `round ${round}: ${who.join(" ")}`);
+    for (const round of [2, 3]) assert.ok(by[round].indexOf(steed) < by[round].indexOf("fighter"), `round ${round}: the steed first, its master moved to the end`);
+  });
+
+  test(`a hiding foe master set aside to the end and revealed: its steed, on its own count until then, takes its master's at the next round's start${on} (review of #335, M2)`, () => {
+    const s = table(grid), f = s.entities.fighter;
+    const boss = spawn(s, "goblin-warrior", spot(s, f.pos, 6, 4), "Boss");
+    const w = spawn(s, "wolf", spot(s, f.pos, 1, 4), "Wolf");
+    bond(s, w, boss, { turn: "after", kind: "steed" });
+    s.entities[boss].hiding = true;
+    ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM));
+    entry(s, boss).init = 30;
+    assert.ok(!entry(s, w).after, "it rolled its own count: the party does not know of its master");
+    for (let n = 0; n < 30 && current(s) !== boss; n++) endTurn(s);
+    ok(apply(s, { type: "stepAway", actor: boss, how: "end" }, DM));
+    delete s.entities[boss].hiding;
+    const all = [];
+    const r = s.encounter.round;
+    for (let i = 0; i < 40 && s.encounter.round === r; i++) all.push(...endTurn(s).events);
+    assert.ok(!entry(s, w).after || s.encounter.round > r, "not in the middle of the round its master was set aside in");
+    assert.equal(entry(s, w).after, boss, "at the next round's start it is on its master's count");
+    assert.equal(entry(s, w).init, entry(s, boss).init);
+    toRound(s, r + 3, all);
+    const by = {};
+    for (const e of all) if (e.type === "turn" && e.id) (by[e.round] ??= []).push(e.id);
+    for (const [round, who] of Object.entries(by)) assert.equal(new Set(who).size, who.length, `round ${round}: ${who.join(" ")}`);
+    // Its master, set aside, is moved to the end each round; the steed keeps its count and acts first.
+    assert.equal(by[r + 1][0], w);
+    assert.equal(by[r + 1].at(-1), boss);
   });
 }

@@ -659,7 +659,10 @@ Settled in the review of #313:
   entry behind its master's group. It runs after every action (at the end of `settleBonds`) and at the start
   of each round. Mid-round it moves the entry only if every creature that has had its turn this round still has
   and every one still to come still is. It does not move the creature whose turn it is, and does not move one
-  while it or its master is set aside (E20). Otherwise the move waits for the next round. Once in place a
+  while it or its master is set aside (E20) in the middle of a round. Otherwise the move waits for the next round. *Since A1
+  (#335): at a round's start, once the places moved for the round before are given back, `newRound` runs it again, so a
+  companion whose master was set aside last round (and is set aside again this round, at its turn) is moved then; see
+  the A1 build notes.* Once in place a
   companion stays there, whoever hides later: the party saw where it stood. The knowledge check runs before
   the los/light pass of the same action (engine.js runs `look` after `settleBonds`). So the move comes after
   the party knows of both: at the earliest after the next action, and as late as the next round's start if
@@ -939,6 +942,24 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
 - **A join in the middle of a round on `before`.** It is put straight before its master. If the master's turn is going
   on or past, that place is past too, and the companion acts from the next round, as any creature joining on a count
   already passed. A steed made by a casting has a new bond, so `after`, and acts straight after its master as before.
+- **The second `followMasters` in `newRound`** (review of #335, M2). It is kept: without it a choice for a companion whose
+  master was set aside the round before (E20, `end`) would not take effect at the next round's start but a round later,
+  or never for a master set aside every round, since the first call runs before those places are given back. It also
+  changes a C2 case: a companion that could not take its master's count while the master was set aside (a hiding master
+  set aside to the end, then revealed) takes it at the next round's start, not never. Nobody has had a turn in the round
+  then, so every creature still acts once: the master, set aside again at its turn, acts last and its companion on its
+  count. Both cases are pinned in companions-order.test.js.
+- **Exactly what is written, and when** (review of #335, L2; for C8). Outside a fight the action writes `bond.order` and
+  deletes `bond.orderNext`. In a fight it writes `bond.orderNext`, or deletes it when the choice is what `bond.order`
+  already says. `orderNext` is taken up only at a round's or a fight's start: a choice made in a fight that then ends
+  stays in `orderNext`, and `bond.order` shows the old side, until the next fight starts. A client showing the choice
+  outside a fight should show `orderNext ?? order ?? 'after'`.
+- **Refusals to players** (review of #335, M1). A player is told "X is not Brenna's companion." for any creature it knows
+  of that is not that master's companion, bonded to another or to no one, so a foe's bond is never told; a creature it
+  does not know of, or an id that is no creature's own record (`constructor`), is "No such creature.". The DM is told
+  which.
+- **A freed companion** that stood before its master keeps its place (C2), so it can stand between the master's other
+  `before` companions and the master: a group stands together only as long as its entries are tied (review of #335, L3).
 - **Riding** (C6) is not built: a ridden steed will have no entry, and its choice waits in its bond.
 - **What players are sent.** `before` only on an Open entry whose master is Open (the order, `encounterStart`,
   `joined`), as `after`. A foe's choice is never told; twin runs (companions-order.test.js) of a fight that differ only

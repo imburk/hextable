@@ -92,10 +92,14 @@ export const handlers = {
   companionOrder(s, a, ctx, ev) {
     const m = ent(s, a.actor); control(s, m, ctx);
     typeof a.id === 'string' || fail('Name the companion ({ id }).');
-    const e = ent(s, a.id);
+    // Only the creatures' own ids: a name such as `constructor` is no creature (and is not looked up on the prototype).
+    const e = Object.hasOwn(s.entities, a.id) ? s.entities[a.id] : fail('No such creature.');
     // To a player a creature the party does not know of is no creature at all (as engine.js does for `actor`): `id`
     // is not one of the fields it walks, since other actions use it for other things.
     ctx.role === 'dm' || !unknown(s, e) || fail('No such creature.');
+    // A player is told only that it is not this master's companion, whether it has no bond or another's: a foe's bond
+    // is never told to players (Decision 10; review of #335, M1). The DM is told which.
+    if (ctx.role !== 'dm' && e.bond?.to !== m.id) fail(`${e.name} is not ${m.name}'s companion.`);
     e.bond || fail(`${e.name} is no one's companion.`);
     e.bond.to === m.id || fail(`${e.name} is not ${m.name}'s companion.`);
     BOND_SIDES.includes(a.order) || fail(`A companion acts straight after its master or straight before it: { order: 'after' } or { order: 'before' }.`);
