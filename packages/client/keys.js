@@ -125,11 +125,11 @@ export function leaveAlone(ev, doc) {
 //   the walk began; `ahead`: forward was held, so the step is a direction of travel the view may turn to); stopped(why).
 export const PACE = { explore: 200, fight: 400, chord: 50, timeout: 2000, turnRate: 1.8, tiltRate: 0.9 };      // chord: the first step waits this long for a second key (W and D)
 export function createWalker(io) {
-  const held = new Set(), looks = new Set();
+  const held = new Set(), looks = new Set(), lifted = new Set();      // lifted: keys let go before the walk's first step went
   let shift = false, walk = null, last = null;
   const has = (a) => (held.has(a) ? 1 : 0);
   function stop(why) {
-    held.clear();
+    held.clear(); lifted.clear();
     if (!walk) return;
     walk = null; io.stopped?.(why);
   }
@@ -143,13 +143,16 @@ export function createWalker(io) {
     const now = io.now(), dt = last === null ? 0.03 : Math.min(0.1, Math.max(0, (now - last) / 1000));
     last = now;
     lookNow(dt);
-    if (!held.size || shift) return;
+    if ((!held.size && !walk) || shift) return;
+    if (walk?.renew && !walk.pending) walk = null;                   // a new press after a release: a new walk, measured from the view now
     if (!walk) {
       const actor = io.start();
       if (!actor) { held.clear(); return; }
-      walk = { actor, yaw: io.yaw(), turns: io.turns(), turn: io.turnKey(), pending: null, next: now + PACE.chord };
+      walk = { actor, yaw: io.yaw(), turns: io.turns(), turn: io.turnKey(), pending: null, next: now + PACE.chord, at: now, sent: false };
     }
     if (walk.pending) { if (now - walk.pending.at > PACE.timeout) stop('timeout'); return; }
+    if (!held.size) { walk = null; return; }                        // released, and the last step answered
+    if (!walk.sent && now - walk.at > PACE.timeout) return stop('timeout');
     if (io.actor() !== walk.actor) return stop('selection');
     if (io.turnKey() !== walk.turn) return stop('turn');
     if (now < walk.next) return;
@@ -160,6 +163,8 @@ export function createWalker(io) {
     const f = has('forward') - has('back'), d = stepFor(io.grid(), walk.yaw, f, has('right') - has('left'));
     if (!d) return;
     walk.pending = { at: now, dir: d, ahead: f > 0 }; walk.sent = true;
+    for (const a of lifted) held.delete(a);
+    lifted.clear();
     walk.next = now + (io.fight() ? PACE.fight : PACE.explore);
     if (!io.send(walk.actor, d)) { walk.pending = null; stop('unsent'); }
   }
@@ -169,15 +174,15 @@ export function createWalker(io) {
       const kind = ACTIONS[action]?.kind;
       if (kind === 'look') { looks.add(action); return; }
       if (kind !== 'walk' || repeat) return;
+      if (!held.size && walk) walk.renew = true;
       held.add(action);
       if (!shift) tick();
     },
     up(action) {
       looks.delete(action);
       if (!held.has(action)) return;
-      if (walk && !walk.sent && !walk.pending && io.actor() === walk.actor) step(io.now());      // a tap shorter than the chord wait still steps once
-      held.delete(action);
-      if (!held.size) walk = null;
+      if (walk && !walk.sent) { lifted.add(action); if (lifted.size === held.size && !shift) tick(); return; }      // a tap shorter than the chord wait still steps once
+      held.delete(action);                // nothing more is sent; the walk ends once the step in flight is answered
     },
     shift(on) {
       if (on === shift) return;

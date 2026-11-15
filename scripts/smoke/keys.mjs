@@ -23,7 +23,7 @@ async function press(page, key, id) {
   const from = await posOf(page, id);
   await page.keyboard.press(key);
   await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 4000)
-    .catch(() => { throw new Error(`${key} did not move ${id} from ${JSON.stringify(from)}`); });
+    .catch(async () => { throw new Error(`${key} did not move ${id} from ${JSON.stringify(from)}: ${await page.evaluate(() => JSON.stringify({ k: window.hextable.keys.held, w: window.hextable.keys.walking, p: window.hextable.keys.waiting, busy: window.hextable.timeline.busy(), toast: document.getElementById('toast').textContent, active: document.activeElement?.tagName }))}`); });
   await calm(page);
   return posOf(page, id);
 }

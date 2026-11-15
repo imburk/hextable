@@ -172,9 +172,12 @@ test('a press sends one step at once; a held key repeats at the steady pace; rel
 });
 
 test('a tap shorter than the wait for a second key still steps once, and only once', () => {
-  const { W, log, run } = rig();
+  const { io, W, log, run } = rig();
   W.down('forward'); W.up('forward');
-  assert.equal(log.sent.length, 1);
+  io.busyNow = true; run(300, false);
+  assert.equal(log.sent.length, 0, 'held back while a tap would be skipped');
+  io.busyNow = false; run(PACE.chord, false);
+  assert.equal(log.sent.length, 1, 'then sent, not dropped');
   W.update((id) => id === 'pc', false);
   run(1000);
   assert.equal(log.sent.length, 1);
