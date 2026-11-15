@@ -66,11 +66,13 @@ test('the WebGL renderer has every method of the interface', () => {
   for (const m of METHODS) assert.equal(typeof Renderer.prototype[m], 'function', m);
 });
 test('the renderer is chosen by the address, then the preference', () => {
-  assert.equal(rendererKind('', undefined), 'gl');
+  assert.equal(rendererKind('', undefined), 'three');           // R14 step 1 (#348): Three.js is the default
   assert.equal(rendererKind('?renderer=none', undefined), 'none');
   assert.equal(rendererKind('', 'none'), 'none');
   assert.equal(rendererKind('?renderer=gl', 'none'), 'gl');
-  assert.equal(rendererKind('?renderer=nonsense', 'none'), 'gl');
+  assert.equal(rendererKind('', 'gl'), 'gl');                   // the stored preference still reaches the hand-written renderer
+  assert.equal(rendererKind('?renderer=three', 'gl'), 'three');
+  assert.equal(rendererKind('?renderer=nonsense', 'none'), 'three');
 });
 
 // ---------- the governor ----------
