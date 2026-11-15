@@ -107,6 +107,7 @@ function summarise(def) {
   if (kind === 'heal') return { short: `heal ${step.heal}`, long: `Heal ${step.heal}` };
   if (kind === 'tempHp') return { short: `${step.tempHp} temp HP`, long: `${step.tempHp} Temporary Hit Points` };
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
+  if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
@@ -188,7 +189,9 @@ export function spellProfile(def) {
     ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
     // A summon: the `cast` action names its choices and a space for each creature in `summon` (engine/casting.js).
     ...(sm ? { summon: { of: sm.summon, count: sm.count ?? 1, ...(sm.variants ? { variants: [...sm.variants] } : {}), ...(sm.types ? { types: [...sm.types] } : {}),
-      ...(sm.forms ? { forms: structuredClone(sm.forms) } : {}), kind: sm.bond?.kind ?? null } } : {}),
+      ...(sm.forms ? { forms: structuredClone(sm.forms) } : {}), kind: sm.bond?.kind ?? null,
+      // On corpses (stage C5b): the cast names corpses or the caster's own creatures of the spell, `summon: { ids }`.
+      ...(sm.on === 'corpse' ? { on: 'corpse', reassert: structuredClone(sm.reassert ?? sm.count ?? 1) } : {}) } } : {}),
     ...summarise(def),
     def,
   };

@@ -9,9 +9,9 @@ export const spells3 = [
     time: "minute", range: 10, components: ["v", "s", "m"],
     duration: "instant", concentration: false, ritual: false,
     target: {"self": true},
-    effects: [{"manual": "Animate Dead: the caster picks a pile of bones or a corpse of a Medium or Small Humanoid in range; it becomes a Skeleton (bones) or Zombie (corpse) using the stat blocks in the Monsters section. As a Bonus Action on each turn the caster can mentally command any such creature within 60 feet (the same command to several at once); with no command it takes the Dodge action and moves only to avoid harm. Control lasts 24 hours, after which it obeys no orders; recasting on it before then reasserts control for another 24 hours over up to four creatures instead of animating a new one. Each slot level above 3 animates or controls two more, each from a different corpse or pile. The DM places and runs the creatures."}],
-    tier: "manual", checked: true,
-    text: "Turns a pile of bones or a corpse of a Medium or Small Humanoid into a Skeleton or Zombie under the caster's control for 24 hours, renewable by recasting. Higher slots animate two more.",
+    effects: [{"summon": "zombie", "on": "corpse", "count": {"slot": 2, "base": 1, "above": 3}, "reassert": {"slot": 2, "base": 4, "above": 3}, "bond": {"kind": "undead", "turn": "own", "orders": "command", "range": 60, "at0": "dies"}}],
+    tier: "assist", checked: true,
+    text: "Turns the corpse of a Medium or Small Humanoid within range into a Zombie under the caster's control for 24 hours (a Bonus Action commands any of them within 60 feet), or casting it on the caster's own Zombies before then reasserts control over up to four; a higher slot animates or reasserts two more each. The DM handles bones and the Skeleton (no bones on the map: spawn a skeleton and bond it as undead with orders command) and whether a creature keeps to a standing order.",
   },
   {
     id: "beacon-of-hope", name: "Beacon of Hope", source: "SRD 5.2.1",

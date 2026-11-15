@@ -883,13 +883,13 @@ function leaveGear(s, e, ev, unseen) {
 // L7). A condition it put on another with no lasting effect behind it: a grapple ends, since there is nobody
 // left to hold on (SRD Grappled); any other loses the name of a creature that is no longer there, and the DM
 // is told it is theirs to end (L3).
-function settleSeen(s, e, ev) {
+function settleSeen(s, e, ev, went = 'vanished') {
   const name = e.name, its = (p) => !p.ended && (p.target === e.id || p.ends?.who === e.id);
   for (const fx of [...effectsOf(s)]) {
-    if (fx.source === e.id) { endEffect(s, ev, fx, `${name} vanished`); continue; }
+    if (fx.source === e.id) { endEffect(s, ev, fx, `${name} ${went}`); continue; }
     const on = fx.parts.filter(its);
     if (!on.length) continue;
-    if (fx.parts.every((p) => p.ended || its(p))) endEffect(s, ev, fx, `${name} vanished`);
+    if (fx.parts.every((p) => p.ended || its(p))) endEffect(s, ev, fx, `${name} ${went}`);
     else useUp(s, ev, on);
   }
   for (const x of Object.values(s.entities)) {
@@ -898,7 +898,7 @@ function settleSeen(s, e, ev) {
       if (v?.source !== e.id || v.effect !== undefined) continue;
       if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
       delete v.source;
-      ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has vanished. Whether that ends is the DM's.` });
+      ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has ${went === 'vanished' ? 'vanished' : 'gone'}. Whether that ends is the DM's.` });
     }
   }
 }
@@ -991,7 +991,7 @@ export function settleBonds(s, ev) {
     if (!Object.hasOwn(s.entities, e.id) || e.vanished) continue;      // gone already (vanishUnseen)
     const b = e.bond, m = typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
     if ((e.dead || e.hp <= 0) && b.at0 === 'vanish') vanish(s, e, 'hp0', ev);
-    else if (b.fx && !holds(s, e)) vanish(s, e, 'ended', ev);
+    else if (b.fx && !holds(s, e)) { if (b.lapse === 'foe') lapse(s, e, m, ev); else vanish(s, e, 'ended', ev); }
     else if (m?.dead && Array.isArray(b.ends) && b.ends.includes('masterDies')) vanish(s, e, 'master', ev);
     else if (m && !e.dead && Number.isFinite(b.leash) && apart(s, e, m) * FT > b.leash) vanish(s, e, 'leash', ev);
   }
@@ -1000,7 +1000,35 @@ export function settleBonds(s, ev) {
   followMasters(s, true);
 }
 
+// The 24 hours of control of a creature raised from a corpse ran out (Decision 7; owner's question 5; stage C5b): the
+// bond ends, the creature stays where it is, and it "stops obeying any command you've given it": no longer its
+// master's, a foe the DM plays. That happens in the middle of a fight too (the SRD gives it no choice), where it keeps
+// its place in the order. The DM is told (`manual`, the DM's alone); the party's own caster's player is told that it
+// no longer obeys, which they would know (the control is the caster's own); nothing reaches players of a foe's. One
+// that is dead by then is only freed: a corpse has nothing to obey.
+function lapse(s, e, m, ev) {
+  const from = e.bond.to, src = SPELLS[e.bond.source]?.name ?? 'the spell', was = e.side, mine = !!m && m.side === 'party';
+  delete e.bond;
+  ev.push({ type: 'unbonded', id: e.id, from, why: 'lapsed' });
+  if (e.dead) return;
+  if (was !== 'foe') {
+    if (e.follow) unfollow(s, e, ev);
+    for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
+    e.side = 'foe';
+  }
+  const who = m?.name ?? 'its master';
+  if (mine) ev.push({ type: 'manual', actor: m.id, name: src, text: `${e.name} no longer obeys ${who}: ${src}'s 24 hours of control are over.` });
+  ev.push({ type: 'manual', actor: null, name: src, partial: true,
+    text: `${e.name} is no longer under ${who}'s control: ${src}'s 24 hours ran out without the spell being cast on it again. It obeys no command and ${was === 'foe' ? 'is the DM\'s to play as it likes' : 'has joined the foes, the DM\'s to play'}.` });
+}
+
 // ---------- the summon step (docs/specs/companions.md, Decision 2; stage C3) ----------
+
+// How many creatures a step's `count` (or `reassert`) gives at spell level `slot`: a whole number, or { slot, base, above }.
+export const summonCount = (c, slot) => (c === undefined ? 1 : Number.isInteger(c) ? c : (c.base ?? 0) + c.slot * (slot - (c.above ?? 0)));
+// What `on: 'corpse'` works on (Decision 7; both SRD spells that raise corpses, Animate Dead and Create Undead, say the
+// same): the corpse of a Medium or Small Humanoid. Control lasts 24 hours.
+export const CORPSE = { sizes: ['small', 'medium'], type: 'humanoid', control: '24 hours' };
 
 // What a summon step makes, for its master `m` and the choices `pick` ({ variant?, type?, form? }) at spell level
 // `slot` with the master's numbers `caster`: { tplId, record, type, name }. The cast checked all of it.
@@ -1089,6 +1117,7 @@ function summonHandOver(m, step, src, ev) {
 function summon(s, m, step, src, ev) {
   const pick = src.summon;
   if (!pick) return ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name} names no spaces for the engine to summon into. The DM adds the creature.` });
+  if (step.on === 'corpse') return pick.ids ? raise(s, m, step, src, ev) : corpseHandOver(m, step, src, ev);
   if (!pick.at) return summonHandOver(m, step, src, ev);
   const made = summonMade(step, pick, pick.slot, pick.caster), record = overRecord(made.record, step.over);
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
@@ -1109,6 +1138,78 @@ function summon(s, m, step, src, ev) {
     if (e.side === 'party') lookAround(s, ev, [e]);                 // what a party member sees, the party sees
     if (s.encounter?.arena[col(at)]) joinEncounter(s, e, ev);
   }
+}
+
+// ---------- corpses (Decision 7; stage C5b, #340) ----------
+
+// Its 24 hours of control, a lasting effect of its own for each creature (so ending one, by the DM's `remove` or a
+// vanish, frees no other), held by a `bond` part (durations.js, holds): when it ends, settleBonds frees it (lapse).
+function control24(s, m, src, id) {
+  const fx = startEffect(s, { name: src.name, spell: src.spell, source: m.id, conc: false, duration: CORPSE.control });
+  fx.parts.push({ target: id, bond: true });
+  return fx;
+}
+// The corpses `src.summon.ids` names rise, or the master's own creatures of this spell are kept under control for
+// another 24 hours (checked when the spell was cast, engine/casting.js, corpsesFor). A corpse leaves as the DM's
+// `remove` takes a creature (`removed`, with `seen` and `party` for view.js; what was still on it ends as for a seen
+// vanish; its companions are freed; what it carried stays in its space, as a vanish leaves it), and the step's
+// creature is made in its space (the nearest unoccupied one if a creature stands there now), named as a summon is:
+// "Ven's Zombie" for the party, "Zombie 2" for a foe, so its name says nothing of the corpse or of a master.
+// Players who do not know of the master are sent `spawned` as for any creature the DM adds (view.js).
+function raise(s, m, step, src, ev) {
+  const pick = src.summon, b = step.bond, made = summonMade(step, {}, pick.slot, pick.caster);
+  if (!pick.raise) {
+    for (const id of pick.ids) {
+      const t = s.entities[id], old = effectsOf(s).find((x) => x.id === t.bond.fx);
+      const fx = control24(s, m, src, id);
+      t.bond.fx = fx.id;
+      if (old) endEffect(s, ev, old, `${m.name} renewed it`);
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: m.id, conc: false, lasts: fx.lasts, targets: [id] });
+      ev.push({ type: 'reasserted', id, by: m.id, fx: fx.id });
+    }
+    return;
+  }
+  for (const id of pick.ids) {
+    const t = s.entities[id], at0 = { ...t.pos }, seen = !unknown(s, t);
+    // As the DM's `remove` does, and what was still on it ends as for a creature that vanished where the party saw it.
+    settleSeen(s, t, ev, 'is gone');
+    for (const x of Object.values(s.entities)) if (x.bond?.to === t.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: t.id }); }
+    leaveGear(s, t, ev, !seen);
+    // On a fight's card that is not yet published it is named as one the party saw go (A3), if it did.
+    const due = !s.encounter && s.conclusion && !s.conclusion.published ? s.conclusion.foes.find((f) => f.id === t.id && !f.gone) : null;
+    if (due && seen) Object.assign(due, { gone: true, shown: seenName(t) });
+    ev.push({ type: 'removed', id: t.id, name: t.name, ...(seen ? { seen: true } : {}), ...(t.side === 'party' ? { party: true } : {}) });
+    for (const x of Object.values(s.entities)) if (x.follow === t.id) unfollow(s, x, ev);
+    delete s.entities[t.id];
+    const at = nearestFree(s, { size: made.record.size }, at0);
+    if (!at) { ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true, text: `${t.name}'s corpse rose, but the engine found no unoccupied space near it for the ${made.name}, so nothing appeared. The DM places it (the player has not been told why).` }); continue; }
+    if (at.q !== at0.q || at.r !== at0.r) ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true, text: `A creature stands where ${t.name}'s corpse lay, so the ${made.name} rose in the nearest unoccupied space.` });
+    const nid = `m${++s.seq}`;
+    const fx = control24(s, m, src, nid);
+    const n = Object.values(s.entities).filter((o) => o.tpl === made.tplId).length + 1;
+    const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx.id, turn: b.turn, orders: b.orders, range: b.range, at0: b.at0, ends: [...(b.ends ?? [])],
+      lapse: 'foe', slot: pick.slot, commanded: null, auto: false };
+    const e = makeEntity(made.record, { id: nid, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, bond });
+    s.entities[nid] = e;
+    ev.push({ type: 'summoned', id: nid, by: m.id, kind: b.kind, fx: fx.id, corpse: t.id });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: m.id, conc: false, lasts: fx.lasts, targets: [nid] });
+    if (e.side === 'party') lookAround(s, ev, [e]);
+    if (s.encounter?.arena[col(at)]) joinEncounter(s, e, ev);
+  }
+}
+// A corpse spell cast with no `summon` field (#332, as summonHandOver): nothing changes. The DM is told what this
+// casting could have done, with the creature's numbers, and how to do it by hand; players are told only that the DM
+// applies it, with no number and nothing that says a corpse or a creature exists.
+function corpseHandOver(m, step, src, ev) {
+  const { slot, caster, count, reassert } = src.summon, def = SPELLS[src.spell]?.def, b = step.bond ?? {};
+  const made = summonMade(step, {}, slot, caster), r = made.record;
+  const moves = Object.entries(r.speeds ?? {}).map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} ${v} ft.`);
+  const stat = `${made.name} (AC ${r.ac}, ${r.hp} Hit Points, Speed ${[`${r.speed} ft.`, ...moves].join(', ')})`;
+  const corpses = count === 1 ? 'the corpse of a Medium or Small Humanoid' : `up to ${count} corpses of Medium or Small Humanoids`;
+  ev.push({ type: 'manual', actor: m.id, name: src.name, text: `${src.name}: the DM applies it.` });
+  ev.push({ type: 'manual', actor: m.id, name: src.name, partial: true,
+    text: `${src.name} was cast at level ${slot} with no corpse or creature named for the engine, so it changed nothing. It could have raised ${corpses} within ${src.range} ft. of ${m.name}, each as a ${stat}, or kept up to ${reassert} of the creatures ${m.name} made with ${src.name} under control for another 24 hours.`
+      + ` By hand: remove each corpse, spawn the monster ${step.summon} in its space, and bond it to ${m.name} as undead with orders command. A creature bonded so has no command range (the spell's is ${b.range} ft.) and its 24 hours are not timed: when they run out, free it (bond with to: null) and play it as a foe.${def && def.tier !== 'auto' ? ` ${def.text}` : ''}` });
 }
 
 // ---------- actions ----------
