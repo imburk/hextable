@@ -243,14 +243,14 @@ test("the DM's bond: what it refuses changes nothing, and players can't bond at 
   const t = table();
   ok(apply(t.s, { type: "startEncounter", center: t.s.entities.fighter.pos, radius: 3 }, DM));
   refused(t.s, { type: "bond", actor: t.wolf, to: "fighter" }, DM, /on its master's side/);
-  // The cap.
-  assert.equal(BOND_MAX, 20);
+  // The cap: 30, as for summons (amendment A4), with the one refusal text.
+  assert.equal(BOND_MAX, 30);
   const c = table();
   for (let i = 0; i < BOND_MAX; i++) {
     const id = `x${i}`;
     c.s.entities[id] = { ...structuredClone(c.s.entities[c.wolf]), id, side: "party", bond: { to: "cleric", kind: "pet", fx: null, turn: "own", orders: "free", at0: "dies", ends: [], commanded: null, auto: false } };
   }
-  refused(c.s, { type: "bond", actor: c.wolf, to: "cleric" }, DM, /20 companions already/);
+  refused(c.s, { type: "bond", actor: c.wolf, to: "cleric" }, DM, /can have at most 30 companions\./);
 });
 
 test("a player naming a creature they do not know of in a bond hears what an id that is nothing gets", () => {
@@ -456,14 +456,18 @@ test("flags naming a vanished creature go with it (L2); a grapple it held ends a
   assert.ok(!json(s.entities).includes(wolf));
 });
 
-test("a foe's companion gives no XP unless the DM ticks it (L5)", () => {
+test("a foe's companion counts toward the fight's XP like any foe, and the DM can untick it (L5; amendment A3)", () => {
   const { s, wolf } = table();
   bond(s, wolf, s.entities.m1.id, { kind: "undead" });
   ok(apply(s, { type: "startEncounter", center: s.entities.fighter.pos, radius: 6 }, DM));
   for (const e of Object.values(s.entities)) if (e.side === "foe" && s.encounter) ok(apply(s, { type: "harm", actor: e.id, amount: 999 }, DM));
   const foes = s.conclusion.foes;
-  assert.equal(foes.find((f) => f.id === wolf).counts, false);
-  assert.ok(foes.filter((f) => f.id !== wolf).every((f) => f.counts));
+  assert.equal(foes.find((f) => f.id === wolf).counts, true);
+  assert.ok(foes.every((f) => f.counts));
+  const base = s.conclusion.xp.base;
+  assert.equal(base, foes.reduce((n, f) => n + f.xp, 0));
+  ok(apply(s, { type: "conclusion", edit: { foes: { [wolf]: false } } }, DM));
+  assert.equal(s.conclusion.xp.base, base - foes.find((f) => f.id === wolf).xp);
 });
 
 test("a part that was to end with the vanished creature's turn ends with it (L7)", () => {

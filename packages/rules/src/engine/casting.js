@@ -2,7 +2,7 @@
 // spell, teleport destinations, and ending a lasting effect.
 import { gridOf, col, key } from '../grid.js';
 import { CONTENT, SPELLS } from '../content/index.js';
-import { BRANCHES, CHOICES, SUMMON_MOST } from '../content/schema.js';
+import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
 import { footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
@@ -13,6 +13,7 @@ import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile
 import { aimArea, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonMade } from './resolve.js';
+import { roomForCompanions } from './companions.js';
 import { roll } from '../rng.js';
 
 // ---------- teleportation ----------
@@ -230,7 +231,7 @@ function evokerFor(e, sp, a, slot, via, targets) {
 // seen), where the creature fits on the floor (or, for a flyer given a height, in the air) and nothing the caster
 // knows of stands; inside the arena if the caster is in a fight. A creature the caster does not know of does not
 // stop it (refusing would tell the player it is there): the creature appears beside it instead (resolve.js).
-// A master has at most SUMMON_MOST companions (owner's question 7), and a companion has none of its own.
+// A master has at most BOND_MAX companions (companions.js; owner's question 7), and a companion has none of its own.
 // Returns { variant?, type?, form?, at: [positions] }, or null for a spell that summons nothing.
 function summonFor(s, e, sp, a, slot, range, ctx) {
   const step = sp.def.effects.find((x) => 'summon' in x);
@@ -253,8 +254,7 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   const count = c === undefined ? 1 : Number.isInteger(c) ? c : (c.base ?? 0) + c.slot * (slot - (c.above ?? 0));
   (Array.isArray(p.at) && p.at.length === count) || fail(count === 1 ? `Pick one space for ${sp.name}.` : `Pick ${count} spaces for ${sp.name}, one for each creature.`);
   !e.bond || fail(`${e.name} is a companion itself and can't have companions.`);
-  const have = Object.values(s.entities).filter((x) => x.bond?.to === e.id && !x.vanished).length;
-  have + count <= SUMMON_MOST || fail(`${e.name} would have more than ${SUMMON_MOST} companions.`);
+  roomForCompanions(s, e, count);
   // The creature's body: its size and whether it can fly, from what this casting makes.
   const made = summonMade(step, out, slot, summonCaster(s, e, sp.id));
   const body = { size: made.record.size }, flies = (step.over?.speed?.fly ?? made.record.speeds?.fly ?? 0) > 0;

@@ -632,7 +632,7 @@ Settled in the review of #313:
   lasting effect: Grappled ends (nobody holds on), any other loses its `source` and the DM is told. A part
   of another's effect that ends with its turn (`ends.who`) ends, since that turn will not come.
 - **XP.** A bonded foe is listed in a fight's conclusion with `counts: false` (owner's question 6); the DM
-  may tick it. *Superseded 14 November: a foe's summons count; stage A3.*
+  may tick it. *Superseded 14 November: a foe's summons count; stage A3, built (see its build notes).*
 
 ### C2, the turn and lasting effects (#316)
 
@@ -767,8 +767,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   sees no cause for. Neither is built; the owner may choose.
 - **The cap.** At most 30 bonded creatures per master (`SUMMON_MOST`, owner's answer 7), counting the master's
   bonded creatures that have not vanished, before the new ones. A companion can't summon (it has no companions).
-  `BOND_MAX` in `engine/companions.js` is still 20 for the DM's `bond`: that is stage A4, whose file and pinned test
-  are not in this stage's list. Until A4 the DM's bond stops at 20 and a summon at 30.
+  *Since A4 the DM's `bond` and a summon share `BOND_MAX` (30) and one refusal; see A4's build notes.*
 - **The creature made.** Id `m<seq>` as `spawn`; `tpl` is the block id (or the pack monster's); the baked creature
   type is kept on the record (`type`, which `creatureType` reads first); side, the master's. `name`: the party's
   is "Ven's Giant Wasp"; **a foe's is named as `spawn` names a creature** ("Giant Wasp 1", counted by `tpl`), so its
@@ -794,7 +793,7 @@ new effect step `summon`** (CLAUDE.md: a new step is an engine change).
   unbonded (the DM may then `bond` it). This is also what the twin runs compare against. With `at` missing or not
   whole numbers, `spawn` now answers "Pick a place for it." where it threw or said it could not stand there (L7).
 - **XP.** A summon's `tpl` is not a pack monster, so the conclusion's lookup gives it 0 (owner's answer 6: a block with
-  XP 0 stays 0). `counts` is still `!e.bond` (stage A3 not built).
+  XP 0 stays 0). *Since A3, `counts` is `!up(e)` for every foe; see A3's build notes.*
 - **No state version bump:** `bond.source`, `bond.slot` and a creature's `type` are optional fields; nothing else in
   the shape changed.
 - **Giant Insect** (SRD 5.2.1, flow lines 27421-27490) is `auto`, `checked`: AC 11 + level, HP 30 + 10 per level above
@@ -858,7 +857,7 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   tests that a never-commanded Zombie is the DM's and may only Dodge and move, one commanded this turn is its
   player's and refused for another player, and one with only a standing order is the DM's.
 
-### A3, XP for a foe's summons (not built)
+### A3, XP for a foe's summons (built, #329)
 
 - **Choice.** `counts` in a fight's conclusion (`rewards.js`) is no longer `false` for a bonded foe
   (`counts: !up(e)` only): a summon is listed and counted like any foe, with the pack's `xp` (0 for a
@@ -868,8 +867,34 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   review of #317.
 - **Cost.** One expression in `rewards.js`, the tests that pin `counts: false`, and the notes in C1 and C2.
 
-### A4, the cap (not built)
+### A4, the cap (built, #329)
 
 - **Choice.** `BOND_MAX` (`engine/companions.js`) becomes 30.
 - **Reasons.** The SRD limits in Decision 1.
 - **Cost.** One constant and the test that pins 20.
+
+### Build notes: A3 and A4 (#329)
+
+- **A3, the rule.** In `concludeFight` (`rewards.js`) every foe of the fight counts unless it is still up:
+  `counts: !up(e)`, bonded or not. Its XP is the pack monster's (`CONTENT.monsters[tpl].xp`); a summon block is not a
+  pack monster, so it is 0 and stays 0. The DM may untick any foe, as before.
+- **A3, a foe the party saw vanish.** A seen vanish takes the record away (resolve.js, `vanish`), so a foe that vanished
+  that way in the middle of a fight left nothing for the conclusion. The fight now keeps it: `encounter.gone`, a list
+  of `{ id, name, tpl }` for each foe that left the order by a seen vanish. `concludeFight` adds each one not still
+  among the fight's creatures with `counts: true` and `gone: true`, so it is listed once. At publish a `gone` foe is
+  `seen` (the party was told of it by name, in `vanished`), so the party's card and the chronicle's "Beaten" name it as
+  they name a twin's corpse. A foe that is the last of the fight to fall is counted among the fight's creatures (the
+  fight ends inside the action, before `settleBonds` makes it vanish), so it is never counted twice either.
+- **A3, unseen.** The husk an unseen vanish leaves is a dead foe in the order and counts as any unseen death does; it
+  is not in `gone`. So seen or unseen, killed or vanished, a foe counts the same, once. Twin runs on hexes and squares
+  (companions-xp.test.js): a hidden companion killed unseen (the party blinded under `sight: 'light'`, since a creature
+  in a fight can't be hidden by the DM's switch) against an unbonded twin, and a bonded undead killed seen against an
+  unbonded twin, give players the same events, views, record and `seq`; a seen vanish against a twin's seen death gives
+  the same XP shares, the same card and the same chronicle.
+- **A3, what players are sent.** `encounter.gone` is never sent: the players' encounter is built field by field
+  (`view.js`, viewEncounter). `gone` on a conclusion foe is the DM's only (`playerConclusion` sends id, name, counts).
+- **A4.** `BOND_MAX` (`engine/companions.js`) is `SUMMON_MOST` (`schema.js`, 30), so one number stands for both the
+  master's cap and the most one summon step makes. `roomForCompanions(s, m, n)` is the one check and the one refusal
+  ("Brenna can have at most 30 companions."), used by the DM's `bond` and by a cast's summon (casting.js).
+- **No state version bump.** `encounter.gone` and a conclusion foe's `gone` are optional; a save without them loads and
+  plays as before (a fight saved in the middle simply has no seen vanish kept from before the change).

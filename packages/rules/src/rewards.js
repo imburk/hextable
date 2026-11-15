@@ -44,7 +44,15 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
   const mode = s.settings.conclusion ?? 'dm';
   if (mode === 'off') return;
   const party = who.filter((e) => e.side === 'party' && e.kind === 'pc').map((e) => e.id);
-  const foes = who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: CONTENT.monsters[e.tpl]?.xp ?? 0, counts: !up(e) && !e.bond }));     // a companion gives no XP of its own unless the DM ticks it (companions.md, question 6)
+  // Every foe counts unless it is still up, a foe's companions too (companions.md, amendment A3): a summon block's
+  // XP of 0 stays 0, and the DM may untick any. One the party saw vanish in the fight is kept by the fight (`gone`,
+  // resolve.js, vanish) and counts as a death does; one that vanished unseen is a dead husk among `who`. So seen,
+  // unseen, killed or vanished, a foe counts the same, once.
+  const xpOf = (tpl) => CONTENT.monsters[tpl]?.xp ?? 0, ids = new Set(who.map((e) => e.id));
+  const foes = [
+    ...who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: xpOf(e.tpl), counts: !up(e) })),
+    ...(enc.gone ?? []).filter((g) => !ids.has(g.id)).map((g) => ({ id: g.id, name: g.name, tpl: g.tpl, xp: xpOf(g.tpl), counts: true, gone: true })),
+  ];
   const c = { id: enc.id, fight: enc.id, result, rounds: enc.round, where: enc.where ?? null, foes, party,
     xp: { base: 0, bonus: [], per: {}, fixed: [] }, loot: [], next: 1, published: false };
   share(s, c);
@@ -59,7 +67,8 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
 function publish(s, ev, land = null) {
   const c = s.conclusion;
   // Who the party knew of, now: the published record names only those (view.js shapes it per viewer).
-  for (const f of c.foes) f.seen = !!s.entities[f.id] && !unknown(s, s.entities[f.id]);
+  // One the party saw vanish (`gone`) it knew of: it was told of it by name (the `vanished` event).
+  for (const f of c.foes) f.seen = s.entities[f.id] ? !unknown(s, s.entities[f.id]) : !!f.gone;
   for (const id of c.party) {
     const e = s.entities[id], n = c.xp.per[id] ?? 0;
     if (!e || e.kind !== 'pc') continue;

@@ -336,7 +336,7 @@ test("a cast is refused for a master with 30 companions, and for a companion; 29
   }
   const s30 = structuredClone(s);
   s30.entities.w29 = { ...structuredClone(s.entities.w0), id: "w29", pos: { q: 70, r: 40, z: 0 } };
-  refused(s30, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [at] } }, PAT, /more than 30 companions/);
+  refused(s30, { type: "cast", actor: "ven", spell: "giant-insect", slot: 4, summon: { variant: "wasp", at: [at] } }, PAT, /can have at most 30 companions\./);
   ok(cast(s, at));
   // A companion casting a summon: a companion has no companions of its own.
   const c = table(null);

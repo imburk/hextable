@@ -886,6 +886,10 @@ export function vanish(s, e, why, ev) {
       if (i <= enc.turn) enc.turn--;                  // its own turn: the one before stands, and the turn passes below
       if (enc.moved) { delete enc.moved[e.id]; if (!Object.keys(enc.moved).length) delete enc.moved; }
       if (enc.held) delete enc.held[e.id];
+      // A foe that took part counts toward the fight's XP as any foe does (companions.md, amendment A3): its record
+      // goes, so the fight keeps what the conclusion needs of it (rewards.js, concludeFight). Only a creature the
+      // party saw vanish comes here; one it could not see stays as a husk in the order (vanishUnseen) and counts there.
+      if (e.side === 'foe') (enc.gone ??= []).push({ id: e.id, name, tpl: e.tpl ?? null });
     }
     // Flags that name it (`hit:<id>:<target>`, `attacked:<id>`) go with it: once it is gone nothing can tell
     // whether players may know of it (view.js filters flags by the creatures there are; review of #313, L2).
