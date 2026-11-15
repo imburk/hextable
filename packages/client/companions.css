@@ -1,0 +1,32 @@
+/* Companions (companions.js, stage C8): the cast chooser for a summon, and the pickers and rows for what a master does with its companions. */
+#cc-chooser { position: fixed; left: 50%; transform: translateX(-50%); top: calc(max(10px, env(safe-area-inset-top)) + 96px); z-index: 12; width: min(460px, calc(100% - 16px)); max-height: min(58dvh, 440px);
+  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+#cc-chooser[hidden] { display: none; }
+#cc-chooser .cc-body { overflow-y: auto; display: grid; gap: 6px; min-height: 0; }
+#cc-chooser select { min-height: 44px; min-width: 8em; max-width: 100%; padding: 2px 8px; background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); font: inherit; }
+#cc-chooser select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+#cc-chooser .cc-head { display: flex; gap: 8px; align-items: baseline; } #cc-chooser .cc-sub { color: var(--muted); font-size: 13px; }
+#cc-chooser .cc-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+#cc-chooser .cc-t { font-size: 13px; color: var(--muted); min-width: 4.5em; }
+#cc-chooser button, .cc-pick button, .cc-check, .cc-order input[type="text"] { min-height: 44px; }
+#cc-chooser button { padding: 4px 12px; }
+#cc-chooser button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#cc-chooser button.off { opacity: .6; border-style: dashed; }
+#cc-chooser .cc-taps { margin: 0; font-weight: 600; } #cc-chooser .cc-miss { color: var(--muted); }
+#cc-chooser .cc-go { display: flex; flex-wrap: wrap; gap: 6px; }
+#cc-chooser button:focus-visible, .cc-pick button:focus-visible, .cc-pick input:focus-visible, #btn-let input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.cc-pick { flex-direction: column; align-items: stretch; }
+.cc-pick .cc-check { justify-content: flex-start; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; color: var(--ink); }
+.cc-pick .cc-check input { width: 22px; height: 22px; }
+.cc-pick .cc-check.off { opacity: .65; }
+.cc-pick .cc-order { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; }
+.cc-pick .cc-order input { flex: 1; min-width: 0; padding: 4px 8px; }
+#btn-let { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
+#btn-let input { width: 22px; height: 22px; }
+#btn-let.off { opacity: .6; }
+#tracker li.tr-comp { margin-left: 14px; border-left: 2px solid var(--line); }
+#tracker li.tr-carried { margin-left: 14px; opacity: .8; }
+/* On a wide screen the chooser stands at the right, clear of the map's middle and of the card at the foot. */
+@media (min-width: 900px) { #cc-chooser { left: auto; right: 64px; transform: none; top: 64px; width: 400px; max-height: calc(100dvh - 90px); } }
+#cc-chooser button { padding: 2px 10px; }
+@media (max-width: 600px) { #cc-chooser { left: 54px; transform: none; width: calc(100% - 62px); } }
