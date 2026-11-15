@@ -1,6 +1,6 @@
 // Assembles the static site in dist/: the client files, with the rules engine
 // copied in as ./shared so the browser can import it with relative paths.
-import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
 rmSync("dist", { recursive: true, force: true });
@@ -19,7 +19,7 @@ const git = (...args) => { try { return execFileSync("git", args, { encoding: "u
 const [logTime = "", logSubject = ""] = git("log", "-1", "--format=%cI%n%s").split("\n");
 const sha = (process.env.GITHUB_SHA || git("rev-parse", "HEAD")).trim();
 const subject = logSubject.slice(0, 80);
-const pr = /^Merge pull request #(\d+)/.exec(subject)?.[1] ?? /\(#(\d+)\)$/.exec(subject)?.[1];
+const pr = /^Merge pull request #(\d{1,6})\b/.exec(subject)?.[1] ?? /\(#(\d{1,6})\)$/.exec(subject)?.[1];
 const stamp = {
   commit: /^[0-9a-f]{7,40}$/i.test(sha) ? sha.slice(0, 7) : null,
   when: (logTime ? new Date(logTime) : new Date()).toISOString().replace(/\.\d+Z$/, "Z"),
@@ -28,3 +28,16 @@ const stamp = {
 };
 writeFileSync("dist/build.json", JSON.stringify(stamp) + "\n");
 console.log(`Build stamp: ${JSON.stringify(stamp)}`);
+
+// HEXTABLE_FEEDBACK_URL: the table server the feedback button posts to when this build is not served by one (the solo game on GitHub Pages).
+// Only an http(s) address is taken, reduced to its origin; the page gets <meta name="hextable-feedback-url" content="<origin>/feedback">.
+const fb = process.env.HEXTABLE_FEEDBACK_URL?.trim();
+if (fb) {
+  let origin = null;
+  try { const u = new URL(fb); if (/^https?:$/.test(u.protocol)) origin = u.origin; } catch { /* not an address */ }
+  if (!origin) throw new Error(`HEXTABLE_FEEDBACK_URL is not an http(s) address: ${fb}`);
+  const html = readFileSync("dist/index.html", "utf8");
+  if (!html.includes('<meta charset="utf-8">')) throw new Error("dist/index.html has no meta charset to put the feedback address after");
+  writeFileSync("dist/index.html", html.replace('<meta charset="utf-8">', `<meta charset="utf-8">\n<meta name="hextable-feedback-url" content="${origin}/feedback">`));
+  console.log(`Feedback goes to ${origin}/feedback`);
+}

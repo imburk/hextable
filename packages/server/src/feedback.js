@@ -6,14 +6,15 @@
 // What the route does, in this order: the address's rate limit (5 a minute, 30 an hour; limits.js), the content type, the body read
 // with a hard cap while it arrives (nothing past 24 KB is ever held), the JSON, then a field-by-field check against an allow-list
 // (`check` below: a field not named there is refused, and so is a wrong type or length). Only then is anything written: one JSON line
-// appended to <data dir>/feedback.jsonl, which is rotated to feedback.1.jsonl when it passes its size ceiling (so the disk holds two
-// files at most). A refused report writes nothing and files nothing.
+// appended to <data dir>/feedback.jsonl. When that passes its size ceiling it is renamed to the next free feedback.N.jsonl; when every
+// place is taken (FILES files of FILE_MAX bytes in all) new reports are refused with a clear answer, and nothing older is ever deleted, so
+// a flood can fill the disk's share but cannot erase a real report. A refused report writes nothing and files nothing.
 //
 // Optional GitHub forwarding, when FEEDBACK_GITHUB_REPO ("owner/name") and FEEDBACK_GITHUB_TOKEN are set: the report is also filed as an
 // issue labelled `feedback`. Every word the player wrote goes inside a fenced block whose fence is longer than any run of backticks in it,
 // so it cannot make a mention, a link, HTML or a heading, or close the block. It happens after the player has their answer; a failure
 // is logged without the token and is never shown to the player or allowed to lose the local line.
-import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { LIMIT_MESSAGE } from "./limits.js";
@@ -21,6 +22,7 @@ import { LIMIT_MESSAGE } from "./limits.js";
 export const BODY_MAX = 24 * 1024;
 export const COMMENT_MAX = 2000;
 export const FILE_MAX = 5 * 1024 * 1024;           // feedback.jsonl is rotated before it passes this
+export const FILES = 5;                            // files in all: feedback.jsonl and feedback.1.jsonl to feedback.4.jsonl
 const BODY_MS = 10_000;                            // a body must arrive within this
 const KINDS = ["bug", "idea", "question"];
 const KIND_WORDS = { bug: "Bug", idea: "Idea", question: "Question" };
@@ -50,7 +52,7 @@ const nullable = (f) => (v) => (v === null ? null : f(v));
 const shape = (fields, required = []) => (v) => {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return "must be an object";
   for (const k of Object.keys(v)) {
-    if (!Object.hasOwn(fields, k)) return `has a field that is not allowed: ${JSON.stringify(k.slice(0, 40))}`;
+    if (!Object.hasOwn(fields, k)) return "has a field that is not allowed";
     const e = fields[k](v[k]);
     if (e) return `field ${k} ${e}`;
   }
@@ -86,7 +88,6 @@ export const REPORT = shape({
   viewport: shape({ w: int(0, 20000), h: int(0, 20000) }, ["w", "h"]),
   touch: bool,
   ua: str(300), lang: str(35),
-  table: (v) => (typeof v === "string" && /^[0-9a-f]{12}$/.test(v) ? null : "must be a short hash"),
   context: shape({
     log: list(30, str(300)),
     actions: list(15, shape({ type: str(40), args, answer: str(200) }, ["type", "answer"])),
@@ -106,7 +107,7 @@ export function fence(text, info = "") {
 }
 // A title is plain text on one line. Characters that GitHub turns into something (mentions, references, markup) become spaces.
 export function issueTitle(report) {
-  const first = report.comment.replace(/\s+/g, " ").trim().slice(0, 60).replace(/[@#<>&`\[\]\\*_~|:]/g, " ").replace(/\s+/g, " ").trim();
+  const first = report.comment.replace(/\s+/g, " ").trim().slice(0, 60).replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "").replace(/GH-(?=\d)/gi, "GH ").replace(/[@#<>&`\[\]\\*_~|:]/g, " ").replace(/\s+/g, " ").trim();
   return `${KIND_WORDS[report.kind]}: ${first || "(no text)"}`;
 }
 export function issueBody(report, ref) {
@@ -127,9 +128,9 @@ export function issueBody(report, ref) {
 
 // ---------- the handler ----------
 // options: dir (the data directory), env, fileMax, log (console.error), fetch (for tests), now.
-export function createFeedback({ dir, env = {}, fileMax = FILE_MAX, log = (m) => console.error(m), fetch: doFetch = globalThis.fetch } = {}) {
+export function createFeedback({ dir, env = {}, fileMax = FILE_MAX, files = FILES, log = (m) => console.error(m), fetch: doFetch = globalThis.fetch } = {}) {
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, "feedback.jsonl"), old = join(dir, "feedback.1.jsonl");
+  const file = join(dir, "feedback.jsonl"), numbered = (n) => join(dir, `feedback.${n}.jsonl`), old = numbered(1);
   const repo = /^[\w.-]+\/[\w.-]+$/.test(env.FEEDBACK_GITHUB_REPO ?? "") ? env.FEEDBACK_GITHUB_REPO : null;
   const token = typeof env.FEEDBACK_GITHUB_TOKEN === "string" && env.FEEDBACK_GITHUB_TOKEN.trim() ? env.FEEDBACK_GITHUB_TOKEN.trim() : null;
   if ((env.FEEDBACK_GITHUB_REPO || token) && !(repo && token)) log("feedback: set both FEEDBACK_GITHUB_REPO (owner/name) and FEEDBACK_GITHUB_TOKEN to file reports on GitHub; reports are kept in the data directory only.");
@@ -146,12 +147,21 @@ export function createFeedback({ dir, env = {}, fileMax = FILE_MAX, log = (m) =>
     const line = JSON.stringify({ ref, at: new Date().toISOString(), ...(env.RAILWAY_GIT_COMMIT_SHA || env.SOURCE_COMMIT || env.GIT_COMMIT ? { server: String(env.RAILWAY_GIT_COMMIT_SHA || env.SOURCE_COMMIT || env.GIT_COMMIT).slice(0, 40) } : {}), report }) + "\n";
     let size = 0;
     try { size = statSync(file).size; } catch { /* no file yet */ }
-    if (size > 0 && size + Buffer.byteLength(line) > fileMax) renameSync(file, old);
+    if (size > 0 && size + Buffer.byteLength(line) > fileMax) {
+      let free = 0;
+      for (let n = 1; n < files && !free; n++) if (!existsSync(numbered(n))) free = n;
+      if (!free) { if (!full) { full = true; log(`feedback: all ${files} feedback files in ${dir} are full; new reports are refused until some are moved away.`); } return false; }
+      renameSync(file, numbered(free));
+    }
     appendFileSync(file, line);
+    return true;
   }
+  let full = false;
 
-  async function forward(report, ref) {
+  let capped = false;
+  async function forward(report, ref, limits) {
     if (!repo || !token) return;
+    if (!limits.allowForward()) { if (!capped) { capped = true; setTimeout(() => { capped = false; }, 3_600_000).unref(); log("feedback: the hourly or daily limit on GitHub issues is reached; reports are kept locally only."); } return; }
     if (filing >= 4) return log("feedback: too many GitHub requests at once; this report was kept locally only.");
     filing++;
     try {
@@ -175,12 +185,13 @@ export function createFeedback({ dir, env = {}, fileMax = FILE_MAX, log = (m) =>
     const refuse = (status, error, extra) => send(status, { error }, { connection: "close", ...extra });
     if (req.method === "OPTIONS") return void res.writeHead(204, { ...cors, "cache-control": "no-store" }).end();
     if (req.method !== "POST") return refuse(405, "Use POST.", { allow: "POST, OPTIONS" });
-    if (!limits.allowFeedback(addr)) return refuse(429, LIMIT_MESSAGE);
+    // What can be judged from the headers is judged before the address's budget is spent, so junk of that kind costs a real report nothing.
     const type = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
     if (type !== "application/json") return refuse(415, "Send JSON.");
     const declared = Number(req.headers["content-length"]);
     const tooBig = () => { refuse(413, "That report is too long."); req.pause(); setTimeout(() => req.destroy(), 1000).unref(); };
     if (Number.isFinite(declared) && declared > BODY_MAX) return tooBig();
+    if (!limits.allowFeedback(addr)) return refuse(429, LIMIT_MESSAGE);
     const parts = [];
     let size = 0, done = false;
     const stop = setTimeout(() => { if (!done) { done = true; refuse(408, "The report did not arrive in time."); req.pause(); setTimeout(() => req.destroy(), 1000).unref(); } }, BODY_MS);
@@ -200,10 +211,10 @@ export function createFeedback({ dir, env = {}, fileMax = FILE_MAX, log = (m) =>
       const problem = REPORT(report);
       if (problem) return refuse(400, `The report was refused: ${problem}.`);
       const ref = `FB-${randomBytes(4).toString("hex").slice(0, 6).toUpperCase()}`;
-      try { store(report, ref); }
+      try { if (!store(report, ref)) return refuse(503, "Feedback cannot be saved on this server right now. Copy it and send it another way."); }
       catch (err) { log(`feedback: could not write ${file}: ${scrub(err.message)}`); return refuse(500, "The report could not be saved. Copy it and send it another way."); }
       send(201, { ref });
-      forward(report, ref);
+      forward(report, ref, limits);
     });
   }
   return { handle, file, rotated: old };

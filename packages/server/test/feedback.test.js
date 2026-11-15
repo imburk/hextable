@@ -94,13 +94,73 @@ test("the address is the socket's unless TRUST_PROXY says otherwise (the server'
   assert.equal((await post(p.port, GOOD(), { "x-forwarded-for": "7.7.7.8" })).status, 201);
 });
 
-test("the file is rotated at its ceiling, so the disk holds two files at most", async () => {
-  const s = await startServer({ env: { FEEDBACK_MAX_BYTES: "3000", LIMIT_FEEDBACK_MINUTE: "1000", LIMIT_FEEDBACK_HOUR: "1000" } });
-  for (let i = 0; i < 12; i++) assert.equal((await post(s.port, { ...GOOD(), comment: `report ${i} ${"y".repeat(300)}` })).status, 201);
-  assert.ok(existsSync(join(s.data, "feedback.1.jsonl")));
-  assert.ok(statSync(join(s.data, "feedback.jsonl")).size <= 3000);
-  assert.ok(statSync(join(s.data, "feedback.1.jsonl")).size <= 3000);
-  assert.equal(lines(s.data).at(-1).report.comment.startsWith("report 11"), true);
+test("a full file is kept and a new one started; when every place is taken new reports are refused and nothing older is deleted", async () => {
+  const s = await startServer({ stderr: "pipe", env: { FEEDBACK_MAX_BYTES: "3000", FEEDBACK_FILES: "3", LIMIT_FEEDBACK_MINUTE: "1000", LIMIT_FEEDBACK_HOUR: "1000" } });
+  const genuine = await post(s.port, { ...GOOD(), comment: "GENUINE first report" });
+  assert.equal(genuine.status, 201);
+  const codes = [];
+  for (let i = 0; i < 30; i++) codes.push((await post(s.port, { ...GOOD(), comment: `junk ${i} ${"y".repeat(300)}` })).status);
+  assert.ok(codes.includes(503), "the places run out");
+  assert.ok(codes.slice(codes.indexOf(503)).every((c) => c === 503), "and stay out");
+  const first = existsSync(join(s.data, "feedback.1.jsonl")) ? readFileSync(join(s.data, "feedback.1.jsonl"), "utf8") : "";
+  assert.ok(first.includes("GENUINE first report"), "the earliest report is still there");
+  assert.ok(!existsSync(join(s.data, "feedback.3.jsonl")), "no more than 3 files");
+  for (const f of ["feedback.jsonl", "feedback.1.jsonl", "feedback.2.jsonl"]) assert.ok(statSync(join(s.data, f)).size <= 3000, f);
+  const body = await (await post(s.port, GOOD())).json();
+  assert.match(body.error, /Copy it/);
+  assert.match(s.stderr(), /are full/);
+});
+
+test("junk the headers give away does not spend an address's budget", async () => {
+  const s = await startServer();
+  for (let i = 0; i < 8; i++) assert.equal((await post(s.port, "{}", { "content-type": "text/plain" })).status, 415);
+  assert.equal((await post(s.port, GOOD())).status, 201);
+});
+
+test("an unknown field's name is not echoed", async () => {
+  const s = await startServer();
+  const r = await post(s.port, { ...GOOD(), "<img src=x onerror=alert(1)>": 1 });
+  assert.equal(r.status, 400);
+  assert.ok(!(await r.text()).includes("img"));
+});
+
+test("a /64 of IPv6 addresses is one address for the feedback limit; IPv4 stays one by one", async () => {
+  const s = await startServer({ env: { TRUST_PROXY: "1" } });
+  const codes = [];
+  for (const i of [1, 2, 3, 4, 5, 6, 7, 8]) codes.push((await post(s.port, GOOD(), { "x-forwarded-for": `2001:db8:1:2::${i}` })).status);
+  assert.deepEqual(codes, [201, 201, 201, 201, 201, 429, 429, 429]);
+  assert.equal((await post(s.port, GOOD(), { "x-forwarded-for": "2001:db8:1:3::1" })).status, 201);       // another /64
+  assert.equal((await post(s.port, GOOD(), { "x-forwarded-for": "7.7.7.1" })).status, 201);
+});
+
+test("rateKey: an IPv6 address is its /64, however it is written", async () => {
+  const { rateKey } = await import("../src/limits.js");
+  assert.equal(rateKey("2001:db8:1:2::5"), rateKey("2001:0db8:0001:0002:ffff:0:0:1"));
+  assert.notEqual(rateKey("2001:db8:1:2::5"), rateKey("2001:db8:1:3::5"));
+  assert.equal(rateKey("::1"), rateKey("0:0:0:0::9"));
+  assert.equal(rateKey("1.2.3.4"), "1.2.3.4");
+});
+
+test("the server as a whole files at most the hourly cap of issues; the rest are stored and not forwarded", async () => {
+  const gh = await stub();
+  const s = await startServer({ stderr: "pipe", env: { FEEDBACK_GITHUB_REPO: "owner/repo", FEEDBACK_GITHUB_TOKEN: TOKEN, FEEDBACK_GITHUB_API: `http://127.0.0.1:${gh.port}`, LIMIT_FEEDBACK_FORWARD_HOUR: "3", LIMIT_FEEDBACK_MINUTE: "100", LIMIT_FEEDBACK_HOUR: "100" } });
+  for (let i = 0; i < 8; i++) assert.equal((await post(s.port, { ...GOOD(), comment: `n ${i}` })).status, 201);
+  await until(() => gh.got.length >= 3);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(gh.got.length, 3);
+  assert.equal(lines(s.data).length, 8);
+  assert.match(s.stderr(), /limit on GitHub issues/);
+  const d = await startServer({ env: { FEEDBACK_GITHUB_REPO: "owner/repo", FEEDBACK_GITHUB_TOKEN: TOKEN, FEEDBACK_GITHUB_API: `http://127.0.0.1:${gh.port}`, LIMIT_FEEDBACK_FORWARD_DAY: "2", LIMIT_FEEDBACK_MINUTE: "100", LIMIT_FEEDBACK_HOUR: "100" } });
+  const before = gh.got.length;
+  for (let i = 0; i < 5; i++) await post(d.port, GOOD());
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(gh.got.length - before, 2);
+  gh.close();
+});
+
+test("an issue title loses bidi controls and issue references", () => {
+  const t = issueTitle({ kind: "bug", comment: "\u202eGH-9 see \u200bfoo" });
+  assert.doesNotMatch(t, /[\u202e\u200b]|GH-9/);
 });
 
 // A stub standing in for GitHub: records what it is sent and answers as told.

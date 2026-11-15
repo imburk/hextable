@@ -9,7 +9,8 @@
 //   const slot = limits.uploadSlot(addr, code)      // { release } or { refused: "server" | "address" | "table" }
 //   limits.uploadPace(elapsedMs, bytes)             // null, "slow" or "deadline": cut an upload body off?
 //   limits.allowAssetRead(addr)                     // false when the address reads files too fast
-//   limits.allowFeedback(addr)                      // false when the address has sent too many feedback reports (a minute's and an hour's budget)
+//   limits.allowFeedback(addr)                      // false when the address has sent too many feedback reports (a minute's and an hour's budget); IPv6 counts by /64
+//   limits.allowForward()                           // false when the server as a whole has filed enough feedback issues on GitHub this hour or day
 
 import { isIP } from "node:net";
 
@@ -43,6 +44,8 @@ export const DEFAULT_LIMITS = {
   assetReadsPerSecond: 10,             // and sustained
   feedbackPerMinute: 5,                // feedback reports (POST /feedback) per address per minute
   feedbackPerHour: 30,                 // and per hour
+  forwardPerHour: 20,                  // feedback issues filed on GitHub by the whole server per hour (a report over the cap is kept locally only)
+  forwardPerDay: 100,                  // and per day
 };
 
 // Each limit can be set from the environment (useful for tests and for unusual hosts).
@@ -63,6 +66,7 @@ export function limitsFromEnv(env = {}) {
     uploadMinBytesPerSec: n("LIMIT_UPLOAD_MIN_RATE", d.uploadMinBytesPerSec),
     assetReadBurst: n("LIMIT_ASSET_READ_BURST", d.assetReadBurst), assetReadsPerSecond: n("LIMIT_ASSET_READ_RATE", d.assetReadsPerSecond),
     feedbackPerMinute: n("LIMIT_FEEDBACK_MINUTE", d.feedbackPerMinute), feedbackPerHour: n("LIMIT_FEEDBACK_HOUR", d.feedbackPerHour),
+    forwardPerHour: n("LIMIT_FEEDBACK_FORWARD_HOUR", d.forwardPerHour), forwardPerDay: n("LIMIT_FEEDBACK_FORWARD_DAY", d.forwardPerDay),
   };
 }
 
@@ -74,7 +78,8 @@ export function createLimits(config = {}, now = Date.now) {
   const uploads = new Map();       // address -> timestamps of recent uploads and deletions
   const uploading = { all: 0, byAddr: new Map(), byTable: new Map() };   // upload bodies being read now
   const reads = new Map();         // address -> { tokens, last }: file reads
-  const feedback = new Map();      // address -> timestamps of feedback reports in the last hour
+  const feedback = new Map();      // address (an IPv6 one as its /64) -> timestamps of feedback reports in the last hour
+  const forwards = [];             // timestamps of issues filed in the last day, whole server
   const bump = (map, key, by) => { const n = (map.get(key) ?? 0) + by; if (n > 0) map.set(key, n); else map.delete(key); };
 
   // Sliding window: count the events still inside the window, admit this one if there is room.
@@ -103,12 +108,21 @@ export function createLimits(config = {}, now = Date.now) {
     allowJoin: (addr) => admit(joins, addr, c.joins, c.joinWindowMs),
     allowUpload: (addr) => admit(uploads, addr, c.uploads, c.uploadWindowMs),
     // Two windows at once: a report is admitted only if both the minute's and the hour's budget have room (a refusal costs nothing).
-    allowFeedback(addr) {
+    allowFeedback(address) {
+      const addr = rateKey(address);
       const t = now(), hour = (feedback.get(addr) ?? []).filter((x) => t - x < 3_600_000);
       const ok = hour.length < c.feedbackPerHour && hour.filter((x) => t - x < 60_000).length < c.feedbackPerMinute;
       if (ok) hour.push(t);
       if (hour.length) feedback.set(addr, hour); else feedback.delete(addr);
       return ok;
+    },
+    // The whole server's budget for filing issues, hour and day; a refusal costs nothing.
+    allowForward() {
+      const t = now();
+      while (forwards.length && t - forwards[0] >= 86_400_000) forwards.shift();
+      if (forwards.length >= c.forwardPerDay || forwards.filter((x) => t - x < 3_600_000).length >= c.forwardPerHour) return false;
+      forwards.push(t);
+      return true;
     },
     config: c,
     uploadSlot(addr, code) {
@@ -159,6 +173,17 @@ export function createLimits(config = {}, now = Date.now) {
     stats: () => ({ addresses: open.size, hosts: hosts.size, joins: joins.size }),
     uploadStats: () => ({ uploading: uploading.all, reads: reads.size }),
   };
+}
+
+// The key a feedback budget is kept under: an IPv4 address as it is, an IPv6 address as its /64 (one subscriber holds 2^64 of them).
+export function rateKey(addr) {
+  const a = String(addr ?? "");
+  if (!a.includes(":")) return a;
+  const [head, tail = null] = a.split("::");
+  const h = head ? head.split(":") : [], t = tail === null ? [] : tail ? tail.split(":") : [];
+  const groups = tail === null ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  const four = groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16));
+  return four.length === 4 ? `${four.join(":")}::/64` : a;
 }
 
 // ---------- who is connecting ----------

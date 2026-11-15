@@ -7,7 +7,8 @@
 //   TRUST_PROXY, CLIENT_IP_HEADER   how to find the client address behind a proxy (default: socket address only)
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
 //   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js
-//   Player feedback is kept in DATA_DIR/feedback.jsonl (rotated to feedback.1.jsonl at 5 MB; FEEDBACK_MAX_BYTES changes that).
+//   Player feedback is kept in DATA_DIR/feedback.jsonl (five files of 5 MB: FEEDBACK_MAX_BYTES and FEEDBACK_FILES change that; when full, new reports are refused and nothing is deleted).
+//   LIMIT_FEEDBACK_FORWARD_HOUR / _DAY   the whole server's cap on feedback issues filed on GitHub (20 an hour, 100 a day)
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -188,7 +189,7 @@ function catchUp(peer) {
 const sit = (key, by) => { const n = (live.get(key) ?? 0) + by; if (n > 0) live.set(key, n); else live.delete(key); };
 
 // Player feedback (feedback.js): kept beside the tables, optionally filed on GitHub too.
-const feedback = createFeedback({ dir: DATA, env: process.env, ...(/^\d+$/.test(process.env.FEEDBACK_MAX_BYTES ?? "") && Number(process.env.FEEDBACK_MAX_BYTES) > 0 && { fileMax: Number(process.env.FEEDBACK_MAX_BYTES) }) });
+const feedback = createFeedback({ dir: DATA, env: process.env, ...(/^\d+$/.test(process.env.FEEDBACK_MAX_BYTES ?? "") && Number(process.env.FEEDBACK_MAX_BYTES) > 0 && { fileMax: Number(process.env.FEEDBACK_MAX_BYTES) }), ...(/^\d+$/.test(process.env.FEEDBACK_FILES ?? "") && Number(process.env.FEEDBACK_FILES) > 0 && { files: Number(process.env.FEEDBACK_FILES) }) });
 
 // Which change this is (build-info.js): from Railway's variables when there are some, else the image's own dist/build.json.
 const build = buildInfo({ file: join(SITE, "build.json"), env: process.env });

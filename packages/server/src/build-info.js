@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 
 const first = (text, n) => String(text ?? "").split("\n")[0].trim().slice(0, n);
-export const prOf = (subject) => { const m = /^Merge pull request #(\d+)/.exec(subject) ?? /\(#(\d+)\)\s*$/.exec(subject); return m ? Number(m[1]) : undefined; };
+export const prOf = (subject) => { const m = /^Merge pull request #(\d{1,6})\b/.exec(subject) ?? /\(#(\d{1,6})\)\s*$/.exec(subject); return m ? Number(m[1]) : undefined; };
 
 // file: the path of the dist/build.json; env: process.env (only the two variables are read); started: a Date.
 export function buildInfo({ file, env = {}, started = new Date() }) {

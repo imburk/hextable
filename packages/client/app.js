@@ -383,7 +383,7 @@ function beat(ev, ctx) {
   if (!S) return;
   played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
   const line = describe(ev);
-  LV.add(ev, line, S.clock); FB.shown(line);
+  LV.add(ev, line, S.clock); FB.shown(line, ev.type);
   const f = floatOf(ev);
   if (f) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };

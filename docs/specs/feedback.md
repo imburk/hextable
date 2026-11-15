@@ -28,14 +28,16 @@ Always: the comment (at most 2,000 characters), the kind, the time, the build (t
 stamp's commit, time and change number, such as `c1d5069 2026-11-15T11:13:26Z #354`; `state-v<N>` if the stamp could not be
 read), solo or table, the sender's role
 (player or DM), renderer, theme, grid kind, viewport size, touch or mouse, the browser's user
-agent, the page's language. At a table, `table`: a 12-hex-digit one-way hash of the table code
-(SHA-256 of a fixed text and the code; a plain hash where the browser has no `crypto.subtle`).
+agent, the page's language. Nothing about the table's identity is sent: not the code and not
+a hash of it (a table code has too few possibilities for a hash to be one-way; reports are
+grouped by the time and the build, and the owner can ask).
 
 With "Include what just happened" (`context`):
 
-- the last 30 log lines exactly as this viewer was shown them (taken from what the log was
-  handed to draw, never from the state), each cut to 300 characters; lines of talk (chat,
-  notes, handouts) are never kept;
+- the last 30 log lines as this viewer was shown them (taken from what the log was handed to
+  draw, never from the state), each cut to 300 characters, **with every name replaced**
+  first (see "Names"); lines of talk, notes, handouts, scenes, who plays whom (`claimed`,
+  `released`) and chronicle titles are never kept;
 - the last 15 actions this client sent, as a type and a few short ids and numbers (never
   text a player typed, names or documents), each with the answer: `accepted`, `refused: <the
   engine's words>` or `sent` (no answer yet);
@@ -50,10 +52,20 @@ If the report is over 24 KB the oldest log lines and actions are dropped until i
 ## What is never sent
 
 The dice seed, the game state, anything the viewer was not shown (so a player's report can hold
-nothing hidden from that player), character or player names given as fields, monikers, the table
-code, other people's chat, private notes, handouts, pictures. Note: a log line is the
-viewer's own log as drawn, so it carries the names of creatures as the game shows them
-("Brenna attacks the Goblin Warrior"). The preview shows them before anything is sent.
+nothing hidden from that player), **names of people or of their characters**, monikers, the table
+code or any hash of it, other people's chat, private notes, handouts, pictures.
+
+### Names
+
+A log line is the viewer's own log as drawn, so it holds names. Before a line, a refusal text or
+a page error is kept, every name the client has in view is replaced, in one pass and by whole
+names only (a name inside a longer word is left alone, regex characters in a name do no harm):
+each player's moniker by "Player 1", "Player 2"; each party character's name by "Hero 1
+(Fighter)"; a creature's name is kept only when it is a content entry's own ("Goblin Warrior
+1"), otherwise it becomes "a creature". A name the client has never seen (a creature that left
+before this page loaded) cannot be replaced; such lines come only from history, which is not
+recorded (see below). A DM's report can hold things players have not seen (a hidden creature,
+say); the panel says so for the DM and the tick can be cleared.
 
 ## Where it goes
 
@@ -62,16 +74,21 @@ is cut off while it is read, never buffered past that), checked field by field a
 allow-list (a field that is not named, of the wrong type or too long is refused with a short
 reason and nothing is written), per-address limits of 5 a minute and 30 an hour (the server's
 own address logic and `TRUST_PROXY`; `LIMIT_FEEDBACK_MINUTE` and `LIMIT_FEEDBACK_HOUR` change
-them), then one JSON line appended to `feedback.jsonl` in the data directory. When that passes
-5 MB (`FEEDBACK_MAX_BYTES`) it is renamed to `feedback.1.jsonl`, replacing the older one, so
-the disk holds two files at most. The answer is `{ ref }`. The line holds the reference, the
+them; an IPv6 address counts by its /64), then one JSON line appended to `feedback.jsonl` in
+the data directory. A request the headers show to be junk (wrong type, too long) is refused
+before the address's budget is spent. When the file passes 5 MB (`FEEDBACK_MAX_BYTES`) it is
+renamed to the next free `feedback.N.jsonl`; there are five files in all (`FEEDBACK_FILES`).
+When all are full new reports are refused (503, "Copy it and send it another way") and
+nothing older is ever deleted, so a flood cannot erase a real report; the owner moves the
+files away. The answer is `{ ref }`. The line holds the reference, the
 time, the server's commit if its host gives one (`RAILWAY_GIT_COMMIT_SHA`, `SOURCE_COMMIT` or
 `GIT_COMMIT`) and the report; not the sender's address.
 
 CORS is open for this route only (`Access-Control-Allow-Origin: *`, no credentials, a
 preflight answered), so a solo game served from another site can post to a table server. The
-client posts to `./feedback`, or to the address in `<meta name="hextable-feedback-url">` when a
-build puts one in the page. Nothing sets that tag today (see "What is not built").
+client posts to `./feedback`, or to the address in `<meta name="hextable-feedback-url">`, which
+`scripts/build.mjs` writes when `HEXTABLE_FEEDBACK_URL` is set (the Pages workflow sets it to
+the public table server; it works only once that server runs a build with this route).
 
 ### Filing on GitHub (optional)
 
@@ -84,7 +101,9 @@ longer than the longest run in the text, so it cannot make a mention, a link, a 
 HTML, or close the block; the only markup outside the blocks is the server's own. The
 request has a timeout (10 s; `FEEDBACK_GITHUB_TIMEOUT_MS`), at most four are in flight, a
 failure is logged without the token and never reaches the player, and the local line is kept
-whatever happens. `FEEDBACK_GITHUB_API` (https, or http on this machine) is for tests.
+whatever happens. The whole server files at most 20 issues an hour and 100 a day
+(`LIMIT_FEEDBACK_FORWARD_HOUR`, `LIMIT_FEEDBACK_FORWARD_DAY`); a report over the cap is
+stored and not forwarded. `FEEDBACK_GITHUB_API` (https, or http on this machine) is for tests.
 
 ## The build stamp
 
@@ -105,20 +124,22 @@ On Railway `when` is the time the image was built (the Docker build has no `.git
   sent, and the server's allow-list refuses anything else (`REPORT` in
   `packages/server/src/feedback.js`; the client test builds a report from a player's view and
   checks it).
-- The endpoint cannot fill the disk (24 KB a request, 30 an hour an address, two files of 5 MB),
+- The endpoint cannot fill the disk (24 KB a request, 30 an hour an address, five files of 5 MB),
   inject into the issue tracker (fenced, as above), or act as a relay (it makes one fixed
   request to one configured repository).
 - No new dependency; Node's `fetch` and the browser's `fetch`.
+- What is sent is what was shown: the preview follows the page until Send, then the report
+  is frozen, shown, and posted as that object (`sentAt` set once); the thank-you keeps it
+  under "What was sent". Between the last look and the press, a line may have arrived.
 - The answer to an action is matched to it by order: an update that arrives after an action
   with no refusal before it marks it `accepted`, so at a table another player's update can mark
   an action accepted a moment early. Good enough for reading a report; not a log.
-- Names in log lines, above.
+- Names in log lines: the scrubber, above.
 
 ## What is not built
 
 - A screen for the DM to read reports. They are read in `feedback.jsonl` on the server or as
   GitHub issues.
 - Attachments and screenshots.
-- A configured server address for the solo game on GitHub Pages (below).
 - Seeding the shown log from history on joining a table: lines a player was shown before
   the page loaded, or by a reconnect, are not in the report.

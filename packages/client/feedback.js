@@ -4,14 +4,16 @@
 // The one rule: the report is built only from what this client already showed or sent. The log lines are the ones the log was
 // handed to draw (app.js `beat`), the actions are the ones this client sent with the answer it got, the errors are the ones the page
 // raised, and the rest are facts about this browser and the viewer's own selection. Nothing is read from hidden fields, the seed, the
-// table's state at large, other people's chat, notes or handouts, and no name is sent (the table code only as a short hash).
+// table's state at large, other people's chat, notes or handouts. No name of a person or of their character leaves: every line is scrubbed
+// first (`createScrubber`). Nothing about the table's identity is sent at all, not the code and not a hash of it.
 //
-//   the model   createRecorder(), actionArgs(), buildReport(), fitReport()   pure: tests drive them with no page
+//   the model   createScrubber(), createRecorder(), actionArgs(), buildReport(), fitReport()   pure: tests drive them with no page
 //   the page    initFeedback({ look, onBuild }) -> { shown(line), attach(transport), open(), buildLine() }
 //               look() -> { S, T, selId, themeId, renderer, mine }: what the app has now, read only when a report is built.
 //               The build stamp (build.json beside the game: { commit, when, pr?, subject?, source }) is fetched once, silently; About
 //               shows `buildLine()` and the report's `build` field carries `buildId()`. onBuild() is called when it has arrived.
 import { VERSION } from './shared/migrate.js';
+import { MONSTERS } from './shared/content/index.js';
 
 export const COMMENT_MAX = 2000, REPORT_MAX = 24 * 1024, LOG_LINES = 30, ACTIONS = 15, ERRORS = 10, LINE_MAX = 300;
 const DRAFT = 'hextable.feedback.draft';
@@ -22,15 +24,46 @@ const WORD = /^[\w.:-]{1,40}$/;
 const clean = (s, n) => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, n);
 const isScalar = (v) => v === null || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && WORD.test(v));
 
-// ---- what is remembered: a ring of shown log lines, a ring of sent actions, the page's errors ----
-export function createRecorder() {
-  const log = [], actions = [], errors = [];
-  const keep = (list, x, n) => { list.push(x); if (list.length > n) list.splice(0, list.length - n); };
+// ---- names never leave ----
+// Every line of the log is written with the names of this table in it. Before it is kept, each name this client has in view is replaced by a
+// stable placeholder: a player's moniker by "Player 2", a party character's name by "Hero 1 (Fighter)", and a creature's name only kept when
+// it is a content entry's own name ("Goblin Warrior"), else "a creature". Names are matched whole (not inside a longer word), in one pass,
+// so a name made of regex characters or one that sits inside ordinary words does no harm and a placeholder is never scrubbed again.
+const escRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function createScrubber(monsterName = (tpl) => MONSTERS[tpl]?.name) {
+  const map = new Map();                                   // lower-cased name -> placeholder
+  let players = 0, heroes = 0, re = null;
+  const add = (name, placeholder) => { const k = String(name ?? '').trim(); if (k.length && !map.has(k.toLowerCase())) { map.set(k.toLowerCase(), placeholder); re = null; } };
   return {
-    // `line` is the app's [text, class, kind]. A line of talk (chat, notes, handouts) is never kept: it may be someone else's words.
-    shown(line) { if (line && line[2] !== 'talk' && typeof line[0] === 'string') keep(log, clean(line[0], LINE_MAX), LOG_LINES); },
+    // What this client has in view now: { S, T } as app.js has them.
+    learn({ S, T }) {
+      for (const n of [T?.you?.name, ...(T?.lobby?.members ?? []).map((m) => m.name), ...(T?.lobby?.pending ?? []).map((m) => m.name), ...Object.values(S?.entities ?? {}).map((e) => e.ownerName)]) if (n && !map.has(String(n).trim().toLowerCase())) add(n, `Player ${++players}`);
+      for (const e of Object.values(S?.entities ?? {})) {
+        if (e.side === 'party' && e.kind === 'pc') add(e.name, `Hero ${++heroes}${e.cls ? ` (${String(e.cls).replace(/[^\w ]/g, '').slice(0, 20)})` : ''}`);
+        else { const base = e.tpl ? monsterName(e.tpl) : null; if (!(base && String(e.name).startsWith(base))) add(e.name, 'a creature'); }
+      }
+    },
+    text(t) {
+      const s = String(t ?? '');
+      if (!map.size) return s;
+      re ??= new RegExp(`(?<![\\p{L}\\p{N}_])(?:${[...map.keys()].sort((a, b) => b.length - a.length).map(escRe).join('|')})(?![\\p{L}\\p{N}_])`, 'giu');
+      return s.replace(re, (m) => map.get(m.toLowerCase()) ?? m);
+    },
+  };
+}
+// Events whose words are someone's own (chat, notes, handouts, scenes, who plays whom, chronicle titles): never recorded.
+const NEVER = /^(say|note|privateNote|claimed|released|checkAsked|chronicle|handout|scene)/;
+
+// ---- what is remembered: a ring of shown log lines, a ring of sent actions, the page's errors ----
+export function createRecorder({ scrub = (t) => t, changed = () => {} } = {}) {
+  const log = [], actions = [], errors = [];
+  const keep = (list, x, n) => { list.push(x); if (list.length > n) list.splice(0, list.length - n); changed(); };
+  return {
+    // `line` is the app's [text, class, kind], `type` the event's. Talk and the events above are never kept.
+    shown(line, type) { if (line && line[2] !== 'talk' && !NEVER.test(type ?? '') && typeof line[0] === 'string') keep(log, clean(scrub(line[0]), LINE_MAX), LOG_LINES); },
     sent(action) { const e = { type: WORD.test(action?.type ?? '') ? action.type : 'other', args: actionArgs(action), answer: 'sent' }; keep(actions, e, ACTIONS); return e; },
-    error(message, at) { keep(errors, { message: clean(message, 200), ...(at ? { at: clean(at, 200) } : {}) }, ERRORS); },
+    answer(entry, text) { entry.answer = clean(scrub(text), 200); changed(); },
+    error(message, at) { keep(errors, { message: clean(scrub(message), 200), ...(at ? { at: clean(at, 200) } : {}) }, ERRORS); },
     log: () => [...log], actions: () => actions.map((a) => ({ ...a })), errors: () => errors.map((e) => ({ ...e })),
     pending: () => actions.filter((a) => a.answer === 'sent'),
   };
@@ -61,20 +94,20 @@ export function buildLine(b, tz) {
   const t = Date.parse(b.when ?? '');
   const when = Number.isNaN(t) ? '' : new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, ...(tz && { timeZone: tz }) }).replace(' at ', ', ');
   const commit = OK_COMMIT.test(b.commit ?? '') ? b.commit.slice(0, 7) : '';
-  const change = Number.isInteger(b.pr) && b.pr > 0 ? `after change #${b.pr}` : '';
+  const change = Number.isInteger(b.pr) && b.pr > 0 && b.pr < 1e7 ? `after change #${b.pr}` : '';
   const tail = [change, commit].filter(Boolean).join(', ');
   return `Build ${when}${when && tail ? ' ' : ''}${tail ? `(${tail})` : ''}`.trim();
 }
 // The same stamp as one short token for a report: "c1d5069 2026-11-15T11:13:26Z #354".
-export const buildId = (b) => (validStamp(b) ? [OK_COMMIT.test(b.commit ?? '') ? b.commit.slice(0, 7) : '', typeof b.when === 'string' && !Number.isNaN(Date.parse(b.when)) ? b.when.slice(0, 20) : '', Number.isInteger(b.pr) && b.pr > 0 ? `#${b.pr}` : ''].filter(Boolean).join(' ').slice(0, 40) : '');
+export const buildId = (b) => (validStamp(b) ? [OK_COMMIT.test(b.commit ?? '') ? b.commit.slice(0, 7) : '', typeof b.when === 'string' && !Number.isNaN(Date.parse(b.when)) ? b.when.slice(0, 20) : '', Number.isInteger(b.pr) && b.pr > 0 && b.pr < 1e7 ? `#${b.pr}` : ''].filter(Boolean).join(' ').slice(0, 40) : '');
 
 // ---- the report ----
-// `facts` is plain data the page gathered (see `gather`); `rec` the recorder; `table` the short hash or null.
-export function buildReport({ comment, kind, include }, facts, rec, table, now = new Date()) {
+// `facts` is plain data the page gathered (see `gather`); `rec` the recorder. Nothing here names the table.
+export function buildReport({ comment, kind, include }, facts, rec, now = new Date()) {
   const r = {
     v: 1, kind, comment: String(comment).trim().slice(0, COMMENT_MAX), sentAt: now.toISOString(), build: facts.build, mode: facts.mode, role: facts.role,
     renderer: clean(facts.renderer, 30), theme: clean(facts.theme, 30), grid: facts.grid, viewport: facts.viewport, touch: facts.touch,
-    ua: clean(facts.ua, 300), lang: clean(facts.lang, 35), ...(table ? { table } : {}),
+    ua: clean(facts.ua, 300), lang: clean(facts.lang, 35),
   };
   if (include) r.context = { log: rec.log(), actions: rec.actions(), fight: facts.fight, character: facts.character, map: clean(facts.map, 60), errors: rec.errors() };
   return fitReport(r);
@@ -87,19 +120,6 @@ export function fitReport(r) {
     if (c.log.length) c.log.shift(); else if (c.actions.length) c.actions.shift(); else c.errors.shift();
   }
   return r;
-}
-
-// A short one-way hash of the table code, so that reports from one table group together and the code itself never leaves.
-export async function hashCode(code) {
-  const text = `hextable-feedback:${code}`;
-  try {
-    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-    return [...new Uint8Array(d)].slice(0, 6).map((b) => b.toString(16).padStart(2, '0')).join('');
-  } catch {                                              // no crypto.subtle on an insecure address: a plain hash still groups
-    let h = 0xcbf29ce4 >>> 0, g = 0x84222325 >>> 0;
-    for (const ch of text) { h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0; g = Math.imul(g ^ (ch.charCodeAt(0) + 7), 0x01000193) >>> 0; }
-    return (h.toString(16).padStart(8, '0') + g.toString(16).padStart(8, '0')).slice(0, 12);
-  }
 }
 
 // What the page knows, as plain data. Reads only what the viewer was shown: their own selected character, the fight as they see it.
@@ -115,7 +135,7 @@ export function gather(look, win = globalThis, build = '') {
     touch: !!(win.matchMedia?.('(pointer: coarse)').matches || win.navigator?.maxTouchPoints > 0), ua: win.navigator?.userAgent ?? '', lang: win.document?.documentElement?.lang || win.navigator?.language || '',
     fight: enc ? { on: true, round: Number.isInteger(enc.round) ? enc.round : null, turn: !slot ? null : slot.someone ? 'unseen' : mine?.(S.entities[slot.id]) ? 'mine' : 'other' } : { on: false },
     character: e && e.kind === 'pc' ? { cls: clean(e.cls ?? '', 40), level: Number.isInteger(e.level) ? e.level : 0, conditions: Object.keys(e.cond ?? {}).slice(0, 20).map((c) => clean(c, 40)) } : null,
-    map: String(S?.map?.id ?? ''), code: T && !T.solo ? T.you?.code ?? null : null,
+    map: String(S?.map?.id ?? ''),
   };
 }
 
@@ -123,7 +143,10 @@ export function gather(look, win = globalThis, build = '') {
 const ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 9h10M7 13h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 
 export function initFeedback({ look, onBuild }) {
-  const rec = createRecorder();
+  const scrubber = createScrubber();
+  const learn = () => { try { const { S, T } = look(); scrubber.learn({ S, T }); } catch { /* nothing in view yet */ } };
+  let live = () => {};                                   // the panel's refresh, once it exists
+  const rec = createRecorder({ scrub: (t) => { learn(); return scrubber.text(t); }, changed: () => live() });
   let stamp = null;                                      // build.json, fetched once; a failure is silent and the report says state-v<N>
   fetch('./build.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((b) => { if (validStamp(b)) { stamp = b; onBuild?.(); } }).catch(() => {});
   addEventListener('error', (ev) => rec.error(ev.message, ev.filename ? `${String(ev.filename).split('/').pop()}:${ev.lineno ?? 0}` : ''));
@@ -143,13 +166,16 @@ export function initFeedback({ look, onBuild }) {
       <div id="fb-kinds" role="radiogroup" aria-label="Kind of feedback">${KINDS.map(([v, w], i) => `<label><input type="radio" name="fb-kind" value="${v}"${i === 0 ? ' checked' : ''}><span>${w}</span></label>`).join('')}</div>
       <label id="fb-inc-label"><input type="checkbox" id="fb-inc" checked> Include what just happened</label>
       <details id="fb-see"><summary>See what will be sent</summary>
-        <p>This is everything that goes with your comment, exactly as it will be sent. It has no names, no table code and nothing you were not shown.</p>
+        <p>This is everything that goes with your comment, as it will be sent (it updates until you press Send, then it is fixed). It has no names of people or their characters and nothing about which table this is, and nothing you were not shown.</p>
+        <p id="fb-dm" class="note" hidden>You are the DM, so the log you are shown can hold things your players have not seen. Untick &ldquo;Include what just happened&rdquo; if this is not for other eyes.</p>
         <pre id="fb-preview" tabindex="0"></pre><p id="fb-build" class="note"></p></details>
       <p id="fb-msg" role="status"></p>
       <div id="fb-actions"><button type="button" id="fb-send">Send</button><button type="button" id="fb-copy" class="quiet">Copy</button></div>
     </div>
-    <div id="fb-done" hidden><p id="fb-thanks" role="status"></p><div id="fb-actions2"><button type="button" id="fb-again" class="quiet">Write another</button><button type="button" id="fb-done-close">Close</button></div></div>`;
-  document.body.append(btn, panel);
+    <div id="fb-done" hidden><p id="fb-thanks" role="status"></p><details id="fb-sent"><summary>What was sent</summary><pre id="fb-sent-pre" tabindex="0"></pre></details><div id="fb-actions2"><button type="button" id="fb-again" class="quiet">Write another</button><button type="button" id="fb-done-close">Close</button></div></div>`;
+  const top = document.getElementById('top');
+  if (top) top.after(btn); else document.body.append(btn);        // right after the header, so the keyboard reaches it early
+  document.body.append(panel);
   const $ = (id) => panel.querySelector('#' + id);
   const text = $('fb-text'), inc = $('fb-inc'), msg = $('fb-msg'), pre = $('fb-preview');
   const kind = () => panel.querySelector('input[name="fb-kind"]:checked').value;
@@ -159,17 +185,21 @@ export function initFeedback({ look, onBuild }) {
   try { const d = JSON.parse(localStorage.getItem(DRAFT)); if (d && typeof d.text === 'string') { text.value = d.text.slice(0, COMMENT_MAX); const r = panel.querySelector(`input[name="fb-kind"][value="${d.kind}"]`); if (r) r.checked = true; } } catch { /* no draft */ }
   const saveDraft = () => { try { text.value ? localStorage.setItem(DRAFT, JSON.stringify({ text: text.value, kind: kind() })) : localStorage.removeItem(DRAFT); } catch { /* storage unavailable */ } };
 
-  let report = null, seq = 0, canSend = true, busy = false;
-  const build = async () => {
-    const n = ++seq, f = gather(look, globalThis, buildId(stamp)), table = f.code ? await hashCode(f.code) : null;
-    const r = buildReport({ comment: text.value || '(your comment)', kind: kind(), include: inc.checked }, f, rec, table);
-    if (n === seq) { report = r; pre.textContent = JSON.stringify(r, null, 1); $('fb-build').textContent = buildLine(stamp); }
+  // The preview follows what the page shows until Send is pressed; then the report is frozen: that object is what is shown and what is posted,
+  // `sentAt` set once. Editing the comment, kind or tick (or closing the thank-you) lets go of it.
+  let frozen = null, canSend = true, busy = false, timer = null;
+  const build = () => {
+    const f = gather(look, globalThis, buildId(stamp));
+    const r = buildReport({ comment: text.value || '(your comment)', kind: kind(), include: inc.checked }, f, rec);
+    pre.textContent = JSON.stringify(r, null, 1); $('fb-build').textContent = buildLine(stamp); $('fb-dm').hidden = f.role !== 'dm';
     return r;
   };
+  const showFrozen = () => { pre.textContent = JSON.stringify(frozen, null, 1); };
+  live = () => { if (timer || panel.hidden || frozen) return; timer = setTimeout(() => { timer = null; if (!panel.hidden && !frozen) build(); }, 120); };      // new lines arrive in bursts
   const count = () => { $('fb-count').textContent = `${text.value.length} / ${COMMENT_MAX}`; };
-  const refresh = () => { count(); saveDraft(); if (!panel.hidden) build(); };
+  const refresh = () => { frozen = null; count(); saveDraft(); if (!panel.hidden) build(); };
   text.addEventListener('input', refresh); inc.addEventListener('change', refresh); $('fb-kinds').addEventListener('change', refresh);
-  $('fb-see').addEventListener('toggle', () => { if ($('fb-see').open) build(); });
+  $('fb-see').addEventListener('toggle', () => { if ($('fb-see').open && !frozen) build(); });
 
   const say = (m, bad) => { msg.textContent = m; msg.className = bad ? 'bad' : ''; };
   // Is there a table server to send to? Asked when the panel opens: on a page with no server (the solo game on its own) only Copy is offered.
@@ -187,14 +217,16 @@ export function initFeedback({ look, onBuild }) {
     if (!text.value.trim()) { say('Write a comment first.', true); text.focus(); return; }
     busy = true; $('fb-send').disabled = true; say('Sending…');
     try {
-      const r = await build();
+      const r = (frozen ??= build());                  // what is shown from now on is exactly this object
+      showFrozen();
       const body = JSON.stringify(r);
       if (new TextEncoder().encode(body).length > REPORT_MAX) throw Object.assign(new Error('That report is too long.'), { final: true });
       const res = await fetch(feedbackUrl(), { method: 'POST', headers: { 'content-type': 'application/json' }, body, credentials: 'omit', cache: 'no-store' });
       let j = null; try { j = await res.json(); } catch { /* not ours */ }
       if (res.status === 201 && j?.ref) {
         try { localStorage.removeItem(DRAFT); } catch { /* nothing to clear */ }
-        text.value = ''; count();
+        $('fb-sent-pre').textContent = JSON.stringify(r, null, 1);
+        frozen = null; text.value = ''; count();
         $('fb-thanks').textContent = `Thank you. Your reference is ${j.ref}.`;
         $('fb-form').hidden = true; $('fb-done').hidden = false; $('fb-done-close').focus();
       } else if (res.status === 429) say('Too many reports from here just now. Wait a minute and try again, or copy it.', true);
@@ -209,7 +241,7 @@ export function initFeedback({ look, onBuild }) {
 
   // Copy: the clipboard API from this click, else select the text so the player can copy it by hand.
   $('fb-copy').onclick = async () => {
-    const r = await build(), t = JSON.stringify(r, null, 1);
+    const r = frozen ?? build(), t = JSON.stringify(r, null, 1);
     try { await navigator.clipboard.writeText(t); return say('Copied. Paste it where you were asked to send feedback.'); } catch { /* fall back */ }
     $('fb-see').open = true;
     const sel = getSelection(), range = document.createRange();
@@ -222,7 +254,7 @@ export function initFeedback({ look, onBuild }) {
   const open = () => {
     if (!panel.hidden) return;
     opener = document.activeElement; panel.hidden = false; btn.setAttribute('aria-expanded', 'true');
-    $('fb-form').hidden = false; $('fb-done').hidden = true; count(); say(''); build(); probe();
+    $('fb-form').hidden = false; $('fb-done').hidden = true; frozen = null; count(); say(''); build(); probe();
     text.focus({ preventScroll: true });
   };
   const close = () => { if (panel.hidden) return; panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); (opener && document.contains(opener) && opener !== document.body ? opener : btn).focus?.({ preventScroll: true }); };
@@ -239,13 +271,13 @@ export function initFeedback({ look, onBuild }) {
 
   return {
     // A line the log was handed to draw: [text, class, kind].
-    shown: (line) => rec.shown(line),
+    shown: (line, type) => rec.shown(line, type),
     // Watch a transport: each action it is sent, and each answer. A refusal is the engine's own text. An answer arrives in the order the
     // actions were sent; an update after an action with no refusal before it counts as accepted.
     attach(T) {
       const send0 = T.send.bind(T), prevError = T.on.error, prevUpdate = T.on.update;
       T.send = (action) => { rec.sent(action); return send0(action); };
-      T.on.error = (m, ...rest) => { const p = rec.pending()[0]; if (p) p.answer = clean(`refused: ${m}`, 200); return prevError?.(m, ...rest); };
+      T.on.error = (m, ...rest) => { const p = rec.pending()[0]; if (p) rec.answer(p, `refused: ${m}`); return prevError?.(m, ...rest); };
       T.on.update = (...a) => { for (const p of rec.pending()) p.answer = 'accepted'; return prevUpdate?.(...a); };
     },
     open, recorder: rec, buildLine: () => buildLine(stamp),

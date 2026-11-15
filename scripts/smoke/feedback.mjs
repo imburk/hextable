@@ -35,6 +35,8 @@ async function soloPass(browser, url, label, opts) {
       await ctx.grantPermissions?.([]).catch(() => {});
       const page = await ctx.newPage();
       run.watch(page);
+      const posted = [];
+      page.on('request', (r) => { if (r.method() === 'POST' && /\/feedback$/.test(r.url())) posted.push(r.postData()); });
       await run.do('the lobby has the icon, clear of the lobby card', async () => {
         await open(page, url);
         await waitShown(page, '#splash', false, 3000);
@@ -108,6 +110,8 @@ async function soloPass(browser, url, label, opts) {
       await run.do('Ctrl+Enter sends it, the thank-you has a reference, and the server stored one line', async () => {
         const before = stored().length;
         await page.fill('#fb-text', 'The smoke test says hello');
+        await page.click('#fb-see summary').catch(() => {});
+        await page.focus('#fb-text');
         await page.keyboard.press('Control+Enter');
         await waitShown(page, '#fb-done');
         const thanks = await page.textContent('#fb-thanks');
@@ -118,6 +122,10 @@ async function soloPass(browser, url, label, opts) {
         const l = now.at(-1);
         if (l.ref !== ref || l.report.comment !== 'The smoke test says hello' || l.report.mode !== 'solo') throw new Error(`the stored line: ${JSON.stringify(l).slice(0, 200)}`);
         await shot(page, `thanks-${phone ? 'phone' : 'wide'}`);
+        // What was sent is exactly what was shown: the thank-you's copy of the frozen report is the body of the POST, field by field.
+        const shownReport = JSON.parse(await page.evaluate(() => document.getElementById('fb-sent-pre').textContent));
+        if (JSON.stringify(shownReport) !== JSON.stringify(l.report)) throw new Error(`the POST differs from what was shown: ${JSON.stringify(shownReport).slice(0, 200)} vs ${JSON.stringify(l.report).slice(0, 200)}`);
+        if (posted.length !== 1 || JSON.stringify(JSON.parse(posted[0])) !== JSON.stringify(shownReport)) throw new Error('the request body is not the shown report');
         await page.click('#fb-done-close'); await waitShown(page, '#fb-panel', false);
         if ((await page.inputValue('#fb-text')) !== '') throw new Error('the draft was kept after sending');
       });
@@ -163,16 +171,27 @@ async function tablePass(browser, url) {
         if (hit.length) throw new Error(`the icon is over: ${hit.join('; ')}`);
         await shot(page, 'table-phone');
       });
-      await run.do('the preview has a table hash and neither the code nor the name; Send stores a table report', async () => {
+      await run.do('the DM claims a character: the "now plays" line does not carry the moniker into a report', async () => {
+        await page.evaluate(() => window.hextable.act({ type: 'claim', entity: 'fighter', user: 'u-other', userName: 'Other-Moniker' }));
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.ownerName === 'Other-Moniker'));
+        await sleep(300);
+        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await page.fill('#fb-text', 'Claimed');
+        await page.click('#fb-see summary');
+        await sleep(300);
+        const txt = await page.textContent('#fb-preview');
+        if (/Smoke Hostname|Other-Moniker/i.test(txt)) throw new Error('a moniker is in the preview');
+        await page.keyboard.press('Escape');
+      });
+      await run.do('the preview has no table code, hash or name; Send stores a table report', async () => {
         await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
         await page.fill('#fb-text', 'Table report');
         await page.click('#fb-see summary');
-        await wait(page, () => { try { return !!JSON.parse(document.getElementById('fb-preview').textContent).table; } catch { return false; } });
         const txt = await page.textContent('#fb-preview');
         if (txt.includes(code)) throw new Error('the table code is in the preview');
         if (/Smoke Hostname/i.test(txt)) throw new Error('the player name is in the preview');
         const r = JSON.parse(txt);
-        if (r.mode !== 'table' || !/^[0-9a-f]{12}$/.test(r.table)) throw new Error(`table facts: ${r.mode} ${r.table}`);
+        if (r.mode !== 'table' || 'table' in r) throw new Error(`table facts: ${r.mode} ${r.table}`);
         await shot(page, 'table-panel-phone');
         await page.click('#fb-send'); await waitShown(page, '#fb-done');
         const l = stored().at(-1);
