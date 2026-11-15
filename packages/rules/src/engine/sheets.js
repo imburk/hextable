@@ -99,6 +99,9 @@ export function remake(s, e, record, sheet, ev) {
   // Gear handed over in play (give, loot) is kept, unless the new sheet changes the gear list itself.
   if (Array.isArray(e.gear) && JSON.stringify(sheet.gear ?? []) === JSON.stringify(e.sheet?.gear ?? [])) fresh.gear = [...e.gear];
   fresh.sheet = sheet;
+  // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's: it comes with it, and only that.
+  delete fresh.pocket;
+  if (e.pocket !== undefined) fresh.pocket = e.pocket;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });
   donned(s, fresh, ev);

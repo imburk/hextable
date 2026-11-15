@@ -19,6 +19,7 @@ import { hiddenFrom } from '../sight.js';
 import { gridOf, col } from '../grid.js';
 import { pocket, unpocket, unpocketForever, vanish } from './resolve.js';
 import { SPELLS } from '../content/index.js';
+import { incapacitatedBy } from '../modifiers.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
 export const BOND_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
@@ -216,8 +217,13 @@ export const handlers = {
     (a.forever === undefined || a.forever === true) || fail('Dismiss it for good with { forever: true }, or leave `forever` out.');
     if (!familiar(e)) {
       a.forever === undefined || fail(`Only a familiar is dismissed forever or to a pocket dimension; ${e.name} goes when its spell ends.`);
-      const fx = e.bond.fx ? effectsOf(s).find((x) => x.id === e.bond.fx) : null;
-      (fx && fx.source === m.id && fx.conc) || fail(`${e.name} can't be dismissed: ${SPELLS[e.bond.source]?.name ?? 'what keeps it'} gives ${m.name} no way to end it early.`);
+      // A spell with a duration that its caster may end (SRD Spells, Duration): Concentration, ended at any time with no
+      // action; or a time span, dismissed with no action required by a caster who is not Incapacitated. An Instantaneous
+      // spell (Find Steed, Animate Dead: its 24 hours of control are the engine's effect, not the spell's duration) is not.
+      const fx = e.bond.fx ? effectsOf(s).find((x) => x.id === e.bond.fx) : null, sp = SPELLS[fx?.spell ?? e.bond.source];
+      const lasts = !!fx && fx.source === m.id && (fx.conc || (!!sp && sp.def.duration !== 'instant' && !fx.bound));
+      lasts || fail(`${e.name} can't be dismissed: ${sp?.name ?? 'what made it'} is instantaneous, so it does not end when ${m.name} wishes.`);
+      if (!fx.conc) { const by = incapacitatedBy(m); !by || fail(`${m.name} is ${by}, and a spell is dismissed only by a caster who isn't Incapacitated.`); }
       endEffect(s, ev, fx, `${m.name} dismissed ${e.name}`);
       return;                                        // settleBonds vanishes it (`ended`) after the action
     }
@@ -238,6 +244,8 @@ export const handlers = {
     const m = ent(s, a.actor); control(s, m, ctx);
     typeof a.id === 'string' || fail('Name the familiar ({ id }).');
     const p = m.pocket && typeof m.pocket === 'object' && !Array.isArray(m.pocket) && Object.hasOwn(m.pocket, a.id) ? m.pocket[a.id] : null;
+    // Its id is no one else's in the meantime (ids come from `seq`, so it never is; checked all the same).
+    if (p && Object.hasOwn(s.entities, a.id)) fail(`${s.entities[a.id].name} already has that id: ${p.name} can't come back. The DM's to sort out.`);
     if (!p) {
       // Not in this master's pocket: answered as `dismiss` answers a creature that is not its companion, so a foe's bond
       // or pocket is never told to a player.

@@ -13,6 +13,7 @@ import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
+import { LIGHTS } from '../content/lights.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, partyOf, pocketOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
@@ -1220,12 +1221,20 @@ export function pocket(s, m, e, ev) {
   settleSeen(s, e, ev, 'went to a pocket dimension');
   for (const x of Object.values(s.entities)) if (x.follow === e.id) unfollow(s, x, ev);
   if (e.follow) unfollow(s, e, ev);
+  const lit = e.light?.item && LIGHTS[e.light.item] ? LIGHTS[e.light.item].name : null;
+  if (lit) e.gear = [...(Array.isArray(e.gear) ? e.gear : []), lit];
+  else if (e.light) ev.push({ type: 'manual', actor: null, name, partial: true, text: `${name} carried a light (${e.light.bright} ft bright, ${e.light.dim} ft dim) that is no named item. It went to a pocket dimension without it: the DM sets the light down in its space if it should go on shining.` });
   leaveGear(s, e, ev, !seen, 'went to a pocket dimension');
   e.gear = [];
   if (Array.isArray(e.sheet?.items)) { e.sheet.items = []; delete e.sheet.attuning; }
   for (const c of LEFT_IN_POCKET) if (e.cond) delete e.cond[c];
   delete e.hiding; delete e.away;
-  const theirs = outOfOrder(s, e);
+  // A light it carried is one of the things it carried: it stays too (leaveGear puts a torch or lamp by name on the pile).
+  delete e.light;
+  const fought = inFight(s, e.id), theirs = outOfOrder(s, e);
+  // A foe the party saw leave a fight counts toward its XP as one that vanished does (A3); back in the fight's order before
+  // the end, it is counted there and not twice (rewards.js, concludeFight).
+  if (fought && seen && e.side === 'foe') (s.encounter.gone ??= []).push({ id: e.id, name, shown: seenName(e), tpl: e.tpl ?? null });
   delete s.entities[e.id];
   if (!m.pocket || typeof m.pocket !== 'object' || Array.isArray(m.pocket)) m.pocket = {};
   m.pocket[e.id] = e;
@@ -1291,6 +1300,12 @@ function raise(s, m, step, src, ev) {
     // As the DM's `remove` does, and what was still on it ends as for a creature that vanished where the party saw it.
     settleSeen(s, t, ev, 'is gone');
     for (const x of Object.values(s.entities)) if (x.bond?.to === t.id) { delete x.bond; ev.push({ type: 'unbonded', id: x.id, from: t.id }); }
+    // A familiar in the dead master's pocket dimension (stage C5c) has nowhere to come back to: the master is no more. It
+    // goes, as dismissed forever, and the DM is told (the SRD says nothing of it; the DM may `spawn` it again).
+    for (const x of pocketOf(t)) {
+      ev.push({ type: 'vanished', id: x.id, name: x.name, why: 'master', ...(t.side === 'party' ? { seen: true, party: true } : {}), pocket: true });
+      ev.push({ type: 'manual', actor: null, name: x.name, partial: true, text: `${x.name} was in ${t.name}'s pocket dimension when ${t.name}'s corpse rose, so it is gone with its master's record. The SRD says nothing of this; the DM may spawn it again.` });
+    }
     leaveGear(s, t, ev, !seen, 'rose as undead');
     // On a fight's card that is not yet published it is named as one the party saw go (A3), if it did.
     const due = !s.encounter && s.conclusion && !s.conclusion.published ? s.conclusion.foes.find((f) => f.id === t.id && !f.gone) : null;

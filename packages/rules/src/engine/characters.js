@@ -66,6 +66,9 @@ export const handlers = {
     Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed, ...(e.reactions ? { reactions: e.reactions } : {}) });
     for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots already spent stay spent
     if (e.look && !a.record.look) fresh.look = e.look;
+    // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's; a record typed in brings none.
+    delete fresh.pocket;
+    if (e.pocket !== undefined) fresh.pocket = e.pocket;
     s.entities[e.id] = fresh;
     ev.push({ type: 'edited', id: e.id });
     donned(s, fresh, ev);
