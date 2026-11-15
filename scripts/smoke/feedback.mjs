@@ -51,6 +51,20 @@ async function soloPass(browser, url, label, opts) {
         if (hit.length) throw new Error(`the icon is over: ${hit.join('; ')}`);
         await shot(page, `solo-${phone ? 'phone' : 'wide'}`);
       });
+      await run.do('About shows a build line a person can read aloud, and the feedback report carries the same build', async () => {
+        await openTab(page, 'about');
+        await waitShown(page, '#about');
+        await wait(page, () => !!document.getElementById('ab-build'), null, 5000).catch(() => { throw new Error('About has no build line'); });
+        const line = await page.textContent('#ab-build');
+        if (!/^Build \d{1,2} \w{3} \d{4}, \d\d:\d\d/.test(line)) throw new Error(`the build line: ${line}`);
+        const b = await page.evaluate(async () => (await fetch('./build.json')).json());
+        if (!line.includes(b.commit)) throw new Error(`the line ${line} does not name commit ${b.commit}`);
+        await closeMenu(page);
+        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        const r = JSON.parse(await page.textContent('#fb-preview'));
+        if (!r.build.startsWith(b.commit)) throw new Error(`the report's build: ${r.build}`);
+        await page.keyboard.press('Escape');
+      });
       await run.do('it has a visible focus state and is reachable by keyboard', async () => {
         await page.focus('#fb-btn');
         const ring = await page.evaluate(() => { const s = getComputedStyle(document.getElementById('fb-btn')); return `${s.outlineStyle} ${s.outlineWidth}`; });

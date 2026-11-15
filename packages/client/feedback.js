@@ -7,8 +7,10 @@
 // table's state at large, other people's chat, notes or handouts, and no name is sent (the table code only as a short hash).
 //
 //   the model   createRecorder(), actionArgs(), buildReport(), fitReport()   pure: tests drive them with no page
-//   the page    initFeedback({ look }) -> { shown(line), attach(transport), open() }
+//   the page    initFeedback({ look, onBuild }) -> { shown(line), attach(transport), open(), buildLine() }
 //               look() -> { S, T, selId, themeId, renderer, mine }: what the app has now, read only when a report is built.
+//               The build stamp (build.json beside the game: { commit, when, pr?, subject?, source }) is fetched once, silently; About
+//               shows `buildLine()` and the report's `build` field carries `buildId()`. onBuild() is called when it has arrived.
 import { VERSION } from './shared/migrate.js';
 
 export const COMMENT_MAX = 2000, REPORT_MAX = 24 * 1024, LOG_LINES = 30, ACTIONS = 15, ERRORS = 10, LINE_MAX = 300;
@@ -50,6 +52,22 @@ export function actionArgs(action) {
   return out;
 }
 
+// ---- the build stamp ----
+const OK_COMMIT = /^[0-9a-f]{7,40}$/i;
+export const validStamp = (b) => !!b && typeof b === 'object' && (OK_COMMIT.test(b.commit ?? '') || !Number.isNaN(Date.parse(b.when ?? '')));
+// A line a person can read aloud, in the viewer's local time: "Build 15 Nov 2026, 11:13 (after change #354, c1d5069)". `tz` is for tests.
+export function buildLine(b, tz) {
+  if (!validStamp(b)) return '';
+  const t = Date.parse(b.when ?? '');
+  const when = Number.isNaN(t) ? '' : new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, ...(tz && { timeZone: tz }) }).replace(' at ', ', ');
+  const commit = OK_COMMIT.test(b.commit ?? '') ? b.commit.slice(0, 7) : '';
+  const change = Number.isInteger(b.pr) && b.pr > 0 ? `after change #${b.pr}` : '';
+  const tail = [change, commit].filter(Boolean).join(', ');
+  return `Build ${when}${when && tail ? ' ' : ''}${tail ? `(${tail})` : ''}`.trim();
+}
+// The same stamp as one short token for a report: "c1d5069 2026-11-15T11:13:26Z #354".
+export const buildId = (b) => (validStamp(b) ? [OK_COMMIT.test(b.commit ?? '') ? b.commit.slice(0, 7) : '', typeof b.when === 'string' && !Number.isNaN(Date.parse(b.when)) ? b.when.slice(0, 20) : '', Number.isInteger(b.pr) && b.pr > 0 ? `#${b.pr}` : ''].filter(Boolean).join(' ').slice(0, 40) : '');
+
 // ---- the report ----
 // `facts` is plain data the page gathered (see `gather`); `rec` the recorder; `table` the short hash or null.
 export function buildReport({ comment, kind, include }, facts, rec, table, now = new Date()) {
@@ -85,14 +103,13 @@ export async function hashCode(code) {
 }
 
 // What the page knows, as plain data. Reads only what the viewer was shown: their own selected character, the fight as they see it.
-export function gather(look, win = globalThis) {
+export function gather(look, win = globalThis, build = '') {
   const { S, T, selId, themeId, renderer, mine } = look();
   const e = S?.entities?.[selId];
   const enc = S?.encounter;
   const slot = enc?.order?.[enc.turn];
-  const meta = win.document?.querySelector?.('meta[name="hextable-build"]')?.content;
   return {
-    build: clean(meta || `state-v${VERSION}`, 40), mode: T && !T.solo ? 'table' : 'solo', role: T?.you?.role === 'dm' ? 'dm' : 'player',
+    build: clean(build || `state-v${VERSION}`, 40), mode: T && !T.solo ? 'table' : 'solo', role: T?.you?.role === 'dm' ? 'dm' : 'player',
     renderer, theme: themeId, grid: S?.map?.grid === 'square' ? 'square' : 'hex',
     viewport: { w: Math.round(win.innerWidth || 0), h: Math.round(win.innerHeight || 0) },
     touch: !!(win.matchMedia?.('(pointer: coarse)').matches || win.navigator?.maxTouchPoints > 0), ua: win.navigator?.userAgent ?? '', lang: win.document?.documentElement?.lang || win.navigator?.language || '',
@@ -105,8 +122,10 @@ export function gather(look, win = globalThis) {
 // ---- the page ----
 const ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 9h10M7 13h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 
-export function initFeedback({ look }) {
+export function initFeedback({ look, onBuild }) {
   const rec = createRecorder();
+  let stamp = null;                                      // build.json, fetched once; a failure is silent and the report says state-v<N>
+  fetch('./build.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((b) => { if (validStamp(b)) { stamp = b; onBuild?.(); } }).catch(() => {});
   addEventListener('error', (ev) => rec.error(ev.message, ev.filename ? `${String(ev.filename).split('/').pop()}:${ev.lineno ?? 0}` : ''));
   addEventListener('unhandledrejection', (ev) => rec.error(`Unhandled: ${ev.reason?.message ?? ev.reason}`, ''));
 
@@ -125,7 +144,7 @@ export function initFeedback({ look }) {
       <label id="fb-inc-label"><input type="checkbox" id="fb-inc" checked> Include what just happened</label>
       <details id="fb-see"><summary>See what will be sent</summary>
         <p>This is everything that goes with your comment, exactly as it will be sent. It has no names, no table code and nothing you were not shown.</p>
-        <pre id="fb-preview" tabindex="0"></pre></details>
+        <pre id="fb-preview" tabindex="0"></pre><p id="fb-build" class="note"></p></details>
       <p id="fb-msg" role="status"></p>
       <div id="fb-actions"><button type="button" id="fb-send">Send</button><button type="button" id="fb-copy" class="quiet">Copy</button></div>
     </div>
@@ -142,9 +161,9 @@ export function initFeedback({ look }) {
 
   let report = null, seq = 0, canSend = true, busy = false;
   const build = async () => {
-    const n = ++seq, f = gather(look), table = f.code ? await hashCode(f.code) : null;
+    const n = ++seq, f = gather(look, globalThis, buildId(stamp)), table = f.code ? await hashCode(f.code) : null;
     const r = buildReport({ comment: text.value || '(your comment)', kind: kind(), include: inc.checked }, f, rec, table);
-    if (n === seq) { report = r; pre.textContent = JSON.stringify(r, null, 1); }
+    if (n === seq) { report = r; pre.textContent = JSON.stringify(r, null, 1); $('fb-build').textContent = buildLine(stamp); }
     return r;
   };
   const count = () => { $('fb-count').textContent = `${text.value.length} / ${COMMENT_MAX}`; };
@@ -229,6 +248,6 @@ export function initFeedback({ look }) {
       T.on.error = (m, ...rest) => { const p = rec.pending()[0]; if (p) p.answer = clean(`refused: ${m}`, 200); return prevError?.(m, ...rest); };
       T.on.update = (...a) => { for (const p of rec.pending()) p.answer = 'accepted'; return prevUpdate?.(...a); };
     },
-    open, recorder: rec,
+    open, recorder: rec, buildLine: () => buildLine(stamp),
   };
 }

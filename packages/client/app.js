@@ -851,13 +851,16 @@ const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, 
   pick: (id) => { select(id); R.focus(id); refresh(); if (!D.wide) D.close(); },      // on a phone the map is what was asked for
   openSheet: (id) => { select(id); D.open('sheet'); refresh(); } });
 // The drawer holds every panel (drawer.js); what it shows is rendered here once its tab is the one open.
+// The feedback button (feedback.js): a report is built only from what was shown or sent here.
+const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
+
 const D = initDrawer({ prefs, state: () => S, isDM, change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 $('btn-sheet').onclick = () => D.open('sheet');
 $('order').onclick = () => D.open('turns');
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
-const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
+const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version, buildLine: FB.buildLine() }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
 const setTheme = (id) => { if (!THEMES[id]) return; themeId = id; prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); };
 const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM });
 // Where the drawer covers the map, a DM tool that asks for a tap on the map closes it first.
@@ -1014,9 +1017,6 @@ const FM = initFormation({ state: () => S, act, isDM, mine, refresh: () => refre
 const lead = (e) => { pendingLead = e.id; act({ type: 'partyFollow', leader: e.id }); };
 const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { dm: isDM(), mine: mine(e) }) || 'Nobody can be placed yet.'); };
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
-
-// The feedback button (feedback.js): a report is built only from what was shown or sent here.
-const FB = initFeedback({ look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
 // For the browser console, tests and future automation.
 window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; } };

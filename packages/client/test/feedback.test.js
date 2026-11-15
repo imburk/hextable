@@ -82,3 +82,18 @@ test("whose turn it is, as the viewer sees it: mine, someone else's or unseen", 
   assert.equal(f({ id: 'b' }).turn, 'other');
   assert.equal(f({ someone: true }).turn, 'unseen');
 });
+
+test("the build stamp reads aloud in local time, and the report's build token is short", async () => {
+  const { buildLine, buildId, validStamp } = await import(pathToFileURL(join(tmp, 'feedback.js')));
+  const b = { commit: 'c1d5069abcdef', when: '2026-11-15T11:13:26Z', pr: 354, source: 'pages' };
+  assert.equal(buildLine(b, 'UTC'), 'Build 15 Nov 2026, 11:13 (after change #354, c1d5069)');
+  assert.equal(buildLine(b, 'Asia/Tokyo'), 'Build 15 Nov 2026, 20:13 (after change #354, c1d5069)');
+  assert.equal(buildLine({ commit: 'c1d5069', when: '2026-11-15T11:13:26Z' }, 'UTC'), 'Build 15 Nov 2026, 11:13 (c1d5069)');
+  assert.equal(buildLine({ commit: 'c1d5069' }), 'Build (c1d5069)');
+  assert.equal(buildLine({ commit: 'no', when: 'never' }), '');
+  assert.equal(buildLine(null), '');
+  assert.equal(buildId(b), 'c1d5069 2026-11-15T11:13:26Z #354');
+  assert.equal(validStamp({ nothing: 1 }), false);
+  const r = buildReport({ comment: 'x', kind: 'bug', include: false }, { ...FACTS, build: buildId(b) }, createRecorder(), null);
+  assert.equal(REPORT(r), null);
+});

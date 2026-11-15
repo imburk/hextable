@@ -23,6 +23,7 @@ import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
 import { createFeedback, feedbackRoute } from "./feedback.js";
+import { buildInfo } from "./build-info.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
 const DATA = process.env.DATA_DIR || join(process.cwd(), "data");
@@ -189,6 +190,9 @@ const sit = (key, by) => { const n = (live.get(key) ?? 0) + by; if (n > 0) live.
 // Player feedback (feedback.js): kept beside the tables, optionally filed on GitHub too.
 const feedback = createFeedback({ dir: DATA, env: process.env, ...(/^\d+$/.test(process.env.FEEDBACK_MAX_BYTES ?? "") && Number(process.env.FEEDBACK_MAX_BYTES) > 0 && { fileMax: Number(process.env.FEEDBACK_MAX_BYTES) }) });
 
+// Which change this is (build-info.js): from Railway's variables when there are some, else the image's own dist/build.json.
+const build = buildInfo({ file: join(SITE, "build.json"), env: process.env });
+
 // ---------- http ----------
 const server = createServer(async (req, res) => {
   for (const [k, v] of Object.entries(securityHeaders(req))) res.setHeader(k, v);
@@ -204,6 +208,10 @@ const server = createServer(async (req, res) => {
   let path;
   try { path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)); }
   catch { res.writeHead(400).end(); return; }
+  if (path === `${sep}build.json`) {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }).end(JSON.stringify(build));
+    return;
+  }
   if (path === `${sep}api${sep}ping`) {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end('{"ok":true}');
     return;

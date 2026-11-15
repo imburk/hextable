@@ -319,6 +319,13 @@ To also file each report as a GitHub issue labelled `feedback`, set `FEEDBACK_GI
 repository, nothing else). The token is never logged or sent to a client. A failure to file is
 logged and the local line is kept.
 
+## Which build is running (`GET /build.json`)
+
+The server answers `/build.json` itself (`src/build-info.js`): `{ commit, when, pr?, subject?, source: "server", from, started }`.
+The commit and the first line of the commit message come from `RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_COMMIT_MESSAGE`, which Railway
+provides "if the deploy originated from a GitHub trigger" ([Railway variables reference](https://docs.railway.com/variables/reference)); without them
+(`from: "image"`) it is the `dist/build.json` written when the image was built. No other environment variable is read or shown.
+
 ## Table files (assets)
 
 Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/maps-and-objects.md`,

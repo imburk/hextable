@@ -24,8 +24,9 @@ text is selected for the player to copy by hand).
 
 ## What is sent
 
-Always: the comment (at most 2,000 characters), the kind, the time, the build (`state-v<N>`:
-the saved-game version, until the build stamps a commit), solo or table, the sender's role
+Always: the comment (at most 2,000 characters), the kind, the time, the build (the build
+stamp's commit, time and change number, such as `c1d5069 2026-11-15T11:13:26Z #354`; `state-v<N>` if the stamp could not be
+read), solo or table, the sender's role
 (player or DM), renderer, theme, grid kind, viewport size, touch or mouse, the browser's user
 agent, the page's language. At a table, `table`: a 12-hex-digit one-way hash of the table code
 (SHA-256 of a fixed text and the code; a plain hash where the browser has no `crypto.subtle`).
@@ -85,6 +86,19 @@ request has a timeout (10 s; `FEEDBACK_GITHUB_TIMEOUT_MS`), at most four are in 
 failure is logged without the token and never reaches the player, and the local line is kept
 whatever happens. `FEEDBACK_GITHUB_API` (https, or http on this machine) is for tests.
 
+## The build stamp
+
+`/build.json` says which change a running game is: `{ commit, when, pr?, subject?, source }`.
+`scripts/build.mjs` writes `dist/build.json` (from `GITHUB_SHA` and `git log -1`; source `pages`
+under GitHub Actions, `local` otherwise). The table server answers `GET /build.json` itself
+(`packages/server/src/build-info.js`): the commit and subject from Railway's
+`RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_COMMIT_MESSAGE` when they are set, else the image's
+own file, with `source: "server"`, `from` (`railway` or `image`) and `started`. Only those two
+variables are read. The game fetches it once (a failure is silent) and shows, in About and
+small under "See what will be sent", a line such as "Build 15 Nov 2026, 11:13 (after change
+#354, c1d5069)" in the viewer's local time; the report's `build` field is the same stamp.
+On Railway `when` is the time the image was built (the Docker build has no `.git`).
+
 ## Review points
 
 - Nothing hidden can leave through a report: the client builds it from what it displayed or
@@ -105,8 +119,6 @@ whatever happens. `FEEDBACK_GITHUB_API` (https, or http on this machine) is for 
 - A screen for the DM to read reports. They are read in `feedback.jsonl` on the server or as
   GitHub issues.
 - Attachments and screenshots.
-- A commit stamp in the build (`build.mjs` is not part of this job): the report says
-  `state-v<N>`, and the server's own commit is added to the stored line.
 - A configured server address for the solo game on GitHub Pages (below).
 - Seeding the shown log from history on joining a table: lines a player was shown before
   the page loaded, or by a reconnect, are not in the report.
