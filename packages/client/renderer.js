@@ -1,11 +1,12 @@
 // The one way the app gets a renderer (docs/specs/renderer.md, decision 7). `app.js` and `editor.js` use only the
 // members in MEMBERS and nothing else; a test (test/renderer.test.js) reads both files and fails on any other.
 //
-// kind 'gl'   today's hand-written WebGL renderer (render.js), the default.
+// kind 'three' the Three.js renderer (render-three.js, docs/specs/renderer.md R11), the default since R14 step 1 (#348). It is loaded with a
+//             dynamic import() the first time a page asks for it, so a page that chose another renderer never fetches vendor/.
+// kind 'gl'   the hand-written WebGL renderer (render.js). Chosen by `?renderer=gl` or the device preference `hextable.renderer`; R14 step 2
+//             removes it.
 // kind 'none' a renderer that draws nothing and implements the interface: the UI and the rules play without a picture.
 //             Chosen by `?renderer=none` in the address or the device preference `hextable.renderer`.
-// kind 'three' the Three.js renderer (render-three.js, docs/specs/renderer.md R11). Chosen by `?renderer=three` or the same preference.
-//             It is loaded with a dynamic import() only when chosen, so a page that does not choose it never fetches vendor/.
 import { Renderer } from './render.js';
 
 // Methods, then properties, of the interface. Properties are read or set from outside; callbacks are set by the app.
@@ -14,12 +15,12 @@ export const PROPS = ['inset', 'onTap', 'onHover', 'onPoint', 'onDrag', 'onPictu
 export const MEMBERS = [...METHODS, ...PROPS];
 export const KINDS = ['gl', 'none', 'three'];
 
-// Which renderer: the address (`?renderer=none`) first, then the device preference, else 'gl'. An unknown word is 'gl'.
+// Which renderer: the address (`?renderer=gl`) first, then the device preference, else 'three'. An unknown word is 'three'.
 export function rendererKind(search = '', pref) {
   let q = null;
   try { q = new URLSearchParams(search).get('renderer'); } catch { /* no address */ }
   const k = q ?? pref;
-  return KINDS.includes(k) ? k : 'gl';
+  return KINDS.includes(k) ? k : 'three';
 }
 
 // Draws nothing. It keeps what it was given so a test can see it, answers every question "nowhere", and never throws.
@@ -56,25 +57,41 @@ export class EmptyRenderer {
 // The Three.js renderer arrives after the page has asked for it, and `createRenderer` must answer at once. This stands in until it has
 // loaded: calls that set something are kept (the latest of each, and the camera moves in order) and given to it, with the last state shown
 // at once; questions answer "nowhere", as the empty renderer does. If the library or the renderer cannot start (no WebGL 2, a failed
-// import), the default renderer takes the canvas instead, so a bad choice of renderer is never a blank table.
+// import), the table is not left blank: with no WebGL 2 the hand-written renderer takes the canvas at once; if the library did not load
+// or the renderer failed, a plain message says so with a button to the hand-written one (`#gl-status`, shown from the first frame until
+// the library has loaded: "Loading the 3D view").
+function status(text, classic) {
+  const el = typeof document !== 'undefined' && document.getElementById('gl-status');
+  if (!el) return;
+  el.hidden = text === null;
+  if (text === null) return;
+  el.querySelector('#gl-status-text').textContent = text;
+  const b = el.querySelector('#gl-status-classic');
+  b.hidden = !classic;
+  b.onclick = () => { try { localStorage.setItem('hextable.renderer', JSON.stringify('gl')); } catch { /* storage unavailable */ } location.reload(); };
+  el.classList.toggle('failed', !!classic);
+}
+const hasWebgl2 = () => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } };
 export class LazyThree {
   constructor(canvas, labels, theme) {
     this.canvas = canvas; this.labels = labels; this.inner = null; this.dead = false; this.kept = {}; this.moves = []; this.props = { inset: 0, onTap: () => {}, onHover: () => {}, onPoint: null, onDrag: null, onPicture: null, assetUrl: null };
-    this.theme = theme; this.ready = this.#load();
+    this.theme = theme; status('Loading the 3D view\u2026', false); this.ready = this.#load();
   }
   async #load() {
     try {
-      if (!document.createElement('canvas').getContext('webgl2')) throw new Error('WebGL 2 is not available');
+      if (!hasWebgl2()) throw new Error('WebGL 2 is not available');
       const { ThreeRenderer } = await import('./render-three.js');
       if (this.dead) return;
       this.#start(new ThreeRenderer(this.canvas, this.labels, this.kept.setTheme?.[0] ?? this.theme));
     } catch (err) {
       if (this.dead) return;
-      console.warn(`The Three.js renderer could not start (${err.message}); using the default renderer.`);
-      this.#start(new Renderer(this.canvas, this.labels, this.kept.setTheme?.[0] ?? this.theme));
+      console.warn(`The Three.js renderer could not start (${err.message}).`);
+      if (!hasWebgl2()) { status(null); this.#start(new Renderer(this.canvas, this.labels, this.kept.setTheme?.[0] ?? this.theme)); }
+      else status('The 3D view could not be loaded. Check the connection and reload the page, or use the classic renderer.', true);
     }
   }
   #start(r) {
+    status(null);
     Object.assign(r, this.props);
     this.inner = r;
     for (const m of ['setCeiling', 'setHighlights', 'setPins', 'setBars']) if (this.kept[m]) r[m](...this.kept[m]);
@@ -107,8 +124,18 @@ export class LazyThree {
 }
 for (const p of PROPS) Object.defineProperty(LazyThree.prototype, p, { get() { return this.inner ? this.inner[p] : this.props[p]; }, set(v) { this.props[p] = v; if (this.inner) this.inner[p] = v; } });
 
+// The stand-in is also the smoke script's way to the Three.js renderer's insides (`window.hextable.R.cam`, `.floorData`, `.G`, `.actors`
+// ...): a member the stand-in does not have is read from the renderer it holds, as it is the hand-written renderer's own member on `gl`.
+// Only the app's interface (MEMBERS) is used by the app; a test pins that.
+function transparent(lazy) {
+  return new Proxy(lazy, {
+    get(t, k) { if (k in t) { const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; } const v = t.inner?.[k]; return typeof v === 'function' ? v.bind(t.inner) : v; },
+    set(t, k, v) { t[k] = v; return true; },
+  });
+}
+
 export function createRenderer(kind, canvas, labels, theme) {
   if (kind === 'none') return new EmptyRenderer(canvas, labels, theme);
-  if (kind === 'three') return new LazyThree(canvas, labels, theme);
-  return new Renderer(canvas, labels, theme);
+  if (kind === 'gl') return new Renderer(canvas, labels, theme);
+  return transparent(new LazyThree(canvas, labels, theme));
 }
