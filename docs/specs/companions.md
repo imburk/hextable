@@ -691,6 +691,28 @@ Settled in the review of #313:
   `encounterStart` order and `joined`); a foe's companion's entry stays `{ id }`.
 - **No state version bump:** `after` on an entry is optional, and nothing else in the shape changed.
 
+### Turns kept and lost, after C2 (#320)
+
+- **The rule the order keeps:** every creature that is up and stays up acts exactly once a round. Those before
+  the turn going on have had theirs and those after it have not, so nothing that comes back in is seated before
+  the turn, and nobody already past it is moved after it.
+- **Taken back in while the creature whose turn it is was moved to the end (E20, `end`/`endKeep`):** the
+  creature is seated straight behind it in the end block, as one moved there right after it (its record becomes
+  an end record `{ n, keep: false, round }`, the later end records shifted one place on). Before, it was seated
+  at the end of those in their own places, behind the turn, and lost its turn that round (review of #317, round
+  3, M1). Next round it gets its own place back, as any creature moved to the end for one round.
+- **A record of the old form** (`moved[x].after`, from a save written before C2) is seated behind its anchor
+  wherever the turn is, as the old code kept it all round: an anchor that has had its turn means the creature has
+  had its own too, or is taking it (review of #321, B1). Behind an anchor moved to the end it goes into the end
+  block as above. Only if the anchor is gone from the order is it seated behind the creature whose turn it is,
+  and if that is itself, it stays where it stands. Two such records behind each other are seated anchor first.
+  `test/fixtures/old-stepback-saves.json` holds real saves of that code, taken at each turn of a round.
+- **The record keeps its own copies** (`engine.js`, `record`): a timeline entry is a deep copy of its event. The
+  `placed` event held its creature's `pos` object (`dm.js`), so the entry changed with the creature, and undo and
+  redo, which put the state back field by field, could not give the record back as it was (review of #317, round
+  3, L3: redo after a `spawn` and a `place` of the new creature gave a different `to`).
+- **No state version bump:** the shape is unchanged.
+
 ## Amendments of 14 November
 
 The owner's answers of 14 November 2026 (questions 3, 4, 6 and 7 above) change four things in the engine.

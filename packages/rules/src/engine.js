@@ -195,7 +195,10 @@ function record(s, ev) {
   for (const e of ev) {
     if (e.type === 'moved') continue;
     const ids = [e.id, e.actor, e.target, e.by, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
-    s.timeline.push({ t: s.clock, ...e, ...(ids.length ? { unseen: [...new Set(ids)] } : {}) });
+    // A copy all through: an event may hold an object of the state itself (`placed` its creature's `pos`), and
+    // an entry sharing it would change with it; undo and redo, which put the state back field by field, then
+    // could not give the record back as it was (#320).
+    s.timeline.push(structuredClone({ t: s.clock, ...e, ...(ids.length ? { unseen: [...new Set(ids)] } : {}) }));
   }
   return { ok: true, events: ev };
 }
