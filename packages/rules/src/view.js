@@ -12,7 +12,7 @@
 import { HEX, gridOf, col, parse } from './grid.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
 import { concealed } from './space.js';
-import { memoryOf, partyView, sightRule, tileSent } from './vision.js';
+import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
@@ -42,7 +42,7 @@ const seenHp = (e) => (!e.dead && e.hp > 0 ? 1 : 0);      // keeps up(e) true or
 // that it is in a form is sent. Players who saw it change were told so by the `form` event; the
 // view does not remember for them. The party's own forms are in their open records.
 const inForm = (e) => !!e.form && e.side !== 'party';
-export const seenName = (e) => (inForm(e) ? e.form.name ?? e.name : e.name);
+export { seenName };                              // vision.js: the Beast's name for such a creature
 
 function seenRecord(e) {
   const cond = {};
@@ -116,6 +116,10 @@ function turnBeforeUnseen(state, ev) {
   }
   return false;
 }
+
+// A foe on a conclusion card as players are told of it: as they see it now, or, its record gone, the name they
+// were shown when it vanished in their sight (`shown`, resolve.js, vanish).
+const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.id]) : f.shown ?? f.name);
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
@@ -211,7 +215,7 @@ export function playerView(state) {
     entities,
     encounter: viewEncounter(state),
     // The rewards of the last fight: that they are waiting, or what the DM published (rewards.js).
-    conclusion: playerConclusion(state.conclusion, (f) => (state.entities[f.id] ? seenName(state.entities[f.id]) : f.name)),
+    conclusion: playerConclusion(state.conclusion, (f) => foeName(state, f)),
     effects: viewEffects(state),
     scene: viewScene(state),
     ...(sightRule(state) !== 'rooms' ? { sight: structuredClone(shownMap(state).sight) } : {}),
@@ -595,7 +599,7 @@ export function viewEvents(events, state, viewer) {
         if (ev.public === true) out.push(structuredClone(ev));
         break;
       case 'conclusion': {                             // the published rewards, shaped as the player's card (rewards.js)
-        const { id, ...shaped } = playerConclusion({ ...ev, id: ev.fight, published: true }, (f) => (state.entities[f.id] ? seenName(state.entities[f.id]) : f.name));
+        const { id, ...shaped } = playerConclusion({ ...ev, id: ev.fight, published: true }, (f) => foeName(state, f));
         void id;
         out.push({ type: 'conclusion', ...shaped });
         break;

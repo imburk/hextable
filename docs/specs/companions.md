@@ -865,7 +865,8 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   any unseen death does and a seen vanished one counts too.
 - **Reasons.** The owner's answer; a foe's summons are foes. It removes the L3 difference noted in the
   review of #317.
-- **Cost.** One expression in `rewards.js`, the tests that pin `counts: false`, and the notes in C1 and C2.
+- **Cost.** One expression in `rewards.js`, the tests that pin `counts: false`, and the notes in C1 and C2. *As built: also
+  `encounter.gone` (resolve.js, `vanish`) and the `seen` and `shown` rule in `publish` for a foe whose record is gone; see the build notes.*
 
 ### A4, the cap (built, #329)
 
@@ -880,11 +881,20 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   pack monster, so it is 0 and stays 0. The DM may untick any foe, as before.
 - **A3, a foe the party saw vanish.** A seen vanish takes the record away (resolve.js, `vanish`), so a foe that vanished
   that way in the middle of a fight left nothing for the conclusion. The fight now keeps it: `encounter.gone`, a list
-  of `{ id, name, tpl }` for each foe that left the order by a seen vanish. `concludeFight` adds each one not still
-  among the fight's creatures with `counts: true` and `gone: true`, so it is listed once. At publish a `gone` foe is
-  `seen` (the party was told of it by name, in `vanished`), so the party's card and the chronicle's "Beaten" name it as
-  they name a twin's corpse. A foe that is the last of the fight to fall is counted among the fight's creatures (the
-  fight ends inside the action, before `settleBonds` makes it vanish), so it is never counted twice either.
+  of `{ id, name, shown, tpl }` for each foe that left the order by a seen vanish. `concludeFight` adds each one not
+  still among the fight's creatures with `counts: true` and `gone: true`, so it is listed once. A foe that is the last
+  of the fight to fall is counted among the fight's creatures (the fight ends inside the action, before `settleBonds`
+  makes it vanish), so it is never counted twice either; when it then vanishes seen, `vanish` marks its line in the
+  unpublished conclusion `gone` with its `shown` name (review of #330, M1). At publish a foe whose record is gone is
+  `seen` exactly when it is `gone`: the party saw it vanish. So the party's card and the chronicle's "Beaten" name it
+  as they name a twin's corpse, under `conclusion: 'dm'` and `'auto'` alike.
+- **A3, the name players are shown.** `shown` is `seenName` (moved from view.js to vision.js so the engine can use it)
+  at the moment it vanished: a foe in Wild Shape is the Beast. The card (view.js, `foeName`) and the chronicle use
+  `seenName` of the record if it is there, `shown` if not; `name` stays the DM's (review of #330, M2).
+- **A3, a foe that vanishes alive.** A `gone` foe counts whatever its Hit Points were: a DM-bonded pack monster that
+  vanishes at full health (its master died, a leash, its effect ended) gives its full XP, as the husk an unseen vanish
+  leaves does (that one is made dead). It is "counts as a death does" taken literally; the DM unticks it if not. Summon
+  blocks give 0 either way (review of #330, L1; in DEBT).
 - **A3, unseen.** The husk an unseen vanish leaves is a dead foe in the order and counts as any unseen death does; it
   is not in `gone`. So seen or unseen, killed or vanished, a foe counts the same, once. Twin runs on hexes and squares
   (companions-xp.test.js): a hidden companion killed unseen (the party blinded under `sight: 'light'`, since a creature
@@ -893,8 +903,10 @@ stage it touches (C2, C5, the conclusion code of C1 and C1's constant). Each fol
   the same XP shares, the same card and the same chronicle.
 - **A3, what players are sent.** `encounter.gone` is never sent: the players' encounter is built field by field
   (`view.js`, viewEncounter). `gone` on a conclusion foe is the DM's only (`playerConclusion` sends id, name, counts).
-- **A4.** `BOND_MAX` (`engine/companions.js`) is `SUMMON_MOST` (`schema.js`, 30), so one number stands for both the
-  master's cap and the most one summon step makes. `roomForCompanions(s, m, n)` is the one check and the one refusal
-  ("Brenna can have at most 30 companions."), used by the DM's `bond` and by a cast's summon (casting.js).
-- **No state version bump.** `encounter.gone` and a conclusion foe's `gone` are optional; a save without them loads and
+- **A4.** `BOND_MAX` is `SUMMON_MOST` (`schema.js`, 30), so one number stands for both the master's cap and the most
+  one summon step makes. `roomForCompanions(s, m, n)` is the one check and the one refusal ("Brenna can have at most 30
+  companions."), used by the DM's `bond` (companions.js) and by a cast's summon (casting.js). It, `BOND_MAX` and
+  `companionsOf` live in `engine/shared.js`, under both handlers (review of #330, L2); `engine/companions.js` re-exports
+  the two it had.
+- **No state version bump.** `encounter.gone` and a conclusion foe's `gone` and `shown` are optional; a save without them loads and
   plays as before (a fight saved in the middle simply has no seen vanish kept from before the change).

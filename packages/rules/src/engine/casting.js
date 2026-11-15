@@ -9,11 +9,10 @@ import { footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, spellStats, tellDM, up } from './shared.js';
+import { able, ask, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, up } from './shared.js';
 import { aimArea, creatures, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, checkEnd, damage, engage, reactAgainst, resolve, startEncounter, summonMade } from './resolve.js';
-import { roomForCompanions } from './companions.js';
 import { roll } from '../rng.js';
 
 // ---------- teleportation ----------
@@ -231,7 +230,7 @@ function evokerFor(e, sp, a, slot, via, targets) {
 // seen), where the creature fits on the floor (or, for a flyer given a height, in the air) and nothing the caster
 // knows of stands; inside the arena if the caster is in a fight. A creature the caster does not know of does not
 // stop it (refusing would tell the player it is there): the creature appears beside it instead (resolve.js).
-// A master has at most BOND_MAX companions (companions.js; owner's question 7), and a companion has none of its own.
+// A master has at most BOND_MAX companions (shared.js; owner's question 7), and a companion has none of its own.
 // Returns { variant?, type?, form?, at: [positions] }, or null for a spell that summons nothing.
 function summonFor(s, e, sp, a, slot, range, ctx) {
   const step = sp.def.effects.find((x) => 'summon' in x);

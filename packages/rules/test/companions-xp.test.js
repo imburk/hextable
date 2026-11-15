@@ -47,7 +47,9 @@ const shares = (s) => [U1, U2].map((u) => json(view(s, u).conclusion?.xp));
 // not, with a goblin (`more`) or alone. The fight is won by killing every foe in it, the wolf first; then the DM
 // publishes the rewards.
 function fight(grid, { bonded, kind, hidden, more = true }) {
-  const s = table(grid), f = s.entities.fighter, out = [];
+  const s = table(grid), f = s.entities.fighter, out = [], live = [];
+  // `live`: what each player is sent of each action, at the time, as the server sends it.
+  out.push = (...rs) => { for (const r of rs) live.push([U1, U2].map((u) => json(viewEvents(r.events, s, u)))); return Array.prototype.push.apply(out, rs); };
   if (hidden) s.settings.sight = "light";
   const mage = spawn(s, "goblin-warrior", spot(s, s.entities.m5.pos, 0, 1), "Hidden Mage");
   hide(s, mage);
@@ -65,7 +67,7 @@ function fight(grid, { bonded, kind, hidden, more = true }) {
   assert.equal(s.encounter, null, "the fight is won");
   const conc = structuredClone(s.conclusion);
   out.push(ok(apply(s, { type: "conclusion", publish: true }, DM)));
-  return { s, pet, conc, out, seen: seenBy(s, out), seq: s.seq };
+  return { s, pet, conc, out, live, seen: seenBy(s, out), seq: s.seq };
 }
 const counted = (c) => c.foes.filter((f) => f.counts);
 
@@ -99,7 +101,7 @@ for (const grid of [null, "square"]) {
     assert.deepEqual(A.conc.xp, B.conc.xp);
     assert.deepEqual(counted(A.conc).map((f) => f.id), counted(B.conc).map((f) => f.id), "the same foes, each once");
     const gone = A.conc.foes.find((f) => f.id === A.pet);
-    assert.deepEqual(gone, { id: A.pet, name: "Grey Pet", tpl: "wolf", xp: CONTENT.monsters.wolf.xp, counts: true, gone: true });
+    assert.deepEqual(gone, { id: A.pet, name: "Grey Pet", tpl: "wolf", xp: CONTENT.monsters.wolf.xp, counts: true, gone: true, shown: "Grey Pet" });
     // The party saw it vanish, so its card names it, as it names the twin's corpse.
     for (const u of [U1, U2]) assert.deepEqual(view(A.s, u).conclusion.foes, view(B.s, u).conclusion.foes);
     const said = (s) => s.timeline.find((e) => e.type === "chronicle" && e.tags?.includes("fight")).text;
@@ -203,3 +205,76 @@ test("the cap is 30 companions per master, one constant and one refusal for the 
   full.entities.x0.vanished = "hp0"; full.entities.x0.dead = true; delete full.entities.x0.bond;
   bond(full, wolf, "cleric");
 });
+
+// ---------- review of #330: the last foe to fall (M1), and a foe in a form (M2) ----------
+
+const drop = (evJson, type) => JSON.stringify(JSON.parse(evJson).filter((e) => e.type !== type));
+const chronicle = (s) => s.timeline.find((e) => e.type === "chronicle" && e.tags?.includes("fight")).text;
+
+for (const grid of [null, "square"]) {
+  const on = grid ? " (squares)" : " (hexes)";
+
+  test(`the last foe to fall, vanishing where the party sees it, is on the card and in the chronicle as its unbonded twin's corpse is${on} (M1)`, () => {
+    const A = fight(grid, { bonded: true, kind: "summon", hidden: false, more: false }), B = fight(grid, { bonded: false, hidden: false, more: false });
+    assert.equal(A.s.entities[A.pet], undefined, "it vanished");
+    assert.equal(A.s.settings.conclusion ?? "dm", "dm", "the DM reviews first: the conclusion is made before it vanishes and published after");
+    for (const u of [U1, U2]) {
+      assert.deepEqual(view(A.s, u).conclusion, view(B.s, u).conclusion, "the card");
+      assert.ok(view(A.s, u).conclusion.foes.some((f) => f.id === A.pet && f.name === "Grey Pet" && f.counts));
+      assert.ok(!json(view(A.s, u)).includes('"gone"') && !json(view(A.s, u)).includes('"shown"'), "neither gone nor shown reaches a player");
+    }
+    assert.equal(chronicle(A.s), chronicle(B.s));
+    assert.match(chronicle(A.s), /Beaten: Grey Pet\./);
+    assert.equal(A.seq, B.seq);
+    // What players are sent, action by action, differs only by the `vanished` they saw (and the twin's corpse on the map).
+    assert.deepEqual(A.live.map((p) => p.map((e) => drop(e, "vanished"))), B.live);
+    assert.ok(A.live.flat().some((e) => JSON.parse(e).some((x) => x.type === "vanished" && x.id === A.pet)));
+    const tl = (s) => [U1, U2].map((u) => JSON.parse(json(viewEvents(s.timeline, s, u))).filter((e) => e.type === "conclusion" || e.type === "chronicle" || e.type === "xp"));
+    assert.deepEqual(tl(A.s), tl(B.s), "the record of the rewards");
+  });
+
+  test(`the last foe to fall unseen stays off the card and out of the chronicle, as its unbonded twin does${on} (M1)`, () => {
+    const A = fight(grid, { bonded: true, kind: "summon", hidden: true, more: false }), B = fight(grid, { bonded: false, hidden: true, more: false });
+    assert.ok(A.s.entities[A.pet].vanished, "a husk");
+    assert.deepEqual(A.seen, B.seen);
+    assert.equal(A.seq, B.seq);
+    for (const u of [U1, U2]) assert.ok(!view(A.s, u).conclusion.foes.some((f) => f.id === A.pet));
+    assert.equal(chronicle(A.s), chronicle(B.s));
+  });
+
+  test(`a foe in Wild Shape that vanishes where the party sees it is named on the card and in the chronicle as the Beast it showed${on} (M2)`, () => {
+    const run = (last) => {
+      const s = table(grid), f = s.entities.fighter, out = [];
+      const sheet = { name: "Mira the Druid", class: "druid", level: 5, subclass: "land", abilities: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 },
+        skills: ["nature", "perception"], choices: { "primal-order": "warden" }, armour: "leather-armor", shield: true, weapons: ["quarterstaff"], spells: ["produce-flame"] };
+      const boss = spawn(s, "goblin-warrior", spot(s, f.pos, 4, 2), "Boss");
+      s.entities.mira = makeEntity(derive(sheet).record, { id: "mira", kind: "npc", side: "foe", pos: { ...spot(s, f.pos, 1, 2), z: 0 } });
+      out.push(ok(apply(s, { type: "feature", actor: "mira", feature: "wild-shape", form: "wolf" }, DM)));
+      assert.ok(s.entities.mira.form, "in a form");
+      bond(s, "mira", boss, { kind: "pet" });
+      s.entities.mira.bond.ends = ["masterDies"];
+      out.push(ok(apply(s, { type: "startEncounter", center: f.pos, radius: 6 }, DM)));
+      const shownName = view(s, U1).entities.mira.name;
+      assert.notEqual(shownName, "Mira the Druid");
+      const foes = s.encounter.order.map((o) => o.id).filter((id) => s.entities[id].side === "foe" && id !== "mira" && id !== boss);
+      // Its master dies first (it vanishes in the fight) or last (after the fight's end).
+      for (const id of last ? [...foes, boss] : [boss, ...foes]) if (s.encounter) out.push(ok(apply(s, { type: "harm", actor: id, amount: 999 }, DM)));
+      assert.equal(s.encounter, null);
+      assert.equal(s.entities.mira, undefined, "it vanished");
+      out.push(ok(apply(s, { type: "conclusion", publish: true }, DM)));
+      return { s, out, shownName };
+    };
+    for (const last of [false, true]) {
+      const { s, out, shownName } = run(last);
+      const dmFoe = s.timeline.find((e) => e.type === "conclusion").foes.find((x) => x.id === "mira");
+      assert.equal(dmFoe.name, "Mira the Druid", "the DM's record keeps its name");
+      for (const u of [U1, U2]) {
+        const sent = json(view(s, u)) + json(viewEvents(s.timeline, s, u)) + out.map((r) => json(viewEvents(r.events, s, u))).join("");
+        assert.ok(!sent.includes("Mira"), `nothing a player gets names it${last ? " (last)" : ""}`);
+        assert.ok(view(s, u).conclusion.foes.some((x) => x.id === "mira" && x.name === shownName));
+      }
+      assert.match(chronicle(s), new RegExp(`Beaten: .*${shownName}`));
+      assert.ok(!chronicle(s).includes("Mira"));
+    }
+  });
+}

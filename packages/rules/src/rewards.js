@@ -13,7 +13,7 @@
 // took part and are alive is a table convention (setting `xpShare`: 'split', or 'full' for each the
 // whole amount); loot is what the DM enters, never rolled.
 import { CONTENT } from './content/index.js';
-import { unknown } from './vision.js';
+import { seenName, unknown } from './vision.js';
 import { itemName } from './derive.js';
 
 export const REWARD_LIMITS = { loot: 40, bonus: 20, name: 60, reason: 80, xp: 1000000, qty: 9999 };
@@ -51,7 +51,7 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
   const xpOf = (tpl) => CONTENT.monsters[tpl]?.xp ?? 0, ids = new Set(who.map((e) => e.id));
   const foes = [
     ...who.filter((e) => e.side === 'foe').map((e) => ({ id: e.id, name: e.name, tpl: e.tpl ?? null, xp: xpOf(e.tpl), counts: !up(e) })),
-    ...(enc.gone ?? []).filter((g) => !ids.has(g.id)).map((g) => ({ id: g.id, name: g.name, tpl: g.tpl, xp: xpOf(g.tpl), counts: true, gone: true })),
+    ...(enc.gone ?? []).filter((g) => !ids.has(g.id)).map((g) => ({ id: g.id, name: g.name, tpl: g.tpl, xp: xpOf(g.tpl), counts: true, gone: true, shown: g.shown })),
   ];
   const c = { id: enc.id, fight: enc.id, result, rounds: enc.round, where: enc.where ?? null, foes, party,
     xp: { base: 0, bonus: [], per: {}, fixed: [] }, loot: [], next: 1, published: false };
@@ -67,7 +67,7 @@ export function concludeFight(s, ev, result, enc, who, land = null) {
 function publish(s, ev, land = null) {
   const c = s.conclusion;
   // Who the party knew of, now: the published record names only those (view.js shapes it per viewer).
-  // One the party saw vanish (`gone`) it knew of: it was told of it by name (the `vanished` event).
+  // One the party saw vanish (`gone`: in the fight, or after the fight's end and before this) it knew of, as `shown`.
   for (const f of c.foes) f.seen = s.entities[f.id] ? !unknown(s, s.entities[f.id]) : !!f.gone;
   for (const id of c.party) {
     const e = s.entities[id], n = c.xp.per[id] ?? 0;
@@ -92,7 +92,8 @@ function publish(s, ev, land = null) {
   }
   c.published = true;
   ev.push({ type: 'conclusion', ...record(c) });
-  const beaten = c.foes.filter((f) => f.counts && f.seen).map((f) => f.name);
+  // Named as players were shown them (vision.js, seenName): the chronicle is public.
+  const beaten = c.foes.filter((f) => f.counts && f.seen).map((f) => (s.entities[f.id] ? seenName(s.entities[f.id]) : f.shown ?? f.name));
   const words = { victory: 'won', ended: 'ended' }[c.result] ?? c.result;
   const per = [...new Set(c.party.map((id) => c.xp.per[id] ?? 0))];
   ev.push({ type: 'chronicle', title: `A fight${c.where ? ` at ${c.where}` : ''}: ${words}`,

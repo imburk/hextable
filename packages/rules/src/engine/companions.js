@@ -7,9 +7,8 @@
 // Bonds made by spells (`fx`, `source`, `ends`, `leash`), no turn at all, and commands come with later
 // stages; until then the DM's bond refuses what the engine would not run. A turn straight after the
 // master's (stage C2) is kept in the fight order (world.js, initiativeSort and followMasters).
-import { ent, control, fail, inFight } from './shared.js';
+import { companionsOf, ent, control, fail, inFight, roomForCompanions } from './shared.js';
 import { followMasters, lookAround, unfollow } from './world.js';
-import { SUMMON_MOST } from '../content/schema.js';
 
 // What a companion is (Decision 1). A DM's bond is a `pet` unless the DM says otherwise.
 export const BOND_KINDS = ['familiar', 'steed', 'summon', 'undead', 'object', 'servant', 'pet'];
@@ -19,18 +18,10 @@ export const BOND_AT0 = ['vanish', 'dies'];
 // What 0 Hit Points does by default: the SRD's familiar, steed, spirits, servant and animated object
 // disappear; undead and ordinary animals die (Decision 4). The DM may say otherwise (`at0`).
 const AT0_BY_KIND = { familiar: 'vanish', steed: 'vanish', summon: 'vanish', servant: 'vanish', object: 'vanish', undead: 'dies', pet: 'dies' };
-// At most this many creatures bonded to one master, however they were bonded: the DM's `bond` and a spell's
-// `summon` (casting.js) alike (owner's question 7; amendment A4). It is the number the content linter lets one
-// summon step make (schema.js, SUMMON_MOST), so no step makes more than a master may have.
-export const BOND_MAX = SUMMON_MOST;
 const FIELDS = ['kind', 'turn', 'orders', 'at0', 'noAttack'];
 
-// A husk left by an unseen vanish (resolve.js, vanishUnseen) has no bond; one kept from before stage C2 is passed by too.
-export const companionsOf = (s, id) => Object.values(s.entities).filter((x) => x.bond?.to === id && !x.vanished);
-// Refused, with the one text for it, unless master `m` has room for `n` more companions.
-export function roomForCompanions(s, m, n = 1) {
-  companionsOf(s, m.id).length + n <= BOND_MAX || fail(`${m.name} can have at most ${BOND_MAX} companions.`);
-}
+// The cap and companionsOf live in shared.js, used by the DM's `bond` here and by a cast's summon (casting.js).
+export { BOND_MAX, companionsOf } from './shared.js';
 
 export const handlers = {
   // { type: 'bond', actor, to, kind?, turn?, orders?, at0?, noAttack? }: the DM binds a creature to a
