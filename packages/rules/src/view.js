@@ -555,6 +555,14 @@ export function viewEvents(events, state, viewer) {
       case 'companionOrder':                           // a before or after choice (A1): the party's own only, as a bond is
         if (cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'next']));
         break;
+      // A command (C5a): the party's own only. A foe's commands are mental and never told, nor that it gave one.
+      case 'commanded':
+        if (cls(ev.by) === 'open' && Array.isArray(ev.ids) && ev.ids.every((id) => cls(id) === 'open')) out.push(structuredClone(pick(ev, ['type', 'by', 'ids', 'order'])));
+        break;
+      // The prompt that a commanded creature's turn is its player's (A2): to that player alone.
+      case 'commandedTurn':
+        if (typeof viewer?.userId === 'string' && ev.to === viewer.userId && cls(ev.id) === 'open' && cls(ev.by) === 'open') out.push(pick(ev, ['type', 'id', 'by', 'order', 'text']));
+        break;
       case 'concentration':
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));
         break;

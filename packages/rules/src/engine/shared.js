@@ -5,6 +5,7 @@ import { FT } from '../space.js';
 import { coverOf, inSight } from '../sight.js';
 import { bounded, incapacitatedBy, modifiers } from '../modifiers.js';
 import { SUMMON_MOST } from '../content/schema.js';
+import { turnKey } from '../durations.js';
 
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
 export const EXPLORE_BUDGET = 300;   // feet per tap while free roaming
@@ -33,16 +34,45 @@ export const ent = (s, id) => s.entities[id] || fail('No such creature.');
 // Who plays a creature: its own player, or for a companion (a creature with a `bond`; engine/companions.js,
 // docs/specs/companions.md, Decision 1) its master's player. A bonded creature has no `owner` of its own, so
 // a player still owns one creature, and a familiar goes to the DM and back with its master. null: the DM's.
+//
+// A companion that takes commands (`orders: 'command'`: Animate Dead, Create Undead, Animate Objects; Decision 6 and
+// amendment A2) is its master's player's in a fight only on a turn its master commanded with a Bonus Action
+// (`commanded`, stamped with that turn by resolve.js, beginTurn); on any other turn, and off its turns, it is the
+// DM's, who plays it on its standing order or, with none, as the lock below allows. Outside a fight (or outside the
+// fight going on) it is its master's player's, as any companion (Decision 6: it moves as any party member).
 export const ownerOf = (s, e) => {
   if (!e) return null;
   if (e.owner) return e.owner;
   const to = e.bond?.to;
-  return (typeof to === 'string' && Object.hasOwn(s?.entities ?? {}, to) && s.entities[to].owner) || null;
+  const who = (typeof to === 'string' && Object.hasOwn(s?.entities ?? {}, to) && s.entities[to].owner) || null;
+  if (who && e.bond.orders === 'command' && s?.encounter && inFight(s, e.id) && !commandedNow(s, e)) return null;
+  return who;
 };
+// Is this its turn, and did its master command it for this turn? (A2.) `commanded.turn` is the turn the command was
+// taken up for, set at the start of the creature's first turn after the command (resolve.js, takeCommand).
+export const commandedNow = (s, e) => {
+  const c = e?.bond?.orders === 'command' ? e.bond.commanded : null;
+  return !!c && typeof c === 'object' && !!s?.encounter && current(s) === e.id && typeof c.turn === 'string' && c.turn === turnKey(s);
+};
+// The lock (Decision 6): a commanded creature with no order standing and no command for this turn "takes the Dodge
+// action and moves only to avoid harm". Whoever plays it (the DM, or the companion brain for the DM) may send only
+// these for it; the rest are what a creature's player or the DM set about it, or answer, not things it does. Whether
+// a move avoids harm is the DM's. Outside the fight going on, a command given there (`at: null`) lifts it too.
+const UNLOCKED = new Set(['move', 'dodge', 'endTurn', 'stand', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+export function commandLock(s, e) {
+  const b = e?.bond;
+  if (b?.orders !== 'command' || (typeof b.standing === 'string' && b.standing)) return false;
+  if (s?.encounter && inFight(s, e.id)) return !commandedNow(s, e);
+  return !(b.commanded && typeof b.commanded === 'object' && b.commanded.at === null);
+}
 export const control = (s, e, ctx) => {
-  if (ctx.role === 'dm') return true;
-  const who = ownerOf(s, e);
-  return (!!who && who === ctx.userId) || fail(`${e.name} isn't yours to control.`);
+  if (ctx.role !== 'dm') {
+    const who = ownerOf(s, e);
+    (!!who && who === ctx.userId) || fail(`${e.name} isn't yours to control.`);
+  }
+  const type = RUN?.action?.type;
+  if (typeof type === 'string' && !UNLOCKED.has(type) && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
+  return true;
 };
 export const fighters = (s) => (s.encounter ? s.encounter.order.map((o) => s.entities[o.id]).filter(Boolean) : []);
 export const ft = (hexes) => `${hexes * FT} ft`;

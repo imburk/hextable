@@ -15,7 +15,7 @@ import { canSee, COVER, coverOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
+import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, partyOf, rollDice, rolledOf, spellStats, tellDM, together, up } from './shared.js';
 import { below, catchUp, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
@@ -213,6 +213,7 @@ export function advanceTurn(s, ev) {
 function beginTurn(s, e, ev) {
   const enc = s.encounter;
   enc.flags = {};
+  const prompt = takeCommand(s, e);                                    // a commanded creature's turn is its master's player's (A2)
   turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
   turnInZones(s, ev, KIT, e, 'turnStart');                            // a zone it starts its turn in (Web)
   const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
@@ -220,12 +221,31 @@ function beginTurn(s, e, ev) {
   e.reactionUsed = false;
   delete e.cond.dodging;
   ev.push({ type: 'turn', id: e.id, round: enc.round });
+  if (prompt) ev.push(prompt);
   recharge(s, e, ev);
   if (e.cond.prone && speed > 0) {                                     // with a Speed of 0 it stays down
     delete e.cond.prone;
     enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
     ev.push({ type: 'stood', id: e.id });
   }
+}
+
+// A command (`command`, companions.js; Decision 6, amendment A2) is for the commanded creature's next turn: at the
+// start of that turn it is stamped with it (`commanded.turn`), and for that turn `ownerOf` gives the master's player
+// (shared.js). Spent once that turn is over: the start of its next turn clears it, as it does a command given in
+// another fight or outside one (`at` not of this fight), so a command never carries into a later fight. Returns the
+// prompt for the master's player ("Brenna's Zombie is yours this turn."), or null when the master has no player.
+function takeCommand(s, e) {
+  const b = e.bond, c = b?.commanded;
+  if (b?.orders !== 'command' || !c || typeof c !== 'object') return null;
+  const key = turnKey(s), fight = typeof c.at === 'string' ? c.at.slice(0, c.at.indexOf(':')) : null;
+  if (c.turn === key) return null;
+  if (c.turn !== undefined || fight !== String(s.encounter.id)) { b.commanded = null; return null; }
+  c.turn = key;
+  const m = s.entities[b.to], to = ownerOf(s, m);
+  if (!to) return null;
+  const text = `${e.name.startsWith(`${m.name}'s `) ? e.name : `${m.name}'s ${e.name}`} is yours this turn.`;
+  return { type: 'commandedTurn', id: e.id, by: m.id, to, ...(c.order ? { order: c.order } : {}), text };
 }
 
 // The end of the current creature's turn, after what its player chose (endTurn, attacks.js, or a
