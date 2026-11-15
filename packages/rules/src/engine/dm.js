@@ -307,6 +307,13 @@ export const handlers = {
   setHp(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can set Hit Points.');
     const e = ent(s, a.actor), hp = Math.max(0, Math.min(e.maxHp, a.hp | 0));
+    // The dead are walked over (they fill no space), so a body may lie where a creature now stands: a rider that died on
+    // its mount lies under the mount (DEBT W18). Brought back there, the two would fill one space with no ride. Refused,
+    // changing nothing: the DM moves one of them first. (The engine does not pick a place for the body to get up in.)
+    if (e.dead && hp > 0) {
+      const G = gridOf(s.map), over = living(s).find((o) => o.id !== e.id && overlapAt(o, o.pos, e, e.pos, G));
+      !over || fail(`${over.name} stands where ${e.name}'s body lies: move one of them before bringing ${e.name} back.`);
+    }
     if (hp > e.hp) { e.dead = false; delete e.remains; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },

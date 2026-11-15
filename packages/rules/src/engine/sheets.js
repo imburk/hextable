@@ -74,13 +74,16 @@ export function remake(s, e, record, sheet, ev) {
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
   const problems = lintRecord(record, { spells: SPELLS });
   problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
-  const body = { size: record.size ?? 'medium' };
+  // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
+  // its way (space.js, `paired`; DEBT W13).
+  const body = { ...e, size: record.size ?? 'medium' };
   (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
   !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
   const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
   const lost = e.maxHp - e.hp;
   fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
-  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13).
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);
