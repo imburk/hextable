@@ -969,6 +969,34 @@ What was settled while building it (`content/schema.js`, the end of the file; te
   outside an overlay), so no cached answer crosses an overlay or outlives a changed def. B5 and B7 no longer need to
   avoid reading a map outside its overlay for the caches' sake.
 
+### Fix round 1 of #389 (the independent review)
+
+- **Numbers (B1).** `HOMEBREW_RANGES` (beside `HOMEBREW_LIMITS` in `content/schema.js`) gives every numeric field a
+  whole-number range, found by the name of the object that holds the number and its key (`area.size`, `step.times`,
+  `speed.*`); a number with no range is refused. Ceilings are about twice the SRD's largest (`area.size` 1,000, `range`
+  10,560,000, `step.times` 10, hit points 1,400); `HOMEBREW_DICE` (50 dice, 100 sides, 140 flat), `HOMEBREW_DURATIONS`
+  and `HOMEBREW_COST` bound the strings. A test computes the SRD's maxima and holds every SRD entry inside, and fails
+  for a numeric field of `HOMEBREW_TYPES` with no range. Only `cr` (eighths) and weights (sixteenths) may be fractions.
+  A pack at every ceiling loads, and a cast of its worst spell takes about 0.1 s. The engine itself still trusts the
+  numbers it is handed (DEBT T35).
+- **Types (M2).** `HOMEBREW_TYPES` gives every field of every shape its type; a wrong type is a plain sentence and the
+  kind's own linter is not run on it. A feature's `grants` are typed only at their top (the grants linter does the
+  rest, with a fallback range of -100 to 100 for its numbers).
+- **Never throws (L2).** `lintEntry` and strict `lintPack` return sentences for any input; the structure pass runs
+  before the kind's linter, and a last `try` turns anything left into a sentence.
+- **Lists and text (L1, L3).** A list is measured (two bytes an element) before it is walked and a list with gaps is
+  refused. Control characters (a line break only in `text` and `dmNotes`), bidirectional, zero-width, tag and separator
+  characters and lone surrogates are refused in every string and key. A name equal to an SRD name of the same kind,
+  after NFKC, case folding, collapsed spaces and a small table of Cyrillic and Greek look-alikes, is refused. Other
+  look-alike scripts are not caught.
+- **The registry (M1, L4, L5).** `overlayOf` refuses an entry id held by two packs, a pack id that is a dash-prefix of
+  another's, and more than 4 packs. `using` takes out any key `fn` added to a lookup (it still throws) and does not
+  mind an overlay entry `fn` deleted. `useSrdReference` (called by `registry.js`) lets strict `lintPack` and `lintEntry`
+  refuse the SRD pack id, ids and names with nothing passed; without the registry loaded only the pack id `srd52` is
+  refused. Ten SRD entries still do not convert to homebrew, as before (the camel and eight other mounts, Contact Other
+  Plane, plate armour's "1,500 GP").
+- **`barriers()`**: 5,000 warm calls with 300 objects took about 44 us each against 39 us on main (about 15 % more).
+
 ## Risks
 
 - **The scoped registry is a workaround, not a design.** It is the cheapest way
