@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, ROOT } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, ROOT } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
@@ -24,6 +24,15 @@ async function monsterPack() {
   Object.assign(m, { id: 'hb-ember-folk-cinderling', name: 'Cinderling', source: 'homebrew:ember-folk', checked: false, text: MARK, hp: 77 });
   m.actions[0].name = CLAW;
   return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'ember-folk', name: 'Ember Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for the smoke test.' }, monsters: [m] });
+}
+
+const KINDS_PACK = readFileSync(new URL('../../packages/rules/test/fixtures/reader-kinds-pack.json', import.meta.url), 'utf8');
+const SEEN_NAMES = /Cinderjaw|Gloomwing|Hollow Reaver|Pack Tactics|Ember Memory/i;     // what only a monster's data would say
+async function hoardPack() {                                              // a pack of kinds the reader cannot read yet, made from two SRD entries
+  const { CONTENT } = await import(pathToFileURL(`${ROOT}packages/rules/src/content/index.js`));
+  const feat = Object.assign(structuredClone(CONTENT.feats.alert), { id: 'hb-hoard-sharp-eyes', name: 'Sharp Eyes', source: 'homebrew:hoard', checked: false });
+  const item = Object.assign(structuredClone(CONTENT.items.defender), { id: 'hb-hoard-bright-blade', name: 'Bright Blade', source: 'homebrew:hoard', checked: false });
+  return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'hoard', name: 'Hoard', version: 1, license: 'CC0', attribution: 'Written for the smoke test.' }, feats: [feat], items: [item] });
 }
 
 async function table(browser, url, label0, hostOpts, playerOpts, tag) {
@@ -276,6 +285,62 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await host.click(`${card} .pm-remove`); await host.click(`${card} .pm-remove`);
         await wait(host, () => !!document.querySelector('#pm .pm-refusal'));
         if (!/in use/i.test(await host.textContent('#pm .pm-refusal'))) throw new Error('no blockers');
+        await closeManager();
+      });
+      await run.do('monster readings: the review shows a collapsed row for each monster, with its tier, and the reading opens', async () => {
+        await openManager();
+        await choose('reader-kinds.json', KINDS_PACK);
+        const t = await host.textContent('#pm-review');
+        if (!/Monsters \(3\)/.test(t) || !/Monsters by tier: 0 auto, 2 assist, 1 manual/.test(t)) throw new Error(`counts: ${t.slice(0, 500)}`);
+        const rows = await host.$$eval('#pm-review .pm-monster', (l) => l.map((d) => ({ open: d.open, lines: d.querySelectorAll('.pm-line').length, tier: !!d.querySelector('.pm-tier'), h: d.querySelector('summary').getBoundingClientRect().height })));
+        if (rows.length !== 3 || rows.some((r) => r.open || r.lines || !r.tier)) throw new Error(`rows ${JSON.stringify(rows)}`);
+        if (rows.some((r) => r.h < 43.5)) throw new Error(`a row is under 44px tall: ${JSON.stringify(rows)}`);
+        await host.evaluate(() => document.querySelector('#pm-review').scrollIntoView());
+        const vh = await host.evaluate(() => innerHeight), gb = await (await host.$('#pm-go')).boundingBox();
+        if (gb.y < 0 || gb.y + gb.height > vh) throw new Error(`Add is not on the screen with the review's top (y ${gb.y}, screen ${vh})`);
+        await host.click('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] summary');       // a tap on the row opens it
+        await wait(host, () => document.querySelectorAll('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] .pm-line').length > 20);
+        const open = await host.textContent('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"]');
+        if (!/Cinderjaw Hound \(Large, monstrosity/.test(open) || !/The DM does these by hand/.test(open) || !/Moving it by its burrow speed/.test(open)) throw new Error(open.slice(0, 400));
+        await shot(host, `homebrew-monster-review-${tag}`);
+      });
+      await run.do('the DM adds it: the pack\'s card has Monsters (3), tiers, and the reading; the player holds nothing of it', async () => {
+        await host.click('#pm-go');
+        await waitShown(host, '.pm-pack[data-pack="rk"]');
+        const card = '.pm-pack[data-pack="rk"]';
+        const t = await host.textContent(card);
+        if (!/3 monsters/.test(t) || !/Monsters by tier: 0 auto, 2 assist, 1 manual/.test(t) || !/Monsters \(3\)/.test(t)) throw new Error(t.slice(0, 400));
+        await host.click(`${card} details.pm-entries >> text=Monsters (3)`);
+        await host.click(`${card} .pm-monster[data-entry="hb-rk-hollow-reaver"] summary`);
+        await wait(host, (c) => document.querySelectorAll(`${c} .pm-monster[data-entry="hb-rk-hollow-reaver"] .pm-line`).length > 10, card);
+        await host.evaluate((c) => document.querySelector(`${c} .pm-monster[data-entry="hb-rk-hollow-reaver"]`).scrollIntoView(), card);
+        await shot(host, `homebrew-monster-card-${tag}`);
+        await sleep(500); await calm(player);
+        await wait(player, () => window.hextable.packs.built.includes('rk'));
+        const kept = JSON.stringify(await player.evaluate(() => window.hextable.packs)), st = await player.evaluate(() => JSON.stringify(window.hextable.state));
+        for (const [what, text] of [['what the page kept', kept], ['a frame it received', got.join('\n')], ['its state', st]]) if (SEEN_NAMES.test(text)) throw new Error(`${what} has the monsters' data`);
+        if (await player.evaluate(() => !!document.querySelector('.pm-monster, #dm-packs .pm-pack') || !!document.querySelector('#pm .pm-monster'))) throw new Error('the player\'s page built a monster row');
+        // the monster is on the table's page for the DM: it can be spawned, in sight of nobody in particular
+        const id = await spawnNear(host, 'hb-rk-cinderjaw', { near: ven, min: 2, name: 'Hound' });
+        if (!id) throw new Error('no spawn');
+        await host.evaluate((i) => window.hextable.act({ type: 'remove', actor: i }), id);
+        await wait(host, (i) => !window.hextable.state.entities[i], id);
+        await closeManager();
+      });
+      await run.do('kinds the reader cannot read are listed by name with one honest line, in the review and on the card', async () => {
+        await openManager();
+        await choose('hoard.json', await hoardPack());
+        const r = await host.textContent('#pm-review');
+        if (!/Items \(1\)/.test(r) || !/Feats \(1\)/.test(r) || !/Bright Blade/.test(r) || !/Sharp Eyes/.test(r)) throw new Error(r.slice(0, 400));
+        if ((r.match(/The game cannot read this kind back yet; you are adding it unread\./g) ?? []).length !== 2) throw new Error(`the honest line: ${r.slice(0, 600)}`);
+        if (await host.$('#pm-review .pm-plain .pm-line')) throw new Error('an unread entry got a reading');
+        await host.click('#pm-go');
+        await waitShown(host, '.pm-pack[data-pack="hoard"]');
+        const card = '.pm-pack[data-pack="hoard"]';
+        await host.evaluate((c) => document.querySelectorAll(`${c} details.pm-unread`).forEach((d) => { d.open = true; }), card);
+        const t = await host.textContent(card);
+        if (!/Bright Blade/.test(t) || !/Sharp Eyes/.test(t) || !/you are adding it unread/.test(t)) throw new Error(t.slice(0, 400));
+        await shot(host, `homebrew-unread-${tag}`);
         await closeManager();
       });
     } finally { await hostCtx.close(); await playerCtx.close(); }

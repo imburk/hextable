@@ -1306,6 +1306,15 @@ What was settled while building `client/packmanager.js` (tests: `packages/client
 - **The review** runs before anything is sent: the file's size (a file over twice the pack limit, 512 KB, is not read: the table reads a pack sent as text up to that), `loadPack`, then each spell's reading from `readEntry` with its tier, counts by tier, the licence and attribution (the author's words, as text) and what the table would do (add, update, nothing). Every string from a file or the table is put on the page with `textContent`. Other kinds are listed by name as not read yet (B13).
 - **Solo** is left (DEBT T51). **The player's reading** opens from the sheet's spell table (`Reading`).
 
+## Build notes: monster readings in the pack manager (#424, part 1)
+
+The DM's manager shows the reader's answer for monsters as it does for spells (`packages/client/packmanager.js`; the smoke pass `homebrew`). Homebrew in solo is the other part of #424 and is not built here.
+
+- **Where.** In the review of a chosen file and on each pack's card in the list: a "Monsters (N)" section, one closed row for each monster (name and tier), and `readEntry('monster', ...)`'s lines when a row is opened. The reading is built when the row is first opened (a monster's is long). The reader's `doesNot` lines are set apart under "The DM does these by hand" (spells too), `problems` under their own heading. Tier counts are given for spells and for monsters ("Monsters by tier: ...").
+- **The DM's page only.** A card builds a monster section only when `isDM()` is true; a player's page keeps and builds nothing of a monster (what it is sent and what the store keeps are unchanged), and its reading view still opens one homebrew spell.
+- **Kinds not read yet.** `isRead(kind)` asks the reader's own `READ_KINDS` through `KIND_NAMES`; nothing in the client lists the kinds. Each such entry is listed by name under its kind with "The game cannot read this kind back yet; you are adding it unread." (once under the kind's heading in the review, once in its closed list on the card).
+- **DEBT T52.** A refusal whose `blockers` start with `conclusion` gets a plain line: close the last fight's summary first (publish it or skip the rewards), then remove again. The server's own words are still shown below it.
+
 ## Build notes: B13, the reader for monsters (#419)
 
 First part of B13 (one kind per pull request). `readEntry("monster", entry)` returns the same answer as for a spell. Items, feats,

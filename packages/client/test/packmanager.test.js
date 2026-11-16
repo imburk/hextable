@@ -11,7 +11,10 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { createPackStore, documentOf, countWords } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
+// a small stand-in for the page: enough of a node to see what text and which classes the manager builds
+globalThis.document = { createElement: (tag) => { const n = { tag, className: '', textContent: '', children: [], style: {}, dataset: {}, attrs: {}, append(...k) { for (const c of k) this.children.push(typeof c === 'string' ? { tag: '#text', textContent: c, children: [] } : c); }, setAttribute(k, v) { this.attrs[k] = v; } }; return n; } };
+const textOf = (n) => (n.children.length ? n.children.map(textOf).join(' ') : n.textContent);
+const { createPackStore, documentOf, countWords, isRead, UNREAD_SAY, readingNode, refusalNode } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
 const { answersPack } = await import(pathToFileURL(join(tmp, 'transport.js')));
 const { SPELLS, MONSTERS, CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 const { hashOf } = await import(pathToFileURL(join(tmp, 'shared/content/packs.js')));
@@ -130,4 +133,29 @@ test('an error frame answers a pack message only when it is about packs', () => 
   assert.equal(answersPack({ error: 'Too many requests. Wait a moment and try again.' }), true);
   assert.equal(answersPack({ error: 'It is not your turn.' }), false);
   assert.equal(answersPack({ error: 'Nobody is there.' }), false);
+});
+
+test('the kinds the reader cannot read are the ones the reader says it cannot read, and the line to say so is one sentence', () => {
+  for (const k of ['spells', 'monsters']) assert.equal(isRead(k), true);
+  for (const k of ['items', 'feats', 'weapons', 'armour', 'objects']) assert.equal(isRead(k), false);
+  assert.equal(isRead('nonsense'), false);
+  assert.equal(UNREAD_SAY, 'The game cannot read this kind back yet; you are adding it unread.');
+});
+
+test('a monster reading is shown as text: its lines, the lines the DM does by hand under their own heading, and any problems', async () => {
+  const { readEntry } = await import(pathToFileURL(join(tmp, 'shared/content/reader.js')));
+  const r = readEntry('monster', withMonster().monsters[0]);
+  const node = readingNode({ ...r, doesNot: ['Moving it by its burrow speed.'], problems: ['<b>x</b> could not be read'] });
+  const all = textOf(node);
+  assert.match(all, /The DM does these by hand/);
+  assert.match(all, /Moving it by its burrow speed\./);
+  assert.match(all, /<b>x<\/b> could not be read/);          // set as text, never as markup
+  assert.ok(node.children.every((c) => c.tag !== 'b'));
+  assert.ok(node.children.filter((c) => c.className === 'pm-line').length >= 5);
+});
+
+test('a refusal about a finished fight\'s conclusion says where to look; other blockers get no such hint', () => {
+  const hint = (b) => textOf(refusalNode({ error: 'in use', blockers: b }));
+  assert.match(hint(['conclusion.foes: hb-sample-ashling']), /Close the last fight.s summary first/);
+  assert.doesNotMatch(hint(['entities.m3 (Ashling): hb-sample-ashling']), /summary first/);
 });
