@@ -319,7 +319,7 @@ export async function martial(browser, url, label, opts) {
         await turnOf(page, ids.Ur); await select(page, ids.Ur);
         await visit(page, 'attacks');
         const rows = await page.$$eval('#ap-attacks [data-row]', (b) => b.map((x) => x.dataset.row));
-        if (rows.join() !== 'atk:greataxe,strike:greataxe,atk:shortbow') throw new Error(`attack rows: ${rows}`);
+        if (rows.join() !== 'atk:greataxe,strike:greataxe,atk:shortbow,atk:unarmed-strike,strike:unarmed-strike') throw new Error(`attack rows: ${rows}`);
         const r = (await reasons(page, '#ap-attacks')).find((x) => x.row === 'strike:greataxe');
         if (!r || !r.seen || !/needs Reckless Attack this turn/.test(r.why)) throw new Error(`no reason on screen: ${JSON.stringify(r)}`);
         await shot('1-brutal-greyed');
