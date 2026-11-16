@@ -1007,7 +1007,7 @@ What was settled while building it (`content/schema.js`, the end of the file; te
   Multiattack), 7 attacks (the marilith), 1 reaction, 5 actions (behir), 10 traits (the vampire); the ceilings are about twice those.
   The heaviest accepted cast at a table of 30 took about 0.1 s and 276 KB of events; the heaviest accepted monster turn
   about 12 ms and 79 KB.
-- **Names.** In strict mode a `name` and a pack name are Latin-script only (see DEBT T38); `text` and `dmNotes` may hold
+- **Names.** In strict mode a `name` and a pack name are Latin-script only (see DEBT T39); `text` and `dmNotes` may hold
   any visible script but no control, bidi, zero-width, tag, filler (U+3164, U+115F, U+1160, U+FFA0, U+2800, U+FFFC) or
   variation-selector character. SRD look-alikes are compared after NFKD, with marks removed, case folded and only letters
   and digits kept ("Fire-ball", "Fire_ball", "Fireball" are one name).

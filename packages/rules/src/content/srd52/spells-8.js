@@ -66,7 +66,7 @@ export const spells8 = [
     target: {"self":true},
     effects: [{"manual":"Control Weather: for up to 8 hours the caster controls the weather within 5 miles; the caster must be outdoors, and the spell ends early if they go indoors. The caster changes precipitation, temperature and wind by moving a current condition one stage up or down on the SRD tables (and can change wind direction); new conditions take 1d4 x 10 minutes to take effect, after which they can be changed again. When the spell ends the weather gradually returns to normal. The DM applies it."}],
     kinds: ["utility"],
-    tier: "manual", checked: false,
+    tier: "manual", checked: true,
     text: "Takes 10 minutes to cast; the caster shifts the weather within 5 miles by stages for up to 8 hours while outdoors.",
   },
   {

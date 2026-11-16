@@ -3,7 +3,8 @@
 // Skeleton and Wolf are not here: they already sit in monsters.js.
 // `checked: true` means every number, dice expression, DC, attack bonus, damage type, condition and distance in the entry was
 // compared with the SRD 5.2.1 stat block text and every hand-written line was read against it; `checked: false` marks the
-// entry where the SRD allows a choice the engine cannot hold (Swarm of Insects: climb or fly, the GM's choice).
+// entry where the SRD allows a choice the engine cannot hold. Swarm of Insects (climb or fly, the GM's choice) was the one;
+// it is checked now, the choice being written in its Speed Notes and Spider Climb traits for the DM.
 // Multiattack (`multiattack`), recharge, daily uses, Bonus Actions and condition immunities have fields now and were
 // filled in by script where the SRD's wording is plain; a Multiattack that involves spellcasting, "if available" or
 // something the DM applies stays a trait's `text`.
@@ -9954,13 +9955,13 @@ export const monsters = [
         id: "speed-notes",
         name: "Speed Notes",
         modifiers: [],
-        text: "The SRD lets the GM choose Climb 20 or Fly 20 for this swarm; the entry gives Fly 20."
+        text: "The SRD lets the GM choose Climb 20 or Fly 20 for this swarm; the entry gives Fly 20. The DM may swap it for Climb 20, and then Spider Climb applies."
       },
       {
         id: "spider-climb",
         name: "Spider Climb",
         modifiers: [],
-        text: "Climbs difficult surfaces, ceilings included, with no ability check."
+        text: "Only if the swarm has a Climb Speed (the DM's swap for Fly): it climbs difficult surfaces, ceilings included, with no ability check. With the entry's Fly 20 it does not apply."
       },
       {
         id: "swarm",
@@ -9998,7 +9999,7 @@ export const monsters = [
       }
     ],
     tier: "assist",
-    checked: false,
+    checked: true,
     text: "A cloud of biting insects."
   },
   {

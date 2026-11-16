@@ -2,8 +2,8 @@
 // Magic Missile, Burning Hands, Cure Wounds, Healing Word and Shield of Faith are the other
 // 1st-level SRD spells; they live in spells.js.
 // `text` is a plain-words description of what the spell does, written for this project.
-// Every entry was compared field by field with the SRD 5.2.1 text. Command stays `checked: false`:
-// the on-disk SRD text has lost its Components and Duration lines, so those two fields are unconfirmed.
+// Every entry was compared field by field with the SRD 5.2.1 text. (Command's Components and Duration lines are lost in
+// the reading-order text but are present in the page-layout text, `srd52.txt`; it was checked against that.)
 // `manual` steps hand the DM what the closed vocabulary cannot say (see schema.js).
 export const spells1 = [
   {
@@ -89,10 +89,10 @@ export const spells1 = [
     time: "action", range: 60, components: ["v"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Command: a creature the caster can see makes a Wisdom save. On a failure, on its next turn it obeys a one-word command: Approach (move toward the caster by the shortest route), Drop (drop what it holds, then its turn ends), Flee (spend its turn moving away), Grovel (fall Prone, then its turn ends) or Halt (do not move or take actions). One more creature per slot level above 1. The DM runs the save and the obedience."}],
+    effects: [{"manual": "Command: a creature the caster can see makes a Wisdom save. On a failure, on its next turn it obeys a one-word command: Approach (move toward the caster by the shortest, most direct route, ending its turn within 5 feet of the caster), Drop (drop what it holds, then its turn ends), Flee (spend its turn moving away from the caster by the fastest available means), Grovel (fall Prone, then its turn ends) or Halt (on its turn it does not move and takes no action or Bonus Action). One more creature per slot level above 1. The DM runs the save and the obedience."}],
     higher: {"slot": {"targets": 1}},
     kinds: ["control"],
-    tier: "manual", checked: false,
+    tier: "manual", checked: true,
     text: "One creature makes a Wisdom save or follows a one-word command (approach, drop, flee, grovel or halt) on its next turn.",
   },
   {
