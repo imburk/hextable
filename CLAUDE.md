@@ -44,7 +44,8 @@ by the engine. Must work on PC, phone and tablet.
   of Magic and Wild Shape, use, check, search, hide), `characters.js`
   (adding, editing, levelling, gear, attunement), `rests.js` (rests, time,
   chronicle, rewards) and `dm.js` (DM tools, the map, light, settings,
-  handouts, scenes). Under them, helpers used by more than one domain, in
+  handouts, scenes) and `companions.js` (the DM's `bond`, a master's `command`,
+  and a familiar's `dismiss` and `recall`; design `docs/specs/companions.md`). Under them, helpers used by more than one domain, in
   layers that import only downwards: `shared.js` (basics: `fail`, `ent`,
   `control`, dice, asking a player) ← `world.js` (moving and fitting,
   regions, objects, hidden creatures, areas and targets, marching) and
@@ -52,11 +53,16 @@ by the engine. Must work on PC, phone and tablet.
   (`makeEntity`, remaking a creature from its sheet) ← `resolve.js` (damage,
   the attack roll, reactions, falls, pushes, teleports, the `KIT` lent to
   `effects.js`, and starting, turning and ending fights). There are no
-  import cycles. Two actions must not share a name: the later spread would
+  import cycles in `engine/`; the rules package has three older ones (two
+  through `content/index.js`, one between `modifiers.js` and `sight.js`) that
+  `packages/rules/test/imports.test.js` pins, and no new one may be added. Two actions must not share a name: the later spread would
   win silently.
 - `packages/rules/src/content` — rules content. `srd52/` is a pack of data
   files; `schema.js` is the closed vocabulary they may use and the linter
-  that enforces it; `index.js` loads packs. `npm run content` prints what is
+  that enforces it; `index.js` loads packs. `registry.js` holds a table's own
+  homebrew pack: `loadPack` checks one, `overlayOf` joins a table's packs,
+  `using` lends them to the content lookups for one synchronous call
+  (`docs/specs/homebrew.md`). `npm run content` prints what is
   entered and at which tier.
 - `packages/client` — the browser app: WebGL renderer, table UI, themes, and
   the transport that talks to either an in-tab engine (solo) or a server.
