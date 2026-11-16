@@ -10,9 +10,7 @@ import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 // ends the walk. Settings lists the keys. A phone (390x844, touch) plays as before and Settings still lays out.
 
 const MAP = squareRoom();
-// SMOKE_SEED=<n> plays the valley of seed n (the game takes a random one: transport.js), so a failing map can be replayed. Only the
-// Math.random() that transport.js makes the seed with is bent; the page's other calls stay random.
-const seeded = (ctx) => (process.env.SMOKE_SEED ? ctx.addInitScript((n) => { const real = Math.random; Math.random = () => (new Error().stack.includes('transport.js') ? n / 1e9 + 1e-10 : real()); }, Number(process.env.SMOKE_SEED)) : null);
+// SMOKE_SEED=<n> replays a map: the runner (scripts/smoke.mjs) bends the seed in every context, see seeded() in lib.mjs.
 const yawNow = (page) => page.evaluate(() => window.hextable.R.cameraAngles().yaw);
 const posOf = (page, id) => state(page, (S, i) => S.entities[i].pos, id);
 const same = (a, b) => a.q === b.q && a.r === b.r;
@@ -35,7 +33,7 @@ const faceAlong = (page, d) => page.evaluate(async (d0) => { const K = await imp
 
 async function desktop(browser, url) {
   await scenario('keyboard movement (desktop 1280x800)', async (run) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await seeded(ctx);
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     try {
       const page = await ctx.newPage();
       run.watch(page);
@@ -283,7 +281,7 @@ async function desktop(browser, url) {
 
 async function classic(browser, url) {
   await scenario('keyboard movement on the classic renderer (?renderer=gl)', async (run) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await seeded(ctx);
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     try {
       const page = await ctx.newPage();
       run.watch(page);
