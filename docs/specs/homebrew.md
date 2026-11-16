@@ -1083,6 +1083,29 @@ What was settled while building `content/dryrun.js`, `scripts/hb.mjs` and `packa
 - **For the client job (B10).** `dryRun` returns raw events; the builder words them with the client's `describe` (or shows
   `summary.text`) and may show `repeated` as "average of N casts". It must call `dryRun` outside any other `using`.
 
+## Build notes: B5 second half, packs on a table, the server (#391)
+
+What was settled while building the server side (`tables.js`, `index.js`, `limits.js`; tests in `packages/server/test/packs.test.js`):
+
+- **One wrapper.** `tables.js` imports the engine, the views, `describeStep` and `migrate` under `raw` names and calls them only in the
+  `scoped engine` block, as `engine.<name>(table, ...)`, which runs `using(cacheOf(table).overlay, ...)`. Every handler except `pack` also
+  runs inside `scoped`, so the nested calls are the no-op re-entry. A test reads the source and fails on a call outside the block, a raw name used outside it, an
+  `engine.` call without a table, or another server file importing the rules (one known exception, DEBT T44).
+- **`pack` runs outside the overlay.** It changes the packs, and `using` refuses a different overlay while one is installed. It checks
+  `installed() === null`, applies `setPacks`, and only then changes `table.packs`; the cache is keyed on id, version and hash, so the next call builds the new overlay.
+- **Order differs from the issue in one place:** `setPacks` is applied before the record is stored (the record is changed only if the engine accepted it), so a failure leaves both as they were.
+- **The server composes `setPacks`.** An `act` of type `setPacks` is refused. After undo, redo and rewind the server sets `state.packs` back from the record, outside the undo history.
+- **In use** is a walk over the state's keys and strings (not the timeline) for ids of the pack's `hb-<id>-` prefix; an update is refused if it drops an id that is in use.
+- **Saved tables** are vetted at start-up with `vetPacks` (the registry's `loadPack`, the claimed id, version and hash, then `overlayOf`); a table that fails is played without its packs and the DM's `packs` message carries `problems`.
+- **Fix round 1 (review of #400).** Saved packs are sanitised at load (`sanitizePacks`): any bad record or set is dropped with a reason, never
+  sent, told to the DM (`dropped`) and `state.packs` is reconciled; a throwing handler is caught per message in `index.js`. A pack whose
+  spell summons a homebrew creature is refused until the owner rules (DEBT T47). The pack budget is the table's and only its seated DM spends it.
+  `packs` is only a list; the data is `packData`, once on add or update and on request. The raw frame is bounded by the DM's frame limit (1 MiB + 4 KB), the
+  text of a pack at 512 KB, the pack at 256 KB by the rules' budget. An update may not drop entries (undo could bring back a creature of a dropped template).
+- **Ruled by the lead (L3):** the action names of a creature a player has seen appear in events as any creature's do; this is accepted.
+- **Not done:** guest packs (B8), the operator's delete and the lobby count (B15), the client (B7), an import (there is none on the server).
+- **Found:** DEBT T44, T45, T46. A homebrew creature's default name and its `tpl` reach players in the state view.
+
 ## Risks
 
 - **The scoped registry is a workaround, not a design.** It is the cheapest way

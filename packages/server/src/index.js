@@ -76,7 +76,9 @@ async function siteFile(target, compress) {
 }
 
 // A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
-// only the DM may send a whole map document.
+// only the DM may send a whole map document. The DM's frame limit, 1 MiB plus the envelope, is also what bounds a pack message before
+// it is parsed: a pack is at most 256 KB of JSON, which as text inside a message is at most twice that once its quotes are escaped,
+// well inside 1 MiB (tables.js then reads a pack text only up to 512 KB and the rules' budget holds the pack to 256 KB).
 const FRAME_MAX = MAX_ACTION_BYTES + 4096;
 const DM_FRAME_MAX = MAX_MAP_ACTION_BYTES + 4096;
 
@@ -151,7 +153,7 @@ function save(t) {
   timer ??= setTimeout(() => { timer = null; flush(); }, 1000);
 }
 
-const tables = createTables({ load, save, loadHistory, exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+const tables = createTables({ load, save, loadHistory, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
@@ -286,7 +288,13 @@ server.on("upgrade", (req, socket) => {
       ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
       return;
     }
-    session.receive(msg);
+    // A handler that throws (a damaged table file, a bug) costs that message an error frame, not the process: the failure is logged
+    // with its stack so it is not hidden, and the socket carries on.
+    try { session.receive(msg); }
+    catch (err) {
+      console.error(`A "${String(msg?.t).slice(0, 20)}" message failed: ${err?.stack ?? err}`);
+      try { ws.send(JSON.stringify({ t: "error", error: "The server could not handle that message." })); } catch { /* the socket is gone */ }
+    }
   };
   ws.onclose = () => { release(); if (peer.code) { const set = peers.get(peer.code); set?.delete(peer); if (set && !set.size) peers.delete(peer.code); } if (seat) { sit(seat, -1); seat = null; } session.disconnect(); };
 });
