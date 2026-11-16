@@ -544,7 +544,7 @@ export const warlock = {
           "id": "pact-of-the-chain",
           "name": "Pact of the Chain",
           "tier": "assist",
-          "text": "You know Find Familiar and cast it as a Magic action without a spell slot (applied). Its special forms and giving up one of your attacks for the familiar to attack are the DM's.",
+          "text": "You know Find Familiar and cast it as a Magic action without a spell slot (applied), with the seven special forms besides the normal ones: Imp, Pseudodragon, Quasit, Skeleton, Sphinx of Wonder, Sprite or Venomous Snake (applied). Giving up one of your attacks for the familiar to attack is the DM's.",
           "grants": {
             "spells": [
               "find-familiar"
@@ -554,7 +554,16 @@ export const warlock = {
                 "find-familiar"
               ],
               "atWill": true,
-              "time": "action"
+              "time": "action",
+              "forms": [
+                "imp",
+                "pseudodragon",
+                "quasit",
+                "skeleton",
+                "sphinx-of-wonder",
+                "sprite",
+                "venomous-snake"
+              ]
             }
           }
         },

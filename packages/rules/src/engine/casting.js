@@ -269,7 +269,10 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   if (step.forms !== undefined) {
     const m = typeof p.form === 'string' && Object.hasOwn(CONTENT.monsters, p.form) ? CONTENT.monsters[p.form] : null;
     !isHomebrew(m) || fail(HOMEBREW_FORM);   // before the filter: a filter never matches one, and the refusal says nothing of its type or rating
-    const fits = m && (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr);
+    // Forms a feature of the caster adds for this spell (`freeCast.forms`, Pact of the Chain; docs/specs/companions.md, C9b): after the
+    // homebrew check above, so a homebrew monster is never one, and the caster's own, whether it casts through the feature or by a slot.
+    const extra = (e.feats ?? []).some((f) => f.freeCast?.spells?.includes(sp.id) && f.freeCast.forms?.includes(p.form));
+    const fits = m && (extra || (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr));
     fits || fail(`Choose a form ${sp.name} can take.`);
     out.form = p.form;
   } else p.form === undefined || fail(`${sp.name} has no choice of form.`);

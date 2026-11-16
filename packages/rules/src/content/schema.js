@@ -1155,9 +1155,15 @@ function lintGrants(g, cls, say) {
 // Dim Light or Darkness), `sureSave` (its caster succeeds on the spell's saves), `maxTemp` (Temporary Hit Point
 // dice at their highest) and `time: 'action'` (cast as a Magic action whatever its casting time).
 const FREE_CAST_FLAGS = ['atWill', 'self', 'dark', 'sureSave', 'maxTemp'];
-const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
+// And (#414, docs/specs/companions.md, amendment C9b), each optional and only on a freeCast of named spells: `forms` (extra
+// pack monsters its caster may choose for a summon of forms), plus the keys below as they are built.
+const FREE_CAST_LISTS = {
+  forms: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((id) => typeof id === 'string' && ID.test(id)) && new Set(v).size === v.length,
+};
+const validFreeCast = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
   || (Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))
-    && Object.keys(x).every((k) => k === 'spells' || (FREE_CAST_FLAGS.includes(k) && x[k] === true) || (k === 'time' && x[k] === 'action'))));
+    && Object.keys(x).every((k) => k === 'spells' || (FREE_CAST_FLAGS.includes(k) && x[k] === true) || (k === 'time' && x[k] === 'action')
+      || (Object.hasOwn(FREE_CAST_LISTS, k) && FREE_CAST_LISTS[k](x[k])))));
 function lintFeature(f, cls, say, ids) {
   const sub = (m) => say(`feature ${f?.id}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
@@ -1465,6 +1471,17 @@ function lintPackCore(doc, opts) {
     }
     const pools = new Set(all.filter((f) => f.uses).map((f) => f.id));
     for (const g of grants) if (g.action?.cost && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
+    // A freeCast's extra keys (#414) need what they change: a summon step of forms, of types, and pack monsters for the forms.
+    if (spells.length) for (const g of grants) {
+      const fc = g.freeCast;
+      if (!fc?.spells) continue;
+      const steps = [];
+      for (const id of fc.spells) walkSteps(spells.find((x) => x.id === id)?.effects, (st) => { if (st && typeof st === 'object' && 'summon' in st) steps.push(st); });
+      if (fc.forms !== undefined) {
+        if (!steps.some((st) => st.forms !== undefined)) say('a freeCast with `forms` needs a spell with a summon step of forms');
+        if (summons !== undefined) for (const id of fc.forms) if (!beasts.has(id)) say(`a freeCast form is not a pack monster: "${id}"`);
+      }
+    }
   }
   // A feat's spell lists are classes of the pack.
   const classIds = new Set(classes.map((c) => c.id));
@@ -1909,6 +1926,7 @@ const SHAPES = {
   proficiencies: { what: 'proficiencies', keys: ['n'] },
   spellPick: { what: 'a spell pick', keys: ['lists', 'abilities', 'cantrips', 'level1'] },
   grants: { what: 'grants', keys: GRANTS },
+  freeCast: { what: 'a freeCast', keys: ['list', 'maxLevel', 'spells', ...FREE_CAST_FLAGS, 'time', ...Object.keys(FREE_CAST_LISTS)] },
   aura: { what: 'an aura', keys: ['range', 'modifiers', 'immune'] },
   map: { what: 'a map', keys: null },
   speedMap: { what: 'speeds', keys: null }, senseMap: { what: 'senses', keys: null }, skillMap: { what: 'skills', keys: null }, saveMap: { what: 'saves', keys: null },
@@ -1931,7 +1949,7 @@ const CHILD = {
   state: { light: 'light' },
   trigger: { effects: 'steps' }, use: { check: 'check', effects: 'steps' }, activate: { effects: 'steps' },
   prerequisite: { abilities: 'anyAbility' },
-  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap' },
+  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast' },
   aura: { range: 'value', modifiers: 'modifier[]' },
   bond: {}, over: { speed: 'speedMap' },
 };
@@ -2026,7 +2044,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100],
   'targets.#': [1, 20], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
-  'bond.range': [5, 1000], 'bond.leash': [5, 1000],
+  'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'byLevel.#': [-40, 40],
@@ -2052,7 +2070,7 @@ const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
 // The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
 // SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
 export const HOMEBREW_LENGTHS = Object.freeze({
-  '*.step': 20, '*.blocks': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  '*.step': 20, '*.blocks': 2, 'freeCast.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
@@ -2318,6 +2336,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   increase: { from: 's[]', points: 'i', max: 'i' },
   proficiencies: { n: 'i' },
   spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
+  freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]' },
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
