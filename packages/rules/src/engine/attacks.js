@@ -1,6 +1,6 @@
 // Attacks and a creature's turn (engine.js): attack, act (a monster's actions), dodge, reaction
 // instructions, endTurn; and the attacks a turn allows (Multiattack, Extra Attack).
-import { actionProfile, stepKind, walk } from '../effects.js';
+import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
@@ -213,6 +213,20 @@ export const handlers = {
     // one at a time, each at a target chosen when it is made. What is not made by the end of
     // the turn is lost.
     s.encounter || fail(`${def.name} is for a fight. Make one of ${e.name}'s attacks to start one.`);
+    // The most attacks one Multiattack may give (effects.js, WORK): more is refused before anything is spent. The SRD's largest is 7.
+    for (const list of Array.isArray(def.multiattack) ? [def.multiattack] : def.multiattack.or) {
+      const n = list.reduce((sum, x) => sum + (Number(x.times) || 0), 0);
+      n <= WORK.attacks || fail(`${def.name} would make ${n.toLocaleString('en-US')} attacks; the engine allows at most ${WORK.attacks} from one Multiattack.`);
+    }
+    // A Multiattack whose attack could never be made (it alone is over the ceiling) is refused as a whole, before the action is
+    // spent, not attack by attack.
+    for (const list of Array.isArray(def.multiattack) ? [def.multiattack] : def.multiattack.or) for (const x of list) for (const id of Array.isArray(x.action) ? x.action : [x.action]) {
+      const part = e.actions.find((y) => y.id === id && !y.multiattack);
+      if (!part) continue;
+      const load = loadOf(part.effects);
+      load.dice <= WORK.dice || fail(`${def.name} is made of ${part.name}, which rolls ${load.dice.toLocaleString('en-US')} dice in one attack; the engine allows at most ${WORK.dice.toLocaleString('en-US')} dice in one action, so the Multiattack is not made and nothing is spent.`);
+      load.steps <= WORK.steps || fail(`${def.name} is made of ${part.name}, which runs ${load.steps.toLocaleString('en-US')} steps in one attack; the engine allows at most ${WORK.steps.toLocaleString('en-US')}, so the Multiattack is not made and nothing is spent.`);
+    }
     need(s, e, 'action');
     const b = s.encounter.budget;
     b.action--;

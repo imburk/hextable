@@ -10,8 +10,9 @@ import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
-import { control, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
-import { aloft, lookAround } from './engine/world.js';
+import { control, current, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
+import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
+import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, settleBonds } from './engine/resolve.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
@@ -156,16 +157,29 @@ function thaw(s, snap) {
   for (const k of Object.keys(snap)) s[k] = k === 'timeline' ? tl : snap[k];
 }
 
+// The work count is switched off however the action ends, a throw included.
 export function apply(s, action, ctx = { role: 'dm' }) {
+  try { return applyInner(s, action, ctx); } finally { stopWork(); }
+}
+function applyInner(s, action, ctx) {
   let ev = [];
+  const was = current(s);
   // A copy is taken only when the action could stop to ask a player (reactions.js, mayAsk), or
   // when it answers one: the rest of the time nothing can pause and this costs nothing.
-  const snap = s.pending || action?.type === 'react' || mayAsk(s) ? freeze(s) : null;
+  // It is also taken for one that could meet the work ceiling (effects.js, WORK), so that it can be refused cleanly.
+  const asks = !!s.pending || action?.type === 'react' || mayAsk(s);
+  const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
+  const snap = asks || heavy ? freeze(s) : null;
+  const putBack = asks || heavy === true;
   setRun({ action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap });
+  startWork();
   try {
     dispatch(s, action, ctx, ev);
+    checkEvents(ev);
   } catch (err) {
+    stopWork();
     delete s.stack;                                  // never leave half an effect behind
+    if (err instanceof WorkLimit) return overWork(s, snap, err, ev, action, was);
     if (err instanceof Pause) {
       // Stop and ask: the game goes back to how it was before the action (the dice seed too), and
       // keeps the action, the answers given so far and the question. Only the player asked and
@@ -178,16 +192,54 @@ export function apply(s, action, ctx = { role: 'dm' }) {
       setRun(null);
       return record(s, ev);
     }
-    if (snap) thaw(s, snap);                         // a refused answer leaves the question waiting, as it was
+    if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
     setRun(null);
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
   }
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
-  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
+  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
+    if (err instanceof WorkLimit) { stopWork(); delete s.stack; return overWork(s, snap, err, ev, action, was); }
+    if (!(err instanceof RuleError)) throw err;
+  }
+  stopWork();
   fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
   return record(s, ev);
+}
+
+// An action ran into the work ceiling (effects.js, WORK). With the copy taken before it, the game goes back to how it
+// was and the action is refused with a sentence: nothing changed, as with any refused action. Without one (the action
+// was not seen to be heavy) the engine cannot undo what it did, and does not pretend: what was done stays done, and
+// a `manual` event says what was not applied, for the DM.
+const words = (id) => String(id).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const nameOf = (s, id) => (typeof id === 'string' && Object.hasOwn(s.entities, id) ? s.entities[id].name : null);
+function overWork(s, snap, err, ev, action, was) {
+  setRun(null);
+  if (snap && action?.type === 'react') {
+    // The answer to a reaction question re-ran the action and it met the ceiling. No answer could ever succeed, so the
+    // question goes with the action: the game is as it was before the action began (the question's number aside), and the DM is told.
+    thaw(s, snap);
+    const orig = s.pending?.action ?? {};
+    delete s.pending;
+    const what = typeof orig.spell === 'string' ? words(orig.spell) : typeof orig.action === 'string' ? words(orig.action) : err.what ?? 'The action';
+    const who = nameOf(s, orig.actor);
+    const actor = typeof orig.actor === 'string' && Object.hasOwn(s.entities, orig.actor) ? orig.actor : null;
+    return record(s, [{ type: 'manual', actor, name: what, text: `${what}${who ? `, cast by ${who},` : ''} would ${err.limit} in one action, which is more than the engine allows. It was not applied at all, and the question it was waiting on is closed: nothing changed, and the table can go on.` }]);
+  }
+  const name = err.what ?? (typeof action?.spell === 'string' ? words(action.spell) : typeof action?.action === 'string' ? words(action.action) : 'An action');
+  if (snap) { thaw(s, snap); return { ok: false, error: `${name} would ${err.limit} in one action, which is more than the engine allows. Nothing was done.`, events: [] }; }
+  const actor = typeof action?.actor === 'string' && Object.hasOwn(s.entities, action.actor) ? action.actor : null;
+  const type = action?.type, round = s.encounter?.round ?? null, now = current(s);
+  // What happened, said as it was: where the turn stands now, and whose part was left out.
+  const on = nameOf(s, err.who);
+  const left = type === 'endTurn' ? (now !== was ? ` The turn passed to ${nameOf(s, now) ?? 'the next creature'}.` : ' The turn did not end: the DM ends it again when the rest is applied.')
+    : type === 'move' || type === 'dash' ? ' The move was not finished: the creature stands where it stopped.' : '';
+  const part = on ? `its effect on ${on} was not applied` : 'the rest of it was not applied';
+  const first = !s.timeline.slice(-400).some((x) => x.type === 'manual' && x.stop && x.stop.name === name && x.stop.round === round);
+  const text = `${name} would ${err.limit} in one action, which is more than the engine allows. The engine stopped it there. What it had done by then (${ev.length} events, listed above) stays done; ${part}, and the DM applies it.${left}${first && round !== null && type === 'endTurn' ? ` Until this round ends it stops the same way for each creature it reaches, and this is the only such note for ${name} this round; the creature each time is the one whose turn it was.` : ''}`;
+  const note = { type: 'manual', actor, name, text, stop: { name, round } };
+  return record(s, first || type !== 'endTurn' ? [...ev, note] : [...ev]);
 }
 
 // The record keeps, with each entry, the creatures the party did not know of when it happened,
