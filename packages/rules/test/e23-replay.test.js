@@ -24,7 +24,9 @@ test("the recorded scenarios are all there", () => {
 for (const sc of scenarios(kit(M))) {
   test(`as on main: ${sc.name}`, () => {
     // Recorded at state version 23; the version has moved since (24, #390) and nothing else in the state: the version is read back as it was and `packs: []` (also new) is left out.
-    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":24,/, '{"version":23,').replace(',"packs":[]', '')));
+    // #440: a built character now also has an Unarmed Strike (the last of its attacks); main did not, so it is left out too.
+    const punch = '\\{"id":"unarmed-strike","name":"Unarmed Strike","type":"melee","bonus":-?\\d+,"damage":"[^"]*","dtype":"bludgeoning","reach":5,"abil":"str"\\}';
+    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":24,/, '{"version":23,').replace(',"packs":[]', '').replace(new RegExp(`"attacks":\\[${punch}\\]`, "g"), '"attacks":[]').replace(new RegExp(`,${punch}`, "g"), "")));
     assert.equal(got.length, REC[sc.name].length, "as many results");
     got.forEach((h, i) => assert.equal(h, REC[sc.name][i], `result ${i} of ${got.length} (the last is the state)`));
   });
