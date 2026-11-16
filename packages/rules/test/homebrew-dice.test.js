@@ -366,3 +366,31 @@ test("#408 part 4: a zone that goes off on entering (30 dice a creature): the ca
   assert.equal(entered, 26, `the zone went off on ${entered} creatures in one move`);
   round(s, overlay);
 });
+
+// ---------- part 5: the ordinary shapes near the new ceilings pass ----------
+test("#408 part 5: ordinary shapes pass: 40d6 on 30 creatures, 8d8 times three rays, the SRD's heaviest casts and breaths, a zone of 20d6 on entering", () => {
+  const cases = [
+    ["a 40d6 area spell on 30 creatures", "spells", boom("40d6", { target: { area: { shape: "sphere", size: 1000 } }, range: 10560000 }), 40],
+    ["8d8 times three rays", "spells", boom("8d8", { target: { creature: { count: 3, repeat: true } }, effects: [{ attack: "ranged", kind: "spell", onHit: [{ damage: "8d8", type: "fire" }] }] }), 48],
+    ["a mass heal of 12d8 on 30 creatures", "spells", boom("1d6", { target: { area: { shape: "sphere", size: 1000 } }, range: 10560000, effects: [{ heal: "12d8" }] }), 360],
+    ["a 50d6 bolt on one creature", "spells", boom("50d6"), 50],
+    ["a zone of 20d6 on entering, 30 creatures at once", "spells", boom("20d6", { duration: "1 minute", target: { area: { shape: "emanation", size: 15 } }, zone: { on: ["enter", "turnEnd"] } }), 600],
+    ["a 26d6 breath on 30 creatures", "monsters", monster({ actions: [{ id: "breath", name: "Breath", text: "x", target: { area: { shape: "cone", size: 60 } }, effects: [{ save: "dex", dc: 20, half: true, onFail: [{ damage: "26d6", type: "fire" }] }] }] }), 26],
+    ["a potion of 10d4+10 healing", "items", potion([{ heal: "10d4+10" }]), 10],
+  ];
+  for (const [what, kind, e, n] of cases) { assert.equal(dice(kind, e), n, what); assert.deepEqual(strict(kind, e), [], what); }
+  // The SRD's own heaviest, copied as homebrew (every SRD entry passes in homebrew-values.test.js): Meteor Swarm, Scorching Ray, Mass Cure Wounds, the Ancient Red Dragon.
+  const copy = (kind, id) => ({ ...structuredClone(CONTENT[kind][id]), id: hb(id), source: SRC, checked: false, name: `Zz ${CONTENT[kind][id].name}` });
+  for (const [kind, id, n] of [["spells", "meteor-swarm", 40], ["spells", "scorching-ray", 40], ["spells", "mass-cure-wounds", 54], ["monsters", "ancient-red-dragon", 26]]) {
+    const e = copy(kind, id);
+    assert.equal(dice(kind, e), n, id);
+    assert.deepEqual(strict(kind, e), [], id);
+  }
+});
+
+test("#408 part 5: what the gate now refuses of ordinary-looking shapes: dice over 24 sides, and a zone that rolls more than 30 dice for each creature entering", () => {
+  refused(strict("spells", boom("1d100")), /dice of 100 sides; they have 2 to 24/);
+  refused(strict("spells", boom("1d30")), /dice of 30 sides/);
+  refused(strict("spells", boom("31d6", { duration: "1 minute", target: { area: { shape: "emanation", size: 15 } }, zone: { on: ["enter"] } })), /\(its zone, going off\) can roll 930 dice/);
+  assert.deepEqual(strict("spells", boom("31d6", { duration: "1 minute", target: { area: { shape: "emanation", size: 15 } }, zone: { on: ["turnStart", "turnEnd"] } })), []);
+});
