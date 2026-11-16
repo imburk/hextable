@@ -77,7 +77,7 @@ The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if t
 As a ranged weapon: an attack up to 30 feet away is rolled normally, one from 31 to 90 feet has Disadvantage (long range), and the engine refuses a target beyond 90 feet. An enemy within 5 feet who can see the attacker also gives Disadvantage.
 A holder who gets a bonus to ranged weapon attacks (a fighting style) adds it.
 Finesse: the wielder uses the better of Strength and Dexterity (Strength on a tie) for the attack roll and the damage roll. A Sneak Attack may be made with it.
-Thrown: the wielder may instead throw it, as a ranged attack with the same attack bonus and the same damage (not the versatile damage). It is rolled normally up to 30 feet, has Disadvantage up to 90 feet, and a target farther off is refused. An enemy within 5 feet who can see the thrower also gives Disadvantage.
+Thrown: it is already a ranged weapon, so the property adds nothing: the engine makes no second attack of it.
 Its mastery property is Graze: a miss still deals damage equal to the ability modifier. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
 It weighs 1 pound. The engine uses no weight for anything: carrying capacity is not counted.
 Its price is 25 GP. The engine sells nothing and uses no price for anything.

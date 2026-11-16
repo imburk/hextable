@@ -85,7 +85,7 @@ test('the lists the linters themselves hold are the ones the reader has words fo
   assert.deepEqual([...keys].sort(), keysOf(OBJECT_FIELDS));
   for (const [kind, shape] of [['weapons', 'weapons'], ['armour', 'armour']]) {
     const m = new RegExp(`${kind}: \\{ what: '[^']*', keys: \\[([^\\]]*)\\]`).exec(read('../src/content/schema.js'));
-    if (m) assert.deepEqual(m[1].match(/'([A-Za-z0-9-]+)'/g).map((x) => x.slice(1, -1)).sort(), keysOf(HOMEBREW_TYPES[shape]), `${kind}: the strict keys`);
+    assert.ok(m, `${kind}: the strict key list is in schema.js`); assert.deepEqual(m[1].match(/'([A-Za-z0-9-]+)'/g).map((x) => x.slice(1, -1)).sort(), keysOf(HOMEBREW_TYPES[shape]), `${kind}: the strict keys`);
   }
 });
 
