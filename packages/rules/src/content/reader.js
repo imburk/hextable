@@ -2554,8 +2554,8 @@ class ArmourReading extends GearReading {
     const x = this.def.stealth;
     if (x === undefined) return this.line('It puts no penalty on Stealth.');
     if (x !== 'disadvantage') return this.bad('`stealth` is "disadvantage" or left out.');
-    this.line('It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.');
-    this.dm('Disadvantage on the wearer\'s Dexterity (Stealth) checks.');
+    this.line('It gives Disadvantage on Dexterity (Stealth) checks. The engine applies this to a wearer built from a sheet that names it (or a magic suit made from it, worn): the Hide action, a Stealth check the DM calls and passive Stealth are made with Disadvantage. A character with no sheet whose gear lists it gets a note for the DM instead, because the engine cannot tell worn from carried.');
+    this.dm('Whether a character with no sheet, whose gear lists this armor, wears it (Disadvantage on its Stealth checks).');
   }
 }
 

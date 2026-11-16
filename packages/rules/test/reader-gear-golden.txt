@@ -151,12 +151,12 @@ Worn, it sets the Armor Class to 14, in place of 10, before the Dexterity modifi
 The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
 The wearer's Dexterity modifier is added to the Armor Class, but at most +2; a modifier below that, a negative one too, is added as it is.
 A wearer whose Strength score is below 13 has 10 feet less Speed. The engine does nothing else about it.
-It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.
+It gives Disadvantage on Dexterity (Stealth) checks. The engine applies this to a wearer built from a sheet that names it (or a magic suit made from it, worn): the Hide action, a Stealth check the DM calls and passive Stealth are made with Disadvantage. A character with no sheet whose gear lists it gets a note for the DM instead, because the engine cannot tell worn from carried.
 It weighs 30 pounds. The engine uses no weight for anything: carrying capacity is not counted.
 Its price is 150 GP. The engine sells nothing and uses no price for anything.
 Not checked against any rulebook.
 Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
-DM: Disadvantage on the wearer's Dexterity (Stealth) checks.
+DM: Whether a character with no sheet, whose gear lists this armor, wears it (Disadvantage on its Stealth checks).
 
 == armour hb-rk-cairn-harness
 "Cairn Harness" (heavy armor).
@@ -165,12 +165,12 @@ Worn, it sets the Armor Class to 17, in place of 10, before the Dexterity modifi
 The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
 Dexterity adds nothing to the Armor Class: the modifier is not used, whatever it is.
 A wearer whose Strength score is below 15 has 10 feet less Speed. The engine does nothing else about it.
-It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.
+It gives Disadvantage on Dexterity (Stealth) checks. The engine applies this to a wearer built from a sheet that names it (or a magic suit made from it, worn): the Hide action, a Stealth check the DM calls and passive Stealth are made with Disadvantage. A character with no sheet whose gear lists it gets a note for the DM instead, because the engine cannot tell worn from carried.
 It weighs 60 pounds. The engine uses no weight for anything: carrying capacity is not counted.
 Its price is 800 GP. The engine sells nothing and uses no price for anything.
 Not checked against any rulebook.
 Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
-DM: Disadvantage on the wearer's Dexterity (Stealth) checks.
+DM: Whether a character with no sheet, whose gear lists this armor, wears it (Disadvantage on its Stealth checks).
 
 == armour hb-rk-stiff-cuirass
 "Stiff Cuirass" (medium armor).
