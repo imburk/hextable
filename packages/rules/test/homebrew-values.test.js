@@ -123,7 +123,7 @@ test("B1: dice have a bounded count, sides and flat part; durations and prices a
   const dmg = (damage) => strict("spells", spell({ effects: [{ save: "dex", onFail: [{ damage, type: "fire" }] }] }));
   assert.deepEqual(dmg(`${HOMEBREW_DICE.count}d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`), []);
   refused(dmg(`${HOMEBREW_DICE.count + 1}d6`), /rolls 51 dice; the most is 50/);
-  refused(dmg("1d101"), /dice of 101 sides/);
+  refused(dmg("1d25"), /dice of 25 sides; they have 2 to 24/);
   refused(dmg("1d6+141"), /adds 141; the most is 140/);
   refused(dmg("99999999999d99999999999"), /dice/);
   refused(strict("spells", spell({ higher: { slot: { damage: "1d6+500" } } })), /adds 500/);
@@ -407,7 +407,7 @@ test("round 2: every list in an entry has a length ceiling, and the SRD is insid
 
 test("round 2: the reviewer's 2,000-attack monster is refused, and the heaviest accepted monster turn and cast stay small and quick", () => {
   const hit = (steps) => ({ id: "a1", name: "Rend", text: "x", target: { creature: { reach: 120 } }, effects: [{ attack: "melee", kind: "weapon", bonus: 40, onHit: steps }] });
-  const dmg = (times) => ({ damage: "50d100+140", type: "slashing", times });
+  const dmg = (times) => ({ damage: "50d24+140", type: "slashing", times });
   const mon = (a1, multi) => monster({ id: "reaver", hp: 1400, actions: [a1, { id: "multi", name: "Multiattack", text: "x", multiattack: multi }] });
   // The review's: 200 entries of 10 attacks, each of 18 damage steps x10.
   const review = mon(hit(Array.from({ length: 18 }, () => dmg(10))), Array.from({ length: 200 }, () => ({ action: "a1", times: 10 })));
@@ -444,9 +444,9 @@ test("round 2: the reviewer's 2,000-attack monster is refused, and the heaviest 
 });
 
 test("round 2: the heaviest accepted cast, at a table of 30 creatures, is quick and small", () => {
-  const worst = spell({ id: "hb-x-worst", level: 9, target: { area: { shape: "sphere", size: 1000 } }, range: 10560000, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }, { damage: "50d100+140", type: "fire", times: 9 }] }] });
+  const worst = spell({ id: "hb-x-worst", level: 9, target: { area: { shape: "sphere", size: 1000 } }, range: 10560000, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d24+140", type: "fire", times: 10 }, { damage: "50d24+140", type: "fire", times: 9 }] }] });
   assert.equal(workOf("spells", worst).work, 600);
-  const over = spell({ id: "hb-x-over", level: 9, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }, { damage: "50d100+140", type: "fire", times: 10 }] }] });
+  const over = spell({ id: "hb-x-over", level: 9, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d24+140", type: "fire", times: 10 }, { damage: "50d24+140", type: "fire", times: 10 }] }] });
   refused(strict("spells", over), /one use \(its cast at its highest level\) can run 630 steps, counting every branch, every repeat and every creature it reaches \(up to 30 at a table\); the most is 600/);
   const r = loadPack(doc({ spells: [worst] }));
   assert.ok(r.ok, r.problems?.join());
@@ -503,7 +503,7 @@ test("round 2: a price is converted to gold pieces and capped at about twice the
 
 // ---------- fix round 3 ----------
 test("round 3: a spell's growth is counted at the top (slot 9, level 20): the reviewer's 180-target spell is refused", () => {
-  const cast = (over) => spell({ id: "hb-x-h", level: 1, range: 10560000, target: { creature: { count: 20 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }] }], ...over });
+  const cast = (over) => spell({ id: "hb-x-h", level: 1, range: 10560000, target: { creature: { count: 20 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "50d24+140", type: "fire", times: 10 }] }], ...over });
   const review = cast({ higher: { slot: { targets: 20 } } });
   assert.equal(workOf("spells", review).work, (20 + 8 * 20) * 11);
   refused(strict("spells", review), /one use \(its cast at its highest level\) can run 1,980 steps/);

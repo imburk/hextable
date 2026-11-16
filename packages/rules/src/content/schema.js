@@ -2041,8 +2041,11 @@ export const HOMEBREW_RANGES = Object.freeze({
 });
 // What a `grants` may hold beyond the fields above (a feature's grants are many shapes; none needs a big number).
 const GRANTS_ANY = [-100, 100];
-// Dice written as a string: how many, how many sides, and the flat part (the SRD's largest are 26, 12 and 70).
-export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 100, flat: 140 });
+// Dice written as a string, one roll: how many, how many sides, and the flat part. The SRD pack's largest, measured over every
+// dice string of every entry (homebrew-dice.test.js computes them): 26 dice (the Ancient Red Dragon's 26d6), 12 sides (Poison
+// Spray's d12) and a flat 70 (Heal). The ceilings are about twice those (#408: the sides were 100, eight times the SRD's, and
+// the cause of "50d100"). What one use rolls in all is the work estimate's to hold (HOMEBREW_WORK.dice, below).
+export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 24, flat: 140 });
 export const HOMEBREW_DURATIONS = Object.freeze({ round: 12, minute: 20, hour: 48, day: 60 });
 export const HOMEBREW_COST = 3000;                // gold pieces: the dearest thing the SRD sells costs 1,500 GP
 const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
