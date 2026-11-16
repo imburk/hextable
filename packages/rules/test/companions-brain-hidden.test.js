@@ -14,6 +14,7 @@ import { test } from "node:test";
 import { aiStep, autoPlays, brainMode } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
 import { view, viewEvents } from "../src/view.js";
+import { apart } from "../src/space.js";
 import { DM, U1, U2, U3, GRIDS, CENTER, SPOTS, ok, json, cellsNear, near, spawn, spawned, table, turnOf, fight } from "./c7-brain-kit.js";
 
 const PLAYERS = [U1, U2, U3];
@@ -193,7 +194,10 @@ for (const grid of GRIDS) {
       // The last place before it where it can stop (a place an ally holds is passed through, not stopped on).
       let j = i - 1;
       while (j >= 0 && occupied.has(j)) j--;
-      assert.deepEqual(went.map((h) => [h.q, h.r]), path.slice(0, j + 1).map((h) => [h.q, h.r]), `point ${i}: it stops on the last place before the lurker`);
+      // With no such place (allies on every cell before it), the nearest place beside it, or no move if it is beside it
+      // already (#372, N2; hidden-information.md section 5).
+      if (j < 0 && i > 0) assert.ok(apart(A.s, A.s.entities[A.wolf], A.s.entities[ga]) <= 1, `point ${i}: it stops beside the lurker: ${json(went)}`);
+      else assert.deepEqual(went.map((h) => [h.q, h.r]), path.slice(0, j + 1).map((h) => [h.q, h.r]), `point ${i}: it stops on the last place before the lurker`);
     }
     assert.ok(tried >= 2, `points of the route tried: ${tried}`);
   });

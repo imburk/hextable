@@ -344,6 +344,71 @@ function capture(s, leader, followers, fresh) {
   leader.formation = { shape: had?.shape ?? 'held', slots: { ...(had?.slots ?? {}), ...slots }, face };
 }
 
+// The ways a party mover has, laid out as if the creatures it does not know of (`lurkers`) were not there.
+const knownWays = (s, e, lurkers) => moveOptions({ ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o))) }, e);
+// A party mover's move laid out on what the party knows (stage C7, review of #368, M2; the re-review, N1 to N3): the route
+// is the one the party can see, as if a creature it does not know of were not there. Refusing the move ("Too far"), or
+// bending the route round it, would tell the players something stands there without saying what. Where that route runs
+// into one, the mover stops on the last place before it where it can stop, and the creature is found (hidden-information.md
+// section 5, as for a move onto its place). Where it can stop nowhere on the route short of it (allies stand on every
+// cell between), it stops on the nearest place beside it that it can reach without going through a creature it does not
+// know of (section 5: "The move stops on the nearest hex beside it"); already beside it, it does not move (section 5);
+// with nowhere at all to stand near it, it stays where it is and the creature is found, as before (N2). It is found only
+// when the mover gets there: a walk cut short on the way (a trap, something noticed, a fight) finds nothing. A creature
+// found on the way by a rule of its own (spotted within ENGAGE_RANGE, or seen under los) is known from then on, so the
+// rest of the way is laid out again from where the mover stands, as main's walk went round it (N3). Whoever follows the
+// mover comes after it, whichever way the move ends (N1). A creature the DM plays walks by what is true, as before.
+function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers) {
+  const G = gridOf(s.map), had = !!s.encounter, path = [e.pos];
+  let left = false;
+  const go = (k) => {
+    if (!left && !fighting && e.follow) unfollow(s, e, ev);
+    left = true;
+    const w = walk(s, e, known, k, ev, fighting, bud ?? undefined);
+    if (w) path.push(...w.slice(1));
+    return w;
+  };
+  for (let legs = 0, most = lurkers.length; legs <= most; legs++) {
+    const steps = route(known, tk);
+    const at = steps.findIndex(({ h }) => lurkers.some((o) => overlapAt(o, o.pos, e, h, G)));
+    if (at === -1) { go(tk); break; }
+    const o = lurkers.find((x) => overlapAt(x, x.pos, e, steps[at].h, G));
+    let stop = at - 1;
+    while (stop >= 0 && !(known.get(key(steps[stop].h))?.canStop)) stop--;
+    let to = stop >= 0 ? steps[stop].h : null;
+    if (!to && apart(s, e, o) > 1) to = besideIt(s, e, o, known, lurkers, G);
+    if (to) {
+      const fightBefore = !!s.encounter;
+      if (!go(key(to))) break;                                        // something caught the eye before a step was taken
+      const there = key(e.pos) === key(to);
+      if (!there || !up(e) || !!s.encounter !== fightBefore) break;    // cut short on the way: nothing found
+      if (!o.dead && !unseen(o)) {                                     // found in passing: the rest of the way, on what is known now
+        if (key(e.pos) === tk) break;
+        lurkers = living(s).filter((x) => x.id !== e.id && unseen(x));
+        known = lurkers.length ? knownWays(s, e, lurkers) : moveOptions(s, e);
+        if (!known.get(tk)?.canStop) break;
+        continue;
+      }
+    }
+    if (!o.dead && unseen(o)) bumped(s, o, e, ev);
+    break;
+  }
+  if (!fighting && (had || !s.encounter) && path.length > 1) { march(s, e, path, ev); const r = riderOf(s, e); if (r) march(s, r, path, ev); }
+  checkEnd(s, ev);
+}
+// N2: the nearest place beside `o` the mover can stop on and reach by a way that goes through no creature it does not
+// know of; null if there is none.
+function besideIt(s, e, o, known, lurkers, G) {
+  let best = null;
+  for (const [k, v] of known) {
+    if (!v.canStop || (best && v.cost >= best.cost) || Math.abs(v.h.z - o.pos.z) > STEP_MAX || apartAt(s, e, v.h, o, o.pos) > 1) continue;
+    if (lurkers.some((x) => overlapAt(x, x.pos, e, v.h, G)) || !clear(s, v.h, o.pos)) continue;
+    if (route(known, k).some(({ h }) => lurkers.some((x) => overlapAt(x, x.pos, e, h, G)))) continue;
+    best = v;
+  }
+  return best?.h ?? null;
+}
+
 export const handlers = {
   move(s, a, ctx, ev) {
     const actor = ent(s, a.actor); control(s, actor, ctx);
@@ -379,30 +444,8 @@ export const handlers = {
     if (!lurker && e.side === 'party') {
       const lurkers = living(s).filter((o) => o.id !== e.id && unseen(o));
       if (lurkers.length) {
-        const known = moveOptions({ ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o))) }, e);
-        const kn = known.get(tk);
-        if (kn?.canStop) {
-          const G = gridOf(s.map), steps = route(known, tk), mover = e;
-          const at = steps.findIndex(({ h }) => lurkers.some((o) => overlapAt(o, o.pos, mover, h, G)));
-          if (at === -1) {
-            if (!fighting && e.follow) unfollow(s, e, ev);
-            const had = !!s.encounter, walked = walk(s, e, known, tk, ev, fighting, bud ?? undefined);
-            if (!walked) return;
-            if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); const r = riderOf(s, e); if (r) march(s, r, walked, ev); }
-            checkEnd(s, ev);
-            return;
-          }
-          const o = lurkers.find((x) => overlapAt(x, x.pos, mover, steps[at].h, G));
-          let stop = at - 1;
-          while (stop >= 0 && !(known.get(key(steps[stop].h))?.canStop)) stop--;
-          if (stop < 0) return bumped(s, o, e, ev);                       // its first step runs into it: no move, but it is found
-          if (!fighting && e.follow) unfollow(s, e, ev);
-          const walked = walk(s, e, known, key(steps[stop].h), ev, fighting, bud ?? undefined);
-          if (!walked) return;
-          bumped(s, o, e, ev);
-          checkEnd(s, ev);
-          return;
-        }
+        const known = knownWays(s, e, lurkers);
+        if (known.get(tk)?.canStop) return walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers);
       }
     }
     if (lurker) {
