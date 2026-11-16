@@ -201,16 +201,15 @@ async function drawerTable(browser, url) {
         // The goblin goes on a hex the engine takes it on, next to a foe (the map is random per game, and the hex at a fixed offset was refused on about 2 maps in 100, #418).
         const foe = await host.evaluate(() => { document.getElementById('dm-auto').checked = false; window.hextable.act({ type: 'setting', key: 'sight', value: 'light' }); const S = window.hextable.state; const f = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden); return { id: f.id, pos: f.pos }; });
         const id = await spawnNear(host, 'goblin-warrior', { near: foe.id, min: 1, radius: 2 });
-        secret = await host.evaluate(([i, f]) => {
+        await host.evaluate(([i, f]) => {
           const h = window.hextable;
           h.act({ type: 'condition', actor: i, condition: 'invisible' });
           h.act({ type: 'place', actor: 'fighter', to: { q: f.pos.q - 1, r: f.pos.r } });       // a party member in the fight, or it ends at once
-          const p = h.state.entities.fighter.pos;
-          if (p.q !== f.pos.q - 1 || p.r !== f.pos.r) return { error: `the fighter was not placed beside the foe: she stands at ${JSON.stringify(p)}, toast "${document.getElementById('toast')?.textContent ?? ''}"` };
-          h.act({ type: 'startEncounter', center: f.pos });
-          return { id: i, name: h.state.entities[i].name };
         }, [id, foe]);
-        if (secret.error) throw new Error(secret.error);
+        await wait(host, (f) => { const p = window.hextable.state.entities.fighter.pos; return p.q === f.pos.q - 1 && p.r === f.pos.r; }, foe, 5000)
+          .catch(async () => { throw new Error(`the fighter was not placed beside the foe: toast "${await host.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); });
+        await host.evaluate((f) => window.hextable.act({ type: 'startEncounter', center: f.pos }), foe);
+        secret = { id, name: await state(host, (S, i) => S.entities[i].name, id) };
         await wait(phone, () => !!window.hextable.state.encounter);
         if (await state(phone, (S, i) => !!S.entities[i], secret.id)) throw new Error('the phone was sent the invisible creature');
       });
