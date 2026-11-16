@@ -413,9 +413,28 @@ export const druid = {
       "id": "wild-companion",
       "name": "Wild Companion",
       "level": 2,
-      "tier": "manual",
+      "tier": "auto",
       "checked": true,
-      "text": "Spend a spell slot or Wild Shape use to cast Find Familiar without Material components; the familiar is Fey."
+      "text": "As a Magic action, spend a spell slot or a use of Wild Shape (you choose which) to cast Find Familiar without Material components. The familiar is Fey and disappears when you finish a Long Rest, in your pocket dimension too. What Find Familiar itself leaves to the DM (its telepathy, seeing through its eyes) stays the spell's.",
+      "grants": {
+        "freeCast": {
+          "spells": [
+            "find-familiar"
+          ],
+          "time": "action",
+          "cost": {
+            "slot": true,
+            "uses": "wild-shape"
+          },
+          "types": [
+            "fey"
+          ],
+          "ends": [
+            "longRest"
+          ],
+          "components": "none"
+        }
+      }
     },
     {
       "id": "ability-score-improvement-4",

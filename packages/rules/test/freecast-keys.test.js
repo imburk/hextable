@@ -264,3 +264,159 @@ test("freeCast ends: undo, redo and replay are exact", () => {
   for (const a of done) ok(apply(again, a, DM));
   assert.equal(json(again), states.at(-1));
 });
+
+// ---------- components ----------
+test("freeCast components: only 'none', only on a freeCast of named spells", () => {
+  assert.deepEqual(lint({ ...BASE, components: "none" }), []);
+  for (const bad of ["all", "m", true, null, ["none"]]) assert.ok(lint({ ...BASE, components: bad }).length > 0, `refused: ${json(bad)}`);
+  assert.ok(lint({ list: "wizard", maxLevel: 1, components: "none" }).length > 0);
+  assert.deepEqual(lintStrict({ ...BASE, components: "none" }), []);
+  assert.ok(lintStrict({ ...BASE, components: 1 }).some((m) => /components/.test(m)));
+});
+
+// Find Figure's Material component is costly (10 GP of incense), so Subtle Spell cannot hide it and a Counterspell may answer it.
+// The waiver lifts that: no Material component, nothing left to see. (The engine keeps no components otherwise; this is all it changes.)
+const sorcSheet = { name: "Jed", class: "sorcerer", level: 15, subclass: "draconic", abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 }, skills: ["arcana", "insight"],
+  choices: { metamagic: ["subtle", "quickened"], "elemental-affinity": "fire", "metamagic-10": ["heightened", "twinned"] }, spells: ["fire-bolt", "counterspell"] };
+test("freeCast components 'none': a Subtle cast of a costly spell through the feature cannot be Counterspelled; without the waiver it can", () => {
+  const tryCast = (components) => {
+    const s = table("jed", sorcSheet);
+    s.entities.jed.feats.push({ id: "gift", name: "Gift", tier: "auto", freeCast: { spells: ["find-familiar"], atWill: true, time: "action", ...(components ? { components } : {}) } });
+    const foe = s.entities.foe = makeEntity(derive({ ...sorcSheet, name: "Foe" }).record, { id: "foe", kind: "npc", side: "foe", pos: { q: -2, r: 0, z: 0 } });
+    foe.reactions = { counterspell: "always" };
+    const r = ok(apply(s, { type: "cast", actor: "jed", spell: "find-familiar", via: "gift", metamagic: ["subtle"] }, PAT));
+    return r.events.some((x) => x.type === "reaction" && x.id === "foe" && x.reaction === "counterspell");
+  };
+  assert.equal(tryCast(undefined), true, "the costly Material component is there to see");
+  assert.equal(tryCast("none"), false, "no Material component, nothing to see");
+});
+
+// ---------- cost ----------
+test("freeCast cost: exactly { slot: true, uses: <feature id> }, with no uses of its own and no atWill; the strict lists type it", () => {
+  const COST = { slot: true, uses: "wild-shape" };
+  assert.deepEqual(lint({ spells: ["find-familiar"], cost: COST }), []);
+  assert.deepEqual(lint({ spells: ["find-familiar"], cost: COST, time: "action", components: "none" }), []);
+  for (const bad of [{}, { slot: true }, { uses: "wild-shape" }, { slot: false, uses: "wild-shape" }, { slot: true, uses: "Wild Shape" }, { slot: true, uses: "x", more: 1 }, "slot", null, [], { slot: 1, uses: "x" }])
+    assert.ok(lint({ spells: ["find-familiar"], cost: bad }).length > 0, `refused: ${json(bad)}`);
+  assert.ok(lint({ list: "wizard", maxLevel: 1, cost: COST }).length > 0, "not on a { list, maxLevel }");
+  assert.ok(lint({ spells: ["find-familiar"], cost: COST, atWill: true }).length > 0, "a cost and atWill are two answers to what it spends");
+  assert.deepEqual(lintStrict({ spells: ["find-familiar"], cost: COST }), []);
+  assert.ok(lintStrict({ spells: ["find-familiar"], cost: { slot: "yes", uses: "x" } }).some((m) => /cost/.test(m)));
+  assert.ok(lintStrict({ spells: ["find-familiar"], cost: { slot: true, uses: "x", y: 1 } }).length > 0);
+});
+
+test("freeCast cost, across the pack: it names a feature of the class that has uses, and a class feature with a cost has none of its own", () => {
+  const edit = (fn) => { const doc = structuredClone(PACKS[0]); fn(doc.classes.find((c) => c.id === "druid").features.find((f) => f.id === "wild-companion")); return lintPack(doc); };
+  assert.deepEqual(edit(() => {}), []);
+  assert.ok(edit((f) => { f.grants.freeCast.cost.uses = "wild-companion"; }).some((m) => /not a feature with uses/.test(m)));
+  assert.ok(edit((f) => { f.grants.freeCast.cost.uses = "no-such"; }).some((m) => /not a feature with uses/.test(m)));
+  assert.ok(edit((f) => { f.uses = { max: 1, recharge: "long" }; }).length > 0, "no uses of its own");
+  assert.ok(edit((f) => { delete f.grants.freeCast.cost; }).some((m) => /needs uses, atWill or a cost/.test(m)));
+});
+
+// ---------- Wild Companion (Druid 2), played ----------
+const druidSheet = (level = 2) => ({ name: "Ven", class: "druid", level, abilities: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 }, skills: ["nature", "perception"],
+  choices: { "primal-order": "warden" }, armour: "leather-armor", shield: true, weapons: ["quarterstaff"], spells: ["produce-flame", "cure-wounds"] });
+const WC = "wild-companion";
+const druidField = (grid, level) => table("ven", druidSheet(level), grid);
+const wc = (s, pay, extra = {}, summon) => ({ type: "cast", actor: "ven", spell: "find-familiar", via: WC, ...(pay ? { pay } : {}), summon: summon ?? { form: "owl", at: [near(s, "ven")] }, ...extra });
+const summonedId = (r) => r.events.find((e) => e.type === "summoned").id;
+
+test("Wild Companion (9205-9211) is entered: a Magic action that spends a slot or a Wild Shape use, no Material, Fey, until a Long Rest", () => {
+  const f = derive(druidSheet(2)).record.feats.find((x) => x.id === WC);
+  assert.deepEqual(f.freeCast, { spells: ["find-familiar"], time: "action", cost: { slot: true, uses: "wild-shape" }, types: ["fey"], ends: ["longRest"], components: "none" });
+  assert.equal(f.uses, undefined);
+  assert.equal(derive(druidSheet(2)).record.feats.find((x) => x.id === "wild-shape").uses.max, 2);
+  assert.deepEqual(lintPack(PACKS[0]), []);
+});
+
+test("Wild Companion: paying with a slot spends that slot and no Wild Shape use; the familiar is Fey with no type named, and ends at a Long Rest", () => {
+  const s = druidField(), ven = s.entities.ven, wsBefore = ven.uses["wild-shape"], slots1 = ven.slots[1];
+  const r = ok(apply(s, wc(s, "slot"), PAT));
+  assert.equal(ven.slots[1], slots1 - 1); assert.equal(ven.uses["wild-shape"], wsBefore); assert.equal(ven.uses[WC], undefined);
+  const fam = s.entities[summonedId(r)];
+  assert.equal(fam.type, "fey"); assert.equal(fam.tpl, "owl"); assert.deepEqual(fam.bond.ends, ["longRest"]); assert.equal(fam.bond.to, "ven");
+  const rest = ok(apply(s, { type: "rest" }, DM));
+  assert.ok(rest.events.some((e) => e.type === "vanished" && e.id === fam.id && e.why === "rest"));
+  assert.equal(s.entities[fam.id], undefined);
+  assert.equal(ven.uses["wild-shape"], 2, "Wild Shape is back at the Long Rest, too");
+});
+
+test("Wild Companion: paying with a use of Wild Shape spends that use and no slot, never both", () => {
+  const s = druidField(), ven = s.entities.ven, slots = json(ven.slots), ws = ven.uses["wild-shape"];
+  ok(apply(s, wc(s, "uses", {}, { form: "cat", type: "fey", at: [near(s, "ven")] }), PAT));
+  assert.equal(ven.uses["wild-shape"], ws - 1); assert.equal(json(ven.slots), slots);
+  assert.equal(familiars(s)[0].type, "fey");
+  // The spell's slot level is not a thing to name with a use.
+  refused(s, wc(s, "uses", { slot: 1 }), PAT, /not both/);
+});
+
+test("Wild Companion: the caster must say what it spends; a rejected cast changes nothing", () => {
+  const s = druidField(), ven = s.entities.ven;
+  refused(s, wc(s), PAT, /Choose what Wild Companion spends/);
+  refused(s, wc(s, "both"), PAT, /Choose what Wild Companion spends/);
+  refused(s, wc(s, "slot", { slot: 0 }), PAT, /needs a spell slot/);
+  refused(s, wc(s, "slot", { slot: 5 }), PAT, /no level 5 spell slots|needs a spell slot/);
+  refused(s, wc(s, "slot", {}, { form: "owl", type: "fiend", at: [near(s, "ven")] }), PAT, /Choose its creature type: fey/);
+  refused(s, wc(s, "slot", {}, { form: "wolf", at: [near(s, "ven")] }), PAT, /Choose a form/);
+  refused(s, wc(s, "slot", {}, { form: "imp", at: [near(s, "ven")] }), PAT, /Choose a form/);
+  refused(s, wc(s, "slot", { spell: "cure-wounds", target: "ven" }), PAT, /can't cast that spell/);
+  ven.uses["wild-shape"] = 0;
+  refused(s, wc(s, "uses"), PAT, /no uses of Wild Shape left/);
+  ok(apply(s, wc(s, "slot"), PAT));                 // a slot still pays with no use left
+  ven.slots[1] = 0; ven.slots[2] = 0;
+  refused(s, wc(s, "slot", {}, { form: "cat" }), PAT, /no level 1 spell slots/);
+  // A feature with no cost takes no `pay`; a druid below 2 has no such feature.
+  const pact = pactField();
+  refused(pact, pactCast(pact, "owl", { pay: "slot" }), PAT, /leave out "pay"/);
+  refused(druidField(null, 1), wc(druidField(null, 1), "slot"), PAT, /no feature that casts spells that way/);
+});
+
+test("Wild Companion: no Find Familiar by a slot is needed or known; one familiar, a new casting reforms it and gives it the Long Rest ending", () => {
+  const s = druidField(), ven = s.entities.ven;
+  assert.equal(ven.spells.includes("find-familiar"), false, "the druid does not know the spell");
+  const id = summonedId(ok(apply(s, wc(s, "slot"), PAT)));
+  ok(apply(s, wc(s, "uses", {}, { form: "cat" }), PAT));
+  assert.equal(familiars(s).length, 1); assert.equal(familiars(s)[0].id, id); assert.equal(familiars(s)[0].tpl, "cat"); assert.deepEqual(familiars(s)[0].bond.ends, ["longRest"]);
+});
+
+test("Wild Companion in a fight: a Magic action; a slot is the turn's one slot, a Wild Shape use is not a slot", () => {
+  const mk = () => { const s = druidField(); ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 } }, DM)); ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 12 }, DM));
+    for (let i = 0; i < 20 && current(s) !== "ven"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); return s; };
+  const a = mk();
+  ok(apply(a, wc(a, "slot"), PAT));
+  assert.equal(a.encounter.budget.action, 0); assert.equal(a.encounter.flags.slot, true, "the slot is the turn's slot");
+  const b = mk();
+  ok(apply(b, wc(b, "uses"), PAT));
+  assert.equal(b.encounter.budget.action, 0); assert.equal(b.encounter.flags.slot, undefined, "no slot");
+  const c = mk();
+  c.encounter.flags.slot = true;
+  refused(c, wc(c, "slot"), PAT, /Only one spell slot/);
+  ok(apply(c, wc(c, "uses"), PAT));
+});
+
+for (const grid of [null, "square"]) {
+  test(`Wild Companion: undo, redo and replay are exact${grid ? " (squares)" : " (hexes)"}`, () => {
+    const s = druidField(grid), h = createHistory({ limit: 50 }), states = [json(s)], done = [];
+    const play = (a) => { const before = mark(s), r = ok(apply(s, a, DM)); h.record(before, s, describeStep(a, r.events, before, s)); done.push(a); states.push(json(s)); };
+    play(wc(s, "slot"));
+    play({ type: "dismiss", actor: "ven", id: familiars(s)[0].id });
+    play(wc(s, "uses", {}, { form: "cat" }));
+    play({ type: "rest" });
+    assert.equal(familiars(s).length, 0);
+    for (let i = done.length - 1; i >= 0; i--) { h.undo(s); assert.equal(json(s), states[i], `undo ${i}`); }
+    for (let i = 1; i <= done.length; i++) { h.redo(s); assert.equal(json(s), states[i], `redo ${i}`); }
+    const again = druidField(grid);
+    for (const a of done) ok(apply(again, a, DM));
+    assert.equal(json(again), states.at(-1), "replayed, the same");
+  });
+}
+
+test("Wild Companion: the familiar in the pocket dimension also disappears at the Long Rest", () => {
+  const s = druidField(), id = summonedId(ok(apply(s, wc(s, "slot"), PAT)));
+  ok(apply(s, { type: "dismiss", actor: "ven", id }, PAT));
+  assert.ok(s.entities.ven.pocket?.[id]);
+  const r = ok(apply(s, { type: "rest" }, DM));
+  assert.ok(r.events.some((e) => e.type === "vanished" && e.id === id && e.pocket === true));
+  assert.equal(s.entities.ven.pocket?.[id], undefined);
+});

@@ -451,8 +451,20 @@ function castSpell(s, a, ctx, ev, item) {
     if (via) {
       const fc = via.freeCast;
       (sp && (fc.spells ? fc.spells.includes(a.spell) : (sp.def.classes ?? []).includes(fc.list) && sp.level <= fc.maxLevel)) || fail(`${via.name} can't cast that spell.`);
-      (fc.atWill || (e.uses[via.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${via.name} left.`);
-      a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
+      // `freeCast.cost` (Wild Companion: a spell slot or a use of Wild Shape; docs/specs/companions.md, C9b): the caster says which in
+      // `a.pay`, 'slot' (as an ordinary cast: `a.slot`) or 'uses' (one use of the named feature), never both, all checked here.
+      if (fc.cost) {
+        const pool = featOf(e, fc.cost.uses);
+        a.pay === 'slot' || a.pay === 'uses' || fail(`Choose what ${via.name} spends: pay "slot" (a spell slot) or "uses" (a use of ${pool?.name ?? fc.cost.uses}).`);
+        if (a.pay === 'uses') {
+          a.slot === undefined || fail(`${via.name} spends a spell slot or a use of ${pool?.name ?? fc.cost.uses}, not both: leave out the slot.`);
+          (pool && (e.uses[pool.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${pool?.name ?? fc.cost.uses} left.`);
+        }
+      } else {
+        a.pay === undefined || fail(`${via.name} spends nothing that could be chosen: leave out "pay".`);
+        (fc.atWill || (e.uses[via.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${via.name} left.`);
+        a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
+      }
       if (fc.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${via.name} casts ${sp.name} on ${e.name} only.`);
       if (fc.dark) lightAt(s, e.pos) !== 'bright' || fail(`${via.name} works only while ${e.name} is in Dim Light or Darkness.`);
     } else if (!item) (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
@@ -467,6 +479,7 @@ function castSpell(s, a, ctx, ev, item) {
     !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
+    const paysSlot = !!via?.freeCast.cost && a.pay === 'slot';      // a cast through a feature that spends a slot as the caster chose
     const asAction = !!via?.freeCast.list || via?.freeCast.time === 'action';      // Divine Intervention, Pact of the Chain: the spell is a Magic action
     if (!sp.turn && s.encounter && !asAction) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
     let time = asAction ? 'action' : sp.time;
@@ -510,18 +523,18 @@ function castSpell(s, a, ctx, ev, item) {
     const repel = repelFor(e, sp, a);
 
     // What it costs.
-    if (sp.level > 0 && !via && !item) {
+    if (sp.level > 0 && (!via || paysSlot) && !item) {
       (Number.isInteger(slot) && slot >= sp.level && slot <= 9) || fail(`${sp.name} needs a spell slot of level ${sp.level} or higher.`);
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
     // E23: the DM's hostile cast at a party member, with `autoEngage` on and no fight, lands and then the fight starts
     // (landThenFight, below). Any other harmful cast aimed at others outside a fight starts the fight and is not cast, as before.
-    const lands = !s.encounter && sp.harmful && aimed && landsFirst(s, e, targets, ctx) ? { from: ev.length, time, slotted: sp.level > 0 && !via && !item, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) } : null;
+    const lands = !s.encounter && sp.harmful && aimed && landsFirst(s, e, targets, ctx) ? { from: ev.length, time, slotted: sp.level > 0 && (!via || paysSlot) && !item, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) } : null;
     if (!s.encounter && sp.harmful && aimed && !lands) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     const done = () => { if (lands) landThenFight(s, e, sp, targets, ev, lands); checkEnd(s, ev); };
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
-    const slotted = sp.level > 0 && !via && !item;
+    const slotted = sp.level > 0 && (!via || paysSlot) && !item;
     if (mm.has.quickened) time = 'bonus';
     if (lands) lands.time = time;
     if (s.encounter) {
@@ -537,12 +550,15 @@ function castSpell(s, a, ctx, ev, item) {
     }
     if (slotted) e.slots[slot]--;
     if (toucher && s.encounter) toucher.reactionUsed = true;
-    if (via && !via.freeCast.atWill) e.uses[via.id]--;
+    if (via?.freeCast.cost) { if (a.pay === 'uses') e.uses[via.freeCast.cost.uses]--; }
+    else if (via && !via.freeCast.atWill) e.uses[via.id]--;
     if (mm.cost) e.uses[mm.pool] -= mm.cost;
     if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
     if (mm.list.length) ev.push({ type: 'std', id: e.id, action: `Metamagic: ${mm.names.join(', ')}` });
     // From an item: its charges and its event now; a scroll of a spell above its reader's level may fade.
-    const comps = item ? item.comps : sp.def.components ?? [];
+    // `freeCast.components: 'none'` (Wild Companion): no Material component, so a costly one hides nothing and gives nothing to see.
+    const noMaterial = via?.freeCast.components === 'none';
+    const comps = item ? item.comps : (sp.def.components ?? []).filter((c) => !(noMaterial && c === 'm'));
     if (item) {
       item.spend(e);
       if (item.check && !item.check(e)) { item.done?.(e); return done(); }
@@ -553,7 +569,7 @@ function castSpell(s, a, ctx, ev, item) {
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
     // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
-    const counteredBy = mm.has.subtle && !sp.def.costly ? null : counterWindow(s, e, sp, ev, comps);
+    const counteredBy = mm.has.subtle && !(sp.def.costly && !noMaterial) ? null : counterWindow(s, e, sp, ev, comps);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });

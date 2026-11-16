@@ -1162,10 +1162,12 @@ const FREE_CAST_LISTS = {
   types: (v) => Array.isArray(v) && v.length >= 1 && v.length <= CREATURE_TYPES.length && v.every((x) => CREATURE_TYPES.includes(x)) && new Set(v).size === v.length,
   forms: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((id) => typeof id === 'string' && ID.test(id)) && new Set(v).size === v.length,
 };
+const validFreeCastCost = (c) => !!c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).length === 2 && c.slot === true && typeof c.uses === 'string' && ID.test(c.uses);
 const validFreeCast = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
   || (Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))
     && Object.keys(x).every((k) => k === 'spells' || (FREE_CAST_FLAGS.includes(k) && x[k] === true) || (k === 'time' && x[k] === 'action')
-      || (Object.hasOwn(FREE_CAST_LISTS, k) && FREE_CAST_LISTS[k](x[k])))));
+      || (Object.hasOwn(FREE_CAST_LISTS, k) && FREE_CAST_LISTS[k](x[k])) || (k === 'cost' && validFreeCastCost(x[k])) || (k === 'components' && x[k] === 'none'))
+    && !(x.cost && x.atWill)));
 function lintFeature(f, cls, say, ids) {
   const sub = (m) => say(`feature ${f?.id}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
@@ -1206,13 +1208,15 @@ function lintFeature(f, cls, say, ids) {
         && (o.requires.level === undefined || (isInt(o.requires.level) && o.requires.level >= 1 && o.requires.level <= LEVELS))
         && (o.requires.option === undefined || f.options.some((x) => x?.id === o.requires.option && x !== o)) && (o.requires.spell === undefined || ID.test(o.requires.spell)))) os('requires gives a level, another option of the feature, or a spell');
       if (o?.uses !== undefined && !(o.uses && isInt(o.uses.max) && o.uses.max > 0 && RESTS.includes(o.uses.recharge) && Object.keys(o.uses).length === 2)) os('uses is { max, recharge }');
-      if (o?.grants?.freeCast && !o.uses && !o.grants.freeCast.atWill) os('a freeCast needs uses, or atWill');
+      if (o?.grants?.freeCast && !o.uses && !o.grants.freeCast.atWill && !o.grants.freeCast.cost) os('a freeCast needs uses, atWill or a cost');
+      if (o?.grants?.freeCast?.cost && o.uses) os('a freeCast with a cost spends that, and has no uses of its own');
       // `feat`: the option is that feat (a Fighting Style feat); it grants what the feat grants (lintPack checks it is one).
       if (o?.feat !== undefined && !(o.feat === o.id && o.grants === undefined)) os('an option that is a feat has the feat\'s id and no grants of its own');
     }
   }
   // A feature that only adds steps to another's (`with`: Sear Undead in Turn Undead) grants nothing of its own.
-  if (f.grants?.freeCast && !f.uses && !f.grants.freeCast.atWill) sub('a freeCast needs uses, or atWill');
+  if (f.grants?.freeCast && !f.uses && !f.grants.freeCast.atWill && !f.grants.freeCast.cost) sub('a freeCast needs uses, atWill or a cost');
+  if (f.grants?.freeCast?.cost && f.uses) sub('a freeCast with a cost spends that, and has no uses of its own');
   // A feature whose whole effect is an aura's range growing at its level (Aura Expansion) grants nothing itself.
   if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !f.feat && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id) && !byLevelAt(cls).has(f.level)) sub('marked auto but grants nothing');
   // A manual feature may still have its cost enforced: an action whose only steps are manual.
@@ -1480,6 +1484,7 @@ function lintPackCore(doc, opts) {
       const steps = [];
       for (const id of fc.spells) walkSteps(spells.find((x) => x.id === id)?.effects, (st) => { if (st && typeof st === 'object' && 'summon' in st) steps.push(st); });
       if (fc.types !== undefined && !steps.some((st) => st.types !== undefined && fc.types.some((x) => st.types.includes(x)))) say('a freeCast with `types` needs a spell with a summon step that offers one of them');
+      if (fc.cost !== undefined && !pools.has(fc.cost.uses)) say(`a freeCast cost names "${fc.cost.uses}", which is not a feature with uses`);
       if (fc.ends !== undefined && !steps.some((st) => st.bond)) say('a freeCast with `ends` needs a spell with a summon step that has a bond');
       if (fc.forms !== undefined) {
         if (!steps.some((st) => st.forms !== undefined)) say('a freeCast with `forms` needs a spell with a summon step of forms');
@@ -1560,7 +1565,7 @@ function lintFeat(f, say) {
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
   }
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
-  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && (f.uses || f.freeCast.atWill))) sub('its freeCast is { list, maxLevel } or { spells }, with uses or atWill.');
+  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && (f.uses || f.freeCast.atWill || f.freeCast.cost) && !(f.freeCast.cost && f.uses))) sub('its freeCast is { list, maxLevel } or { spells }, with uses, atWill or a cost (a cost and no uses).');
   if (f.metamagic !== undefined && !(f.metamagic && typeof f.metamagic.id === 'string' && isInt(f.metamagic.cost) && f.metamagic.cost > 0 && f.metamagic.cost <= 10 && ID.test(f.metamagic.pool ?? ''))) sub('its metamagic is { id, cost, pool }.');
   if (f.metamagicMax !== undefined && !(f.metamagicMax && isInt(f.metamagicMax.n) && f.metamagicMax.n >= 2 && f.metamagicMax.n <= 3 && ID.test(f.metamagicMax.while ?? ''))) sub('its metamagicMax is { n, while }.');
   if (f.exchange !== undefined && !(f.uses && f.exchange && ['costs', 'minLevel'].every((k) => f.exchange[k] && Object.values(f.exchange[k]).every((v) => isInt(v) && v > 0)))) sub('its exchange is { costs, minLevel }, with uses.');
@@ -1930,7 +1935,8 @@ const SHAPES = {
   proficiencies: { what: 'proficiencies', keys: ['n'] },
   spellPick: { what: 'a spell pick', keys: ['lists', 'abilities', 'cantrips', 'level1'] },
   grants: { what: 'grants', keys: GRANTS },
-  freeCast: { what: 'a freeCast', keys: ['list', 'maxLevel', 'spells', ...FREE_CAST_FLAGS, 'time', ...Object.keys(FREE_CAST_LISTS)] },
+  freeCast: { what: 'a freeCast', keys: ['list', 'maxLevel', 'spells', ...FREE_CAST_FLAGS, 'time', ...Object.keys(FREE_CAST_LISTS), 'cost', 'components'] },
+  freeCastCost: { what: 'a freeCast cost', keys: ['slot', 'uses'] },
   aura: { what: 'an aura', keys: ['range', 'modifiers', 'immune'] },
   map: { what: 'a map', keys: null },
   speedMap: { what: 'speeds', keys: null }, senseMap: { what: 'senses', keys: null }, skillMap: { what: 'skills', keys: null }, saveMap: { what: 'saves', keys: null },
@@ -1954,6 +1960,7 @@ const CHILD = {
   trigger: { effects: 'steps' }, use: { check: 'check', effects: 'steps' }, activate: { effects: 'steps' },
   prerequisite: { abilities: 'anyAbility' },
   grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast' },
+  freeCast: { cost: 'freeCastCost' },
   aura: { range: 'value', modifiers: 'modifier[]' },
   bond: {}, over: { speed: 'speedMap' },
 };
@@ -2340,7 +2347,8 @@ export const HOMEBREW_TYPES = Object.freeze({
   increase: { from: 's[]', points: 'i', max: 'i' },
   proficiencies: { n: 'i' },
   spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
-  freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]', types: 's[]', ends: 's[]' },
+  freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]', types: 's[]', ends: 's[]', cost: 'o', components: 's' },
+  freeCastCost: { slot: 't', uses: 'id' },
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
