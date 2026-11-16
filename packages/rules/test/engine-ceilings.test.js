@@ -204,9 +204,12 @@ test("the manual stop: work with no copy taken is stopped, not silently cut shor
     const { r, ms } = timed(() => apply(s, { type: "endTurn", actor: ids[0] }, DM));
     assert.ok(ms < 1000, `took ${Math.round(ms)} ms`);
     assert.ok(r.ok, r.error);
-    const note = r.events.find((e) => e.type === "manual" && /more than (1,000 steps|1,200 dice)/.test(e.text));
+    const notes = s.timeline.filter((e) => e.type === "manual" && e.stop);
+    assert.equal(notes.length, 1, "one note for the zone this round, not one for every stop");
+    const note = notes[0];
     assert.ok(note, "a manual event says it was stopped");
-    assert.match(note.text, /the rest of it was not applied.*The turn did not end/);
+    assert.match(note.text, /its effect on .* was not applied, and the DM applies it\./);
+    assert.match(note.text, /The turn (passed to|did not end)/);
     assert.equal(note.name, "Boom");
     assert.ok(json(s).length - before < 100000, "bounded growth");
   });
@@ -325,7 +328,7 @@ test("dice added by a higher slot are counted: such a cast takes its copy and is
   withEntries([["spells", spell(id, { target: { creature: { count: 3 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire" }] }], higher: { slot: { damage: "300d6" } } })]], () => {
     const { s, ids } = table(3, { spells: [id] });
     const r = refused(s, { type: "cast", actor: "wizard", spell: id, slot: 9, targets: ids }, /roll more than 1,200 dice/);
-    assert.match(r.error, /^hb-x-grow|^Boom/);
+    assert.match(r.error, /^(Boom|Hb x grow)/);
     assert.equal(s.entities.wizard.slots[9], 4, "the slot was not spent");
     // At its own level it is a plain cast.
     assert.ok(apply(s, { type: "cast", actor: "wizard", spell: id, slot: 1, targets: ids }, DM).ok);
@@ -373,10 +376,11 @@ test("a stopped end of turn says the turn did not end, and what was applied and 
     s.effects.find((x) => x.zone).zone.steps = [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire", times: 5000 }] }];
     for (let i = 0; i < 20 && current(s) !== ids[0]; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
     const r = apply(s, { type: "endTurn", actor: ids[0] }, DM);
-    const note = r.events.find((e) => e.type === "manual");
-    assert.match(note.text, /What it had done by then \(\d+ events, listed above\) stays done; the rest of it was not applied/);
-    assert.match(note.text, /The turn did not end/);
-    assert.equal(current(s), ids[0], "and it did not");
+    const note = s.timeline.find((e) => e.type === "manual" && e.stop);
+    assert.ok(note, "the stop is written down");
+    assert.match(note.text, /What it had done by then \(\d+ events, listed above\) stays done; its effect on .* was not applied/);
+    assert.equal(/The turn did not end/.test(note.text), current(s) === ids[0], "the text says what happened to the turn");
+    assert.equal(/The turn passed to/.test(note.text), current(s) !== ids[0]);
   });
 });
 
@@ -417,5 +421,74 @@ test("the heaviest entries the gate accepts complete at a table of 30 and never 
     fine(apply(s, { type: "act", actor: m, action: "a1", target: "wizard" }, DM));
     s.encounter.budget.action = 1;
     fine(apply(s, { type: "act", actor: m, action: "roar", hex: { q: -2, r: 2 } }, DM));
+  });
+});
+
+// ---------- fix round 3 of #401 ----------
+test("an item use over the ceiling is refused with nothing spent: the potion stays, the Bonus Action stays", () => {
+  const A = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 };
+  const sheet = { name: "Brenna", class: "fighter", level: 5, subclass: "champion", abilities: A, skills: ["athletics", "perception"], choices: { "fighting-style": "defense" }, weapons: ["longbow"], items: [{ id: "i1", item: "hb-x-p" }] };
+  const potion = { id: "hb-x-p", name: "Hot Potion", category: "potion", rarity: "common", wear: "carried", tier: "auto", source: "homebrew:x", checked: false, text: "x",
+    activate: [{ time: "bonus", consumed: true, effects: Array(3).fill({ damage: "50d100", type: "fire", times: 10 }) }] };
+  withEntries([["items", potion]], () => {
+    const s = newGame(7);
+    for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+    s.settings.autoEngage = false;
+    s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: "pat", ownerName: "Pat" });
+    s.entities.hero.sheet = structuredClone(sheet);
+    const before = json(s);
+    const r = apply(s, { type: "use", actor: "hero", item: "i1" }, { role: "player", userId: "pat" });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /more than 1,200 dice/);
+    assert.equal(json(s), before, "the potion is still there and nothing changed");
+  });
+});
+
+test("a Multiattack whose attack the engine could never make is refused as a whole, before the action is spent", () => {
+  const id = "hb-x-hopeless", hit = Array(4).fill({ damage: "50d100", type: "slashing", times: 10 });
+  withEntries([["monsters", monsterOf(id, [attackAction("a1", hit), { id: "multi", name: "Multiattack", multiattack: [{ action: "a1", times: 7 }, { action: "a1", times: 7 }] }])]], () => {
+    const { s } = table(1);
+    const m = apply(s, { type: "spawn", monster: id, at: { q: 5, r: 0 } }, DM).events[0].id;
+    for (let i = 0; i < 100 && current(s) !== m; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+    const r = refused(s, { type: "act", actor: m, action: "multi" }, /Multiattack is made of Rend, which rolls 2,000 dice.*nothing is spent/);
+    assert.equal(s.encounter.budget.action, 1);
+  });
+});
+
+test("a zone that stops its creatures' turns is named once a round, and what each note says is true", () => {
+  const id = "hb-x-heavyzone";
+  withEntries([["spells", spell(id, { level: 3, duration: "1 minute", concentration: true, range: "self", target: { area: { shape: "emanation", size: 30 } }, zone: { on: ["turnEnd"], once: "turn" }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire" }] }] })]], () => {
+    const { s, ids } = table(8, { spells: [id] });
+    ids.forEach((g, i) => { s.entities[g].pos = { q: 1 + (i % 4), r: Math.floor(i / 4) - 1, z: 0 }; });
+    assert.ok(apply(s, { type: "cast", actor: "wizard", spell: id, slot: 3 }, DM).ok);
+    s.effects.find((x) => x.zone).zone.steps = [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire", times: 5000 }] }];
+    const round0 = s.encounter.round;
+    let stops = 0;
+    for (let i = 0; i < 40 && s.encounter.round === round0; i++) {
+      const was = current(s);
+      const r = apply(s, { type: "endTurn", actor: was }, DM);
+      const note = r.ok && r.events.find((e) => e.type === "manual" && e.stop);
+      if (note) { stops++; assert.equal(/The turn passed to/.test(note.text), current(s) !== was, "the text says what happened to the turn"); assert.match(note.text, /its effect on .* was not applied/); }
+    }
+    assert.equal(stops, 1, `${stops} notes in one round`);
+  });
+});
+
+test("the closing note after a refused answer names the spell and its caster; a huge cube's note says what to do", () => {
+  const { id, U3, nova, eTable } = askedTable();
+  withEntries([["spells", nova]], () => {
+    const s = eTable("hex", { ward: { shield: "ask", counterspell: "ask" }, autoEngage: false });
+    prepare(s, id);
+    const at = s.entities.wizard.pos;
+    assert.ok(apply(s, { type: "cast", actor: "mage", spell: id, slot: 1, hex: { q: at.q, r: at.r } }, DM).ok);
+    const r = apply(s, { type: "react", prompt: s.pending.n, take: null }, U3);
+    const note = r.events.find((e) => e.type === "manual");
+    assert.match(note.text, /^Hb x nova, cast by .*, would /);
+  });
+  const cube = "hb-x-cube2";
+  withEntries([["spells", spell(cube, { range: 0, target: { area: { shape: "cube", size: 20000 } } })]], () => {
+    const { s } = table(2, { spells: [cube] });
+    const r = apply(s, { type: "cast", actor: "wizard", spell: cube }, DM);
+    assert.match(r.events.find((e) => e.type === "manual").text, /cube of more than 1,000 feet.*The DM places the area, picks the creatures it catches and applies the effect/);
   });
 });

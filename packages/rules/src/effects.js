@@ -247,20 +247,20 @@ export function actionProfile(a) {
 // could not take a copy, stops it with a `manual` event that says what was not applied.
 export const WORK = Object.freeze({ steps: 1000, events: 1500, dice: 1200, attacks: 20 });
 export class WorkLimit extends Error {
-  constructor(limit, what) { super(`${what ?? 'This action'} would ${limit} in one action, which is more than the engine allows.`); this.limit = limit; this.what = what; }
+  constructor(limit, what, who = null) { super(`${what ?? 'This action'} would ${limit} in one action, which is more than the engine allows.`); this.limit = limit; this.what = what; this.who = who; }
 }
-const meter = { on: false, steps: 0, dice: 0, what: null };
+const meter = { on: false, steps: 0, dice: 0, what: null, who: null };
 // apply() starts the count for one action and stops it however the action ends.
-export function startWork() { meter.on = true; meter.steps = 0; meter.dice = 0; meter.what = null; }
+export function startWork() { meter.on = true; meter.steps = 0; meter.dice = 0; meter.what = null; meter.who = null; }
 export function stopWork() { meter.on = false; }
 const LIMITS = { steps: (n) => `run more than ${n.toLocaleString('en-US')} steps`, dice: (n) => `roll more than ${n.toLocaleString('en-US')} dice`, events: (n) => `write more than ${n.toLocaleString('en-US')} events` };
 function spend(kind, n) {
   if (!meter.on) return;
   meter[kind] += n;
-  if (meter[kind] > WORK[kind]) throw new WorkLimit(LIMITS[kind](WORK[kind]), meter.what);
+  if (meter[kind] > WORK[kind]) throw new WorkLimit(LIMITS[kind](WORK[kind]), meter.what, meter.who);
 }
 // Called with the events an action has written so far.
-export function checkEvents(ev) { if (meter.on && ev.length > WORK.events) throw new WorkLimit(LIMITS.events(WORK.events), meter.what); }
+export function checkEvents(ev) { if (meter.on && ev.length > WORK.events) throw new WorkLimit(LIMITS.events(WORK.events), meter.what, meter.who); }
 const diceIn = (expr) => { const m = /^\s*(\d+)d/.exec(String(expr)); return m ? +m[1] : 0; };
 const timesOf = (step) => { const n = Math.ceil(Number(step.times || 1)); return n >= 1 ? n : 0; };
 // What a list of steps may do at most for one target, counting every branch and every repeat: { steps, dice }. Used
@@ -331,6 +331,7 @@ export function run(s, ev, kit, floor = 0) {
     if (f.i >= f.steps.length) { stack.pop(); continue; }
     const index = f.i++;
     meter.what = f.src?.name ?? meter.what;
+    meter.who = f.target ?? null;
     spend('steps', 1);
     exec(s, ev, kit, f, f.steps[index], `${f.path}${index}`);
     checkEvents(ev);
@@ -354,7 +355,7 @@ function exec(s, ev, kit, f, step, at) {
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
-  if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. The DM applies it.`);
+  if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to: its area is one it cannot lay out here (a cube of more than 1,000 feet is one, and a line or cube the DM places). The DM places the area, picks the creatures it catches and applies the effect.`);
   for (const tag of step.when ?? []) {
     const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s);
     if (ok === null) return handOver(`Part of ${f.src.name} depends on "${tag}", which the engine cannot judge yet. The DM applies it if it holds.`);
