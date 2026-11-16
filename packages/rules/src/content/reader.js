@@ -113,9 +113,45 @@ export const TAG_WORDS = {
   'spell.cantrip': 'the damage is a cantrip\'s', 'target.fought': 'the caster\'s side is fighting the target', 'check.proficient': 'the check uses one of its proficiencies',
   'attack.opportunity': 'it is an Opportunity Attack', 'target.notFiend': 'the target is not a Fiend',
 };
-// Tags the engine's judge has no test for (modifiers.js, judge: they fall to `default: return null`). A step that
-// needs one is handed to the DM every time; a modifier that needs one never applies. A test reads modifiers.js.
-export const UNJUDGED_TAGS = ['long.range', 'target.seesSource'];
+// What the engine can tell of each tag, where it is asked (modifiers.js `judge`; a test PLAYS every tag in every place through
+// `apply()` and holds these tables equal to what the engine does, so the reading cannot drift from it again, #430).
+// `judge(tag, sit)` answers true, false or "cannot tell" (null), from the pieces of `sit` the caller has: a place that does not
+// supply a piece cannot judge the tags that need it.
+//  - a STEP's `when` (effects.js exec) and a save's `advantageIf` are asked with the caster, the target and, only below an attack's
+//    `onHit` or `onMiss`, how the roll went (Advantage or Disadvantage). A step that cannot be judged is NOT run: the DM is told.
+//  - a MODIFIER's `when` (modifiers.js `modifiers`) is asked with whatever its hook's caller knows. A modifier whose tag cannot be
+//    judged is skipped, without a word to anybody: it never takes effect.
+const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend'];
+export const JUDGED_STEP = WHERE;
+export const JUDGED_STEP_AFTER_ATTACK = [...WHERE, 'attack.advantage', 'attack.disadvantage'];
+export const JUDGED_ADVANTAGE_IF = WHERE;
+// Modifier hooks by what their caller supplies.
+//   attack hooks: the attacker, the target, whether it is ranged, a spell's, an Opportunity Attack, and (for a character's attack,
+//                 which names its ability, and for a spell's) whether it uses Strength.
+//   damage hook:  the attacker, the target, and whether it came from a hit, a weapon, a cantrip.
+//   holder hooks: only the creature itself (as the "target"), which the modifier is on.
+//   bare hooks:   nothing but the creature the modifier is on.
+const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'within5', 'beyond5', 'self.notIncapacitated'];
+export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
+export const DAMAGE_HOOKS = ['damage.dealt'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken'];
+export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
+// Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
+export const UNREAD_HOOKS = ['hp.max', 'carry'];
+export const JUDGED_ON = {
+  ...Object.fromEntries(ATTACK_HOOKS.map((h) => [h, [...SEES, 'ranged', 'melee', 'attack.spell', 'attack.opportunity', 'attack.str']])),
+  ...Object.fromEntries(DAMAGE_HOOKS.map((h) => [h, [...SEES, 'attack.hit', 'attack.weapon', 'spell.cantrip']])),
+  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient'] : [])]])),
+  ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
+  ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),
+};
+// Judged only some of the time: `attack.str` is known for a character's attack (it says which ability it uses) and for a spell's (never
+// Strength), and never for a creature's own action.
+export const JUDGED_SOMETIMES = { 'attack.roll': ['attack.str'], 'attack.received': ['attack.str'] };
+// Tags that, at a hook where the creature itself is the "target", are about that creature.
+export const SELF_TAG_WORDS = { 'target.prone': 'it is Prone', 'target.unconscious': 'it is Unconscious', 'target.notFiend': 'it is not a Fiend' };
+// Kept for the older name: the tags no place can judge at all.
+export const UNJUDGED_TAGS = TAGS.filter((t) => !JUDGED_STEP_AFTER_ATTACK.includes(t) && !Object.values(JUDGED_ON).some((l) => l.includes(t)));
 
 // ---------- small helpers ----------
 const isInt = Number.isInteger;
@@ -267,6 +303,8 @@ class Reading {
     this.saveDcs = [];                  // the DC of each save the steps being read sit under (a number, or null), the innermost last
     this.base = 0;                      // extra indent, for the steps of an action under its heading
     this.manualSteps = 0;
+    this.never = 0;                     // parts the reading says never take effect (a modifier whose `when` the engine can never judge there)
+    this.afterAtk = 0;                  // how many attack branches (`onHit`, `onMiss`) the steps being read sit under
     this.pre = '';                      // path prefix of the numbers an action holds (`actions.0.`)
   }
   line(text, depth = 0) {
@@ -287,6 +325,16 @@ class Reading {
     for (const k of Object.keys(obj)) if (!known.includes(k)) this.bad(`${where} has a key ${shown(k)} the engine does not use.`);
   }
   title() { const n = this.def.name; return typeof n === 'string' && n.trim() ? clean(n, READER_LIMITS.title) : '(no name)'; }
+  // The tier sentence, true to what the reading above says: an auto entry that hands parts to the DM, or has parts that never take effect, says so.
+  tierSentence(tier, words) {
+    const dm = this.doesNot.length > 0, nv = this.never > 0;
+    if (tier === 'auto' && (dm || nv)) {
+      this.line(`Tier: auto, but ${list([dm ? 'the engine hands the parts listed for the DM to the DM' : null, nv ? 'the engine never applies the parts said above never to take effect, and tells nobody' : null].filter(Boolean))}.`);
+    } else {
+      this.line(words[tier]);
+      if (nv) this.line('Parts of this entry never take effect, as said above: the engine does not apply them and tells nobody.');
+    }
+  }
   // The subject of a step inside a branch.
   it() { return this.aim === 'self' ? this.actor : 'it'; }
   result(hash) {
@@ -637,8 +685,7 @@ class Reading {
   tierLine() {
     const d = this.def;
     if (!TIERS.includes(d.tier)) return this.bad('The tier is not auto, assist or manual.');
-    if (d.tier === 'auto' && this.doesNot.length) this.line('Tier: auto, but the engine hands the parts listed for the DM to the DM.');
-    else this.line(TIER_WORDS[d.tier]);
+    this.tierSentence(d.tier, TIER_WORDS);
     if (d.tier !== 'auto') {
       this.line('When it is cast, the DM is shown the author\'s description (unless a step has already handed something to the DM) to apply what the steps do not.');
       this.dm('Whatever the description says beyond the steps above.');
@@ -678,15 +725,22 @@ class Reading {
   branchOk(kind, b) {
     return (b === 'onHit' || b === 'onMiss') ? kind === 'attack' : (b === 'onFail' || b === 'onSuccess') ? kind === 'save' : b === 'blocked' ? kind === 'teleport' : kind === 'damage';
   }
-  // A step's `when` (effects.js exec): every tag must hold, or the step is skipped; one the engine cannot judge hands it to the DM.
+  // A step's `when` (effects.js exec): every tag must hold, or the step is skipped; one the engine cannot judge hands the step to the DM.
+  // What a step can judge is JUDGED_STEP, and below an attack's `onHit` or `onMiss` also Advantage and Disadvantage (a test plays each).
   whenOf(when, at) {
     if (when === undefined) return '';
     if (!Array.isArray(when)) { this.bad(`Step ${at}: \`when\` is not a list of tags.`); return ' (with an unreadable condition)'; }
-    const tags = when.filter((t) => Object.hasOwn(TAG_WORDS, t));
+    const tags = when.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t));
     if (tags.length !== when.length) this.bad(`Step ${at}: \`when\` names a situation the engine does not know.`);
-    const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
-    if (un.length) this.dm(`Deciding whether ${list(un.map((t) => TAG_WORDS[t]))}, each time step ${at} runs.`);
-    return ` This happens only if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? '; the engine cannot tell that, so it asks the DM each time' : ''}.`;
+    const judged = this.afterAtk > 0 ? JUDGED_STEP_AFTER_ATTACK : JUDGED_STEP;
+    const un = tags.filter((t) => !judged.includes(t));
+    let text = ` This happens only if ${list(tags.map((t) => TAG_WORDS[t]))}.`;
+    if (un.length) {
+      this.dm(`Deciding whether ${list(un.map((t) => TAG_WORDS[t]))}, each time step ${at} runs.`);
+      const how = un.some((t) => t === 'attack.advantage' || t === 'attack.disadvantage') ? ' (the engine knows how an attack roll went only for the steps under that attack\'s hit or miss)' : '';
+      text += ` The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))} ${un.length > 1 ? 'hold' : 'holds'}${how}, so it does not run this step itself: unless an earlier condition already fails, it tells the DM, who applies the step if it holds.`;
+    }
+    return text;
   }
   // How a condition or modifier put on a creature ends (rolls.js condition and modifier, durations.js boundary and damaged).
   ending(st, at, what) {
@@ -748,9 +802,9 @@ function saveSentence({ st, at, depth, Who, say }) {
   say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
   if (this.itm && st.dc === undefined) { this.line('No DC is written in for this save, and an item\'s own steps have no spell save DC: the engine does not roll it, it tells the DM, who applies it.', depth); this.dm(`The save of step ${at}: it has no DC.`); }
   if (st.advantageIf !== undefined) {
-    const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => Object.hasOwn(TAG_WORDS, t)) : [];
-    const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
-    this.line(`It has Advantage on this save if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? '; the engine cannot tell that, so the DM decides' : ''}.`, depth);
+    const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t)) : [];
+    const un = tags.filter((t) => !JUDGED_ADVANTAGE_IF.includes(t));
+    this.line(`It has Advantage on this save if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? `. The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))} ${un.length > 1 ? 'hold' : 'holds'}: it rolls the save without that Advantage and tells the DM, who decides` : ''}.`, depth);
     if (un.length) this.dm(`Deciding Advantage on the save of step ${at}.`);
   }
   const fail = Array.isArray(st.onFail) ? st.onFail : null, succ = st.onSuccess;
@@ -793,8 +847,12 @@ export const STEP_SENTENCES = {
       this.line('The engine has no spell attack bonus for a creature\'s action, so it makes no roll: it tells the DM, who rolls it and says whether it hits, and it counts as a miss meanwhile. The entry should be a weapon attack with a bonus.', depth);
       this.dm(`The attack of step ${at}: it is a spell attack, which has no bonus in a creature's action: rolling it and saying whether it hits.`);
     }
-    if (st.onHit !== undefined) { this.line('On a hit:', depth); this.steps(st.onHit, `${at}.onHit`, depth + 1, this.it()); }
-    if (st.onMiss !== undefined) { this.line('On a miss:', depth); this.steps(st.onMiss, `${at}.onMiss`, depth + 1, this.it()); }
+    // effects.js `exec`: the branch of an attack carries how the roll went (`mode`) into every step below it, so a `when` on Advantage or Disadvantage can be judged there.
+    this.afterAtk++;
+    try {
+      if (st.onHit !== undefined) { this.line('On a hit:', depth); this.steps(st.onHit, `${at}.onHit`, depth + 1, this.it()); }
+      if (st.onMiss !== undefined) { this.line('On a miss:', depth); this.steps(st.onMiss, `${at}.onMiss`, depth + 1, this.it()); }
+    } finally { this.afterAtk--; }
     if (st.onHit === undefined && st.onMiss === undefined) this.bad(`Step ${at}: an attack with nothing on a hit or a miss.`);
   },
   // A save's DC is kept while its branches are read, for an ending that repeats it (`ending`, above).
@@ -956,11 +1014,29 @@ function modExtras(m, at, toCaster) {
   if (m.stack === false) bits.push('several of the same name do not add up');
   if (typeof m.spell === 'string') bits.push(`it holds only for the damage of ${nameOf('spells', m.spell)}`);
   if (m.when !== undefined) {
-    const tags = Array.isArray(m.when) ? m.when.filter((t) => Object.hasOwn(TAG_WORDS, t)) : [];
+    const tags = Array.isArray(m.when) ? m.when.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t)) : [];
     if (!Array.isArray(m.when) || tags.length !== m.when.length) this.bad(`${at}: \`when\` names a situation the engine does not know.`);
-    const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
-    bits.push(`it holds only when ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? ', which the engine cannot tell, so the engine never applies it' : ''}`);
-    if (un.length) this.dm(`${at}: the modifier needs ${list(un.map((t) => TAG_WORDS[t]))}, which the engine cannot tell.`);
+    const hook = typeof m.on === 'string' ? m.on : '';
+    const own = HOLDER_HOOKS.includes(hook);                       // the creature itself is the "target" there: its own state is what is asked
+    const word = (t) => (own && SELF_TAG_WORDS[t]) || TAG_WORDS[t];
+    bits.push(`it holds only when ${list(tags.map(word))}`);
+    if (hook === 'hp.max') {
+      // rolls.js `modifier`: the Hit Point maximum changes when the modifier is put on, and nothing asks its `when`.
+      if (!this.inTrait && tags.length && m.op === 'add') bits.push('the engine does not ask that when it changes the Hit Point maximum: it changes it whatever the situation is');
+    } else if (hook === 'carry') {
+      if (!this.inTrait && tags.length) { this.never++; bits.push('the engine never applies this, since nothing reads carrying capacity'); }
+    } else if (Object.hasOwn(JUDGED_ON, hook)) {
+      const judged = JUDGED_ON[hook];
+      // `attack.str`: known only when the attack says which ability it uses (a character's) or is a spell's. A creature's own attack never does.
+      const sometimes = (JUDGED_SOMETIMES[hook] ?? []).filter((t) => tags.includes(t));
+      const never = tags.filter((t) => !judged.includes(t) || (sometimes.includes(t) && this.mon && this.inTrait));
+      if (never.length) {
+        this.never++;
+        bits.push(`the engine never applies this: at ${HOOK_WORDS[hook]} it cannot tell whether ${list(never.map(word))} ${never.length > 1 ? 'hold' : 'holds'}, and it skips a modifier it cannot be sure of, without telling anyone`);
+      } else if (sometimes.length && !this.inTrait) {
+        bits.push(`the engine can tell whether ${list(sometimes.map(word))} holds only for a character's attack (which names its ability) and a spell's attack roll; for a creature's own attack it cannot, and there it skips the modifier without telling anyone`);
+      }
+    }
   }
   if (m.on === 'hp.max' && m.op === 'add' && !this.inTrait) bits.push('current Hit Points move with the maximum, and back when it ends');
   return bits.length ? bits.map((b) => `${cap1(b)}.`).join(' ') : null;
@@ -1467,8 +1543,7 @@ class MonsterReading extends Reading {
     const t = this.def.tier;
     if (!TIERS.includes(t)) return this.bad('The tier is not auto, assist or manual.');
     const n = this.doesNot.length;
-    if (t === 'auto' && n) this.line('Tier: auto, but the engine hands the parts listed for the DM to the DM.');
-    else this.line(MONSTER_TIER_WORDS[t]);
+    this.tierSentence(t, MONSTER_TIER_WORDS);
     if (t !== 'auto') {
       this.line(n ? `Why: ${this.textOnly ? `${this.textOnly} trait${this.textOnly > 1 ? 's' : ''} only the DM runs; ` : ''}${n} thing${n > 1 ? 's' : ''} the DM does by hand, listed below.` : 'Why: the reader finds nothing the DM must do by hand in the entry itself; the entry\'s tier says its description holds more.');
       this.line('The author\'s description is shown beside this reading; whatever it says beyond the lines above, the DM runs.');
@@ -1912,8 +1987,7 @@ class GrantReading extends Reading {
     const t = this.def.tier;
     if (!TIERS.includes(t)) return this.bad('The tier is not auto, assist or manual.');
     const words = this.kind === 'item' ? ITEM_TIER_WORDS : FEAT_TIER_WORDS;
-    if (t === 'auto' && this.doesNot.length) this.line('Tier: auto, but the engine hands the parts listed for the DM to the DM.');
-    else this.line(words[t]);
+    this.tierSentence(t, words);
     if (t !== 'auto') {
       this.line(`The author's description is shown beside this reading; whatever it says beyond the lines above, the DM applies.`);
       this.dm('Whatever the description says beyond the lines above.');
