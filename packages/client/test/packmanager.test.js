@@ -135,9 +135,13 @@ test('an error frame answers a pack message only when it is about packs', () => 
   assert.equal(answersPack({ error: 'Nobody is there.' }), false);
 });
 
-test('the kinds the reader cannot read are the ones the reader says it cannot read, and the line to say so is one sentence', () => {
+test('a kind is unread when the reader says so (its own READ_KINDS), not by a list of the page\'s own; the line to say so is one sentence', async () => {
+  const { READ_KINDS, KIND_NAMES, readEntry } = await import(pathToFileURL(join(tmp, 'shared/content/reader.js')));
+  for (const k of Object.keys(KIND_NAMES).filter((x) => x.endsWith('s') || x === 'armour')) {
+    assert.equal(isRead(k), READ_KINDS.includes(KIND_NAMES[k]), k);
+    assert.equal(readEntry(k, {}).title === '(not read)', !isRead(k), `${k}: the reader answers "(not read)" exactly for the kinds the page calls unread`);
+  }
   for (const k of ['spells', 'monsters']) assert.equal(isRead(k), true);
-  for (const k of ['items', 'feats', 'weapons', 'armour', 'objects']) assert.equal(isRead(k), false);
   assert.equal(isRead('nonsense'), false);
   assert.equal(UNREAD_SAY, 'The game cannot read this kind back yet; you are adding it unread.');
 });

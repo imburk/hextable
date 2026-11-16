@@ -28,11 +28,11 @@ async function monsterPack() {
 
 const KINDS_PACK = readFileSync(new URL('../../packages/rules/test/fixtures/reader-kinds-pack.json', import.meta.url), 'utf8');
 const SEEN_NAMES = /Cinderjaw|Gloomwing|Hollow Reaver|Pack Tactics|Ember Memory/i;     // what only a monster's data would say
-async function hoardPack() {                                              // a pack of kinds the reader cannot read yet, made from two SRD entries
+async function hoardPack() {                                              // a pack of a feat (read since #419) and a weapon and an object (not read yet), made from SRD entries
   const { CONTENT } = await import(pathToFileURL(`${ROOT}packages/rules/src/content/index.js`));
-  const feat = Object.assign(structuredClone(CONTENT.feats.alert), { id: 'hb-hoard-sharp-eyes', name: 'Sharp Eyes', source: 'homebrew:hoard', checked: false });
-  const item = Object.assign(structuredClone(CONTENT.items.defender), { id: 'hb-hoard-bright-blade', name: 'Bright Blade', source: 'homebrew:hoard', checked: false });
-  return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'hoard', name: 'Hoard', version: 1, license: 'CC0', attribution: 'Written for the smoke test.' }, feats: [feat], items: [item] });
+  const mk = (c, id, name) => Object.assign(structuredClone(c), { id, name, source: 'homebrew:hoard', checked: false });
+  return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'hoard', name: 'Hoard', version: 1, license: 'CC0', attribution: 'Written for the smoke test.' },
+    feats: [mk(CONTENT.feats.alert, 'hb-hoard-sharp-eyes', 'Sharp Eyes')], weapons: [mk(CONTENT.weapons.club, 'hb-hoard-bright-club', 'Bright Club')], objects: [mk(CONTENT.objects['door-wooden'], 'hb-hoard-oak-gate', 'Oak Gate')] });
 }
 
 async function table(browser, url, label0, hostOpts, playerOpts, tag) {
@@ -327,19 +327,21 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await wait(host, (i) => !window.hextable.state.entities[i], id);
         await closeManager();
       });
-      await run.do('kinds the reader cannot read are listed by name with one honest line, in the review and on the card', async () => {
+      await run.do('kinds the reader cannot read are listed by name with one honest line, in the review and on the card; a kind it reads has readings', async () => {
         await openManager();
         await choose('hoard.json', await hoardPack());
         const r = await host.textContent('#pm-review');
-        if (!/Items \(1\)/.test(r) || !/Feats \(1\)/.test(r) || !/Bright Blade/.test(r) || !/Sharp Eyes/.test(r)) throw new Error(r.slice(0, 400));
+        if (!/Weapons \(1\)/.test(r) || !/Objects \(1\)/.test(r) || !/Bright Club/.test(r) || !/Oak Gate/.test(r)) throw new Error(r.slice(0, 400));
         if ((r.match(/The game cannot read this kind back yet; you are adding it unread\./g) ?? []).length !== 2) throw new Error(`the honest line: ${r.slice(0, 600)}`);
         if (await host.$('#pm-review .pm-plain .pm-line')) throw new Error('an unread entry got a reading');
+        if (!(await host.$('#pm-review .pm-feat[data-entry="hb-hoard-sharp-eyes"] .pm-tier'))) throw new Error('a feat, which the reader reads, has no row with a tier');
         await host.click('#pm-go');
         await waitShown(host, '.pm-pack[data-pack="hoard"]');
         const card = '.pm-pack[data-pack="hoard"]';
         await host.evaluate((c) => document.querySelectorAll(`${c} details.pm-unread`).forEach((d) => { d.open = true; }), card);
         const t = await host.textContent(card);
-        if (!/Bright Blade/.test(t) || !/Sharp Eyes/.test(t) || !/you are adding it unread/.test(t)) throw new Error(t.slice(0, 400));
+        if (!/Bright Club/.test(t) || !/Oak Gate/.test(t) || !/you are adding it unread/.test(t) || !/Feats by tier/.test(t)) throw new Error(t.slice(0, 400));
+        await host.evaluate((c) => document.querySelector(c).scrollIntoView(), card);
         await shot(host, `homebrew-unread-${tag}`);
         await closeManager();
       });
