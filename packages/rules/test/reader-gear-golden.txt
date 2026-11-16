@@ -1,0 +1,355 @@
+== weapon hb-rk-gale-spear
+"Gale Spear" (a martial melee weapon).
+A hit deals 1d8 piercing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+It attacks a creature up to 10 feet away in melee, and the engine refuses a farther target.
+Used in two hands it deals 1d10 instead (plus the same modifier): the engine offers it as a second attack of the same name, "(two hands)", but only while the sheet carries no Shield.
+Reach: it reaches 10 feet instead of 5.
+Thrown: the wielder may instead throw it, as a ranged attack with the same attack bonus and the same damage (not the versatile damage). It is rolled normally up to 20 feet, has Disadvantage up to 60 feet, and a target farther off is refused. An enemy within 5 feet who can see the thrower also gives Disadvantage.
+Versatile: it has a two-handed damage, said above.
+Its mastery property is Topple: a hit may knock the target Prone unless it passes a Constitution save. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 4 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 12 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Applying its mastery property, Topple.
+
+== weapon hb-rk-rook-hammer
+"Rook Hammer" (a martial melee weapon).
+A hit deals 2d6 bludgeoning damage, plus the holder's Strength modifier. A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+It attacks a creature up to 5 feet away, and the engine refuses a farther target.
+Heavy: the engine does nothing with this property.
+Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.
+Its mastery property is Push: a hit pushes a Large or smaller target 10 feet away. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It is two-handed unless the wielder is mounted. The engine reads neither hands nor mounts for it.
+It weighs 9 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 40 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Any penalty a Heavy weapon puts on a small wielder.
+DM: Whether the wielder has both hands free for a Two-handed weapon.
+DM: Applying its mastery property, Push.
+DM: Whether a mounted wielder uses it in one hand.
+
+== weapon hb-rk-marsh-crossbow
+"Marsh Crossbow" (a simple ranged weapon).
+A hit deals 1d6 piercing damage, plus the holder's Dexterity modifier. A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in simple weapons. A sheet that lists it for a character who is not trained is refused by the engine.
+As a ranged weapon: an attack up to 60 feet away is rolled normally, one from 61 to 240 feet has Disadvantage (long range), and the engine refuses a target beyond 240 feet. An enemy within 5 feet who can see the attacker also gives Disadvantage.
+A holder who gets a bonus to ranged weapon attacks (a fighting style) adds it.
+Ammunition ("dart"): the engine neither requires nor spends ammunition: every attack is allowed, however many it makes.
+Loading: the engine does not limit how many times it attacks in one action.
+Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.
+Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.
+Its mastery property is Slow: a hit takes 10 feet off the target's Speed. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 3 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 20 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Counting and spending its ammunition.
+DM: Holding a Loading weapon to one attack per action.
+DM: Whether the wielder has both hands free for a Two-handed weapon.
+DM: Applying its mastery property, Slow.
+
+== weapon hb-rk-needle-fang
+"Needle Fang" (a martial melee weapon).
+A hit deals 2 piercing damage (a fixed number: no dice are rolled), plus the better of the holder's Strength and Dexterity modifiers (Strength on a tie). A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+It attacks a creature up to 5 feet away, and the engine refuses a farther target.
+Finesse: the wielder uses the better of Strength and Dexterity (Strength on a tie) for the attack roll and the damage roll. A Sneak Attack may be made with it.
+Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.
+Its mastery property is Nick: the extra attack of a Light weapon is made as part of the same action. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 1 pound. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 5 SP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Applying its mastery property, Nick.
+
+== weapon hb-rk-sky-chakram
+"Sky Chakram" (a martial ranged weapon).
+A hit deals 1d6 slashing damage, plus the better of the holder's Strength and Dexterity modifiers (Strength on a tie). A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+As a ranged weapon: an attack up to 30 feet away is rolled normally, one from 31 to 90 feet has Disadvantage (long range), and the engine refuses a target beyond 90 feet. An enemy within 5 feet who can see the attacker also gives Disadvantage.
+A holder who gets a bonus to ranged weapon attacks (a fighting style) adds it.
+Finesse: the wielder uses the better of Strength and Dexterity (Strength on a tie) for the attack roll and the damage roll. A Sneak Attack may be made with it.
+Thrown: the wielder may instead throw it, as a ranged attack with the same attack bonus and the same damage (not the versatile damage). It is rolled normally up to 30 feet, has Disadvantage up to 90 feet, and a target farther off is refused. An enemy within 5 feet who can see the thrower also gives Disadvantage.
+Its mastery property is Graze: a miss still deals damage equal to the ability modifier. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 1 pound. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 25 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Applying its mastery property, Graze.
+
+== weapon hb-rk-burl-club
+"Burl Club" (a simple melee weapon).
+A hit deals 1d6 bludgeoning damage, plus the holder's Strength modifier. A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in simple weapons. A sheet that lists it for a character who is not trained is refused by the engine.
+It attacks a creature up to 5 feet away, and the engine refuses a farther target.
+It has no weapon properties.
+Its mastery property is Sap: a hit gives the target Disadvantage on its next attack roll. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 3 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 1 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Applying its mastery property, Sap.
+
+== weapon hb-rk-fen-axe
+"Fen Axe" (a martial melee weapon).
+A hit deals 1d10 slashing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+It attacks a creature up to 5 feet away, and the engine refuses a farther target.
+Heavy: the engine does nothing with this property.
+Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.
+Its mastery property is Cleave: a hit lets the wielder strike a second creature next to the first. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 7 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 30 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Any penalty a Heavy weapon puts on a small wielder.
+DM: Whether the wielder has both hands free for a Two-handed weapon.
+DM: Applying its mastery property, Cleave.
+
+== weapon hb-rk-quill-lance
+"Quill Lance" (a martial melee weapon).
+A hit deals 1d6 piercing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+It attacks a creature up to 5 feet away, and the engine refuses a farther target.
+Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.
+Its mastery property is Vex: a hit gives the wielder Advantage on its next attack roll against that target. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
+It weighs 2 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 8 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+A character's sheet names it among its weapons, and a magic item can be made from it.
+Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
+DM: Applying its mastery property, Vex.
+
+== armour hb-rk-thornweave-vest
+"Thornweave Vest" (light armor).
+A sheet that has a wearer in it who is not trained in light armor is refused by the engine.
+Worn, it sets the Armor Class to 12, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
+The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
+The wearer's whole Dexterity modifier is added to the Armor Class, and a negative modifier lowers it.
+It asks for no Strength: a weak wearer loses nothing.
+It puts no penalty on Stealth.
+It weighs 8 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 30 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
+
+== armour hb-rk-barkplate
+"Barkplate" (medium armor).
+A sheet that has a wearer in it who is not trained in medium armor is refused by the engine.
+Worn, it sets the Armor Class to 14, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
+The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
+The wearer's Dexterity modifier is added to the Armor Class, but at most +2; a modifier below that, a negative one too, is added as it is.
+A wearer whose Strength score is below 13 has 10 feet less Speed. The engine does nothing else about it.
+It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.
+It weighs 30 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 150 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
+DM: Disadvantage on the wearer's Dexterity (Stealth) checks.
+
+== armour hb-rk-cairn-harness
+"Cairn Harness" (heavy armor).
+A sheet that has a wearer in it who is not trained in heavy armor is refused by the engine.
+Worn, it sets the Armor Class to 17, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
+The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
+Dexterity adds nothing to the Armor Class: the modifier is not used, whatever it is.
+A wearer whose Strength score is below 15 has 10 feet less Speed. The engine does nothing else about it.
+It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.
+It weighs 60 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 800 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
+DM: Disadvantage on the wearer's Dexterity (Stealth) checks.
+
+== armour hb-rk-stiff-cuirass
+"Stiff Cuirass" (medium armor).
+A sheet that has a wearer in it who is not trained in medium armor is refused by the engine.
+Worn, it sets the Armor Class to 13, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
+The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
+The wearer's Dexterity modifier is added to the Armor Class, but at most +0; a modifier below that, a negative one too, is added as it is.
+It asks for no Strength: a weak wearer loses nothing.
+It puts no penalty on Stealth.
+It weighs 25 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 60 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
+
+== armour hb-rk-lantern-shield
+"Lantern Shield" (a Shield).
+A sheet that has a wearer in it who is not trained in Shields is refused by the engine.
+Its Armor Class number is 3, and the engine never reads it: a Shield is a mark on the sheet that always adds +2 Armor Class (to a wearer trained with Shields), and the engine refuses a sheet that names a Shield as body armor. So this number changes nothing.
+It asks for no Strength: a weak wearer loses nothing.
+It puts no penalty on Stealth.
+It weighs 5 pounds. The engine uses no weight for anything: carrying capacity is not counted.
+Its price is 12 GP. The engine sells nothing and uses no price for anything.
+Not checked against any rulebook.
+Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM's.
+DM: Giving the Armor Class this Shield was written with.
+
+== object hb-rk-glasswork-gate
+"Glasswork Gate" (a door: it stands on the line between two hexes (or on a line the DM draws), never inside a hex).
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 4 states: "shut", "ajar", "open" and "grated". The engine keeps which one it is in, and the DM can set it to any.
+  State "shut", called "shut": it stops both: nothing can cross its line and nothing can be seen across it, as with a wall, so no attack or spell is aimed across it either.
+  State "ajar", called "ajar": it can be walked across, but nothing can be seen across it.
+  State "open", called "open": it can be walked across and seen across.
+  State "grated", called "grated": nothing can walk across its line, but it can be seen across.
+Placed with no state named, it starts in "shut" (called "shut").
+To use it, a creature must be up and able to act, on its level and within reach (beside a door's line, or on or next to a thing's hex). A player can use only what the table has shown them. A use works only in the states it lists: in any other the engine refuses it and says what state it is in.
+Use "nudge", "Nudge": works while it is in "shut" (called "shut").
+  The first thing a creature handles in a turn of a fight costs nothing; a second costs its action. Outside a fight it costs nothing.
+  Then it goes to "ajar" (called "ajar"). Whatever the DM linked it to goes to its own state too.
+Use "swing", "Swing wide": works while it is in "ajar" (called "ajar").
+  The first thing a creature handles in a turn of a fight costs nothing; a second costs its action. Outside a fight it costs nothing.
+  Then it goes to "open" (called "open"). Whatever the DM linked it to goes to its own state too.
+Use "slam", "Slam it": works while it is in "shut" (called "shut").
+  In a fight it costs the creature's action. Outside a fight it costs nothing.
+  The user first rolls a Strength (Athletics) check against DC 13; the DM can set another DC for this use where the object is placed. Proficiency in the skill (twice with Expertise) or, without it, in the tool adds the Proficiency Bonus.
+  If the check fails, nothing else happens: no change of state and no steps. The time is spent.
+  Then it goes to "open" (called "open"). Whatever the DM linked it to goes to its own state too.
+Use "seal", "Seal": works while it is in "open" (called "open").
+  In a fight it costs the creature's action. Outside a fight it costs nothing.
+  It needs the key: the DM names a key on the object where it is placed, and the user must carry a gear item of that name. With none named, the engine refuses it ("it has no lock").
+  Then it goes to "shut" (called "shut"). Whatever the DM linked it to goes to its own state too.
+Use "crank", "Crank the grille down": works while it is in "open" (called "open").
+  In a fight it costs the creature's action. Outside a fight it costs nothing.
+  The user first rolls a Dexterity check against DC 12; the DM can set another DC for this use where the object is placed. Proficiency in the skill (twice with Expertise) or, without it, in the tool adds the Proficiency Bonus.
+  The user must carry Tinkers Tools, or the engine refuses it.
+  If the check fails, nothing else happens: no change of state and no steps. The time is spent.
+  Then it goes to "grated" (called "grated"). Whatever the DM linked it to goes to its own state too.
+Tier: auto. The engine runs all of this.
+Not checked against any rulebook.
+
+== object hb-rk-ember-brazier
+"Ember Brazier" (a thing: it stands inside one hex).
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 2 states: "cold" and "lit". The engine keeps which one it is in, and the DM can set it to any.
+  State "cold", called "cold": it does not stand in the way of anyone.
+  State "lit", called "lit": it fills its hex: no creature can walk into it or stand in it. Blocking sight changes nothing for a thing in a hex: only a door on a line stops sight.
+    It gives light: Bright Light out to 20 feet and Dim Light for 20 feet beyond that. It matters where the table sees by light.
+Placed with no state named, it starts in "cold" (called "cold").
+To use it, a creature must be up and able to act, on its level and within reach (beside a door's line, or on or next to a thing's hex). A player can use only what the table has shown them. A use works only in the states it lists: in any other the engine refuses it and says what state it is in.
+Use "kindle", "Kindle": works while it is in "cold" (called "cold").
+  In a fight it costs the creature's action. Outside a fight it costs nothing.
+  Then it goes to "lit" (called "lit"), and the engine refuses the whole use while a creature stands in its hex, since it would then block movement. Whatever the DM linked it to goes to its own state too.
+  Then its steps run, from the object, on the user:
+    The user takes 1d4 fire damage.
+Use "snuff", "Snuff": works while it is in "lit" (called "lit").
+  The first thing a creature handles in a turn of a fight costs nothing; a second costs its action. Outside a fight it costs nothing.
+  Then it goes to "cold" (called "cold"). Whatever the DM linked it to goes to its own state too.
+Tier: auto. The engine runs all of this.
+Not checked against any rulebook.
+
+== object hb-rk-whisper-tripwire
+"Whisper Tripwire" (a thing: it stands inside one hex).
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 4 states: "hidden", "found", "sprung" and "spent". The engine keeps which one it is in, and the DM can set it to any.
+  State "hidden", called "unnoticed": it does not stand in the way of anyone.
+    Hidden: players are not shown it, cannot use it and are not told it is there; the DM sees it. It still acts as said above. It stays so until it is found.
+  State "found", called "spotted": it does not stand in the way of anyone.
+  State "sprung", called "sprung": it does not stand in the way of anyone.
+  State "spent", called "spent": it does not stand in the way of anyone.
+Placed with no state named, it starts in "hidden" (called "unnoticed").
+To use it, a creature must be up and able to act, on its level and within reach (beside a door's line, or on or next to a thing's hex). A player can use only what the table has shown them. A use works only in the states it lists: in any other the engine refuses it and says what state it is in.
+Use "cut", "Cut the thread": works while it is in "found" (called "spotted").
+  In a fight it costs the creature's action. Outside a fight it costs nothing.
+  The user first rolls a Dexterity check against DC 13; the DM can set another DC for this use where the object is placed. Proficiency in the skill (twice with Expertise) or, without it, in the tool adds the Proficiency Bonus.
+  The user must carry Thieves' Tools, or the engine refuses it.
+  If the check fails, nothing else happens: no change of state and no steps. The time is spent.
+  Then it goes to "spent" (called "spent"). Whatever the DM linked it to goes to its own state too.
+Trigger 1: when a creature standing on the ground steps into its hex from outside it, while it is in "hidden" (called "unnoticed") or "found" (called "spotted"), and only for a creature on the party's side.
+  It goes to "sprung" (called "sprung").
+  The creature's walk ends where it stands, and the table is told it was set off. Its steps run, from the object, on the creature that set it off:
+    The creature that set it off makes a Dexterity saving throw.
+    No DC is written in for this save, so the engine uses the thing's own save DC: the one the DM set where it was placed, else its entry's 13.
+    On a failure it takes 2d6 piercing damage; on a success, half.
+    A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+Trigger 2: when a creature standing on the ground comes within 10 feet of it, from farther away, while it is in "sprung" (called "sprung"), whichever side the creature is on.
+  It goes to "spent" (called "spent").
+  The creature's walk ends where it stands, and the table is told it was set off. Its steps run, from the object, on every living creature within 15 feet of the object, on its level (the one that set it off too, if it is that close):
+    The object makes a ranged weapon attack roll with +5 to hit against each creature in the area.
+    On a hit:
+      It takes 1d6 piercing damage.
+If several triggers fit one step of a creature's walk, only the first, in the order written, goes off.
+When it is found it goes to "found" (called "spotted"). A creature finds it with the Search action (a Perception check against the find DC, from within 15 feet, with nothing solid between) or, when the table's passive-find setting allows, in passing (its passive Perception against the find DC, within 10 feet; the setting "all" for anything hidden, "traps" only for one with a trigger that has steps). The DM can find it for them.
+Its save DC is 13: a save in one of its steps that gives no DC of its own is made against it, unless the DM set another where it was placed. With none, the DC is 10.
+Its find DC is 14, unless the DM set another where it was placed.
+Tier: auto. The engine runs all of this.
+Not checked against any rulebook.
+
+== object hb-rk-rope-cradle
+"Rope Cradle" (a thing: it stands inside one hex).
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 1 state: "hanging". The engine keeps which one it is in, and the DM can set it to any.
+  State "hanging", called "hanging": it does not stand in the way of anyone.
+Placed with no state named, it starts in "hanging" (called "hanging").
+It has nothing to use.
+It joins its hex to another place, which the DM names where it is placed. A creature on either end can walk to the other: it costs the difference in height, at least 5 feet, and twice that unless the creature can climb.
+Tier: auto. The engine runs all of this.
+Not checked against any rulebook.
+
+== object hb-rk-sack-heap
+"Sack Heap" (a pile: what lies on the floor of one hex).
+The engine treats an object of this kind as things lying on the floor, which creatures pick up with the pick up action. Only the DM places one by hand; what a creature drops makes the engine's own pile.
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 1 state: "lying". The engine keeps which one it is in, and the DM can set it to any.
+  State "lying", called "lying": it does not stand in the way of anyone.
+Placed with no state named, it starts in "lying" (called "lying").
+It has nothing to use.
+Tier: auto. The engine runs all of this.
+Not checked against any rulebook.
+
+== object hb-rk-shifting-lever
+"Shifting Lever" (a thing: it stands inside one hex).
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 2 states: "up" and "down". The engine keeps which one it is in, and the DM can set it to any.
+  State "up", called "up": it does not stand in the way of anyone.
+  State "down", called "down": it does not stand in the way of anyone.
+Placed with no state named, it starts in "up" (called "up").
+To use it, a creature must be up and able to act, on its level and within reach (beside a door's line, or on or next to a thing's hex). A player can use only what the table has shown them. A use works only in the states it lists: in any other the engine refuses it and says what state it is in.
+Use "pull", "Pull": works while it is in "up" (called "up").
+  The first thing a creature handles in a turn of a fight costs nothing; a second costs its action. Outside a fight it costs nothing.
+  Then it goes to "down" (called "down"). Whatever the DM linked it to goes to its own state too.
+  Then its steps run, from the object, on the user:
+    Each object the DM linked to this one where it was placed is put in the state "open", if it has that state; with none that has it, the engine tells the DM, who applies it. If a creature stands where one of them would then block movement, the whole action is refused.
+Use "sweep", "Sweep the dust": works while it is in "down" (called "down").
+  In a fight it costs the creature's action. Outside a fight it costs nothing.
+  Then its steps run, from the object, on the user:
+    Each object the DM linked to this one where it was placed that is hidden is put in its found state; if none is hidden, the engine tells the DM, who applies it.
+    This step would reveal the object, which has no found state: the engine tells the DM, who applies it.
+Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Not checked against any rulebook.
+DM: Step use.1.effects.1: revealing the object.
+
+== object hb-rk-whistling-idol
+"Whistling Idol" (a thing: it stands inside one hex).
+Placed on a map, the DM can also give it a name, a key, other DCs, links to other objects (when it enters a state, they go to another) and, for a thing that joins two places, where it leads. None of that is in this entry.
+It has 2 states: "quiet" and "singing". The engine keeps which one it is in, and the DM can set it to any.
+  State "quiet", called "quiet": it does not stand in the way of anyone.
+  State "singing", called "singing": it does not stand in the way of anyone.
+Placed with no state named, it starts in "quiet" (called "quiet").
+It has nothing to use.
+Trigger 1: when a creature standing on the ground comes within 20 feet of it, from farther away, while it is in "quiet" (called "quiet"), whichever side the creature is on.
+  It goes to "singing" (called "singing").
+  The creature's walk ends where it stands, and the table is told it was set off. Its steps run, from the object, on the creature that set it off:
+    The engine does not do this; the DM does this: "The idol sings; every listener within earshot hears it and the DM decides who it draws."
+Trigger 2: when a creature standing on the ground steps out of its hex, while it is in "singing" (called "singing"), whichever side the creature is on.
+  It goes to "quiet" (called "quiet").
+  With no steps, nobody is told and the creature's walk goes on.
+If several triggers fit one step of a creature's walk, only the first, in the order written, goes off.
+Tier: assist. The engine runs what is listed above as run by the engine; the DM applies the rest of the description.
+The author's description is shown beside this reading; whatever it says beyond the lines above, the DM applies.
+Not checked against any rulebook.
+DM: "The idol sings; every listener within earshot hears it and the DM decides who it draws."
+DM: Whatever the description says beyond the lines above.

@@ -2426,7 +2426,7 @@ class GearReading extends Reading {
     if (c === undefined) return;
     const p = priceWord(c);
     if (!p) return this.bad('`cost` is not a price.');
-    this.num('cost', typeof c === 'string' ? c : p, 'price');
+    this.num('cost', c, 'price');
     this.line(`Its price is ${p}. The engine sells nothing and uses no price for anything.`);
   }
 }
@@ -2583,6 +2583,11 @@ function objectReveal(st, at, say) {
   say(`If the object is hidden, it is put in its found state ${shown(f)}; if it is not hidden, the engine finds nothing to reveal and tells the DM.`);
 }
 
+// Does a list of steps hold a damage step that is not under an attack's hit or miss (effects.js `sharedRolls`: only those are rolled once for everyone)?
+function plainDamage(steps, depth = 0, inAttack = false) {
+  if (!Array.isArray(steps) || depth > READER_LIMITS.depth) return false;
+  return steps.some((st) => isObj(st) && (('damage' in st && !inAttack) || BRANCHES.some((b) => plainDamage(st[b], depth + 1, inAttack || (('attack' in st) && (b === 'onHit' || b === 'onMiss'))))));
+}
 const toolWord = (t) => (t === 'thieves-tools' ? "Thieves' Tools" : typeof t === 'string' ? t.split('-').map(cap1).join(' ') : 'a tool');
 
 class ObjectReading extends Reading {
@@ -2638,7 +2643,7 @@ class ObjectReading extends Reading {
     this.line(`State ${shown(k)}${typeof v.name === 'string' && v.name.trim() ? `, called ${qt(v.name, 60)}` : ''}: ${blocks ? what : 'what it blocks is unreadable'}.`, 1);
     if (v.hidden !== undefined) {
       if (typeof v.hidden !== 'boolean') this.bad(`State ${shown(k)}: \`hidden\` is true or false.`);
-      else if (v.hidden) this.line('Hidden: players are not shown it, cannot use it and are not told it is there; the DM sees it. It still blocks as above. It stays so until it is found.', 2);
+      else if (v.hidden) this.line('Hidden: players are not shown it, cannot use it and are not told it is there; the DM sees it. It still acts as said above. It stays so until it is found.', 2);
     }
     if (v.light !== undefined) {
       const l = v.light;
@@ -2728,7 +2733,7 @@ class ObjectReading extends Reading {
     if (t.effects !== undefined) {
       if (!Array.isArray(t.effects) || !t.effects.length) return this.bad(`${at}.effects is not a list of steps.`);
       const area = isInt(t.area);
-      this.line(`The creature's walk ends where it stands, and the table is told it was set off. Its steps run, from the object, on ${area ? `every living creature within ${t.area} feet of the object, on its level (the one that set it off too, if it is that close)${t.effects.length ? '; damage rolled by a step that is not under an attack is rolled once and shared by all of them' : ''}` : 'the creature that set it off'}:`, 1);
+      this.line(`The creature's walk ends where it stands, and the table is told it was set off. Its steps run, from the object, on ${area ? `every living creature within ${t.area} feet of the object, on its level (the one that set it off too, if it is that close)${plainDamage(t.effects) ? '; damage rolled by a step that is not under an attack is rolled once and shared by all of them' : ''}` : 'the creature that set it off'}:`, 1);
       this.stepsFor(t.effects, `${at}.effects`, area ? 'each creature in the area' : 'the creature that set it off', 2);
     } else {
       if (t.area !== undefined) this.line('It has an area but no steps: the area is not used.', 1);
