@@ -145,9 +145,15 @@ export const JUDGED_ON = {
   ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
   ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),
 };
-// Judged only some of the time: `attack.str` is known for a character's attack (it says which ability it uses) and for a spell's (never
-// Strength), and never for a creature's own action.
-export const JUDGED_SOMETIMES = { 'attack.roll': ['attack.str'], 'attack.received': ['attack.str'] };
+// Judged only some of the time. At the attack hooks `attack.str` is known for a character's attack (it says which ability it uses) and for a
+// spell's (never Strength), and never for a creature's own action. At `damage.dealt`, the damage of a character's attack from its sheet knows
+// whether it was ranged and which ability it used; the damage of a spell or of a creature's action (effects.js) knows neither.
+export const JUDGED_SOMETIMES = { 'attack.roll': ['attack.str'], 'attack.received': ['attack.str'], 'damage.dealt': ['ranged', 'melee', 'attack.str'] };
+// Judged, but never true there: a creature making a Death Saving Throw is at 0 Hit Points and so Incapacitated.
+export const NEVER_TRUE = { 'save.death': ['self.notIncapacitated'] };
+// A modifier that adds dice only to a roll that failed (`onFail`: Bardic Inspiration) is asked again when the roll has failed (rolls.js `rescue`), with
+// the creature alone as the "target": of the tags above, only these can hold then.
+export const ON_FAIL_JUDGED = ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated'];
 // Tags that, at a hook where the creature itself is the "target", are about that creature.
 export const SELF_TAG_WORDS = { 'target.prone': 'it is Prone', 'target.unconscious': 'it is Unconscious', 'target.notFiend': 'it is not a Fiend' };
 // Kept for the older name: the tags no place can judge at all.
@@ -1026,15 +1032,22 @@ function modExtras(m, at, toCaster) {
     } else if (hook === 'carry') {
       if (!this.inTrait && tags.length) { this.never++; bits.push('the engine never applies this, since nothing reads carrying capacity'); }
     } else if (Object.hasOwn(JUDGED_ON, hook)) {
-      const judged = JUDGED_ON[hook];
+      const judged = m.onFail === true ? JUDGED_ON[hook].filter((t) => ON_FAIL_JUDGED.includes(t)) : JUDGED_ON[hook];
       // `attack.str`: known only when the attack says which ability it uses (a character's) or is a spell's. A creature's own attack never does.
       const sometimes = (JUDGED_SOMETIMES[hook] ?? []).filter((t) => tags.includes(t));
+      const dead = tags.filter((t) => (NEVER_TRUE[hook] ?? []).includes(t));
       const never = tags.filter((t) => !judged.includes(t) || (sometimes.includes(t) && this.mon && this.inTrait));
+      if (dead.length) {
+        this.never++;
+        bits.push(`the engine never applies this: a creature making a Death Saving Throw is at 0 Hit Points, so ${list(dead.map(word))} cannot hold`);
+      }
       if (never.length) {
         this.never++;
         bits.push(`the engine never applies this: at ${HOOK_WORDS[hook]} it cannot tell whether ${list(never.map(word))} ${never.length > 1 ? 'hold' : 'holds'}, and it skips a modifier it cannot be sure of, without telling anyone`);
       } else if (sometimes.length && !this.inTrait) {
-        bits.push(`the engine can tell whether ${list(sometimes.map(word))} holds only for a character's attack (which names its ability) and a spell's attack roll; for a creature's own attack it cannot, and there it skips the modifier without telling anyone`);
+        bits.push(hook === 'damage.dealt'
+          ? `the engine can tell whether ${list(sometimes.map(word))} ${sometimes.length > 1 ? 'hold' : 'holds'} only for the damage of an attack a character makes from its own sheet; for the damage of a spell or of a creature's action it cannot, and there it skips the modifier without telling anyone`
+          : `the engine can tell whether ${list(sometimes.map(word))} ${sometimes.length > 1 ? 'hold' : 'holds'} only for a character's attack (which names its ability) and a spell's attack roll; for a creature's own action it cannot, and there it skips the modifier without telling anyone`);
       }
     }
   }
