@@ -5,6 +5,7 @@
 // with the table (the server) and is installed through the registry (registry.js). This module is pure, synchronous and
 // has no Node-only import: the rules run in the browser too. No I/O, no clock, no randomness.
 import { HOMEBREW_LIMITS } from './schema.js';
+import { loadPack, overlayOf, PackError } from './registry.js';
 
 // The same pattern as a pack id in the registry and the linter (lowercase letters and digits, single hyphens), with the
 // length of a name: the id is also the prefix of every id in the pack (`hb-<pack id>-<kebab>`).
@@ -150,3 +151,71 @@ export function summonsHomebrew(data) {
   }
   return false;
 }
+
+// ---------- checking stored packs, and a pack offered to a table (moved from the server, #428) ----------
+// Check a list of stored packs `[{ id, version, hash, data }]` the way a pack that was just uploaded is checked: each one through the
+// registry's own budget and strict lint, the id and version it claims, the hash of its data, and the whole set through `overlayOf`
+// (the limit of four, the cross-pack id rules). Used for what a table's file holds at start-up, and for any table that is brought in
+// from a file. Returns { ok: true, loaded: [loaded packs], overlay } or { ok: false, problems: [sentences] }. Pure.
+export function vetPacks(list) {
+  if (!Array.isArray(list)) return { ok: false, problems: ['The packs must be a list.'] };
+  const loaded = [], problems = [];
+  for (const [i, p] of list.entries()) {
+    const at = `Pack ${i + 1}`;
+    if (!p || typeof p !== 'object' || typeof p.hash !== 'string') { problems.push(`${at} is not a stored pack.`); continue; }
+    const r = loadPack(p.data);
+    if (!r.ok) { problems.push(...r.problems.map((x) => `${p.id}: ${x}`)); continue; }
+    let hash = null;
+    try { hash = hashOf(p.data); } catch { /* not plain data: the hash below differs */ }
+    if (r.pack.id !== p.id) problems.push(`${at}: its id is "${p.id}" but the pack inside is "${r.pack.id}".`);
+    else if (r.pack.version !== p.version) problems.push(`${p.id}: its version is ${p.version} but the pack inside is version ${r.pack.version}.`);
+    else if (hash !== p.hash) problems.push(`${p.id}: its hash does not match its contents.`);
+    else if (summonsHomebrew(p.data)) problems.push(`${p.id}: ${HOMEBREW_SUMMON_SENTENCE}`);
+    else loaded.push(r.pack);
+  }
+  if (problems.length) return { ok: false, problems };
+  try { return { ok: true, loaded, overlay: overlayOf(loaded) }; }
+  catch (err) { return { ok: false, problems: err instanceof PackError ? err.problems : [`The packs could not be put together (${err.message}).`] }; }
+}
+
+// Everything a table checks before it stores a pack it was offered, in the order the server has always checked it: the registry's budget
+// and strict lint (`loadPack`); a spell that summons a homebrew creature; the id and, for an update, the version; for an update, that no
+// entry the stored version had is dropped; the cross-pack rules (`overlayOf` on the set the table would then have); the hash.
+//   tablePacks  the table's stored packs `[{ id, version, hash, data }]`
+//   pack        the pack document as an object (a caller that was sent JSON text parses it first, and sets its own size limit)
+//   opts.loaded the table's packs already loaded, if the caller kept them (the server does, per table); else they are vetted here, and a
+//               set that does not pass counts as none loaded, as it does for the server
+// Returns { ok: true, pack: <the loaded pack>, hash, record: { id, version, hash, data }, problems: [] } or
+// { ok: false, problems: [sentences], form }, where `form` says how the server tells the DM, so that no sentence changes:
+//   'error'   the one sentence is the whole message ({ error })            'summon'  the sentence is the message and the only problem
+//   'refuse'  the problems are listed under a "The homebrew was refused: ..." message
+// Pure: nothing is stored, and a refusal changes nothing.
+function vetOffered(op, tablePacks, pack, opts = {}) {
+  const r = loadPack(pack);
+  if (!r.ok) return { ok: false, problems: r.problems, form: 'refuse' };
+  if (summonsHomebrew(pack)) return { ok: false, problems: [HOMEBREW_SUMMON_SENTENCE], form: 'summon' };
+  const id = r.pack.id;
+  const cur = (tablePacks ?? []).find((p) => p.id === id);
+  const plainError = (sentence) => ({ ok: false, problems: [sentence], form: 'error' });
+  if (op === 'add' && cur) return plainError(`The pack "${id}" is already on this table (version ${cur.version}). To change it, update it with a higher version.`);
+  if (op === 'update' && !cur) return plainError(`The pack "${id}" is not on this table. Add it first.`);
+  if (op === 'update' && !(r.pack.version > cur.version)) return plainError(`The pack "${id}" is at version ${cur.version} here; an update must be version ${cur.version + 1} or higher, and this is ${r.pack.version}.`);
+  let have = opts.loaded;
+  if (!have) { const v = vetPacks(tablePacks ?? []); have = v.ok ? v.loaded : []; }
+  // An update may add and change entries but not drop one the earlier version had: an undo step could bring back a creature or a
+  // sheet that names it. To drop entries, remove the pack (when nothing uses it) and add it again.
+  const old = cur && have.find((p) => p.id === id);
+  if (op === 'update' && old) {
+    const now = new Set(r.pack.ids), dropped = old.ids.filter((x) => !now.has(x));
+    if (dropped.length) return { ok: false, form: 'refuse', problems: [`Version ${r.pack.version} of "${id}" drops ${dropped.length} entr${dropped.length === 1 ? 'y' : 'ies'} that version ${cur.version} had (${dropped.slice(0, 5).join(', ')}${dropped.length > 5 ? ', and more' : ''}). An update may add and change entries but not drop them: remove the pack (when nothing uses it) and add it again instead.`] };
+  }
+  try { overlayOf([...have.filter((p) => p.id !== id), r.pack]); }
+  catch (err) { return { ok: false, form: 'refuse', problems: err instanceof PackError ? err.problems : [`The packs could not be put together (${err.message}).`] }; }
+  let hash;
+  try { hash = hashOf(pack); } catch (err) { return { ok: false, form: 'refuse', problems: [`pack: could not be hashed (${err.message})`] }; }
+  return { ok: true, pack: r.pack, hash, record: { id, version: r.pack.version, hash, data: pack }, problems: [] };
+}
+// A pack that is new to the table: its id is not on it yet.
+export const vetAdd = (tablePacks, pack, opts) => vetOffered('add', tablePacks, pack, opts);
+// A new version of a pack the table holds: a higher version, and no entry dropped.
+export const vetUpdate = (tablePacks, pack, opts) => vetOffered('update', tablePacks, pack, opts);
