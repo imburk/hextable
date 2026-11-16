@@ -422,13 +422,22 @@ export const paladin = {
       "id": "faithful-steed",
       "name": "Faithful Steed",
       "level": 5,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Find Steed is always prepared (applied); casting it once without a slot per Long Rest is the DM's.",
+      "text": "Find Steed is always prepared, and you can cast it once without a spell slot (cast with via faithful-steed), at its own level; the use comes back on a Long Rest.",
+      "uses": {
+        "max": 1,
+        "recharge": "long"
+      },
       "grants": {
         "spells": [
           "find-steed"
-        ]
+        ],
+        "freeCast": {
+          "spells": [
+            "find-steed"
+          ]
+        }
       }
     },
     {
