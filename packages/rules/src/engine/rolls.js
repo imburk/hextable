@@ -55,7 +55,15 @@ export function deathSave(s, e, ev) {
 // ---------- healing, rolls and their results ----------
 
 // `r`, if given, is the roll the amount came from, for the event's dice.
-export function heal(s, t, amount, ev, r = null) {
+// An amount of healing or Temporary Hit Points that is not a finite number (an action with no modifier to add: #421) is never applied:
+// Hit Points would become NaN. The DM is told instead. Returns true if it was not applied.
+const noAmount = (t, amount, what, ev, f) => {
+  if (Number.isFinite(amount)) return false;
+  ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src?.name ?? what, partial: true, text: `${what} for ${t.name} has no amount the engine can work out, so none was applied. The DM applies it.` });
+  return true;
+};
+export function heal(s, t, amount, ev, r = null, f = null) {
+  if (noAmount(t, amount, 'Healing', ev, f)) return;
   if (t.hp <= 0) { delete t.cond.unconscious; delete t.cond.stable; t.death = { s: 0, f: 0 }; }
   t.hp = Math.min(t.maxHp, t.hp + amount);
   ev.push({ type: 'heal', target: t.id, amount, hp: t.hp, ...rolledOf(r, amount) });
@@ -70,6 +78,7 @@ const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'h
 // vanish when it ends. They never wake a creature at 0 Hit Points.
 export function tempHp(s, t, amount, ev, f = null, r = null) {
   if (t.dead) return;
+  if (noAmount(t, amount, 'Temporary Hit Points', ev, f)) return;
   const had = t.tempHp ?? 0;
   if (amount <= had) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true, ...rolledOf(r, 0) });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
@@ -150,6 +159,15 @@ export function acOf(s, t) {
   return bounded(m, (m.set ?? t.ac) + m.add);
 }
 
+// The DC a repeated save that ends a condition or a modifier is rolled against: the ending's own (`ends.dc`: an entry says it
+// for a creature's action, and runAction fills it in from the save that put the condition on when it does not), else the DC of
+// the effect (a spell's save DC). With none, the save could never succeed, so the DM is told and ends it (never silently).
+function endingDc(step, f, ev, t) {
+  const dc = step.ends.dc ?? step.dc ?? f.src.dc;
+  if (step.ends.on === 'save' && !Number.isFinite(dc)) ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name}'s ${step.ends.save?.toUpperCase()} save to end this has no DC entered, so the engine does not roll it. The DM ends it.` });
+  return dc;
+}
+
 // Put a condition on a creature. What the condition does is data (content/srd52/conditions.js).
 // `f` is the effect frame that caused it, if any, and `step` the step. If the frame belongs to
 // a lasting effect the condition is tied to it and ends when it does; otherwise only the DM
@@ -163,7 +181,7 @@ export function condition(s, t, id, ev, f = null, step = null, level = undefined
   const held = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   const fx = held && !(held.bound && step && !step.ends) ? held : null;
   t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
-  if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc, born: turnKey(s) } : {}) });
+  if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: endingDc(step, f, ev, t), born: turnKey(s) } : {}) });
   ev.push({ type: 'cond', id: t.id, cond: id });
   const def = conditionDef(id), name = conditionName(id);
   const rest = def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
@@ -186,7 +204,7 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
   const { against, except, ...m } = mod_;
-  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...(step.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc, born: turnKey(s) } : {}) };
+  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...(step.ends ? { ends: step.ends, dc: endingDc(step, f, ev, t), born: turnKey(s) } : {}) };
   if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {
     holder.maxHp += m.value;
     holder.hp = m.value > 0 && holder.hp > 0 ? holder.hp + m.value : Math.min(holder.hp, holder.maxHp);

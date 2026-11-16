@@ -644,7 +644,16 @@ function lintMonster(e, say, baked = false) {
       continue;
     }
     lintTarget(a.target, sub);
+    // A creature's action says how far it reaches (`reach`, melee) or shoots (`range`): with neither the engine cannot tell who it can
+    // aim at (a spell has its range on the spell, so this is for a creature's action only; #421).
+    if (a.target?.creature && typeof a.target.creature === 'object' && a.target.creature.reach === undefined && a.target.creature.range === undefined) sub('a creature target needs `reach` (feet, for a melee attack) or `range` ([normal, long] feet)');
     const seen = lintSteps(a.effects, sub);
+    // A creature's action has no spell attack bonus and no spellcasting modifier of its own (a spell takes them from its caster; the engine
+    // gives an action neither), so a spell attack roll and a heal or Temporary Hit Points that add a modifier would have no number (#421).
+    if (Array.isArray(a.effects)) walkSteps(a.effects, (st) => {
+      if (st && 'attack' in st && st.kind === 'spell') sub('a creature\'s action has no spell attack bonus: make it a weapon attack with the bonus the stat block gives (`kind: "weapon"`, `bonus`)');
+      if (st && ('heal' in st || 'tempHp' in st) && st.addMod !== undefined) sub('a creature\'s action has no spellcasting modifier to add: give the whole amount in the dice (`addMod` is for a spell)');
+    });
     if (e.tier === 'auto' && seen.manual) sub('the monster is marked auto but this action has a manual step');
     if (seen.summons) sub('a summon step is for a spell (a creature\'s action that summons is the DM\'s for now)');
   }

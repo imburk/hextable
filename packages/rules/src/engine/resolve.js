@@ -906,6 +906,12 @@ function studied(s, e, t, ev) {
 // attack roll, with its own bonus, conditions and senses, but the touch is made from the familiar's space: distance,
 // cover and what can be seen are worked out as if the caster stood there with the familiar's size.
 function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = false } = {}) {
+  // An attack with no bonus the engine can read (a spell attack in a creature's action has none: #421) is not rolled: a total that is not a
+  // number would be neither a hit nor a miss. The DM is told, and nothing is spent or changed but the attack itself.
+  if (!Number.isFinite(atk.bonus)) {
+    ev.push({ type: 'manual', actor: e.id, name: atk.name, partial: true, text: `${atk.name} has no attack bonus the engine can use, so the roll was not made. The DM rolls it and says whether it hits ${t.name}.` });
+    return { hit: false, crit: false, mode: 'normal' };
+  }
   const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
   const from = v ? { ...e, pos: v.pos, size: v.size } : e;
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
@@ -1215,6 +1221,15 @@ export function strikeEffect(s, e, t, o, ev) {
   else if (fx && !fx.parts.length) endEffect(s, ev, fx, 'it took no hold');
 }
 
+// A creature's action has no save DC of its own (a spell has the caster's): a condition or a modifier it puts on that ends on a
+// repeated save is rolled against the entry's `ends.dc` if it has one, else the DC of the save that put it on (the SRD's "repeats
+// the save": the same DC). Written on the action's own copy of its steps, so the entry is not changed. The innermost save wins.
+function endingsTakeSaveDc(steps) {
+  const saves = [];
+  walkSteps(steps, (st) => { if ('save' in st && Number.isInteger(st.dc)) saves.push(st); });
+  for (const sv of saves.reverse()) walkSteps([sv], (st) => { if (st.ends?.on === 'save' && st.ends.dc === undefined) st.ends.dc = sv.dc; });
+}
+
 // Run an action's effect steps against its targets. Costs are the caller's. `tag` marks the
 // attack event (an Opportunity Attack).
 export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
@@ -1224,6 +1239,7 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   // An attack roll says what it is in its own event; anything else (a breath, a gaze) is announced.
   if (!('attack' in def.effects[0])) ev.push({ type: 'act', actor: e.id, action: def.id, name: def.name, hexes, targets: (targets ?? []).map((t) => t.id) });
   const steps = structuredClone(def.effects), fx = boundEffect(s, def.name, e.id, steps);
+  endingsTakeSaveDc(steps);
   begin(s, {
     steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
     src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}), ...(fx ? { fx: fx.id } : {}) },

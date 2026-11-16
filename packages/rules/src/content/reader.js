@@ -260,6 +260,7 @@ class Reading {
     this.kind = 'spell';
     this.actor = 'the caster';          // who acts in a step's sentence: a monster's action is its creature's
     this.mon = false;                   // reading a monster (its actions' steps, not a spell's)
+    this.saveDcs = [];                  // the DC of each save the steps being read sit under (a number, or null), the innermost last
     this.base = 0;                      // extra indent, for the steps of an action under its heading
     this.manualSteps = 0;
     this.pre = '';                      // path prefix of the numbers an action holds (`actions.0.`)
@@ -294,9 +295,9 @@ class Reading {
 
   // `addMod` in a creature's action (effects.js: `step.addMod ? src.healMod : 0`; a creature's action has no `healMod`).
   noMod(at) {
-    this.bad(`Step ${at}: a creature's action has no spellcasting modifier, so \`addMod\` makes the amount not a number.`);
-    this.line('The engine has no spellcasting modifier for a creature\'s action: adding it makes the amount not a number, and the creature\'s Hit Points with it. This entry should not be approved.', 1);
-    this.dm(`The healing of step ${at}: it adds a modifier the engine does not have.`);
+    this.bad(`Step ${at}: a creature's action has no spellcasting modifier, so \`addMod\` gives an amount that is not a number.`);
+    this.line('The engine has no spellcasting modifier for a creature\'s action: adding it gives an amount that is not a number, so the engine applies none of it and tells the DM. This entry should not be approved.', 1);
+    this.dm(`The healing of step ${at}: it adds a modifier the engine does not have: applying the amount.`);
   }
 
   // ----- the spell as a whole -----
@@ -464,10 +465,9 @@ class Reading {
       bits.push('a wall between the area\'s origin and a creature keeps that creature out');
       this.line(`${bits.join('; ')}.`);
       if (isInt(a.choose) && this.mon) {
-        // engine/world.js `aimArea` never reads `choose` (engine/casting.js does, for a spell): every creature in the area is affected.
+        // engine/world.js `aimAction`: up to `choose` of those caught are picked (`targets`), as for a spell; with more caught and no pick the action is refused.
         this.num(`${this.pre}target.area.choose`, a.choose, 'creatures');
-        this.line(`The entry says the creature picks up to ${a.choose} of those caught, but the engine does not do that for a creature's action: every creature caught is affected. The DM leaves out any it should not.`);
-        this.dm(`Leaving out all but ${a.choose} of the creatures caught, as the entry's \`choose\` says: the engine does not.`);
+        this.line(`Of those caught, the creature picks up to ${a.choose}; only they are affected. With more caught and no pick the engine refuses the action and asks for one; the monster AI picks the nearest foes, then the most hurt, and never an ally.`);
       } else if (isInt(a.choose)) { this.num(`${this.pre}target.area.choose`, a.choose, 'creatures'); this.line(`Of those caught, the caster picks up to ${a.choose} creatures; only they are affected.`); }
       if (a.types !== undefined) {
         const ts = Array.isArray(a.types) ? a.types.filter((x) => CREATURE_TYPES.includes(x)) : [];
@@ -710,10 +710,15 @@ class Reading {
       const ab = ABILITY_WORDS[ends.save] ?? 'unreadable';
       const atw = ends.at === 'turnStart' ? 'at the start of each of its turns' : ends.at === 'turnEnd' ? 'at the end of each of its turns' : ends.at === 'damaged' ? 'each time it takes damage' : 'at an unreadable time';
       if (this.mon) {
-        // rolls.js condition: the repeated save's DC is `step.dc ?? src.dc`. A condition step cannot hold `dc` (the linter), and a
-        // creature's action has no `src.dc`, so the engine rolls the save against no DC and it never succeeds (DEBT T34).
-        this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.`);
-        return `It would make ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}, and a success would end it${ends.orDamaged === true ? '; any damage it takes would also end it' : ''}. But the engine rolls that save against no DC${ends.dc !== undefined ? ` (the entry's own DC for it, ${ends.dc}, is not read)` : ''}, so it never succeeds: the DM ends it.`;
+        // engine/resolve.js `runAction` and rolls.js `endingDc`: the repeated save is against the ending's own DC (`ends.dc`), else the DC of the
+        // innermost save above it that has one; with neither, the engine tells the DM and does not roll it.
+        const own = isInt(e.dc) ? e.dc : null, above = [...this.saveDcs].reverse().find((x) => x !== null) ?? null, dc = own ?? above;
+        const base = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}`, more = ends.orDamaged === true ? '; any damage it takes would also end it' : '';
+        if (dc === null) {
+          this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC anywhere (neither \`ends.dc\` nor a save above it), so only the DM can end it.`);
+          return `${base}, and a success would end it${more}. But no DC is entered for that save, so the engine does not roll it: it tells the DM when the condition is put on, and the DM ends it.`;
+        }
+        return `${base}, against DC ${dc} (${own !== null ? 'the entry\'s own DC for it' : 'the DC of the save that put it on'}); a success ends it${more}.`;
       }
       text = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}, against the caster's spell save DC; a success ends it${ends.orDamaged === true ? '. Any damage it takes also ends it' : ''}${this.fx === 'spell' ? '. It also ends with the spell' : ''}.`;
     } else {
@@ -722,6 +727,39 @@ class Reading {
     }
     return text;
   }
+}
+
+function saveSentence({ st, at, depth, Who, say }) {
+  const ab = ABILITY_WORDS[st.save];
+  if (!ab) this.bad(`Step ${at}: the save names no ability.`);
+  let dc = '';
+  if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
+  say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
+  if (st.advantageIf !== undefined) {
+    const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => Object.hasOwn(TAG_WORDS, t)) : [];
+    const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
+    this.line(`It has Advantage on this save if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? '; the engine cannot tell that, so the DM decides' : ''}.`, depth);
+    if (un.length) this.dm(`Deciding Advantage on the save of step ${at}.`);
+  }
+  const fail = Array.isArray(st.onFail) ? st.onFail : null, succ = st.onSuccess;
+  const half = st.half === true && fail;
+  // The plain case: a failure deals damage, a success half of it.
+  const simple = half && succ === undefined && fail.length > 0 && fail.every((x) => isObj(x) && STEPS.filter((k) => k in x).length === 1 && 'damage' in x && isDice(x.damage)
+    && (DAMAGE_TYPES.includes(x.type) || x.type === 'chosen') && x.when === undefined && x.times === undefined && BRANCHES.every((b) => x[b] === undefined)
+    && Object.keys(x).every((k) => ['damage', 'type'].includes(k)));
+  if (simple) {
+    fail.forEach((x, i) => this.num(`${at}.onFail.${i}.damage`, x.damage, 'dice'));
+    this.line(`On a failure it takes ${list(fail.map((x) => `${x.damage} ${x.type === 'chosen' ? 'damage of the chosen type' : `${x.type} damage`}`))}; on a success, half.`, depth);
+    return;
+  }
+  if (st.onFail !== undefined) { this.line('On a failure:', depth); this.steps(st.onFail, `${at}.onFail`, depth + 1, this.it()); }
+  if (half) this.line('On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.', depth);
+  else if (st.half === true) this.line('It says half on a success, but it has no failure steps to halve: a success runs the success steps.', depth);
+  if (succ !== undefined) {
+    if (half) { this.line('The entry also lists steps for a success, but the engine never runs them: a success already runs the failure steps at half.', depth); this.bad(`Step ${at}: success steps beside half are never run.`); }
+    else { this.line('On a success:', depth); this.steps(succ, `${at}.onSuccess`, depth + 1, this.it()); }
+  }
+  if (st.onFail === undefined && succ === undefined) this.bad(`Step ${at}: a save with nothing on a failure or a success.`);
 }
 
 // One sentence maker per step kind (STEPS). `this` is the Reading. A test holds the keys equal to STEPS.
@@ -735,45 +773,15 @@ export const STEP_SENTENCES = {
     if (this.mon && kind === 'spell') {
       // effects.js: a spell attack takes its bonus from the spell's caster (`src.attack`); a creature's action has none.
       this.bad(`Step ${at}: a creature's action has no spell attack bonus for the engine to use.`);
-      this.line('The engine has no spell attack bonus for a creature\'s action, so this roll has no total and never counts as a hit by the numbers. The entry should be a weapon attack with a bonus.', depth);
-      this.dm(`The attack of step ${at}: it is a spell attack, which has no bonus in a creature's action.`);
+      this.line('The engine has no spell attack bonus for a creature\'s action, so it makes no roll: it tells the DM, who rolls it and says whether it hits, and it counts as a miss meanwhile. The entry should be a weapon attack with a bonus.', depth);
+      this.dm(`The attack of step ${at}: it is a spell attack, which has no bonus in a creature's action: rolling it and saying whether it hits.`);
     }
     if (st.onHit !== undefined) { this.line('On a hit:', depth); this.steps(st.onHit, `${at}.onHit`, depth + 1, this.it()); }
     if (st.onMiss !== undefined) { this.line('On a miss:', depth); this.steps(st.onMiss, `${at}.onMiss`, depth + 1, this.it()); }
     if (st.onHit === undefined && st.onMiss === undefined) this.bad(`Step ${at}: an attack with nothing on a hit or a miss.`);
   },
-  save({ st, at, depth, Who, say }) {
-    const ab = ABILITY_WORDS[st.save];
-    if (!ab) this.bad(`Step ${at}: the save names no ability.`);
-    let dc = '';
-    if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
-    say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
-    if (st.advantageIf !== undefined) {
-      const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => Object.hasOwn(TAG_WORDS, t)) : [];
-      const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
-      this.line(`It has Advantage on this save if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? '; the engine cannot tell that, so the DM decides' : ''}.`, depth);
-      if (un.length) this.dm(`Deciding Advantage on the save of step ${at}.`);
-    }
-    const fail = Array.isArray(st.onFail) ? st.onFail : null, succ = st.onSuccess;
-    const half = st.half === true && fail;
-    // The plain case: a failure deals damage, a success half of it.
-    const simple = half && succ === undefined && fail.length > 0 && fail.every((x) => isObj(x) && STEPS.filter((k) => k in x).length === 1 && 'damage' in x && isDice(x.damage)
-      && (DAMAGE_TYPES.includes(x.type) || x.type === 'chosen') && x.when === undefined && x.times === undefined && BRANCHES.every((b) => x[b] === undefined)
-      && Object.keys(x).every((k) => ['damage', 'type'].includes(k)));
-    if (simple) {
-      fail.forEach((x, i) => this.num(`${at}.onFail.${i}.damage`, x.damage, 'dice'));
-      this.line(`On a failure it takes ${list(fail.map((x) => `${x.damage} ${x.type === 'chosen' ? 'damage of the chosen type' : `${x.type} damage`}`))}; on a success, half.`, depth);
-      return;
-    }
-    if (st.onFail !== undefined) { this.line('On a failure:', depth); this.steps(st.onFail, `${at}.onFail`, depth + 1, this.it()); }
-    if (half) this.line('On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.', depth);
-    else if (st.half === true) this.line('It says half on a success, but it has no failure steps to halve: a success runs the success steps.', depth);
-    if (succ !== undefined) {
-      if (half) { this.line('The entry also lists steps for a success, but the engine never runs them: a success already runs the failure steps at half.', depth); this.bad(`Step ${at}: success steps beside half are never run.`); }
-      else { this.line('On a success:', depth); this.steps(succ, `${at}.onSuccess`, depth + 1, this.it()); }
-    }
-    if (st.onFail === undefined && succ === undefined) this.bad(`Step ${at}: a save with nothing on a failure or a success.`);
-  },
+  // A save's DC is kept while its branches are read, for an ending that repeats it (`ending`, above).
+  save(o) { this.saveDcs.push(isInt(o.st.dc) ? o.st.dc : null); try { return saveSentence.call(this, o); } finally { this.saveDcs.pop(); } },
   damage({ st, at, depth, Who, say, o }) {
     if (!isDice(st.damage)) this.bad(`Step ${at}: the damage is not dice like 2d6+3.`); else this.num(`${at}.damage`, st.damage, 'dice');
     const type = st.type === 'chosen' ? 'damage of the chosen type' : DAMAGE_TYPES.includes(st.type) ? `${st.type} damage` : 'damage of an unreadable type';
@@ -1375,7 +1383,7 @@ class MonsterReading extends Reading {
     }
     this.line(`${bits.join(' ')}. The target cannot be the creature itself, and a wall between them keeps it from being picked${c.repeat === true ? '; the same creature may be picked more than once' : ''}${isInt(c.within) ? `; every target after the first must be within ${c.within} feet of the first` : ''}.`);
     if (!reach && !band) {
-      this.line('The engine cannot aim this action: using it, and the monster AI looking at it, fail with an error instead of a refusal. This entry should not be approved.');
+      this.line('The engine cannot aim this action: using it is refused with a sentence, and the monster AI skips it. This entry should not be approved.');
       this.dm(`The action at ${at}: it has neither a reach nor a range.`);
     }
     if (first && 'attack' in first) {

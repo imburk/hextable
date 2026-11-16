@@ -996,7 +996,8 @@ export function creatures(s, e, name, { range, harmful, repeat, within, most, sp
 export function targetsFor(s, e, { attack, spell, action }) {
   const out = [];
   const def = action ?? (attack && e.actions?.find((x) => x.id === attack && !x.multiattack)?.id);
-  const far = def ? actionProfile(e.actions.find((x) => x.id === def)).far : null;
+  let far = null;
+  if (def) { try { far = actionProfile(e.actions.find((x) => x.id === def)).far; } catch (err) { if (!(err instanceof TypeError)) throw err; } }      // an action with neither reach nor range reaches no one (#421)
   for (const t of living(s)) {
     if (!unblocked(s, e, t)) continue;
     const d = apart(s, e, t) * FT;
@@ -1015,24 +1016,41 @@ export function targetsFor(s, e, { attack, spell, action }) {
 
 // Who or what an action is aimed at: { targets, hexes, origin }. `targets` is null for an area
 // the engine cannot lay out (a line, a cube), which the DM then applies.
-export function aimAction(s, e, def, a) {
+export function aimAction(s, e, def, a, all = false, ctx = null) {
   const t = def.target;
   if (t.self) return { targets: [e], hexes: null, origin: null };
   if (t.creature) {
-    const c = t.creature, far = c.reach ?? c.range[1];
+    const c = t.creature, far = c.reach ?? c.range?.[1];
+    // An action that says neither how far it reaches nor how far it shoots cannot be aimed (the linter refuses one; a saved game or an
+    // entry that skipped the gate may hold it): refused with a sentence, never thrown, and nothing is changed.
+    if (!(far > 0)) fail(`${e.name}'s ${def.name} says neither how far it reaches nor how far it shoots, so it cannot be aimed at anyone. The DM can apply it by hand.`);
     for (const id of a.targets ?? [a.target]) { const x = ent(s, id); !x.dead || fail(`${x.name} is already dead.`); }
     const targets = creatures(s, e, def.name, { range: far, harmful: true, repeat: c.repeat, within: c.within, most: c.count ?? 1 }, a);
     return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
-  return aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);          // `types` is applied inside
+  const aimed = aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);          // `types` is applied inside
+  // `choose`: up to so many of those the area catches, the creature's pick (as a spell's: casting.js); with `all` (who would be caught: the
+  // AI and the screen ask this) every one caught is listed, for the pick to be made from. A player picks only among creatures the party is told of
+  // (`unknown`, #136): one it is not told of is never offered, never counted for the refusal, and not affected by the pick; the DM sees all.
+  if (t.area.choose && !all) aimed.targets = pickCaught(e, def.name, ctx && ctx.role !== 'dm' ? aimed.targets.filter((x) => !unknown(s, x)) : aimed.targets, a.targets, t.area.choose);
+  return aimed;
+}
+// Of the creatures an area catches, those its user picks (an area with `choose`): `ids`, or all of them if that is no more than may be picked.
+function pickCaught(e, name, caught, ids, most) {
+  if (ids === undefined) {
+    caught.length <= most || fail(`${name} affects up to ${most} creatures of ${e.name}'s choice in the area. Pick them (\`targets\`).`);
+    return caught;
+  }
+  (Array.isArray(ids) && ids.length > 0 && ids.length <= most && new Set(ids).size === ids.length && ids.every((id) => typeof id === 'string')) || fail(`${name} affects up to ${most} different creatures.`);
+  return ids.map((id) => caught.find((x) => x.id === id) || fail(`That creature is not in the area of ${name}.`));
 }
 // A creature's type: a pack monster's, else a character's (Humanoid). Null for one the engine cannot tell.
 export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e.kind === 'pc' ? 'humanoid' : null);
 
 // Who an area action would catch if aimed at `hex`, or null if it cannot be aimed there. For the AI and the UI.
 export function areaTargets(s, e, def, hex) {
-  try { return aimAction(s, e, def, { hex }).targets; } catch (err) { if (err instanceof RuleError) return null; throw err; }
+  try { return aimAction(s, e, def, { hex }, true).targets; } catch (err) { if (err instanceof RuleError) return null; throw err; }
 }
 
 // ---------- walking together ----------

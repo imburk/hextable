@@ -4143,15 +4143,10 @@ export const monsters = [
             dc: 13,
             onFail: [
               {
-                condition: "restrained",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "restrained"
               },
               {
-                manual: "Second failure: the target is Petrified instead of Restrained. If the medusa sees its reflection in the cone it must make this save too."
+                manual: "The repeat is once, not every turn, and the engine does not roll it. At the end of the target's next turn, if it is still Restrained, it makes a Constitution save (DC 13). On a success the Restrained condition ends. On a failure it is Petrified instead of Restrained: the DM swaps the condition, and it lasts until something that cures Petrified is used (Greater Restoration, for one). The medusa also makes this save if it sees its own reflection in the cone."
               }
             ]
           }

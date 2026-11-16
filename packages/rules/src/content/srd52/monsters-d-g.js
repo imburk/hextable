@@ -373,7 +373,10 @@ export const monsters = [
             save: "wis",
             dc: 12,
             half: false,
-            onFail: [{ condition: "frightened", ends: { on: "save", save: "wis", at: "turnEnd", dc: 12 } }],
+            onFail: [{ condition: "frightened", ends: { on: "save", save: "wis", at: "turnEnd", dc: 12 } },
+              {
+                manual: "After 1 minute the target succeeds on the save automatically."
+              }],
           },
         ],
         text: "Recharge 6. Frightens creatures within 15 feet that can see it; the effect ends on its own after 1 minute, which the DM applies.",
@@ -2399,8 +2402,8 @@ export const monsters = [
             dc: 15,
             half: false,
             onFail: [
-              { condition: "restrained", ends: { on: "save", save: "con", at: "turnEnd", dc: 15 } },
-              { manual: "A second failed save makes the target Petrified instead of Restrained." },
+              { condition: "restrained" },
+              { manual: "The repeat is once, not every turn, and the engine does not roll it. At the end of the target's next turn, if it is still Restrained, it makes a Constitution save (DC 15). On a success the Restrained condition ends. On a failure it is Petrified instead of Restrained: the DM swaps the condition, and it lasts until something that cures Petrified is used (Greater Restoration, for one)." },
             ],
           },
         ],

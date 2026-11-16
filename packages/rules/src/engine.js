@@ -171,6 +171,9 @@ function applyInner(s, action, ctx) {
   const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
   const snap = asks || heavy ? freeze(s) : null;
   const putBack = asks || heavy === true;
+  // An action that plays a pack's own steps (a creature's action, a spell) may meet content that makes the engine throw something that is
+  // not a rule refusal, part way through; it too is taken back (below), so a copy is kept for it (#421). Not for the rest: nothing there reads content.
+  const net = snap ?? (action?.type === 'act' || action?.type === 'cast' ? freeze(s) : null);
   setRun({ action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap });
   startWork();
   try {
@@ -192,7 +195,8 @@ function applyInner(s, action, ctx) {
       setRun(null);
       return record(s, ev);
     }
-    if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
+    if (net && !(err instanceof RuleError)) thaw(s, net);   // anything but a refusal (a TypeError, a bad dice expression met in content) puts the game back as it was, then goes on up: a bug is not hidden
+    else if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
     setRun(null);
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;

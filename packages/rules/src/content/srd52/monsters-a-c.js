@@ -2145,15 +2145,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "restrained",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "restrained"
               },
               {
-                manual: "A creature that fails a second time while Restrained by the gaze is Petrified instead. The basilisk also saves if it sees its own reflection in the cone."
+                manual: "The repeat is once, not every turn, and the engine does not roll it. At the end of the target's next turn, if it is still Restrained, it makes a Constitution save (DC 12). On a success the Restrained condition ends. On a failure it is Petrified instead of Restrained: the DM swaps the condition, and it lasts until something that cures Petrified is used (Greater Restoration, for one). The basilisk also makes this save if it sees its own reflection in the cone."
               }
             ]
           }
@@ -2543,15 +2538,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "incapacitated"
               },
               {
-                manual: "A target that fails a second save falls Unconscious for 1 minute; the effect ends if it takes damage or someone within 5 feet wakes it."
+                manual: "The repeat is once, not every turn, and the engine does not roll it. Incapacitated lasts until the end of the target's next turn, when it makes a Constitution save (DC 11); the DM removes Incapacitated then. On a success nothing more happens. On a failure the target is Unconscious for 1 minute instead: the DM applies it; it ends early if the target takes damage or a creature within 5 feet uses an action to wake it."
               }
             ]
           }
@@ -5902,15 +5892,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "incapacitated"
               },
               {
-                manual: "A target that fails the repeat save falls Unconscious for 10 minutes; the effect ends if it takes damage or someone within 5 feet uses an action to wake it."
+                manual: "The repeat is once, not every turn, and the engine does not roll it. Incapacitated lasts until the end of the target's next turn, when it makes a Constitution save (DC 18); the DM removes Incapacitated then. On a success nothing more happens. On a failure the target is Unconscious for 10 minutes instead: the DM applies it; it ends early if the target takes damage or a creature within 5 feet uses an action to wake it."
               }
             ]
           }
@@ -6783,15 +6768,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "incapacitated"
               },
               {
-                manual: "A target that fails the repeat save is Paralyzed instead, repeating the save at the end of each of its turns; a success ends it, and it ends by itself after 1 minute."
+                manual: "The first save is not repeated every turn by the engine. Incapacitated lasts until the end of the target's next turn, when it makes a Constitution save (DC 20); the DM removes Incapacitated then. On a success nothing more happens. On a failure the target is Paralyzed: the DM applies it, and the target repeats the save at the end of each of its turns, a success ending it; after 1 minute it succeeds on the save automatically."
               }
             ]
           }
@@ -7313,15 +7293,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "incapacitated"
               },
               {
-                manual: "A target that fails the repeat save falls Unconscious for 10 minutes; the effect ends if it takes damage or someone within 5 feet uses an action to wake it."
+                manual: "The repeat is once, not every turn, and the engine does not roll it. Incapacitated lasts until the end of the target's next turn, when it makes a Constitution save (DC 21); the DM removes Incapacitated then. On a success nothing more happens. On a failure the target is Unconscious for 10 minutes instead: the DM applies it; it ends early if the target takes damage or a creature within 5 feet uses an action to wake it."
               }
             ]
           }
@@ -8195,15 +8170,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "incapacitated"
               },
               {
-                manual: "A target that fails the repeat save is Paralyzed instead, repeating the save at the end of each of its turns; a success ends it, and it ends by itself after 1 minute."
+                manual: "The first save is not repeated every turn by the engine. Incapacitated lasts until the end of the target's next turn, when it makes a Constitution save (DC 24); the DM removes Incapacitated then. On a success nothing more happens. On a failure the target is Paralyzed: the DM applies it, and the target repeats the save at the end of each of its turns, a success ending it; after 1 minute it succeeds on the save automatically."
               }
             ]
           }
@@ -8937,15 +8907,10 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "incapacitated",
-                ends: {
-                  on: "save",
-                  save: "con",
-                  at: "turnEnd"
-                }
+                condition: "incapacitated"
               },
               {
-                manual: "A target that fails the repeat save falls Unconscious for 1 minute; the effect ends if it takes damage or someone within 5 feet uses an action to wake it."
+                manual: "The repeat is once, not every turn, and the engine does not roll it. Incapacitated lasts until the end of the target's next turn, when it makes a Constitution save (DC 14); the DM removes Incapacitated then. On a success nothing more happens. On a failure the target is Unconscious for 1 minute instead: the DM applies it; it ends early if the target takes damage or a creature within 5 feet uses an action to wake it."
               }
             ]
           }
