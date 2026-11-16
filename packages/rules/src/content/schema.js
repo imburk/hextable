@@ -983,7 +983,7 @@ function lintGrants(g, cls, say) {
   }
   // `freeCast`: for one of the feature's uses, cast a spell with no slot as a Magic action: any
   // spell of a class's list up to a level ({ list, maxLevel }), or one of these ({ spells }).
-  if (g.freeCast !== undefined && !validFreeCast(g.freeCast)) say('freeCast is { list, maxLevel } or { spells }');
+  if (g.freeCast !== undefined) for (const m of freeCastProblems(g.freeCast)) say(m);
   // `metamagic`: a Metamagic option known, by its id, its cost from a pool (engine/casting.js, metamagicFor);
   // `metamagicMax`: so many options a spell while the feature `while` names has its effect going.
   if (g.metamagic !== undefined && !(g.metamagic && ['careful', 'distant', 'empowered', 'extended', 'heightened', 'quickened', 'seeking', 'subtle', 'transmuted', 'twinned'].includes(g.metamagic.id)
@@ -1163,11 +1163,31 @@ const FREE_CAST_LISTS = {
   forms: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((id) => typeof id === 'string' && ID.test(id)) && new Set(v).size === v.length,
 };
 const validFreeCastCost = (c) => !!c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).length === 2 && c.slot === true && typeof c.uses === 'string' && ID.test(c.uses);
-const validFreeCast = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
-  || (Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))
-    && Object.keys(x).every((k) => k === 'spells' || (FREE_CAST_FLAGS.includes(k) && x[k] === true) || (k === 'time' && x[k] === 'action')
-      || (Object.hasOwn(FREE_CAST_LISTS, k) && FREE_CAST_LISTS[k](x[k])) || (k === 'cost' && validFreeCastCost(x[k])) || (k === 'components' && x[k] === 'none'))
-    && !(x.cost && x.atWill)));
+// What is wrong with a freeCast, one sentence for each thing, naming the key (never throws, whatever it is given).
+const FC_WHAT = {
+  forms: 'is a list of 1 to 20 pack monster ids, no repeats', types: 'is a list of 1 to 14 different creature types', ends: 'is a list of masterDies and/or longRest, no repeats',
+  cost: 'is { slot: true, uses: <feature id> }', components: 'is "none"', time: 'is "action"',
+};
+function freeCastProblems(x) {
+  const base = 'freeCast is { list, maxLevel } or { spells }';
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return [base];
+  if (Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9) return [];
+  if (!(Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => typeof id === 'string' && ID.test(id)))) return [base];
+  const out = [];
+  for (const k of Object.keys(x)) {
+    const v = x[k];
+    if (k === 'spells') continue;
+    if (FREE_CAST_FLAGS.includes(k)) { if (v !== true) out.push(`freeCast ${k} is true or left out`); }
+    else if (k === 'time') { if (v !== 'action') out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else if (Object.hasOwn(FREE_CAST_LISTS, k)) { if (!FREE_CAST_LISTS[k](v)) out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else if (k === 'cost') { if (!validFreeCastCost(v)) out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else if (k === 'components') { if (v !== 'none') out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else out.push(`freeCast has no "${k}"`);
+  }
+  if (x.cost !== undefined && x.atWill !== undefined) out.push('freeCast cost and atWill are two answers to what the cast spends: say one');
+  return out;
+}
+const validFreeCast = (x) => freeCastProblems(x).length === 0;
 function lintFeature(f, cls, say, ids) {
   const sub = (m) => say(`feature ${f?.id}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
@@ -1480,15 +1500,15 @@ function lintPackCore(doc, opts) {
     // A freeCast's extra keys (#414) need what they change: a summon step of forms, of types, and pack monsters for the forms.
     if (spells.length) for (const g of grants) {
       const fc = g.freeCast;
-      if (!fc?.spells) continue;
+      if (!validFreeCast(fc) || !fc.spells) continue;           // the feature's own linter says what is wrong with its shape
       const steps = [];
       for (const id of fc.spells) walkSteps(spells.find((x) => x.id === id)?.effects, (st) => { if (st && typeof st === 'object' && 'summon' in st) steps.push(st); });
-      if (fc.types !== undefined && !steps.some((st) => st.types !== undefined && fc.types.some((x) => st.types.includes(x)))) say('a freeCast with `types` needs a spell with a summon step that offers one of them');
+      if (fc.types !== undefined && !steps.some((st) => Array.isArray(st.types) && fc.types.some((x) => st.types.includes(x)))) say('a freeCast with `types` needs a spell with a summon step that offers one of them');
       if (fc.cost !== undefined && !pools.has(fc.cost.uses)) say(`a freeCast cost names "${fc.cost.uses}", which is not a feature with uses`);
       if (fc.ends !== undefined && !steps.some((st) => st.bond)) say('a freeCast with `ends` needs a spell with a summon step that has a bond');
       if (fc.forms !== undefined) {
         if (!steps.some((st) => st.forms !== undefined)) say('a freeCast with `forms` needs a spell with a summon step of forms');
-        if (summons !== undefined) for (const id of fc.forms) if (!beasts.has(id)) say(`a freeCast form is not a pack monster: "${id}"`);
+        if (monsters.length) for (const id of fc.forms) if (!beasts.has(id)) say(`a freeCast form is not a pack monster: "${id}"`);
       }
     }
   }
@@ -2400,6 +2420,16 @@ const CONFUSABLE = { '\u0430': 'a', '\u0435': 'e', '\u043e': 'o', '\u0440': 'p',
   '\u0391': 'a', '\u0392': 'b', '\u0395': 'e', '\u0397': 'h', '\u0399': 'i', '\u039a': 'k', '\u039c': 'm', '\u039d': 'n', '\u039f': 'o', '\u03a1': 'p', '\u03a4': 't', '\u03a7': 'x', '\u03b9': 'i', '\u03bf': 'o', '\u03bd': 'v', '\u0131': 'i' };
 // A name as it reads: NFKD, marks removed, case folded, look-alike letters made Latin, and only letters and digits kept ("Fire-ball", "Fire_ball" and "F\u00edreball" are "fireball").
 export const nameKey = (s) => s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\u00df/g, 'ss').replace(/[\u0391-\u03bf\u0430-\u0501\u0131]/g, (c) => CONFUSABLE[c] ?? c).replace(/[^\p{L}\p{Nd}]/gu, '');
+const SRD_POOLS = new WeakMap();
+function srdPools(classes) {
+  let pools = SRD_POOLS.get(classes);
+  if (!pools) {
+    pools = new Set();
+    for (const c of Object.values(classes)) for (const f of [...(c.features ?? []), ...(c.subclass?.features ?? [])]) { if (f.uses) pools.add(f.id); for (const o of f.options ?? []) if (o.uses) pools.add(o.id); }
+    SRD_POOLS.set(classes, pools);
+  }
+  return pools;
+}
 const SRD_NAMES = new WeakMap();
 function srdNames(table) {
   let names = SRD_NAMES.get(table);
@@ -2411,7 +2441,11 @@ function srdNames(table) {
 function lintShape(kind, e, say, { homebrew }) {
   if (!HOMEBREW_ENTRY_KINDS.includes(kind)) { if (homebrew) say(`${kind} cannot be homebrew`); return 0; }
   let bad = 0;                                                   // wrong types and numbers: what the kind's linter must not be given
-  lintKeys(kind, e, say, (shape, key, value, path) => { const t = typeProblem(shape, key, value); if (t) { bad++; say(`${path} ${t}`); } });
+  lintKeys(kind, e, say, (shape, key, value, path) => {
+    // Extra familiar forms are not for homebrew yet (#414): a feature that adds forms could make any SRD monster a familiar.
+    if (homebrew && shape === 'freeCast' && key === 'forms') { bad++; say('A homebrew feature cannot add familiar forms yet.'); return; }
+    const t = typeProblem(shape, key, value); if (t) { bad++; say(`${path} ${t}`); }
+  });
   if (homebrew && !bad) lintNumbers(kind, e, (m) => { bad++; say(m); });
   return bad;
 }
@@ -2420,6 +2454,9 @@ function lintRules(kind, e, say, { homebrew, pack, srd }) {
   if (!homebrew || !HOMEBREW_ENTRY_KINDS.includes(kind)) return;
   const ref = srd ?? SRD_REF;
   lintUnchecked(kind, e, say);
+  // A freeCast's cost names a feature that has uses: one of the SRD's (a homebrew feat has none of its own).
+  const cu = e.grants?.freeCast?.cost?.uses;
+  if (kind === 'feats' && typeof cu === 'string' && !(ref?.classes && srdPools(ref.classes).has(cu))) say(`its freeCast cost names "${cu}", which is not a feature with uses in the SRD`);
   const prefix = `hb-${pack}-`;
   if (typeof e.id !== 'string' || !e.id.startsWith(prefix) || !ID.test(e.id.slice(prefix.length))) {
     const taken = typeof e.id === 'string' && ref?.[kind] && Object.hasOwn(ref[kind], e.id);

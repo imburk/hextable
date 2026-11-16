@@ -52,11 +52,33 @@ test("freeCast forms: a list of 1 to 20 pack monster ids, no repeats, only on a 
   assert.ok(lint({ ...BASE, forms: FORMS, extra: true }).length > 0, "nothing else");
 });
 
-test("freeCast forms, homebrew strict: the key has a type and a length ceiling", () => {
-  assert.deepEqual(lintStrict({ ...BASE, forms: FORMS }), []);
-  assert.ok(lintStrict({ ...BASE, forms: "imp" }).some((m) => /forms/.test(m)));
-  assert.ok(lintStrict({ ...BASE, forms: Array.from({ length: 21 }, (_, i) => `m-${i}`) }).length > 0);
-  assert.ok(lintStrict({ ...BASE, forms: ["imp"], nonsense: true }).length > 0);
+test("freeCast forms, homebrew strict: refused altogether for now, with a plain sentence; the SRD pack keeps its own", () => {
+  const SAME = "A homebrew feature cannot add familiar forms yet.";
+  for (const forms of [FORMS, ["imp"], "imp", [], ["adult-black-dragon"]]) assert.ok(lintStrict({ ...BASE, forms }).includes(`feats/hb-t-f: ${SAME}`), json(forms));
+  assert.ok(lintStrict({ ...BASE, forms: FORMS, nonsense: true }).length > 0);
+  assert.deepEqual(lintStrict({ ...BASE }), [], "the same feature without forms is fine");
+  assert.deepEqual(lintPack(PACKS[0]), [], "Pact of the Chain keeps its seven");
+});
+
+test("lintPack never throws on a malformed freeCast, and each bad shape is told with its own key", () => {
+  const edit = (fn) => { const doc = structuredClone(PACKS[0]); fn(doc.classes.find((c) => c.id === "druid").features.find((f) => f.id === "wild-companion").grants.freeCast); return lintPack(doc); };
+  const cases = [["types", "fey", /freeCast types/], ["types", 5, /freeCast types/], ["types", null, /freeCast types/], ["types", ["elf"], /freeCast types/],
+    ["forms", 5, /freeCast forms/], ["forms", null, /freeCast forms/], ["forms", {}, /freeCast forms/], ["forms", ["Imp"], /freeCast forms/],
+    ["cost", null, /freeCast cost/], ["cost", "slot", /freeCast cost/], ["cost", { slot: true }, /freeCast cost/], ["ends", "longRest", /freeCast ends/], ["ends", ["x"], /freeCast ends/],
+    ["components", "all", /freeCast components/], ["time", "bonus", /freeCast time/], ["atWill", true, /two answers/], ["nope", 1, /no "nope"/]];
+  for (const [k, v, re] of cases) {
+    let r;
+    assert.doesNotThrow(() => { r = edit((fc) => { fc[k] = v; }); }, `${k}: ${json(v)}`);
+    assert.ok(r.some((m) => re.test(m)), `${k}: ${json(v)} -> ${r.join(" | ")}`);
+  }
+  assert.doesNotThrow(() => edit((fc) => { delete fc.spells; }));
+});
+
+test("freeCast cost, homebrew strict: it must name a feature with uses in the SRD pack", () => {
+  assert.deepEqual(lintStrict({ spells: ["find-familiar"], cost: { slot: true, uses: "wild-shape" } }), []);
+  assert.deepEqual(lintStrict({ spells: ["find-familiar"], cost: { slot: true, uses: "rage" } }), []);
+  for (const uses of ["no-such-feature", "wild-companion", "hb-t-f"])
+    assert.ok(lintStrict({ spells: ["find-familiar"], cost: { slot: true, uses } }).some((m) => /not a feature with uses/.test(m)), uses);
 });
 
 test("freeCast forms, across the pack: it needs a spell with a summon step of forms, and pack monsters", () => {
@@ -419,4 +441,22 @@ test("Wild Companion: the familiar in the pocket dimension also disappears at th
   const r = ok(apply(s, { type: "rest" }, DM));
   assert.ok(r.events.some((e) => e.type === "vanished" && e.id === id && e.pocket === true));
   assert.equal(s.entities.ven.pocket?.[id], undefined);
+});
+
+// ---------- a character saved before this change ----------
+// The codebase has no remake at load (migrate.js bumps shapes only; #232 left a warlock saved before it as it was): a record keeps the
+// features it was made with. The DM's `setSheet` with the character's own sheet remakes it, keeping its place, damage and spent uses.
+test("a druid or warlock made before Wild Companion and the seven forms: the DM's setSheet with its own sheet gives them", () => {
+  const old = druidField(), ven = old.entities.ven;
+  ven.sheet = druidSheet(); ven.feats = ven.feats.filter((f) => f.id !== WC);             // a record as main made it
+  refused(old, wc(old, "slot"), PAT, /no feature that casts spells that way/);
+  ven.uses["wild-shape"] = 1;
+  ok(apply(old, { type: "setSheet", actor: "ven", sheet: structuredClone(ven.sheet) }, DM));
+  assert.equal(old.entities.ven.uses["wild-shape"], 1, "what was spent stays spent");
+  ok(apply(old, wc(old, "uses"), PAT));
+  const w = pactField(), mor = w.entities.mor;
+  mor.sheet = { ...warlock(), subclass: "fiend" }; mor.feats.find((f) => f.id === PACT).freeCast = { spells: ["find-familiar"], atWill: true, time: "action" };
+  refused(w, pactCast(w, "imp"), PAT, /Choose a form/);
+  ok(apply(w, { type: "setSheet", actor: "mor", sheet: structuredClone(mor.sheet) }, DM));
+  ok(apply(w, pactCast(w, "imp"), PAT));
 });

@@ -1107,6 +1107,10 @@ class entries; tested in `test/freecast-keys.test.js`. What was settled where th
 - `components: 'none'` changes only what the engine looks at (Subtle Spell and the Counterspell window): the engine keeps no components.
 - **Tiers.** Wild Companion manual -> auto: the feature's whole text is played (the choice, no Material, Fey, the Long Rest in the pocket
   too); what Find Familiar itself leaves to the DM stays the spell's `assist`. Pact of the Chain stays assist (the forgone attack).
+- **Fix round 1 (#415).** In homebrew strict mode `forms` is refused altogether ("A homebrew feature cannot add familiar forms yet."): a
+  feat could otherwise make any SRD monster a familiar. In every pack each `forms` id must be a monster of the pack (a typo fails). Strict
+  `cost.uses` must name an SRD feature with uses. `lintPack` never throws on a malformed `freeCast`; each bad shape is told with its own key.
+  `pay` sent to a feature with no `cost` is refused (it used to be ignored): a client never sends it.
 - Not done: the chooser for `pay` and the extra forms (client), the forgone attack, Investment of the Chain Master, Life Bond.
 
 ### C6a, riding, the first half (#346)
