@@ -1,0 +1,668 @@
+{
+  "format": "hextable-pack",
+  "v": 1,
+  "pack": {
+    "id": "sample",
+    "name": "Sample Pack",
+    "version": 1,
+    "license": "CC0, by the author",
+    "attribution": "Written for the Hextable tests; free to copy."
+  },
+  "spells": [
+    {
+      "id": "hb-sample-ember-dart",
+      "name": "Ember Dart",
+      "source": "homebrew:sample",
+      "level": 0,
+      "school": "evocation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 120,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "attack": "ranged",
+          "kind": "spell",
+          "onHit": [
+            {
+              "damage": "1d10",
+              "type": "fire"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A bead of fire flies at one creature; the caster rolls to hit. It hits harder as the caster gains levels.",
+      "higher": {
+        "level": {
+          "5": "2d10",
+          "11": "3d10",
+          "17": "4d10"
+        }
+      }
+    },
+    {
+      "id": "hb-sample-frost-burst",
+      "name": "Frost Burst",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "evocation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 120,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "sphere",
+          "size": 20
+        }
+      },
+      "effects": [
+        {
+          "save": "dex",
+          "half": true,
+          "onFail": [
+            {
+              "damage": "6d6",
+              "type": "cold"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "Cold bursts in a sphere; creatures in it take half damage if they save. A higher slot adds dice.",
+      "higher": {
+        "slot": {
+          "damage": "1d6"
+        }
+      }
+    },
+    {
+      "id": "hb-sample-gale-cone",
+      "name": "Gale Cone",
+      "source": "homebrew:sample",
+      "level": 2,
+      "school": "evocation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "self",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "cone",
+          "size": 15
+        }
+      },
+      "effects": [
+        {
+          "save": "str",
+          "onFail": [
+            {
+              "damage": "2d8",
+              "type": "thunder"
+            },
+            {
+              "move": 10,
+              "dir": "away"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A blast of wind from the caster hurts creatures that fail to brace and shoves them back."
+    },
+    {
+      "id": "hb-sample-dust-lance",
+      "name": "Dust Lance",
+      "source": "homebrew:sample",
+      "level": 4,
+      "school": "necromancy",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "self",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "line",
+          "size": 30,
+          "width": 5
+        }
+      },
+      "effects": [
+        {
+          "damage": "3d6",
+          "type": "necrotic",
+          "onZero": [
+            {
+              "kill": true
+            }
+          ],
+          "onKill": [
+            {
+              "remains": "dust"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A lance of grey light; a creature it drops to 0 Hit Points dies at once and leaves only dust."
+    },
+    {
+      "id": "hb-sample-hollow-floor",
+      "name": "Hollow Floor",
+      "source": "homebrew:sample",
+      "level": 2,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 60,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "cube",
+          "size": 10
+        }
+      },
+      "effects": [
+        {
+          "save": "dex",
+          "onFail": [
+            {
+              "fall": 20
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "The ground in a cube gives way under creatures that fail to jump clear, and they drop."
+    },
+    {
+      "id": "hb-sample-flame-column",
+      "name": "Flame Column",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "evocation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 150,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "cylinder",
+          "size": 10,
+          "height": 40
+        }
+      },
+      "effects": [
+        {
+          "save": "dex",
+          "half": true,
+          "onFail": [
+            {
+              "damage": "5d6",
+              "type": "fire"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A tall column of flame; the ground in it is hard to cross until the end of the caster's next turn.",
+      "terrain": {
+        "difficult": true,
+        "lasts": "nextTurnEnd"
+      }
+    },
+    {
+      "id": "hb-sample-thorn-ward",
+      "name": "Thorn Ward",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "abjuration",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "self",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "10 minutes",
+      "concentration": true,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "emanation",
+          "size": 10
+        }
+      },
+      "effects": [
+        {
+          "save": "dex",
+          "onFail": [
+            {
+              "damage": "1d8",
+              "type": "piercing"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A ring of thorns follows the caster and pricks any creature that enters it or starts its turn there.",
+      "zone": {
+        "on": [
+          "enter",
+          "turnStart"
+        ],
+        "once": "turn",
+        "spare": true
+      }
+    },
+    {
+      "id": "hb-sample-mending-light",
+      "name": "Mending Light",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "abjuration",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "heal": "2d8",
+          "addMod": true
+        },
+        {
+          "tempHp": "1d4"
+        },
+        {
+          "cure": [
+            "poisoned"
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "Warm light closes wounds, adds a few Temporary Hit Points and clears poison. A higher slot heals more.",
+      "higher": {
+        "slot": {
+          "heal": "1d8"
+        }
+      }
+    },
+    {
+      "id": "hb-sample-gloom-snare",
+      "name": "Gloom Snare",
+      "source": "homebrew:sample",
+      "level": 2,
+      "school": "enchantment",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 60,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 minute",
+      "concentration": true,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "save": "wis",
+          "onFail": [
+            {
+              "condition": "frightened",
+              "ends": {
+                "on": "save",
+                "save": "wis",
+                "at": "turnEnd"
+              }
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "One creature is frightened; at the end of each of its turns it saves again to throw off the fear."
+    },
+    {
+      "id": "hb-sample-stone-hide",
+      "name": "Stone Hide",
+      "source": "homebrew:sample",
+      "level": 2,
+      "school": "abjuration",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "self",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 minute",
+      "concentration": true,
+      "ritual": false,
+      "target": {
+        "self": true
+      },
+      "effects": [
+        {
+          "modifier": {
+            "on": "ac",
+            "op": "add",
+            "value": 2
+          }
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends."
+    },
+    {
+      "id": "hb-sample-spotters-eye",
+      "name": "Spotter's Eye",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "divination",
+      "classes": [
+        "wizard"
+      ],
+      "time": "bonus",
+      "range": 90,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "reveal": "target"
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "The caster points out a creature that is hidden, and it is seen by all."
+    },
+    {
+      "id": "hb-sample-shifting-step",
+      "name": "Shifting Step",
+      "source": "homebrew:sample",
+      "level": 2,
+      "school": "conjuration",
+      "classes": [
+        "wizard"
+      ],
+      "time": "bonus",
+      "range": "self",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "self": true
+      },
+      "effects": [
+        {
+          "teleport": 30,
+          "see": true,
+          "blocked": [
+            {
+              "damage": "2d6",
+              "type": "force"
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "The caster steps through folded space to a place it can see within 30 feet; if it is occupied, the caster is hurt."
+    },
+    {
+      "id": "hb-sample-quiet-word",
+      "name": "Quiet Word",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "abjuration",
+      "classes": [
+        "wizard"
+      ],
+      "time": "reaction",
+      "range": 60,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "counter": "spell"
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "In answer to a spell a hostile creature casts in sight, the caster speaks a word and the spell fails.",
+      "reaction": {
+        "on": "cast"
+      }
+    },
+    {
+      "id": "hb-sample-jarring-note",
+      "name": "Jarring Note",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "evocation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 60,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "effects": [
+        {
+          "save": "con",
+          "onFail": [
+            {
+              "damage": "1d6",
+              "type": "thunder"
+            },
+            {
+              "endConcentration": true
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A harsh note hurts one creature unless it holds firm; a creature that fails loses its Concentration."
+    },
+    {
+      "id": "hb-sample-call-wisp",
+      "name": "Call Wisp",
+      "source": "homebrew:sample",
+      "level": 2,
+      "school": "conjuration",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 30,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 hour",
+      "concentration": true,
+      "ritual": false,
+      "target": {
+        "self": true
+      },
+      "effects": [
+        {
+          "summon": "form",
+          "forms": [
+            "wolf"
+          ],
+          "bond": {
+            "kind": "pet",
+            "turn": "own",
+            "at0": "vanish",
+            "ends": [
+              "masterDies",
+              "longRest"
+            ],
+            "leash": 100
+          }
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A small beast answers the call and fights beside the caster until the spell ends."
+    },
+    {
+      "id": "hb-sample-latch-wisp",
+      "name": "Latch Wisp",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 30,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "self": true
+      },
+      "effects": [
+        {
+          "set": "open"
+        },
+        {
+          "resource": "wisp"
+        },
+        {
+          "manual": "The DM decides which latch, bolt or lock within 30 feet the wisp works, and whether it opens."
+        }
+      ],
+      "tier": "manual",
+      "checked": false,
+      "text": "A wisp of light works a latch or a lock and the DM decides what opens."
+    }
+  ]
+}
