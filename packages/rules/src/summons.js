@@ -20,6 +20,12 @@ const SLOT_KEYS = ['slot', 'base', 'above', 'round'];
 export const CASTER_AMOUNTS = ['attack', 'dc', 'pb', 'mod'];
 export const BY = ['variant', 'type'];
 
+// A homebrew monster cannot be chosen as a form yet (#402; owner's ruling pending, #193): a player's stat block of one is
+// never sent. Homebrew is told by the entry's `source` ("homebrew:<pack id>", which the strict linter requires). Every
+// place where an action's own field or a spell's filter picks a creature by id to summon or to become asks this.
+export const isHomebrew = (m) => !!m && typeof m.source === 'string' && m.source.startsWith('homebrew:');
+export const HOMEBREW_FORM = 'A homebrew creature cannot be chosen as a form yet.';
+
 const plain = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 // Is this value a summon amount?
 export const isSlotAmount = (x) => plain(x) && typeof x.slot === 'number' && Object.keys(x).every((k) => SLOT_KEYS.includes(k));
