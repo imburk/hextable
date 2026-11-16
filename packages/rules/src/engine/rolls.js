@@ -157,7 +157,11 @@ export function acOf(s, t) {
 export function condition(s, t, id, ev, f = null, step = null, level = undefined) {
   if (!up(t) || t.cond[id]) return;
   if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
-  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
+  // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the
+  // effect instead, and the DM is told below that nothing ends it (T32).
+  const held = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  const fx = held && !(held.bound && step && !step.ends) ? held : null;
   t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
   if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: step.dc ?? f.src.dc, born: turnKey(s) } : {}) });
   ev.push({ type: 'cond', id: t.id, cond: id });
@@ -176,6 +180,9 @@ export function condition(s, t, id, ev, f = null, step = null, level = undefined
 export function modifier(s, t, mod_, ev, f, step = {}) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx) return false;
+  // A bound effect (an instant spell's) holds only what ends: by its own `ends`, or by use (`uses`). Another modifier
+  // would stay on forever, so it is handed to the DM (effects.js says so).
+  if (fx.bound && !step.ends && !Number.isInteger(mod_.uses)) return false;
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
   const { against, except, ...m } = mod_;
@@ -333,7 +340,7 @@ export function recharge(s, e, ev) {
 // `bound` to its parts, which ends when they do. Null if no step has an `ends`.
 export function boundEffect(s, name, source, steps, spell = null) {
   let timed = false;
-  walkSteps(steps, (st) => { if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save')) timed = true; });
+  walkSteps(steps, (st) => { if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
   if (!timed) return null;
   const fx = startEffect(s, { name, spell, source, conc: false, duration: 'special' });
   fx.bound = true;

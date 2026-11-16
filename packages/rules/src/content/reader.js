@@ -283,7 +283,7 @@ class Reading {
     if (!t) this.bad('The spell has no target the reader can read.');
     const aim = this.aimOf(t);
     this.aim = aim;
-    // A spell that lasts makes a lasting effect; an instant one makes a bound effect only if a step ends on a turn or a save.
+    // A spell that lasts makes a lasting effect; an instant one makes a bound effect only if a step ends on a turn, a save or damage.
     this.lasting = d.duration !== 'instant' || this.bound();
     this.fx = d.duration !== 'instant' ? 'spell' : this.lasting ? 'bound' : null;
     this.choice();
@@ -375,7 +375,7 @@ class Reading {
   }
   bound() {
     let b = false;
-    this.walk((st) => { if (isObj(st.ends) && ['turnStart', 'turnEnd', 'save'].includes(st.ends.on)) b = true; });
+    this.walk((st) => { if (isObj(st.ends) && ['turnStart', 'turnEnd', 'save', 'damaged'].includes(st.ends.on)) b = true; });
     return b;
   }
 
@@ -438,8 +438,12 @@ class Reading {
       if (isInt(a.choose)) { this.num('target.area.choose', a.choose, 'creatures'); this.line(`Of those caught, the caster picks up to ${a.choose} creatures; only they are affected.`); }
       if (a.types !== undefined) {
         const ts = Array.isArray(a.types) ? a.types.filter((x) => CREATURE_TYPES.includes(x)) : [];
-        this.line(`The entry limits the area to ${ts.length ? list(ts.map(cap1), 'or') : 'some creature types'}, but the engine does not apply that limit to a spell: every creature caught is affected. The DM leaves out the others.`);
-        this.dm('Leaving out the creatures of other types in the area: the engine applies a spell area\'s `types` to no one.');
+        const only = ts.length ? list(ts.map(cap1), 'or') : 'some creature types';
+        if (d.zone === undefined) this.line(`The entry limits the area to ${only}: of the creatures caught, only those are affected.`);
+        else {
+          this.line(`The entry limits the area to ${only}: of the creatures caught when it is cast, only those are affected. A creature of another type that enters the area later, or starts or ends its turn there, is affected all the same: the engine does not apply the limit to a zone, and says so to the DM (once for each creature in a round), who undoes it.`);
+          this.dm('Undoing what a zone does to a creature of another type than its `types`, when the engine tells the DM it went off on one.');
+        }
       }
       if (d.zone === undefined && this.damageOutside()) this.line('Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.');
     }
@@ -583,7 +587,7 @@ class Reading {
     const d = this.def;
     if (!isDuration(d.duration)) return;
     if (d.duration === 'instant') {
-      if (this.fx === 'bound') this.line('It is instant, but what its steps put on creatures stays until each part\'s own ending, as said above.');
+      if (this.fx === 'bound') this.line('It is instant, but what its steps put on creatures stays until its own ending, as said above; a step that names no ending is the DM\'s to end.');
       else this.line('It is instant: nothing it does is kept as a lasting effect.');
     } else if (/^\d/.test(d.duration)) this.line(`It lasts up to ${d.duration}. The engine times it, and when it ends, so does everything it put on creatures.`);
     else { this.line(`It lasts ${d.duration === 'special' ? 'for a special time' : 'until dispelled'}. The engine cannot time that; the DM ends it.`); this.dm(`Ending the spell: it lasts ${d.duration === 'special' ? 'for a special time' : 'until dispelled'}.`); }
@@ -657,6 +661,14 @@ class Reading {
     }
     const whose = ends?.of === 'source' ? 'the caster\'s' : 'its';
     let text;
+    if (!ends && this.fx === 'bound') {
+      // rolls.js: an instant spell's effect holds only what ends by itself; a condition or a modifier that names no ending is
+      // kept off it, and the engine says so to the DM as it is put on (a modifier used up by use, `uses`, does end).
+      if (what === 'modifier' && Number.isInteger(st.modifier?.uses)) return 'It ends when it is used up.';
+      if (what === 'modifier') { this.dm(`The modifier of step ${at}: nothing in the spell ends it.`); return 'Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.'; }
+      this.dm(`Ending what step ${at} puts on a creature: nothing ends it on its own.`);
+      return 'Nothing in the engine ends it: the DM removes it.';
+    }
     if (!ends) text = this.fx === 'spell' ? 'It lasts as long as the spell.' : 'Nothing ends it on its own: the DM ends it.';
     else if (ends.on === 'turnStart' || ends.on === 'turnEnd') text = `It ends at the ${ends.on === 'turnStart' ? 'start' : 'end'} of ${whose} next turn, or when the fight ends${this.fx === 'spell' ? ', even if the spell\'s time runs out first; ending the spell early ends it too' : ''}.`;
     else if (ends.on === 'save') {
@@ -665,8 +677,8 @@ class Reading {
       text = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}, against the caster's spell save DC; a success ends it${ends.orDamaged === true ? '. Any damage it takes also ends it' : ''}${this.fx === 'spell' ? '. It also ends with the spell' : ''}.`;
     } else {
       text = `It ends when it takes damage${ends.by === 'source' ? ' from the caster or the caster\'s side' : ''}${this.fx === 'spell' ? ', or with the spell' : ''}.`;
+      if (this.fx === 'bound') text += ' Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.';
     }
-    if (this.fx === 'bound' && !ends) { this.dm(`Ending what step ${at} puts on a creature: nothing ends it on its own.`); }
     return text;
   }
 }
@@ -768,8 +780,8 @@ export const STEP_SENTENCES = {
   },
   fall({ st, at, Who, say }) {
     if (st.fall === 'surface') {
-      say(`${Who} falls to the surface below. The engine records the fall but deals no damage for it: the DM works out the height and the damage.`);
-      return this.dm(`The damage of the fall in step ${at}.`);
+      say(`${Who} falls to the surface below it, taking 1d6 bludgeoning damage for each 10 feet of the drop (up to 20d6), and lands Prone if that hurt it. One already standing on a surface does not fall; one that is riding or being ridden, or has no surface under it, is left to the DM, who is told.`);
+      return;
     }
     if (!(isInt(st.fall) && st.fall > 0)) { this.bad(`Step ${at}: \`fall\` is not feet or "surface".`); return say(`${Who} falls an unreadable distance.`); }
     this.num(`${at}.fall`, st.fall, 'feet');
