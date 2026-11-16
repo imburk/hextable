@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { CONTENT, PACKS } from "../src/content/index.js";
 import { loadPack, overlayOf, using } from "../src/content/registry.js";
 import {
-  arraysOf, budget, HOMEBREW_COST, HOMEBREW_LENGTHS, HOMEBREW_WORK, lengthOf, workOf, HOMEBREW_DICE, HOMEBREW_DURATIONS, HOMEBREW_ENTRY_KINDS, HOMEBREW_RANGES, HOMEBREW_TYPES, lintEntry, lintKeys, lintPack, nameKey, numbersOf,
+  arraysOf, budget, CREATURE_TYPES, HOMEBREW_COST, HOMEBREW_LENGTHS, HOMEBREW_WORK, lengthOf, workOf, HOMEBREW_DICE, HOMEBREW_DURATIONS, HOMEBREW_ENTRY_KINDS, HOMEBREW_RANGES, HOMEBREW_TYPES, lintEntry, lintKeys, lintPack, nameKey, numbersOf,
 } from "../src/content/schema.js";
 import { aiStep } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
@@ -533,4 +533,13 @@ test("round 3: in text and dmNotes the only blank is U+0020 (and the line break)
   refused(strict("spells", spell({ effects: [{ manual: `Do this` }] })), /invisible or direction-changing/);
   assert.deepEqual(strict("spells", spell({ text: "Embers burn.\nThey do." })), [], "a space and a line break are text");
   assert.deepEqual(strict("spells", spell({ text: "Фire ファイア éñ \u{1F525}, “quoted” — dash" })), []);
+});
+
+// #430: a spell area's `types` (a Turn Undead kind of limit, #417) has a length ceiling, so strict mode no longer refuses it for "no length is set".
+test("#430: an area's creature types are a list with a ceiling (every type once, and not one more)", () => {
+  const types = (list) => spell({ target: { area: { shape: "sphere", size: 20, types: list } } });
+  assert.deepEqual(strict("spells", types(["undead"])), [], "one type is accepted");
+  assert.deepEqual(strict("spells", types([...CREATURE_TYPES])), [], "all of the creature types are accepted");
+  assert.equal(HOMEBREW_LENGTHS["area.types"], CREATURE_TYPES.length, "the ceiling is the number of creature types");
+  refused(strict("spells", types([...CREATURE_TYPES, "undead"])), /a list of \d+; the most is 14/);
 });

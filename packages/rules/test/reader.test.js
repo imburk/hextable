@@ -13,8 +13,10 @@ import {
 } from '../src/content/schema.js';
 import {
   ABILITY_WORDS, AREA_PLACE, AREA_WORDS, CAST_TIME_WORDS, CHOICE_WORDS, ENDS_ON, HOOK_WORDS, KIND_WORDS, OP_WORDS, READER_LIMITS, REACTION_WORDS, REMAINS_WORDS,
-  STEP_SENTENCES, SUMMON_END_WORDS, SUMMON_KIND_WORDS, SUMMON_ONE_WORDS, SUMMON_TURN_WORDS, TAG_WORDS, TIER_WORDS, UNJUDGED_TAGS, ZONE_ON_WORDS, readEntry, sha256,
+  STEP_SENTENCES, SUMMON_END_WORDS, SUMMON_KIND_WORDS, SUMMON_ONE_WORDS, SUMMON_TURN_WORDS, TAG_WORDS, TIER_WORDS, ZONE_ON_WORDS, JUDGED_ADVANTAGE_IF, JUDGED_ON, JUDGED_SOMETIMES, JUDGED_STEP_AFTER_ATTACK, readEntry as readStrictly, sha256,
 } from '../src/content/reader.js';
+// The invented spells below have ids and sources of their own, not a pack's: this file tries the reader's sentences, not strict mode's (reader-refused.test.js).
+const readEntry = (kind, entry, ctx = {}) => readStrictly(kind, entry, { strict: false, ...ctx });
 
 const GOLDEN = new URL('./reader-golden.txt', import.meta.url);
 const spells = Object.values(CONTENT.spells);
@@ -163,9 +165,11 @@ test('each branch is read under exactly the step kinds that run it (effects.js e
   }
 });
 
-test('the tags the engine cannot judge are the ones modifiers.js has no case for', () => {
+test('every tag the reader says the engine can judge somewhere has a case in modifiers.js (reader-when.test.js plays each, in each place)', () => {
   const src = readFileSync(new URL('../src/modifiers.js', import.meta.url), 'utf8');
-  assert.deepEqual([...UNJUDGED_TAGS].sort(), TAGS.filter((t) => !src.includes(`case '${t}'`)).sort());
+  const somewhere = new Set([...JUDGED_STEP_AFTER_ATTACK, ...JUDGED_ADVANTAGE_IF, ...Object.values(JUDGED_ON).flat(), ...Object.values(JUDGED_SOMETIMES).flat()]);
+  for (const t of somewhere) assert.ok(src.includes(`case '${t}'`), `modifiers.js judges ${t}`);
+  assert.deepEqual(TAGS.filter((t) => !somewhere.has(t)).sort(), ['long.range', 'target.halfCover', 'target.seesSource', 'target.threeQuartersCover'], 'the tags no place can judge');
 });
 
 test('the golden readings use every step, branch, shape, hook, op, tag and condition ending', () => {
@@ -204,7 +208,7 @@ test('a changed template changes the golden text', () => {
 // ---------- Decision 6's two examples ----------
 test('Ember Burst reads as Decision 6 says', () => {
   const r = readEntry('spell', EMBER_BURST);
-  const want = ['Ember Burst (level 3 evocation, 150 feet, action, instant).', 'Each creature in a 20-foot sphere makes a Dexterity saving throw.',
+  const want = ['"Ember Burst" (level 3 evocation, 150 feet, action, instant).', 'Each creature in a 20-foot sphere makes a Dexterity saving throw.',
     'On a failure it takes 8d6 fire damage; on a success, half.', 'Cast with a higher slot, +1d6 for each level above 3rd.',
     'Tier: auto. The engine rolls and applies all of this.', 'Not checked against any rulebook.'];
   let i = 0;
@@ -217,7 +221,7 @@ test('Ember Burst reads as Decision 6 says', () => {
 
 test('a manual spell quotes its manual text and says the DM does this', () => {
   const r = readEntry('spell', WOLFSONG);
-  assert.equal(r.lines[0], 'Wolfsong (level 2 conjuration, self, action, 1 hour, concentration).');
+  assert.equal(r.lines[0], '"Wolfsong" (level 2 conjuration, self, action, 1 hour, concentration).');
   assert.ok(r.lines.includes('The engine does not do this; the DM does this: "Summons three wolves that fight for you and obey spoken commands."'));
   assert.ok(r.lines.includes(TIER_WORDS.manual));
   assert.ok(r.doesNot.includes('"Summons three wolves that fight for you and obey spoken commands."'));
@@ -297,7 +301,7 @@ test('the reading says what the engine hands to the DM', () => {
   // A Reaction with nothing to set it off; a duration the engine cannot time; a tag it cannot judge.
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-loose-reaction')), /names nothing that sets it off/);
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-steed-call')), /cannot time that; the DM ends it/);
-  has(dm(FIXTURES.find((f) => f.id === 'hb-test-many-blessings')), /which the engine cannot tell, so the engine never applies it/);
+  has(dm(FIXTURES.find((f) => f.id === 'hb-test-many-blessings')), /The engine never applies this: at its attack rolls it cannot tell whether the attack is made with a weapon, and/);
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-mixed-dice')), /different dice: the engine does not add them, the DM does/);
   // Half with success steps: those never run.
   const r4 = dm(FIXTURES.find((f) => f.id === 'hb-test-mire'));

@@ -1404,3 +1404,13 @@ re-exports the old names, so no import moved.
 - **Found, not changed:** a pack object whose own getter throws makes `loadPack` (the registry's budget) throw rather than refuse; the server's
   `receive` is guarded per message, but a solo caller should wrap its calls in try/catch. And `inUse(state, "ember")` also matches ids of a pack
   `ember-folk` (the prefix is `hb-ember-`); the two cannot be on one table together, so this never shows today.
+
+## Build notes: the readers made true (#430)
+
+- A reading says only what the engine does, and a play test is its proof: `reader-when.test.js` plays every `when` tag at every hook and checks it against the `JUDGED_*` tables; `reader-truth.test.js` plays the other claims (higher slots, remains, conditions already held, Evasion, a Reaction's default, a repeated save with no DC, the monster AI, passive Perception).
+- A tag nothing judges is not "left to the DM": a step carrying one goes to the DM as a `manual` event, a modifier carrying one never applies. The reading says which.
+- Every string from the entry (names, ids, tags) is shown inside double quotes it cannot break out of (the reader turns `"` into `'`), so an author cannot write the reader's own sentences.
+- `readEntry` flags an entry the strict linter refuses: `refused` and `refusals`, with a first line starting `REFUSED:`. The refusal is derived from `source` and `id`; `ctx.pack` can be passed to say it outright. The pack manager still shows `lines` as text.
+- An area's creature types are a list with a ceiling (`area.types` 14 in `HOMEBREW_LENGTHS`).
+- Monster readings add the AI's choice for each action and the passive Perception worked out as the engine does. Engine faults found are in DEBT T57.
+
