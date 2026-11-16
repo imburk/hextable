@@ -106,6 +106,25 @@ export const MONSTERS = table(monsters, legacyMonster);
 export const PREGENS = table(pregens, legacyPregen);
 export const MONSTER_ACTIONS = table(monsters, (m) => m.actions.map(runtimeAction));
 
+// ---------- what one entry adds to the lookups above (content/registry.js) ----------
+// For each kind a homebrew pack may hold (docs/specs/homebrew.md, Decision 1): every lookup of this module keyed by
+// that kind's ids, and how an entry's value in it is made from the entry. The registry adds a table's homebrew into
+// these same objects for the length of one call (`using`) and takes it out again, so no read site changes.
+// A new lookup built from one of these kinds is added here too: registry.test.js fails on an export keyed by a
+// kind's ids that is not listed.
+const same = (def) => def;
+export const HOMEBREW_LOOKUPS = {
+  spells: [[CONTENT.spells, same], [SPELLS, spellProfile]],
+  monsters: [[CONTENT.monsters, same], [MONSTERS, legacyMonster], [MONSTER_ACTIONS, (m) => m.actions.map(runtimeAction)]],
+  items: [[CONTENT.items, same]],
+  feats: [[CONTENT.feats, same]],
+  objects: [[CONTENT.objects, same]],
+  weapons: [[CONTENT.weapons, same]],
+  armour: [[CONTENT.armour, same]],
+};
+// The SRD pack's id: a homebrew pack may not take it.
+export const SRD_PACK_ID = pack.id;
+
 // ---------- summon blocks (docs/specs/companions.md, Decision 5) ----------
 // A block baked for one casting (summons.js), in the shape a pack monster takes in the engine: the record
 // makeEntity makes a creature from (`actions` included), the baked block's creature type and name.
