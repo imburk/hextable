@@ -131,3 +131,22 @@ export function forPlayers(pack) {
   const data = packForPlayer(pack);
   return { data, hash: hashOf(data) };
 }
+
+// ---------- a spell that summons a homebrew creature (moved from the server, #428) ----------
+export const HOMEBREW_SUMMON_SENTENCE = 'A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.';
+
+// Does any spell of this pack summon a creature that comes from a homebrew pack, at any depth: a `summon` step naming a pack monster,
+// or a `forms` list holding one? Until the owner rules on what a player is sent of a summoned homebrew creature, such a pack is refused.
+// (A `forms` filter by type and challenge rating is not looked at: DEBT T48.) One iterative walk over the loaded, budgeted document.
+export function summonsHomebrew(data) {
+  const hb = (x) => typeof x === 'string' && x.startsWith('hb-');
+  const stack = (Array.isArray(data?.spells) ? data.spells : []).map((sp) => sp?.effects);
+  while (stack.length) {
+    const x = stack.pop();
+    if (Array.isArray(x)) { for (const y of x) stack.push(y); continue; }
+    if (x === null || typeof x !== 'object') continue;
+    if (hb(x.summon) || (Array.isArray(x.forms) && x.forms.some(hb))) return true;
+    for (const k of Object.keys(x)) stack.push(x[k]);
+  }
+  return false;
+}

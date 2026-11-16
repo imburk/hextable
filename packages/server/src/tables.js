@@ -18,7 +18,7 @@ import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
-import { forPlayers as packFilteredCopy, hashOf, packForPlayer, packsMatch, PLAYER_PACK_KINDS } from "../../rules/src/content/packs.js";
+import { forPlayers as packFilteredCopy, hashOf, HOMEBREW_SUMMON_SENTENCE, packForPlayer, packsMatch, PLAYER_PACK_KINDS, summonsHomebrew } from "../../rules/src/content/packs.js";
 import { loadPack, installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
 import { LIMIT_MESSAGE } from "./limits.js";
@@ -52,7 +52,7 @@ export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
 // characters), so the text is read only up to twice the pack limit; the rules' own budget then bounds the pack itself at
 // MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
 export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
-export const HOMEBREW_SUMMON_SENTENCE = "A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.";
+export { HOMEBREW_SUMMON_SENTENCE, summonsHomebrew };
 export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
 
@@ -82,22 +82,6 @@ export function usesIn(state, isMine, most = 8) {
     }
   }
   return found;
-}
-
-// Does any spell of this pack summon a creature that comes from a homebrew pack, at any depth: a `summon` step naming a pack monster,
-// or a `forms` list holding one? Until the owner rules on what a player is sent of a summoned homebrew creature, such a pack is refused.
-// (A `forms` filter by type and challenge rating is not looked at: DEBT T48.) One iterative walk over the loaded, budgeted document.
-export function summonsHomebrew(data) {
-  const hb = (x) => typeof x === "string" && x.startsWith("hb-");
-  const stack = (Array.isArray(data?.spells) ? data.spells : []).map((sp) => sp?.effects);
-  while (stack.length) {
-    const x = stack.pop();
-    if (Array.isArray(x)) { for (const y of x) stack.push(y); continue; }
-    if (x === null || typeof x !== "object") continue;
-    if (hb(x.summon) || (Array.isArray(x.forms) && x.forms.some(hb))) return true;
-    for (const k of Object.keys(x)) stack.push(x[k]);
-  }
-  return false;
 }
 
 // Check a list of stored packs `[{ id, version, hash, data }]` the way a pack that was just uploaded is checked: each one through the
