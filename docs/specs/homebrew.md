@@ -1059,6 +1059,39 @@ What was settled while building `content/dryrun.js`, `scripts/hb.mjs` and `packa
 - **For the client job (B10).** `dryRun` returns raw events; the builder words them with the client's `describe` (or shows
   `summary.text`) and may show `repeated` as "average of N casts". It must call `dryRun` outside any other `using`.
 
+## Build notes: the engine's own ceilings (#395)
+
+The gate (`content/schema.js`) refuses heavy entries, but the engine trusts the content it is handed (DEBT T35, T40). This task
+puts ceilings in the engine itself. The first step measured what the SRD pack does today; the ceilings are set from these numbers.
+
+### What the SRD pack does today (measured before any change)
+
+Measured with temporary counters in a copy of the rules (nothing in the repo changed): 300 seeded fights on the valley with 3 to 8
+extra SRD monsters, a wizard and a cleric that know every SRD spell with 4 slots of every level and cast one each turn, and the
+monsters and the rest of the party played by `aiStep`; then a static sweep that casts every SRD spell at a 9th-level slot, and uses
+every non-Multiattack monster action once, at a table of about 30 creatures (the heaviest case: everything in reach).
+
+| What one action does | SRD maximum | Where |
+|---|---|---|
+| effect steps run (every step, every `times` repeat of a damage step) | 106 | Sunburst, 30 creatures (monster actions: 101, Rakshasa's Baleful Command; fights: 40) |
+| events written | 113 | Sunburst, 30 creatures (fights: 42) |
+| dice faces rolled for damage and healing | 40 | Meteor Swarm (a spell's `higher.slot.times` is the only way to repeat a damage step; the SRD's largest `times` is 1) |
+| attacks in one Multiattack | 7 | Marilith |
+| cells listed for one area, before the map clips it | 30,301 | the Sphinx of Valor's 500-ft emanation (a spell's largest is 469, a 60-ft sphere; the valley holds 631 cells) |
+| area layouts the AI makes for one monster step | 8 | one per foe it could aim at |
+| moves the AI scores for one monster step | 1,251 | `moveOptions` of the fastest SRD monster |
+
+### Ceilings
+
+| Ceiling | Value | Against the SRD maximum |
+|---|---|---|
+| steps per action | 2,000 | 19 times |
+| events per action | 2,000 | 18 times |
+| dice faces per action | 2,000 | 50 times |
+| attacks in one Multiattack | 50 | 7 times |
+
+(The next sections are added as the ceilings are built.)
+
 ## Risks
 
 - **The scoped registry is a workaround, not a design.** It is the cheapest way
