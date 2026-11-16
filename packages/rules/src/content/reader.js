@@ -1667,7 +1667,7 @@ class MonsterReading extends Reading {
 // ====================================================================================================
 export const ITEM_FIELDS = {
   id: 'skip', name: 'skip', source: 'skip', text: 'skip', category: 'header', rarity: 'header', wear: 'fWear', attune: 'fAttune', base: 'fBase', bonus: 'fBonus', damageType: 'fDamageType',
-  properties: 'fProperties', trained: 'fTrained', variant: 'fVariant', grants: 'fGrants', charges: 'fCharges', activate: 'fActivate', tier: 'fTier', checked: 'fChecked',
+  properties: 'fProperties', trained: 'fTrained', mithral: 'fMithral', variant: 'fVariant', grants: 'fGrants', charges: 'fCharges', activate: 'fActivate', tier: 'fTier', checked: 'fChecked',
 };
 export const FEAT_FIELDS = {
   id: 'skip', name: 'skip', source: 'skip', text: 'skip', category: 'header', prerequisite: 'fPrerequisite', repeatable: 'fRepeatable', increase: 'fIncrease', proficiencies: 'fProficiencies',
@@ -2168,6 +2168,11 @@ class ItemReading extends GrantReading {
     if (this.def.trained === undefined) return;
     if (this.def.trained !== true) return this.bad('`trained` is true or left out.');
     this.line('Its wearer counts as trained in the category of its armor while it is worn.');
+  }
+  fMithral() {
+    if (this.def.mithral === undefined) return;
+    if (this.def.mithral !== true) return this.bad('`mithral` is true or left out.');
+    this.line('It is mithral: while the suit is worn, it has no Disadvantage on Dexterity (Stealth) checks and no Strength requirement, whatever its base armor has.');
   }
   fVariant() {
     const v = this.def.variant;

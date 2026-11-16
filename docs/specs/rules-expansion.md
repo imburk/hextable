@@ -1059,9 +1059,9 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
   `test/items.test.js`).
   - *Data*: a new kind, `items` (`srd52/magic-items.js`, `lintItem`): `{ id, name, category, rarity, attune?: true |
     { by: [classes] } | { spellcaster: true }, wear, base?: { weapon: [ids] | "any" | "melee" } | { armour: [ids] |
-    "any" }, bonus?, damageType?, properties?, trained?, grants?, variant?: damageType | spell, charges?: { max,
+    "any" }, bonus?, damageType?, properties?, trained?, mithral?, grants?, variant?: damageType | spell, charges?: { max,
     regain? }, activate?: [{ name?, time, cost?, consumed?, spell?, level?, dc?, effects? }], tier, checked, source,
-    text }`. `wear` is where its magic works (`carried`: on the person). 75 items: 36 auto, 15 assist, 24 manual.
+    text }`. `mithral: true` (armour only): the worn suit has no Stealth Disadvantage and no Strength requirement. `wear` is where its magic works (`carried`: on the person). 76 items: 37 auto, 15 assist, 24 manual.
   - *Grants*, general: `setAbility` (a score becomes this unless already as high; of two, the higher), `bareAc` (with no
     armour and no Shield), `senseRange` (a sense gained or lengthened), and `speeds` may give feet (`{ swim: 40 }`).
     A modifier's damage type `"chosen"` is the item's `type`.

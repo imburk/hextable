@@ -105,3 +105,32 @@ test("the Strength column: Chain Mail 13, Splint 15, Plate 15; speed is 10 feet 
   assert.equal(speed("ring-mail", 8), 30, "Ring Mail has no Strength score");
   assert.equal(speed("leather-armor", 8), 30);
 });
+
+// SRD 5.2.1, Magic Items, "Mithral Armor": "If the armor normally imposes Disadvantage on Dexterity (Stealth) checks or has
+// a Strength requirement, the mithral version of the armor doesn't."
+const mithralSheet = (item, base, str = 10) => fighter({ armour: undefined, abilities: { ...A, str }, items: [{ id: "i1", item, base, equipped: true }] });
+const speedOf = (sheet) => derive(sheet).record.speed;
+
+test("Mithral Armor is entered: medium and heavy suits except Hide", () => {
+  const m = CONTENT.items["mithral-armor"];
+  assert.equal(m.mithral, true);
+  assert.deepEqual([...m.base.armour].sort(), Object.values(CONTENT.armour).filter((a) => ["medium", "heavy"].includes(a.category) && a.id !== "hide-armor").map((a) => a.id).sort());
+});
+
+test("mithral Plate: one die on Stealth and full Speed below Strength 15; ordinary Plate: Disadvantage and -10 ft", () => {
+  assert.equal(stealth(table(mithralSheet("mithral-armor", "plate-armor"))).mode, undefined);
+  assert.equal(speedOf(mithralSheet("mithral-armor", "plate-armor", 10)), 30);
+  assert.equal(stealth(table(fighter({ armour: "plate-armor", abilities: { ...A, str: 10 } }))).mode, "dis");
+  assert.equal(speedOf(fighter({ armour: "plate-armor", abilities: { ...A, str: 10 } })), 20);
+  assert.equal(stealth(table(mithralSheet("armor-plus-1", "plate-armor"))).mode, "dis", "other magic Plate is not mithral");
+});
+
+test("an unequipped mithral suit changes nothing", () => {
+  const sheet = fighter({ armour: "plate-armor", abilities: { ...A, str: 10 }, items: [{ id: "i1", item: "mithral-armor", base: "plate-armor", equipped: false }] });
+  assert.equal(stealth(table(sheet)).mode, "dis");
+  assert.equal(speedOf(sheet), 20);
+});
+
+test("mithral Armor: undo, redo and replay are exact", () => {
+  exact(table(mithralSheet("mithral-armor", "plate-armor")), [{ type: "check", actor: "hero", skill: "stealth" }, { type: "hide", actor: "hero" }]);
+});
