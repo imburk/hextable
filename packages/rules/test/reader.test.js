@@ -293,7 +293,7 @@ test('the reading says what the engine hands to the DM', () => {
   has(r2b, /nothing to hang this on: the DM applies it/); has(r2b, /Nothing in the engine ends it: the DM removes it/);
   // A fall to "surface", a map object step, a resource, a counter outside a reaction to a cast.
   const r3 = dm(FIXTURES.find((f) => f.id === 'hb-test-gravity-well'));
-  for (const re of [/records the fall but deals no damage/, /set a map object/, /reveal a map object/, /spend or give a resource/, /no spell is being cast/]) has(r3, re);
+  for (const re of [/falls to the surface below it, taking 1d6 bludgeoning damage/, /set a map object/, /reveal a map object/, /spend or give a resource/, /no spell is being cast/]) has(r3, re);
   // A Reaction with nothing to set it off; a duration the engine cannot time; a tag it cannot judge.
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-loose-reaction')), /names nothing that sets it off/);
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-steed-call')), /cannot time that; the DM ends it/);

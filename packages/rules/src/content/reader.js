@@ -779,8 +779,8 @@ export const STEP_SENTENCES = {
   },
   fall({ st, at, Who, say }) {
     if (st.fall === 'surface') {
-      say(`${Who} falls to the surface below. The engine records the fall but deals no damage for it: the DM works out the height and the damage.`);
-      return this.dm(`The damage of the fall in step ${at}.`);
+      say(`${Who} falls to the surface below it, taking 1d6 bludgeoning damage for each 10 feet of the drop (up to 20d6), and lands Prone if that hurt it. One already standing on a surface does not fall; one that is riding or being ridden, or has no surface under it, is left to the DM, who is told.`);
+      return;
     }
     if (!(isInt(st.fall) && st.fall > 0)) { this.bad(`Step ${at}: \`fall\` is not feet or "surface".`); return say(`${Who} falls an unreadable distance.`); }
     this.num(`${at}.fall`, st.fall, 'feet');

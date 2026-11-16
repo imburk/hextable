@@ -926,6 +926,29 @@ What was settled while building `content/reader.js`:
 - **Not read:** the `source` string (a homebrew one is the author's), so no publisher or product name can come from
   the reader's own words. Only spells: `readEntry` answers other kinds with one line saying so (B13).
 
+### Fixes after the reader found them (#416, DEBT T32 and T33)
+
+Four shapes that the linter passes and the engine did less with, each closed or handed to the DM in words; the reader's
+readings were changed with them (golden text regenerated).
+
+- **A spell area's `types`** is applied in `aimArea` (`engine/world.js`), for a spell's cast and a monster action alike:
+  of the creatures the area catches, only those of the listed types are affected (nobody, if none). A zone (a lasting
+  area) is not filtered when a creature enters it or starts or ends a turn there: the reading says so and hands that to
+  the DM. A homebrew pack cannot carry `area.types` today: the budget in `content/schema.js` sets no length for the list
+  (no SRD spell uses it either), so the tests install the spell as `effects.test.js` does.
+- **A summon on spaces keeps its bond's `range`** (also on a reform): Animate Objects' command beyond 500 ft is refused.
+  An object the DM adds by hand has no range, and Animate Objects' text says the DM keeps to 500 ft for those.
+- **`fall: "surface"`** means what `maps-and-objects.md` says of `fall` ("the target drops ... to the next surface, and
+  takes falling damage"): the creature goes down to the surface under it and takes 1d6 for each 10 ft of the drop (up
+  to 20d6), Prone if hurt; a creature already on a surface does not fall (a `note`); one riding or ridden, or with no
+  surface under it, is the DM's (a `manual` event).
+- **Endings in an instant spell.** `ends: { on: "damaged" }` now makes the effect that holds it (`boundEffect`). Once an
+  instant spell has such an effect, a condition or modifier that names no `ends` is kept off it, as it always was in a
+  spell with no effect: the condition stays with the usual "Nothing ends it yet: the DM removes it", and the modifier is
+  handed to the DM to apply and end. A modifier with `uses` still ends by use. The SRD pack has no such spell; Charm
+  Person and Charm Monster (`ends: { on: "damaged", by: "source" }`) last an hour, so they were never instant and work
+  as before.
+
 ## Build notes: B1, the budget, strict mode and `lintEntry` (#380)
 
 What was settled while building it (`content/schema.js`, the end of the file; tests in

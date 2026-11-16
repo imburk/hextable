@@ -206,3 +206,37 @@ test("an instant spell with endings and others: undo, redo and replay are exact"
   const { s, ids: [goblin] } = table([MIXED.id], [["goblin-warrior", { q: 2, r: 0 }]]);
   exact(s, [{ type: "cast", actor: "wizard", spell: MIXED.id, target: goblin }, { type: "endTurn", actor: "wizard" }]);
 });
+
+// ---------- 3. `fall: "surface"` ----------
+const DROP = define(spell("drop", { effects: [{ fall: "surface" }] }));
+
+test("fall \"surface\": a creature in the air drops to the surface under it, takes falling damage and lands Prone", () => {
+  const { s, ids: [goblin] } = table([DROP.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  const g = s.entities[goblin];
+  g.pos = { ...g.pos, z: 40 };
+  const hp0 = g.hp;
+  const r = apply(s, { type: "cast", actor: "wizard", spell: DROP.id, target: goblin }, DM);
+  assert.ok(r.ok, r.error);
+  assert.deepEqual(r.events.find((e) => e.type === "fell"), { type: "fell", id: goblin, feet: 40 });
+  const dmg = r.events.filter((e) => e.type === "damage" && e.target === goblin);
+  assert.ok(dmg.length === 1 && dmg[0].dtype === "bludgeoning" && dmg[0].dice.length === 4, "4d6 for 40 feet");
+  assert.equal(g.pos.z, 0, "it is on the ground");
+  assert.ok(g.hp < hp0 || g.dead);
+  assert.ok(g.cond.prone || g.dead, "Prone");
+});
+
+test("fall \"surface\": a creature already on a surface does not fall, and the log says so", () => {
+  const { s, ids: [goblin] } = table([DROP.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  const hp0 = s.entities[goblin].hp;
+  const r = apply(s, { type: "cast", actor: "wizard", spell: DROP.id, target: goblin }, DM);
+  assert.ok(r.ok, r.error);
+  assert.ok(!r.events.some((e) => e.type === "fell" || e.type === "damage"));
+  assert.ok(r.events.some((e) => e.type === "note" && /does not fall/.test(e.text)));
+  assert.equal(s.entities[goblin].hp, hp0);
+});
+
+test("fall \"surface\": undo, redo and replay are exact", () => {
+  const { s, ids: [goblin] } = table([DROP.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  s.entities[goblin].pos = { ...s.entities[goblin].pos, z: 40 };
+  exact(s, [{ type: "cast", actor: "wizard", spell: DROP.id, target: goblin }]);
+});

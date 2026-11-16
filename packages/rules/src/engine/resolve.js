@@ -32,7 +32,22 @@ export function objectEffects(s, o, steps, targets, ev) {
   resolve(s, ev);
 }
 // Falling: 1d6 Bludgeoning for every 10 feet, 20d6 at most, and Prone on landing unless it took no damage.
+// `feet` is a number, or "surface" (docs/specs/maps-and-objects.md: "the target drops a number of feet, or to the next
+// surface"): it drops to the surface under it, as the gravity pass would put it, by the height between. Already standing
+// on a surface it does not fall. A creature riding or ridden is the DM's: it would part the pair.
 export function fall(s, t, feet, ev) {
+  if (feet === 'surface') {
+    const said = (text, manual) => ev.push(manual ? { type: 'manual', actor: null, name: 'Falling', partial: true, text } : { type: 'note', id: t.id, text });
+    if (ground(s.map, t.pos)) return said(`${t.name} is standing on a surface, so it does not fall`);
+    if (t.riding || t.rider) return said(`${t.name} is to fall to the surface below, but it is riding or being ridden, and the engine would part the pair. The DM moves ${t.name} down and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.`, true);
+    const sf = under(s.map, t.pos);
+    if (!sf) return said(`${t.name} is to fall to the surface below, but the engine finds no surface under it. The DM places ${t.name} and works out the fall.`, true);
+    feet = (t.pos.z ?? 0) - sf.z;
+    t.pos = { q: t.pos.q, r: t.pos.r, z: sf.z };
+    if (t.dead) { ev.push({ type: 'fell', id: t.id, feet }); return lookAround(s, ev, [t]); }          // a body comes down with no damage, as the gravity pass puts it
+    fall(s, t, feet, ev);
+    return lookAround(s, ev, [t]);
+  }
   const dice = Math.min(20, Math.floor(feet / 10));
   ev.push({ type: 'fell', id: t.id, feet });
   if (!dice) return;
