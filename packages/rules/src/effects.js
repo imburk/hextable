@@ -245,7 +245,7 @@ export function actionProfile(a) {
 // measured numbers): no SRD action comes near them.
 // Past a ceiling apply() refuses the action and puts the game back as it was (engine.js, apply), or, where it
 // could not take a copy, stops it with a `manual` event that says what was not applied.
-export const WORK = Object.freeze({ steps: 1000, events: 1000, dice: 600, attacks: 20 });
+export const WORK = Object.freeze({ steps: 1000, events: 1500, dice: 1200, attacks: 20 });
 export class WorkLimit extends Error {
   constructor(limit, what) { super(`${what ?? 'This action'} would ${limit} in one action, which is more than the engine allows.`); this.limit = limit; this.what = what; }
 }

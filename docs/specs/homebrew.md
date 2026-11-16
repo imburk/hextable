@@ -1110,9 +1110,11 @@ every non-Multiattack monster action once, at a table of about 30 creatures (the
 | Ceiling | Value | Against the SRD maximum |
 |---|---|---|
 | steps per action | 1,000 | 9 times |
-| events per action | 1,000 | 9 times |
-| dice faces per action | 600 | 15 times |
+| events per action | 1,500 | 13 times |
+| dice faces per action | 1,200 | 30 times |
 | attacks in one Multiattack | 20 | 2.9 times |
+
+The rule (round 2 of #401): the engine's ceilings sit above everything the gate admits, so a pack the gate accepts is never refused at cast time. Steps 1,000 against the gate's 600 (a quarter above and more), attacks 20 against 14, dice 1,200 against the 950 of the gate's worst spell, events 1,500 against the 688 the busiest gate-sized spell writes at 30 creatures. A test builds the heaviest of each and casts or uses it at a table of 30. The gate itself does not cap the dice of a spell whose rolls are made for each target (a damage step has up to 500 dice, an attack rolls its own for each target), so a gate-legal entry can still pass 1,200 dice; closing that is the gate's (a dice estimate beside `HOMEBREW_WORK`).
 
 ### How they work
 
@@ -1128,8 +1130,31 @@ every non-Multiattack monster action once, at a table of about 30 creatures (the
 - **Multiattack** (`engine/attacks.js`): more than 20 attacks from one Multiattack is refused before anything is spent.
 - **AI** (`ai.js`, `AI_LOOK`): nothing is capped. The first version capped places and foes, and the review of #401 showed it changed what SRD monsters choose (a Ghost's cone at 40+ foes, a Solar's flight 28 hexes). What bounds the AI is the clipping of areas to the map (a round of 30 monsters with a 1,000-ft emanation: 0.5 s against 9.3 s). The worst `aiStep` measured over 50 fights of 40 to 100 creatures was 854 ms (a far-flying monster's `moveOptions`, as on main).
 - A resumed action (the answer to a reaction question) that meets the ceiling closes the question and is not applied at all, with a `manual` event, so the table is never left waiting.
-- The worst round built under these ceilings (30 monsters, Multiattack of 20, 560-dice hits, a 1,000-ft bonus emanation, 50 foes): 598 actions, 1,624 events, state +4.1 MB, 1.8 s CPU, slowest `apply` 10 ms, slowest `aiStep` 9 ms (the review's version under the first ceilings: +33.9 MB).
+- The worst round built under these ceilings (30 monsters, Multiattack of 20, 560-dice hits (a crit rolls 1,120, under the ceiling), a 1,000-ft bonus emanation, 50 foes): 598 actions, 2,650 events, state +7.9 MB, 1.8 s CPU, slowest `apply` 10 ms, slowest `aiStep` 9 ms (the review's version under the first ceilings: +33.9 MB).
 - Not done: trimming the timeline, and a ceiling per round (DEBT T35b).
+
+## Build notes: B5 second half, packs on a table, the server (#391)
+
+What was settled while building the server side (`tables.js`, `index.js`, `limits.js`; tests in `packages/server/test/packs.test.js`):
+
+- **One wrapper.** `tables.js` imports the engine, the views, `describeStep` and `migrate` under `raw` names and calls them only in the
+  `scoped engine` block, as `engine.<name>(table, ...)`, which runs `using(cacheOf(table).overlay, ...)`. Every handler except `pack` also
+  runs inside `scoped`, so the nested calls are the no-op re-entry. A test reads the source and fails on a call outside the block, a raw name used outside it, an
+  `engine.` call without a table, or another server file importing the rules (one known exception, DEBT T44).
+- **`pack` runs outside the overlay.** It changes the packs, and `using` refuses a different overlay while one is installed. It checks
+  `installed() === null`, applies `setPacks`, and only then changes `table.packs`; the cache is keyed on id, version and hash, so the next call builds the new overlay.
+- **Order differs from the issue in one place:** `setPacks` is applied before the record is stored (the record is changed only if the engine accepted it), so a failure leaves both as they were.
+- **The server composes `setPacks`.** An `act` of type `setPacks` is refused. After undo, redo and rewind the server sets `state.packs` back from the record, outside the undo history.
+- **In use** is a walk over the state's keys and strings (not the timeline) for ids of the pack's `hb-<id>-` prefix; an update is refused if it drops an id that is in use.
+- **Saved tables** are vetted at start-up with `vetPacks` (the registry's `loadPack`, the claimed id, version and hash, then `overlayOf`); a table that fails is played without its packs and the DM's `packs` message carries `problems`.
+- **Fix round 1 (review of #400).** Saved packs are sanitised at load (`sanitizePacks`): any bad record or set is dropped with a reason, never
+  sent, told to the DM (`dropped`) and `state.packs` is reconciled; a throwing handler is caught per message in `index.js`. A pack whose
+  spell summons a homebrew creature is refused until the owner rules (DEBT T47). The pack budget is the table's and only its seated DM spends it.
+  `packs` is only a list; the data is `packData`, once on add or update and on request. The raw frame is bounded by the DM's frame limit (1 MiB + 4 KB), the
+  text of a pack at 512 KB, the pack at 256 KB by the rules' budget. An update may not drop entries (undo could bring back a creature of a dropped template).
+- **Ruled by the lead (L3):** the action names of a creature a player has seen appear in events as any creature's do; this is accepted.
+- **Not done:** guest packs (B8), the operator's delete and the lobby count (B15), the client (B7), an import (there is none on the server).
+- **Found:** DEBT T44, T45, T46. A homebrew creature's default name and its `tpl` reach players in the state view.
 
 ## Risks
 
@@ -1231,3 +1256,16 @@ answered on 15 November (the comment "Beej (lead 4), 15 November, 09:45 ET").
 ## Adventure modules
 
 A DM may also add their own pack inside their adventure module, through the same gate and limits: see [adventure-module.md](adventure-module.md) (Decision 3).
+
+## Build notes: a homebrew monster cannot be a form (#402)
+
+Until the owner rules on #193, a homebrew monster (an entry whose `source` starts `homebrew:`) cannot be chosen as a form, so a player is never sent its stat block. One helper, `isHomebrew(entry)` in `summons.js`, with the sentence `HOMEBREW_FORM` ("A homebrew creature cannot be chosen as a form yet."). Places where an action's own field or a spell's filter names a creature by id, and what was done:
+
+- `cast` with a `summon` step that has `forms` (Find Familiar, a list or a type-and-rating filter): `summonFor` in `engine/casting.js` refuses a homebrew `summon.form` first, before the filter, for a player and for the DM casting for a character. A reforming casting uses the same check. Done.
+- Wild Shape, the `feature` handler (`shapeShift`, `engine/features.js`): refused before the type and rating checks, whose messages would name the monster. Done.
+- `summonMade` and the hand-over text (`engine/resolve.js`): they run after the cast check, or name only ids a spell lists (a pack spell naming a homebrew creature is already refused by the linter). Nothing needed.
+- Find Steed, Phantom Steed, the summon blocks, Animate Dead: the spell fixes the creature; the caster picks no id. Nothing needed.
+- The DM's `spawn`, `bond`: the DM names a creature; unaffected by design.
+- The choices a player is offered: the server sends the filter only (`spellProfile` in `effects.js`) and the client lists its own SRD lookup, which holds no overlay. Nothing sends a list of ids, so nothing offers one.
+
+The refusal says the creature is homebrew, so a player who guesses an id learns that it exists; its stat block stays unsent.

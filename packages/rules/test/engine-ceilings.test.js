@@ -71,8 +71,8 @@ const refused = (s, action, re, ms = 1000) => {
 };
 
 test("the ceilings are far above what the SRD pack does (measured: 106 steps, 113 events, 40 dice, 7 attacks)", () => {
-  assert.deepEqual({ ...WORK }, { steps: 1000, events: 1000, dice: 600, attacks: 20 });
-  assert.ok(WORK.steps >= 9 * 106 && WORK.events >= 8 * 113 && WORK.dice >= 15 * 40 && WORK.attacks >= 2 * 7);
+  assert.deepEqual({ ...WORK }, { steps: 1000, events: 1500, dice: 1200, attacks: 20 });
+  assert.ok(WORK.steps >= 9 * 106 && WORK.events >= 13 * 113 && WORK.dice >= 30 * 40 && WORK.attacks >= 2 * 7);
   // And no SRD spell or monster action reads as heavy to apply(), at a table of 100: nothing there takes a copy it need not.
   let most = { steps: 0, dice: 0 };
   const walk = (steps) => { const l = loadOf(steps); most = { steps: Math.max(most.steps, l.steps), dice: Math.max(most.dice, l.dice) }; };
@@ -111,7 +111,7 @@ test("a damage step repeated a hundred million times is refused with nothing cha
     const id = "hb-x-times";
     withEntries([["spells", spell(id, { effects: [{ save: "dex", half: true, onFail: [{ damage: "3d6", type: "fire", times }] }] })]], () => {
       const { s, ids } = table(1, { spells: [id] });
-      refused(s, { type: "cast", actor: "wizard", spell: id, targets: [ids[0]] }, /more than (1,000 (steps|events)|600 dice)/);
+      refused(s, { type: "cast", actor: "wizard", spell: id, targets: [ids[0]] }, /more than (1,000 steps|1,500 events|1,200 dice)/);
     });
   }
 });
@@ -129,7 +129,7 @@ test("a Multiattack of 2,000 attacks is refused before anything is spent", () =>
   });
 });
 
-test("one attack of 18 damage steps of 50d100+140 repeated 10 times is refused: it would write over 600 dice", () => {
+test("one attack of 18 damage steps of 50d100+140 repeated 10 times is refused: it would write over 1,200 dice", () => {
   const id = "hb-x-heavy", hit = Array(18).fill({ damage: "50d100+140", type: "slashing", times: 10 });
   withEntries([["monsters", monsterOf(id, [attackAction("a1", hit)])]], () => {
     const { s, ids } = table(1);
@@ -140,7 +140,7 @@ test("one attack of 18 damage steps of 50d100+140 repeated 10 times is refused: 
     assert.equal(current(s), m);
     // It would hit: the bonus is 40. A refused attack changes nothing, so the monster may try again and the state never grows.
     const before = json(s).length;
-    for (let i = 0; i < 20; i++) refused(s, { type: "act", actor: m, action: "a1", target: "wizard" }, /roll more than 600 dice/);
+    for (let i = 0; i < 20; i++) refused(s, { type: "act", actor: m, action: "a1", target: "wizard" }, /roll more than 1,200 dice/);
     assert.equal(json(s).length, before);
   });
 });
@@ -150,7 +150,7 @@ test("a ceiling-sized area spell (a dozen saves, 1,000 ft) at a table of 100 is 
   const nova = spell(id, { range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: Array(12).fill({ save: "dex", dc: 50, half: true, onFail: [{ damage: "10d100+140", type: "thunder", times: 3 }] }) });
   withEntries([["spells", nova]], () => {
     const big = table(100, { spells: [id] });
-    refused(big.s, { type: "cast", actor: "wizard", spell: id, hex: { q: -2, r: 2 } }, /more than (1,000 (steps|events)|600 dice)/);
+    refused(big.s, { type: "cast", actor: "wizard", spell: id, hex: { q: -2, r: 2 } }, /more than (1,000 steps|1,500 events|1,200 dice)/);
     // The slot was not spent and no turn went by: the same action may still be tried.
     assert.equal(big.s.entities.wizard.slots[1], 4);
     const small = table(6, { spells: [id] });
@@ -184,7 +184,7 @@ test("a lasting zone that meets the ceiling on a later turn, where no copy was t
     const cast = apply(s, { type: "cast", actor: "wizard", spell: id, slot: 3, hex: undefined }, DM);
     // The cast itself reads as heavy and is refused clean, because its steps could run (a zone's `times` is counted too).
     assert.equal(cast.ok, false);
-    assert.match(cast.error, /more than (1,000 steps|600 dice)/);
+    assert.match(cast.error, /more than (1,000 steps|1,200 dice)/);
   });
 });
 
@@ -204,7 +204,7 @@ test("the manual stop: work with no copy taken is stopped, not silently cut shor
     const { r, ms } = timed(() => apply(s, { type: "endTurn", actor: ids[0] }, DM));
     assert.ok(ms < 1000, `took ${Math.round(ms)} ms`);
     assert.ok(r.ok, r.error);
-    const note = r.events.find((e) => e.type === "manual" && /more than (1,000 steps|600 dice)/.test(e.text));
+    const note = r.events.find((e) => e.type === "manual" && /more than (1,000 steps|1,200 dice)/.test(e.text));
     assert.ok(note, "a manual event says it was stopped");
     assert.match(note.text, /the rest of it was not applied.*The turn did not end/);
     assert.equal(note.name, "Boom");
@@ -324,7 +324,7 @@ test("dice added by a higher slot are counted: such a cast takes its copy and is
   const id = "hb-x-grow";
   withEntries([["spells", spell(id, { target: { creature: { count: 3 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire" }] }], higher: { slot: { damage: "300d6" } } })]], () => {
     const { s, ids } = table(3, { spells: [id] });
-    const r = refused(s, { type: "cast", actor: "wizard", spell: id, slot: 9, targets: ids }, /roll more than 600 dice/);
+    const r = refused(s, { type: "cast", actor: "wizard", spell: id, slot: 9, targets: ids }, /roll more than 1,200 dice/);
     assert.match(r.error, /^hb-x-grow|^Boom/);
     assert.equal(s.entities.wizard.slots[9], 4, "the slot was not spent");
     // At its own level it is a plain cast.
@@ -377,5 +377,45 @@ test("a stopped end of turn says the turn did not end, and what was applied and 
     assert.match(note.text, /What it had done by then \(\d+ events, listed above\) stays done; the rest of it was not applied/);
     assert.match(note.text, /The turn did not end/);
     assert.equal(current(s), ids[0], "and it did not");
+  });
+});
+
+// Round 2 of #401: the rule. The engine's ceilings sit above everything the homebrew gate admits, so a pack the gate accepts is never
+// refused at cast time. The heaviest entry the gate lets through, of each kind it builds, used once at a table of 30.
+test("the heaviest entries the gate accepts complete at a table of 30 and never meet an engine ceiling", async () => {
+  const { lintEntry } = await import("../src/content/schema.js");
+  const { HOMEBREW_DICE, HOMEBREW_WORK } = await import("../src/content/schema.js");
+  const D = `${HOMEBREW_DICE.count}d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`;
+  const strict = (kind, e) => lintEntry(kind, e, { pack: "x", srd: CONTENT });
+  assert.ok(WORK.steps >= 1.25 * HOMEBREW_WORK.steps && WORK.attacks >= 1.25 * HOMEBREW_WORK.attacks, "steps and attacks sit a quarter above the gate's");
+  const fine = (r) => { assert.ok(r.ok, r.error); assert.ok(r.events.length <= WORK.events); assert.ok(!r.events.some((e) => e.type === "manual" && /more than the engine allows/.test(e.text))); return r; };
+  // 1. the gate's worst spell: 30 creatures x (1 save + 19 repeats of 50d100+140), 950 dice
+  const worst = spell("hb-x-worst", { level: 9, duration: "1 minute", range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: D, type: "fire", times: 10 }, { damage: D, type: "fire", times: 9 }] }] });
+  // 2. the spell that writes the most events for its steps: 10 damage and 10 heal steps for each of 30 creatures
+  const busy = spell("hb-x-busy", { range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: Array(10).fill(0).flatMap(() => [{ damage: "1d6", type: "fire" }, { heal: "1d4" }]) });
+  // 3. a monster's heaviest area action (20 steps for each of 30 creatures) and its Multiattack of 14
+  const roar = { id: "roar", name: "Roar", text: "A roar.", target: { area: { shape: "emanation", size: 1000 } }, effects: Array(10).fill({ save: "dex", dc: 50, onFail: [{ damage: "1d6", type: "fire" }] }) };
+  const a1 = attackAction("a1", [{ damage: D, type: "slashing", times: 10 }, { damage: D, type: "slashing", times: 9 }], { text: "A blow." });
+  const multi = { id: "multi", name: "Multiattack", text: "Many blows.", multiattack: [{ action: "a1", times: 10 }, { action: "a1", times: 4 }] };
+  const titan = monsterOf("hb-x-titan", [a1, roar, multi]);
+  for (const [kind, e] of [["spells", worst], ["spells", busy], ["monsters", titan]]) assert.deepEqual(strict(kind, e), [], `${e.id}: the gate accepts it`);
+  withEntries([["spells", worst], ["spells", busy], ["monsters", titan]], () => {
+    for (const id of [worst.id, busy.id]) {
+      const { s } = table(30, { spells: [id], radius: 15 });
+      fine(apply(s, { type: "cast", actor: "wizard", spell: id, slot: 9, hex: { q: -2, r: 2 } }, DM));
+    }
+    const { s, ids } = table(29, { radius: 15 });
+    const sp = apply(s, { type: "spawn", monster: titan.id, at: { q: 6, r: -3 } }, DM);
+    assert.ok(sp.ok, sp.error);
+    const m = sp.events[0].id;
+    s.entities[m].hp = s.entities[m].hpMax = 1e9;
+    for (let i = 0; i < 200 && s.encounter && current(s) !== m; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+    assert.ok(s.encounter, "the fight goes on");
+    assert.equal(current(s), m);
+    for (const id of ids) s.entities[id].side = "party";
+    fine(apply(s, { type: "act", actor: m, action: "multi" }, DM));
+    fine(apply(s, { type: "act", actor: m, action: "a1", target: "wizard" }, DM));
+    s.encounter.budget.action = 1;
+    fine(apply(s, { type: "act", actor: m, action: "roar", hex: { q: -2, r: 2 } }, DM));
   });
 });

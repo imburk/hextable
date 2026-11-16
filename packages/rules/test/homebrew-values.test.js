@@ -183,8 +183,7 @@ test("B1: a pack at every ceiling loads, and a cast of its worst spell finishes 
   const t0 = performance.now();
   const res = using(overlayOf([r.pack]), () => apply(s, { type: "cast", actor: "wizard", spell: "hb-x-worst", slot: 9, hex: { q: 2, r: 0 } }, { role: "dm", userId: "dm" }));
   const ms = performance.now() - t0;
-  // The gate's worst spell rolls 950 dice; the engine's own ceiling is 600 dice an action (#401), so it is either cast or refused clean, at once.
-  assert.ok(res.ok || /more than 600 dice/.test(res.error), res.error);
+  assert.ok(res.ok, res.error);
   assert.ok(ms < 5000, `the cast took ${Math.round(ms)} ms`);
   assert.ok(JSON.stringify(res.events).length < 1e6, "the cast adds under 1 MB");
   // The same spell with the review's number is not a pack at all.
@@ -458,7 +457,7 @@ test("round 2: the heaviest accepted cast, at a table of 30 creatures, is quick 
   const t0 = performance.now();
   const res = using(overlayOf([r.pack]), () => apply(s, { type: "cast", actor: "wizard", spell: "hb-x-worst", slot: 9, hex: { q: 2, r: 0 } }, DM));
   const ms = performance.now() - t0;
-  assert.ok(res.ok || /more than 600 dice/.test(res.error), res.error);     // 950 dice: over the engine's ceiling of 600 (#401), refused clean
+  assert.ok(res.ok, res.error);
   assert.ok(ms < 5000, `${Math.round(ms)} ms`);
   assert.ok(JSON.stringify(s).length - before < 1e6, `${JSON.stringify(s).length - before} bytes added to the state`);
   if (process.env.HB_PRINT) console.log(`cast events ${res.events.length}, ${JSON.stringify(res.events).length} bytes, creatures ${Object.keys(s.entities).length}`);
