@@ -1073,6 +1073,30 @@ The first half of C9. Built and tested in `test/companions-c9a.test.js`; the SRD
   test pins that the wizard's refusal holds, and the tier stays `assist`. The forgone attack, Investment of the Chain Master
   and Life Bond are the second half.
 
+### Amendment C9b, five optional keys on a feature's `freeCast` (#414)
+
+Wild Companion and Pact of the Chain's extra forms were stopped by #411 because `freeCast` could not say them. This amendment
+adds the vocabulary, closed and small. Every key is optional and belongs to a `freeCast` of named spells (`{ spells }`); a
+`{ list, maxLevel }` freeCast takes none of them. A feature that uses none of them behaves exactly as before. The SRD lines
+(srd52-flow.txt): Wild Companion 9205-9211, "As a Magic action, you can expend a spell slot or a use of Wild Shape to cast the
+Find Familiar spell without Material components. When you cast the spell in this way, the familiar is Fey and disappears when
+you finish a Long Rest."; Pact of the Chain 16619-16631, "When you cast the spell, you choose one of the normal forms for your
+familiar or one of the following special forms: Imp, Pseudodragon, Quasit, Skeleton, Sphinx of Wonder, Sprite, or Venomous
+Snake".
+
+| Key | Shape | What the engine does with it |
+|---|---|---|
+| `forms` | a list of pack monster ids, 1 to 20, no repeats | Extra forms for the spell's summon step (one with `forms`), for a caster who HAS the feature: `summonFor` accepts them in `summon.form` besides the step's own, **after** the homebrew check (#403), so a homebrew monster is never a form. It applies to every casting of that spell by that caster, through the feature or by a slot (the SRD says "when you cast the spell"), and to no other caster. Only a creature that holds the feature gets them. |
+| `types` | a list of creature types, 1 to 14, no repeats | The creature types a summon may take for a cast **through the feature** (`via`), replacing the step's own `types` for that cast. The cast's `summon.type` must be in the list and in the step's own `types`; a list of one is the default when `type` is left out. A slot cast of the same spell keeps the step's own types. |
+| `ends` | a list of `masterDies` and/or `longRest`, no repeats | Added to the `bond.ends` of what a cast **through the feature** makes, for a new creature and for a reformed one. A cast without the feature keeps the spell's own endings (a plain Find Familiar reforms the familiar and so takes the endings off again, as the SRD's new casting replaces the creature). |
+| `cost` | `{ slot: true, uses: <feature id> }`, exactly these two keys | What the cast spends instead of the feature's own `uses`: **a spell slot or a use of the named feature, chosen by the caster, never both**. The feature then has no `uses` of its own and no `atWill`. The `cast` action says `pay: 'slot'` or `pay: 'uses'`; with no `pay`, or any other, it is refused. `pay: 'slot'` takes `slot` as an ordinary cast does (the spell's own level or higher, a slot the caster has, one slot a turn in a fight, handed back if the cast is countered); `pay: 'uses'` refuses `slot`, needs a use of the named feature and spends one. `pay` on a feature with no `cost` is refused. Everything is checked before anything is spent. |
+| `components` | `'none'` | The cast needs no Material component: the cast's component list has no `m`, and a `costly` Material component no longer makes it unhideable by Subtle Spell or visible to a Counterspell for that reason. (The engine keeps no Material components; this is all the waiver changes.) |
+
+The linter (`content/schema.js`) knows exactly these shapes and refuses any other, and the homebrew strict lists have a
+`freeCast` shape (key list, a type for each key, a length ceiling for each list). The pack linter also checks across the pack:
+`forms` ids are pack monsters, `types` and `forms` need a freeCast spell with a summon step that has `types` or `forms`,
+`ends` needs a spell with a summon step, and `cost.uses` names a feature of the class that has `uses`.
+
 ### C6a, riding, the first half (#346)
 
 Stage C6 is built in two parts: C6a (this) and C6b (moving the pair under a push, a teleport and a fall; falling off;
