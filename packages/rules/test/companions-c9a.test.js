@@ -276,14 +276,14 @@ test("Pact of the Chain: not without the pact; a rejected cast changes nothing",
   refused(s, pactCast(s, "owl", { spell: "hex" }), PAT, /can't cast that spell/);
 });
 
-test("Pact of the Chain's seven extra forms are NOT offered yet: the vocabulary has no per-caster form list (stopped, see the PR)", () => {
-  // A wizard naming one is refused, as the SRD needs. The warlock is refused too, which is the gap: Find Familiar's `forms`
-  // belongs to the spell, and nothing in `freeCast` or the summon step can say "these more forms, for this feature's caster".
+test("Pact of the Chain's seven extra forms: the warlock with the pact may pick them (#414), a wizard is still refused", () => {
+  // The wizard is refused as the SRD needs. The warlock was refused until #414 (`freeCast.forms`; companions.md, C9b); the full
+  // play is in freecast-keys.test.js.
   const wiz = wizTable();
   for (const form of ["imp", "pseudodragon", "quasit", "skeleton", "sphinx-of-wonder", "sprite", "venomous-snake"]) {
     const at = spots(wiz, wiz.entities.ven.pos, 2)[0];
     refused(wiz, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form, type: "fiend", at: [at] } }, PAT, /Choose a form/);
     const s = pactField();
-    refused(s, pactCast(s, form), PAT, /Choose a form/);
+    ok(apply(s, pactCast(s, form), PAT));
   }
 });
