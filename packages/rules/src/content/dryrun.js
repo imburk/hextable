@@ -220,7 +220,7 @@ function summarise(sp, run, level, slot) {
     else if (e.type === 'effectStart') lines.push(`${e.name} takes hold${e.conc ? ` (${n(e.source)} concentrates)` : ''}: ${cap(e.lasts)}.`);
     else if (e.type === 'summoned') lines.push(`${n(e.by)} summons a creature.`);
     else if (e.type === 'countered') lines.push(`${sp.name} was countered.`);
-    else if (e.type === 'manual') lines.push(`Handed to the DM (${cap(e.name)}): ${cap(e.text)}`);
+    else if (e.type === 'manual') lines.push(`The DM does this (${cap(e.name)}): ${cap(e.text)}`);
   }
   if (sp.def.zone) lines.push('It leaves a zone behind that acts when a creature enters it or starts or ends a turn there; this dry run casts once and stops, so the zone is not played.');
   if (!events.some((e) => ['attack', 'save', 'damage', 'heal', 'tempHp', 'cond', 'moved', 'fell', 'summoned', 'effectStart', 'manual'].includes(e.type))) lines.push('The engine did nothing visible with it.');
