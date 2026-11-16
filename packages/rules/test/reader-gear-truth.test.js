@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { CONTENT } from '../src/content/index.js';
 import { MASTERIES, WEAPON_PROPERTIES } from '../src/content/schema.js';
 import { readEntry } from '../src/content/reader.js';
-import { apply, current, makeEntity, passive } from '../src/engine.js';
+import { apply, current, makeEntity, moveOptions, passive } from '../src/engine.js';
 import { derive, mod, validate } from '../src/derive.js';
 import { newGame } from '../src/scenario.js';
 
@@ -454,4 +454,72 @@ test('objects: a trigger that names an area hits every living creature within it
     assert.ok(d.every((x) => JSON.stringify(x.dice) === JSON.stringify(d[0].dice)), 'the same dice for each');
   });
   assert.match(readEntry('object', { ...WIRE, id: 'hb-rk-share', triggers: [{ on: 'enter', from: ['hidden'], to: 'sprung', area: 20, effects: [{ damage: '4d8', type: 'fire' }] }] }).lines.join('\n'), /share|same roll|one roll/i);
+}));
+
+test('objects: finding, in the Search action and in passing, as the reading says', () => withObjects(() => {
+  const search = (s) => ok(apply(s, { type: 'search', actor: 'hero' }, PAT)).events.find((e) => e.type === 'check');
+  // Search: within 15 feet, a Perception check against the find DC (the entry's 14, or the DM's), the object goes to its found state.
+  const seen = new Set();
+  for (let seed = 1; seed < 50 && seen.size < 2; seed++) {
+    const s = stage([O('w', WIRE.id, { q: 3, r: 0 })], { seed }), c = search(s);
+    assert.equal(stateOf(s, 'w'), c.total >= 14 ? 'found' : 'hidden', `seed ${seed}: total ${c.total} against 14`);
+    seen.add(c.total >= 14);
+  }
+  assert.equal(seen.size, 2, 'a find and a miss were both played');
+  let s = stage([O('w', WIRE.id, { q: 3, r: 0 }, { dc: { find: 40 } })]); search(s); assert.equal(stateOf(s, 'w'), 'hidden', 'the DM\'s DC replaces the entry\'s');
+  s = stage([O('w', WIRE.id, { q: 3, r: 0 }, { dc: { find: 1 } })]); search(s); assert.equal(stateOf(s, 'w'), 'found', 'DC 1 is always met');
+  s = stage([O('w', WIRE.id, { q: 4, r: 0 }, { dc: { find: 1 } })]); search(s); assert.equal(stateOf(s, 'w'), 'hidden', 'beyond 15 feet nothing is found');
+  assert.match(OSAY[WIRE.id], /from within 15 feet/); assert.match(OSAY[WIRE.id], /Its find DC is 14/);
+  // In passing: the setting decides; within 10 feet; passive Perception against the DC.
+  const pp = passive(stage([]), stage([]).entities.hero, 'perception');
+  const walkBy = (setting, dc, at = { q: 2, r: 0 }, def = WIRE.id) => {
+    const st = stage([{ ...O('w', WIRE.id, at, { dc: { find: dc } }), def }]);
+    ok(apply(st, { type: 'setting', key: 'passiveFind', value: setting }, DM));
+    const r = apply(st, { type: 'move', actor: 'hero', to: { q: 0, r: 2 } }, PAT);
+    return { r, state: stateOf(st, 'w') };
+  };
+  assert.equal(walkBy('off', pp).state, 'hidden', 'off');
+  assert.equal(walkBy('traps', pp).state, 'found', 'traps: a trap with steps');
+  assert.equal(walkBy('traps', pp + 1).state, 'hidden', 'passive Perception below the DC');
+  assert.equal(walkBy('all', pp).state, 'found');
+  assert.equal(walkBy('all', pp, { q: 3, r: 0 }).state, 'hidden', 'beyond 10 feet');
+  const quiet = { ...WIRE, id: 'hb-rk-quiet-wire', triggers: [{ on: 'enter', from: ['hidden'], to: 'sprung' }] };
+  lend('objects', [quiet], () => { assert.equal(walkBy('traps', pp, { q: 2, r: 0 }, quiet.id).state, 'hidden', 'traps: not one without steps'); assert.equal(walkBy('all', pp, { q: 2, r: 0 }, quiet.id).state, 'found', 'all: anything hidden'); });
+  assert.match(OSAY[WIRE.id], /within 10 feet/);
+}));
+
+test('objects: light, a joined place, a lever that sets and reveals, and a pile', () => withObjects(() => {
+  // Light: only in a state that gives it.
+  const brazier = OB['hb-rk-ember-brazier'];
+  const lit = (state) => lightSources(stage([O('b', brazier.id, { q: 3, r: 0 }, { state })])).filter((x) => x.object === 'b');
+  assert.deepEqual(lit('cold'), []);
+  assert.deepEqual(lit('lit').map((x) => [x.bright, x.dim]), [[20, 20]]);
+  assert.match(OSAY[brazier.id], /Bright Light out to 20 feet and Dim Light for 20 feet beyond that/);
+  // A brazier's lit state fills its hex: nobody walks through it; its "blocks sight" does nothing in a hex.
+  const s0 = stage([O('b', brazier.id, { q: 3, r: 0 }, { state: 'lit' })]);
+  assert.equal(barriers(s0.map).solid('ground', { q: 3, r: 0 }), true);
+  assert.equal(barriers(s0.map).blocked('ground', { q: 2, r: 0 }, { q: 4, r: 0 }, 'sight'), false, 'sight is not blocked by a thing in a hex');
+  // A joined place: the cost is the height difference, at least 5 feet, twice that unless the creature climbs.
+  const rope = OB['hb-rk-rope-cradle'];
+  const s1 = stage([O('r', rope.id, { q: 2, r: 0 }, { to: { q: 2, r: -3 } })], { at: { q: 2, r: 0 } });
+  const reach = moveOptions(s1, s1.entities.hero), at = (h) => [...reach.values()].find((n) => n.h.q === h.q && n.h.r === h.r);
+  assert.equal(at({ q: 2, r: -3 }).cost, 10, 'level ground: 5 feet doubled for a creature that cannot climb');
+  assert.match(OSAY[rope.id], /at least 5 feet, and twice that unless the creature can climb/);
+  // A lever: a step that sets what is linked, and a link that follows the lever's own state.
+  const lever = OB['hb-rk-shifting-lever'], gate = OB['hb-rk-glasswork-gate'];
+  let s = stage([O('l', lever.id, { q: 1, r: 0 }, { links: [{ object: 'g', when: 'down', sets: 'shut' }, { object: 'b', when: 'down', sets: 'lit' }] }), O('g', gate.id, { q: 0, r: 0 }, { edge: 0, state: 'grated' }), O('b', brazier.id, { q: 4, r: 0 })]);
+  const r = ok(use(s, 'l', 'pull'));
+  assert.equal(stateOf(s, 'l'), 'down'); assert.equal(stateOf(s, 'b'), 'lit', 'the link ran at the state change');
+  assert.equal(stateOf(s, 'g'), 'open', 'the step then put it in "open"');
+  assert.ok(r.events.some((e) => e.type === 'object' && e.object === 'g' && e.state === 'open'), 'the step is logged');
+  // Reveal: a hidden linked object goes to its found state; one that is not hidden stays; the lever itself has no hidden state, so it stays too.
+  s = stage([O('l', lever.id, { q: 1, r: 0 }, { state: 'down', links: [{ object: 'w', when: 'down', sets: 'hidden' }] }), O('w', WIRE.id, { q: 4, r: 0 })]);
+  ok(use(s, 'l', 'sweep')); assert.equal(stateOf(s, 'w'), 'found'); assert.equal(stateOf(s, 'l'), 'down');
+  // A step that would block movement where a creature stands refuses the whole use.
+  s = stage([O('l', lever.id, { q: 1, r: 0 }, { links: [{ object: 'b', when: 'down', sets: 'lit' }] }), O('b', brazier.id, { q: 0, r: 0 })]);
+  const refusal = use(s, 'l', 'pull'); assert.equal(refusal.ok, false); assert.match(refusal.error, /standing where/); assert.equal(stateOf(s, 'l'), 'up', 'a refused use changes nothing'); assert.equal(stateOf(s, 'b'), 'cold');
+  // A pile: picked up with the pick-up action (not "use"); there is nothing to use.
+  const sack = OB['hb-rk-sack-heap'];
+  s = stage([O('p', sack.id, { q: 1, r: 0 })]);
+  assert.match(use(s, 'p', 'anything').error, /can't be used that way/);
 }));
