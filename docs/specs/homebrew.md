@@ -1357,7 +1357,7 @@ author's text. `scripts/hb.mjs read` prints them. Weapons, armour and objects ar
 - **A feat** is read as: its category and prerequisites, the points and proficiencies it gives, each `grants` key in words (58 keys,
   `GRANT_WORDS`), and each `freeCast` (spells, how often, cost, keys). A grant only a class feature reads is said to change nothing.
 - **Where the engine does less**, the reading says the DM does it and `doesNot` lists it (Reaction uses, a save with no DC, a spell
-  attack, the last charge, a use that needs a recharge the engine does not run). Found gaps are DEBT T56.
+  attack, the last charge, a "once a dawn" use). Found gaps are DEBT T56.
 - **Tests:** `reader-items.test.js` ties every word table to the linter's lists (a new item or feat key, grant, category or freeCast key
   fails until it has words), reads a sample of every grants key, and requires the golden entries (`reader-items-golden.txt`, built from
   `fixtures/reader-kinds-pack.json` and a few entries strict mode would refuse) to use every field. Over the SRD all 75 items and 17 feats read
