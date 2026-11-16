@@ -71,7 +71,7 @@ What exists today, with the file and function so a builder can check.
 
 | Feature | Exists today | Does not exist |
 |---|---|---|
-| **The vocabulary** | `content/schema.js` exports closed lists: `STEPS` (19), `BRANCHES`, `HOOKS`, `OPS`, `TAGS`, `CONDITIONS` (15), `DAMAGE_TYPES` (13), `SCHOOLS`, `CAST_TIMES`, `AREA_SHAPES`, `SIZES`, `SKILLS`, `GRANTS`, `REACTION_TRIGGERS`, `OBJECT_KINDS`, `TIERS`. | A single declarative description of each entry kind. The shape of a spell, monster or item lives in the code of `lintSpell`, `lintMonster`, `lintItem` and so on, which are not exported (only `lintPack`, `lintRecord`, `lintMultiattack`, `coverage` are). |
+| **The vocabulary** | `content/schema.js` exports closed lists: `STEPS` (20; `summon` was added after this was written), `BRANCHES`, `HOOKS`, `OPS`, `TAGS`, `CONDITIONS` (15), `DAMAGE_TYPES` (13), `SCHOOLS`, `CAST_TIMES`, `AREA_SHAPES`, `SIZES`, `SKILLS`, `GRANTS`, `REACTION_TRIGGERS`, `OBJECT_KINDS`, `TIERS`. | A single declarative description of each entry kind. The shape of a spell, monster or item lives in the code of `lintSpell`, `lintMonster`, `lintItem` and so on, which are not exported (only `lintPack`, `lintRecord`, `lintMultiattack`, `coverage` are). |
 | **The linter** | `lintPack({ pack, spells, monsters, pregens, conditions, objects, classes, weapons, armour, feats, items, multiclass, advancement })` returns plain-sentence problems like `spells/fire-bolt: damage "x" is not dice like 2d6+3`. It refuses functions anywhere in an entry (`findFunction`) and cross-checks ids (a class's spells must be in the pack). | Limits on size, count or depth. `lintSteps` and `walkSteps` recurse through `onHit`/`onFail`/... without a depth limit, so a deeply nested entry is a stack-overflow risk. Most kinds accept **unknown extra fields** (only `lintItem` and `lintFeatDef` check their key list); the monster action copy `runtimeAction` in `content/index.js` `structuredClone`s everything but `text` into every creature. A pack from a stranger needs a strict mode. |
 | **How packs load** | `content/index.js` imports each file of `srd52/` statically, builds `PACKS` (one pack), and builds the lookups `CONTENT`, `SPELLS` (`spellProfile`), `MONSTERS` (`legacyMonster`), `MONSTER_ACTIONS` and `PREGENS` **once, at import**, as plain objects. About 130 places read `CONTENT`, 53 read `SPELLS`, 23 `MONSTERS` (`rules`, `client` and `server`). | A table-specific content set. A second pack cannot be added without editing the file; there is nothing that loads data at run time. |
 | **How a spell runs** | `effects.js`: `spellProfile(def)` (aim, kinds, harmful, area, count), `spellKinds(def)` (damage, healing, control, utility: a spell's own optional `kinds` field when it has one, else read from its steps; table-ui.md, E12 amended, #374), `run` executes the steps on a stack kept in the game state. A cast goes through `casting.js`. | Reading a spell back in words. `spellProfile` makes a UI profile, not a description. |
@@ -754,7 +754,7 @@ spec does not schedule it; it names the groups so the milestone
 | H2 | `shapes.js`, `schemaOf` | rules | n/a | `content/shapes.js` (new), `tests` | no |
 | H3 | `readEntry` | rules | n/a | `content/reader.js` (new), `tests` | no |
 | H4 | `registry.js`: `overlayOf(packs)`, `using(overlay, fn)`; `loadPack` | rules | n/a | `content/registry.js` (new), `content/index.js` (export the builders), `tests` | no |
-| H5 | `state.packs` and the action `setPacks` | state, action | DM (the server composes it) | `engine/dm.js`, `migrate.js`, `tests` | 20 to 21 |
+| H5 | `state.packs` and the action `setPacks` | state, action | DM (the server composes it) | `engine/dm.js`, `migrate.js`, `tests` | 23 to 24 (corrected in #380: the state was at 23 when this was read) |
 | H6 | Message `pack` (add, update, remove; DM only), the table record, the filtered view `packs`, the export, limits | server | DM | `tables.js`, `index.js`, `limits.js`, `packages/server/README.md`, `view.js` (nothing for players but the filtered message) | no |
 | H7 | `dryRun` | rules | n/a | `content/dryrun.js` (new), `tests` | no |
 | H8 | Compatibility kinds for homebrew: ids and hashes, and for a bundled piece that passes the gate its reading and the DM's Allow or Deny; nothing enters the table without the DM's Allow | rules | DM (Allow) | `compat.js` (portable-characters P2) | no |
@@ -772,7 +772,7 @@ Ordered so each stage is useful alone. Models and lanes as in
 | B2 | **Shapes and the schema export.** H2, with `hb schema <kind>` in the CLI as the first user. | engine | Opus | `content/shapes.js`, `scripts/hb.mjs` (new), `tests` | Every SRD entry of every kind validates against its `schemaOf`; a mutated SRD entry (a bad enum, a missing required field) fails the schema or the linter; the schema's `$comment` says it is structural; `node scripts/hb.mjs schema spell` prints valid JSON Schema. |
 | B3 | **The reader, spells.** H3 for spells, golden sentences for every step, area, hook and duration; the "does not" lines for `manual`; the numbers list; the author's text beside it. | engine | Opus | `content/reader.js`, `tests` | For every one of the 45 auto SRD spells the reading is non-empty and its numbers equal the entry's; a golden reading for an invented example matches the one in Decision 6 (written for this project); a changed template changes a golden file; the reader never prints a publisher or product name; for a manual spell it prints the `manual` text in quotes and says "the DM does this". |
 | B4 | **The registry.** H4: `overlayOf`, `using`, cached profiles. | engine | Opus | `content/registry.js`, `content/index.js`, `tests` | A homebrew spell cast in a test game runs its steps; two overlays called in turn never leak ids; a throw inside `using` restores the lookups; an overlay with an SRD id is refused; `CONTENT` and `SPELLS` are the same objects as before when no overlay is installed. |
-| B5 | **Packs on a table, state and server.** H5 and H6: `state.packs`, migration, `setPacks`, the `pack` message, storage, limits, the export, and the filtered `packs` message. | engine, server | Opus | `engine/dm.js`, `migrate.js`, `tables.js`, `index.js`, `limits.js`, `view.js` (only if the filter lives there), `packages/server/README.md`, `tests` | A DM adds a lint-clean pack and members get the filtered `packs`; a player cannot send `pack`, and a guest pack is added only by the DM's Allow; a pack that fails strict lint changes nothing and the sentences are returned; removing a pack in use is refused with what blocks it; a restart keeps the packs; the export has them; a player's messages hold no homebrew monster text (the hidden-information test). State migrates 20 to 21. |
+| B5 | **Packs on a table, state and server.** H5 and H6: `state.packs`, migration, `setPacks`, the `pack` message, storage, limits, the export, and the filtered `packs` message. | engine, server | Opus | `engine/dm.js`, `migrate.js`, `tables.js`, `index.js`, `limits.js`, `view.js` (only if the filter lives there), `packages/server/README.md`, `tests` | A DM adds a lint-clean pack and members get the filtered `packs`; a player cannot send `pack`, and a guest pack is added only by the DM's Allow; a pack that fails strict lint changes nothing and the sentences are returned; removing a pack in use is refused with what blocks it; a restart keeps the packs; the export has them; a player's messages hold no homebrew monster text (the hidden-information test). State migrates 23 to 24. |
 | B6 | **The dry run.** H7. | engine | Opus | `content/dryrun.js`, `tests` | A seeded dry run of an invented spell twice gives byte-identical output; it touches no state outside its own game; a monster entry fights a pregenerated character for one round and returns the events. |
 | B7 | **Pack manager, client.** For the DM only: upload a file, the review (every entry's reading and tier, counts by tier, the licence text), add, update, remove; the player's side receiving packs. | client | Sonnet | `index.html`, `style.css`, `packmanager.js` (new), `tablecontrols.js`, `transport.js` (message pass-through), `app.js` (install the filtered overlay), `tests` | At both sizes a DM uploads a pack file and sees a reading for each entry; a bad file shows the linter's sentences; a player at the table sees a homebrew spell on a sheet and in the spell list, and no monster. |
 | B8 | **Compatibility, homebrew kinds.** H8 and the review rows; needs B1, B3 and B5. | engine, client | Opus then Sonnet | `compat.js`, `reviewchar.js` | A character file naming a homebrew spell the table lacks shows "not in this table's rules" with its reading and Deny pre-selected; with Deny the character is accepted without it, stands in or is refused, and nothing is added to the table; with Allow the piece enters as a guest pack and plays; a bundle entry that fails the gate (depth bomb, function, unknown key, bad hash, SRD id) has no reading and no Allow; the same id with another hash shows the table's reading and says the table's version plays; a matching id and hash shows nothing; a bundle of 13 entries or over 24 KB, or one holding a monster, is refused. |
@@ -888,6 +888,49 @@ What was settled while building `content/registry.js`:
 - **Load-time reads:** `content-reads.test.js` scans the rules, client and server code and fails on a new line that
   reads `CONTENT`, `SPELLS`, `MONSTERS`, `MONSTER_ACTIONS` or `PREGENS` outside any function; the eight known lines
   are listed.
+
+## Build notes: B1, the budget, strict mode and `lintEntry` (#380)
+
+What was settled while building it (`content/schema.js`, the end of the file; tests in
+`packages/rules/test/homebrew-lint.test.js`):
+
+- **`budget(doc, limits?)`** is one walk with its own stack. It counts the UTF-8 bytes of the document as
+  `JSON.stringify` would write them (exact: a test holds it to `JSON.stringify` for all 836 SRD entries of the seven
+  kinds), stops descending at the first container past the depth limit, and stops walking once the pack is over its
+  bytes, so its time is bounded by the limits whatever the input (a 10,000-deep `onHit`, 100,000 nested lists, a cycle,
+  a list of a million strings). It also refuses what is not plain data (a function, a bigint, a `Date`, an object with
+  another prototype, a number JSON cannot hold), the keys `__proto__`, `constructor` and `prototype`, and control
+  characters (C0 but tab and new line, DEL, C1) in any string or key. Which limit a string has goes by its key: `name`
+  60 letters, `text` and a `manual` step's text 1,500, every other string and every key 200. Letters are code points.
+  Step depth counts the lists under `effects` and the seven branches; steps per entry count every step in them.
+  The depth of the whole document counts the document as level 1, a kind's list 2, an entry 3.
+- **`HOMEBREW_LIMITS`** holds the owner's numbers. `budgetTable(packs)` checks the 4 packs a table may have (for B5);
+  `budgetEntry(kind, entry)` measures one entry as it sits in a pack (for `lintEntry` and B8's bundles). "Numbers: whole
+  numbers in the ranges the linter already uses" stays the linter's: the budget adds no number limit of its own.
+  The SRD's largest entry is 4,648 bytes (the vampire), its longest text 1,361 letters, its longest name 41 letters,
+  its longest other string 82, its most steps in one entry 14, its deepest steps 3 and its deepest entry 12 levels.
+- **Strict mode** is `lintPack(doc, { strict: true, srd? })` and `lintEntry(kind, entry, { pack, srd? })` (strict by
+  default). It runs the budget first and returns only its sentences if it fails; then the kind's own linter; then the
+  closed key lists (`SHAPES` and `STEP_KEYS`: every object of an entry, each step by its kind, a step's branches, the
+  modifiers, targets and steps found inside grants); then the homebrew rules: an id `hb-<pack id>-<kebab>` (an id that
+  is an SRD id is named as one when `srd` is given), `source: "homebrew:<pack id>"` (Decision 1; the issue did not
+  list it, the spec does), `checked: false`; and the pack document's own keys and header. A few fields the SRD linter
+  leaves unchecked because the SRD's are known good get a value check in strict mode only: a save's `half`, a move's
+  `largest`, an area's `height`, a monster's `hover`, equipment's `weight`, `cost`, `ammo` and
+  `twoHandedUnlessMounted`. `lintPack(doc, { keys: true })` is the key lists alone: the SRD pack passes it, and a test
+  runs every SRD entry of the seven kinds through it, so the lists are never stricter than the vocabulary. B2's
+  `shapes.js` should take these lists over (Decision 6) rather than write new ones.
+- **`lintEntry`** checks one entry only; what `lintPack` checks across a pack (duplicate ids, what a summon step names,
+  a class's spells) is not done for one entry. For items, `ctx.weapons`, `ctx.armour` and `ctx.spells` give the ids it
+  may name; left out, any id is taken (as `lintPack` does today for an item linted with no pack). The other kinds
+  (classes, summons, conditions) can be linted with `strict: false`; strict, they are refused as not homebrew.
+- **The registry's seam** (part C of #380) now calls `budget` and `lintPack(..., { strict: true, srd })`, with the SRD
+  ids read from `HOMEBREW_LOOKUPS`; the interim guard is gone. A pack sent as JSON text is parsed before the budget
+  sees it (V8's `JSON.parse` takes 50,000-deep text without overflowing; a test feeds it); its length is bounded by
+  the server's message limit, which B5 must keep at or under `HOMEBREW_LIMITS.packBytes` plus a margin.
+- **The cache of `barriers(map)`** (part B, DEBT P31): its signature now holds a number for each def object (none
+  outside an overlay), so no cached answer crosses an overlay or outlives a changed def. B5 and B7 no longer need to
+  avoid reading a map outside its overlay for the caches' sake.
 
 ## Risks
 
