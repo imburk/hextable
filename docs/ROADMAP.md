@@ -1,6 +1,7 @@
 # Roadmap
 
 What is known to be missing is in [DEBT.md](DEBT.md); designs are in [specs](specs/README.md).
+A deep dive with counts (what the engine runs, the spell gap by mechanism, homebrew readiness) and a proposed `v0.2`: [PATH-TO-0.2.md](PATH-TO-0.2.md).
 
 ## Done
 
