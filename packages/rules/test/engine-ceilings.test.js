@@ -8,7 +8,11 @@ import { test } from "node:test";
 import { CONTENT, HOMEBREW_LOOKUPS, MONSTERS } from "../src/content/index.js";
 import { aiStep } from "../src/ai.js";
 import { WORK, loadOf } from "../src/effects.js";
-import { apply, current } from "../src/engine.js";
+import { apply, current, makeEntity } from "../src/engine.js";
+import { derive } from "../src/derive.js";
+import { sharedRolls } from "../src/effects.js";
+import { kit } from "./e23-kit.js";
+import { squareRoom } from "./fixtures/square-room.js";
 import { newGame } from "../src/scenario.js";
 import { newMap } from "../src/map.js";
 import * as H from "../src/hex.js";
@@ -34,7 +38,7 @@ const attackAction = (id, onHit, over = {}) => ({ id, name: "Rend", target: { cr
 const monsterOf = (id, actions, over = {}) => ({ ...structuredClone(CONTENT.monsters["goblin-warrior"]), id, name: "Dire Thing", source: "homebrew:x", checked: false, text: "x", hp: 1400, actions, ...over });
 
 // The wizard on its turn in a fight with `crowd` goblin warriors near it; `at` is where they stand.
-function table(crowd = 1, { spells = [], seed = 5 } = {}) {
+function table(crowd = 1, { spells = [], seed = 5, radius = 12 } = {}) {
   const s = newGame(seed);
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
@@ -48,7 +52,7 @@ function table(crowd = 1, { spells = [], seed = 5 } = {}) {
   }
   assert.equal(ids.length, crowd);
   for (const id of ids) s.entities[id].hp = s.entities[id].hpMax = 1e6;
-  apply(s, { type: "startEncounter", center: { q: -2, r: 2 }, radius: 12 }, DM);
+  apply(s, { type: "startEncounter", center: { q: -2, r: 2 }, radius }, DM);
   for (let i = 0; i < 400 && current(s) !== "wizard"; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
   assert.equal(current(s), "wizard");
   return { s, ids };
@@ -67,8 +71,8 @@ const refused = (s, action, re, ms = 1000) => {
 };
 
 test("the ceilings are far above what the SRD pack does (measured: 106 steps, 113 events, 40 dice, 7 attacks)", () => {
-  assert.deepEqual({ ...WORK }, { steps: 2000, events: 2000, dice: 2000, attacks: 50 });
-  assert.ok(WORK.steps >= 5 * 106 && WORK.events >= 5 * 113 && WORK.dice >= 5 * 40 && WORK.attacks >= 5 * 7);
+  assert.deepEqual({ ...WORK }, { steps: 1000, events: 1000, dice: 600, attacks: 20 });
+  assert.ok(WORK.steps >= 9 * 106 && WORK.events >= 8 * 113 && WORK.dice >= 15 * 40 && WORK.attacks >= 2 * 7);
   // And no SRD spell or monster action reads as heavy to apply(), at a table of 100: nothing there takes a copy it need not.
   let most = { steps: 0, dice: 0 };
   const walk = (steps) => { const l = loadOf(steps); most = { steps: Math.max(most.steps, l.steps), dice: Math.max(most.dice, l.dice) }; };
@@ -107,7 +111,7 @@ test("a damage step repeated a hundred million times is refused with nothing cha
     const id = "hb-x-times";
     withEntries([["spells", spell(id, { effects: [{ save: "dex", half: true, onFail: [{ damage: "3d6", type: "fire", times }] }] })]], () => {
       const { s, ids } = table(1, { spells: [id] });
-      refused(s, { type: "cast", actor: "wizard", spell: id, targets: [ids[0]] }, /more than 2,000 (steps|dice|events)/);
+      refused(s, { type: "cast", actor: "wizard", spell: id, targets: [ids[0]] }, /more than (1,000 (steps|events)|600 dice)/);
     });
   }
 });
@@ -121,11 +125,11 @@ test("a Multiattack of 2,000 attacks is refused before anything is spent", () =>
     const m = spawned.events[0].id;
     for (let i = 0; i < 100 && current(s) !== m; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
     assert.equal(current(s), m);
-    refused(s, { type: "act", actor: m, action: "multi" }, /would make 2,000 attacks; the engine allows at most 50/);
+    refused(s, { type: "act", actor: m, action: "multi" }, /would make 2,000 attacks; the engine allows at most 20/);
   });
 });
 
-test("one attack of 18 damage steps of 50d100+140 repeated 10 times is refused: it would write over 2,000 dice", () => {
+test("one attack of 18 damage steps of 50d100+140 repeated 10 times is refused: it would write over 600 dice", () => {
   const id = "hb-x-heavy", hit = Array(18).fill({ damage: "50d100+140", type: "slashing", times: 10 });
   withEntries([["monsters", monsterOf(id, [attackAction("a1", hit)])]], () => {
     const { s, ids } = table(1);
@@ -136,17 +140,17 @@ test("one attack of 18 damage steps of 50d100+140 repeated 10 times is refused: 
     assert.equal(current(s), m);
     // It would hit: the bonus is 40. A refused attack changes nothing, so the monster may try again and the state never grows.
     const before = json(s).length;
-    for (let i = 0; i < 20; i++) refused(s, { type: "act", actor: m, action: "a1", target: "wizard" }, /roll more than 2,000 dice/);
+    for (let i = 0; i < 20; i++) refused(s, { type: "act", actor: m, action: "a1", target: "wizard" }, /roll more than 600 dice/);
     assert.equal(json(s).length, before);
   });
 });
 
 test("a ceiling-sized area spell (a dozen saves, 1,000 ft) at a table of 100 is refused, and at 30 it still goes", () => {
   const id = "hb-x-nova";
-  const nova = spell(id, { range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: Array(12).fill({ save: "dex", dc: 50, half: true, onFail: [{ damage: "50d100+140", type: "thunder", times: 3 }] }) });
+  const nova = spell(id, { range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: Array(12).fill({ save: "dex", dc: 50, half: true, onFail: [{ damage: "10d100+140", type: "thunder", times: 3 }] }) });
   withEntries([["spells", nova]], () => {
     const big = table(100, { spells: [id] });
-    refused(big.s, { type: "cast", actor: "wizard", spell: id, hex: { q: -2, r: 2 } }, /more than 2,000 (steps|dice|events)/);
+    refused(big.s, { type: "cast", actor: "wizard", spell: id, hex: { q: -2, r: 2 } }, /more than (1,000 (steps|events)|600 dice)/);
     // The slot was not spent and no turn went by: the same action may still be tried.
     assert.equal(big.s.entities.wizard.slots[1], 4);
     const small = table(6, { spells: [id] });
@@ -180,7 +184,7 @@ test("a lasting zone that meets the ceiling on a later turn, where no copy was t
     const cast = apply(s, { type: "cast", actor: "wizard", spell: id, slot: 3, hex: undefined }, DM);
     // The cast itself reads as heavy and is refused clean, because its steps could run (a zone's `times` is counted too).
     assert.equal(cast.ok, false);
-    assert.match(cast.error, /more than 2,000 steps/);
+    assert.match(cast.error, /more than (1,000 steps|600 dice)/);
   });
 });
 
@@ -200,9 +204,9 @@ test("the manual stop: work with no copy taken is stopped, not silently cut shor
     const { r, ms } = timed(() => apply(s, { type: "endTurn", actor: ids[0] }, DM));
     assert.ok(ms < 1000, `took ${Math.round(ms)} ms`);
     assert.ok(r.ok, r.error);
-    const note = r.events.find((e) => e.type === "manual" && /more than 2,000 steps/.test(e.text));
+    const note = r.events.find((e) => e.type === "manual" && /more than (1,000 steps|600 dice)/.test(e.text));
     assert.ok(note, "a manual event says it was stopped");
-    assert.match(note.text, /the rest was not applied/);
+    assert.match(note.text, /the rest of it was not applied.*The turn did not end/);
     assert.equal(note.name, "Boom");
     assert.ok(json(s).length - before < 100000, "bounded growth");
   });
@@ -274,4 +278,104 @@ test("a Solar flies to the foe it can reach, as main chose: 28 hexes off it goes
     assert.equal(a.type, "move");
     assert.deepEqual({ q: a.to.q, r: a.to.r }, want, `foe ${dist} hexes off`);
   }
+});
+
+// ---------- fix round 1 of #401 ----------
+
+// M3: a heavy hostile cast asks the party's Counterspell caster; whatever the answer, the table is never left waiting.
+function askedTable() {
+  const { table: eTable } = kit({ apply, current, makeEntity, derive, newGame, squareRoom });
+  const id = "hb-x-nova", U3 = { role: "player", userId: "u3" };
+  const nova = spell(id, { level: 1, range: 10560000, target: { area: { shape: "sphere", size: 30 } }, effects: Array(12).fill({ save: "dex", dc: 5, half: true, onFail: [{ damage: "1d6", type: "thunder", times: 190 }] }) });
+  return { id, U3, nova, eTable };
+}
+const prepare = (s, id) => {
+  s.entities.mage.spells = [...(s.entities.mage.spells ?? []), id];
+  Object.assign(s.entities.mage, { slots: { 1: 4, 2: 4, 3: 4 }, slotsMax: { 1: 4, 2: 4, 3: 4 } });
+  for (const e of Object.values(s.entities)) e.hp = e.maxHp = 1e6;
+  assert.ok(apply(s, { type: "startEncounter", center: { q: -4, r: 2 }, radius: 40 }, DM).ok);
+  for (let i = 0; i < 30 && current(s) !== "mage"; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+};
+test("a heavy cast that asks a reaction question is never left waiting: decline, accept, DM's answer, then play on", () => {
+  const { id, U3, nova, eTable } = askedTable();
+  withEntries([["spells", nova]], () => {
+    const answers = { decline: (s) => ({ type: "react", prompt: s.pending.n, take: null }), dm: (s) => ({ type: "react", prompt: s.pending.n, take: null }), take: (s) => ({ type: "react", prompt: s.pending.n, take: s.pending.ask.options[0].reaction }) };
+    let asked = 0;
+    for (const [name, make] of Object.entries(answers)) {
+      const s = eTable("hex", { ward: { shield: "ask", counterspell: "ask" }, autoEngage: false });
+      prepare(s, id);
+      const at = s.entities.wizard.pos, strip = (x) => { const c = JSON.parse(json(x)); delete c.asked; delete c.pending; return JSON.stringify(c); };
+      const before = strip(s);
+      const cast = apply(s, { type: "cast", actor: "mage", spell: id, slot: 1, hex: { q: at.q, r: at.r } }, DM);
+      assert.ok(cast.ok, cast.error);
+      assert.ok(s.pending, `${name}: the cast waits for the answer`);
+      asked++;
+      const r = apply(s, make(s), name === "dm" ? DM : U3);
+      assert.equal(s.pending, undefined, `${name}: no question left waiting`);
+      assert.equal(s.stack, undefined);
+      assert.ok(r.ok || strip(s) === before, `${name}: completed, or rejected with the game unchanged`);
+      if (r.ok && r.events.some((e) => e.type === "manual")) assert.match(r.events.find((e) => e.type === "manual").text, /nothing changed, and the table can go on|rest of it was not applied/);
+      assert.equal(apply(s, { type: "endTurn", actor: current(s) }, DM).ok, true, `${name}: the turn goes on`);
+    }
+  });
+});
+
+test("dice added by a higher slot are counted: such a cast takes its copy and is refused clean", () => {
+  const id = "hb-x-grow";
+  withEntries([["spells", spell(id, { target: { creature: { count: 3 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire" }] }], higher: { slot: { damage: "300d6" } } })]], () => {
+    const { s, ids } = table(3, { spells: [id] });
+    const r = refused(s, { type: "cast", actor: "wizard", spell: id, slot: 9, targets: ids }, /roll more than 600 dice/);
+    assert.match(r.error, /^hb-x-grow|^Boom/);
+    assert.equal(s.entities.wizard.slots[9], 4, "the slot was not spent");
+    // At its own level it is a plain cast.
+    assert.ok(apply(s, { type: "cast", actor: "wizard", spell: id, slot: 1, targets: ids }, DM).ok);
+  });
+});
+
+test("a higher-slot targets cast really runs at a table of 100 inside the fight: within the ceiling, or refused clean", () => {
+  const id = "hb-x-more2";
+  withEntries([["spells", spell(id, { range: 10560000, target: { creature: { count: 20 } }, higher: { slot: { targets: 20 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }] }] })]], () => {
+    const { s, ids } = table(100, { spells: [id], radius: 40 });
+    const before = json(s);
+    const r = apply(s, { type: "cast", actor: "wizard", spell: id, slot: 9, targets: ids }, DM);
+    assert.ok(!/outside the battle/.test(r.error ?? ""), "the whole crowd is in the fight, so the work is really tried");
+    if (r.ok) assert.ok(r.events.length <= WORK.events); else assert.equal(json(s), before);
+  });
+});
+
+test("a cube too large to place is handed to the DM with a manual event, not refused", () => {
+  const id = "hb-x-cube";
+  withEntries([["spells", spell(id, { range: 0, target: { area: { shape: "cube", size: 20000 } } })]], () => {
+    for (const grid of ["hex", "square"]) {
+      const { s } = table(2, { spells: [id] });
+      if (grid === "square") apply(s, { type: "loadMap", map: squareRoom() }, DM);
+      const { r, ms } = timed(() => apply(s, { type: "cast", actor: "wizard", spell: id }, DM));
+      assert.ok(r.ok, r.error);
+      assert.ok(ms < 1000);
+      assert.ok(r.events.some((e) => e.type === "manual"), "a manual event tells the DM");
+    }
+  });
+});
+
+test("the work count is switched off whatever apply() throws", () => {
+  const { s } = table(1);
+  const bad = { type: "cast", actor: "wizard", get spell() { throw new Error("boom"); } };
+  assert.throws(() => apply(s, bad, DM), /boom/);
+  assert.doesNotThrow(() => sharedRolls(s, [{ damage: "1d6", type: "fire", times: 100000 }]));
+});
+
+test("a stopped end of turn says the turn did not end, and what was applied and not", () => {
+  const id = "hb-x-saved2";
+  withEntries([["spells", spell(id, { level: 3, duration: "1 minute", concentration: true, range: "self", target: { area: { shape: "emanation", size: 30 } }, zone: { on: ["turnEnd"], once: "turn" }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire" }] }] })]], () => {
+    const { s, ids } = table(1, { spells: [id] });
+    s.entities[ids[0]].pos = { q: 1, r: 0, z: 0 };
+    assert.ok(apply(s, { type: "cast", actor: "wizard", spell: id, slot: 3 }, DM).ok);
+    s.effects.find((x) => x.zone).zone.steps = [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "1d6", type: "fire", times: 5000 }] }];
+    for (let i = 0; i < 20 && current(s) !== ids[0]; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+    const r = apply(s, { type: "endTurn", actor: ids[0] }, DM);
+    const note = r.events.find((e) => e.type === "manual");
+    assert.match(note.text, /What it had done by then \(\d+ events, listed above\) stays done; the rest of it was not applied/);
+    assert.match(note.text, /The turn did not end/);
+    assert.equal(current(s), ids[0], "and it did not");
+  });
 });

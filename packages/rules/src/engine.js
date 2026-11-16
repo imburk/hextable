@@ -157,7 +157,11 @@ function thaw(s, snap) {
   for (const k of Object.keys(snap)) s[k] = k === 'timeline' ? tl : snap[k];
 }
 
+// The work count is switched off however the action ends, a throw included.
 export function apply(s, action, ctx = { role: 'dm' }) {
+  try { return applyInner(s, action, ctx); } finally { stopWork(); }
+}
+function applyInner(s, action, ctx) {
   let ev = [];
   // A copy is taken only when the action could stop to ask a player (reactions.js, mayAsk), or
   // when it answers one: the rest of the time nothing can pause and this costs nothing.
@@ -206,10 +210,22 @@ export function apply(s, action, ctx = { role: 'dm' }) {
 // a `manual` event says what was not applied, for the DM.
 function overWork(s, snap, err, ev, action) {
   setRun(null);
-  if (snap) { thaw(s, snap); return { ok: false, error: `${err.message} Nothing was done.`, events: [] }; }
+  const name = err.what ?? (typeof action?.spell === 'string' ? action.spell : typeof action?.action === 'string' ? action.action : 'An action');
+  if (snap && action?.type === 'react') {
+    // The answer to a reaction question re-ran the action and it met the ceiling. No answer could ever succeed, so the
+    // question goes with the action: the game is as it was before the action began (the question's number aside), and the DM is told.
+    thaw(s, snap);
+    delete s.pending;
+    const actor = typeof action.actor === 'string' && Object.hasOwn(s.entities, action.actor) ? action.actor : null;
+    return record(s, [{ type: 'manual', actor, name, text: `${name} would ${err.limit} in one action, which is more than the engine allows. It was not applied at all, and the question it was waiting on is closed: nothing changed, and the table can go on.` }]);
+  }
+  if (snap) { thaw(s, snap); return { ok: false, error: `${name} would ${err.limit} in one action, which is more than the engine allows. Nothing was done.`, events: [] }; }
   const actor = typeof action?.actor === 'string' && Object.hasOwn(s.entities, action.actor) ? action.actor : null;
-  const text = `${err.what ?? 'An action'} would ${err.limit} in one action, which is more than the engine allows. The engine stopped it there: what it did so far is done, and the rest was not applied. The DM applies the rest.`;
-  return record(s, [...ev, { type: 'manual', actor, name: err.what ?? String(action?.type ?? 'action'), text }]);
+  const type = action?.type;
+  const left = type === 'endTurn' ? ' The turn did not end: the DM applies the rest, then ends it again.'
+    : type === 'move' || type === 'dash' ? ' The move was not finished: the creature stands where it stopped.' : '';
+  const text = `${name} would ${err.limit} in one action, which is more than the engine allows. The engine stopped it there. What it had done by then (${ev.length} events, listed above) stays done; the rest of it was not applied, and the DM applies the rest.${left}`;
+  return record(s, [...ev, { type: 'manual', actor, name: err.what ?? String(type ?? 'action'), text }]);
 }
 
 // The record keeps, with each entry, the creatures the party did not know of when it happened,

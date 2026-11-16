@@ -15,11 +15,14 @@ import { useUp } from './durations.js';
 
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
+// The largest cube the engine places (feet): the gate's own most. A cube is placed by trying blocks, so it cannot be cut to the map.
+export const CUBE_AIM_MAX = 1000;
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
 // Can the engine aim this area? A sphere or cylinder needs somewhere within range to go off
 // (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
 // wall placed at a distance, which the DM places.
 export function aimable(area, range) {
+  if (area.shape === 'cube' && area.size > CUBE_AIM_MAX) return false;   // too large to place by the engine: the DM places it (a `manual` step says so)
   if (!AREAS.includes(area.shape) || area.count > 1) return false;     // several shapes arranged by the caster: the DM
   if (area.shape === 'sphere' || area.shape === 'cylinder') return range > 0;
   if (area.shape === 'line') return !(range > 0);
@@ -242,7 +245,7 @@ export function actionProfile(a) {
 // measured numbers): no SRD action comes near them.
 // Past a ceiling apply() refuses the action and puts the game back as it was (engine.js, apply), or, where it
 // could not take a copy, stops it with a `manual` event that says what was not applied.
-export const WORK = Object.freeze({ steps: 2000, events: 2000, dice: 2000, attacks: 50 });
+export const WORK = Object.freeze({ steps: 1000, events: 1000, dice: 600, attacks: 20 });
 export class WorkLimit extends Error {
   constructor(limit, what) { super(`${what ?? 'This action'} would ${limit} in one action, which is more than the engine allows.`); this.limit = limit; this.what = what; }
 }

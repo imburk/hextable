@@ -4,7 +4,7 @@
 import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
-import { actionProfile, loadOf, targetCount, WORK } from '../effects.js';
+import { actionProfile, CUBE_AIM_MAX, loadOf, scaleSteps, targetCount, WORK } from '../effects.js';
 import { apart, apartAt, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
@@ -891,9 +891,7 @@ function squareLayout(s, e, area, range, aim) {
   if (shape === 'cube') {
     const size = area.size, side = size / FT;
     if (!Number.isInteger(side) || side < 1) return null;
-    // A cube is placed by trying every block near the caster, so it cannot be cut to the map as the others are. One over 200
-    // squares a side (1,000 feet, the most the gate lets through) and over four times the map's reach is not laid out: the DM places it.
-    if (side > Math.max(200, 4 * mapReach(s.map, G, e.pos, side) + 8)) return null;
+    if (side > CUBE_AIM_MAX / FT) return null;                   // aimable() hands a larger one to the DM; this is only a guard
     if (!(range > 0)) {
       if (!aimed) return null;
       const base = e.pos.z, touches = (b) => b.q0 <= box.q1 + 1 && b.q1 >= box.q0 - 1 && b.r0 <= box.r1 + 1 && b.r1 >= box.r0 - 1;
@@ -932,11 +930,10 @@ export function mayBeHeavy(s, a) {
       const sp = typeof a.spell === 'string' && Object.hasOwn(SPELLS, a.spell) ? SPELLS[a.spell] : null;
       if (!sp) return false;
       const def = sp.def;
-      const bySlot = def.higher?.slot;
-      load = loadOf(def.effects);
-      // The slot adds repeats of the first damage step and targets; take the 9th-level slot.
-      if (bySlot?.times) { const extra = bySlot.times * Math.max(0, 9 - def.level); load = { steps: load.steps + extra, dice: load.dice * (1 + extra) }; }
-      per = def.target?.area ? living(s).length : Math.max(1, targetCount(def, 20, Math.max(9, def.level)));
+      // As scaled for the slot it would be cast at (dice and repeats added by a higher slot or by level, at the most the caster could have).
+      const slot = Number.isInteger(a.slot) ? Math.min(9, Math.max(def.level, a.slot)) : def.level;
+      load = loadOf(scaleSteps(def, 20, slot).steps);
+      per = def.target?.area ? living(s).length : Math.max(1, targetCount(def, 20, slot));
     } else if (a.type === 'act') {
       const e = typeof a.actor === 'string' && Object.hasOwn(s.entities, a.actor) ? s.entities[a.actor] : null;
       const def = e?.actions?.find((x) => x.id === a.action);
