@@ -168,6 +168,48 @@ export function using(overlay, fn) {
   if (strayed) throw new Error('using: the content lookups were changed during the call; the lookups have been put back');
   return settle(result);
 }
+// ---------- an overlay kept installed (a page that shows one table at a time; docs/specs/homebrew.md, B7) ----------
+// `using` is for one synchronous call. A browser page that reads content all over its drawing code, for as long as one table is
+// open, needs the same ids to stay in the lookups: `install(overlay)` puts them in, `uninstall(overlay)` takes them out and puts
+// every lookup back exactly as it was (the same objects, keys, key order and values). Refused, changing nothing: something that is
+// not an overlay; any overlay installed already (this one too: a second install is refused, take the first out first); an id that
+// is already in a lookup. `uninstall` refuses an overlay that is not the one installed, and an overlay that `using` has installed.
+// While one is installed, `using` of that same overlay runs `fn` as a no-op re-entry and `using` of any other overlay is refused
+// ("overlays do not nest"), so a caller that wants a dry run or a second overlay uninstalls first and installs again after.
+let held = null;                               // what `install` keeps: { overlay, targets, before }
+
+export function install(overlay) {
+  const o = OVERLAYS.get(overlay);
+  if (!o) throw new TypeError('install: not an overlay (make one with overlayOf)');
+  if (active) throw new Error(active === overlay ? 'install: this overlay is already installed' : "install: another overlay is installed; uninstall it first");
+  for (const [target, id] of o.ops) if (Object.hasOwn(target, id)) throw new Error(`install: "${id}" is already in the rules`);
+  const targets = [...new Set(o.ops.map(([t]) => t))], before = targets.map((t) => Object.entries(t));
+  let i = 0;
+  try { for (; i < o.ops.length; i++) { const [target, id, value] = o.ops[i]; target[id] = value; } }
+  catch (err) { for (let j = i - 1; j >= 0; j--) delete o.ops[j][0][o.ops[j][1]]; throw err; }
+  active = overlay;
+  held = { overlay, targets, before };
+}
+
+export function uninstall(overlay) {
+  const o = OVERLAYS.get(overlay);
+  if (!o) throw new TypeError('uninstall: not an overlay (make one with overlayOf)');
+  if (!held || held.overlay !== overlay) throw new Error('uninstall: this overlay is not the one installed with install');
+  const { targets, before } = held;
+  let strayed = false;
+  try {
+    for (let j = o.ops.length - 1; j >= 0; j--) delete o.ops[j][0][o.ops[j][1]];
+    targets.forEach((t, k) => {
+      const snap = before[k], now = Object.keys(t);
+      if (now.length === snap.length && snap.every(([key, v], n) => now[n] === key && t[key] === v)) return;
+      strayed = true;
+      for (const key of now) delete t[key];
+      for (const [key, v] of snap) t[key] = v;
+    });
+  } finally { active = null; held = null; }
+  if (strayed) throw new Error('uninstall: the content lookups were changed while installed; the lookups have been put back');
+}
+
 function settle(result) {
   if (thenable(result)) {
     Promise.resolve(result).catch(() => {});                                       // refused, not left unhandled
