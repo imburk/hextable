@@ -222,3 +222,68 @@ test("a Long Rest by a foe master with a bound familiar in its pocket tells the 
   assert.ok(ev && !ev.seen && !ev.party, "not marked for players");
   assert.equal(viewEvents(r.events, s, PAT).some((e) => e.type === "vanished" && e.id === owlId), false);
 });
+
+// ---------- Pact of the Chain, the casting part (16619-16631) ----------
+// "You learn the Find Familiar spell and can cast it as a Magic action without expending a spell slot. When you cast the
+// spell, you choose one of the normal forms for your familiar or one of the following special forms: Imp, Pseudodragon,
+// Quasit, Skeleton, Sphinx of Wonder, Sprite, or Venomous Snake."
+const warlock = (inv = ["pact-of-the-chain"]) => ({ name: "Mor", class: "warlock", level: 5, subclass: undefined, abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 }, skills: ["arcana", "deception"],
+  spells: ["eldritch-blast", "chill-touch", "hex"], choices: { "eldritch-invocations": inv } });
+const PACT = "eldritch-invocations-pact-of-the-chain";
+function pactField(inv) {
+  const s = newGame(7);
+  for (const id of Object.keys(s.entities)) delete s.entities[id];
+  for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+  s.settings.autoEngage = false;
+  s.entities.mor = makeEntity(derive(warlock(inv)).record, { id: "mor", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  ok(apply(s, { type: "claim", entity: "mor", user: "pat", userName: "Pat" }, PAT));
+  return s;
+}
+const pactCast = (s, form, extra = {}) => ({ type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form, type: "fiend", at: [spots(s, s.entities.mor.pos, 2)[0]] }, ...extra });
+
+test("Pact of the Chain: a normal form, cast through the pact with no slot and no use spent, as a Magic action, any number of times", () => {
+  const s = pactField(), mor = s.entities.mor, slots = json(mor.slots), uses = json(mor.uses);
+  assert.ok(mor.spells.includes("find-familiar"), "learned");
+  const r = ok(apply(s, pactCast(s, "owl"), PAT));
+  assert.equal(json(mor.slots), slots, "no spell slot (nor Pact Magic slot) is spent");
+  assert.equal(json(mor.uses), uses, "at will: no use is spent");
+  const owl = s.entities[r.events.find((e) => e.type === "summoned").id];
+  assert.equal(owl.type, "fiend", "the spell's type choice stands");
+  assert.equal(owl.bond.source, "find-familiar"); assert.equal(owl.bond.to, "mor");
+  // Cast again, it takes the new form (one familiar), still free.
+  ok(apply(s, { type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "cat", type: "fey" } }, PAT));
+  assert.equal(json(mor.slots), slots);
+  assert.equal(Object.values(s.entities).filter((e) => e.bond?.kind === "familiar").length, 1);
+});
+
+test("Pact of the Chain: in a fight it is a Magic action (the hour it takes does not matter), and takes no spell slot of the turn", () => {
+  const s = pactField();
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 } }, DM));
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 12 }, DM));
+  for (let i = 0; i < 20 && current(s) !== "mor"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  refused(s, { type: "cast", actor: "mor", spell: "find-familiar", slot: 1, summon: { form: "owl", type: "fey", at: [spots(s, s.entities.mor.pos, 2)[0]] } }, PAT, /takes longer than a turn/);
+  ok(apply(s, pactCast(s, "owl"), PAT));
+  assert.equal(s.encounter.budget.action, 0); assert.equal(s.encounter.flags.slot, undefined);
+});
+
+test("Pact of the Chain: not without the pact; a rejected cast changes nothing", () => {
+  const none = pactField(["eldritch-mind"]);
+  refused(none, pactCast(none, "owl"), PAT, /no feature that casts spells that way/);
+  const s = pactField();
+  refused(s, pactCast(s, "no-such-monster"), PAT, /Choose a form/);
+  refused(s, pactCast(s, "wolf"), PAT, /Choose a form/);
+  refused(s, pactCast(s, "owl", { slot: 1 }), PAT, /without a slot/);
+  refused(s, pactCast(s, "owl", { spell: "hex" }), PAT, /can't cast that spell/);
+});
+
+test("Pact of the Chain's seven extra forms are NOT offered yet: the vocabulary has no per-caster form list (stopped, see the PR)", () => {
+  // A wizard naming one is refused, as the SRD needs. The warlock is refused too, which is the gap: Find Familiar's `forms`
+  // belongs to the spell, and nothing in `freeCast` or the summon step can say "these more forms, for this feature's caster".
+  const wiz = wizTable();
+  for (const form of ["imp", "pseudodragon", "quasit", "skeleton", "sphinx-of-wonder", "sprite", "venomous-snake"]) {
+    const at = spots(wiz, wiz.entities.ven.pos, 2)[0];
+    refused(wiz, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form, type: "fiend", at: [at] } }, PAT, /Choose a form/);
+    const s = pactField();
+    refused(s, pactCast(s, form), PAT, /Choose a form/);
+  }
+});
