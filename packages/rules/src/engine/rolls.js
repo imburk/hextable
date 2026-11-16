@@ -186,7 +186,7 @@ export function condition(s, t, id, ev, f = null, step = null, level = undefined
     if (f || step) {
       const name = conditionName(id), levels = !!conditionDef(id)?.levels;
       if (t.dead) ev.push({ type: 'note', id: t.id, text: `${t.name} is dead: ${name} is not put on it` });
-      else if (t.hp <= 0) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} is at 0 Hit Points, and the engine puts no condition on a creature that is down, so ${name} was not put on it. The DM applies it if it matters.` });
+      else if (t.hp <= 0) ev.push({ type: 'note', id: t.id, text: `${t.name} is at 0 Hit Points: ${name} is not put on a creature that is down (the engine's choice; the DM may apply it)` });
       else if (levels) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} already has ${name}, and its levels stack, but the engine adds none from a step. The DM adds the level.` });
       else ev.push({ type: 'note', id: t.id, text: `Already ${name}: nothing added` });
     }

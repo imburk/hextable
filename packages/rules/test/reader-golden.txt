@@ -37,7 +37,7 @@ Sorted under: damage and control.
 The caster makes a ranged spell attack roll against one creature within 120 feet.
 On a hit:
   It takes 1d10 cold damage.
-  It has the Prone condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Prone condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It ends when the creature stands up, as Prone always does.
   It is pushed 10 feet straight away from the caster; it stops at a wall, a drop or anything in the way.
 On a miss:
@@ -78,15 +78,15 @@ Sorted under: control.
 Each of up to 2 creatures within 60 feet makes a Wisdom saving throw against DC 14.
 It has Advantage on this save if the caster's side is fighting the target.
 On a failure:
-  It has the Frightened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Frightened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It makes a Wisdom saving throw each time it takes damage, against the caster's spell save DC; a success ends it. Any damage it takes also ends it. It also ends with the spell.
     The engine applies part of what Frightened does; the DM applies the rest.
-  It has the Charmed condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Charmed condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It ends when it takes damage from the caster or the caster's side, or with the spell.
     The engine applies part of what Charmed does; the DM applies the rest.
-  It has the Restrained condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Restrained condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It makes a Strength saving throw at the start of each of its turns, against the caster's spell save DC; a success ends it. It also ends with the spell.
-  It has the Blinded condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Blinded condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It makes a Constitution saving throw at the end of each of its turns, against the caster's spell save DC; a success ends it. It also ends with the spell.
     The engine applies part of what Blinded does; the DM applies the rest.
 On a success:
@@ -105,11 +105,11 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
-One creature within 60 feet has the Poisoned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+One creature within 60 feet has the Poisoned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
   Nothing in the engine ends it: the DM removes it.
 It gets -2 to its Armor Class.
   Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
-It has the Deafened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+It has the Deafened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
   It ends when it takes damage. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
   The engine applies part of what Deafened does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
@@ -126,7 +126,7 @@ On the spell lists of: wizard.
 Sorted under: control.
 One creature within 60 feet gets -1 to its Armor Class.
   The spell does not last, so the engine has nothing to hang this on: the DM applies it.
-It has the Deafened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+It has the Deafened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
   Nothing in the engine ends it: the DM removes it.
   The engine applies part of what Deafened does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
@@ -141,10 +141,10 @@ DM: Removing the Deafened condition that step effects.1 puts on.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
-One creature within 60 feet has the Grappled condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+One creature within 60 feet has the Grappled condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
   It ends at the end of its next turn, or when the fight ends.
   The engine applies part of what Grappled does; the DM applies the rest.
-It has the Stunned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+It has the Stunned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
   Nothing in the engine ends it: the DM removes it.
 It gets its Speed set to 0 feet.
   Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
@@ -423,7 +423,7 @@ That creature makes a Constitution saving throw.
 On a failure:
   It takes 2d8 psychic damage.
 On a success:
-  It has the Incapacitated condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Incapacitated condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It ends at the end of its next turn, or when the fight ends, even if the spell's time runs out first; ending the spell early ends it too.
     The engine applies part of what Incapacitated does; the DM applies the rest.
 The emanation reaches out from the caster all round; it catches every creature in it except the caster; a wall between the area's origin and a creature keeps that creature out.
@@ -463,7 +463,7 @@ From then on, the steps below run on a creature each time it ends its turn there
 That creature makes a Strength saving throw.
 On a failure:
   It takes 1d6 acid damage.
-  It has the Restrained condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+  It has the Restrained condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
     It lasts as long as the spell.
 On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.
 The entry also lists steps for a success, but the engine never runs them: a success already runs the failure steps at half.
@@ -498,7 +498,7 @@ It is cast as a Reaction, by the caster's standing instruction for it (never, al
 One creature within 60 feet makes a Dexterity saving throw.
 On a failure it takes 2d10 fire damage; on a success, half.
 A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
-It has the Invisible condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+It has the Invisible condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
   Nothing in the engine ends it: the DM removes it.
   The engine applies part of what Invisible does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.

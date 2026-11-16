@@ -90,8 +90,8 @@ test('a condition step adds nothing for a creature that already has it, and says
   again(s, 'wizard'); M.cond = {}; M.hp = 0;
   const down = cast(s, def, { target: M.id });
   assert.ok(!down.events?.some((e) => e.type === 'cond'), 'none for a creature at 0 Hit Points');
-  assert.ok(down.events.some((e) => e.type === 'manual' && /at 0 Hit Points.*Frightened was not put on it\. The DM applies it/.test(e.text)), 'the DM is told');
-  assert.ok(has(read(def), /A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note/));
+  assert.ok(down.events.some((e) => e.type === 'note' && /at 0 Hit Points: Frightened is not put on a creature that is down/.test(e.text)), 'the table is told');
+  assert.ok(has(read(def), /A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note/));
 });
 
 // ---------- Evasion ----------

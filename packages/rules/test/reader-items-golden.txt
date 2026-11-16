@@ -102,7 +102,7 @@ Use 1, "Throw": takes an action. In a fight it is done on the user's own turn an
   It makes a Constitution saving throw.
   No DC is written in for this save, and an item's own steps have no spell save DC: the engine does not roll it, it tells the DM, who applies it.
   On a failure:
-    It has the Poisoned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+    It has the Poisoned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
       It makes a Constitution saving throw at the end of each of its turns, and a success would end it. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine does not roll that save.
   The engine does not do this; the DM does this: "The spores drift on; the DM places the cloud."
 Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.
@@ -173,7 +173,7 @@ Use 2, "Stoke": takes an action. In a fight it is done on the user's own turn an
   The user takes 1d6 fire damage.
   It makes a Dexterity saving throw against DC 12.
   On a failure:
-    It has the Prone condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)
+    It has the Prone condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
       It ends when the creature stands up, as Prone always does.
 Use 3, "Overstoke": takes an action. In a fight it is done on the user's own turn and spends an action (a Magic action). The item must be active, and the user up.
   It spends 3 charges, and is refused when fewer are left.

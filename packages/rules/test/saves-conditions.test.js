@@ -89,7 +89,7 @@ test("a repeated save with no DC: undo, redo and replay are exact", () => {
 
 // ---------- T57 (3): a condition step that finds the condition on, or the creature down ----------
 // SRD: a condition is on a creature or it is not; being Restrained twice is Restrained. A creature at 0 Hit Points is
-// still a creature, so the engine's refusal to put a condition on one is the DM's to settle, in words.
+// still a creature, so the engine's refusal to put a condition on one is said in a note, and the DM may apply it.
 const gripTwice = () => {
   const { s, F, M } = scene();
   M.actions.push(grip({ dc: 30 }));
@@ -107,11 +107,11 @@ test("a condition step on a creature that already has it: nothing is added, and 
   assert.ok(again.events.some((e) => e.type === "note" && e.id === F.id && /^Already Restrained: nothing added$/.test(e.text)), JSON.stringify(again.events));
   assert.equal(json(F.cond), before, "the first Restrained is as it was");
 });
-test("a condition step on a creature at 0 Hit Points is handed to the DM in words; on a dead one it is a note", () => {
+test("a condition step on a creature at 0 Hit Points is a note saying so, and the DM may apply it; on a dead one too", () => {
   const { s, F, hit } = gripTwice();
   F.hp = 0;
   const r = hit();
-  assert.ok(r.events.some((e) => e.type === "manual" && e.partial && /at 0 Hit Points.*Restrained was not put on it\. The DM applies it/.test(e.text)), JSON.stringify(r.events));
+  assert.ok(r.events.some((e) => e.type === "note" && /at 0 Hit Points: Restrained is not put on a creature that is down \(the engine's choice; the DM may apply it\)/.test(e.text)), JSON.stringify(r.events));
   assert.equal(F.cond.restrained, undefined);
 });
 test("a condition step on a dead creature (an area that reaches it) is a note", () => {

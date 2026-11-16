@@ -933,7 +933,7 @@ export const STEP_SENTENCES = {
   },
   condition({ st, at, depth, Who, say }) {
     if (!CONDITIONS.includes(st.condition)) { this.bad(`Step ${at}: the condition is not one the engine knows.`); say(`${Who} gets a condition the engine does not know.`); return; }
-    say(`${Who} has the ${cond(st.condition)} condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note.)`);
+    say(`${Who} has the ${cond(st.condition)} condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)`);
     const prone = st.condition === 'prone' && !this.fx;
     const end = prone ? 'It ends when the creature stands up, as Prone always does.' : this.ending(st, at, 'condition');
     if (end) this.line(end, depth + 1);
