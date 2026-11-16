@@ -18,7 +18,7 @@ import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
-import { forPlayers as packFilteredCopy, hashOf, HOMEBREW_SUMMON_SENTENCE, packForPlayer, packsMatch, PLAYER_PACK_KINDS, summonsHomebrew, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
+import { forPlayers as packFilteredCopy, hashOf, HOMEBREW_SUMMON_SENTENCE, packForPlayer, packsMatch, PLAYER_PACK_KINDS, summonsHomebrew, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
 import { loadPack, installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
 import { LIMIT_MESSAGE } from "./limits.js";
@@ -52,37 +52,9 @@ export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
 // characters), so the text is read only up to twice the pack limit; the rules' own budget then bounds the pack itself at
 // MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
 export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
-export { HOMEBREW_SUMMON_SENTENCE, summonsHomebrew, vetPacks };
+export { HOMEBREW_SUMMON_SENTENCE, summonsHomebrew, usesIn, vetPacks };
 export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
-
-// Where in the game state some of a pack is still in use: every place (up to `most`) holding an id for which `isMine(id)` is true,
-// as a short path like "entities.m3 (Cinderling 1)". The timeline is the record of what happened, not what is on the table, and is
-// not looked at. One iterative walk over keys and strings.
-export function usesIn(state, isMine, most = 8) {
-  const found = [], seen = new Set();
-  const hit = (text) => { for (const id of String(text).match(/hb-[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? []) if (isMine(id)) return id; return null; };
-  const note = (path, id) => {
-    const where = path.slice(0, 2).join(".");
-    if (seen.has(where)) return;
-    seen.add(where);
-    const name = path.length > 1 ? state[path[0]]?.[path[1]]?.name : undefined;
-    found.push(`${where}${typeof name === "string" ? ` (${name.slice(0, 40)})` : ""}: ${id}`);
-  };
-  const stack = Object.keys(state ?? {}).filter((k) => k !== "timeline" && k !== "packs").map((k) => [state[k], [k]]);
-  while (stack.length && found.length < most) {
-    const [v, path] = stack.pop();
-    if (typeof v === "string") { const id = hit(v); if (id) note(path, id); }
-    else if (v && typeof v === "object") {
-      for (const k of Object.keys(v)) {
-        const id = hit(k);
-        if (id) note(path, id);
-        stack.push([v[k], [...path, k]]);
-      }
-    }
-  }
-  return found;
-}
 
 // What a table file's `packs` may keep. Never throws, whatever the file holds: a value that is not a list, a record that is not exactly
 // { id, version, hash, data }, data that fails the registry's check or whose hash is not the one written, a pack that summons a homebrew
@@ -562,7 +534,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       }
       // A removal is refused while anything in the game uses the pack (an update cannot drop entries, so it takes nothing away).
       if (op === "remove") {
-        const uses = usesIn(t.state, (x) => x.startsWith(`hb-${id}-`));
+        const uses = inUse(t.state, id);
         if (uses.length) return refuse([`The pack "${id}" is in use and cannot be removed yet: ${uses.join("; ")}.`], { blockers: uses });
       }
       const next = op === "remove" ? t.packs.filter((p) => p.id !== id) : op === "update" ? t.packs.map((p) => (p.id === id ? record : p)) : [...t.packs, record];

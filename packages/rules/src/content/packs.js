@@ -219,3 +219,37 @@ function vetOffered(op, tablePacks, pack, opts = {}) {
 export const vetAdd = (tablePacks, pack, opts) => vetOffered('add', tablePacks, pack, opts);
 // A new version of a pack the table holds: a higher version, and no entry dropped.
 export const vetUpdate = (tablePacks, pack, opts) => vetOffered('update', tablePacks, pack, opts);
+
+// ---------- what is in use (moved from the server, #428) ----------
+// Where in the game state some of a pack is still in use: every place (up to `most`) holding an id for which `isMine(id)` is true,
+// as a short path like "entities.m3 (Cinderling 1)". The timeline is the record of what happened, not what is on the table, and is
+// not looked at. One iterative walk over keys and strings.
+export function usesIn(state, isMine, most = 8) {
+  const found = [], seen = new Set();
+  const hit = (text) => { for (const id of String(text).match(/hb-[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? []) if (isMine(id)) return id; return null; };
+  const note = (path, id) => {
+    const where = path.slice(0, 2).join('.');
+    if (seen.has(where)) return;
+    seen.add(where);
+    const name = path.length > 1 ? state[path[0]]?.[path[1]]?.name : undefined;
+    found.push(`${where}${typeof name === 'string' ? ` (${name.slice(0, 40)})` : ''}: ${id}`);
+  };
+  const stack = Object.keys(state ?? {}).filter((k) => k !== 'timeline' && k !== 'packs').map((k) => [state[k], [k]]);
+  while (stack.length && found.length < most) {
+    const [v, path] = stack.pop();
+    if (typeof v === 'string') { const id = hit(v); if (id) note(path, id); }
+    else if (v && typeof v === 'object') {
+      for (const k of Object.keys(v)) {
+        const id = hit(k);
+        if (id) note(path, id);
+        stack.push([v[k], [...path, k]]);
+      }
+    }
+  }
+  return found;
+}
+
+// What stops a pack from being removed: the places in the game state (creatures, sheets, map objects, a pending conclusion, anything
+// that names one of the pack's ids) that still use it, as a list of plain reasons, empty when nothing does. The server sends the list
+// as `blockers`. An update cannot drop entries, so it never needs this. Pure.
+export const inUse = (state, packId) => usesIn(state, (x) => x.startsWith(`hb-${packId}-`));
