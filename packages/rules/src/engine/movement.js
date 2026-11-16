@@ -186,7 +186,10 @@ function march(s, leader, walked, ev) {
     if (!f) return;
     pending.splice(pending.indexOf(f), 1);
     if (s.encounter && inFight(s, f.id)) continue;
-    const reach = moveOptions(s, f);
+    // A creature the party does not know of near the way is not there for the column either: the follower's place and
+    // way are laid out without it, and a way that runs into it stops before it and finds it (#372; walkKnown).
+    const lurkers = living(s).filter((o) => o.id !== f.id && unseenBy(s, o, f) && hostile(o, f));
+    const reach = lurkers.length ? knownWays(s, f, lurkers) : moveOptions(s, f);
     const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
     const spots = [{ k: key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
@@ -201,7 +204,8 @@ function march(s, leader, walked, ev) {
     if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     if (best.k !== key(f.pos)) {
       const had = !!s.encounter;
-      walk(s, f, reach, best.k, ev, false);
+      if (lurkers.length) walkKnown(s, f, best.k, ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), reach, lurkers, true);
+      else walk(s, f, reach, best.k, ev, false);
       if (!had && s.encounter) return;                   // it walked into a fight: the rest were brought up when it started
     }
     moved.add(f.id);
@@ -306,7 +310,10 @@ function formation(s, leader, walked, pending, ev) {
     } else if (key(to) !== key(f.pos) && !reach.get(key(to))?.canStop) to = placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos;   // someone it did not know of, not hostile
     if (key(to) !== key(f.pos)) {
       const had = !!s.encounter;
-      walk(s, f, reach, key(to), ev, false);
+      // Its way there laid out on what the party knows, as the column's and the leader's are (#372; walkKnown).
+      const lk = living(s).filter((o) => o.id !== f.id && unseenBy(s, o, f) && hostile(o, f)), kr = lk.length ? knownWays(s, f, lk) : null;
+      if (kr?.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), kr, lk, true);
+      else walk(s, f, reach, key(to), ev, false);
       if (!had && s.encounter) return 'fight';
     }
     if (lurker && !lurker.dead && apart(s, f, lurker) <= 1 && unseenBy(s, lurker, f)) bumped(s, lurker, f, ev);
@@ -358,9 +365,11 @@ const knownWays = (s, e, lurkers) => moveOptions({ ...s, entities: Object.fromEn
 // found on the way by a rule of its own (spotted within ENGAGE_RANGE, or seen under los) is known from then on, so the
 // rest of the way is laid out again from where the mover stands, as main's walk went round it (N3). Whoever follows the
 // mover comes after it, whichever way the move ends (N1). A creature the DM plays walks by what is true, as before.
-function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers) {
+// `follower`: a follower's walk after its leader (march): it keeps following, and whoever follows it is marched by
+// march itself; the walked path is returned.
+function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers, follower = false) {
   const G = gridOf(s.map), had = !!s.encounter, path = [e.pos];
-  let left = false;
+  let left = follower;
   const go = (k) => {
     if (!left && !fighting && e.follow) unfollow(s, e, ev);
     left = true;
@@ -393,6 +402,7 @@ function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers) {
     if (!o.dead && unseen(o)) bumped(s, o, e, ev);
     break;
   }
+  if (follower) return path;
   if (!fighting && (had || !s.encounter) && path.length > 1) { march(s, e, path, ev); const r = riderOf(s, e); if (r) march(s, r, path, ev); }
   checkEnd(s, ev);
 }
