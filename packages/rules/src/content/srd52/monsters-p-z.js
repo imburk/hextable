@@ -4259,7 +4259,8 @@ export const monsters = [
         target: {
           area: {
             shape: "emanation",
-            size: 500
+            size: 500,
+            exceptCaster: true
           }
         },
         effects: [
@@ -4277,7 +4278,7 @@ export const monsters = [
                 }
               },
               {
-                manual: "After 1 minute the target succeeds on the save automatically."
+                manual: "Second Roar affects only the sphinx's enemies: the DM lifts it from any of its allies. After 1 minute the target succeeds on the save automatically."
               }
             ]
           }
