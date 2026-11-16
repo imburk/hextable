@@ -993,9 +993,28 @@ What was settled while building it (`content/schema.js`, the end of the file; te
   another's, and more than 4 packs. `using` takes out any key `fn` added to a lookup (it still throws) and does not
   mind an overlay entry `fn` deleted. `useSrdReference` (called by `registry.js`) lets strict `lintPack` and `lintEntry`
   refuse the SRD pack id, ids and names with nothing passed; without the registry loaded only the pack id `srd52` is
-  refused. Ten SRD entries still do not convert to homebrew, as before (the camel and eight other mounts, Contact Other
-  Plane, plate armour's "1,500 GP").
+  refused. Nine SRD entries still do not convert to homebrew, as before (the eight mounts and Contact Other Plane).
 - **`barriers()`**: 5,000 warm calls with 300 objects took about 44 us each against 39 us on main (about 15 % more).
+
+### Fix round 2 of #389
+
+- **The ceilings add up (work).** `HOMEBREW_LENGTHS` gives every list a length ceiling (steps in a list 20, actions 10,
+  traits 20, reactions 4, Multiattack entries 6, ...), found like the number ranges; a list with none is refused, and a test
+  walks the SRD and the type table. `workOf(kind, entry)` counts the worst-case steps of one use (every branch, a damage
+  step `times` over, a cast's or action's steps once for each creature it reaches: its chosen creatures or count, or the
+  table's 30 for an area; a monster's worst action or Multiattack, entries times counts); `HOMEBREW_WORK` limits it to 240
+  steps and a Multiattack to 14 attacks. SRD maxima: 120 steps (Hypnotic Pattern on 30 creatures; the planetar's
+  Multiattack), 7 attacks (the marilith), 1 reaction, 10 actions (behir has 5), 10 traits (the vampire).
+  The heaviest accepted cast at a table of 30 took about 0.1 s and 276 KB of events; the heaviest accepted monster turn
+  about 12 ms and 79 KB.
+- **Names.** In strict mode a `name` and a pack name are Latin-script only (see DEBT T38); `text` and `dmNotes` may hold
+  any visible script but no control, bidi, zero-width, tag, filler (U+3164, U+115F, U+1160, U+FFA0, U+2800, U+FFFC) or
+  variation-selector character. SRD look-alikes are compared after NFKD, with marks removed, case folded and only letters
+  and digits kept ("Fire-ball", "Fire_ball", "Fireball" are one name).
+- **`using`** compares each lookup with the snapshot taken on entry and puts back every key and value in the original
+  order, so a delete plus an add leaves nothing behind (it still throws).
+- **Prices** are converted to gold pieces (CP 1/100, SP 1/10, EP 1/2, GP 1, PP 10) and capped at 3,000 GP, twice the
+  SRD's dearest (plate armour, 1,500 GP); a price written with a thousands comma is now read (plate armour converts).
 
 ## Risks
 

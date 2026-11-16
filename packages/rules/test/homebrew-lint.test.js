@@ -217,7 +217,10 @@ test("limits: letters of a text (1,500), of a name (60), of any other string (20
 test("limits: steps in one entry (40) and depth of nested steps (6), at and one past", () => {
   const flat = (n) => spell({ effects: Array.from({ length: n }, () => ({ damage: "1d4", type: "fire" })) });
   assert.deepEqual(budgetEntry("spells", flat(40)), []);
-  assert.deepEqual(strict("spells", flat(40)), []);
+  // Fix round 2: a list of steps has its own ceiling in strict mode (HOMEBREW_LENGTHS, 20), so the strict half is at 20 and one past.
+  const one = (n) => ({ ...flat(n), target: { creature: { count: 1 } } });   // an area spell's steps run once for each creature in it (the work ceiling)
+  assert.deepEqual(strict("spells", one(20)), []);
+  refused(strict("spells", one(21)), /a list of 21; the most is 20/);
   refused(budgetEntry("spells", flat(41)), /it has 41 effect steps; the most for one entry is 40/);
   // Nested steps count: 20 saves each with one damage step under it is 40.
   const nested = (n) => spell({ effects: Array.from({ length: n }, () => ({ save: "dex", onFail: [{ damage: "1d4", type: "fire" }] })) });

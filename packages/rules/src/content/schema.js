@@ -1724,8 +1724,12 @@ const STEP_LISTS = ['effects', ...BRANCHES];
 // soft hyphen, bidirectional controls (U+061C, U+200E/F, U+202A-E, U+2066-9), zero-width characters (U+200B-D, U+2060-4, U+FEFF,
 // U+180E), line and paragraph separators, other invisible format characters, tag characters (U+E0000-E007F) and a lone
 // surrogate. Written with escapes so the source shows what is refused.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb\ud800-\udfff]|[\u{e0000}-\u{e007f}]/u;
-const CONTROL_NL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb\ud800-\udfff]|[\u{e0000}-\u{e007f}]/u;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffc\ud800-\udfff\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
+const CONTROL_NL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffc\ud800-\udfff\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
+// A name is Latin-script only for now: letters (A-Z, the accented letters of Latin-1, Latin Extended-A and the Latin
+// Extended Additional block), digits, single spaces inside it and ' - , . ( ) & : ! ? / + and the typographic apostrophe (the SRD's own names use + and U+2019). No combining mark survives NFC.
+const NAME_OK = /^[A-Za-z0-9\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff\u0100-\u017f\u1e00-\u1eff'\u2019+\-,.()&:!?/]+(?: [A-Za-z0-9\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff\u0100-\u017f\u1e00-\u1eff'\u2019+\-,.()&:!?/]+)*$/;
+export const nameProblem = (s) => (NAME_OK.test(s.normalize('NFC')) ? null : 'a name holds only Latin letters (with accents), digits, single spaces and the marks \' \u2019 + - , . ( ) & : ! ? /');
 const badChar = (s, key) => (NEWLINE_KEYS.includes(key) ? CONTROL_NL : CONTROL).test(s);
 const letters = (s) => { let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c < 0xdc00 || c > 0xdfff || i === 0 || s.charCodeAt(i - 1) < 0xd800 || s.charCodeAt(i - 1) > 0xdbff) n++; } return n; };
 // UTF-8 bytes of a string as JSON writes it (quotes and escapes included).
@@ -1761,6 +1765,7 @@ function scan(root, level, limits, say, room, base = '') {
       bytes += jsonBytes(v);
       const n = letters(v), most = TEXT_KEYS.includes(key) ? limits.text : key === 'name' ? limits.name : limits.string;
       if (n > most) say(`${key === 'name' ? 'the name' : TEXT_KEYS.includes(key) ? 'the text' : 'a piece of text'}${at(path)} is ${thousands(n)} letters long; the most is ${thousands(most)}`);
+      if (key === 'name' && !badChar(v, key)) { const np = nameProblem(v); if (np) say(`the name${at(path)} is not allowed: ${np}`); }
       if (badChar(v, key)) say(`the text${at(path)} has a control character, or an invisible or direction-changing one (or a line break outside \`text\`); text is plain text`);
       continue;
     }
@@ -1984,7 +1989,7 @@ function lintUnchecked(kind, e, say) {
   if (kind === 'monsters' && e.hover !== undefined && e.hover !== true) say('hover is true or left out');
   if (kind === 'weapons' || kind === 'armour') {
     if (!size(e.weight)) say('weight is pounds, a number from 0 to 10,000');
-    if (e.cost !== undefined && !(size(e.cost) || (typeof e.cost === 'string' && /^\d{1,6} (CP|SP|EP|GP|PP)$/.test(e.cost)))) say('cost is a number or a price like "5 GP"');
+    if (e.cost !== undefined && !(size(e.cost) || (typeof e.cost === 'string' && /^(\d{1,6}|\d{1,3}(,\d{3})+) (CP|SP|EP|GP|PP)$/.test(e.cost)))) say('cost is a number or a price like "5 GP"');
   }
   if (kind === 'weapons' && e.ammo !== undefined && !ID.test(e.ammo)) say('ammo names a kind of ammunition, in kebab-case');
   if (kind === 'weapons' && e.twoHandedUnlessMounted !== undefined && e.twoHandedUnlessMounted !== true) say('twoHandedUnlessMounted is true or left out');
@@ -2038,7 +2043,22 @@ const GRANTS_ANY = [-100, 100];
 // Dice written as a string: how many, how many sides, and the flat part (the SRD's largest are 26, 12 and 70).
 export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 100, flat: 140 });
 export const HOMEBREW_DURATIONS = Object.freeze({ round: 12, minute: 20, hour: 48, day: 60 });
-export const HOMEBREW_COST = 3000;
+export const HOMEBREW_COST = 3000;                // gold pieces: the dearest thing the SRD sells costs 1,500 GP
+const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
+// The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
+// SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
+export const HOMEBREW_LENGTHS = Object.freeze({
+  '*.step': 20, '*.blocks': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
+  'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
+  'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
+  'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
+  'step.cure': 14, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 3,
+});
+const GRANTS_LEN = 30;
+// The work one use of an entry may cause (see workOf): the most steps run, the creatures a table is taken to have, and the
+// most attacks of one Multiattack. The SRD's own largest are printed in the build note of fix round 2.
+export const HOMEBREW_WORK = Object.freeze({ steps: 240, creatures: 30, attacks: 14 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
 const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (inGrants ? GRANTS_ANY : undefined);
@@ -2054,6 +2074,72 @@ export function numbersOf(kind, entry) {
   }
   return out;
 }
+// The lists of an entry with the name that finds their ceiling: [context, length, path, inGrants, owner, key].
+export function arraysOf(kind, entry) {
+  const out = [], stack = [];
+  for (const k of Object.keys(entry)) stack.push([entry[k], kind, k, k, false]);
+  while (stack.length) {
+    const [v, owner, key, path, g] = stack.pop();
+    if (Array.isArray(v)) { out.push([`${owner}.${nameOf(key)}`, v.length, path, g, owner, nameOf(key)]); v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g])); }
+    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push([v[k], nameOf(key), k, `${path}.${k}`, g || key === 'grants']);
+  }
+  return out;
+}
+export const lengthOf = (owner, key, inGrants) => HOMEBREW_LENGTHS[`${owner}.${key}`] ?? HOMEBREW_LENGTHS[`*.${key}`] ?? (inGrants ? GRANTS_LEN : undefined);
+// ----- the work of one use -----
+// The worst-case number of steps one use of an entry can run: every branch taken, a damage step `times` over, a spell's or an
+// action's steps once for each creature it can reach (its chosen creatures or count, or the table's creatures for an area), a
+// monster's worst single action or worst Multiattack (entries times their counts, an alternative taking the dearest).
+const isN = (x) => typeof x === 'number' && Number.isFinite(x);
+function listWork(list) {
+  let n = 0;
+  if (!Array.isArray(list)) return 0;
+  for (const st of list) {
+    if (!st || typeof st !== 'object') continue;
+    let kids = 0;
+    for (const b of BRANCHES) kids += listWork(st[b]);
+    n += (1 + kids) * (isN(st.times) && 'damage' in st ? Math.max(1, st.times) : 1);
+  }
+  return n;
+}
+function targetsOf(t) {
+  if (!t || typeof t !== 'object' || t.self) return 1;
+  if (t.area) return isN(t.area.choose) ? t.area.choose : HOMEBREW_WORK.creatures;
+  return isN(t.creature?.count) ? t.creature.count : 1;
+}
+const actionWork = (a) => (a && typeof a === 'object' && !a.multiattack ? targetsOf(a.target) * listWork(a.effects) : 0);
+const attackEntries = (m) => (Array.isArray(m) ? [m] : m && Array.isArray(m.or) ? m.or.filter(Array.isArray) : []);
+// What a monster's Multiattack makes: [attacks, steps] of its dearest alternative.
+function multiWork(ma, byId) {
+  let attacks = 0, steps = 0;
+  for (const list of attackEntries(ma)) {
+    let a = 0, w = 0;
+    for (const en of list) {
+      if (!en || typeof en !== 'object') continue;
+      const times = isN(en.times) ? Math.max(1, en.times) : 1;
+      const names = Array.isArray(en.action) ? en.action : [en.action];
+      a += times; w += times * Math.max(1, ...names.map((id) => (typeof id === 'string' && byId.has(id) ? actionWork(byId.get(id)) : 1)));
+    }
+    attacks = Math.max(attacks, a); steps = Math.max(steps, w);
+  }
+  return [attacks, steps];
+}
+// { work, attacks, what } for an entry of any kind (0 where it runs no steps).
+export function workOf(kind, e) {
+  let work = 0, attacks = 0, what = '';
+  const take = (n, w) => { if (n > work) { work = n; what = w; } };
+  if (kind === 'spells') take(targetsOf(e.target) * listWork(e.effects) * (isN(e.higher?.slot?.times) ? Math.max(1, e.higher.slot.times) : 1), 'cast');
+  else if (kind === 'monsters' && Array.isArray(e.actions)) {
+    const byId = new Map(e.actions.filter((a) => a && typeof a.id === 'string').map((a) => [a.id, a]));
+    for (const a of e.actions) {
+      if (!a || typeof a !== 'object') continue;
+      take(actionWork(a), `action "${a.id}"`);
+      if (a.multiattack) { const [n, w] = multiWork(a.multiattack, byId); attacks = Math.max(attacks, n); take(w, `Multiattack "${a.id}"`); }
+    }
+  } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
+  else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) take(listWork(u?.effects), 'use');
+  return { work, attacks, what };
+}
 const DICE_STR = /^([+-]?)(?:(\d+)d(\d+))?(?:([+-]\d+))?$/;
 // A dice string's count, sides and flat part within the limits, or a sentence.
 function diceProblem(s) {
@@ -2067,6 +2153,18 @@ function diceProblem(s) {
   return null;
 }
 function lintNumbers(kind, e, say) {
+  for (const [ctx, n, path, g, owner, key] of arraysOf(kind, e)) {
+    const most = lengthOf(owner, key, g);
+    if (most === undefined) say(`${path}: a list is not allowed here (no length is set for "${ctx}")`);
+    else if (n > most) say(`${path}: a list of ${n}; the most is ${most}`);
+  }
+  if (kind === 'monsters' && Array.isArray(e.traits) && Array.isArray(e.actions)) {
+    const reactions = e.traits.filter((t) => t?.reaction).length + e.actions.filter((a) => a?.time === 'reaction').length;
+    if (reactions > HOMEBREW_LENGTHS['monsters.reaction']) say(`it has ${reactions} reactions; the most is ${HOMEBREW_LENGTHS['monsters.reaction']}`);
+  }
+  const { work, attacks, what } = workOf(kind, e);
+  if (attacks > HOMEBREW_WORK.attacks) say(`its Multiattack makes ${thousands(attacks)} attacks; the most is ${HOMEBREW_WORK.attacks}`);
+  else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
   for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
     const r = rangeOf(owner, key, g);
     if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }
@@ -2080,7 +2178,7 @@ function lintNumbers(kind, e, say) {
       const d = diceProblem(v), du = /^([1-9]\d*) (round|minute|hour|day)s?$/.exec(v), c = /^([\d,]{1,12}) (CP|SP|EP|GP|PP)$/.exec(v);
       if (d) say(`dice ${d}`);
       if (du && +du[1] > HOMEBREW_DURATIONS[du[2]]) say(`a duration of ${thousands(+du[1])} ${du[2]}s is too long; the most is ${HOMEBREW_DURATIONS[du[2]]}`);
-      if (c && +c[1].replace(/,/g, '') > HOMEBREW_COST) say(`a price of ${c[1]} ${c[2]} is too high; the most is ${thousands(HOMEBREW_COST)}`);
+      if (c) { const gp = +c[1].replace(/,/g, '') * COIN_GP[c[2]]; if (gp > HOMEBREW_COST) say(`a price of ${c[1]} ${c[2]} is ${thousands(Math.round(gp))} gold pieces; the most is ${thousands(HOMEBREW_COST)} gold pieces`); }
     } else if (Array.isArray(v)) for (const x of v) stack.push(x);
     else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push(v[k]);
   }
@@ -2192,8 +2290,8 @@ let SRD_REF = null;
 export function useSrdReference(ref) { SRD_REF = ref; }
 const CONFUSABLE = { '\u0430': 'a', '\u0435': 'e', '\u043e': 'o', '\u0440': 'p', '\u0441': 'c', '\u0443': 'y', '\u0445': 'x', '\u0456': 'i', '\u0458': 'j', '\u0455': 's', '\u04bb': 'h', '\u0501': 'd',
   '\u0391': 'a', '\u0392': 'b', '\u0395': 'e', '\u0397': 'h', '\u0399': 'i', '\u039a': 'k', '\u039c': 'm', '\u039d': 'n', '\u039f': 'o', '\u03a1': 'p', '\u03a4': 't', '\u03a7': 'x', '\u03b9': 'i', '\u03bf': 'o', '\u03bd': 'v', '\u0131': 'i' };
-// A name as it reads: NFKC, case folded, spaces collapsed, look-alike letters of other alphabets made Latin.
-export const nameKey = (s) => s.normalize('NFKC').toLowerCase().replace(/\u00df/g, 'ss').replace(/[\u0391-\u03bf\u0430-\u0501\u0131]/g, (c) => CONFUSABLE[c] ?? c).replace(/\s+/g, ' ').trim();
+// A name as it reads: NFKD, marks removed, case folded, look-alike letters made Latin, and only letters and digits kept ("Fire-ball", "Fire_ball" and "F\u00edreball" are "fireball").
+export const nameKey = (s) => s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\u00df/g, 'ss').replace(/[\u0391-\u03bf\u0430-\u0501\u0131]/g, (c) => CONFUSABLE[c] ?? c).replace(/[^\p{L}\p{Nd}]/gu, '');
 const SRD_NAMES = new WeakMap();
 function srdNames(table) {
   let names = SRD_NAMES.get(table);

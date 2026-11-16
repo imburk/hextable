@@ -45,3 +45,19 @@ test("L5: overlayOf enforces the packs a table may have", () => {
   assert.doesNotThrow(() => overlayOf(five.slice(0, 4)));
   assert.throws(() => overlayOf(five), (e) => e instanceof PackError && /a table may have 4 homebrew packs; this would make 5/.test(e.message));
 });
+
+test("round 2, L4: a delete plus an add inside fn leaves nothing behind; the lookups come back in their original order", () => {
+  const ov = overlayOf([load(doc("ember", sp("ember", "one", "One")))]);
+  const before = keys(), fire = CONTENT.spells["fire-bolt"], order = Object.keys(CONTENT.spells).join();
+  assert.throws(() => using(ov, () => { delete CONTENT.spells["fire-bolt"]; CONTENT.spells.zzz = {}; }), /changed during the call/);
+  assert.equal(CONTENT.spells["fire-bolt"], fire, "the deleted SRD entry is back");
+  assert.ok(!("zzz" in CONTENT.spells));
+  assert.equal(Object.keys(CONTENT.spells).join(), order, "in the same order");
+  assert.deepEqual(keys(), before);
+  // A deleted SRD entry alone, and one replaced by another object, are put back too.
+  assert.throws(() => using(ov, () => { delete CONTENT.spells["fire-bolt"]; }), /changed during the call/);
+  assert.equal(CONTENT.spells["fire-bolt"], fire);
+  assert.throws(() => using(ov, () => { CONTENT.spells["fire-bolt"] = { text: "changed" }; }), /changed during the call/);
+  assert.equal(CONTENT.spells["fire-bolt"], fire);
+  assert.deepEqual(keys(), before);
+});

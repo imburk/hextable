@@ -144,7 +144,7 @@ export function using(overlay, fn) {
   if (active === overlay) return settle(fn());                                     // re-entered: already installed
   if (active) throw new Error("using: another table's homebrew is installed; overlays do not nest");
   for (const [target, id] of o.ops) if (Object.hasOwn(target, id)) throw new Error(`using: "${id}" is already in the rules`);
-  const targets = [...new Set(o.ops.map(([t]) => t))], before = targets.map((t) => Object.keys(t));
+  const targets = [...new Set(o.ops.map(([t]) => t))], before = targets.map((t) => Object.entries(t));
   let result, i = 0, strayed = false;
   active = overlay;
   try {
@@ -155,14 +155,17 @@ export function using(overlay, fn) {
     // `fn` returned or threw: the lookups come back with the keys they had.
     for (let j = i - 1; j >= 0; j--) delete o.ops[j][0][o.ops[j][1]];
     active = null;
+    // Each lookup is compared with the snapshot taken on entry: if anything differs (a key added, deleted or changed, a delete
+    // and an add that cancel in the count), it is put back as it was, every key and value in its original order.
     targets.forEach((t, k) => {
-      if (Object.keys(t).length === before[k].length) return;
+      const snap = before[k], now = Object.keys(t);
+      if (now.length === snap.length && snap.every(([key, v], n) => now[n] === key && t[key] === v)) return;
       strayed = true;
-      const had = new Set(before[k]);
-      for (const key of Object.keys(t)) if (!had.has(key)) delete t[key];
+      for (const key of now) delete t[key];
+      for (const [key, v] of snap) t[key] = v;
     });
   }
-  if (strayed) throw new Error('using: the content lookups were changed during the call; what was added has been taken out');
+  if (strayed) throw new Error('using: the content lookups were changed during the call; the lookups have been put back');
   return settle(result);
 }
 function settle(result) {
