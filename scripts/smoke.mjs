@@ -20,7 +20,7 @@
 //   2. Add one line to REGISTRY below: `name: ['<file>', ...]`. Order is the order of a full run.
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { ARGS, startServer, stopServer, failures } from './smoke/lib.mjs';
+import { ARGS, startServer, stopServer, failures, seeded } from './smoke/lib.mjs';
 
 // SMOKE_ONLY name -> the pass files (in scripts/smoke/) it runs, in order.
 const REGISTRY = {
@@ -83,6 +83,7 @@ try {
   const newContext = browser.newContext.bind(browser);
   browser.newContext = async (opts, { pace = 'instant' } = {}) => {
     const c = await newContext(opts);
+    await seeded(c);                                              // SMOKE_SEED=<n> replays a solo valley (lib.mjs)
     await c.addInitScript((p) => { try { localStorage.setItem('hextable.pace', JSON.stringify(p)); } catch { /* storage unavailable */ } }, pace);
     return c;
   };

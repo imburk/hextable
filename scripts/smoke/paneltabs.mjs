@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas } from './lib.mjs';
+import { sleep, spawnNear, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas } from './lib.mjs';
 
 // ---------- the action panel's Attacks, Bonus, Move and Features tabs (docs/specs/table-ui.md, Decision 6, task T4a) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Exploring: a healing shortcut goes to the Features row. In a fight: the fighter's
@@ -49,12 +49,9 @@ async function tabs(browser, url, label, opts) {
       });
 
       await run.do('a fight, the fighter\'s turn: Attacks opens first with her longsword as a row, rows whole in the compact height', async () => {
-        await page.evaluate(() => {
-          const h = window.hextable;
-          h.act({ type: 'spawn', monster: 'animated-flying-sword', at: { q: 2, r: -2 } });
-        });
-        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.tpl === 'animated-flying-sword'));
-        fly = await state(page, (S) => Object.values(S.entities).find((e) => e.tpl === 'animated-flying-sword').id);
+        // The flying sword goes on a hex the engine takes it on, near (2, -2) and inside the arena: the map is random per game, and a tree or water there refuses the spawn
+        // ("A creature can't stand there."), which left no sword and this step waiting for it (#418). The sword must exist, or the step fails with the game's words.
+        fly = await spawnNear(page, 'animated-flying-sword', { near: { q: 2, r: -2 }, min: 0, radius: 4, within: { center: { q: 0, r: 0 }, radius: 8 } });
         await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }));
         await wait(page, () => !!window.hextable.state.encounter, null, 20000); await idle(page);
         await turnOf(page, 'fighter'); await select(page, 'fighter');

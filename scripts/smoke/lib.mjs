@@ -182,3 +182,51 @@ export async function diceDuel(dm, watch, want = null) {
 // Still: no dice in the air and no beats left to play. `setPace` sets a page's pace at once.
 export const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, ms);
 export const setPace = (p, v) => p.evaluate((x) => { localStorage.setItem('hextable.pace', JSON.stringify(x)); window.hextable.timeline.setPace(window.hextable.pace()); }, v);
+
+
+// ---------- seeds and places ----------
+// SMOKE_SEED=<n> plays the valley of seed n in every context the runner makes (scripts/smoke.mjs calls this from its newContext): the game takes
+// a random seed per solo game (transport.js), so a map a step failed on can be replayed. Only the Math.random() that transport.js makes the seed
+// with is bent; the page's other calls stay random. A hosted table takes the server's seed, which this cannot set.
+export const seeded = (ctx) => (process.env.SMOKE_SEED
+  ? ctx.addInitScript((n) => { const real = Math.random; Math.random = () => (new Error().stack.includes('transport.js') ? n / 1e9 + 1e-10 : real()); }, Number(process.env.SMOKE_SEED))
+  : null);
+
+// The hexes near a place where the engine takes a spawn of `tpl` (a monster id), nearest first, asked of the page's own engine on this map. Never a
+// fixed offset: each game's map is random, and a tree, water or another creature on the hex refuses the spawn. Options:
+//   near: { q, r } or a creature id, the centre of the search (a creature's own hex is skipped); min/radius: distance from it in hexes (default 1..6);
+//   sightFrom: a creature id that must have a line (not blocked by walls) to the new creature; range: feet from `sightFrom` (or from `near`) at most;
+//   within: { center, radius }, the new creature must lie inside (a fight's arena); name: a name for the spawn, passed on; extra: more fields of the spawn action (`hidden: true`).
+// Returns { spots: [hex...], error }, `error` being the engine's own last refusal when no hex took it.
+export const spotsFor = (page, tpl, opts = {}) => page.evaluate(async ([t, o]) => {
+  const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), { inSight } = await import('./shared/sight.js');
+  const S = window.hextable.state, G = gridOf(S.map), DM = { role: 'dm', userId: 'dm' };
+  const at = (v) => (typeof v === 'string' ? S.entities[v].pos : v);
+  const c = at(o.near), from = o.sightFrom ? S.entities[o.sightFrom] : null, out = [];
+  let error = null;
+  for (const h of G.range(c, o.radius ?? 6)) {
+    if (G.dist(c, h) < (o.min ?? 1)) continue;
+    if (o.within && G.dist(o.within.center, h) > o.within.radius) continue;
+    if (o.range != null && G.dist(from ? from.pos : c, h) * 5 > o.range) continue;
+    const clone = structuredClone({ ...S, timeline: [] });
+    const r = apply(clone, { type: 'spawn', monster: t, at: h, ...(o.name ? { name: o.name } : {}), ...(o.extra ?? {}) }, DM);
+    if (!r.ok) { error = r.error; continue; }
+    if (from && !inSight(clone.map, from.pos, clone.entities[r.events.find((x) => x.type === 'spawned').id].pos)) { error = 'no line of sight'; continue; }
+    out.push(h);
+  }
+  out.sort((a, b) => G.dist(c, a) - G.dist(c, b) || a.r - b.r || a.q - b.q);
+  return { spots: out, error };
+}, [tpl, opts]);
+
+// Spawns `tpl` on the first hex spotsFor finds and requires the creature to exist afterwards; returns its id. Fails with the game's own words:
+// the engine's last refusal when there is no hex, or the table's toast when the spawn was sent and nothing appeared.
+export async function spawnNear(page, tpl, opts = {}) {
+  const { spots, error } = await spotsFor(page, tpl, opts);
+  if (!spots.length) throw new Error(`no hex near ${JSON.stringify(opts.near)} on this map takes a ${tpl}${opts.sightFrom ? ' in sight of ' + opts.sightFrom : ''}: ${error ?? 'none in range'}`);
+  const before = await page.evaluate(() => Object.keys(window.hextable.state.entities));
+  await page.evaluate(([t, at, n, x]) => window.hextable.act({ type: 'spawn', monster: t, at, ...(n ? { name: n } : {}), ...x }), [tpl, spots[0], opts.name ?? null, opts.extra ?? {}]);
+  const made = async () => (await page.evaluate((b) => Object.keys(window.hextable.state.entities).filter((k) => !b.includes(k)), before));
+  try { await wait(page, (b) => Object.keys(window.hextable.state.entities).some((k) => !b.includes(k)), before, 5000); }
+  catch { throw new Error(`the ${tpl} was not made at ${JSON.stringify(spots[0])}: toast "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); }
+  return (await made())[0];
+}
