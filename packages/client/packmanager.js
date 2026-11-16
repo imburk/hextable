@@ -151,7 +151,9 @@ const tierChip = (tier) => el('span', `pm-tier pm-${tier ?? 'none'}`, tier ?? 'n
 export function refusalNode(e) {
   const box = el('div', 'pm-refusal'); box.setAttribute('role', 'alert');
   box.append(el('p', 'pm-error', String(e?.error ?? 'The table refused that.')));
-  if (e?.problems?.length) { box.append(el('p', 'pm-sub', 'What the checker found:')); const ul = el('ul'); for (const x of e.problems) ul.append(el('li', '', String(x))); box.append(ul); }
+  // The table's `error` often says the first of its `problems` already: a sentence it said is not said again.
+  const more = (e?.problems ?? []).filter((x) => !String(e?.error ?? '').includes(String(x)));
+  if (more.length) { box.append(el('p', 'pm-sub', 'What the checker found:')); const ul = el('ul'); for (const x of more) ul.append(el('li', '', String(x))); box.append(ul); }
   if (e?.blockers?.length) { box.append(el('p', 'pm-sub', 'It is still in use here:')); const ul = el('ul'); for (const x of e.blockers) ul.append(el('li', '', String(x))); box.append(ul); }
   return box;
 }
