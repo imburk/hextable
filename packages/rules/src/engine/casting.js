@@ -611,7 +611,7 @@ function castSpell(s, a, ctx, ev, item) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
+        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts

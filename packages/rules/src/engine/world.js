@@ -967,7 +967,8 @@ export function aimArea(s, e, name, area, range, hex) {
   const targets = G.kind === 'square'
     ? living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f)) && l.high(t, f)) && footprint(t, t.pos, G).some((f) => l.from.some((o) => clear(s, o, f))))
     : living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f))) && l.high(t) && footprint(t, t.pos, G).some((f) => clear(s, origin, f)));      // a wall shelters what is behind it
-  return { targets, hexes, origin: origin === e.pos ? null : origin };
+  // `types` (Turn Undead: Undead only): a spell's area and a monster action's are held to it the same way, here.
+  return { targets: area.types ? targets.filter((x) => area.types.includes(creatureType(x))) : targets, hexes, origin: origin === e.pos ? null : origin };
 }
 
 // The creatures a spell or action aimed at creatures goes to: `a.targets` (a list of ids) or
@@ -1024,9 +1025,7 @@ export function aimAction(s, e, def, a) {
     return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
-  const out = aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);
-  if (t.area.types) out.targets = out.targets.filter((x) => t.area.types.includes(creatureType(x)));     // Turn Undead: Undead only
-  return out;
+  return aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);          // `types` is applied inside
 }
 // A creature's type: a pack monster's, else a character's (Humanoid). Null for one the engine cannot tell.
 export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e.kind === 'pc' ? 'humanoid' : null);

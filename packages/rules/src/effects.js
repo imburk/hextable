@@ -11,7 +11,7 @@
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
 import { BRANCHES, SIZES, SPELL_KINDS, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
-import { useUp } from './durations.js';
+import { effectsOf, useUp } from './durations.js';
 
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
@@ -325,6 +325,15 @@ export function run(s, ev, kit, floor = 0) {
       if (f.t >= f.targets.length) { stack.pop(); continue; }
       // `told` is shared by the targets of one effect, so a manual step's text is shown once, not once per target.
       // `n`: which of the targets this is (the second ray of Scorching Ray is 1), for Empowered Evocation.
+      // A zone limited by creature types (`area.types`): zones.js does not filter those who come later, so the DM is told, once
+      // for each creature in a round, that the zone went off on one of another type.
+      if (f.src?.types && f.src.fx && kit.creatureType) {
+        const who = s.entities[f.targets[f.t]], fx = effectsOf(s).find((x) => x.id === f.src.fx), round = s.encounter?.round ?? 0;
+        if (who && fx?.zone && !f.src.types.includes(kit.creatureType(who)) && (fx.zone.told ??= {})[who.id] !== round) {
+          fx.zone.told[who.id] = round;
+          ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text: `${f.src.name} affects only ${f.src.types.join(' or ')}; the engine applied it to ${who.name}: the DM undoes that.` });
+        }
+      }
       stack.push({ kind: 'seq', steps: f.steps, path: '', i: 0, actor: f.actor, n: f.t, target: f.targets[f.t++], src: f.src, shared: f.shared, told: (f.told ??= {}) });
       continue;
     }
@@ -489,7 +498,10 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
-    return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
+    const bound = f.src.fx && effectsOf(s).find((x) => x.id === f.src.fx)?.bound;
+    return handOver(bound
+      ? `${f.src.name} changes a number, but nothing in it says when that ends, and the engine keeps only what ends by itself. The DM applies it and ends it.`
+      : `${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
   if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
   // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).

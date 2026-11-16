@@ -926,6 +926,29 @@ What was settled while building `content/reader.js`:
 - **Not read:** the `source` string (a homebrew one is the author's), so no publisher or product name can come from
   the reader's own words. Only spells: `readEntry` answers other kinds with one line saying so (B13).
 
+### Fixes after the reader found them (#416, DEBT T32 and T33)
+
+Four shapes that the linter passes and the engine did less with, each closed or handed to the DM in words; the reader's
+readings were changed with them (golden text regenerated).
+
+- **A spell area's `types`** is applied in `aimArea` (`engine/world.js`), for a spell's cast and a monster action alike:
+  of the creatures the area catches, only those of the listed types are affected (nobody, if none). A zone (a lasting
+  area) is not filtered when a creature enters it or starts or ends a turn there: the reading says so and hands that to
+  the DM. A homebrew pack cannot carry `area.types` today: the budget in `content/schema.js` sets no length for the list
+  (no SRD spell uses it either), so the tests install the spell as `effects.test.js` does.
+- **A summon on spaces keeps its bond's `range`** (also on a reform): Animate Objects' command beyond 500 ft is refused.
+  An object the DM adds by hand has no range, and Animate Objects' text says the DM keeps to 500 ft for those.
+- **`fall: "surface"`** means what `maps-and-objects.md` says of `fall` ("the target drops ... to the next surface, and
+  takes falling damage"): the creature goes down to the surface under it and takes 1d6 for each 10 ft of the drop (up
+  to 20d6), Prone if hurt; a creature already on a surface does not fall (a `note`); one riding or ridden, or with no
+  surface under it, is the DM's (a `manual` event).
+- **Endings in an instant spell.** `ends: { on: "damaged" }` now makes the effect that holds it (`boundEffect`). Once an
+  instant spell has such an effect, a condition or modifier that names no `ends` is kept off it, as it always was in a
+  spell with no effect: the condition stays with the usual "Nothing ends it yet: the DM removes it", and the modifier is
+  handed to the DM to apply and end. A modifier with `uses` still ends by use. The SRD pack has no such spell; Charm
+  Person and Charm Monster (`ends: { on: "damaged", by: "source" }`) last an hour, so they were never instant and work
+  as before.
+
 ## Build notes: B1, the budget, strict mode and `lintEntry` (#380)
 
 What was settled while building it (`content/schema.js`, the end of the file; tests in
@@ -1282,3 +1305,39 @@ What was settled while building `client/packmanager.js` (tests: `packages/client
 - **The pack message** is one at a time (`transport.packOp`), answered by the table's `packs` with `changed` or by its error frame, shown as `error`, then any `problems` it did not already say, then `blockers`. `dropped` (packs the table could not load at start-up) is shown at the top of the manager.
 - **The review** runs before anything is sent: the file's size (a file over twice the pack limit, 512 KB, is not read: the table reads a pack sent as text up to that), `loadPack`, then each spell's reading from `readEntry` with its tier, counts by tier, the licence and attribution (the author's words, as text) and what the table would do (add, update, nothing). Every string from a file or the table is put on the page with `textContent`. Other kinds are listed by name as not read yet (B13).
 - **Solo** is left (DEBT T51). **The player's reading** opens from the sheet's spell table (`Reading`).
+
+## Build notes: B13, the reader for monsters (#419)
+
+First part of B13 (one kind per pull request). `readEntry("monster", entry)` returns the same answer as for a spell. Items, feats,
+weapons, armour and objects are still answered with one line saying they are not read (`READ_KINDS` in `content/reader.js` names the
+kinds that are). What was settled:
+
+- **Built from what `makeEntity` and the action code make of an entry,** not from the linter: `legacyMonster` (what a creature is
+  made from), `MONSTER_ACTIONS`, `modifiers.js` (`sources`: a trait's modifiers), `reactions.js` (a trait's `reaction`),
+  `engine/attacks.js` (`act`, `takeAction`, Multiattack, recharge, daily uses), `effects.js` (`actionProfile`) and `ai.js`. The reading
+  has: the title line (size, type, challenge rating, XP); Armor Class, Hit Points (one number: the entry has no Hit Dice), Proficiency
+  Bonus; speeds (swim and burrow are said not to be moved by); the six scores with modifiers; Initiative, saves, skills and passive
+  Perception, senses; resistances, vulnerabilities, immunities, condition immunities; languages (shown only); each trait as run by
+  the engine (its modifiers in the spell reader's words, its Reaction) or text only; each action with its time, recharge or daily
+  uses, its aim (reach, range band, count, area), its steps, and the average damage the dice come to; Multiattack as the engine runs
+  it; whether the monster AI will use the action; the tier and why.
+- **One vocabulary, one set of words.** A creature's action runs the same steps as a spell, so its steps are read by the spell reader's
+  own sentences (`STEP_SENTENCES`, `modPhrase`, `modExtras`, the area words). A reading says "the creature" where a spell's says "the
+  caster", and "the action" where it says "the spell", outside quoted author text. The few steps that differ for a creature are
+  said in the step sentences themselves (a spell attack, `addMod`, a repeated save).
+- **What the reader found the engine does less with (DEBT T54).** A repeated save that ends a creature's condition never succeeds
+  (no DC is read, 15 SRD monsters); a spell attack in an action has no bonus; `addMod` in an action makes Hit Points `NaN`; a creature
+  target with no `reach` or `range` throws (and so does the AI); an area's `choose` is ignored; `swim` and `burrow` speeds, and trait
+  modifiers at `hp.max` and `carry`, are read by nothing; a trait id `nimble-escape` is magic. Each is said in the reading and, where
+  it breaks something, is a `problem` (the DM should not approve the entry). `reader-kinds.test.js` runs the engine to check each
+  claim, so a fix in the engine fails the test until the sentence is changed.
+- **Coverage.** The tables of words (`MONSTER_FIELDS`, `TRAIT_FIELDS`, `ACTION_FIELDS`, `CREATURE_FIELDS`, `AREA_FIELDS`, `SIZE_WORDS`,
+  `MOVE_WORDS`, `SENSE_WORDS`, `TRAIT_ID_WORDS`) are held equal to the key lists of `HOMEBREW_TYPES` and to the lists in the sources, so
+  a new monster field, trait or action key, size, speed, sense or trait id the engine learns fails a test until it has words. Golden
+  text (`reader-kinds-golden.txt`) is for three invented monsters in `fixtures/reader-kinds-pack.json` (which loads in strict mode)
+  and one the strict mode would refuse (an area's `types`), plus the SRD's trained mount; a test requires the invented monsters to
+  use every monster, trait, action and target key, every step but `summon` and `counter` (which a creature's action may not
+  hold), every branch, hook, op and area shape. `mount` cannot be homebrew, so it is covered through the SRD warhorse.
+- **Over the SRD:** all 329 monsters read without a problem and their `numbers` equal the entry's numbers (found without the reader),
+  each said in the reading. `scripts/hb.mjs read` prints spells and monsters, and names the kinds not read yet.
+- **Not in this part:** items, feats, weapons, armour and objects; their `grants` and `freeCast` words are the largest piece left.

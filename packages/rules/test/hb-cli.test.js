@@ -57,6 +57,24 @@ test("read: prints each spell's reading, the tier and the author's text, and exi
   assert.equal(hb("read", file("bad2.json", JSON.stringify({ ...sample(), v: 2 }))).code, 1);
 });
 
+test("read: reads the monsters of a pack too, says what is not read yet, and a problem the reader finds exits 1", () => {
+  const PACK = new URL("./fixtures/reader-kinds-pack.json", import.meta.url).pathname;
+  const r = hb("read", PACK);
+  assert.equal(r.code, 1, "the invented pack holds a monster the reader flags");
+  assert.match(r.out, /^Cinderjaw Hound \[assist\]$/m);
+  assert.match(r.out, /^ {2}Trait "Pack Tactics": the engine runs this\.$/m);
+  assert.match(r.out, /^ {2}The DM does: The trait "Ember Memory": text only\.$/m);
+  assert.match(r.err, /problem: hb-rk-hollow-reaver: .*neither `reach` nor `range`/);
+  const pack = JSON.parse(readFileSync(PACK, "utf8"));
+  pack.monsters = pack.monsters.slice(0, 2); pack.weapons = [{ id: "hb-rk-stick", name: "Stick", category: "simple", kind: "melee", damage: "1d4", type: "bludgeoning", properties: [], mastery: "graze", weight: 4, cost: "2 SP", source: "homebrew:rk", checked: false }];
+  const ok = hb("read", file("monsters.json", JSON.stringify(pack)));
+  assert.equal(ok.code, 0, ok.err);
+  assert.match(ok.out, /^Gloomwing Warden \[assist\]$/m);
+  assert.match(ok.out, /^Not read yet \(the reader has no words for them\): 1 weapons\.$/m);
+  const none = { ...pack, monsters: [], weapons: [] }; delete none.spells;
+  assert.equal(hb("read", file("empty.json", JSON.stringify(none))).code, 1);
+});
+
 test("dryrun: prints each spell's cast, is the same twice for a seed, and differs for another", () => {
   const a = hb("dryrun", SAMPLE, "--seed", "7", "--runs", "3"), b = hb("dryrun", SAMPLE, "--seed", "7", "--runs", "3"), c = hb("dryrun", SAMPLE, "--seed", "8", "--runs", "3");
   assert.equal(a.code, 0, a.err);

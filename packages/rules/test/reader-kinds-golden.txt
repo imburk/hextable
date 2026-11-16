@@ -1,0 +1,431 @@
+== monster hb-rk-cinderjaw
+Cinderjaw Hound (Large, monstrosity, challenge rating 1/4, 50 XP when defeated).
+The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
+Armor Class 13: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
+Hit Points 30: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
+Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
+Speed: walk 40 feet, climb 20 feet, swim 30 feet and burrow 10 feet.
+The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.
+The engine does not move a creature by a burrow speed: it stays on the sheet, and the DM lets it burrow by hand.
+It climbs by its climb speed only where the table allows climbing.
+Ability scores: Strength 15 (+2), Dexterity 14 (+2), Constitution 13 (+1), Intelligence 3 (-4), Wisdom 12 (+1), Charisma 6 (-2).
+Initiative +3: the entry's own number, used in place of its Dexterity modifier.
+Saving throws: Constitution +4 and Wisdom +2. The engine uses each as the whole bonus for that save, in place of the ability modifier; every other save is the plain modifier.
+Skills: Perception +4, Stealth +5 and Animal handling +1. The engine uses each as the whole bonus for that skill's checks, in place of the ability modifier; any other skill is the plain modifier.
+Senses: darkvision 60 feet, tremorsense 30 feet, blindsight 10 feet, truesight 5 feet and passive Perception 14.
+Its darkvision: it sees in the dark as in dim light, out to that range.
+Its tremorsense: only the monster AI uses it: it knows where a hidden creature on the ground within that range is.
+Its blindsight: it sees what is in that range without light or sight.
+Its truesight: it sees what is in that range through the dark and through what hides it.
+Resistant to fire: damage of these types is halved.
+Vulnerable to cold: damage of these types is doubled.
+Immune to poison: damage of these types does nothing to it.
+Immune to the Poisoned condition: the engine never gives it that condition.
+Languages (shown to the DM only; the engine does nothing with them): "Understands one tongue but cannot speak", "telepathy 30 ft.".
+Trait "Pack Tactics": the engine runs this.
+  Advantage on its attack rolls.
+    It holds only when an ally of the attacker is within 5 feet of the target.
+  The engine knows this id, but sets a flag nothing reads: only the modifiers above do anything.
+Trait "Nimble Escape": the engine runs this.
+  The engine knows this id: it lets the creature Disengage or Hide as a Bonus Action (and the monster AI Hides with it in the first round).
+Trait "Keen Nose": the engine runs this.
+  Advantage on Perception checks.
+  +1 to Dexterity saving throws.
+Trait "Ember Memory": text only. The engine does nothing with it; the DM runs it.
+Action "Multiattack": an action. In a fight it spends the creature's action.
+  It is made only in a fight. It gives the attacks below, made one at a time, each at a target chosen when it is made; attacks not made by the end of the turn are lost. Each is a use of the action it names and costs no further action.
+  1 attack with "Bite".
+  2 attacks with any of "Rake" or "Tail Slap".
+  Worked out from the dice, not a promise: if every attack hits, the damage averages 28.5.
+  The monster AI uses this action on its own turns.
+Action "Bite": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 5 feet.
+  The creature makes a melee weapon attack roll with +4 to hit against the target.
+  On a hit:
+    It takes 1d8+2 piercing damage.
+    It takes 1d6 fire damage. It lands together with the damage before it, as one instance of damage. This happens only if the attack roll has Advantage.
+    It has the Prone condition.
+      It ends when the creature stands up, as Prone always does.
+  Worked out from the dice, not a promise: the damage averages 6.5 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Rake": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 5 feet.
+  The creature makes a melee weapon attack roll with +4 to hit against the target.
+  On a hit:
+    It takes 1d6+2 slashing damage, rolled 2 times and added up.
+  Worked out from the dice, not a promise: the damage averages 11 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Tail Slap": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 10 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 10 feet.
+  The creature makes a melee weapon attack roll with +4 to hit against the target.
+  On a hit:
+    It takes 1d4+2 bludgeoning damage.
+    If it is Medium or smaller, it is pushed 10 feet straight away from the creature; it stops at a wall, a drop or anything in the way.
+  Worked out from the dice, not a promise: the damage averages 4.5 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Ash Cloud": an action. In a fight it spends the creature's action.
+  Recharge 5-6: once used it is spent. At the start of each of its turns the engine rolls a d6, and on 5 or more it is ready again. The DM readies it too by giving it a Long Rest.
+  Each creature in a 15-foot sphere makes a Constitution saving throw against DC 12.
+  On a failure:
+    It takes 2d6 fire damage.
+    It has the Blinded condition.
+      It ends at the end of the creature's next turn, or when the fight ends.
+      The engine applies part of what Blinded does; the DM applies the rest.
+  On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.
+  The sphere is centred on a point the creature picks within 30 feet; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
+  Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
+  Worked out from the dice, not a promise: the damage averages 7 when the save fails.
+  The monster AI uses this action on its own turns.
+Action "Smoke Step": a Bonus Action. In a fight it spends the creature's Bonus Action.
+  Limited to 2 uses a day: the engine counts them and refuses it when none are left. They come back when the DM gives it a Long Rest.
+  It affects the creature itself.
+  The creature gets +10 feet to its Speed.
+    It ends at the start of its next turn, or when the fight ends.
+  It gets Disadvantage on attack rolls made against it.
+    It holds only when it is a ranged attack.
+    It ends when it takes damage. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
+  The monster AI never picks this action by itself: the DM sends it.
+Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
+Why: 1 trait only the DM runs; 3 things the DM does by hand, listed below.
+The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
+Not checked against any rulebook.
+DM: Moving it by its swim speed.
+DM: Moving it by its burrow speed.
+DM: The trait "Ember Memory": text only.
+DM: Whatever the description says beyond the lines above.
+
+== monster hb-rk-gloomwing
+Gloomwing Warden (Medium, undead, challenge rating 3, 700 XP when defeated).
+The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
+Armor Class 15: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
+Hit Points 58: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
+Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
+Speed: walk 20 feet and fly 40 feet.
+It hovers: it stays aloft even when Prone or Incapacitated.
+Ability scores: Strength 10 (+0), Dexterity 16 (+3), Constitution 12 (+1), Intelligence 11 (+0), Wisdom 14 (+2), Charisma 15 (+2).
+Initiative uses its Dexterity modifier (+3).
+Saving throws: each is its plain ability modifier.
+Skills: none listed; each check is the plain ability modifier.
+Senses: darkvision 120 feet and passive Perception 12.
+Its darkvision: it sees in the dark as in dim light, out to that range.
+Vulnerable to radiant: damage of these types is doubled.
+Immune to necrotic and poison: damage of these types does nothing to it.
+Immune to the Charmed, Frightened and Exhaustion conditions: the engine never gives it any of them.
+Languages: none.
+Trait "Shadow Parry": the engine runs this.
+  Reaction, taken by a standing instruction (never, only when it turns a hit into a miss, always, or ask; the default is "only when it turns a hit into a miss"): when a ranged attack roll hits it, it adds 3 to its Armor Class against that attack. It spends the creature's Reaction.
+Trait "Bracing Stance": the engine runs this.
+  Advantage on Strength saving throws.
+  -2 to damage it takes.
+    It applies at most once a turn.
+  Its Armor Class of at least 14.
+  Its Speed of at most 40 feet.
+  Its Initiative set to 10.
+  A Critical Hit on every hit, among attack rolls made against it.
+    It holds only when the target is Unconscious.
+  +1d4 cold damage added to the damage it deals.
+    It applies at most once a turn. It holds only when the damage comes from an attack roll that hit.
+  Any d20 roll lower than 8 counting as 8 on ability checks.
+    It holds only when the check uses one of its proficiencies.
+Trait "Strange Gifts": the engine runs this.
+  Automatic failure on Strength saving throws.
+  Automatic success on Constitution saving throws.
+  Resistance to cold damage.
+  Vulnerability to fire damage.
+  Immunity to psychic damage.
+  No Opportunity Attacks (it cannot make them).
+  +10 to its Hit Point maximum.
+    The engine never reads its Hit Point maximum from a trait, so this changes nothing.
+  Its carrying capacity set to 2.
+    The engine never reads its carrying capacity from a trait, so this changes nothing.
+Trait "Warding Light": the engine runs this.
+  +2 to Wisdom saving throws.
+  Disadvantage on Intelligence saving throws.
+  +1 to Charisma saving throws.
+  Advantage on Death Saving Throws.
+    A trait has no use to spend, so it applies every time.
+  Advantage on saving throws to keep Concentration.
+  +1d6 to a D20 Test it fails.
+    The dice are added only to a roll that failed, where they could turn it. It spends a use of "ward" when it turns a roll.
+  Disadvantage on attack rolls made against it.
+    It does not hold for rolls the creature makes. It holds only when the two are more than 5 feet apart and the target can see the creature, which the engine cannot tell, so the engine never applies it.
+  Its Fly Speed set to 40 feet.
+Trait "Borrowed Craft": the engine runs this.
+  +1 to its spell save DC.
+  +1 to its spell attack rolls.
+Trait "Legendary Actions": text only. The engine does nothing with it; the DM runs it.
+  The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.
+Action "Multiattack": an action. In a fight it spends the creature's action.
+  It is made only in a fight. It gives the attacks below, made one at a time, each at a target chosen when it is made; attacks not made by the end of the turn are lost. Each is a use of the action it names and costs no further action.
+  Alternative 1 of 2: the attacks of this list only.
+    2 attacks with "Spectral Slash".
+  Alternative 2 of 2: the attacks of this list only.
+    1 attack with "Gloom Bolt".
+    1 attack with "Spectral Slash".
+  Worked out from the dice, not a promise: if every attack hits, the damage averages 20.5 for the biggest alternative.
+  The monster AI uses this action on its own turns.
+Action "Spectral Slash": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 5 feet.
+  The creature makes a melee weapon attack roll with +5 to hit against the target.
+  On a hit:
+    It takes 2d6+3 necrotic damage.
+    It has the Frightened condition.
+      It would make a Wisdom saving throw at the start of each of its turns, and a success would end it; any damage it takes would also end it. But the engine rolls that save against no DC, so it never succeeds: the DM ends it.
+      The engine applies part of what Frightened does; the DM applies the rest.
+  Worked out from the dice, not a promise: the damage averages 10 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Gloom Bolt": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 120 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its ranged attack is at normal range up to 30 feet and long range up to 120; at long range the roll has Disadvantage.
+  The creature makes a ranged weapon attack roll with +5 to hit against the target.
+  On a hit:
+    It takes 3d6 cold damage.
+    If this damage drops it to 0 Hit Points:
+      It dies, even a character at 0 Hit Points.
+    If this damage kills it:
+      What is left of its body is a pile of dust.
+  On a miss:
+    It has the Invisible condition.
+      It ends at the start of its next turn, or when the fight ends.
+      The engine applies part of what Invisible does; the DM applies the rest.
+  Worked out from the dice, not a promise: the damage averages 10.5 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Chain Dark": an action. In a fight it spends the creature's action.
+  It is aimed at up to 3 creatures within 60 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked; the same creature may be picked more than once; every target after the first must be within 10 feet of the first.
+  Damage that is not behind an attack roll is rolled once, and every target takes the same roll.
+  Each target makes a Dexterity saving throw against DC 13.
+  It has Advantage on this save if the creature's side is fighting the target.
+  On a failure:
+    It takes 2d6 necrotic damage.
+  On a success:
+    It gets -10 feet to its Speed.
+      It ends at the end of its next turn, or when the fight ends.
+  Worked out from the dice, not a promise: the damage averages 7 when the save fails.
+  The monster AI uses this action on its own turns.
+Action "Wail": an action. In a fight it spends the creature's action.
+  Recharge 6-6: once used it is spent. At the start of each of its turns the engine rolls a d6, and on 6 or more it is ready again. The DM readies it too by giving it a Long Rest.
+  Each creature in a 30-foot cone makes a Wisdom saving throw against DC 13.
+  On a failure:
+    It has the Frightened condition.
+      It ends when it takes damage from the creature or the creature's side. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
+      The engine applies part of what Frightened does; the DM applies the rest.
+    It takes 1d8 psychic damage.
+  On a success:
+    It has the Deafened condition.
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Deafened does; the DM applies the rest.
+  The cone spreads from the creature in a direction the creature picks; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
+  Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
+  Worked out from the dice, not a promise: the damage averages 4.5 when the save fails.
+  The monster AI uses this action on its own turns.
+Action "Dark Line": an action. In a fight it spends the creature's action.
+  Each creature in a line 60 feet long and 10 feet wide takes 3d6 necrotic damage, rolled 2 times and added up.
+  The line runs from the creature in a direction the creature picks; it catches every creature in it except the creature; a wall between the area's origin and a creature keeps that creature out.
+  The entry says the creature picks up to 2 of those caught, but the engine does not do that for a creature's action: every creature caught is affected. The DM leaves out any it should not.
+  Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
+  Worked out from the dice, not a promise: the damage averages 21 when it takes effect.
+  The monster AI uses this action on its own turns.
+Action "Pillar of Dusk": an action. In a fight it spends the creature's action.
+  Each creature in a cylinder 10 feet in radius and 40 feet high makes a Constitution saving throw against DC 13.
+  On a failure it takes 2d8 cold damage and 1d6 necrotic damage; on a success, half.
+  The cylinder is centred on a point the creature picks within 60 feet; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
+  Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
+  Worked out from the dice, not a promise: the damage averages 12.5 when the save fails.
+  The monster AI uses this action on its own turns.
+Action "Chill": an action. In a fight it spends the creature's action.
+  Each creature in a 15-foot cube takes 2d4 cold damage.
+  The cube is placed at a point the creature picks within 30 feet; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
+  Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
+  Worked out from the dice, not a promise: the damage averages 5 when it takes effect.
+  The monster AI uses this action on its own turns.
+Action "Dread Aura": an action. In a fight it spends the creature's action.
+  Each creature in a 10-foot emanation makes a Wisdom saving throw against DC 13.
+  On a failure:
+    It has the Frightened condition.
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Frightened does; the DM applies the rest.
+  The emanation reaches out from the creature all round; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
+  The monster AI uses this action on its own turns.
+Action "Draw Warmth": a Bonus Action. In a fight it spends the creature's Bonus Action.
+  It affects the creature itself.
+  The creature regains 2d6 Hit Points, and at least 2.
+  It gains 1d8 Temporary Hit Points, at least 1; they replace what it has only if they are more.
+  It is rid of the Poisoned condition and the Deafened condition.
+  It is revealed: it is no longer hidden.
+  The monster AI never picks this action by itself: the DM sends it.
+Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
+Why: 1 trait only the DM runs; 9 things the DM does by hand, listed below.
+The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
+Not checked against any rulebook.
+DM: The modifier at traits.2.modifiers.6: the engine does not read this hook from a trait.
+DM: The modifier at traits.2.modifiers.7: the engine does not read this hook from a trait.
+DM: traits.3.modifiers.6: the modifier needs the target can see the creature, which the engine cannot tell.
+DM: The trait "Legendary Actions": text only.
+DM: Legendary, lair or mythic actions of the trait "Legendary Actions".
+DM: Ending what step actions.1.effects.0.onHit.1 puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.
+DM: Ending what step actions.4.effects.0.onSuccess.0 puts on a creature: nothing ends it on its own.
+DM: Leaving out all but 2 of the creatures caught, as the entry's `choose` says: the engine does not.
+DM: Removing the Frightened condition that step actions.8.effects.0.onFail.0 puts on.
+DM: Whatever the description says beyond the lines above.
+
+== monster hb-rk-hollow-reaver
+Hollow Reaver (Huge, hollow-kin, challenge rating 10, 5900 XP when defeated).
+Its creature type is not one the engine knows ("hollow-kin"): a limit to a creature type (an area, a summoning spell) never matches it.
+The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
+Armor Class 17: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
+Hit Points 148: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
+Proficiency Bonus +4. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
+Speed: fly 30 feet.
+Ability scores: Strength 21 (+5), Dexterity 8 (-1), Constitution 19 (+4), Intelligence 6 (-2), Wisdom 10 (+0), Charisma 5 (-3).
+Initiative uses its Dexterity modifier (-1).
+Saving throws: each is its plain ability modifier.
+Skills: none listed; each check is the plain ability modifier.
+Senses: passive Perception 10.
+No damage resistances, vulnerabilities or immunities.
+Trait "Lair Presence": text only. The engine does nothing with it; the DM runs it.
+  The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.
+Action "Spell Lash": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 10 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 10 feet.
+  The creature makes a melee spell attack roll against the target.
+  The engine has no spell attack bonus for a creature's action, so this roll has no total and never counts as a hit by the numbers. The entry should be a weapon attack with a bonus.
+  On a hit:
+    It takes 2d8 force damage.
+  Worked out from the dice, not a promise: the damage averages 9 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Siphon": an action. In a fight it spends the creature's action.
+  It affects the creature itself.
+  The creature regains 1d8 Hit Points, plus a modifier the engine does not have here.
+    The engine has no spellcasting modifier for a creature's action: adding it makes the amount not a number, and the creature's Hit Points with it. This entry should not be approved.
+  It gains 1d6 Temporary Hit Points, plus a modifier the engine does not have here; they replace what it has only if they are more.
+    The engine has no spellcasting modifier for a creature's action: adding it makes the amount not a number, and the creature's Hit Points with it. This entry should not be approved.
+  The monster AI never picks this action by itself: the DM sends it.
+Action "Blind Grip": an action. In a fight it spends the creature's action.
+  It is aimed at one creature with no reach or range given. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The engine cannot aim this action: using it, and the monster AI looking at it, fail with an error instead of a refusal. This entry should not be approved.
+  The target makes a Strength saving throw against DC 17.
+  On a failure:
+    It takes 3d8+5 bludgeoning damage.
+    It has the Grappled condition.
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Grappled does; the DM applies the rest.
+  Worked out from the dice, not a promise: the damage averages 18.5 when the save fails.
+  The monster AI never picks this action by itself: the DM sends it.
+Action "Dread Gaze": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 30 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The target makes a Wisdom saving throw against DC 16.
+  On a failure:
+    It has the Frightened condition.
+      It would make a Wisdom saving throw at the end of each of its turns, and a success would end it. But the engine rolls that save against no DC (the entry's own DC for it, 16, is not read), so it never succeeds: the DM ends it.
+      The engine applies part of what Frightened does; the DM applies the rest.
+    It has the Stunned condition.
+      It would make a Constitution saving throw each time it takes damage, and a success would end it. But the engine rolls that save against no DC, so it never succeeds: the DM ends it.
+  The monster AI uses this action on its own turns.
+Action "Vanish": an action. In a fight it spends the creature's action.
+  It affects the creature itself.
+  The creature teleports up to 30 feet to a space the creature names when casting, one the creature can see. With no space named, the DM moves it.
+  If that space turns out to be taken:
+    The creature takes 2d6 force damage.
+  It loses Concentration on whatever it is concentrating on.
+  The monster AI never picks this action by itself: the DM sends it.
+Action "Quake": a Bonus Action. In a fight it spends the creature's Bonus Action.
+  The engine cannot lay out this area (a sphere goes off at a point within its range, and this one names no range), so it has nobody to apply the steps to: it hands each step below to the DM.
+  Each creature affected falls 20 feet, taking 2d6 bludgeoning damage, and lands Prone if that hurt it.
+  Each of them falls to the surface below it, taking 1d6 bludgeoning damage for each 10 feet of the drop (up to 20d6), and lands Prone if that hurt it. One already standing on a surface does not fall; one that is riding or being ridden, or has no surface under it, is left to the DM, who is told.
+  This step would set a map object to the state "open"; an action has no object for it to work on, so the DM applies it.
+  This step would spend or give a resource; the engine cannot do that in an action, so the DM applies it.
+  The area is a 20-foot sphere; the DM decides who is caught.
+  The monster AI never picks this action by itself: the DM sends it.
+Action "Falling Stones": an action. In a fight it spends the creature's action.
+  The engine cannot lay out this area (the creature arranges 3 of these shapes), so it has nobody to apply the steps to: it hands each step below to the DM.
+  Each creature affected takes 2d6 bludgeoning damage.
+  The area is 3 of a 10-foot cube, arranged by the creature; the DM decides who is caught.
+  Worked out from the dice, not a promise: the damage averages 7 when it takes effect.
+  The monster AI never picks this action by itself: the DM sends it.
+Action "Whisper": an action. In a fight it spends the creature's action.
+  It affects the creature itself.
+  The engine does not do this; the DM does this: "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
+  The monster AI never picks this action by itself: the DM sends it.
+Tier: manual. The entry says the DM runs most of this creature; the engine runs only what is listed above as run by the engine.
+Why: 1 trait only the DM runs; 14 things the DM does by hand, listed below.
+The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
+Not checked against any rulebook.
+DM: The trait "Lair Presence": text only.
+DM: Legendary, lair or mythic actions of the trait "Lair Presence".
+DM: The attack of step actions.0.effects.0: it is a spell attack, which has no bonus in a creature's action.
+DM: The healing of step actions.1.effects.0: it adds a modifier the engine does not have.
+DM: The healing of step actions.1.effects.1: it adds a modifier the engine does not have.
+DM: The action at actions.2: it has neither a reach nor a range.
+DM: Removing the Grappled condition that step actions.2.effects.0.onFail.1 puts on.
+DM: Ending what step actions.3.effects.0.onFail.0 puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.
+DM: Ending what step actions.3.effects.0.onFail.1 puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.
+DM: Every step of the action "Quake": the engine cannot lay out its area.
+DM: Step actions.5.effects.2: setting a map object's state.
+DM: Step actions.5.effects.3: a resource.
+DM: Every step of the action "Falling Stones": the engine cannot lay out its area.
+DM: "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
+DM: Whatever the description says beyond the lines above.
+PROBLEM: Step actions.0.effects.0: a creature's action has no spell attack bonus for the engine to use.
+PROBLEM: Step actions.1.effects.0: a creature's action has no spellcasting modifier, so `addMod` makes the amount not a number.
+PROBLEM: Step actions.1.effects.1: a creature's action has no spellcasting modifier, so `addMod` makes the amount not a number.
+PROBLEM: actions.2: a creature target has neither `reach` nor `range`, which the engine needs to aim it.
+
+== monster hb-rk-types
+Typed Warder (Tiny, construct, challenge rating 1/8, 25 XP when defeated).
+The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
+Armor Class 11: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
+Hit Points 5: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
+Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
+Speed: walk 30 feet.
+Ability scores: Strength 8 (-1), Dexterity 12 (+1), Constitution 10 (+0), Intelligence 2 (-4), Wisdom 10 (+0), Charisma 1 (-5).
+Initiative uses its Dexterity modifier (+1).
+Saving throws: each is its plain ability modifier.
+Skills: none listed; each check is the plain ability modifier.
+Senses: passive Perception 10.
+No damage resistances, vulnerabilities or immunities.
+Action "Hum": an action. In a fight it spends the creature's action.
+  Each creature in a 10-foot emanation makes a Wisdom saving throw against DC 11.
+  On a failure:
+    It takes 1d4 psychic damage.
+  The emanation reaches out from the creature all round; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
+  The entry limits the area to Undead or Fiend: of the creatures caught, only those are affected.
+  Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
+  Worked out from the dice, not a promise: the damage averages 2.5 when the save fails.
+  The monster AI uses this action on its own turns.
+Tier: auto. The engine runs every trait and action of this creature as listed above.
+Not checked against any rulebook.
+
+== monster warhorse
+Warhorse (Large, beast, challenge rating 1/2, 100 XP when defeated).
+The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
+Armor Class 11: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
+Hit Points 19: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
+Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
+Speed: walk 60 feet.
+Ability scores: Strength 18 (+4), Dexterity 12 (+1), Constitution 13 (+1), Intelligence 2 (-4), Wisdom 12 (+1), Charisma 7 (-2).
+Initiative +1: the entry's own number, used in place of its Dexterity modifier.
+Saving throws: Wisdom +3. The engine uses each as the whole bonus for that save, in place of the ability modifier; every other save is the plain modifier.
+Skills: none listed; each check is the plain ability modifier.
+Senses: passive Perception 11.
+No damage resistances, vulnerabilities or immunities.
+Languages: none.
+It is trained to carry a rider: a rider on its side controls it as a mount.
+Action "Hooves": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 5 feet.
+  The creature makes a melee weapon attack roll with +6 to hit against the target.
+  On a hit:
+    It takes 2d4+4 bludgeoning damage.
+    The engine does not do this; the DM does this: "If the target is Large or smaller and the horse moved 20 or more feet straight toward it just before the hit, the target takes an extra 5 (2d4) bludgeoning damage and has the Prone condition."
+  Worked out from the dice, not a promise: the damage averages 9 when it hits.
+  The monster AI uses this action on its own turns.
+Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
+Why: 1 thing the DM does by hand, listed below.
+The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
+Marked as checked against the rules text.
+DM: "If the target is Large or smaller and the horse moved 20 or more feet straight toward it just before the hit, the target takes an extra 5 (2d4) bludgeoning damage and has the Prone condition."
+DM: Whatever the description says beyond the lines above.

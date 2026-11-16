@@ -18,7 +18,7 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { aloft, below, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 
@@ -32,7 +32,23 @@ export function objectEffects(s, o, steps, targets, ev) {
   resolve(s, ev);
 }
 // Falling: 1d6 Bludgeoning for every 10 feet, 20d6 at most, and Prone on landing unless it took no damage.
+// `feet` is a number, or "surface" (docs/specs/maps-and-objects.md: "the target drops a number of feet, or to the next
+// surface"): it drops to the surface under it, as the gravity pass would put it, by the height between. Already standing
+// on a surface it does not fall. A creature riding or ridden is the DM's: it would part the pair.
 export function fall(s, t, feet, ev) {
+  if (feet === 'surface') {
+    const said = (text, manual) => ev.push(manual ? { type: 'manual', actor: null, name: 'Falling', partial: true, text } : { type: 'note', id: t.id, text });
+    if (ground(s.map, t.pos)) return said(`${t.name} is standing on a surface, so it does not fall`);
+    if (aloft(s, t) && !t.dead) return said(`${t.name} is flying or hovering by its own Speed, so by the SRD's Flying rule it does not fall: a flying creature falls only if it has the Incapacitated or Prone condition or its Fly Speed is reduced to 0, unless it can hover. The engine leaves ${t.name} where it is; if the effect should bring it down, the DM moves it down and works out the fall (1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt).`, true);
+    if (t.riding || t.rider) return said(`${t.name} is to fall to the surface below, but it is riding or being ridden, and the engine would part the pair. The DM moves ${t.name} down and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.`, true);
+    const sf = under(s.map, t.pos);
+    if (!sf) return said(`${t.name} is to fall to the surface below, but the engine finds no surface under it. The DM places ${t.name} and works out the fall.`, true);
+    feet = (t.pos.z ?? 0) - sf.z;
+    t.pos = { q: t.pos.q, r: t.pos.r, z: sf.z };
+    if (t.dead) { ev.push({ type: 'fell', id: t.id, feet }); return lookAround(s, ev, [t]); }          // a body comes down with no damage, as the gravity pass puts it
+    fall(s, t, feet, ev);
+    return lookAround(s, ev, [t]);
+  }
   const dice = Math.min(20, Math.floor(feet / 10));
   ev.push({ type: 'fell', id: t.id, feet });
   if (!dice) return;
@@ -1525,7 +1541,7 @@ function summon(s, m, step, src, ev) {
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === made.tplId && (!CONTENT.summons[made.tplId] || o.name?.startsWith(`${made.name} `))).length + 1;
     const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
-      ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: false };
+      ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: false };
     const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, ...(made.type ? { type: made.type } : {}), bond });
     s.entities[id] = e;
     if (fx) fx.parts.push({ target: id, summon: true });
@@ -1560,7 +1576,7 @@ function reform(s, m, step, src, ev) {
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
   const n = Object.values(s.entities).filter((o) => o.id !== id && o.tpl === made.tplId).length + 1;
   const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
-    ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
+    ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
   const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: { ...old.pos }, side: old.side, ...(made.type ? { type: made.type } : {}), bond });
   for (const k of KEPT_ON_REFORM) if (old[k] !== undefined) e[k] = structuredClone(old[k]);
   if (old.bond?.order !== undefined) e.bond.order = old.bond.order;
@@ -1739,5 +1755,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

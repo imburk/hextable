@@ -11,13 +11,13 @@
 import { readFileSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { dryRun } from "../packages/rules/src/content/dryrun.js";
-import { readEntry } from "../packages/rules/src/content/reader.js";
+import { KIND_NAMES, READ_KINDS, readEntry } from "../packages/rules/src/content/reader.js";
 import { loadPack } from "../packages/rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../packages/rules/src/content/schema.js";
 
 const USAGE = `Usage:
   node scripts/hb.mjs lint   <pack.json>     check a pack with the table's own checks
-  node scripts/hb.mjs read   <pack.json>     say in words what each spell of a pack does
+  node scripts/hb.mjs read   <pack.json>     say in words what each spell and monster of a pack does
   node scripts/hb.mjs dryrun <pack.json> [--seed n] [--level n] [--slot n] [--runs n] [--events]
                                              cast each spell in a small game of its own
 Exit status: 0 all well, 1 problems found, 2 wrong use.`;
@@ -69,25 +69,31 @@ export function main(argv) {
     out(`${pack.pack?.name ?? pack.pack?.id}: ok (${kinds.join(", ") || "no entries"})`);
     return 0;
   }
-  if (!spells.length) { err("problem: the pack has no spells to " + (cmd === "read" ? "read" : "try")); return 1; }
+  // `read` reads every kind the reader has words for, in the order of READ_KINDS; the others are named as not read yet.
+  const readable = READ_KINDS.flatMap((k) => (Array.isArray(pack[`${k}s`]) ? pack[`${k}s`].map((e) => [k, e]) : []));
+  if (cmd === "read" ? !readable.length : !spells.length) { err("problem: the pack has no " + (cmd === "read" ? "spells or monsters to read" : "spells to try")); return 1; }
   let bads = 0;
-  for (const e of spells) {
-    if (cmd === "read") {
-      const r = readEntry("spell", e);
+  if (cmd === "read") {
+    for (const [kind, e] of readable) {
+      const r = readEntry(kind, e);
       out(`${r.title} [${r.tier}]`);
       for (const l of r.lines) out(`  ${l}`);
       for (const d of r.doesNot) out(`  The DM does: ${d}`);
       if (r.text) out(`  Author's text: "${r.text}"`);
       for (const p of r.problems) { err(`problem: ${e.id}: ${p}`); bads++; }
       out();
-    } else {
-      const r = dryRun("spell", e, { pack, ...o });
-      if (!r.ok) { for (const p of r.problems) err(`problem: ${e.id}: ${p}`); bads++; continue; }
-      out(`== ${r.name} (seed ${r.seed})`);
-      out(r.summary.text);
-      if (o.events) for (const ev of r.events) out(`  ${JSON.stringify(ev)}`);
-      out();
     }
+    const unread = [...new Set(Object.values(KIND_NAMES))].filter((k) => !READ_KINDS.includes(k)).map((k) => [k, pack[k === "armour" ? "armour" : `${k}s`]]).filter(([, l]) => Array.isArray(l) && l.length);
+    if (unread.length) out(`Not read yet (the reader has no words for them): ${unread.map(([k, l]) => `${l.length} ${k === "armour" ? "armour" : `${k}s`}`).join(", ")}.`);
+    return bads ? 1 : 0;
+  }
+  for (const e of spells) {
+    const r = dryRun("spell", e, { pack, ...o });
+    if (!r.ok) { for (const p of r.problems) err(`problem: ${e.id}: ${p}`); bads++; continue; }
+    out(`== ${r.name} (seed ${r.seed})`);
+    out(r.summary.text);
+    if (o.events) for (const ev of r.events) out(`  ${JSON.stringify(ev)}`);
+    out();
   }
   return bads ? 1 : 0;
 }
