@@ -13,7 +13,7 @@ import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, KIT, seesFor, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -23,10 +23,12 @@ export const OPPORTUNITY_RIDER = 'opportunity-attack-rider';       // walking th
 // Who could make an Opportunity Attack on `e` standing at `pos`: hostile, able to take a Reaction
 // (reactions.js, canReact), armed for one, within reach and able to see it (SRD). Whether each
 // one takes it is its standing instruction, read in walk().
-function threatsAt(s, e, pos) {
+// `sense`: count a party creature whose own senses find a hiding mover (resolve.js, sensesFor); the walk makes it
+// known (findFor) before the Opportunity Attack is offered or made.
+function threatsAt(s, e, pos, sense = false) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && canReact(o) &&
-    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && seesFor(s, o, e)      // SRD: a creature it can see (and its side knows of)
+    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && (sense ? sensesFor : seesFor)(s, o, e)      // SRD: a creature it can see (and its side knows of)
     && !modifiers(s, o, 'opportunity').autoFail);                                                                       // Staggering Blow: it can't make them now
 }
 // A creature has just stepped from `prev` to where it stands now: whatever that sets off, goes
@@ -89,7 +91,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
   let spent = 0;
   for (const { h: step, cost, p } of route(reach, tk)) {
     if (fighting && s.encounter && !e.cond.disengaged) {
-      for (const o of threatsAt(s, e, prev)) {
+      for (const o of threatsAt(s, e, prev, true)) {
         if (apartAt(s, o, o.pos, e, step) <= 1) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
         // happens and nothing is said. `ask`: its player is asked, and the walk waits; for one of
@@ -98,6 +100,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
         // (stage C6b, Decision 8). The rider is offered only where the attacker could attack it (riderTarget).
         const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY)), alt = riderTarget(s, o, rider, prev);
         if (w === 'never') continue;
+        if (!seesFor(s, o, e)) { flush(); findFor(s, o, e, ev); }          // its own senses found the mover: the party is told first
         let t = e;
         if (w === 'ask') {
           const answer = ask(s, o, { trigger: 'leave', by: e.id }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },

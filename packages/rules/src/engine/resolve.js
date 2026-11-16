@@ -938,6 +938,27 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
 // yet revealed, or under `los`/`light` one nobody in the party sees (vision.js `unknown`; fix round 1 of #373, M1). A
 // creature is never asked, and never reacts, against what its side does not know is there.
 export const seesFor = (s, t, e) => !!e && !e.object && canSee(s, t, e) !== 'no' && !(t.side === 'party' && unknown(s, e));
+// A party creature whose own senses find a creature that is hiding from it (Blindsight within range sees it whatever it
+// does; Truesight sees the Invisible, and hiding is the Invisible condition against its enemies: sight.js) can see it,
+// though the party is not yet told of it. It may then react to it, and finds it first: the creature stops hiding
+// (`unhidden`, why `found`, by the reactor: the same reveal `watch` makes after every action, made now, before the
+// reaction), so the party is told before anything is done against it (#374, B1; the re-review of #373, L1). Only
+// hiding gives way: a creature the DM has hidden, one somewhere not revealed, or one nobody in the party would see once
+// it stopped hiding (`los`, `light`) stays unknown, and nobody in the party reacts to it.
+function foundBySense(s, t, e) {
+  if (!e || e.object || t.side !== 'party' || !e.hiding || e.hidden || canSee(s, t, e) === 'no') return false;
+  const h = e.hiding;
+  delete e.hiding;
+  const known = !unknown(s, e);
+  e.hiding = h;
+  return known;
+}
+// May `t` react to `e` by a trigger that says "that you can see": it sees it and its side knows of it (`seesFor`), or
+// its own senses find it (above), which `findFor` then makes known before the reaction is offered or taken.
+export const sensesFor = (s, t, e) => seesFor(s, t, e) || foundBySense(s, t, e);
+export function findFor(s, t, e, ev) {
+  if (!seesFor(s, t, e) && foundBySense(s, t, e)) unhide(s, e, ev, 'found', t);
+}
 
 // Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
 // its player chose), and its steps run at once on `targets` (the caster, or the creature that set
@@ -990,17 +1011,20 @@ function reactToHit(s, t, e, atk, roll_, ev) {
       o = { reaction: r.id, name: r.name, ac: r.ac };
     } else if (r.kind === 'feature') {
       const x = r.reaction;
-      if (x.seen && !seesFor(s, t, e)) continue;                                        // "an attacker that you can see"
+      if (x.seen && !sensesFor(s, t, e)) continue;                                      // "an attacker that you can see"
       if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;      // Deflect Attacks: Bludgeoning, Piercing or Slashing
       o = { reaction: r.id, name: r.name };
     } else continue;
     if (w === 'miss' && (roll_.critRoll || roll_.total >= roll_.ac + (r.ac ?? 0))) continue;     // it would hit anyway
     offers.push({ r, w, o, slots });
   }
+  if (offers.some((x) => x.r.kind === 'feature' && x.r.reaction.seen)) findFor(s, t, e, ev);     // found by its senses: the party is told first
   let chosen = offers.find((x) => x.w !== 'ask') ?? null, slot;
   if (offers.some((x) => x.w === 'ask')) {
     const seen = seesFor(s, t, e);
-    const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id } : {}), attack: atk.name, total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
+    // An attacker the party does not know of is not named, nor is its weapon (#374, B2; the re-review of #373, L2): the
+    // total and the Armor Class are what the answer turns on.
+    const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id, attack: atk.name } : {}), total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
     if (a === null) for (const x of offers) { if (x.w === 'ask') tellDM(t, x.r, `${t.name} is hit by ${e.object ? 'a trap' : e.name}'s attack.`, ev); }
     else { chosen = offers.find((x) => x.r.id === a.take) ?? null; slot = a.slot; }
   }
@@ -1038,7 +1062,8 @@ export function reactAgainst(s, t, e, on, ev, why) {
     const w = instruction(t, r);
     if (w === 'never') continue;
     const sp = SPELLS[r.id], slots = slotsFor(s, t, sp);
-    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || !seesFor(s, t, e)) continue;
+    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || !sensesFor(s, t, e)) continue;
+    findFor(s, t, e, ev);                                                               // found by its senses: the party is told first
     let slot = slots[0];
     if (w === 'ask') {
       const a = ask(s, t, { trigger: on, by: e.id }, [spellOffer(r, slots)]);
