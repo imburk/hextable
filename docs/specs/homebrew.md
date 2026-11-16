@@ -1090,7 +1090,22 @@ every non-Multiattack monster action once, at a table of about 30 creatures (the
 | dice faces per action | 2,000 | 50 times |
 | attacks in one Multiattack | 50 | 7 times |
 
-(The next sections are added as the ceilings are built.)
+### How they work
+
+- **Areas** (`engine/world.js`, `layout`): an area over 20 cells is cut to the map's reach before its cells are listed (the map's
+  bounding box, once per call), so the cost follows the map. The cells dropped were off the map, which every caller drops anyway:
+  checked equal against main for 3,072 shape, size, fill, grid and aim combinations. On squares a cube over 200 squares a side and over
+  four times the map's reach is not laid out (the DM places it); it cannot be cut, as it is placed by trying blocks.
+- **Work** (`effects.js`, `WORK`, `startWork`): `apply()` counts steps (each step run and each `times` repeat), dice faces rolled for
+  damage and healing, and events written. Past a ceiling the action is refused with a sentence and **changes nothing**, the dice seed
+  included. A refusal needs the copy of the game apply() keeps for reactions; `mayBeHeavy` (`engine/world.js`) makes apply() keep one
+  for a cast or a monster action whose worst case (every branch, every creature at the table) passes a quarter of a ceiling. SRD actions
+  never do, so ordinary play pays nothing. Where no copy was taken (an end of turn running a zone, an object's trigger, a reaction) the
+  action is stopped with a `manual` event naming what was not applied, and what it did so far stays done: it cannot be undone, and the
+  engine says so instead of pretending. `engine.js` is touched only for this (`apply`).
+- **Multiattack** (`engine/attacks.js`): more than 50 attacks from one Multiattack is refused before anything is spent.
+- **AI** (`ai.js`, `AI_LOOK`): at most 8,000 places (the cheapest) and 40 foes (the nearest) are scored per step.
+- Not done: trimming the timeline, and a ceiling per round (DEBT T35b).
 
 ## Risks
 

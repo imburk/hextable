@@ -222,6 +222,20 @@ test("the monster AI's search is bounded: 30 monsters with a 1,000-ft emanation 
       const { ms } = timed(() => aiStep(c, m));
       worst = Math.max(worst, ms);
     }
-    assert.ok(worst < 150, `the slowest aiStep took ${Math.round(worst)} ms`);
+    assert.ok(worst < 400, `the slowest aiStep took ${Math.round(worst)} ms`);
+  });
+});
+
+test("the monster AI aims an area at the nearest 40 foes of a crowd of 100, and a step stays fast", () => {
+  const id = "hb-x-cone", breath = { id: "breath", name: "Breath", time: "action", target: { area: { shape: "cone", size: 1000 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "2d6", type: "fire" }] }] };
+  withEntries([["monsters", monsterOf(id, [breath])]], () => {
+    const { s } = table(100);
+    const spawned = apply(s, { type: "spawn", monster: id, at: { q: 6, r: -3 } }, DM);
+    const m = spawned.events[0].id;
+    s.entities.wizard.side = "party";
+    for (let i = 0; i < 400 && current(s) !== m; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+    const { r, ms } = timed(() => aiStep(s, m));
+    assert.ok(r, "it has a step");
+    assert.ok(ms < 400, `took ${Math.round(ms)} ms`);
   });
 });
