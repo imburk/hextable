@@ -1343,13 +1343,13 @@ kinds that are). What was settled:
   use every monster, trait, action and target key, every step but `summon` and `counter` (which a creature's action may not
   hold), every branch, hook, op and area shape. `mount` cannot be homebrew, so it is covered through the SRD warhorse.
 - **Over the SRD:** all 329 monsters read without a problem and their `numbers` equal the entry's numbers (found without the reader),
-  each said in the reading. `scripts/hb.mjs read` prints spells and monsters, and names the kinds not read yet.
-- **Not in this part:** items, feats, weapons, armour and objects; their `grants` and `freeCast` words are the largest piece left (items and feats: see the next note).
+  each said in the reading. `scripts/hb.mjs read` prints spells and monsters.
+- **Not in this part:** items, feats, weapons, armour and objects (items and feats: the next note; weapons, armour and objects: the note after it).
 
 ## Build notes: B13, the reader for items and feats (#419, part two)
 
 `readEntry('item' | 'feat', entry)` in `content/reader.js` reads an item and a feat from what the engine does with them, not from the
-author's text. `scripts/hb.mjs read` prints them. Weapons, armour and objects are still "not read yet".
+author's text. `scripts/hb.mjs read` prints them.
 
 - **An item** is read as: its kind, rarity and how it is worn (items have no price or weight; the reading says so), attunement and by
   whom, what it changes while it is active (each modifier in words), each use (time, cost, charges, the steps in the spell reader's
@@ -1362,6 +1362,28 @@ author's text. `scripts/hb.mjs read` prints them. Weapons, armour and objects ar
   fails until it has words), reads a sample of every grants key, and requires the golden entries (`reader-items-golden.txt`, built from
   `fixtures/reader-kinds-pack.json` and a few entries strict mode would refuse) to use every field. Over the SRD all 75 items and 17 feats read
   without a problem and their `numbers` equal the entry's. Engine runs check each claim about use, attunement, charges and freeCast.
+
+## Build notes: B13, the reader for weapons, armour and objects (#419, part three)
+
+`readEntry('weapon' | 'armour' | 'object', entry)` in `content/reader.js` finishes the reader: no kind answers "not read yet" now, and
+`scripts/hb.mjs read` prints all of them (a weapon and armour have no tier, and the title line says `[no tier]`).
+
+- **A weapon** is read as: its category and kind, the damage (the dice, or a fixed number that rolls none), the ability its attack and damage
+  use (Finesse: the better of Strength and Dexterity, Strength on a tie; a ranged weapon: Dexterity), the Proficiency Bonus for a trained holder,
+  reach (5 feet, 10 with Reach) or range (normal and long: Disadvantage in between, a refusal beyond), each property (Thrown and Versatile make a
+  second attack; Light, Finesse and Martial Arts as the engine reads them), Ranged-weapon bonuses (Archery), and who the engine refuses it for.
+- **Armour** is read as: the Armor Class it sets, how Dexterity adds (whole, up to a cap, or not), the Strength it asks (10 feet less Speed
+  below it, nothing else), the training it needs, and that it ends a formula for a creature with no armor. A Shield is a mark on the sheet.
+- **An object** is read as: its kind, each state (what it blocks, whether it is hidden, the light it gives), the use verbs (from which states, how
+  long, key, tool, check and DC), the triggers (when, for whom, the area, the steps), how it is found (Search and passing), its save DC and find
+  DC, and what the DM can add where it is placed. Use and trigger steps are read with the spell reader's sentences ("the user", "the creature"), and
+  where a thing on the map cannot do what a spell step does (a lasting effect, `addMod`, a spell attack, teleport, summon) the reading says the DM does it.
+- **Where the engine does less**, the reading says so and `doesNot` lists it: Mastery, Heavy, Loading, Two-handed, ammunition, weight and cost on a
+  weapon; Stealth Disadvantage on armour; the Armor Class number of a Shield entry; a thing's sight block (only a door blocks sight). Found gaps are DEBT T58.
+- **Tests:** `reader-gear.test.js` ties every word table to the linters' lists, requires the invented entries (`fixtures/reader-kinds-pack.json`,
+  `reader-gear-golden.txt`) to use every field, and reads every SRD weapon, armour and object with numbers equal to the entry's.
+  `reader-gear-truth.test.js` plays the entries (derive, apply, a map) against each claim, with a variant of the entry where a claim says a field does
+  nothing. `reader-gear-hostile.test.js` holds hostile input, purity, the hash, refusals and the no-publisher rule.
 
 ## Build notes: pack vetting moves into the rules package (#428)
 
