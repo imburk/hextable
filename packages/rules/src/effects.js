@@ -15,11 +15,14 @@ import { useUp } from './durations.js';
 
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
+// The largest cube the engine places (feet): the gate's own most. A cube is placed by trying blocks, so it cannot be cut to the map.
+export const CUBE_AIM_MAX = 1000;
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
 // Can the engine aim this area? A sphere or cylinder needs somewhere within range to go off
 // (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
 // wall placed at a distance, which the DM places.
 export function aimable(area, range) {
+  if (area.shape === 'cube' && area.size > CUBE_AIM_MAX) return false;   // too large to place by the engine: the DM places it (a `manual` step says so)
   if (!AREAS.includes(area.shape) || area.count > 1) return false;     // several shapes arranged by the caster: the DM
   if (area.shape === 'sphere' || area.shape === 'cylinder') return range > 0;
   if (area.shape === 'line') return !(range > 0);
@@ -231,6 +234,50 @@ export function actionProfile(a) {
   };
 }
 
+// ---------- the work ceiling (DEBT T35) ----------
+//
+// The gate (content/schema.js) refuses heavy homebrew, but the engine does not trust whatever it is given:
+// an entry that skipped the gate, or a saved state, must not stall the process or grow the state without end.
+// One action may run at most WORK.steps effect steps (every step, and every `times` repeat of a damage step),
+// roll WORK.dice dice for damage and healing, write WORK.events events, and a Multiattack makes at most
+// WORK.attacks attacks. These count work, not time, so a replay gives the same answer on any machine. They sit far
+// above the SRD pack's heaviest action (docs/specs/homebrew.md, build notes on the engine's own ceilings, has the
+// measured numbers): no SRD action comes near them.
+// Past a ceiling apply() refuses the action and puts the game back as it was (engine.js, apply), or, where it
+// could not take a copy, stops it with a `manual` event that says what was not applied.
+export const WORK = Object.freeze({ steps: 1000, events: 1500, dice: 1200, attacks: 20 });
+export class WorkLimit extends Error {
+  constructor(limit, what, who = null) { super(`${what ?? 'This action'} would ${limit} in one action, which is more than the engine allows.`); this.limit = limit; this.what = what; this.who = who; }
+}
+const meter = { on: false, steps: 0, dice: 0, what: null, who: null };
+// apply() starts the count for one action and stops it however the action ends.
+export function startWork() { meter.on = true; meter.steps = 0; meter.dice = 0; meter.what = null; meter.who = null; }
+export function stopWork() { meter.on = false; }
+const LIMITS = { steps: (n) => `run more than ${n.toLocaleString('en-US')} steps`, dice: (n) => `roll more than ${n.toLocaleString('en-US')} dice`, events: (n) => `write more than ${n.toLocaleString('en-US')} events` };
+function spend(kind, n) {
+  if (!meter.on) return;
+  meter[kind] += n;
+  if (meter[kind] > WORK[kind]) throw new WorkLimit(LIMITS[kind](WORK[kind]), meter.what, meter.who);
+}
+// Called with the events an action has written so far.
+export function checkEvents(ev) { if (meter.on && ev.length > WORK.events) throw new WorkLimit(LIMITS.events(WORK.events), meter.what, meter.who); }
+const diceIn = (expr) => { const m = /^\s*(\d+)d/.exec(String(expr)); return m ? +m[1] : 0; };
+const timesOf = (step) => { const n = Math.ceil(Number(step.times || 1)); return n >= 1 ? n : 0; };
+// What a list of steps may do at most for one target, counting every branch and every repeat: { steps, dice }. Used
+// by apply() to decide whether to keep a copy of the game before the action (engine/world.js, mayBeHeavy).
+export function loadOf(steps) {
+  let n = 0, dice = 0;
+  for (const st of Array.isArray(steps) ? steps : []) {
+    n++;
+    if (st && typeof st === 'object') {
+      if ('damage' in st) { const t = timesOf(st); n += t; dice += diceIn(st.damage) * t; }
+      for (const k of ['heal', 'tempHp']) if (k in st) dice += diceIn(st[k]);
+      for (const b of BRANCHES) if (Array.isArray(st[b])) { const r = loadOf(st[b]); n += r.steps; dice += r.dice; }
+    }
+  }
+  return { steps: n, dice };
+}
+
 // ---------- running steps ----------
 
 // { total, dice, bonus }: the faces go on the damage event (docs/specs/dice.md).
@@ -244,7 +291,8 @@ const maxRoll = (expr, crit) => {
 const rollDamage = (s, step, crit, max = false) => {
   let total = 0, bonus = 0;
   const dice = [];
-  for (let i = 0; i < (step.times || 1); i++) { const r = max ? maxRoll(step.damage, crit) : roll(s, step.damage, { crit }); total += r.total; bonus += r.bonus; dice.push(...r.dice); }
+  const each = diceIn(step.damage) * (crit ? 2 : 1);
+  for (let i = 0; i < (step.times || 1); i++) { spend('steps', 1); spend('dice', each); const r = max ? maxRoll(step.damage, crit) : roll(s, step.damage, { crit }); total += r.total; bonus += r.bonus; dice.push(...r.dice); }
   return { total, dice, bonus };
 };
 
@@ -282,7 +330,11 @@ export function run(s, ev, kit, floor = 0) {
     }
     if (f.i >= f.steps.length) { stack.pop(); continue; }
     const index = f.i++;
+    meter.what = f.src?.name ?? meter.what;
+    meter.who = f.target ?? null;
+    spend('steps', 1);
     exec(s, ev, kit, f, f.steps[index], `${f.path}${index}`);
+    checkEvents(ev);
   }
   if (!floor) delete s.stack;
 }
@@ -303,7 +355,7 @@ function exec(s, ev, kit, f, step, at) {
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
-  if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. The DM applies it.`);
+  if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. ${kit.whyNobody?.(f.src) ?? ''}The DM applies it.`);
   for (const tag of step.when ?? []) {
     const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s);
     if (ok === null) return handOver(`Part of ${f.src.name} depends on "${tag}", which the engine cannot judge yet. The DM applies it if it holds.`);
@@ -421,6 +473,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'heal' || kind === 'tempHp') {
     // `src.maxTemp`: Temporary Hit Point dice at their highest, none rolled (Fiendish Vigor).
+    spend('dice', diceIn(step[kind]));
     const r = kind === 'tempHp' && f.src.maxTemp ? maxRoll(step[kind], false) : roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
     const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"
     return kind === 'heal' ? kit.heal(s, t, n, ev, rolled) : kit.tempHp(s, t, n, ev, f, rolled);

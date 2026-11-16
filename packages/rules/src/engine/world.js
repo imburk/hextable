@@ -4,7 +4,7 @@
 import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
-import { actionProfile } from '../effects.js';
+import { actionProfile, CUBE_AIM_MAX, loadOf, scaleSteps, targetCount, WORK } from '../effects.js';
 import { apart, apartAt, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
@@ -778,24 +778,54 @@ export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 //             has its near face at the hex aimed at, which is in it, and extends away from `e`.
 //             It rises `size` feet from the ground (or the height) at its point of origin.
 // `origin` is where it goes off; `high(t)` says whether creature `t` is within its height.
+// An area larger than the map is clipped to the map before its cells are listed, so what it costs follows
+// the map, not the number in the entry (DEBT T35). Nothing it would have reached is lost: the cells that
+// are left out are not on the map, and every caller drops those anyway. Areas under CLIP_FROM cells are
+// listed whole, which costs less than finding the map's edge.
+const CLIP_FROM = 20;
+// The columns the map has, as a box: { q0, q1, r0, r1 }, or null for a map with none.
+function mapBox(map) {
+  let q0 = Infinity, q1 = -Infinity, r0 = Infinity, r1 = -Infinity;
+  for (const level of map.levels) for (const k in level.tiles) {
+    const c = k.indexOf(','), q = +k.slice(0, c), r = +k.slice(c + 1);
+    if (q < q0) q0 = q; if (q > q1) q1 = q; if (r < r0) r0 = r; if (r > r1) r1 = r;
+  }
+  return q1 < q0 ? null : { q0, q1, r0, r1 };
+}
+// How many cells out from `cell` the map reaches (on a hex grid, in hexes; on squares, the most of the two
+// axes): no column of the map is further. Infinity where the area is too small to bother.
+function mapReach(map, G, cell, n) {
+  if (!(n > CLIP_FROM)) return Infinity;
+  const b = mapBox(map);
+  if (!b) return 0;
+  const corners = [[b.q0, b.r0], [b.q0, b.r1], [b.q1, b.r0], [b.q1, b.r1]];
+  return Math.max(...corners.map(([q, r]) => (G.kind === 'square' ? Math.max(Math.abs(q - cell.q), Math.abs(r - cell.r)) : G.dist(cell, { q, r }))));
+}
+// The same, for the box of squares a creature fills (an emanation counts from its edge).
+function mapReachBox(map, box, n) {
+  if (!(n > CLIP_FROM)) return Infinity;
+  const b = mapBox(map);
+  return b ? Math.max(b.q1 - box.q0, box.q1 - b.q0, b.r1 - box.r0, box.r1 - b.r0) : 0;
+}
+
 function layout(s, e, area, range, aim) {
   const n = area.size / FT, shape = area.shape, G = gridOf(s.map);
   if (G.kind === 'square') return squareLayout(s, e, area, range, aim);
-  if (shape === 'emanation') return { hexes: G.range(e.pos, n).filter((h) => key(h) !== key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
+  if (shape === 'emanation') return { hexes: G.range(e.pos, Math.min(n, mapReach(s.map, G, e.pos, n))).filter((h) => key(h) !== key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
   if (!aim) return null;
   const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
-  if (shape === 'cone') return { hexes: G.cone(e.pos, aim, n), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
+  if (shape === 'cone') return { hexes: G.cone(e.pos, aim, Math.min(n, mapReach(s.map, G, e.pos, n))), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
   if (shape === 'sphere' || shape === 'cylinder') {
     const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
     const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : (t) => gap(s, origin, t.pos) <= n;
-    return { hexes: G.range(aim, n), origin, high };
+    return { hexes: G.range(aim, Math.min(n, mapReach(s.map, G, aim, n))), origin, high };
   }
   const front = Math.max(...footprint(e, e.pos, G).map((f) => G.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
   if (shape === 'line') {
     if (range > 0 || G.dist(aim, e.pos) === 0) return null;
     const flat = G.along(e.pos, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
     const length = area.size / Math.hypot(1, slope), half = (area.width ?? FT) / 2;
-    const hexes = G.band(e.pos, aim, front, front + length, half);
+    const cap = FT * mapReach(s.map, G, e.pos, area.size / FT) + FT, hexes = G.band(e.pos, aim, front, Math.min(front + length, cap), Math.min(half, cap));
     const high = (t) => { const z = e.pos.z + slope * G.along(e.pos, aim, t.pos); return z + half > t.pos.z && z - half < t.pos.z + sizeOf(t).height; };
     return { hexes, origin: e.pos, high };
   }
@@ -804,11 +834,13 @@ function layout(s, e, area, range, aim) {
     if (!(range > 0)) {
       if (G.dist(aim, e.pos) === 0) return null;
       const base = e.pos.z;
-      return { hexes: G.band(e.pos, aim, front, front + size, half), origin: e.pos, high: (t) => t.pos.z < base + size && t.pos.z + sizeOf(t).height > base };
+      const cap = FT * mapReach(s.map, G, e.pos, size / FT) + FT;
+      return { hexes: G.band(e.pos, aim, front, Math.min(front + size, cap), Math.min(half, cap)), origin: e.pos, high: (t) => t.pos.z < base + size && t.pos.z + sizeOf(t).height > base };
     }
     const away = G.dist(aim, e.pos) === 0 ? { q: aim.q + 1, r: aim.r } : { q: 2 * aim.q - e.pos.q, r: 2 * aim.r - e.pos.r };
     const origin = { q: aim.q, r: aim.r, z: aimZ };
-    return { hexes: G.band(aim, away, -FT / 2, size - FT / 2, half), origin, high: (t) => t.pos.z < aimZ + size && t.pos.z + sizeOf(t).height > aimZ };
+    const cap = FT * mapReach(s.map, G, aim, size / FT) + FT;
+    return { hexes: G.band(aim, away, -FT / 2, Math.min(size - FT / 2, cap), Math.min(half, cap)), origin, high: (t) => t.pos.z < aimZ + size && t.pos.z + sizeOf(t).height > aimZ };
   }
   return null;
 }
@@ -834,26 +866,32 @@ function squareLayout(s, e, area, range, aim) {
   const n = area.size / FT, shape = area.shape, fill = s.settings?.areaFill ?? 'round', G = gridOf(s.map);
   const own = footprint(e, e.pos, G), box = boxOf(own), mid = boxMiddle(box);
   const within = (o) => (t) => rise(t.pos.z - o.z) <= n;
-  if (shape === 'emanation') return { hexes: squareAround(box, n, fill), origin: e.pos, high: within(e.pos), from: own };
+  // On squares what a clipped area keeps is every square within the map's reach whatever the fill: the radius or length is cut
+  // to about twice that reach (squares are tested by their distance in a straight line, up to 1.42 times the count).
+  const cut = (reach) => (reach === Infinity ? Infinity : 2 * reach + 3);
+  if (shape === 'emanation') return { hexes: squareAround(box, Math.min(n, cut(mapReachBox(s.map, box, n))), fill), origin: e.pos, high: within(e.pos), from: own };
   if (!aim) return null;
   const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
   const aimed = 2 * aim.q !== mid[0] || 2 * aim.r !== mid[1];
-  if (shape === 'cone') return aimed ? { hexes: squareCone(mid, aim, area.size, box), origin: e.pos, high: within(e.pos), from: own } : null;
+  const capFt = (c) => FT * cut(mapReach(s.map, G, c, area.size / FT));
+  if (shape === 'cone') return aimed ? { hexes: squareCone(mid, aim, Math.min(area.size, capFt({ q: Math.floor(mid[0] / 2), r: Math.floor(mid[1] / 2) })), box), origin: e.pos, high: within(e.pos), from: own } : null;
   if (shape === 'sphere' || shape === 'cylinder') {
     const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
     const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : within(origin);
-    return { hexes: squareDisc(aim, n, fill), origin, high, from: [origin] };
+    return { hexes: squareDisc(aim, Math.min(n, cut(mapReach(s.map, G, aim, n))), fill), origin, high, from: [origin] };
   }
   if (shape === 'line') {
     if (range > 0 || !aimed) return null;
     const flat = squareAlong(mid, aim, aim), slope = flat > 0 ? (aimZ - e.pos.z) / flat : 0;
     const length = area.size / Math.hypot(1, slope), half = (area.width ?? FT) / 2;
     const high = (t, f) => { const z = e.pos.z + slope * squareAlong(mid, aim, f); return z + half > t.pos.z && z - half < t.pos.z + sizeOf(t).height; };
-    return { hexes: squareStrip(mid, aim, box, length, half), origin: e.pos, high, from: own };
+    const cap = capFt({ q: Math.floor(mid[0] / 2), r: Math.floor(mid[1] / 2) });
+    return { hexes: squareStrip(mid, aim, box, Math.min(length, cap), Math.min(half, cap)), origin: e.pos, high, from: own };
   }
   if (shape === 'cube') {
     const size = area.size, side = size / FT;
     if (!Number.isInteger(side) || side < 1) return null;
+    if (side > CUBE_AIM_MAX / FT) return null;                   // aimable() hands a larger one to the DM; this is only a guard
     if (!(range > 0)) {
       if (!aimed) return null;
       const base = e.pos.z, touches = (b) => b.q0 <= box.q1 + 1 && b.q1 >= box.q0 - 1 && b.r0 <= box.r1 + 1 && b.r1 >= box.r0 - 1;
@@ -878,6 +916,38 @@ export function areaHexes(s, e, sp, aim) {
   if (!sp.area) return [];
   const l = layout(s, e, sp.area, areaRange(sp), aim);
   return l ? l.hexes.filter((h) => hasColumn(s.map, h)) : [];
+}
+
+// Could this action run enough work to meet the ceiling (effects.js, WORK)? apply() keeps a copy of the game before
+// such an action, so that one that does pass the ceiling is refused with nothing changed. A guess from the content,
+// counting every branch and every creature at the table: it errs on the side of "yes" (a copy costs a little time and
+// changes nothing), and for what it cannot read it says yes. What it does not look at (a lasting zone's later turns, an
+// object's trigger, a reaction) is stopped by the count itself, with a `manual` event, if it ever meets the ceiling.
+export function mayBeHeavy(s, a) {
+  try {
+    let load = null, per = 1;
+    if (a.type === 'cast') {
+      const sp = typeof a.spell === 'string' && Object.hasOwn(SPELLS, a.spell) ? SPELLS[a.spell] : null;
+      if (!sp) return false;
+      const def = sp.def;
+      // As scaled for the slot it would be cast at (dice and repeats added by a higher slot or by level, at the most the caster could have).
+      const slot = Number.isInteger(a.slot) ? Math.min(9, Math.max(def.level, a.slot)) : def.level;
+      load = loadOf(scaleSteps(def, 20, slot).steps);
+      per = def.target?.area ? living(s).length : Math.max(1, targetCount(def, 20, slot));
+    } else if (a.type === 'act') {
+      const e = typeof a.actor === 'string' && Object.hasOwn(s.entities, a.actor) ? s.entities[a.actor] : null;
+      const def = e?.actions?.find((x) => x.id === a.action);
+      if (!def || def.multiattack) return false;
+      load = loadOf(def.effects);
+      const t = def.target ?? {};
+      per = t.area ? living(s).length : Math.max(1, t.creature?.count ?? 1);
+    } else if (a.type === 'use' || a.type === 'feature') {
+      return 'copy';       // an item's effect, a feature's, an object's: not read from here, so the copy is taken (a few ms for a rare action)
+    } else return false;
+    return load.steps * per > WORK.steps / 4 || load.dice * per > WORK.dice / 4;
+  } catch (err) {
+    return true;
+  }
 }
 
 // Who an area catches when `e` aims it at `hex`: { targets, hexes, origin }. See layout().

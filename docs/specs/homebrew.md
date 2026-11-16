@@ -1083,6 +1083,57 @@ What was settled while building `content/dryrun.js`, `scripts/hb.mjs` and `packa
 - **For the client job (B10).** `dryRun` returns raw events; the builder words them with the client's `describe` (or shows
   `summary.text`) and may show `repeated` as "average of N casts". It must call `dryRun` outside any other `using`.
 
+## Build notes: the engine's own ceilings (#395)
+
+The gate (`content/schema.js`) refuses heavy entries, but the engine trusts the content it is handed (DEBT T35, T40). This task
+puts ceilings in the engine itself. The first step measured what the SRD pack does today; the ceilings are set from these numbers.
+
+### What the SRD pack does today (measured before any change)
+
+Measured with temporary counters in a copy of the rules (nothing in the repo changed): 300 seeded fights on the valley with 3 to 8
+extra SRD monsters, a wizard and a cleric that know every SRD spell with 4 slots of every level and cast one each turn, and the
+monsters and the rest of the party played by `aiStep`; then a static sweep that casts every SRD spell at a 9th-level slot, and uses
+every non-Multiattack monster action once, at a table of about 30 creatures (the heaviest case: everything in reach).
+
+| What one action does | SRD maximum | Where |
+|---|---|---|
+| effect steps run (every step, every `times` repeat of a damage step) | 106 | Sunburst, 30 creatures (monster actions: 101, Rakshasa's Baleful Command; fights: 40) |
+| events written | 113 | Sunburst, 30 creatures (fights: 42) |
+| dice faces rolled for damage and healing | 40 | Meteor Swarm (a spell's `higher.slot.times` is the only way to repeat a damage step; the SRD's largest `times` is 1) |
+| attacks in one Multiattack | 7 | Marilith |
+| cells listed for one area, before the map clips it | 30,301 | the Sphinx of Valor's 500-ft emanation (a spell's largest is 469, a 60-ft sphere; the valley holds 631 cells) |
+| area layouts the AI makes for one monster step | 8 | one per foe it could aim at |
+| moves the AI scores for one monster step | 1,251 | `moveOptions` of the fastest SRD monster |
+
+### Ceilings
+
+| Ceiling | Value | Against the SRD maximum |
+|---|---|---|
+| steps per action | 1,000 | 9 times |
+| events per action | 1,500 | 13 times |
+| dice faces per action | 1,200 | 30 times |
+| attacks in one Multiattack | 20 | 2.9 times |
+
+The rule (round 2 of #401): the engine's ceilings sit above everything the gate admits, so a pack the gate accepts is never refused at cast time. Steps 1,000 against the gate's 600 (a quarter above and more), attacks 20 against 14, dice 1,200 against the 950 of the gate's worst spell, events 1,500 against the 688 the busiest gate-sized spell writes at 30 creatures. A test builds the heaviest of each and casts or uses it at a table of 30. The gate itself does not cap the dice of a spell whose rolls are made for each target (a damage step has up to 500 dice, an attack rolls its own for each target), so a gate-legal entry can still pass 1,200 dice; closing that is the gate's (a dice estimate beside `HOMEBREW_WORK`).
+
+### How they work
+
+- **Areas** (`engine/world.js`, `layout`): an area over 20 cells is cut to the map's reach before its cells are listed (the map's
+  bounding box, once per call), so the cost follows the map. The cells dropped were off the map, which every caller drops anyway:
+  checked equal against main for 3,072 shape, size, fill, grid and aim combinations. A cube over 1,000 ft (the gate's most) is not placed by the engine: it is handed to the DM (`aimable`), as it cannot be cut to the map.
+- **Work** (`effects.js`, `WORK`, `startWork`): `apply()` counts steps (each step run and each `times` repeat), dice faces rolled for
+  damage and healing, and events written. Past a ceiling the action is refused with a sentence and **changes nothing**, the dice seed
+  included. A refusal needs the copy of the game apply() keeps for reactions; `mayBeHeavy` (`engine/world.js`) makes apply() keep one
+  for a cast or a monster action whose worst case (every branch, every creature at the table) passes a quarter of a ceiling.  Where no copy was taken (an end of turn running a zone, an object's trigger, a reaction) the
+  action is stopped with a `manual` event naming what was not applied, and what it did so far stays done: it cannot be undone, and the
+  engine says so instead of pretending. `engine.js` is touched only for this (`apply`).
+- **Multiattack** (`engine/attacks.js`): more than 20 attacks from one Multiattack is refused before anything is spent.
+- **AI** (`ai.js`, `AI_LOOK`): nothing is capped. The first version capped places and foes, and the review of #401 showed it changed what SRD monsters choose (a Ghost's cone at 40+ foes, a Solar's flight 28 hexes). What bounds the AI is the clipping of areas to the map (a round of 30 monsters with a 1,000-ft emanation: 0.5 s against 9.3 s). The worst `aiStep` measured over 50 fights of 40 to 100 creatures was 854 ms (a far-flying monster's `moveOptions`, as on main).
+- A resumed action (the answer to a reaction question) that meets the ceiling closes the question and is not applied at all, with a `manual` event, so the table is never left waiting.
+- The worst round built under these ceilings (30 monsters, Multiattack of 20, 560-dice hits (a crit rolls 1,120, under the ceiling), a 1,000-ft bonus emanation, 50 foes): 598 actions, 2,650 events, state +7.9 MB, 1.8 s CPU, slowest `apply` 10 ms, slowest `aiStep` 9 ms (the review's version under the first ceilings: +33.9 MB).
+- Round 3: an item `use`, a feature `use` and an object `use` always take the copy (a few ms for a rare action) and are refused clean; a Multiattack made of an attack that alone is over the ceiling is refused as a whole before the action is spent. A stopped zone tick says where the turn stands ("passed to X" or "did not end") and whose part was left out, and is noted once per round per zone (the first stop; later ones this round write nothing more).
+- Not done: trimming the timeline, and a ceiling per round (DEBT T35b).
+
 ## Build notes: B5 second half, packs on a table, the server (#391)
 
 What was settled while building the server side (`tables.js`, `index.js`, `limits.js`; tests in `packages/server/test/packs.test.js`):
