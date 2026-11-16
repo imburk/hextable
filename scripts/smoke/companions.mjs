@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt } from './lib.mjs';
 
 // ---------- companions ----------
 // The client side of companions C1 (docs/specs/companions.md; issue #318). Solo at both sizes, the DM bonds a foe to Brenna as a familiar that
@@ -520,7 +520,9 @@ export async function screensTable(browser, url) {
         await calm(phone);
       });
       await run.do('a creature the DM hid is nowhere on the phone', async () => {
-        const hid = await host.evaluate(() => { const h = window.hextable, f = Object.values(h.state.entities).find((e) => e.side === 'foe' && !e.hidden); h.act({ type: 'spawn', monster: 'wolf', at: { q: f.pos.q + 2, r: f.pos.r }, name: 'Secretwolf', hidden: true }); return true; });
+        // The wolf must exist on the host (a spawn refused on this random map left nothing to hide, and the check passed for nothing, #418): a hex the engine takes, near a foe.
+        const f0 = await host.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.side === 'foe' && !e.hidden).id);
+        await spawnNear(host, 'wolf', { near: f0, min: 2, radius: 4, name: 'Secretwolf', extra: { hidden: true } });
         await sleep(400); await calm(phone);
         const seen = await phone.evaluate(() => JSON.stringify(window.hextable.state) + document.body.innerText);
         if (/Secretwolf/.test(seen)) throw new Error('the phone was sent a hidden creature');

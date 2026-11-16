@@ -196,7 +196,7 @@ export const seeded = (ctx) => (process.env.SMOKE_SEED
 // fixed offset: each game's map is random, and a tree, water or another creature on the hex refuses the spawn. Options:
 //   near: { q, r } or a creature id, the centre of the search (a creature's own hex is skipped); min/radius: distance from it in hexes (default 1..6);
 //   sightFrom: a creature id that must have a line (not blocked by walls) to the new creature; range: feet from `sightFrom` (or from `near`) at most;
-//   within: { center, radius }, the new creature must lie inside (a fight's arena); name: a name for the spawn, passed on.
+//   within: { center, radius }, the new creature must lie inside (a fight's arena); name: a name for the spawn, passed on; extra: more fields of the spawn action (`hidden: true`).
 // Returns { spots: [hex...], error }, `error` being the engine's own last refusal when no hex took it.
 export const spotsFor = (page, tpl, opts = {}) => page.evaluate(async ([t, o]) => {
   const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), { inSight } = await import('./shared/sight.js');
@@ -209,7 +209,7 @@ export const spotsFor = (page, tpl, opts = {}) => page.evaluate(async ([t, o]) =
     if (o.within && G.dist(o.within.center, h) > o.within.radius) continue;
     if (o.range != null && G.dist(from ? from.pos : c, h) * 5 > o.range) continue;
     const clone = structuredClone({ ...S, timeline: [] });
-    const r = apply(clone, { type: 'spawn', monster: t, at: h, ...(o.name ? { name: o.name } : {}) }, DM);
+    const r = apply(clone, { type: 'spawn', monster: t, at: h, ...(o.name ? { name: o.name } : {}), ...(o.extra ?? {}) }, DM);
     if (!r.ok) { error = r.error; continue; }
     if (from && !inSight(clone.map, from.pos, clone.entities[r.events.find((x) => x.type === 'spawned').id].pos)) { error = 'no line of sight'; continue; }
     out.push(h);
@@ -224,7 +224,7 @@ export async function spawnNear(page, tpl, opts = {}) {
   const { spots, error } = await spotsFor(page, tpl, opts);
   if (!spots.length) throw new Error(`no hex near ${JSON.stringify(opts.near)} on this map takes a ${tpl}${opts.sightFrom ? ' in sight of ' + opts.sightFrom : ''}: ${error ?? 'none in range'}`);
   const before = await page.evaluate(() => Object.keys(window.hextable.state.entities));
-  await page.evaluate(([t, at, n]) => window.hextable.act({ type: 'spawn', monster: t, at, ...(n ? { name: n } : {}) }), [tpl, spots[0], opts.name ?? null]);
+  await page.evaluate(([t, at, n, x]) => window.hextable.act({ type: 'spawn', monster: t, at, ...(n ? { name: n } : {}), ...x }), [tpl, spots[0], opts.name ?? null, opts.extra ?? {}]);
   const made = async () => (await page.evaluate((b) => Object.keys(window.hextable.state.entities).filter((k) => !b.includes(k)), before));
   try { await wait(page, (b) => Object.keys(window.hextable.state.entities).some((k) => !b.includes(k)), before, 5000); }
   catch { throw new Error(`the ${tpl} was not made at ${JSON.stringify(spots[0])}: toast "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); }

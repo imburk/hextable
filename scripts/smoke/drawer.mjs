@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, closeMenu, openTab } from './lib.mjs';
+import { sleep, spawnNear, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, closeMenu, openTab } from './lib.mjs';
 
 // ---------- the drawer (docs/specs/table-ui.md, Decisions 2 and 3) ----------
 // The drawer opens and closes every way the spec lists, at both sizes; the side is a preference; About holds the SRD attribution
@@ -198,20 +198,19 @@ async function drawerTable(browser, url) {
       });
       let secret;
       await run.do('a fight with an invisible creature that the party cannot see', async () => {
-        secret = await host.evaluate(async () => {
-          const h = window.hextable; document.getElementById('dm-auto').checked = false;
-          h.act({ type: 'setting', key: 'sight', value: 'light' });
-          const S = h.state, known = new Set(Object.keys(S.entities)), foe = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden);
-          h.act({ type: 'spawn', monster: 'goblin-warrior', at: { q: foe.pos.q + 1, r: foe.pos.r } });
-          let sp = null;
-          for (let i = 0; i < 40 && !sp; i++) { await new Promise((r) => setTimeout(r, 100)); sp = Object.values(h.state.entities).find((e) => !known.has(e.id)); }
-          if (!sp) return null;
-          h.act({ type: 'condition', actor: sp.id, condition: 'invisible' });
-          h.act({ type: 'place', actor: 'fighter', to: { q: foe.pos.q - 1, r: foe.pos.r } });       // a party member in the fight, or it ends at once
-          h.act({ type: 'startEncounter', center: foe.pos });
-          return { id: sp.id, name: sp.name };
-        });
-        if (!secret) throw new Error('no creature was made');
+        // The goblin goes on a hex the engine takes it on, next to a foe (the map is random per game, and the hex at a fixed offset was refused on about 2 maps in 100, #418).
+        const foe = await host.evaluate(() => { document.getElementById('dm-auto').checked = false; window.hextable.act({ type: 'setting', key: 'sight', value: 'light' }); const S = window.hextable.state; const f = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden); return { id: f.id, pos: f.pos }; });
+        const id = await spawnNear(host, 'goblin-warrior', { near: foe.id, min: 1, radius: 2 });
+        secret = await host.evaluate(([i, f]) => {
+          const h = window.hextable;
+          h.act({ type: 'condition', actor: i, condition: 'invisible' });
+          h.act({ type: 'place', actor: 'fighter', to: { q: f.pos.q - 1, r: f.pos.r } });       // a party member in the fight, or it ends at once
+          const p = h.state.entities.fighter.pos;
+          if (p.q !== f.pos.q - 1 || p.r !== f.pos.r) return { error: `the fighter was not placed beside the foe: she stands at ${JSON.stringify(p)}, toast "${document.getElementById('toast')?.textContent ?? ''}"` };
+          h.act({ type: 'startEncounter', center: f.pos });
+          return { id: i, name: h.state.entities[i].name };
+        }, [id, foe]);
+        if (secret.error) throw new Error(secret.error);
         await wait(phone, () => !!window.hextable.state.encounter);
         if (await state(phone, (S, i) => !!S.entities[i], secret.id)) throw new Error('the phone was sent the invisible creature');
       });
