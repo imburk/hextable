@@ -59,11 +59,18 @@ function approach(s, e, foes) {
 // A creature that plays from its actions (one made from a pack monster).
 // `lim.noAttack`: a companion that can't attack (`bond.noAttack`, companions.md C1) is offered no action with an attack
 // roll and no Multiattack (the engine would refuse them). Absent for a monster, so nothing changes for one.
+// Each action with its profile, leaving out one the engine cannot profile (a creature target with neither reach nor range): it is
+// skipped, never thrown, so the creature plays on with what it can do (#421).
+function profiled(actions) {
+  const out = [];
+  for (const def of actions) { try { out.push({ def, p: actionProfile(def) }); } catch (err) { if (!(err instanceof TypeError)) throw err; } }
+  return out;
+}
 function withActions(s, e, foes, lim = {}) {
   const id = e.id, end = { type: 'endTurn', actor: id }, b = s.encounter.budget;
   // Nearest first, then the most hurt, then by id, so the order never depends on anything else.
   const order = [...foes].sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
-  const all = e.actions.map((def) => ({ def, p: actionProfile(def) })).filter((x) => x.p.harmful && !actionSpent(e, x.def) && (x.p.time === 'action' || b.bonus > 0) && !(lim.noAttack && rolled(x.p)));
+  const all = profiled(e.actions).filter((x) => x.p.harmful && !actionSpent(e, x.def) && (x.p.time === 'action' || b.bonus > 0) && !(lim.noAttack && rolled(x.p)));
   const reaches = (x, t) => x.p.aim === 'creature' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t);
   const act = (x, extra) => ({ type: 'act', actor: id, action: x.def.id, ...extra });
   // The best attack it can make right now among `list`: at the nearest foe it can reach, melee
@@ -293,7 +300,7 @@ function guard(s, e, foes, leash) {
 function protect(s, e, m, foes) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   const close = foes.filter((f) => apart(s, m, f) <= 1).sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
-  const moves = (e.actions ?? []).map((def) => ({ def, p: actionProfile(def) })).filter((x) => x.p.harmful && x.p.time === 'action' && x.p.aim === 'creature' && !actionSpent(e, x.def));
+  const moves = profiled(e.actions ?? []).filter((x) => x.p.harmful && x.p.time === 'action' && x.p.aim === 'creature' && !actionSpent(e, x.def));
   const reach = Math.max(FT, ...moves.filter((x) => x.p.roll === 'melee').map((x) => x.p.far));
   if (b.action > 0) {
     for (const t of close) {

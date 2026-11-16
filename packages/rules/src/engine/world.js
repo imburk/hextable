@@ -1019,7 +1019,10 @@ export function aimAction(s, e, def, a) {
   const t = def.target;
   if (t.self) return { targets: [e], hexes: null, origin: null };
   if (t.creature) {
-    const c = t.creature, far = c.reach ?? c.range[1];
+    const c = t.creature, far = c.reach ?? c.range?.[1];
+    // An action that says neither how far it reaches nor how far it shoots cannot be aimed (the linter refuses one; a saved game or an
+    // entry that skipped the gate may hold it): refused with a sentence, never thrown, and nothing is changed.
+    if (!(far > 0)) fail(`${e.name}'s ${def.name} says neither how far it reaches nor how far it shoots, so it cannot be aimed at anyone. The DM can apply it by hand.`);
     for (const id of a.targets ?? [a.target]) { const x = ent(s, id); !x.dead || fail(`${x.name} is already dead.`); }
     const targets = creatures(s, e, def.name, { range: far, harmful: true, repeat: c.repeat, within: c.within, most: c.count ?? 1 }, a);
     return { targets, hexes: null, origin: null };
