@@ -261,17 +261,18 @@ test("AI: a creature with a Shield, a Two-Handed weapon and a one-handed one att
   assert.ok(sent.every((a) => a.attack !== "greatsword"));
 });
 
-test("AI: a creature whose only attack is Two-Handed, with a Shield, takes the Dodge action and not a refusal", () => {
+test("AI: a creature whose only weapon is Two-Handed, with a Shield, punches (Unarmed Strike) and not a refusal", () => {
   const s = field(sheet(STRONG, ["greatsword"], { shield: true }));
   const sent = aiTurn(s, "hero");
-  assert.deepEqual(sent.map((a) => a.type), ["dodge", "endTurn"]);
+  assert.ok(sent.length >= 2 && sent.slice(0, -1).every((a) => a.type === "attack" && a.attack === "unarmed-strike"), JSON.stringify(sent));
+  assert.equal(sent.at(-1).type, "endTurn");
 });
 
 test("AI: an archer with a Loading weapon and Extra Attack shoots once, then does something it may do", () => {
   const s = field(sheet(STRONG, ["light-crossbow"]), { gap: 3 });
   const sent = aiTurn(s, "hero");
   assert.equal(sent.filter((a) => a.attack === "light-crossbow").length, 1, "one shot");
-  assert.equal(sent.at(-1).type, "endTurn", "then the turn ends: it has nothing else it may do, and sent nothing refused");
+  assert.equal(sent.at(-1).type, "endTurn", "then the turn ends: its other attack is a punch, out of reach 3 hexes away, and nothing refused is sent");
   const t = field(sheet(STRONG, ["light-crossbow", "shortsword"]), { gap: 3 });
   assert.ok(aiTurn(t, "hero").length >= 2, "with a sword too it closes in");
 });
@@ -283,8 +284,8 @@ test("Opportunity Attack: made with an allowed weapon, and not offered when none
   assert.equal(opportunityAttack(hero, s).id, "longsword");
   assert.ok(reactionsOf(hero).some((r) => r.kind === "attack"));
   const bare = field(sheet(STRONG, ["greatsword"], { shield: true })).entities.hero;
-  assert.equal(opportunityAttack(bare), null);
-  assert.ok(!reactionsOf(bare).some((r) => r.kind === "attack"), "not offered");
+  assert.equal(opportunityAttack(bare).id, "unarmed-strike", "the Greatsword is refused, the punch is not");
+  assert.ok(reactionsOf(bare).some((r) => r.kind === "attack"), "offered");
   // Played: the goblin walks away from the fighter, who takes its Opportunity Attack with the Longsword.
   s.entities[s.foe].pos = { q: 1, r: 0, z: 0 };
   for (let i = 0; i < 6 && current(s) !== s.foe; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));

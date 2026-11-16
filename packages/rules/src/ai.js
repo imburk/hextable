@@ -152,8 +152,12 @@ function withAttacks(s, e, foes) {
   const target = foes.reduce((a, f) => (apart(s, e, f) < apart(s, e, a) || (apart(s, e, f) === apart(s, e, a) && f.hp < a.hp) ? f : a));
   // Only an attack the engine would allow now (weapons.js: Two-Handed beside a Shield, a Loading weapon already fired this action).
   const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id));
-  const melee = e.attacks.find((a) => a.type === 'melee' && allowed(a)), ranged = e.attacks.find((a) => a.type === 'ranged' && allowed(a));
+  // The Unarmed Strike every built character has (derive.js) is only a last resort: with any allowed weapon attack the
+  // choice is exactly what it was without it. A Monk, or a sheet that lists it, had it before: that one is a weapon attack.
+  const spare = (a) => a.id === 'unarmed-strike' && !e.sheet?.weapons?.includes('unarmed-strike') && !e.attacks.some((x) => x.id === 'unarmed-strike-bonus');
+  let melee = e.attacks.find((a) => a.type === 'melee' && !spare(a) && allowed(a)), ranged = e.attacks.find((a) => a.type === 'ranged' && allowed(a));
   const d = apart(s, e, target);
+  if (!melee && !ranged) melee = e.attacks.find((a) => spare(a) && allowed(a));
   const can = b.action > 0 || !!b.attacks;
   // Attacks it has but may not make now (a Shield and nothing but a Two-Handed weapon): it takes the Dodge action rather than lose the turn.
   if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.length && !e.cond?.dodging) return { type: 'dodge', actor: id };
