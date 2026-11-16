@@ -1,5 +1,5 @@
 // Two facts docs/PATH-TO-0.2.md found by reading, shown as they are today (#380, part D; docs/DEBT.md C17, T34).
-// These tests pin the gaps; they do not fix them. When a gap is fixed, flip its assertions.
+// These tests pin the gaps; they do not fix them. When a gap is fixed, flip its assertions (T34 was, in #404).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
@@ -49,15 +49,14 @@ test("editCharacter's dropped `hidden` sends players nothing they were not sent:
   assert.equal(sent(), true, "and after the edit players are sent the rogue, as before it: nothing becomes visible that was not");
 });
 
-// The DM's "Add a monster" buttons are made once, when app.js is first run, from MONSTERS as it is then: a homebrew
-// monster added later (by the registry's `using`) is never a button until B7 builds the list again.
-test("GAP (DEBT T34): the client's Add a monster list is built once at load", () => {
-  const src = readFileSync(new URL("../../client/app.js", import.meta.url), "utf8").split("\n");
-  const at = src.findIndex((l) => l.startsWith("for (const [id, m] of Object.entries(MONSTERS)) {"));
-  assert.ok(at > 0, "the loop that makes the buttons");
-  assert.match(src[at + 3], /\$\('dm-spawn'\)\.append\(b\)/, "it fills #dm-spawn");
-  // At the top level of the module (column 0: app.js indents every body), so it runs once, when the page loads.
-  assert.match(src[at], /^for /, "GAP: not inside any function, so nothing builds it again");
-  // And nothing else adds to #dm-spawn.
-  assert.equal(src.filter((l) => l.includes("'dm-spawn'")).length, 1, "GAP: the only place the list is made");
+// The DM's "Add a monster" buttons were made once, when app.js first ran; since #404 (B7) one function builds them from MONSTERS as it is
+// now, and it is called again when the table's packs change, so a homebrew monster can be added.
+test("DEBT T34 fixed (#404): the client's Add a monster list is built again when the packs change", () => {
+  const src = readFileSync(new URL("../../client/app.js", import.meta.url), "utf8");
+  const at = src.indexOf("function buildSpawn() {");
+  assert.ok(at > 0, "the function that makes the buttons");
+  assert.match(src.slice(at, at + 600), /Object\.entries\(MONSTERS\)/, "it reads MONSTERS when it runs");
+  assert.match(src.slice(at, at + 600), /\$\('dm-spawn'\)\.replaceChildren/, "it fills #dm-spawn");
+  assert.match(src, /initPacks\(\{[^]*?changed: \(\) => \{\s*buildSpawn\(\)/, "and it runs again when the packs change");
+  assert.equal(src.split("\n").filter((l) => l.includes("'dm-spawn'")).length, 1, "nothing else fills the list");
 });

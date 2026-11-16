@@ -376,7 +376,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     const tr = T();
     if (!tr?.packOp) { message = { error: 'This game has no table server to keep packs.' }; return render(); }
     busy = true; message = null; render();
-    try { await tr.packOp({ t: 'pack', ...msg }); message = { ok: done }; if (clearReview) review = null; if (msg.op !== 'remove') toast?.(done, true); }
+    try { await tr.packOp({ t: 'pack', ...msg }); message = { ok: done }; if (clearReview) review = null; }
     catch (e) { message = plain(e) ? e : { error: String(e?.message ?? e) }; }
     busy = false; render();
   }
