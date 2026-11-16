@@ -859,6 +859,36 @@ B3; B9 needs B2 and B3; B10 needs B6; B11 needs B3 and B9.
     nothing of their content; a test asserts no entry id, name or text is in
     anything sent to a member who is not yet approved.
 
+## Build notes: B4, the registry (#379)
+
+What was settled while building `content/registry.js`:
+
+- **In place, as `docs/PATH-TO-0.2.md` recommends.** `using(overlay, fn)` adds the overlay's ids into the same
+  objects every read site uses and deletes them in a `finally`. Which objects, and how each value is made from an
+  entry, is one list in `content/index.js`, `HOMEBREW_LOOKUPS` (spells: `CONTENT.spells`, `SPELLS`; monsters:
+  `CONTENT.monsters`, `MONSTERS`, `MONSTER_ACTIONS`; items, feats, objects, weapons, armour: `CONTENT.<kind>`).
+  A test fails on an export of `index.js` keyed by a kind's ids that the list misses.
+- **`loadPack(data)`** takes the JSON text or object of Decision 1 (`format: 'hextable-pack'`, `v: 1`, the seven
+  kinds and nothing else), bounds it, copies it (`structuredClone`, so no getter or function survives), lints the
+  copy, checks every id is `hb-<pack id>-<kebab>` and no entry claims `checked: true`, freezes it and builds its
+  lookups once (spell profiles included). It returns `{ ok, pack }` or `{ ok: false, problems }`. The caller keeps
+  the loaded pack (one per pack and hash), so lint and profiles are not redone per call. B1's budget and strict lint
+  plug into one marked seam.
+- **`overlayOf(packs)`** sorts packs by id (two callers holding the same packs in another order build the same key
+  order, so replays agree) and throws `PackError` on a pack twice or an id already in the lookups.
+- **Nesting:** the same overlay again is a no-op; a different overlay while one is installed is refused.
+  **Async:** an async or generator `fn` is refused before it runs; a returned promise is refused after the ids are
+  taken out. A key written into a lookup during the call is reported.
+- **Caches.** Every module-level cache in the rules package was read. Keyed by state or map objects and holding
+  nothing from content: `space.js` `regionIndex`, `grid.js` `offsets`, `world.js` `ROUTES`, vision.js `sets`. Built
+  from content once at load, SRD only for ever (an overlay is never installed while a module loads, since `using` is
+  synchronous and module evaluation is not): the six name maps of `import-fgxml.js`. **Poisonable:** `walls.js`
+  `barriers` and the caches keyed on its signature (DEBT P31): an answer from outside the overlay is given back
+  inside it. A test pins it.
+- **Load-time reads:** `content-reads.test.js` scans the rules, client and server code and fails on a new line that
+  reads `CONTENT`, `SPELLS`, `MONSTERS`, `MONSTER_ACTIONS` or `PREGENS` outside any function; the eight known lines
+  are listed.
+
 ## Risks
 
 - **The scoped registry is a workaround, not a design.** It is the cheapest way
