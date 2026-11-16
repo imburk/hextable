@@ -185,12 +185,41 @@ test("Thrown (already right): a second, ranged attack with the same ability", ()
   assert.deepEqual(t.range, [30, 120]);
 });
 
-test("Two-Handed (today): a Greatsword is swung from behind a Shield, and with a second weapon in hand", () => {
-  const rec = derive(sheet(STRONG, ["greatsword", "longsword"], { shield: true })).record;
-  assert.equal(rec.shield, true, "the sheet records a Shield");
-  const s = field(sheet(STRONG, ["greatsword", "longsword"], { shield: true }));
-  ok(swing(s, "greatsword"));                                       // two hands on a Greatsword, and a Shield
-  assert.equal(rec.hands, undefined, "the sheet does not record what is in each hand");
+test("Two-Handed: a Shield takes a hand, so a Two-Handed weapon is refused with a sentence and nothing changes (SRD, Properties, Two-Handed)", () => {
+  const s = field(sheet(STRONG, ["greatsword", "longsword", "longbow", "shortsword"], { shield: true }));
+  assert.equal(s.entities.hero.shield, true, "the sheet records the Shield");
+  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "greatsword" }, /^Greatsword is a Two-Handed weapon and needs both hands, and Fi carries a Shield\. Attack with another weapon, or put the Shield away\.$/);
+  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "longbow" }, /Longbow is a Two-Handed weapon/);
+  assert.ok(s.encounter.budget.action === 1 && !s.encounter.budget.attacks, "no action was spent");
+  const out = exact(s, [{ type: "attack", actor: "hero", target: s.foe, attack: "longsword" }, { type: "attack", actor: "hero", target: s.foe, attack: "shortsword" }]);
+  assert.equal(out.length, 2, "One-handed weapons are fine with a Shield");
+});
+
+test("Two-Handed: without a Shield it is allowed; a Light Crossbow and a Heavy Crossbow count too", () => {
+  ok(swing(field(sheet(STRONG, ["greatsword"])), "greatsword"));
+  ok(swing(field(sheet(STRONG, ["light-crossbow"]), { gap: 3 }), "light-crossbow"));
+  const s = field(sheet(STRONG, ["light-crossbow"], { shield: true }), { gap: 3 });
+  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "light-crossbow" }, /Light Crossbow is a Two-Handed weapon/);
+});
+
+test("Two-Handed: a Lance is one-handed while mounted, so a Shield may stay on", () => {
+  const s = field(sheet(STRONG, ["lance"], { shield: true }), { gap: 2 });
+  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "lance" }, /Lance is a Two-Handed weapon/);
+  const horse = makeEntity({ name: "Warhorse", hp: 19, ac: 11, speed: 60, size: "large", abil: { str: 18, dex: 12, con: 13, int: 2, wis: 12, cha: 7 }, attacks: [] }, { id: "horse", kind: "npc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  s.entities.horse = horse;
+  s.entities.hero.riding = { on: "horse", controlled: true, size: "large" };
+  horse.rider = "hero";
+  ok(apply(s, { type: "attack", actor: "hero", target: s.foe, attack: "lance" }, DM));
+});
+
+test("Two-Handed: what the sheet does not say is left to the DM (no hands are recorded)", () => {
+  const rec = derive(sheet(STRONG, ["greatsword", "longsword"])).record;
+  assert.equal(rec.hands, undefined);
+  assert.equal(rec.weapons, undefined, "the weapons are the ones carried, any of which may be used: not what is held");
+  // A Greatsword and a Longsword are both on the sheet, and the engine lets either be swung: it cannot know which is in hand.
+  const s = field(sheet(STRONG, ["greatsword", "longsword"]));
+  ok(swing(s, "greatsword"));
+  ok(swing(s, "longsword"));
 });
 
 test("Versatile (already right): the two-handed damage is its own attack, offered only without a Shield", () => {

@@ -4,7 +4,7 @@ import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
+import { able, control, current, ent, fail, featOf, ft, inFight, mountOf, need, steering, up, walled } from './shared.js';
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
@@ -155,6 +155,17 @@ function isAttack(def) {
 // a monster's stat-block attack is the creature's own and is not held to it.
 const isLoading = (atk) => typeof atk?.weapon === 'string' && !!CONTENT.weapons[atk.weapon]?.properties?.includes('loading');
 
+// Two-Handed (SRD "Weapons", Properties): "A Two-Handed weapon requires two hands when you attack with it." The sheet records a
+// Shield (`shield`) and not what each hand holds: weapons are what the character carries, any of which it may use. So the engine
+// can tell that a Shield takes a hand, and cannot tell that another weapon does: that is the DM's (the weapon's reading says so).
+// A Lance (`twoHandedUnlessMounted`) is one-handed while its wielder rides a mount. Returns the reason, or ''.
+function handsFull(s, e, atk) {
+  const w = typeof atk?.weapon === 'string' ? CONTENT.weapons[atk.weapon] : null;
+  if (!w?.properties?.includes('two-handed') || !e.shield) return '';
+  if (w.twoHandedUnlessMounted && mountOf(s, e)) return '';
+  return `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. Attack with another weapon, or put the Shield away.`;
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -172,6 +183,8 @@ export const handlers = {
     const atk = e.attacks.find((x) => x.id === a.attack) || fail('Unknown attack.');
     up(e) || fail(`${e.name} is down.`);
     able(e);
+    const full = handsFull(s, e, atk);
+    if (full) fail(full);
     !t.dead || fail(`${t.name} is already dead.`);
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
