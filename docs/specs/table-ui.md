@@ -1881,3 +1881,55 @@ Build notes for the client side of companions C1 (`docs/specs/companions.md`; en
 - **DM panel.** Under Creatures: a master, a kind and "Can't attack" with Bond selected, and Free selected. Refusals are the engine's words.
 - **Log.** `bonded`, `unbonded`, `companion` and `vanished` have lines. The log keeps the last name it saw for each creature, so what is said before a `vanished` still names it. `vanished` is a combat line.
 - **Fade.** For each `vanished` the client adds a `removed` for the same id to what it hands the timeline, so the renderers fade the pawn as for a removal.
+
+### E23: a hostile cast lands, then the fight starts, engine (PR for #372)
+
+Built for casts only, as #372 has it. What was settled where the row left room; what goes beyond the SRD and the spec
+is marked **new rule**.
+
+- **When.** `casting.js`, `castSpell`: the table rule `autoEngage` on, no fight going on, the DM's `cast` (or `use` of an
+  item's spell) of a harmful spell aimed at creatures or an area, by a creature not of the party, aimed at or catching at
+  least one party member (`landsFirst`). Then the cast runs as any cast outside a fight does: the slot (or the item's
+  charge) is spent once, the Counterspell window, the attack roll and the reactions to it (Shield), the saves, damage,
+  conditions, a lasting effect and Concentration, zones, the `manual` notes. Then, in the same action, the fight starts:
+  `startEncounter` round the caster for an area, `engage` round the caster and the first creature it was aimed at for one
+  aimed at creatures, as the dropped cast did, with the two where they stand after the spell. Initiative is rolled as for
+  any fight (`encounterStart` after the cast's events); then `checkEnd`, so a cast that dropped the whole party ends the
+  fight as Decision 1 says. A countered spell, and a Spell Scroll that fades, still start the fight: the hostile casting
+  was made. If nobody is left to fight there, no fight starts (`startEncounter` refuses before it changes anything, and
+  that refusal is caught). Everything else is as before: with `autoEngage` off, a player's cast, the DM casting a party
+  member's spell, a harmful cast at nobody of the party, and a DM's `attack` and a monster's `act` (`attacks.js` was not
+  touched; the lead's proposal that they land too is not confirmed) start the fight and are not cast. Proved byte for
+  byte against main by `e23-replay.test.js` (scripts recorded on main 727d590: every E23 cast with `autoEngage` off, the
+  casts and the attack E23 leaves alone, moves with nothing hidden).
+- **The caster's first turn.** `CAST_TAKES_FIRST_ACTION` (casting.js), `false`: the cast was made before the fight and
+  the caster's first turn is a whole one (the issue's default; the spec's proposal is unconfirmed). Set to `true`, the
+  fight carries `encounter.owed = { [caster]: { time, slot, spell } }` until that creature's first turn begins, which
+  then has no action (or Bonus Action, for a Bonus Action cast), counts as having spent its one spell slot for a slot
+  spell, and says so (`note`). Both are tested (`e23-hostile-cast.test.js`, the `true` case on a copy of the rules with
+  that one line changed). With `false` nothing is added to the state: no state version.
+- **Reactions asked during the cast, with no fight yet.** They work by the existing rules outside a fight: a creature's
+  standing instruction is read at the trigger (Counterspell at the casting, Shield at the hit, Hellish Rebuke at the
+  damage), a player whose instruction is `ask` is asked and the whole cast waits in `pending` (nothing starts; the
+  answer runs the cast again from the start with it, then the fight starts in that `react` action), and the DM is told of
+  one of the DM's own by a `manual` event. Such a Reaction is spent (`reactionUsed`, the slot) as it is outside a fight.
+  **New rule**: when the fight starts, whoever took a Reaction during that cast keeps it spent until the start of its
+  first turn in the fight (SRD "Reactions", 1434-1435: "When you take a Reaction, you can't take another one until the
+  start of your next turn"); everyone else gets theirs back, as every fight's start gives it.
+- **Hidden information** (hidden-information.md, sections 3 and 5). A caster the DM has hidden is told as an unseen
+  creature is while it casts, and revealed by the fight's start, as every fight reveals whoever is in it. The cast's
+  events are marked `unseen` with the creatures the party did not know of at that moment (the caster), before the fight
+  starts, so `viewEvents`, live and from the record, treats them as it treats an unseen creature's: its `cast`, `attack`,
+  `concentration` and `item` events are not sent, an `effectStart` has no `source`, a save of a creature not the
+  player's own has no DC, damage carries no `by`. Then `revealed` (sent first in the batch) and `encounterStart`, whose
+  order entry for it is `{ id }` alone. The cast also shows its place (`showPlace`), as every cast does, which reveals the
+  region the caster stands in. Twin runs (`e23-hidden-caster.test.js`): two worlds differing in the hidden caster's name
+  and sheet give every player the same events up to the fight's start, and none names it, its name or its cell. The
+  record keeps the mark unless an event also names a creature still hidden at the end (DEBT W32).
+- **Undo.** The cast and the fight are one action, so one undo takes back both (`describeStep` names it after the cast,
+  as before). A cast that waited for a player's reaction is two steps, as any cast that waits is.
+- **Not built.** Surprise (DEBT W31). `attack` and `act` (W30).
+- **Tests** (new files): `e23-hostile-cast.test.js` (Sacred Flame, Fire Bolt, Fireball catching three party members,
+  Hold Person, a Wand of Magic Missiles; Shield, Counterspell, a player asked; undo, redo, replay, save and load; saves
+  from main, `fixtures/e23-main-saves.json`; the constant both ways), `e23-hidden-caster.test.js`, `e23-replay.test.js`
+  (`fixtures/e23-main-replay.json`, made by `fixtures/e23-record.mjs` from main's rules); on hexes and the square room.
