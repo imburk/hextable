@@ -21,7 +21,6 @@ const KNOWN = new Set([
   "packages/rules/src/import-fgxml.js: for (const d of Object.values(CONTENT.items)) { itemByKey.set(norm(d.name), d); itemByKey.set(norm(d.id), d); }",
   "packages/rules/src/import-fgxml.js: for (const f of Object.values(CONTENT.feats)) { featByKey.set(norm(f.name), f); featByKey.set(norm(f.id), f); }",
   "packages/client/app.js: $('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value=\"${c.id}\">${esc(c.name)}</option>`).join('');",
-  "packages/client/app.js: for (const [id, m] of Object.entries(MONSTERS)) {",
 ]);
 
 // ---------- a small scanner: which uses of the names are not inside any function ----------

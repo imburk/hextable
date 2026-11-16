@@ -2,6 +2,10 @@
 // doesn't know whether the rules engine is running in this tab or on a server.
 //   { you, send(action), undo(), redo(), undoInfo: { undo, redo, pins }, rewind(to) (solo; online, the DM sends {t:'rewind'}),
 //     on: { update(state, events), error(msg), lobby(info), welcome(you), undoable(info) } }
+//   Online only: homebrew packs (docs/specs/homebrew.md, packages/server/README.md "Homebrew packs"): `on.packs(msg)` and `on.packData(msg)` pass the
+//   table's messages on as they come (packmanager.js keeps what they carry); `packData(id)` asks for one pack's data; `packOp(msg)` sends a DM's
+//   `{t:'pack', ...}` and resolves with the table's `packs` answer or rejects with its error frame ({ error, problems?, blockers? }). While
+//   `holdUpdates()` says a pack's data is still on its way, updates wait (in order, at most 4 seconds) so a state never names a spell the page lacks.
 //   Online only: `link` (this connection's state: { known, state, label, text, rtt }), `links` (what the table told us of the others':
 //   Map userId -> { state, rtt, at }: for the DM every player's, for a player the DM's), `on.link()` and `on.links()` when either changes.
 import { apply } from './shared/engine.js';
@@ -97,6 +101,10 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
 // Online: a table server owns the state. `first` is {t:'host'|'join'|'resume', ...}.
 // `?link=fast` in the address shortens the link thresholds (linkquality.js, LINK_FAST) for tests and smoke passes.
 const linkConfig = () => { try { return new URLSearchParams(location.search).get('link') === 'fast' ? LINK_FAST : LINK; } catch { return LINK; } };
+// Whether a table's error frame answers a pack message: the table's refusals of one carry the checker's `problems` or the `blockers`, or say so in words
+// (the DM-only refusal, the four-pack limit, an unknown operation, the budget of pack messages). Any other error (a refused action, a packData rate limit)
+// is not the pack's answer and goes on to the page as it always did.
+export const answersPack = (msg) => Array.isArray(msg.problems) || Array.isArray(msg.blockers) || /pack|homebrew|Too many requests|add, update or remove|could.?n.t make sense/i.test(String(msg.error ?? ''));
 export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   const t = { solo: false, you: null, on: {}, lobby: { members: [], pending: [] }, undoInfo: { undo: [], redo: [] } };
   let ws, retry = 0, hello = first;
@@ -106,6 +114,19 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   // up to date and asks for everything again if an update ever goes missing.
   const receiver = createReceiver(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'sync' })); });
   let pendingExport = null;            // { resolve, reject, timer } while an export is awaited
+  let pendingPack = null;              // { resolve, reject, timer } while the answer to a DM's `pack` message is awaited
+  // Updates held while a pack's data is on its way (t.holdUpdates, set by the page), and the packs message the table sends before the first
+  // update after a welcome (a table with no packs sends none: the first update then says the list is empty).
+  const held = []; let heldTimer = null, packsSeen = true;
+  const onUpdate = (msg) => {
+    if (!packsSeen) { packsSeen = true; t.on.packs?.({ t: 'packs', packs: [] }); }
+    const u = receiver.receive(msg); if (u) t.on.update(u.state, u.events);
+  };
+  const flush = (force = false) => {
+    while (held.length && (force || !t.holdUpdates?.())) onUpdate(held.shift());
+    if (!held.length) { clearTimeout(heldTimer); heldTimer = null; }
+  };
+  t.flushUpdates = () => flush();
 
   // Connection quality (linkquality.js judges, this measures). Every cfg.pingMs: if the socket is open, a ping whose answer must come within
   // cfg.pongMs (the round trip is timed here, on the client); if it is not open, or the browser says it is offline, a "down" sample.
@@ -165,8 +186,16 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
         t.you = { role: msg.role, userId: msg.userId, name: msg.name, code: msg.code, approved: msg.approved };
         hello = { t: 'resume', code: msg.code, token: msg.token };
         store.set('hextable.session', { code: msg.code, token: msg.token });
+        packsSeen = false;
         t.on.welcome?.(t.you);
-      } else if (msg.t === 'update') { const u = receiver.receive(msg); if (u) t.on.update(u.state, u.events); }
+      } else if (msg.t === 'update') {
+        if (held.length || t.holdUpdates?.()) { held.push(msg); heldTimer ??= setTimeout(() => { heldTimer = null; flush(true); }, 4000); } else onUpdate(msg);
+      }
+      else if (msg.t === 'packs') {
+        packsSeen = true; t.on.packs?.(msg);
+        if (pendingPack && msg.changed) { clearTimeout(pendingPack.timer); const p = pendingPack; pendingPack = null; p.resolve(msg); }
+      }
+      else if (msg.t === 'packData') t.on.packData?.(msg);
       else if (msg.t === 'export') { pendingExport?.resolve(msg.table); }
       else if (msg.t === 'error' && pendingExport && !msg.expired) pendingExport.reject(new Error(msg.error));
       else if (msg.t === 'pong') gotPong(msg);
@@ -174,18 +203,28 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
       else if (msg.t === 'history') t.on.history?.(msg);
       else if (msg.t === 'undoable') { t.undoInfo = { undo: msg.undo, redo: msg.redo, ...(msg.pins && { pins: msg.pins }) }; t.on.undoable?.(t.undoInfo); }
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
+      else if (msg.t === 'error' && pendingPack && !msg.expired && answersPack(msg)) { clearTimeout(pendingPack.timer); const p = pendingPack; pendingPack = null; p.reject(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
     };
     ws.onclose = () => { waitingPong = null; if (pinger) down(); if (hello?.t === 'resume') setTimeout(open, Math.min(8000, 500 * 2 ** retry++)); };
   };
   t.start = open;
   // Drop this connection for good (used when the player starts over with a different table).
-  t.close = () => { hello = null; stopLink(); if (ws) { ws.onmessage = null; ws.close(); } };
+  t.close = () => { hello = null; stopLink(); clearTimeout(heldTimer); held.length = 0; clearTimeout(pendingPack?.timer); pendingPack = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
   // Leave the table for good and forget it on this device.
   t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); store.del('hextable.session'); t.close(); };
   // Ask for past entries from the table's record: { types, since, limit }. The answer arrives on on.history.
   t.history = (query) => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'history', ...query })); };
+  // A pack's data, once, by its id (the table sends it unasked when a pack is added or updated). The answer arrives on on.packData.
+  t.packData = (id) => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'packData', id })); };
+  // The DM's pack message: { t:'pack', op:'add'|'update', pack } or { t:'pack', op:'remove', id }. One at a time.
+  t.packOp = (msg) => new Promise((resolve, reject) => {
+    if (ws?.readyState !== 1) return reject({ error: 'Reconnecting to the table…' });
+    if (pendingPack) return reject({ error: 'Wait for the table to answer the last pack change.' });
+    pendingPack = { resolve, reject, timer: setTimeout(() => { pendingPack = null; reject({ error: 'The table did not answer.' }); }, 20000) };
+    ws.send(JSON.stringify({ ...msg, t: 'pack' }));
+  });
   // The DM asks for the whole table to keep as a file. Resolves to { code, exportedAt, state }.
   t.export = () => new Promise((resolve, reject) => {
     if (ws?.readyState !== 1) return reject(new Error('Reconnecting to the table…'));
