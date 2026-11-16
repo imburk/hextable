@@ -30,6 +30,10 @@ const EXTRA_MONSTERS = [
   { id: 'hb-rk-types', name: 'Typed Warder', source: 'homebrew:rk', size: 'tiny', type: 'construct', cr: 0.125, xp: 25, pb: 2, ac: 11, hp: 5, speed: { walk: 30 }, abilities: { str: 8, dex: 12, con: 10, int: 2, wis: 10, cha: 1 },
     resist: [], vulnerable: [], immune: [], traits: [], tier: 'auto', checked: false, text: 'Invented for the reader tests: an area that only some creature types feel.',
     actions: [{ id: 'hum', name: 'Hum', text: 'x', target: { area: { shape: 'emanation', size: 10, types: ['undead', 'fiend'] } }, effects: [{ save: 'wis', dc: 11, onFail: [{ damage: '1d4', type: 'psychic' }] }] }] },
+  // What strict mode refused from #421 on (DEBT T54): a spell attack, healing that adds a modifier, and a creature target with no reach or range, in a creature's action.
+  { id: 'hb-rk-flawed', name: 'Flawed Reaver', source: 'homebrew:rk', size: 'medium', type: 'fiend', cr: 3, xp: 700, pb: 2, ac: 14, hp: 50, speed: { walk: 30 }, abilities: { str: 14, dex: 12, con: 12, int: 10, wis: 10, cha: 10 },
+    resist: [], vulnerable: [], immune: [], traits: [], tier: 'assist', checked: false, text: 'Invented for the reader tests: actions the engine cannot run as written.',
+    actions: [{"id": "spell-lash", "name": "Spell Lash", "text": "Flawed: a spell attack.", "target": {"creature": {"reach": 10}}, "effects": [{"attack": "melee", "kind": "spell", "onHit": [{"damage": "2d8", "type": "force"}]}]}, {"id": "siphon", "name": "Siphon", "text": "Flawed: heals with a modifier.", "target": {"self": true}, "effects": [{"heal": "1d8", "addMod": true}, {"tempHp": "1d6", "addMod": true}]}, {"id": "blind-grip", "name": "Blind Grip", "text": "Flawed: no reach or range.", "target": {"creature": {}}, "effects": [{"save": "str", "dc": 17, "onFail": [{"damage": "3d8+5", "type": "bludgeoning"}, {"condition": "grappled"}]}]}] },
 ];
 const monsters = () => [...PACK.monsters, ...EXTRA_MONSTERS];
 const readingOf = (kind, e) => { const r = readEntry(kind, e); return [`== ${kind} ${e.id}`, ...r.lines, ...r.doesNot.map((x) => `DM: ${x}`), ...r.problems.map((x) => `PROBLEM: ${x}`), ''].join('\n'); };
@@ -157,8 +161,8 @@ test('every SRD monster reads without a problem, and its numbers are the entry\'
 
 test('the reading says what the engine hands to the DM, for the SRD\'s own monsters', () => {
   const has = (id, re) => assert.ok(readEntry('monster', CONTENT.monsters[id]).lines.some((l) => re.test(l)), `${id}: ${re}`);
-  has('quasit', /rolls that save against no DC, so it never succeeds/);
-  has('gorgon', /the entry's own DC for it, 15, is not read/);
+  has('quasit', /against DC 10 \(the DC of the save that put it on\); a success ends it/);
+  has('gorgon', /against DC 15 \(the entry's own DC for it\); a success ends it/);
   has('wolf', /Advantage on its attack rolls/);
   has('knight', /Reaction, taken by a standing instruction/);
   has('adult-red-dragon', /Recharge 5-6/);
@@ -171,7 +175,7 @@ test('the reading says what the engine hands to the DM, for the SRD\'s own monst
 });
 
 // ---------- what the engine does, said (the readings stay true) ----------
-test('the engine does what the reading says of a repeated save, a spell attack, healing with a modifier and an action with no reach', () => {
+test('the engine does what the reading says of a repeated save, a spell attack, healing with a modifier, an action with no reach and an area that chooses', () => {
   const DM = { role: 'dm', userId: 'dm' };
   const set = (monster) => {
     const s = newGame(3);
@@ -185,28 +189,31 @@ test('the engine does what the reading says of a repeated save, a spell attack, 
     turn(m.id);
     return { s, m, turn };
   };
-  // A repeated save with a huge bonus never succeeds: the DC is not read.
+  // A repeated save is against the DC of the save that put the condition on, and a success ends it (#421: it never did).
   { const { s, m, turn } = set('quasit'); const f = s.entities.fighter; f.abil.wis = 1; f.saveBonus = { wis: -10 };
     assert.ok(apply(s, { type: 'act', actor: m.id, action: 'scare', target: 'fighter' }, DM).ok); assert.ok(f.cond.frightened);
     f.saveBonus = { wis: 50 }; turn('fighter');
     const ev = apply(s, { type: 'endTurn', actor: 'fighter' }, DM).events.filter((e) => e.type === 'save');
-    assert.equal(ev.length, 1); assert.equal(ev[0].success, false, 'a total of 60 still fails: there is no DC'); assert.ok(f.cond.frightened); }
-  // A spell attack in a creature's action has no total.
+    assert.equal(ev.length, 1); assert.equal(ev[0].dc, 10); assert.equal(ev[0].success, true, 'a total of 60 against DC 10'); assert.equal(f.cond.frightened, undefined); }
+  // A spell attack in a creature's action makes no roll: the DM is told, and it does not hit.
   { const { s, m } = set('quasit'); const a = m.actions.find((x) => x.id === 'rend'); a.effects[0].kind = 'spell'; delete a.effects[0].bonus;
-    const ev = apply(s, { type: 'act', actor: m.id, action: 'rend', target: 'fighter' }, DM).events.find((e) => e.type === 'attack');
-    assert.ok(Number.isNaN(ev.total) || ev.total === null, 'no total'); assert.equal(ev.hit, false); }
-  // Healing with addMod makes Hit Points not a number.
+    const r = apply(s, { type: 'act', actor: m.id, action: 'rend', target: 'fighter' }, DM);
+    assert.ok(r.ok); assert.equal(r.events.find((e) => e.type === 'attack'), undefined); assert.ok(r.events.some((e) => e.type === 'manual' && /no attack bonus/.test(e.text))); }
+  // Healing with addMod applies nothing, and the Hit Points stay a number.
   { const { s, m } = set('quasit'); m.hp = 1; m.actions.push({ id: 'mend', name: 'Mend', target: { self: true }, effects: [{ heal: '1d6', addMod: true }] });
-    apply(s, { type: 'act', actor: m.id, action: 'mend', target: m.id }, DM); assert.ok(Number.isNaN(m.hp)); }
-  // A creature target with no reach or range: using it throws, and so does the monster AI.
+    const r = apply(s, { type: 'act', actor: m.id, action: 'mend', target: m.id }, DM); assert.ok(r.ok); assert.equal(m.hp, 1); assert.ok(r.events.some((e) => e.type === 'manual')); }
+  // A creature target with no reach or range: using it is refused with a sentence, and the monster AI skips it.
   { const { s, m } = set('quasit'); m.actions.push({ id: 'blind', name: 'Blind', target: { creature: {} }, effects: [{ save: 'str', dc: 17, onFail: [{ damage: '3d8', type: 'bludgeoning' }] }] });
-    assert.throws(() => apply(s, { type: 'act', actor: m.id, action: 'blind', target: 'fighter' }, DM), TypeError);
-    assert.throws(() => aiStep(s, m.id), TypeError); }
-  // An area's `choose` is not applied to a creature's action: every creature caught takes it.
+    const r = apply(s, { type: 'act', actor: m.id, action: 'blind', target: 'fighter' }, DM); assert.equal(r.ok, false); assert.match(r.error, /cannot be aimed/);
+    assert.doesNotThrow(() => aiStep(s, m.id)); }
+  // An area's `choose` is applied to a creature's action: up to that many of those caught, the creature's pick.
   { const { s, m } = set('quasit'); m.actions.push({ id: 'burst', name: 'Burst', target: { area: { shape: 'sphere', size: 60, range: 30, choose: 2 } }, effects: [{ damage: '1d4', type: 'fire' }] });
-    const ev = apply(s, { type: 'act', actor: m.id, action: 'burst', hex: { q: 0, r: 0 } }, DM);
-    assert.ok(ev.ok, ev.error); const hit = new Set(ev.events.filter((e) => e.type === 'damage' || e.type === 'hit').map((e) => e.target ?? e.id));
-    assert.ok(Object.values(s.entities).filter((e) => e.side === 'party').length > 2); assert.ok(hit.size > 2, `more than the 2 the entry names took it (${hit.size})`); }
+    assert.ok(Object.values(s.entities).filter((e) => e.side === 'party').length > 2);
+    const refused = apply(s, { type: 'act', actor: m.id, action: 'burst', hex: { q: 0, r: 0 } }, DM);
+    assert.equal(refused.ok, false); assert.match(refused.error, /up to 2 creatures/);
+    const ev = apply(s, { type: 'act', actor: m.id, action: 'burst', hex: { q: 0, r: 0 }, targets: ['fighter', 'cleric'] }, DM);
+    assert.ok(ev.ok, ev.error); const hit = new Set(ev.events.filter((e) => e.type === 'damage').map((e) => e.target));
+    assert.deepEqual([...hit].sort(), ['cleric', 'fighter']); }
 });
 
 // ---------- the reading never names a publisher, never voices the author's text ----------

@@ -174,7 +174,7 @@ Action "Spectral Slash": an action. In a fight it spends the creature's action.
   On a hit:
     It takes 2d6+3 necrotic damage.
     It has the Frightened condition.
-      It would make a Wisdom saving throw at the start of each of its turns, and a success would end it; any damage it takes would also end it. But the engine rolls that save against no DC, so it never succeeds: the DM ends it.
+      It makes a Wisdom saving throw at the start of each of its turns, and a success would end it; any damage it takes would also end it. But no DC is entered for that save, so the engine does not roll it: it tells the DM when the condition is put on, and the DM ends it.
       The engine applies part of what Frightened does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 10 when it hits.
   The monster AI uses this action on its own turns.
@@ -225,7 +225,7 @@ Action "Wail": an action. In a fight it spends the creature's action.
 Action "Dark Line": an action. In a fight it spends the creature's action.
   Each creature in a line 60 feet long and 10 feet wide takes 3d6 necrotic damage, rolled 2 times and added up.
   The line runs from the creature in a direction the creature picks; it catches every creature in it except the creature; a wall between the area's origin and a creature keeps that creature out.
-  The entry says the creature picks up to 2 of those caught, but the engine does not do that for a creature's action: every creature caught is affected. The DM leaves out any it should not.
+  Of those caught, the creature picks up to 2; only they are affected. With more caught and no pick the engine refuses the action and asks for one; the monster AI picks the nearest foes, then the most hurt, and never an ally.
   Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
   Worked out from the dice, not a promise: the damage averages 21 when it takes effect.
   The monster AI uses this action on its own turns.
@@ -258,7 +258,7 @@ Action "Draw Warmth": a Bonus Action. In a fight it spends the creature's Bonus 
   It is revealed: it is no longer hidden.
   The monster AI never picks this action by itself: the DM sends it.
 Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
-Why: 1 trait only the DM runs; 9 things the DM does by hand, listed below.
+Why: 1 trait only the DM runs; 8 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
 DM: The modifier at traits.2.modifiers.6: the engine does not read this hook from a trait.
@@ -266,9 +266,8 @@ DM: The modifier at traits.2.modifiers.7: the engine does not read this hook fro
 DM: traits.3.modifiers.6: the modifier needs the target can see the creature, which the engine cannot tell.
 DM: The trait "Legendary Actions": text only.
 DM: Legendary, lair or mythic actions of the trait "Legendary Actions".
-DM: Ending what step actions.1.effects.0.onHit.1 puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.
+DM: Ending what step actions.1.effects.0.onHit.1 puts on a creature: its repeated save has no DC anywhere (neither `ends.dc` nor a save above it), so only the DM can end it.
 DM: Ending what step actions.4.effects.0.onSuccess.0 puts on a creature: nothing ends it on its own.
-DM: Leaving out all but 2 of the creatures caught, as the entry's `choose` says: the engine does not.
 DM: Removing the Frightened condition that step actions.8.effects.0.onFail.0 puts on.
 DM: Whatever the description says beyond the lines above.
 
@@ -288,42 +287,15 @@ Senses: passive Perception 10.
 No damage resistances, vulnerabilities or immunities.
 Trait "Lair Presence": text only. The engine does nothing with it; the DM runs it.
   The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.
-Action "Spell Lash": an action. In a fight it spends the creature's action.
-  It is aimed at one creature within 10 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
-  Its melee attack reaches 10 feet.
-  The creature makes a melee spell attack roll against the target.
-  The engine has no spell attack bonus for a creature's action, so this roll has no total and never counts as a hit by the numbers. The entry should be a weapon attack with a bonus.
-  On a hit:
-    It takes 2d8 force damage.
-  Worked out from the dice, not a promise: the damage averages 9 when it hits.
-  The monster AI uses this action on its own turns.
-Action "Siphon": an action. In a fight it spends the creature's action.
-  It affects the creature itself.
-  The creature regains 1d8 Hit Points, plus a modifier the engine does not have here.
-    The engine has no spellcasting modifier for a creature's action: adding it makes the amount not a number, and the creature's Hit Points with it. This entry should not be approved.
-  It gains 1d6 Temporary Hit Points, plus a modifier the engine does not have here; they replace what it has only if they are more.
-    The engine has no spellcasting modifier for a creature's action: adding it makes the amount not a number, and the creature's Hit Points with it. This entry should not be approved.
-  The monster AI never picks this action by itself: the DM sends it.
-Action "Blind Grip": an action. In a fight it spends the creature's action.
-  It is aimed at one creature with no reach or range given. The target cannot be the creature itself, and a wall between them keeps it from being picked.
-  The engine cannot aim this action: using it, and the monster AI looking at it, fail with an error instead of a refusal. This entry should not be approved.
-  The target makes a Strength saving throw against DC 17.
-  On a failure:
-    It takes 3d8+5 bludgeoning damage.
-    It has the Grappled condition.
-      Nothing in the engine ends it: the DM removes it.
-      The engine applies part of what Grappled does; the DM applies the rest.
-  Worked out from the dice, not a promise: the damage averages 18.5 when the save fails.
-  The monster AI never picks this action by itself: the DM sends it.
 Action "Dread Gaze": an action. In a fight it spends the creature's action.
   It is aimed at one creature within 30 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
   The target makes a Wisdom saving throw against DC 16.
   On a failure:
     It has the Frightened condition.
-      It would make a Wisdom saving throw at the end of each of its turns, and a success would end it. But the engine rolls that save against no DC (the entry's own DC for it, 16, is not read), so it never succeeds: the DM ends it.
+      It makes a Wisdom saving throw at the end of each of its turns, against DC 16 (the entry's own DC for it); a success ends it.
       The engine applies part of what Frightened does; the DM applies the rest.
     It has the Stunned condition.
-      It would make a Constitution saving throw each time it takes damage, and a success would end it. But the engine rolls that save against no DC, so it never succeeds: the DM ends it.
+      It makes a Constitution saving throw each time it takes damage, against DC 16 (the DC of the save that put it on); a success ends it.
   The monster AI uses this action on its own turns.
 Action "Vanish": an action. In a fight it spends the creature's action.
   It affects the creature itself.
@@ -351,28 +323,17 @@ Action "Whisper": an action. In a fight it spends the creature's action.
   The engine does not do this; the DM does this: "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
   The monster AI never picks this action by itself: the DM sends it.
 Tier: manual. The entry says the DM runs most of this creature; the engine runs only what is listed above as run by the engine.
-Why: 1 trait only the DM runs; 14 things the DM does by hand, listed below.
+Why: 1 trait only the DM runs; 7 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
 DM: The trait "Lair Presence": text only.
 DM: Legendary, lair or mythic actions of the trait "Lair Presence".
-DM: The attack of step actions.0.effects.0: it is a spell attack, which has no bonus in a creature's action.
-DM: The healing of step actions.1.effects.0: it adds a modifier the engine does not have.
-DM: The healing of step actions.1.effects.1: it adds a modifier the engine does not have.
-DM: The action at actions.2: it has neither a reach nor a range.
-DM: Removing the Grappled condition that step actions.2.effects.0.onFail.1 puts on.
-DM: Ending what step actions.3.effects.0.onFail.0 puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.
-DM: Ending what step actions.3.effects.0.onFail.1 puts on a creature: its repeated save has no DC the engine reads, so only the DM can end it.
 DM: Every step of the action "Quake": the engine cannot lay out its area.
-DM: Step actions.5.effects.2: setting a map object's state.
-DM: Step actions.5.effects.3: a resource.
+DM: Step actions.2.effects.2: setting a map object's state.
+DM: Step actions.2.effects.3: a resource.
 DM: Every step of the action "Falling Stones": the engine cannot lay out its area.
 DM: "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
 DM: Whatever the description says beyond the lines above.
-PROBLEM: Step actions.0.effects.0: a creature's action has no spell attack bonus for the engine to use.
-PROBLEM: Step actions.1.effects.0: a creature's action has no spellcasting modifier, so `addMod` makes the amount not a number.
-PROBLEM: Step actions.1.effects.1: a creature's action has no spellcasting modifier, so `addMod` makes the amount not a number.
-PROBLEM: actions.2: a creature target has neither `reach` nor `range`, which the engine needs to aim it.
 
 == monster hb-rk-types
 Typed Warder (Tiny, construct, challenge rating 1/8, 25 XP when defeated).
@@ -398,6 +359,61 @@ Action "Hum": an action. In a fight it spends the creature's action.
   The monster AI uses this action on its own turns.
 Tier: auto. The engine runs every trait and action of this creature as listed above.
 Not checked against any rulebook.
+
+== monster hb-rk-flawed
+Flawed Reaver (Medium, fiend, challenge rating 3, 700 XP when defeated).
+The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
+Armor Class 14: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
+Hit Points 50: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
+Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
+Speed: walk 30 feet.
+Ability scores: Strength 14 (+2), Dexterity 12 (+1), Constitution 12 (+1), Intelligence 10 (+0), Wisdom 10 (+0), Charisma 10 (+0).
+Initiative uses its Dexterity modifier (+1).
+Saving throws: each is its plain ability modifier.
+Skills: none listed; each check is the plain ability modifier.
+Senses: passive Perception 10.
+No damage resistances, vulnerabilities or immunities.
+Action "Spell Lash": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 10 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  Its melee attack reaches 10 feet.
+  The creature makes a melee spell attack roll against the target.
+  The engine has no spell attack bonus for a creature's action, so it makes no roll: it tells the DM, who rolls it and says whether it hits, and it counts as a miss meanwhile. The entry should be a weapon attack with a bonus.
+  On a hit:
+    It takes 2d8 force damage.
+  Worked out from the dice, not a promise: the damage averages 9 when it hits.
+  The monster AI uses this action on its own turns.
+Action "Siphon": an action. In a fight it spends the creature's action.
+  It affects the creature itself.
+  The creature regains 1d8 Hit Points, plus a modifier the engine does not have here.
+    The engine has no spellcasting modifier for a creature's action: adding it gives an amount that is not a number, so the engine applies none of it and tells the DM. This entry should not be approved.
+  It gains 1d6 Temporary Hit Points, plus a modifier the engine does not have here; they replace what it has only if they are more.
+    The engine has no spellcasting modifier for a creature's action: adding it gives an amount that is not a number, so the engine applies none of it and tells the DM. This entry should not be approved.
+  The monster AI never picks this action by itself: the DM sends it.
+Action "Blind Grip": an action. In a fight it spends the creature's action.
+  It is aimed at one creature with no reach or range given. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The engine cannot aim this action: using it is refused with a sentence, and the monster AI skips it. This entry should not be approved.
+  The target makes a Strength saving throw against DC 17.
+  On a failure:
+    It takes 3d8+5 bludgeoning damage.
+    It has the Grappled condition.
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Grappled does; the DM applies the rest.
+  Worked out from the dice, not a promise: the damage averages 18.5 when the save fails.
+  The monster AI never picks this action by itself: the DM sends it.
+Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
+Why: 5 things the DM does by hand, listed below.
+The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
+Not checked against any rulebook.
+DM: The attack of step actions.0.effects.0: it is a spell attack, which has no bonus in a creature's action: rolling it and saying whether it hits.
+DM: The healing of step actions.1.effects.0: it adds a modifier the engine does not have: applying the amount.
+DM: The healing of step actions.1.effects.1: it adds a modifier the engine does not have: applying the amount.
+DM: The action at actions.2: it has neither a reach nor a range.
+DM: Removing the Grappled condition that step actions.2.effects.0.onFail.1 puts on.
+DM: Whatever the description says beyond the lines above.
+PROBLEM: Step actions.0.effects.0: a creature's action has no spell attack bonus for the engine to use.
+PROBLEM: Step actions.1.effects.0: a creature's action has no spellcasting modifier, so `addMod` gives an amount that is not a number.
+PROBLEM: Step actions.1.effects.1: a creature's action has no spellcasting modifier, so `addMod` gives an amount that is not a number.
+PROBLEM: actions.2: a creature target has neither `reach` nor `range`, which the engine needs to aim it.
 
 == monster warhorse
 Warhorse (Large, beast, challenge rating 1/2, 100 XP when defeated).

@@ -882,69 +882,6 @@
       ],
       "actions": [
         {
-          "id": "spell-lash",
-          "name": "Spell Lash",
-          "text": "Flawed: a spell attack.",
-          "target": {
-            "creature": {
-              "reach": 10
-            }
-          },
-          "effects": [
-            {
-              "attack": "melee",
-              "kind": "spell",
-              "onHit": [
-                {
-                  "damage": "2d8",
-                  "type": "force"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "id": "siphon",
-          "name": "Siphon",
-          "text": "Flawed: heals with a modifier.",
-          "target": {
-            "self": true
-          },
-          "effects": [
-            {
-              "heal": "1d8",
-              "addMod": true
-            },
-            {
-              "tempHp": "1d6",
-              "addMod": true
-            }
-          ]
-        },
-        {
-          "id": "blind-grip",
-          "name": "Blind Grip",
-          "text": "Flawed: no reach or range.",
-          "target": {
-            "creature": {}
-          },
-          "effects": [
-            {
-              "save": "str",
-              "dc": 17,
-              "onFail": [
-                {
-                  "damage": "3d8+5",
-                  "type": "bludgeoning"
-                },
-                {
-                  "condition": "grappled"
-                }
-              ]
-            }
-          ]
-        },
-        {
           "id": "dread-gaze",
           "name": "Dread Gaze",
           "text": "Flawed: the repeat save has no DC the engine reads.",
