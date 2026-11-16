@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, ROOT } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, seeded, playSolo, ROOT } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
@@ -380,7 +380,210 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
   });
 }
 
+// ---------- homebrew in a solo game (issue #424, DEBT T51) ----------
+// The player is the DM and every hero. The pack manager is on the DM tab; packs are kept in this browser (`hextable.solo.packs`) and checked again each time the
+// game opens. Add the sample pack (a storage that is full refuses it first, and says so), read an entry, give a character a homebrew spell and cast it; reload: the
+// pack is listed and the spell casts. Remove is refused while the character holds the spell and works after. Then the stored packs are damaged by hand: the game must
+// open, say what it dropped, and raise no page error. The game's seed is the pass's own (SMOKE_SEED=<n> replays one); every spot is asked of the engine (`spawnNear`).
+async function solo(browser, url, label0, opts, tag) {
+  const seed = process.env.SMOKE_SEED ? Number(process.env.SMOKE_SEED) : Math.floor(Math.random() * 1e9);
+  await scenario(`${label0} (seed ${seed})`, async (run) => {
+    const ctx = await browser.newContext(opts);
+    try {
+      const had = process.env.SMOKE_SEED; process.env.SMOKE_SEED = String(seed); seeded(ctx); if (had === undefined) delete process.env.SMOKE_SEED; else process.env.SMOKE_SEED = had;
+      const page = await ctx.newPage();
+      run.watch(page);
+      const KEY = 'hextable.solo.packs';
+      const stored = () => page.evaluate((k) => localStorage.getItem(k), KEY);
+      const openManager = async () => {
+        if (!(await shown(page, '#pm'))) { await openTab(page, 'dm'); await waitShown(page, '#pm-open'); await page.click('#pm-open'); await waitShown(page, '#pm'); }
+      };
+      const closeManager = async () => { if (await shown(page, '#pm')) { await page.click('#pm .pm-close'); await waitShown(page, '#pm', false); } };
+      const choose = async (name, text) => { await page.setInputFiles('#pm-file', file(name, text)); await waitShown(page, '#pm-review'); };
+      const reload = async () => {
+        await page.reload(); await waitShown(page, '#lobby');
+        if (!/Continue/.test(await page.textContent('#lobby-solo'))) throw new Error('the lobby does not offer the saved game');
+        await page.click('#lobby-solo');
+        await wait(page, () => window.hextable?.state?.entities);
+        await sleep(400); await calm(page);
+      };
+      const summary = async () => { await openTab(page, 'dm'); await waitShown(page, '#pm-summary'); return page.textContent('#pm-summary'); };
+      const dropped = async () => { await openManager(); const t = await page.$$eval('#pm .pm-refusal', (l) => l.map((x) => x.textContent).join('\n')); await closeManager(); await closeMenu(page); return t; };
+      let ven;
+
+      await run.do('a solo game opens, and its DM tab has the pack manager', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => { const h = window.hextable; h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' }); });
+        await calm(page);
+        await openTab(page, 'dm');
+        if (!(await shown(page, '#dm-packs')) || !(await shown(page, '#pm-open'))) throw new Error('the pack manager is not on the DM tab of a solo game');
+        const t = await page.textContent('#pm-summary');
+        if (!/None in this game yet/.test(t)) throw new Error(t);
+        await shot(page, `homebrew-solo-tab-${tag}`);
+        await closeMenu(page);
+      });
+      await run.do('a bad file and a file past the size limit are refused here, and nothing is kept', async () => {
+        await openManager();
+        await choose('broken.json', BAD);
+        const t = await page.textContent('#pm-review');
+        if (!/checker refused/i.test(t) || !/nothing was kept/.test(t) || await page.$('#pm-go')) throw new Error(t.slice(0, 300));
+        await choose('huge.json', ' '.repeat(600 * 1024));
+        if (!/not read/.test(await page.textContent('#pm-review'))) throw new Error('the large file was read');
+        if (await stored()) throw new Error('something was kept');
+      });
+      await run.do('the DM sees readings, monsters among them, before anything is added', async () => {
+        await choose('reader-kinds.json', KINDS_PACK);
+        const t = await page.textContent('#pm-review');
+        if (!/Monsters \(3\)/.test(t) || !t.includes(await tierLineOf(JSON.parse(KINDS_PACK)))) throw new Error(`no monster readings: ${t.slice(0, 400)}`);
+        await page.click('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] summary');
+        await wait(page, () => document.querySelectorAll('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] .pm-line').length > 20);
+        await shot(page, `homebrew-solo-monster-${tag}`);
+        await choose('sample-pack.json', SAMPLE);
+        const n = await page.$$eval('#pm-review .pm-entry[data-entry]', (l) => l.length);
+        if (n !== 17) throw new Error(`${n} entries`);
+        const t2 = await page.textContent('#pm-review');
+        if (!/16 auto, 0 assist, 1 manual/.test(t2) || !/Add to this game/.test(await page.textContent('#pm-go'))) throw new Error(t2.slice(0, 300));
+        await page.evaluate(() => { const d = document.querySelector('#pm-review .pm-entry[data-entry]'); d.open = true; d.querySelector('.pm-try-btn').click(); });
+        await wait(page, () => /damage|hit|missed|target/i.test(document.querySelector('#pm-review .pm-try')?.textContent ?? ''));
+        await shot(page, `homebrew-solo-review-${tag}`);
+      });
+      await run.do('a browser that cannot keep the pack: the pack is not added, and the player is told', async () => {
+        await page.evaluate((k) => { const real = Storage.prototype.setItem; window.__realSet = real; Storage.prototype.setItem = function (key, v) { if (key === k) throw new DOMException('full', 'QuotaExceededError'); return real.call(this, key, v); }; }, KEY);
+        await page.click('#pm-go');
+        await wait(page, () => /storage is full or turned off/.test(document.querySelector('#pm .pm-refusal')?.textContent ?? ''));
+        await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; });
+        if (await stored()) throw new Error('something was kept');
+        if (await page.$('.pm-pack[data-pack="sample"]')) throw new Error('the pack is listed');
+        if ((await page.evaluate(() => window.hextable.state.packs.length)) !== 0) throw new Error('the game names the pack');
+        if (await page.evaluate(() => window.hextable.packs.installed)) throw new Error('an overlay was installed');
+        await shot(page, `homebrew-solo-full-${tag}`);
+      });
+      await run.do('Add to this game: listed, kept in the browser, named in the game, and installed', async () => {
+        await page.click('#pm-go');
+        await waitShown(page, '.pm-pack[data-pack="sample"]');
+        const l = await page.textContent('.pm-pack[data-pack="sample"]');
+        if (!/17 spells/.test(l)) throw new Error(l);
+        const kept = JSON.parse(await stored());
+        if (kept.length !== 1 || kept[0].id !== 'sample' || !kept[0].data?.spells) throw new Error('not kept');
+        const st = await page.evaluate(() => ({ named: window.hextable.state.packs.map((p) => p.id), built: window.hextable.packs.built, installed: window.hextable.packs.installed }));
+        if (st.named.join() !== 'sample' || st.built.join() !== 'sample' || !st.installed) throw new Error(JSON.stringify(st));
+        await shot(page, `homebrew-solo-manager-${tag}`);
+        await closeManager(); await closeMenu(page);
+      });
+      await run.do('the DM gives a hero the spell, and casting it at a foe resolves', async () => {
+        await page.evaluate(() => window.hextable.act({ type: 'setSheet', sheet: { name: 'Ven', class: 'wizard', level: 2, abilities: { str: 10, dex: 14, con: 14, int: 17, wis: 12, cha: 10 }, skills: ['arcana', 'history'], weapons: ['quarterstaff'], spells: ['hb-sample-ember-dart', 'fire-bolt', 'magic-missile', 'hb-sample-jarring-note'] } }));
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'), null, 10000);
+        ven = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ven').id);
+        const foe = await spawnNear(page, 'goblin-warrior', { near: ven, min: 2, sightFrom: ven, range: 40, name: 'Target' });
+        await calm(page);
+        await page.evaluate((v) => window.hextable.select(v), ven);
+        await calm(page);
+        const pos = await page.evaluate((f) => window.hextable.state.entities[f].pos, foe);
+        await panelTab(page, 'spells');
+        await page.click(rowOf('spells', 'Ember Dart'));
+        await wait(page, () => window.hextable.mode.kind === 'spell').catch(async () => { throw new Error(`no spell mode: ${JSON.stringify(await page.evaluate(() => window.hextable.mode))}`); });
+        await page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [pos, foe]);
+        await calm(page);
+        await openTab(page, 'log');
+        await wait(page, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000);
+        const log = await page.evaluate(() => [...document.querySelectorAll('#log-list .lg-line')].map((l) => l.textContent).join('\n'));
+        if (!/Ven attacks Target( behind [a-z ]+)? with Ember Dart: .*(Miss|Hit|damage)/i.test(log)) throw new Error(`the cast did nothing: ${log.slice(-300)}`);
+        await shot(page, `homebrew-solo-cast-${tag}`);
+        await closeMenu(page);
+      });
+      await run.do('reload: the pack is still listed, installed, and the spell still casts', async () => {
+        await reload();
+        const st = await page.evaluate(() => ({ named: window.hextable.state.packs.map((p) => p.id), built: window.hextable.packs.built, installed: window.hextable.packs.installed, missing: !!document.querySelector('.hb-missing') }));
+        if (st.named.join() !== 'sample' || st.built.join() !== 'sample' || !st.installed) throw new Error(JSON.stringify(st));
+        const sum = await summary();
+        if (!/1 of 4: Sample Pack \(version 1\)/.test(sum) || /could not be loaded/.test(sum)) throw new Error(sum);
+        await openManager();
+        if (!(await shown(page, '.pm-pack[data-pack="sample"]'))) throw new Error('the pack is not listed');
+        await closeManager(); await closeMenu(page);
+        await page.evaluate((v) => window.hextable.select(v), ven);
+        await panelTab(page, 'spells');
+        await page.waitForSelector(rowOf('spells', 'Ember Dart'), { state: 'visible', timeout: 8000 });
+        // the engine, with the overlay the page installed from storage, still takes the cast (asked on a copy, as `spawnNear` asks about a spawn)
+        const cast = await page.evaluate(async ([v]) => {
+          const { apply } = await import('./shared/engine.js');
+          const S = structuredClone({ ...window.hextable.state, timeline: [] });
+          const foe = Object.values(S.entities).find((e) => e.name === 'Target');
+          const r = apply(S, { type: 'cast', actor: v, spell: 'hb-sample-ember-dart', targets: [foe.id] }, { role: 'dm', userId: 'local' });
+          return { ok: r.ok, error: r.error, types: (r.events ?? []).map((e) => e.type) };
+        }, [ven]);
+        if (!cast.ok) throw new Error(`the cast was refused after the reload: ${cast.error}`);
+        await shot(page, `homebrew-solo-reload-${tag}`);
+      });
+      await run.do('Remove is refused while the hero holds the spell, and says where; the pack stays', async () => {
+        await openManager();
+        const card = '.pm-pack[data-pack="sample"]';
+        await page.click(`${card} .pm-remove`); await page.click(`${card} .pm-remove`);
+        await wait(page, () => !!document.querySelector('#pm .pm-refusal'));
+        const t = await page.textContent('#pm .pm-refusal');
+        if (!/in use/i.test(t) || !/Ven/.test(t) || !/hb-sample-/.test(t)) throw new Error(t.slice(0, 300));
+        if (!(await shown(page, card)) || JSON.parse(await stored()).length !== 1) throw new Error('the pack went anyway');
+        await shot(page, `homebrew-solo-blocked-${tag}`);
+        await closeManager(); await closeMenu(page);
+      });
+      await run.do('once the hero is gone, Remove works: the pack, the browser\'s copy and the overlay go', async () => {
+        await page.evaluate((v) => { const h = window.hextable; if (h.state.encounter) h.act({ type: 'endEncounter' }); h.act({ type: 'remove', actor: v }); }, ven);
+        await wait(page, (v) => !window.hextable.state.entities[v], ven);
+        await openManager();
+        const card = '.pm-pack[data-pack="sample"]';
+        await page.click(`${card} .pm-remove`); await page.click(`${card} .pm-remove`);
+        await wait(page, () => !document.querySelector('.pm-pack[data-pack="sample"]')).catch(async () => { throw new Error(`still there: ${(await page.textContent('#pm .pm-refusal').catch(() => 'no refusal'))?.slice(0, 300)}`); });
+        if ((await stored()) !== '[]') throw new Error(`the browser still holds ${await stored()}`);
+        const st = await page.evaluate(() => ({ named: window.hextable.state.packs.length, installed: window.hextable.packs.installed, built: window.hextable.packs.built.length }));
+        if (st.named || st.installed || st.built) throw new Error(JSON.stringify(st));
+        await closeManager(); await closeMenu(page);
+      });
+      // What storage may hold is not trusted: each damaged form below is put in by hand, then the page is reloaded.
+      const damaged = async (name, value, want) => {
+        await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, value]);
+        await reload();
+        const sum = await summary();
+        if (!/could not be loaded/.test(sum)) throw new Error(`${name}: the summary says nothing: ${sum}`);
+        const t = await dropped();
+        if (!want.test(t)) throw new Error(`${name}: the reason is not given: ${t.slice(0, 300)}`);
+        if (await page.evaluate(() => window.hextable.state.packs.length || window.hextable.packs.installed)) throw new Error(`${name}: a pack was used`);
+        await shot(page, `homebrew-solo-${name}-${tag}`);
+        return t;
+      };
+      await run.do('stored packs that are nonsense: the game opens and says what was dropped', async () => {
+        await damaged('nonsense', 'nonsense {{', /not readable/);
+        await damaged('notalist', '{"a":1}', /not a list/);
+        await damaged('toolarge', 'x'.repeat(1100 * 1024), /it was not read/);
+      });
+      await run.do('a stored pack that fails the checks is dropped; nothing in it is used', async () => {
+        const rec = await page.evaluate(async (text) => { const { hashOf } = await import('./shared/content/packs.js'); const data = JSON.parse(text); data.spells[0].name = 'Forged'; return { id: data.pack.id, version: data.pack.version, hash: '0'.repeat(64), data }; }, SAMPLE);
+        await damaged('badhash', JSON.stringify([rec]), /sample.*hash/i);
+        const lie = await page.evaluate(async (text) => { const { hashOf } = await import('./shared/content/packs.js'); const data = JSON.parse(text); data.spells[0].effects = 'a string'; return { id: data.pack.id, version: data.pack.version, hash: hashOf(data), data }; }, SAMPLE);
+        await damaged('failscheck', JSON.stringify([lie]), /sample/);
+      });
+      await run.do('a good stored pack is used; if the browser loses it, the saved game opens without it and says so', async () => {
+        const rec = await page.evaluate(async (text) => { const { hashOf } = await import('./shared/content/packs.js'); const data = JSON.parse(text); return { id: data.pack.id, version: data.pack.version, hash: hashOf(data), data }; }, SAMPLE);
+        await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, JSON.stringify([rec])]);
+        await reload();
+        if (!/1 of 4: Sample Pack/.test(await summary()) || /could not be loaded/.test(await summary())) throw new Error(await summary());
+        await closeMenu(page);
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'pace', value: 'instant' }));         // any action: the game is kept with the pack named in it
+        await wait(page, () => JSON.parse(localStorage.getItem('hextable.solo')).packs.length === 1);
+        await page.evaluate((k) => localStorage.removeItem(k), KEY);
+        await reload();
+        const sum = await summary();
+        if (!/could not be loaded/.test(sum)) throw new Error(sum);
+        const t = await dropped();
+        if (!/sample.*no longer has it, so the game opens without it/.test(t.replace(/\s+/g, ' '))) throw new Error(t.slice(0, 300));
+        if (await page.evaluate(() => window.hextable.state.packs.length)) throw new Error('the game still names the pack');
+        await shot(page, `homebrew-solo-lost-${tag}`);
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
+  await solo(browser, url, 'homebrew solo: on a phone, with touch', PHONE, 'phone');
+  await solo(browser, url, 'homebrew solo: at desktop size', DESKTOP, 'desktop');
   await table(browser, url, 'homebrew: the DM at desktop size, a phone player', DESKTOP, PHONE, 'desktop');
   await table(browser, url, 'homebrew: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
 }
