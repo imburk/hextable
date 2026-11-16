@@ -14,6 +14,7 @@
 //   bonus      a magic weapon's bonus to attack and damage rolls, magic armour's or a Shield's to Armor Class
 //   damageType a weapon's damage type in place of its own (Sun Blade); properties: more weapon properties
 //   trained    true: worn as if trained with it (Elven Chain)
+//   mithral    true: the worn suit has no Stealth Disadvantage and no Strength requirement (Mithral Armor)
 //   grants     what a class feature can grant (modifiers, resist, speeds, senses, aura, abilityBonus, ...), and
 //              `setAbility` (a score becomes this while worn, unless already as high), `bareAc` (a bonus while
 //              wearing no armour and holding no Shield), `senseRange` (a sense gained, or its range increased)
@@ -73,6 +74,8 @@ export const items = [
     grants: { modifiers: [{ on: "damage.taken", op: "resist", types: ["chosen"] }] } },
   { id: "dwarven-plate", name: "Dwarven Plate", category: "armor", rarity: "very-rare", wear: "armour", base: { armour: ["half-plate-armor", "plate-armor"] }, bonus: 2, tier: "assist", source: "SRD 5.2.1", checked: true,
     text: "+2 to Armor Class. When an effect moves you along the ground against your will, a Reaction cuts the distance by up to 10 feet (the DM applies it)." },
+  { id: "mithral-armor", name: "Mithral Armor", category: "armor", rarity: "uncommon", wear: "armour", base: { armour: ["chain-shirt", "scale-mail", "breastplate", "half-plate-armor", "ring-mail", "chain-mail", "splint-armor", "plate-armor"] }, mithral: true, tier: "auto", source: "SRD 5.2.1", checked: true,
+    text: "Armor made of light, flexible mithral, worn under normal clothes. The suit has no Disadvantage on Dexterity (Stealth) checks and no Strength requirement." },
   { id: "elven-chain", name: "Elven Chain", category: "armor", rarity: "rare", wear: "armour", base: { armour: ["chain-mail", "chain-shirt"] }, bonus: 1, trained: true, tier: "auto", source: "SRD 5.2.1", checked: true,
     text: "+1 to Armor Class, and you count as trained with it even without Medium or Heavy armor training." },
 
