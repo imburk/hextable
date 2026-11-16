@@ -1798,3 +1798,28 @@ Settled in the review of #341:
   the two it had.
 - **No state version bump.** `encounter.gone` and a conclusion foe's `gone` and `shown` are optional; a save without them loads and
   plays as before (a fight saved in the middle simply has no seen vanish kept from before the change).
+
+### Build notes: the summon group of PATH-TO-0.2, data (#385)
+
+The twenty spells of the group "a summon or a thing that acts on later turns" (`docs/PATH-TO-0.2.md`, section 2) were
+read against `reference/srd52/srd52-flow.txt` and the vocabulary on main. Data only; no block was added.
+
+- **Changed.** Animate Objects' bond is `orders: 'command'`, `range: 500` (SRD: "a Bonus Action to mentally command any
+  creature you made with this spell if the creature is within 500 feet of you ... If you issue no commands, the creature
+  takes the Dodge action"), so the C5a command, the never-commanded lock and the brain's Dodge (C7) apply to it. Still
+  `assist`: the count by the caster's modifier and the objects' sizes, and reverting to the object. **The engine drops
+  the step's `range` for a summon on spaces** (resolve.js builds the bond without it; only the corpse path keeps it), so
+  a command to an object is not measured: the spell's text tells the DM. Phantom Steed's text now says it is ridden as
+  a Riding Horse (a trained mount, C6a); still `assist` for its end on damage.
+- **Already entered, unchanged:** Find Steed (Life Bond, C9), Animate Dead (bones and the Skeleton), Create Undead
+  ("only at night", the other blocks of levels 8 and 9).
+- **Not expressible, each with its one missing mechanism:** Mage Hand and Floating Disk (a thing that is not a creature,
+  moved by or following the caster); Unseen Servant (`turn: 'none'`, a creature moved only by commands on its master's
+  turn; also a block with one score); Flaming Sphere and Conjure Animals (a zone moved by the caster); Spiritual Weapon,
+  Arcane Sword and Conjure Fey (an attack the caster makes from a moved point on later turns); Faithful Hound (a thing
+  only its caster sees, intangible, acting at the start of the caster's turn); Guardian of Faith (a zone that ends after
+  dealing a total of damage); Arcane Hand (an object with the caster's Hit Point maximum, moved by the caster's Bonus
+  Action); Conjure Elemental (a zone that Restrains whoever it catches, one at a time); Planar Ally (a creature under no
+  compulsion: a bargain, the DM's by nature); Finger of Death (a summon on a creature the spell kills, at the start of
+  the caster's next turn: a `summon` under `onKill`); Simulacrum (a block copied from a creature, half its Hit Points).
+- Tests: `packages/rules/test/summons-385.test.js`.
