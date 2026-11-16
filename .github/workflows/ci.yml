@@ -13,5 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The rules stress tests run their short seeded loop by default; CI runs the long one (2,400 rounds a grid) on every push and pull request.
       - run: npm test
+        env:
+          HEXTABLE_STRESS: full
       - run: npm run build

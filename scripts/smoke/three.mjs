@@ -177,24 +177,32 @@ export async function arenaEdge(browser, url, label, { three, grid, ...opts }) {
       await run.do('a move out of the arena is refused with the rule in words, and the nearest border cells flash', async () => {
         await wait(page, () => { const S = window.hextable.state, id = S.encounter?.order[S.encounter.turn]?.id; return S.entities[id]?.side === 'party'; }, null, 60000);
         await sleep(1200);
-        const t = await page.evaluate(() => {
+        await page.evaluate(() => { const S = window.hextable.state; window.hextable.select(S.encounter.order[S.encounter.turn].id); });      // selecting may move the view: do it before looking
+        await sleep(800);
+        const findCell = () => page.evaluate(() => {
           const H = window.hextable, S = H.state, ent = S.entities[S.encounter.order[S.encounter.turn].id], lv = S.map.levels[0]; let best = null;
           for (let dq = -9; dq <= 9; dq++) for (let dr = -9; dr <= 9; dr++) {
             const q = ent.pos.q + dq, r = ent.pos.r + dr, k = `${q},${r}`; if (!lv.tiles[k] || S.encounter.arena[k]) continue;
             const p = H.R.screenOf({ q, r, z: ent.pos.z ?? 0 }); if (!p || p.x < 20 || p.y < 70 || p.x > innerWidth - 80 || p.y > innerHeight - 20 || document.elementFromPoint(p.x, p.y)?.id !== 'gl') continue;
             const d = Math.hypot(dq, dr); if (!best || d < best.d) best = { d, p, id: ent.id };
           }
-          if (best) H.select(best.id);
           return best && { x: best.p.x, y: best.p.y };
         });
+        // A cell outside the arena must be on screen to be tapped, and on a phone the arena can fill the view: when none shows, the view is widened
+        // through the renderer's own zoom (the camera settles) and the cells are looked for again.
+        let t = await findCell();
+        for (let k = 0; !t && k < 6; k++) { await page.evaluate(() => (window.hextable.R.inner ?? window.hextable.R).zoom(1.3)); await sleep(1200); t = await findCell(); }
         if (!t) throw new Error('no hex outside the arena is on screen to tap');
+        await sleep(500); t = (await findCell()) ?? t;                 // the view has stopped: take the cell's place now
+        // The flash lasts 1.1 s of the renderer's clock, and a loaded machine can take longer than that to get from the tap to the check below: hold it
+        // (as the screenshot below does) from before the tap, so what is checked is that a refused move lit the cells, not that the check was quick.
+        await page.evaluate(() => { const R = window.hextable.R.inner ?? window.hextable.R; window.__pin = setInterval(() => { if (R.flashAt !== null) R.flashAt = R.now - 0.12; }, 16); });
         await sleep(300); await tapAt(page, touch, t.x, t.y);
         await wait(page, () => /arena is locked/i.test(document.getElementById('toast').textContent) && !document.getElementById('toast').hidden, null, 5000);
         const txt = await page.evaluate(() => document.getElementById('toast').textContent);
         if (!/until the fight ends/.test(txt) || !/lit area/.test(txt)) throw new Error(`the toast says: ${txt}`);
         const f = await R((r) => ({ n: r.flash.n, at: r.flashAt }));
         if (!(f.n > 0) || f.at === null) throw new Error(`no flash: ${JSON.stringify(f)}`);
-        await page.evaluate(() => { const R = window.hextable.R.inner ?? window.hextable.R; window.__pin = setInterval(() => { if (R.flashAt !== null) R.flashAt = R.now - 0.12; }, 16); });
         await sleep(400); await shot('3-refused-flash'); await page.evaluate(() => clearInterval(window.__pin));
         await wait(page, () => (window.hextable.R.inner ?? window.hextable.R).flashAt === null, null, 5000);       // and it goes out by itself
       });

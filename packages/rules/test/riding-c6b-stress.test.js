@@ -16,7 +16,8 @@ import { squareRoom } from "./fixtures/square-room.js";
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
-const ROUNDS = 2400;
+// A short seeded run by default (the same assertions); 2,400 rounds a grid with HEXTABLE_STRESS=full (CI sets it); 800 rounds is the least that still reaches every counted event below with the same seed.
+const ROUNDS = process.env.HEXTABLE_STRESS === "full" ? 2400 : 800;
 const SPOTS = {
   hex: { fighter: { q: -6, r: 2 }, rogue: { q: -7, r: 3 }, cleric: { q: -7, r: 2 }, wizard: { q: -8, r: 3 }, goblin: { q: 2, r: 2 } },
   square: { fighter: { q: 3, r: 3 }, rogue: { q: 1, r: 12 }, cleric: { q: 2, r: 12 }, wizard: { q: 3, r: 12 }, goblin: { q: 11, r: 11 } },

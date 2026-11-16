@@ -169,12 +169,16 @@ async function desktop(browser, url) {
         await act({ type: 'spawn', monster: 'goblin-minion', at: { q: here.q - dir[0] * 5, r: here.r - dir[1] * 5 } });      // behind, out of the way: a fight needs a foe
         await act({ type: 'startEncounter', center: here, radius: 8 });
         if (!(await state(page, (S) => !!S.encounter))) throw new Error('no fight started');
+        // The DM ends turns until it is the fighter's. Each end of turn is waited for on the state (the turn has moved on), not on the clock:
+        // a read made before the action has been applied would see the same creature again and end a turn that was already over.
+        const turnNow = (p) => p.evaluate(() => window.hextable.state.encounter?.order[window.hextable.state.encounter.turn]?.id);
         for (let i = 0; i < 20; i++) {
-          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+          const cur = await turnNow(page);
           if (cur === id) break;
           await act({ type: 'endTurn', actor: cur });
+          await wait(page, (c) => { const E = window.hextable.state.encounter; return !E || E.order[E.turn].id !== c; }, cur, 8000);
         }
-        if ((await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id)) !== id) throw new Error('never the fighter\'s turn');
+        if ((await turnNow(page)) !== id) throw new Error(`never the fighter's turn: ${await page.evaluate(() => { const E = window.hextable.state.encounter; return JSON.stringify(E && { turn: E.turn, round: E.round, order: E.order.map((o) => o.id) }); })}, toast "${await page.textContent('#toast')}"`);
         await page.evaluate((i) => window.hextable.select(i), id); await calm(page); await blur(page);
         await faceAlong(page, dir);
         const before = await state(page, (S) => S.encounter.budget.move);
