@@ -20,7 +20,7 @@
 .pm-why { color: var(--accent); }
 .pm-licence { border-left: 3px solid var(--line); padding-left: 10px; overflow-wrap: anywhere; } .pm-licence h4, .pm-entries h4 { margin: 0 0 4px; font-size: 13px; color: var(--muted); } .pm-licence p { margin: 0 0 2px; }
 .pm-entries { display: grid; gap: 6px; }
-details.pm-entries > summary, details.pm-entry > summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+details.pm-entries > summary, details.pm-entry > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pm-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 10px 8px; background: var(--panel-2); }
 .pm-entry.pm-plain { padding: 8px 10px; }
 .pm-name { font-weight: 700; }
@@ -34,3 +34,6 @@ details.pm-entries > summary, details.pm-entry > summary { cursor: pointer; min-
 .pm-remove.sure { border-color: var(--bad); color: var(--bad); }
 .hb-tag { color: var(--accent); } .hb-read { min-height: 44px; min-width: 44px; padding: 4px 12px; font-size: 13px; } .hb-missing td { color: var(--muted); font-style: italic; }
 details.pm-entries > summary, details.pm-entry > summary { list-style: none; } details.pm-entries > summary::before, details.pm-entry > summary::before { content: '\25B8'; color: var(--muted); } details[open].pm-entries > summary::before, details[open].pm-entry > summary::before { content: '\25BE'; }
+.pm-hint { font-weight: 600; }
+.pm-unread-say { margin: 4px 0; }
+.pm-refused { border-color: var(--bad); color: var(--bad); }
