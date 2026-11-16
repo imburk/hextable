@@ -14,8 +14,9 @@ import { xpFor } from './rewards.js';
 import { restamp } from './durations.js';
 import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
+import { copyPacks, packsProblem } from './content/packs.js';
 
-export const VERSION = 23;
+export const VERSION = 24;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -146,6 +147,12 @@ export function migrate(state) {
       if (enc.rode !== undefined && !(enc.rode && typeof enc.rode === 'object' && !Array.isArray(enc.rode))) delete enc.rode;
     }
   }
+  // Version 24: which homebrew packs the game needs (docs/specs/homebrew.md, Decision 3; `state.packs` is
+  // `[{ id, version, hash }]`, never pack data). A table saved before then needs none. One that is not whole is
+  // dropped, which is none, so nothing reads half a list; the server holds the packs and sets this list again.
+  // A state already at version 24 with no `packs` at all (one made by `newGame`, which does not set it) is left as it is: reading code
+  // takes an absent list as none, and a state that is migrated again stays byte for byte the same.
+  if (!(state.version >= 24) || Object.hasOwn(state, 'packs')) state.packs = Array.isArray(state.packs) && packsProblem(state.packs) === null ? copyPacks(state.packs) : [];
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

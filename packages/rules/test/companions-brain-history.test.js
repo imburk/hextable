@@ -83,7 +83,9 @@ test("saves made by main's code before C7 load unchanged and the brain plays on 
   assert.equal(SAVES.length, 4);
   for (const { grid, at, state } of SAVES) {
     const raw = json(state), s = migrate(JSON.parse(raw));
-    assert.equal(json(s), raw, `${grid} ${at}: loads unchanged`);
+    const { packs, ...rest } = s;                     // version 24 (#390) raises the version and adds `packs: []`; nothing else changes
+    assert.deepEqual(packs, []);
+    assert.equal(json({ ...rest, version: state.version }), raw, `${grid} ${at}: loads unchanged`);
     const id = current(s), e = s.entities[id];
     assert.equal(brainMode(s, e), e.bond.kind === "undead" ? "guard" : "protect", `${grid} ${at}`);
     assert.ok(autoPlays(s, id));
