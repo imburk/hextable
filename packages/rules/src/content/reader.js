@@ -77,7 +77,7 @@ export const ZONE_ON_WORDS = { enter: 'enters the area (or the area reaches it)'
 // Where a modifier attaches: a noun for the thing it changes.
 export const HOOK_WORDS = {
   check: 'ability checks', save: 'saving throws', 'attack.roll': 'its attack rolls', 'attack.received': 'attack rolls made against it',
-  'damage.dealt': 'the damage it deals', 'damage.taken': 'damage it takes', ac: 'Armor Class', speed: 'Speed', initiative: 'Initiative',
+  'damage.dealt': 'the damage it deals', 'damage.taken': 'damage it takes', ac: 'its Armor Class', speed: 'its Speed', initiative: 'its Initiative',
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
@@ -96,7 +96,7 @@ export const OP_WORDS = {
   resist: (v, h) => `Resistance to ${h}`,
   vulnerable: (v, h) => `Vulnerability to ${h}`,
   immune: (v, h) => `Immunity to ${h}`,
-  crit: (v, h) => `every hit among ${h} counting as a Critical Hit`,
+  crit: (v, h) => `a Critical Hit on every hit, among ${h}`,
   floor: (v, h) => `any d20 roll lower than ${v} counting as ${v} on ${h}`,
 };
 // Situations the engine tests (`when`, `advantageIf`).
@@ -294,7 +294,11 @@ class Reading {
       this.dm('Every step of this spell: the engine cannot lay out its area.');
     }
     if (d.zone !== undefined) this.zone(aim);
-    const who = d.zone !== undefined ? 'that creature' : this.subject(t);
+    let who = d.zone !== undefined ? 'that creature' : this.subject(t);
+    const first = steps?.[0];
+    // A first step whose sentence does not speak of the target: name the target first.
+    const silent = isObj(first) && (['manual', 'set', 'resource', 'counter', 'summon'].some((x) => x in first) || ('reveal' in first && first.reveal !== 'target') || ('modifier' in first && first.to === 'caster'));
+    if (who !== 'the caster' && d.zone === undefined && silent) { this.line(`It is aimed at ${who}.`); who = who.startsWith('each ') ? 'each of them' : 'the target'; }
     if (steps) this.steps(steps, 'effects', 0, who, { top: true });
     this.aiming(t, aim);
     this.terrain(aim);
@@ -427,7 +431,7 @@ class Reading {
       if (a.height !== undefined) { if (a.shape === 'cylinder' && typeof a.height === 'number') this.num('target.area.height', a.height, 'feet'); else this.bad('`height` is for a cylinder, in feet.'); }
       if (a.width !== undefined) { if (isInt(a.width)) this.num('target.area.width', a.width, 'feet'); else this.bad('`width` is not feet.'); }
       const range = typeof d.range === 'number' ? d.range : 0;
-      const bits = [`The ${a.shape} is ${AREA_PLACE[a.shape](range)}`];
+      const bits = [`The ${a.shape} ${AREA_PLACE[a.shape](range)}`];
       bits.push(a.exceptCaster === true || (d.zone !== undefined && a.shape === 'emanation') ? 'it catches every creature in it except the caster' : 'it catches every creature in it, the caster too if the caster is in it');
       bits.push('a wall between the area\'s origin and a creature keeps that creature out');
       this.line(`${bits.join('; ')}.`);
@@ -498,7 +502,7 @@ class Reading {
     const moves = a.shape === 'emanation' ? 'It moves with the caster and never affects the caster.' : 'It stays where it was laid out.';
     this.line(`${cap1(AREA_WORDS[a.shape](a))} stays for as long as the spell lasts. ${moves}`);
     this.line(z.atCast === true ? 'As it appears, the steps below run on each creature in it.' : 'As it appears it affects nobody.');
-    this.line(`From then on, the steps below run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : ''}. Each creature rolls its own damage.`);
+    this.line(`From then on, the steps below run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : ''}.${this.damageOutside() ? ' Each creature rolls its own damage.' : ''}`);
     if (z.spare === true) this.line('When casting it, the caster may name creatures the area leaves alone.');
   }
 
@@ -582,7 +586,7 @@ class Reading {
       if (this.fx === 'bound') this.line('It is instant, but what its steps put on creatures stays until each part\'s own ending, as said above.');
       else this.line('It is instant: nothing it does is kept as a lasting effect.');
     } else if (/^\d/.test(d.duration)) this.line(`It lasts up to ${d.duration}. The engine times it, and when it ends, so does everything it put on creatures.`);
-    else { this.line(`It lasts ${d.duration === 'special' ? 'for a special time' : 'until dispelled'}. The engine cannot time that; the DM ends it.`); this.dm(`Ending the spell: it lasts ${d.duration}.`); }
+    else { this.line(`It lasts ${d.duration === 'special' ? 'for a special time' : 'until dispelled'}. The engine cannot time that; the DM ends it.`); this.dm(`Ending the spell: it lasts ${d.duration === 'special' ? 'for a special time' : 'until dispelled'}.`); }
     if (d.concentration === true && d.duration !== 'instant') this.line('It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.');
     if (d.concentration === true && d.duration === 'instant') this.line('It is marked Concentration, but it is instant, so there is nothing to concentrate on.');
   }
@@ -611,7 +615,7 @@ class Reading {
   }
   // The subject of a step after the first in its list.
   again(who) {
-    if (who === 'the caster' || who === 'it' || who === 'that creature') return who;
+    if (who === 'the caster' || who === 'it' || who === 'that creature' || who === 'the target') return who;
     return who.startsWith('each ') ? 'each of them' : 'it';
   }
 
@@ -656,9 +660,9 @@ class Reading {
     if (!ends) text = this.fx === 'spell' ? 'It lasts as long as the spell.' : 'Nothing ends it on its own: the DM ends it.';
     else if (ends.on === 'turnStart' || ends.on === 'turnEnd') text = `It ends at the ${ends.on === 'turnStart' ? 'start' : 'end'} of ${whose} next turn, or when the fight ends${this.fx === 'spell' ? ', even if the spell\'s time runs out first; ending the spell early ends it too' : ''}.`;
     else if (ends.on === 'save') {
-      const ab = ABILITY_WORDS[ends.save] ?? 'an unreadable ability';
+      const ab = ABILITY_WORDS[ends.save] ?? 'unreadable';
       const atw = ends.at === 'turnStart' ? 'at the start of each of its turns' : ends.at === 'turnEnd' ? 'at the end of each of its turns' : ends.at === 'damaged' ? 'each time it takes damage' : 'at an unreadable time';
-      text = `It makes a ${ab} saving throw ${atw}, against the caster's spell save DC; a success ends it${ends.orDamaged === true ? '. Any damage it takes also ends it' : ''}${this.fx === 'spell' ? '. It also ends with the spell' : ''}.`;
+      text = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}, against the caster's spell save DC; a success ends it${ends.orDamaged === true ? '. Any damage it takes also ends it' : ''}${this.fx === 'spell' ? '. It also ends with the spell' : ''}.`;
     } else {
       text = `It ends when it takes damage${ends.by === 'source' ? ' from the caster or the caster\'s side' : ''}${this.fx === 'spell' ? ', or with the spell' : ''}.`;
     }
@@ -684,7 +688,7 @@ export const STEP_SENTENCES = {
     if (!ab) this.bad(`Step ${at}: the save names no ability.`);
     let dc = '';
     if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
-    say(`${Who} makes a ${ab ?? 'saving throw of an unreadable ability'}${ab ? ' saving throw' : ''}${dc}.`);
+    say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
     if (st.advantageIf !== undefined) {
       const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => Object.hasOwn(TAG_WORDS, t)) : [];
       const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
@@ -734,9 +738,11 @@ export const STEP_SENTENCES = {
   condition({ st, at, depth, Who, say }) {
     if (!CONDITIONS.includes(st.condition)) { this.bad(`Step ${at}: the condition is not one the engine knows.`); say(`${Who} gets a condition the engine does not know.`); return; }
     say(`${Who} has the ${cond(st.condition)} condition.`);
-    const end = this.ending(st, at, 'condition');
+    const prone = st.condition === 'prone' && !this.fx;
+    const end = prone ? 'It ends when the creature stands up, as Prone always does.' : this.ending(st, at, 'condition');
     if (end) this.line(end, depth + 1);
-    if (!this.fx) this.dm(`Removing the ${cond(st.condition)} condition that step ${at} puts on.`);
+    if (st.condition === 'prone' && this.fx) this.line('The creature can also stand up out of it, as from any Prone.', depth + 1);
+    if (!this.fx && !prone) this.dm(`Removing the ${cond(st.condition)} condition that step ${at} puts on.`);
     if (CONTENT.conditions[st.condition]?.also) this.line(`The engine applies part of what ${cond(st.condition)} does; the DM applies the rest.`, depth + 1);
   },
   modifier({ st, at, depth, Who, say }) {
@@ -822,6 +828,7 @@ function modPhrase(m, at) {
   if (!op) this.bad(`${at}: the modifier's op is not one the engine knows.`);
   if (!hook || !op) return 'a change the reader cannot read';
   if (hook === 'opportunity' && op === 'autoFail') return 'no Opportunity Attacks (it cannot make them)';
+  if (op === 'crit') return `${OP_WORDS.crit('', HOOK_WORDS[hook])}`;
   let noun = HOOK_WORDS[hook];
   // What a check or save is scoped to.
   if (isObj(m.scope)) {
@@ -850,7 +857,7 @@ function modPhrase(m, at) {
 function modExtras(m, at, toCaster) {
   const bits = [];
   if (m.against === 'target') bits.push(toCaster ? 'it holds only against the spell\'s target' : 'it holds only against the spell\'s target');
-  if (m.uses === 1) bits.push('the first roll it applies to uses it up');
+  if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push('the first roll it applies to uses it up'); }
   if (m.once === 'turn') bits.push('it applies at most once a turn');
   if (m.onFail === true) bits.push('the dice are added only to a roll that failed, where they could turn it');
   if (typeof m.cost === 'string') bits.push(`it spends a use of ${shown(m.cost)} when it turns a roll`);
@@ -865,7 +872,7 @@ function modExtras(m, at, toCaster) {
     if (un.length) this.dm(`${at}: the modifier needs ${list(un.map((t) => TAG_WORDS[t]))}, which the engine cannot tell.`);
   }
   if (m.on === 'hp.max' && m.op === 'add') bits.push('current Hit Points move with the maximum, and back when it ends');
-  return bits.length ? `${cap1(list(bits))}.` : null;
+  return bits.length ? bits.map((b) => `${cap1(b)}.`).join(' ') : null;
 }
 // A summon step (docs/specs/companions.md): who is made, how many, and the bond.
 function summonLines(st, at, depth, say) {
@@ -888,10 +895,10 @@ function summonLines(st, at, depth, say) {
   };
   const n = amount(st.count, 'count');
   if (st.on === 'corpse') {
-    say(`The caster raises ${n ?? '1'} ${n === '1' || !n ? 'corpse' : 'corpses'} it names (dead Small or Medium Humanoids) as ${what}, under the caster's control.`);
+    say(`The caster raises corpses it names (dead Small or Medium Humanoids), as many as ${n ?? '1'}, each as ${what}, under the caster's control.`);
     const r = amount(st.reassert, 'reassert');
     this.line(`Instead, the caster may take back control of ${r ?? n ?? '1'} of its own creatures from this spell.`, depth + 1);
-  } else say(`The caster makes ${n ? `${n} of ` : ''}${what} in unoccupied space${n && n !== '1' ? 's' : ''} it names within the spell's range.`);
+  } else say(`The caster makes ${n && n !== '1' ? `creatures (as many as ${n})` : 'a creature'} in unoccupied space it names within the spell's range: ${what}.`);
   if (Array.isArray(st.types)) this.line(`The caster picks its creature type from ${list(st.types.filter((x) => CREATURE_TYPES.includes(x)).map(cap1), 'or')}.`, depth + 1);
   if (Array.isArray(st.variants)) this.line(`The caster picks one of ${list(st.variants.slice(0, 20).map(shown), 'or')}.`, depth + 1);
   if (SUMMON_ONE.includes(st.one)) this.line(SUMMON_ONE_WORDS[st.one], depth + 1);
