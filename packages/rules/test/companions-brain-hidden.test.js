@@ -14,6 +14,7 @@ import { test } from "node:test";
 import { aiStep, autoPlays, brainMode } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
 import { view, viewEvents } from "../src/view.js";
+import { apart } from "../src/space.js";
 import { DM, U1, U2, U3, GRIDS, CENTER, SPOTS, ok, json, cellsNear, near, spawn, spawned, table, turnOf, fight } from "./c7-brain-kit.js";
 
 const PLAYERS = [U1, U2, U3];
@@ -42,7 +43,8 @@ for (const grid of GRIDS) {
       ok(apply(s, { type: "setting", key: "unseenTurns", value: "quiet" }, DM));
       const skel = near(s, "cleric", "skeleton", { name: "Skeleton" }, { min: 2, max: 3 });
       ok(apply(s, { type: "bond", actor: skel, to: "cleric", kind: "undead", orders: "command" }, DM));
-      near(s, skel, "goblin-warrior", { name: "Goblin" });
+      const gob = near(s, skel, "goblin-warrior", { name: "Goblin" });
+      ok(apply(s, { type: "condition", actor: gob, condition: "blinded" }, DM));     // no Opportunity Attack, so the skeleton steps away (#372, N4)
       return { s, skel, place: (cell) => { const g = spawn(s, "goblin-warrior", cell, { name: "Lurker" }); s.entities[g].hiding = { dc: 30 }; return g; } };
     };
     // Where the skeleton steps with no lurker near: found in a world with the lurker far off (in the arena, hiding).
@@ -193,7 +195,10 @@ for (const grid of GRIDS) {
       // The last place before it where it can stop (a place an ally holds is passed through, not stopped on).
       let j = i - 1;
       while (j >= 0 && occupied.has(j)) j--;
-      assert.deepEqual(went.map((h) => [h.q, h.r]), path.slice(0, j + 1).map((h) => [h.q, h.r]), `point ${i}: it stops on the last place before the lurker`);
+      // With no such place (allies on every cell before it), the nearest place beside it, or no move if it is beside it
+      // already (#372, N2; hidden-information.md section 5).
+      if (j < 0 && i > 0) assert.ok(apart(A.s, A.s.entities[A.wolf], A.s.entities[ga]) <= 1, `point ${i}: it stops beside the lurker: ${json(went)}`);
+      else assert.deepEqual(went.map((h) => [h.q, h.r]), path.slice(0, j + 1).map((h) => [h.q, h.r]), `point ${i}: it stops on the last place before the lurker`);
     }
     assert.ok(tried >= 2, `points of the route tried: ${tried}`);
   });

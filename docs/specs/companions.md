@@ -1412,6 +1412,31 @@ what goes beyond the SRD is marked **new rule** (the brain's choices are a stand
 - **For the client job (C8).** `autoPlays(state, id, { offline })` says whether the DM's auto-play plays a turn;
   `brainMode` says why (`player`, `dm`, `guard`, `protect`, `free`), for a line such as "Zombie 1 has an order that stands:
   the DM plays it". A companion whose turn is `'dm'` waits for the DM's hand as a party character waits for its player.
+- **Follow-ups from the re-review of #368 (#372).** Rules that are new, not repairs, are marked **new rule**.
+  - *N4* (to the SRD's words): the guard ("If you issue no commands, the creature takes the Dodge action and moves only to
+    avoid harm", Animate Dead 24057-24059, Animate Objects 24101-24103, Create Undead 25688-25690; "uses its movement to
+    avoid danger", Summon Dragon 31264-31266, Giant Insect 27438-27440) steps away only where the step is no harm. Leaving
+    a foe's reach is harm: "If you move heedlessly past your foes, you put yourself in danger by provoking an Opportunity
+    Attack" (Opportunity Attacks, 2085). So it steps only where no foe it knows of that it would leave or pass could make
+    one: one with no melee attack, one Incapacitated, or one that can't see it (2094: "a creature that you can see");
+    otherwise it Dodges and stays where it is. This replaces fix round 1's L1 reading (it traded an attack at
+    Disadvantage for distance, and the foe simply followed). **New rule** in one respect: it does not read whether a
+    foe's Reaction is spent, which the party is not told of a creature not its own (table-ui.md, Decision 3), so it stays
+    even then (DEBT W29). Tests: `e23-guard.test.js` (the reviewer's four rounds: Dodge and stay, nothing provoked; a
+    Blinded or Stunned goblin: it steps away unharmed). Three existing tests that needed a step now Blind the goblin
+    beside the skeleton first (`companions-brain.test.js`, "steps away from the goblin beside it" and "L1"; `companions-brain-hidden.test.js`,
+    "a party skeleton steps away on what the party knows"), and one new test there pins the stay.
+  - *N1 to N3* (engine, `movement.js` `walkKnown`; hidden-information.md section 5): a party mover's move that stops short
+    of a creature it does not know of brings its followers (N1); with allies on every cell before it the mover goes to
+    the nearest place beside it that it can reach, or does not move if it is beside it already (N2; section 5: "The move
+    stops on the nearest hex beside it"); a creature found on the way by a rule of its own (the DM's hidden one spotted
+    within `ENGAGE_RANGE`) is known from then on, so the rest of the way is laid out again (N3). A creature is found only
+    where the mover gets to: a walk cut short (a trap, something noticed, a fight) finds nothing. Followers (the column
+    and a formation) now walk on what the party knows too; they walked by the true state, so their way bent round a
+    hiding creature beside the route (found by the twin runs, DEBT W28). Tests: `e23-move-fixes.test.js` (twin runs with
+    the creature on the route, beside it, on the destination and far off, hidden by the DM and hiding; allies in a line;
+    followers; in a fight). One existing test assertion changed: `companions-brain-hidden.test.js`, "a hiding creature at each point of the route", expected no move
+    when allies stood on every cell before the creature (N2's old outcome); it now expects the wolf beside it.
 
 ### C8, the screens (#367)
 

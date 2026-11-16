@@ -9,11 +9,11 @@ import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../spac
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
+import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, RuleError, spellStats, tellDM, unblocked, up } from './shared.js';
 import { aimArea, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
 import { incapacitatedBy } from '../modifiers.js';
 
@@ -60,7 +60,7 @@ function blockSpell(s, caster, spellId, targets, ev) {
     if (!slots.length) continue;
     let slot = slots[0];
     if (instruction(t, r) === 'ask') {
-      const seen = canSee(s, t, caster) !== 'no';
+      const seen = seesFor(s, t, caster);
       const a = ask(s, t, { trigger: 'targeted', spell: spellId, ...(seen ? { by: caster.id } : {}) }, [spellOffer(r, slots)]);
       if (a === null) { tellDM(t, r, `${t.name} is targeted by ${SPELLS[spellId]?.name ?? 'a spell'}.`, ev); continue; }
       if (a.take !== r.id) continue;
@@ -503,10 +503,15 @@ function castSpell(s, a, ctx, ev, item) {
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
-    if (!s.encounter && sp.harmful && aimed) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+    // E23: the DM's hostile cast at a party member, with `autoEngage` on and no fight, lands and then the fight starts
+    // (landThenFight, below). Any other harmful cast aimed at others outside a fight starts the fight and is not cast, as before.
+    const lands = !s.encounter && sp.harmful && aimed && landsFirst(s, e, targets, ctx) ? { from: ev.length, time, slotted: sp.level > 0 && !via && !item, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) } : null;
+    if (!s.encounter && sp.harmful && aimed && !lands) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+    const done = () => { if (lands) landThenFight(s, e, sp, targets, ev, lands); checkEnd(s, ev); };
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
     const slotted = sp.level > 0 && !via && !item;
     if (mm.has.quickened) time = 'bonus';
+    if (lands) lands.time = time;
     if (s.encounter) {
       need(s, e, time);
       if (mm.has.quickened && s.encounter.flags.slot) fail('Quickened Spell can\'t be used after a level 1+ spell this turn.');
@@ -528,7 +533,7 @@ function castSpell(s, a, ctx, ev, item) {
     const comps = item ? item.comps : sp.def.components ?? [];
     if (item) {
       item.spend(e);
-      if (item.check && !item.check(e)) { item.done?.(e); return checkEnd(s, ev); }
+      if (item.check && !item.check(e)) { item.done?.(e); return done(); }
     }
     if (comps.includes('v') && !mm.has.subtle) unhide(s, e, ev, 'spell');      // a Verbal component gives a hiding caster away
     showPlace(s, e, ev);
@@ -540,7 +545,7 @@ function castSpell(s, a, ctx, ev, item) {
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
-      return checkEnd(s, ev);
+      return done();
     }
     item?.done?.(e);                                    // a scroll crumbles once its spell is cast
     // Caught in the area: no longer unseen. A summon is aimed at its caster only in form (its targets are the spaces
@@ -632,6 +637,42 @@ function castSpell(s, a, ctx, ev, item) {
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
     if (fx?.bound) settle(s, ev, fx, targets);
     else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
-    checkEnd(s, ev);
+    done();
+}
+
+// ---------- E23: a hostile cast lands, then the fight starts (docs/specs/table-ui.md, E23; #372) ----------
+// Does the caster's first turn of the fight its cast started go without the action (or Bonus Action) the spell was cast
+// with, and without a spell slot that turn? The owner has not decided (the lead's proposal says yes); `false` until
+// they do: the cast was made before the fight, and the caster's first turn is a whole turn.
+export const CAST_TAKES_FIRST_ACTION = false;
+// The DM's harmful cast, aimed at others, catching or aimed at a party member, by a creature not of the party, with the
+// table rule `autoEngage` on and no fight going on.
+const landsFirst = (s, e, targets, ctx) => ctx.role === 'dm' && s.settings.autoEngage === true && e.side !== 'party' && targets.some((t) => t.side === 'party');
+// The cast has run (its saves, damage, conditions, Concentration, the reactions it allowed, a Counterspell that undid it):
+// now the fight starts, in the same action, so one undo takes back both. Initiative is rolled as for any fight.
+//   - What the party did not know of while it was cast stays unknown in its events (`unseen`, which view.js reads and
+//     apply()'s record keeps): a hidden caster's spell is told as any unseen creature's is (its `cast` event, its
+//     Concentration and whose effect it is are not sent; a save carries no DC), and the fight's start then reveals it,
+//     as every fight does ("nobody fights unseen", hidden-information.md section 5).
+//   - A Reaction taken during the cast stays spent until that creature's first turn in the fight (SRD "Reactions": "When
+//     you take a Reaction, you can't take another one until the start of your next turn"), where a fight starting would
+//     otherwise give it back.
+//   - The fight is placed as the cast would have placed it: round the caster for an area, else round the caster and the
+//     first creature it was aimed at, where they stand now. If nobody is left to fight there, no fight starts.
+function landThenFight(s, e, sp, targets, ev, lands) {
+  const hid = (id) => typeof id === 'string' && Object.hasOwn(s.entities, id) && unknown(s, s.entities[id]);
+  const caster = hid(e.id) ? [e.id] : [];
+  for (const x of ev.slice(lands.from)) {
+    const ids = [...caster, ...[x.id, x.actor, x.target, x.by, x.against, x.source, ...(Array.isArray(x.targets) ? x.targets : [])].filter(hid)];
+    if (ids.length) x.unseen = [...new Set([...(Array.isArray(x.unseen) ? x.unseen : []), ...ids])];
+  }
+  const keep = new Set(living(s).filter((o) => o.reactionUsed && !lands.used.has(o.id)).map((o) => o.id));
+  const owed = CAST_TAKES_FIRST_ACTION && !e.dead ? { [e.id]: { time: lands.time, slot: lands.slotted, spell: sp.name } } : null;
+  const opts = { keep, ...(owed ? { owed } : {}) };
+  try {
+    if (sp.aim === 'area') startEncounter(s, e.pos, ev, undefined, null, opts); else engage(s, e, targets[0], ev, null, opts);
+  } catch (err) {
+    if (!(err instanceof RuleError)) throw err;                     // "Nobody is close enough to fight here.": refused before anything changed
+  }
 }
 

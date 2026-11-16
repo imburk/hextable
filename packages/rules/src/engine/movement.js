@@ -13,7 +13,7 @@ import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, KIT, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, KIT, seesFor, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -26,7 +26,7 @@ export const OPPORTUNITY_RIDER = 'opportunity-attack-rider';       // walking th
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && canReact(o) &&
-    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && canSee(s, o, e) !== 'no'     // SRD: a creature it can see
+    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && seesFor(s, o, e)      // SRD: a creature it can see (and its side knows of)
     && !modifiers(s, o, 'opportunity').autoFail);                                                                       // Staggering Blow: it can't make them now
 }
 // A creature has just stepped from `prev` to where it stands now: whatever that sets off, goes
@@ -186,7 +186,10 @@ function march(s, leader, walked, ev) {
     if (!f) return;
     pending.splice(pending.indexOf(f), 1);
     if (s.encounter && inFight(s, f.id)) continue;
-    const reach = moveOptions(s, f);
+    // A creature the party does not know of near the way is not there for the column either: the follower's place and
+    // way are laid out without it, and a way that runs into it stops before it and finds it (#372; walkKnown).
+    const lurkers = living(s).filter((o) => o.id !== f.id && unseenBy(s, o, f) && hostile(o, f));
+    const reach = lurkers.length ? knownWays(s, f, lurkers) : moveOptions(s, f);
     const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
     const spots = [{ k: key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
@@ -201,7 +204,8 @@ function march(s, leader, walked, ev) {
     if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     if (best.k !== key(f.pos)) {
       const had = !!s.encounter;
-      walk(s, f, reach, best.k, ev, false);
+      if (lurkers.length) walkKnown(s, f, best.k, ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), reach, lurkers, true);
+      else walk(s, f, reach, best.k, ev, false);
       if (!had && s.encounter) return;                   // it walked into a fight: the rest were brought up when it started
     }
     moved.add(f.id);
@@ -306,7 +310,10 @@ function formation(s, leader, walked, pending, ev) {
     } else if (key(to) !== key(f.pos) && !reach.get(key(to))?.canStop) to = placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos;   // someone it did not know of, not hostile
     if (key(to) !== key(f.pos)) {
       const had = !!s.encounter;
-      walk(s, f, reach, key(to), ev, false);
+      // Its way there laid out on what the party knows, as the column's and the leader's are (#372; walkKnown).
+      const lk = living(s).filter((o) => o.id !== f.id && unseenBy(s, o, f) && hostile(o, f)), kr = lk.length ? knownWays(s, f, lk) : null;
+      if (kr?.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), kr, lk, true);
+      else walk(s, f, reach, key(to), ev, false);
       if (!had && s.encounter) return 'fight';
     }
     if (lurker && !lurker.dead && apart(s, f, lurker) <= 1 && unseenBy(s, lurker, f)) bumped(s, lurker, f, ev);
@@ -344,6 +351,74 @@ function capture(s, leader, followers, fresh) {
   leader.formation = { shape: had?.shape ?? 'held', slots: { ...(had?.slots ?? {}), ...slots }, face };
 }
 
+// The ways a party mover has, laid out as if the creatures it does not know of (`lurkers`) were not there.
+const knownWays = (s, e, lurkers) => moveOptions({ ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o))) }, e);
+// A party mover's move laid out on what the party knows (stage C7, review of #368, M2; the re-review, N1 to N3): the route
+// is the one the party can see, as if a creature it does not know of were not there. Refusing the move ("Too far"), or
+// bending the route round it, would tell the players something stands there without saying what. Where that route runs
+// into one, the mover stops on the last place before it where it can stop, and the creature is found (hidden-information.md
+// section 5, as for a move onto its place). Where it can stop nowhere on the route short of it (allies stand on every
+// cell between), it stops on the nearest place beside it that it can reach without going through a creature it does not
+// know of (section 5: "The move stops on the nearest hex beside it"); already beside it, it does not move (section 5);
+// with nowhere at all to stand near it, it stays where it is and the creature is found, as before (N2). It is found only
+// when the mover gets there: a walk cut short on the way (a trap, something noticed, a fight) finds nothing. A creature
+// found on the way by a rule of its own (spotted within ENGAGE_RANGE, or seen under los) is known from then on, so the
+// rest of the way is laid out again from where the mover stands, as main's walk went round it (N3). Whoever follows the
+// mover comes after it, whichever way the move ends (N1). A creature the DM plays walks by what is true, as before.
+// `follower`: a follower's walk after its leader (march): it keeps following, and whoever follows it is marched by
+// march itself; the walked path is returned.
+function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers, follower = false) {
+  const G = gridOf(s.map), had = !!s.encounter, path = [e.pos];
+  let left = follower;
+  const go = (k) => {
+    if (!left && !fighting && e.follow) unfollow(s, e, ev);
+    left = true;
+    const w = walk(s, e, known, k, ev, fighting, bud ?? undefined);
+    if (w) path.push(...w.slice(1));
+    return w;
+  };
+  for (let legs = 0, most = lurkers.length; legs <= most; legs++) {
+    const steps = route(known, tk);
+    const at = steps.findIndex(({ h }) => lurkers.some((o) => overlapAt(o, o.pos, e, h, G)));
+    if (at === -1) { go(tk); break; }
+    const o = lurkers.find((x) => overlapAt(x, x.pos, e, steps[at].h, G));
+    let stop = at - 1;
+    while (stop >= 0 && !(known.get(key(steps[stop].h))?.canStop)) stop--;
+    let to = stop >= 0 ? steps[stop].h : null;
+    if (!to && apart(s, e, o) > 1) to = besideIt(s, e, o, known, lurkers, G);
+    if (to) {
+      const fightBefore = !!s.encounter;
+      if (!go(key(to))) break;                                        // something caught the eye before a step was taken
+      const there = key(e.pos) === key(to);
+      if (!there || !up(e) || !!s.encounter !== fightBefore) break;    // cut short on the way: nothing found
+      if (!o.dead && !unseen(o)) {                                     // found in passing: the rest of the way, on what is known now
+        if (key(e.pos) === tk) break;
+        lurkers = living(s).filter((x) => x.id !== e.id && unseen(x));
+        known = lurkers.length ? knownWays(s, e, lurkers) : moveOptions(s, e);
+        if (!known.get(tk)?.canStop) break;
+        continue;
+      }
+    }
+    if (!o.dead && unseen(o)) bumped(s, o, e, ev);
+    break;
+  }
+  if (follower) return path;
+  if (!fighting && (had || !s.encounter) && path.length > 1) { march(s, e, path, ev); const r = riderOf(s, e); if (r) march(s, r, path, ev); }
+  checkEnd(s, ev);
+}
+// N2: the nearest place beside `o` the mover can stop on and reach by a way that goes through no creature it does not
+// know of; null if there is none.
+function besideIt(s, e, o, known, lurkers, G) {
+  let best = null;
+  for (const [k, v] of known) {
+    if (!v.canStop || (best && v.cost >= best.cost) || Math.abs(v.h.z - o.pos.z) > STEP_MAX || apartAt(s, e, v.h, o, o.pos) > 1) continue;
+    if (lurkers.some((x) => overlapAt(x, x.pos, e, v.h, G)) || !clear(s, v.h, o.pos)) continue;
+    if (route(known, k).some(({ h }) => lurkers.some((x) => overlapAt(x, x.pos, e, h, G)))) continue;
+    best = v;
+  }
+  return best?.h ?? null;
+}
+
 export const handlers = {
   move(s, a, ctx, ev) {
     const actor = ent(s, a.actor); control(s, actor, ctx);
@@ -379,30 +454,8 @@ export const handlers = {
     if (!lurker && e.side === 'party') {
       const lurkers = living(s).filter((o) => o.id !== e.id && unseen(o));
       if (lurkers.length) {
-        const known = moveOptions({ ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o))) }, e);
-        const kn = known.get(tk);
-        if (kn?.canStop) {
-          const G = gridOf(s.map), steps = route(known, tk), mover = e;
-          const at = steps.findIndex(({ h }) => lurkers.some((o) => overlapAt(o, o.pos, mover, h, G)));
-          if (at === -1) {
-            if (!fighting && e.follow) unfollow(s, e, ev);
-            const had = !!s.encounter, walked = walk(s, e, known, tk, ev, fighting, bud ?? undefined);
-            if (!walked) return;
-            if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); const r = riderOf(s, e); if (r) march(s, r, walked, ev); }
-            checkEnd(s, ev);
-            return;
-          }
-          const o = lurkers.find((x) => overlapAt(x, x.pos, mover, steps[at].h, G));
-          let stop = at - 1;
-          while (stop >= 0 && !(known.get(key(steps[stop].h))?.canStop)) stop--;
-          if (stop < 0) return bumped(s, o, e, ev);                       // its first step runs into it: no move, but it is found
-          if (!fighting && e.follow) unfollow(s, e, ev);
-          const walked = walk(s, e, known, key(steps[stop].h), ev, fighting, bud ?? undefined);
-          if (!walked) return;
-          bumped(s, o, e, ev);
-          checkEnd(s, ev);
-          return;
-        }
+        const known = knownWays(s, e, lurkers);
+        if (known.get(tk)?.canStop) return walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers);
       }
     }
     if (lurker) {

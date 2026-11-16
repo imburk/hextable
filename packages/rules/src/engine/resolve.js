@@ -139,17 +139,19 @@ function teleport(s, t, step, to, ev) {
 
 // ---------- encounters (joining one, rollInit and fightPlace are in world.js) ----------
 
-export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null) {
+// `opts` (E23, a hostile cast that lands first; casting.js): `keep`, the creatures whose Reaction, taken during that cast,
+// stays spent until their first turn; `owed`, what a caster's first turn goes without ({ [id]: { time, slot, spell } }).
+export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null, opts = null) {
   const arena = {}, G = gridOf(s.map);
   for (const h of G.range(center, radius)) if (hasColumn(s.map, h)) arena[col(h)] = 1;    // a fight locks whole columns, every level
   catchUp(s, arena, walked, ev);                         // those walking with the party are with it
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
   const who = living(s).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
-  for (const e of who) { e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
+  for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
-    order: null, where: fightPlace(s, center),
+    order: null, where: fightPlace(s, center), ...(opts?.owed ? { owed: structuredClone(opts.owed) } : {}),
   };
   // Each rolls, in the order the creatures are kept, but a companion whose turn is its master's and whose master
   // is in the fight: it takes the master's count, straight after it (Decision 3). One whose master is not here rolls.
@@ -168,9 +170,9 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
 }
 
 // Start a fight big enough to hold both the attacker and a distant target.
-export function engage(s, e, t, ev, walked = null) {
+export function engage(s, e, t, ev, walked = null, opts = null) {
   const G = gridOf(s.map), a = G.toWorld(e.pos), b = G.toWorld(t.pos), d = apart(s, e, t);
-  startEncounter(s, G.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1), walked);
+  startEncounter(s, G.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1), walked, opts);
 }
 
 export function endEncounter(s, ev, result) {
@@ -255,6 +257,17 @@ function beginTurn(s, e, ev) {
   e.reactionUsed = false;
   delete e.cond.dodging;
   ev.push({ type: 'turn', id: e.id, round: enc.round });
+  // E23 with CAST_TAKES_FIRST_ACTION (casting.js): the hostile cast that started the fight was this turn's action (or
+  // Bonus Action) and its one spell slot.
+  const owed = enc.owed?.[e.id];
+  if (owed) {
+    delete enc.owed[e.id];
+    if (!Object.keys(enc.owed).length) delete enc.owed;
+    if (enc.budget[owed.time] > 0) enc.budget[owed.time]--;
+    if (owed.time === 'action') enc.flags[`magic:${e.id}`] = true;
+    if (owed.slot) enc.flags.slot = true;
+    ev.push({ type: 'note', id: e.id, text: `${e.name} cast ${owed.spell} as the fight began: that was this turn's ${owed.time === 'bonus' ? 'Bonus Action' : 'action'}.` });
+  }
   if (prompt) ev.push(prompt);
   recharge(s, e, ev);
   mountTurnStarts(s, e, ev);
@@ -918,6 +931,14 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
 
 // ---------- reactions (asking a player is ask() in shared.js) ----------
 
+// Can `t` see `e` for a reaction whose trigger says "that you can see" (Counterspell: "when you see a creature ... casting a
+// spell"; Hellish Rebuke: "a creature that you can see"; Uncanny Dodge: "an attacker that you can see"; the Opportunity
+// Attack: "a creature that you can see leaves your reach", SRD 2093-2094)? Its senses must find it (`canSee`), and a
+// party creature never sees a creature the party does not know of: one the DM has hidden, one hiding, one in a place not
+// yet revealed, or under `los`/`light` one nobody in the party sees (vision.js `unknown`; fix round 1 of #373, M1). A
+// creature is never asked, and never reacts, against what its side does not know is there.
+export const seesFor = (s, t, e) => !!e && !e.object && canSee(s, t, e) !== 'no' && !(t.side === 'party' && unknown(s, e));
+
 // Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
 // its player chose), and its steps run at once on `targets` (the caster, or the creature that set
 // it off), inside whatever action set it off (on the effect stack, above the frames already there,
@@ -969,7 +990,7 @@ function reactToHit(s, t, e, atk, roll_, ev) {
       o = { reaction: r.id, name: r.name, ac: r.ac };
     } else if (r.kind === 'feature') {
       const x = r.reaction;
-      if (x.seen && (e.object || canSee(s, t, e) === 'no')) continue;                  // "an attacker that you can see"
+      if (x.seen && !seesFor(s, t, e)) continue;                                        // "an attacker that you can see"
       if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;      // Deflect Attacks: Bludgeoning, Piercing or Slashing
       o = { reaction: r.id, name: r.name };
     } else continue;
@@ -978,7 +999,7 @@ function reactToHit(s, t, e, atk, roll_, ev) {
   }
   let chosen = offers.find((x) => x.w !== 'ask') ?? null, slot;
   if (offers.some((x) => x.w === 'ask')) {
-    const seen = !e.object && canSee(s, t, e) !== 'no';
+    const seen = seesFor(s, t, e);
     const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id } : {}), attack: atk.name, total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
     if (a === null) for (const x of offers) { if (x.w === 'ask') tellDM(t, x.r, `${t.name} is hit by ${e.object ? 'a trap' : e.name}'s attack.`, ev); }
     else { chosen = offers.find((x) => x.r.id === a.take) ?? null; slot = a.slot; }
@@ -1017,7 +1038,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
     const w = instruction(t, r);
     if (w === 'never') continue;
     const sp = SPELLS[r.id], slots = slotsFor(s, t, sp);
-    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || canSee(s, t, e) === 'no') continue;
+    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || !seesFor(s, t, e)) continue;
     let slot = slots[0];
     if (w === 'ask') {
       const a = ask(s, t, { trigger: on, by: e.id }, [spellOffer(r, slots)]);

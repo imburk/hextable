@@ -24,8 +24,21 @@ function skeletonTable(grid) {
 }
 
 for (const grid of GRIDS) {
+  test(`${grid}: a never-commanded Skeleton takes the Dodge action and stays beside a goblin that could make an Opportunity Attack`, () => {
+    // #372, N4: a step out of the goblin's reach would provoke one ("you put yourself in danger", SRD 2085): not to avoid harm.
+    const { s, skel, gob } = skeletonTable(grid);
+    fight(s, grid);
+    turnOf(s, skel);
+    const from = json(s.entities[skel].pos);
+    assert.deepEqual(autoTurn(s, skel).map((x) => x.a.type), ["dodge", "endTurn"]);
+    assert.equal(json(s.entities[skel].pos), from, "it stayed");
+    assert.ok(s.entities[skel].cond.dodging);
+    assert.equal(apart(s, s.entities[skel], s.entities[gob]), 1);
+  });
+
   test(`${grid}: a never-commanded Skeleton takes the Dodge action and steps away from the goblin beside it, then ends its turn`, () => {
     const { s, skel, gob } = skeletonTable(grid);
+    ok(apply(s, { type: "condition", actor: gob, condition: "blinded" }, DM));       // it can't see the skeleton: no Opportunity Attack (#372, N4)
     fight(s, grid);
     turnOf(s, skel);
     assert.equal(brainMode(s, s.entities[skel]), "guard");
@@ -268,6 +281,7 @@ for (const grid of GRIDS) {
 
   test(`${grid}: L1: a never-commanded skeleton steps only as far as it must: the cheapest place out of every foe's reach`, () => {
     const { s, skel, gob } = skeletonTable(grid);
+    ok(apply(s, { type: "condition", actor: gob, condition: "blinded" }, DM));       // it can't see the skeleton: no Opportunity Attack (#372, N4)
     fight(s, grid);
     turnOf(s, skel);
     ok(apply(s, aiStep(s, skel), DM));                                   // the Dodge action
