@@ -29,6 +29,7 @@ function table(grid) {
   assert.equal(s.entities.fighter.riding?.on, horse);
   return { s, horse };
 }
+const LANDS = { hex: { large: { q: -7, r: 2, z: 0 }, huge: { q: -7, r: 2, z: 0 } }, square: { large: { q: 2, r: 1, z: 0 }, huge: { q: 3, r: 5, z: 0 } } };
 const setDown = (s, e, m) => {
   const G = gridOf(s.map);
   assert.equal(e.riding, undefined, "no longer riding");
@@ -46,6 +47,9 @@ for (const grid of GRIDS) {
       setDown(s, e, m);
       assert.ok(r.events.some((x) => x.id === "fighter" && /dismount|off|fell/i.test(x.type)), json(r.events.map((x) => x.type)));
       assert.equal(e.size, size);
+      // Pinned (fix round 1 of #378, L1): the search reaches further than main's one cell round the mount, so a Large rider
+      // too is set down on a nearer valid cell than on main (hex {-6,4}, square {3,5}).
+      assert.deepEqual(e.pos, LANDS[grid][size]);
     });
   }
 }

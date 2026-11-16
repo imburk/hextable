@@ -13,7 +13,7 @@ import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -79,7 +79,7 @@ function notice(s, e, ev, before) {
 // `bud`: the budget the walk is spent from (a controlled mount's is `budget.mount`, its rider's turn's).
 function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
   let seg = [], prev = e.pos;
-  const walked = [e.pos];
+  const walked = [e.pos], found = [];
   let rider = riderOf(s, e);
   const flush = () => { if (seg.length) { ev.push({ type: 'moved', id: e.id, path: seg }); if (rider) ev.push({ type: 'moved', id: rider.id, path: seg.map((h) => ({ ...h })) }); } seg = []; };
   if (notice(s, e, ev, flush)) return null;
@@ -100,10 +100,10 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
         // (stage C6b, Decision 8). The rider is offered only where the attacker could attack it (riderTarget).
         const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY)), alt = riderTarget(s, o, rider, prev);
         if (w === 'never') continue;
-        if (!seesFor(s, o, e)) { flush(); findFor(s, o, e, ev); }          // its own senses found the mover: the party is told first
         let t = e;
         if (w === 'ask') {
-          const answer = ask(s, o, { trigger: 'leave', by: e.id }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },
+          // A mover the party is not told of is not named in the question (fix round 1 of #378, L3).
+          const answer = ask(s, o, { trigger: 'leave', ...(seesFor(s, o, e) ? { by: e.id } : {}) }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },
             ...(alt ? [{ reaction: OPPORTUNITY_RIDER, name: `Opportunity Attack on ${alt.name}`, against: alt.id }] : [])]);
           if (answer === null) {
             ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
@@ -114,6 +114,8 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
           else if (answer.take !== OPPORTUNITY) continue;
         }
         flush();
+        // Taken against a mover its own senses found: the mover is found first (resolve.js, findFor; #374, B1).
+        if (t === e && !seesFor(s, o, e)) found.push(findFor(s, o, e, ev));
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
         const oa = opportunityAttack(o);
@@ -156,6 +158,8 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
     }
   }
   flush();
+  // A mover found on the way that the end of the walk would have found anyway: what came before is told as then (unfind).
+  for (const f of found) unfind(s, f);
   return walked;
 }
 // The rider a mount carries out of a foe's reach, if the foe may make its Opportunity Attack against it instead (stage

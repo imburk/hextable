@@ -172,3 +172,102 @@ for (const grid of GRIDS) {
     }
   });
 }
+
+// Fix round 1 of #378. M1: the finding is made only when the reaction is taken; `never` and `ask` declined send every
+// player the same, the foe stays hiding, and the order of the fight is the same. When it is taken, nothing earlier in the
+// action is sent that `never` would not send. L2: asking changes nothing. L3: the recorded question is the live one.
+const answer = (s, take) => ok(apply(s, { type: "react", prompt: s.pending.n, take }, s.pending.ask.reactor === "wizard" ? PLAYERS[2] : U1));
+const all = (r, s) => PLAYERS.map((u) => json([viewEvents(r.events, s, u), strip(view(s, u))]));
+// The reviewer's repro 1: Blindsight 10, so the goblin ends its move out of the sense's range.
+function oaRun(grid, oa, take) {
+  const { s, gob } = field(grid, { senses: { blindsight: 10 }, oa });
+  let r = ok(apply(s, go(grid, gob), DM));
+  if (s.pending) r = answer(s, take);
+  return { s, r, gob };
+}
+// The reviewer's repro 2: the hiding mage's wand (no components: nothing to see being cast) hurts the wizard, who has
+// Hellish Rebuke and Blindsight 60; an E23 cast, so the fight starts after it.
+function rebukeRun(grid, how, take) {
+  const s = K.table(grid, { seed: 5, ward: { shield: "never", counterspell: "never" } });
+  s.entities.wizard.spells.push("hellish-rebuke");
+  s.entities.wizard.senses = { ...s.entities.wizard.senses, blindsight: 60 };
+  ok(apply(s, { type: "reactions", actor: "wizard", set: { "hellish-rebuke": how } }, PLAYERS[2]));
+  s.entities.mage.hiding = { dc: 30 };
+  let r = ok(apply(s, { type: "use", actor: "mage", item: "w", target: "wizard" }, DM));
+  const asked = !!s.pending;
+  if (s.pending) r = answer(s, take);
+  return { s, r, asked };
+}
+const order = (s) => json(s.encounter?.order.map((o) => o.id) ?? null);
+const stripW = (v) => { strip(v); const w = v.entities?.wizard; if (w) delete w.reactions; if (v.reactions) delete v.reactions.wizard; return v; };
+const allW = (r, s) => PLAYERS.map((u) => json([viewEvents(r.events, s, u), stripW(view(s, u))]));
+
+for (const grid of GRIDS) {
+  test(`${grid}: M1, Opportunity Attack asked and declined is never: the goblin stays hiding, every player is sent the same`, () => {
+    const A = oaRun(grid, "never"), B = oaRun(grid, "ask", null);
+    assert.ok(A.s.entities[A.gob].hiding && B.s.entities[B.gob].hiding, "still hiding in both");
+    assert.deepEqual(all(B.r, B.s), all(A.r, A.s));
+    for (const u of PLAYERS.slice(1)) assert.deepEqual(viewEvents(B.r.events, B.s, u), [], u.userId);
+  });
+
+  test(`${grid}: M1, Opportunity Attack taken: found with the reaction, and nothing before it that never does not send`, () => {
+    for (const [oa, take] of [["always"], ["ask", "opportunity-attack"]]) {
+      const N = oaRun(grid, "never"), T = oaRun(grid, oa, take);
+      assert.equal(oaOf(T.r, T.gob).length, 1, oa);
+      for (const u of PLAYERS) {
+        const evs = viewEvents(T.r.events, T.s, u), at = evs.findIndex((e) => e.type === "unhidden" && e.id === T.gob);
+        assert.ok(at >= 0 && evs[at + 1]?.type === "reaction", `${oa} ${u.userId}: ${json(evs.map((e) => e.type))}`);
+        assert.deepEqual(evs.slice(0, at), viewEvents(N.r.events, N.s, u), `${oa} ${u.userId}: what came before is what never sends`);
+      }
+    }
+    // Inside the sense's range at the end, `never` finds it too (the end of the action, as on main); the walk before
+    // the finding is then told as never tells it, the goblin's own path.
+    const N = field(grid, { senses: { blindsight: 60 }, oa: "never" }), T = field(grid, { senses: { blindsight: 60 } });
+    const rn = ok(apply(N.s, go(grid, N.gob), DM)), rt = ok(apply(T.s, go(grid, T.gob), DM));
+    assert.ok(!N.s.entities[N.gob].hiding && rn.events.some((e) => e.type === "unhidden" && e.why === "found"), "never: found at the end");
+    for (const u of PLAYERS) {
+      const evs = viewEvents(rt.events, T.s, u), at = evs.findIndex((e) => e.type === "unhidden");
+      assert.ok(evs.slice(0, at).every((e) => e.type === "moved" && e.id === T.gob), `${u.userId}: ${json(evs.map((e) => e.type))}`);
+      assert.ok(viewEvents(rn.events, N.s, u).some((e) => e.type === "moved" && e.id === N.gob), u.userId);
+    }
+  });
+
+  test(`${grid}: M1, Hellish Rebuke asked and declined is never; taken, the wand's lines stay unsent`, () => {
+    const A = rebukeRun(grid, "never"), B = rebukeRun(grid, "ask", null);
+    assert.ok(B.asked);
+    assert.deepEqual(allW(B.r, B.s), allW(A.r, A.s), "every player, events and view");
+    assert.equal(order(B.s), order(A.s), "the same order of the fight");
+    for (const [how, take] of [["always"], ["ask", "hellish-rebuke"]]) {
+      const T = rebukeRun(grid, how, take);
+      assert.ok(T.r.events.some((e) => e.type === "reaction" && e.reaction === "hellish-rebuke"), how);
+      for (const u of PLAYERS) {
+        const evs = viewEvents(T.r.events, T.s, u), at = evs.findIndex((e) => e.type === "reaction");
+        const never = viewEvents(A.r.events, A.s, u);
+        assert.ok(!evs.some((e) => e.type === "item" || (e.type === "cast" && e.actor === "mage")), `${how} ${u.userId}: ${json(evs.map((e) => e.type))}`);
+        assert.deepEqual(evs.slice(0, at), never.slice(0, at), `${how} ${u.userId}: what came before is what never sends`);
+      }
+    }
+  });
+
+  test(`${grid}: L2, asking whether the senses find it changes nothing; L3, the recorded question is the live one`, () => {
+    for (const rule of ["rooms", "los", "light"]) {
+      const { s, gob } = field(grid, { senses: { blindsight: 60 } });
+      s.settings.sight = rule;
+      const before = json(s);
+      sensesFor(s, s.entities.fighter, s.entities[gob]);
+      assert.equal(json(s), before, rule);
+    }
+    const { s, gob } = field(grid, { senses: { blindsight: 60 }, oa: "ask" });
+    const r = ok(apply(s, go(grid, gob), DM));
+    const live = viewEvents(r.events, s, U1).find((e) => e.type === "reactionAsked");
+    assert.ok(live && live.ask?.by === undefined, json(live));
+    assert.equal(s.pending.ask.by, undefined, "the question itself does not name it");
+    answer(s, "opportunity-attack");
+    // In the record the question comes before the finding (view.js tells an introduction first in any list it is given,
+    // so a long slice read at once puts the `unhidden` at its head: DEBT W36).
+    const tl = s.timeline, q0 = tl.findIndex((e) => e.type === "reactionAsked"), f0 = tl.findIndex((e) => e.type === "unhidden" && e.id === gob);
+    assert.ok(q0 >= 0 && f0 > q0, json(tl.map((e) => e.type)));
+    const rec = viewEvents(tl.slice(q0, q0 + 1), s, U1), q = 0;
+    assert.equal(rec[q].ask?.by, undefined, json(rec[q]));
+  });
+}
