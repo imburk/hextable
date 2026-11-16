@@ -479,8 +479,7 @@ class Reading {
         const only = ts.length ? list(ts.map(cap1), 'or') : 'some creature types';
         if (d.zone === undefined) this.line(`The entry limits the area to ${only}: of the creatures caught, only those are affected.`);
         else {
-          this.line(`The entry limits the area to ${only}: of the creatures caught when it is cast, only those are affected. A creature of another type that enters the area later, or starts or ends its turn there, is affected all the same: the engine does not apply the limit to a zone, and says so to the DM (once for each creature in a round), who undoes it.`);
-          this.dm('Undoing what a zone does to a creature of another type than its `types`, when the engine tells the DM it went off on one.');
+          this.line(`The entry limits the area to ${only}: of the creatures caught when it is cast, only those are affected, and a creature of another type that enters the area later, or starts or ends its turn there, is left alone.`);
         }
       }
       if (d.zone === undefined && this.damageOutside()) this.line('Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.');

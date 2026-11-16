@@ -87,6 +87,9 @@ export function turnInZones(s, ev, kit, e, when) {
 // One zone goes off on one creature, at most once a turn if it says so. Returns whether it did.
 function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
   const z = fx.zone, now = turnKey(s);
+  // A zone limited to some creature types (`area.types`, Turn Undead's kind) leaves a creature of another type alone, as aimArea does for
+  // those caught when it is cast (the same test, with the same creatureType, which the kit lends); it is not counted as having gone off.
+  if (z.area?.types && !z.area.types.includes(kit.creatureType(t))) return false;
   if (z.once === 'turn' && now !== null && thisTurn(s, z.last[t.id])) return false;
   if (now !== null) z.last[t.id] = now;
   if (s.stack?.length) { (s.zoneQueue ??= []).push({ fx: fx.id, id: t.id, why }); return true; }

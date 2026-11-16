@@ -150,7 +150,28 @@ function dispatch(s, action, ctx, ev) {
 
 // A copy of the game to put back if the action stops to ask (or a resumed one is refused). The
 // timeline is left out: nothing is added to it until the action is done.
-const freeze = (s) => structuredClone({ ...s, timeline: null });
+//
+// The terrain (`map.levels`: every tile, and `map.walls`) is the bulk of a big map, and play never changes it in place: only the DM's
+// `mapEdit` and `loadMap` change it, and they work on a copy and put it in whole (engine/dm.js). So for every other action it is held by
+// reference, not copied, and a restore puts the very same object back; the copy then costs what the creatures and the rest of the map
+// cost, not the size of the map. What play does change in the map (`objects`, `regions`, `seen`, `starts`) is copied as ever.
+// TERRAIN_ACTIONS is the list of the actions that may change the terrain; `apply-restore.test.js` shows that no other action type does
+// (it plays every type with the terrain frozen). A new action that edits tiles or walls in place MUST be added here.
+export const TERRAIN_ACTIONS = new Set(['mapEdit', 'loadMap']);
+const BY_REFERENCE = ['levels', 'walls'];
+function freeze(s, terrain = true) {
+  const m = s.map;
+  if (terrain || !m || typeof m !== 'object' || Array.isArray(m)) return structuredClone({ ...s, timeline: null });
+  const held = {}, rest = {};
+  for (const k of Object.keys(m)) { if (BY_REFERENCE.includes(k)) held[k] = m[k]; else rest[k] = m[k]; }
+  const copy = structuredClone({ ...s, timeline: null, map: rest });
+  const map = {};
+  for (const k of Object.keys(m)) map[k] = BY_REFERENCE.includes(k) ? held[k] : copy.map[k];      // the same keys in the same order
+  copy.map = map;
+  return copy;
+}
+// The copy for this action: whole where the action may change the terrain (a `react` re-plays the action it answers).
+const copyFor = (s, action) => freeze(s, TERRAIN_ACTIONS.has(action?.type) || (action?.type === 'react' && TERRAIN_ACTIONS.has(s.pending?.action?.type)));
 function thaw(s, snap) {
   const tl = s.timeline;
   for (const k of Object.keys(s)) delete s[k];
@@ -158,6 +179,11 @@ function thaw(s, snap) {
 }
 
 // The work count is switched off however the action ends, a throw included.
+//
+// A caller must not hold a reference into the state (`s.entities`, `s.map`, one creature ...) across an `apply()`: when an action throws
+// something that is not a rule refusal, or stops to ask, or meets the work ceiling, the game is put back by replacing the top-level
+// values of `s` with the copy, so those are new objects afterwards (as they already were for `act`, `cast` and the actions that might ask).
+// Hold `s` itself and read through it each time. (The solo transport keeps only `state`; the server only `table.state`: neither holds more.)
 export function apply(s, action, ctx = { role: 'dm' }) {
   try { return applyInner(s, action, ctx); } finally { stopWork(); }
 }
@@ -169,11 +195,16 @@ function applyInner(s, action, ctx) {
   // It is also taken for one that could meet the work ceiling (effects.js, WORK), so that it can be refused cleanly.
   const asks = !!s.pending || action?.type === 'react' || mayAsk(s);
   const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
-  const snap = asks || heavy ? freeze(s) : null;
+  const snap = asks || heavy ? copyFor(s, action) : null;
   const putBack = asks || heavy === true;
-  // An action that plays a pack's own steps (a creature's action, a spell) may meet content that makes the engine throw something that is
-  // not a rule refusal, part way through; it too is taken back (below), so a copy is kept for it (#421). Not for the rest: nothing there reads content.
-  const net = snap ?? (action?.type === 'act' || action?.type === 'cast' ? freeze(s) : null);
+  // Any handler may throw something that is not a rule refusal (a TypeError, a bad dice expression met in content, a state a bug or an
+  // old save left wrong) after it has changed things; the game is then put back as it was (below, and for the settle phase after it) and the
+  // error goes on up (#421 for `act` and `cast`, #425 for every action). So a copy is kept for every action a handler exists for (an
+  // unknown action changes nothing). `freeze` costs about 1.4 ms at 70 creatures (docs/DEBT.md, T55).
+  const net = snap ?? (handlers.has(action?.type) ? copyFor(s, action) : null);
+  const tlLen = s.timeline?.length;
+  // `record` (inside `overWork` and the pause too) writes the timeline: a plain throw from it takes the game back as well (#425, review Low 4).
+  const safe = (fn) => { try { return fn(); } catch (err) { throw err instanceof RuleError ? err : restoreAfter(s, net, tlLen, err); } };
   setRun({ action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap });
   startWork();
   try {
@@ -182,7 +213,7 @@ function applyInner(s, action, ctx) {
   } catch (err) {
     stopWork();
     delete s.stack;                                  // never leave half an effect behind
-    if (err instanceof WorkLimit) return overWork(s, snap, err, ev, action, was);
+    if (err instanceof WorkLimit) return safe(() => overWork(s, snap, err, ev, action, was));
     if (err instanceof Pause) {
       // Stop and ask: the game goes back to how it was before the action (the dice seed too), and
       // keeps the action, the answers given so far and the question. Only the player asked and
@@ -193,7 +224,7 @@ function applyInner(s, action, ctx) {
       s.pending = { n: s.asked, action: structuredClone(RUN.action), ctx: { ...RUN.ctx }, answers: structuredClone(RUN.answers), ask: structuredClone(err.ask) };
       ev = [{ type: 'reactionAsked', id: t.id, n: s.asked, to: ownerOf(s, t), ask: structuredClone(err.ask) }];
       setRun(null);
-      return record(s, ev);
+      return safe(() => record(s, ev));
     }
     if (net && !(err instanceof RuleError)) thaw(s, net);   // anything but a refusal (a TypeError, a bad dice expression met in content) puts the game back as it was, then goes on up: a bug is not hidden
     else if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
@@ -204,12 +235,21 @@ function applyInner(s, action, ctx) {
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
   try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
-    if (err instanceof WorkLimit) { stopWork(); delete s.stack; return overWork(s, snap, err, ev, action, was); }
-    if (!(err instanceof RuleError)) throw err;
+    if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
+    if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
   }
   stopWork();
-  fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
-  return record(s, ev);
+  try {
+    fightEndsScene(s, ev);                         // a fight, however it began, ends a scene
+    return record(s, ev);
+  } catch (err) { throw err instanceof RuleError ? err : restoreAfter(s, net, tlLen, err); }
+}
+
+// A throw that is not a rule refusal, after the handler is done: the game goes back to the copy taken before the action, and
+// whatever `record` had already put on the timeline is taken off. Gives the error back, to be thrown again.
+function restoreAfter(s, net, tlLen, err) {
+  if (net) { thaw(s, net); if (Array.isArray(s.timeline) && tlLen !== undefined) s.timeline.length = tlLen; }
+  return err;
 }
 
 // An action ran into the work ceiling (effects.js, WORK). With the copy taken before it, the game goes back to how it
