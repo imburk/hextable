@@ -1371,3 +1371,36 @@ author's text. `scripts/hb.mjs read` prints them. Weapons, armour and objects ar
   fails until it has words), reads a sample of every grants key, and requires the golden entries (`reader-items-golden.txt`, built from
   `fixtures/reader-kinds-pack.json` and a few entries strict mode would refuse) to use every field. Over the SRD all 75 items and 17 feats read
   without a problem and their `numbers` equal the entry's. Engine runs check each claim about use, attunement, charges and freeCast.
+
+## Build notes: pack vetting moves into the rules package (#428)
+
+The pure checks that decide whether a pack may join, change or leave a table moved from `packages/server/src/tables.js` into
+`packages/rules/src/content/packs.js`, with no change in what anyone is told (the server's tests are unchanged). `tables.js` still
+re-exports the old names, so no import moved.
+
+- **Moved:** `forPlayers(pack)` (`{ data, hash }`, with `packForPlayer` and `PLAYER_PACK_KINDS`), `summonsHomebrew` and
+  `HOMEBREW_SUMMON_SENTENCE`, `vetPacks(records)`, `vetAdd(tablePacks, pack, opts?)` and `vetUpdate(...)`, `usesIn` and
+  `inUse(state, packId)` (the reasons the server sends as `blockers`), and `cleanPacks(records)` (was `sanitizePacks`).
+- **`vetAdd` / `vetUpdate`** run the server's checks in its order: `loadPack`; a homebrew summon; the id (add: new; update: held) and the
+  version (update: higher); no dropped entries on an update; `overlayOf` on the set the table would then have; the hash. They return
+  `{ ok: true, pack, hash, record, problems: [] }` or `{ ok: false, problems, form }`. `form` is how the server words a refusal, so no sentence
+  changes: `error` (the one sentence is the message), `summon` (that sentence alone) or `refuse` (the list under "The homebrew was refused").
+  `opts.loaded` lets a caller that keeps its loaded packs (the server's per-table cache) pass them; otherwise the table's records are vetted
+  with `vetPacks`, and a set that does not pass counts as holding none, as it always has.
+- **Stays in the server:** who may send; the size of a pack sent as text (`Buffer.byteLength`) and its JSON parse; frames and the rate
+  limits; how a refusal is sent (the list cut at 20 problems of 300 characters, `PackError`'s message, the "in use" sentence and `blockers`);
+  the `installed()` guard; `setPacks` through the engine with `putBack`; storing the record; clearing the undo history after a removal;
+  what each member is sent and when. `packs.js` now imports `registry.js` (`loadPack`, `overlayOf`, `PackError`); no import cycle results.
+- **For the solo job (DEBT T51).** A solo client holds the records `[{ id, version, hash, data }]` itself and does, in this order:
+  - **Add or update:** parse text and bound its size itself; `vetAdd(records, pack, { loaded })` or `vetUpdate(...)`, with `loaded` from the last
+    `vetPacks(records).loaded`; on `!ok` show `problems` and stop; else build `next` (add: `[...records, v.record]`; update: replace the record
+    with the same id), apply `{ type: "setPacks", packs: next.map(({ id, version, hash }) => ({ id, version, hash })) }` through the engine as the DM
+    (this changes nothing if it fails), and only then keep `next`, rebuild the overlay (`vetPacks(next)`, then `uninstall` and `install`) and save.
+  - **Remove:** `inUse(state, id)`; if it returns reasons, refuse with them; else `setPacks` without the record, keep, rebuild the overlay, clear
+    the undo history (an undo step could bring back a creature of the removed pack).
+  - **Load:** `cleanPacks(saved)`, keep `.packs`, tell the DM `.dropped`; `vetPacks(packs)` for the overlay; `install` it; then make `state.packs` say
+    what is installed (`packsMatch`, and `setPacks` if they differ). Nothing dropped is ever shown to a player.
+  - **Showing a pack to a player view:** `forPlayers(data)`; its hash, never the whole pack's.
+- **Found, not changed:** a pack object whose own getter throws makes `loadPack` (the registry's budget) throw rather than refuse; the server's
+  `receive` is guarded per message, but a solo caller should wrap its calls in try/catch. And `inUse(state, "ember")` also matches ids of a pack
+  `ember-folk` (the prefix is `hb-ember-`); the two cannot be on one table together, so this never shows today.
