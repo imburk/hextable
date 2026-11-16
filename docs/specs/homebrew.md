@@ -1344,4 +1344,21 @@ kinds that are). What was settled:
   hold), every branch, hook, op and area shape. `mount` cannot be homebrew, so it is covered through the SRD warhorse.
 - **Over the SRD:** all 329 monsters read without a problem and their `numbers` equal the entry's numbers (found without the reader),
   each said in the reading. `scripts/hb.mjs read` prints spells and monsters, and names the kinds not read yet.
-- **Not in this part:** items, feats, weapons, armour and objects; their `grants` and `freeCast` words are the largest piece left.
+- **Not in this part:** items, feats, weapons, armour and objects; their `grants` and `freeCast` words are the largest piece left (items and feats: see the next note).
+
+## Build notes: B13, the reader for items and feats (#419, part two)
+
+`readEntry('item' | 'feat', entry)` in `content/reader.js` reads an item and a feat from what the engine does with them, not from the
+author's text. `scripts/hb.mjs read` prints them. Weapons, armour and objects are still "not read yet".
+
+- **An item** is read as: its kind, rarity and how it is worn (items have no price or weight; the reading says so), attunement and by
+  whom, what it changes while it is active (each modifier in words), each use (time, cost, charges, the steps in the spell reader's
+  sentences with "the user" for "the caster"), charges and how they regain, what happens at 0, and what it lets the holder cast.
+- **A feat** is read as: its category and prerequisites, the points and proficiencies it gives, each `grants` key in words (58 keys,
+  `GRANT_WORDS`), and each `freeCast` (spells, how often, cost, keys). A grant only a class feature reads is said to change nothing.
+- **Where the engine does less**, the reading says the DM does it and `doesNot` lists it (Reaction uses, a save with no DC, a spell
+  attack, the last charge, a "once a dawn" use). Found gaps are DEBT T56.
+- **Tests:** `reader-items.test.js` ties every word table to the linter's lists (a new item or feat key, grant, category or freeCast key
+  fails until it has words), reads a sample of every grants key, and requires the golden entries (`reader-items-golden.txt`, built from
+  `fixtures/reader-kinds-pack.json` and a few entries strict mode would refuse) to use every field. Over the SRD all 75 items and 17 feats read
+  without a problem and their `numbers` equal the entry's. Engine runs check each claim about use, attunement, charges and freeCast.

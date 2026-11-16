@@ -1002,5 +1002,481 @@
         }
       ]
     }
+  ],
+  "items": [
+    {
+      "id": "hb-rk-emberglass-lens",
+      "source": "homebrew:rk",
+      "tier": "assist",
+      "checked": false,
+      "name": "Emberglass Lens",
+      "text": "A lens of smoked glass that warms in the hand. Invented for the reader tests.",
+      "category": "wondrous",
+      "rarity": "rare",
+      "wear": "eyes",
+      "attune": {
+        "spellcaster": true
+      },
+      "grants": {
+        "modifiers": [
+          {
+            "on": "check",
+            "op": "advantage",
+            "scope": {
+              "skill": "perception"
+            }
+          },
+          {
+            "on": "damage.taken",
+            "op": "resist",
+            "types": [
+              "fire"
+            ]
+          },
+          {
+            "on": "save.dex",
+            "op": "add",
+            "value": 1,
+            "when": [
+              "ranged"
+            ]
+          },
+          {
+            "on": "hp.max",
+            "op": "add",
+            "value": 5
+          }
+        ],
+        "aura": {
+          "range": 10,
+          "modifiers": [
+            {
+              "on": "save",
+              "op": "add",
+              "value": 1
+            }
+          ],
+          "immune": [
+            "frightened"
+          ]
+        },
+        "senses": {
+          "tremorsense": 10
+        },
+        "senseRange": {
+          "darkvision": 30
+        },
+        "resist": [
+          "cold"
+        ],
+        "conditionImmune": [
+          "blinded"
+        ]
+      },
+      "charges": {
+        "max": 4,
+        "regain": "1d3"
+      },
+      "activate": [
+        {
+          "name": "Ward",
+          "time": "bonus",
+          "cost": 1,
+          "effects": [
+            {
+              "modifier": {
+                "on": "ac",
+                "op": "add",
+                "value": 2
+              },
+              "ends": {
+                "on": "turnEnd"
+              }
+            },
+            {
+              "tempHp": "1d6",
+              "addMod": true
+            }
+          ]
+        },
+        {
+          "name": "Scorch",
+          "time": "action",
+          "cost": 1,
+          "spell": "scorching-ray",
+          "level": 2,
+          "upTo": 4,
+          "dc": 14
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-hearthguard-mail",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Hearthguard Mail",
+      "text": "Chain links that never go cold. Invented for the reader tests.",
+      "category": "armor",
+      "rarity": "rare",
+      "wear": "armour",
+      "attune": {
+        "by": [
+          "fighter",
+          "paladin"
+        ]
+      },
+      "base": {
+        "armour": "any"
+      },
+      "bonus": 2,
+      "trained": true,
+      "grants": {
+        "armouredAc": 1,
+        "resist": [
+          "cold"
+        ],
+        "conditionImmune": [
+          "frightened"
+        ]
+      }
+    },
+    {
+      "id": "hb-rk-wardens-brand",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Warden's Brand",
+      "text": "A short blade with a sunburst on the guard. Invented for the reader tests.",
+      "category": "weapon",
+      "rarity": "uncommon",
+      "wear": "weapon",
+      "attune": true,
+      "base": {
+        "weapon": "melee"
+      },
+      "bonus": 1,
+      "damageType": "radiant",
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "grants": {
+        "rangedAttack": 1,
+        "saves": [
+          "wis"
+        ],
+        "bonusActs": [
+          "hide"
+        ],
+        "speeds": {
+          "climb": 20,
+          "swim": 30
+        },
+        "abilityBonus": {
+          "dex": 1,
+          "max": 20
+        },
+        "setAbility": {
+          "con": 15
+        },
+        "bareAc": 1
+      }
+    },
+    {
+      "id": "hb-rk-tideglass-vial",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Tideglass Vial",
+      "text": "Salt water that tastes of nothing. Invented for the reader tests.",
+      "category": "potion",
+      "rarity": "common",
+      "wear": "carried",
+      "activate": [
+        {
+          "name": "Quaff",
+          "time": "bonus",
+          "consumed": true,
+          "effects": [
+            {
+              "heal": "2d4+2"
+            },
+            {
+              "modifier": {
+                "on": "speed",
+                "op": "add",
+                "value": 10
+              },
+              "ends": {
+                "on": "turnEnd"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-hollow-spore-flask",
+      "source": "homebrew:rk",
+      "tier": "assist",
+      "checked": false,
+      "name": "Hollow Spore Flask",
+      "text": "A flask of grey spores. Invented for the reader tests: its steps have gaps the engine cannot fill.",
+      "category": "potion",
+      "rarity": "uncommon",
+      "wear": "carried",
+      "activate": [
+        {
+          "name": "Throw",
+          "time": "action",
+          "consumed": true,
+          "effects": [
+            {
+              "attack": "ranged",
+              "kind": "spell",
+              "onHit": [
+                {
+                  "damage": "3d6",
+                  "type": "poison"
+                }
+              ]
+            },
+            {
+              "save": "con",
+              "onFail": [
+                {
+                  "condition": "poisoned",
+                  "ends": {
+                    "on": "save",
+                    "save": "con",
+                    "at": "turnEnd"
+                  }
+                }
+              ]
+            },
+            {
+              "manual": "The spores drift on; the DM places the cloud."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-tidewarden-ring",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Tidewarden Ring",
+      "text": "A ring set with a pale stone. Invented for the reader tests.",
+      "category": "ring",
+      "rarity": "rare",
+      "wear": "ring",
+      "variant": "damageType",
+      "grants": {
+        "modifiers": [
+          {
+            "on": "damage.taken",
+            "op": "resist",
+            "types": [
+              "chosen"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "hb-rk-whisper-scroll",
+      "source": "homebrew:rk",
+      "tier": "assist",
+      "checked": false,
+      "name": "Whisper Scroll",
+      "text": "A scroll that holds one spell. Invented for the reader tests.",
+      "category": "scroll",
+      "rarity": "varies",
+      "wear": "carried",
+      "variant": "spell",
+      "activate": [
+        {
+          "time": "action",
+          "consumed": true,
+          "effects": [
+            {
+              "manual": "Cast the scroll's spell."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-mourning-bell",
+      "source": "homebrew:rk",
+      "tier": "manual",
+      "checked": false,
+      "name": "Mourning Bell",
+      "text": "A bell whose ring is felt, not heard. Invented for the reader tests: the engine runs none of it.",
+      "category": "wondrous",
+      "rarity": "legendary",
+      "wear": "carried",
+      "attune": true,
+      "activate": [
+        {
+          "name": "Toll",
+          "time": "reaction",
+          "effects": [
+            {
+              "manual": "Every creature within 30 feet that can hear it feels dread; the DM says who."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "feats": [
+    {
+      "id": "hb-rk-keen-eye",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Keen Eye",
+      "text": "You miss little. Invented for the reader tests.",
+      "category": "origin",
+      "increase": {
+        "from": [
+          "dex",
+          "wis"
+        ],
+        "points": 1,
+        "max": 20
+      },
+      "proficiencies": {
+        "n": 2
+      },
+      "grants": {
+        "modifiers": [
+          {
+            "on": "initiative",
+            "op": "add",
+            "value": {
+              "prof": 1
+            }
+          },
+          {
+            "on": "check",
+            "op": "advantage",
+            "scope": {
+              "skill": "perception"
+            }
+          }
+        ],
+        "senses": {
+          "darkvision": 30
+        }
+      }
+    },
+    {
+      "id": "hb-rk-ember-heir",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Ember Heir",
+      "text": "You carry a spark of an old fire. Invented for the reader tests.",
+      "category": "general",
+      "prerequisite": {
+        "level": 4,
+        "abilities": {
+          "any": [
+            "int",
+            "wis",
+            "cha"
+          ],
+          "min": 13
+        },
+        "feature": "spellcasting"
+      },
+      "repeatable": true,
+      "increase": {
+        "from": [
+          "int",
+          "wis",
+          "cha"
+        ],
+        "points": 2,
+        "max": 20
+      },
+      "grants": {
+        "freeCast": {
+          "spells": [
+            "burning-hands",
+            "shield"
+          ],
+          "atWill": true,
+          "self": true,
+          "dark": true,
+          "sureSave": true,
+          "maxTemp": true,
+          "time": "action",
+          "components": "none"
+        },
+        "spells": [
+          "burning-hands"
+        ],
+        "aura": {
+          "range": 10,
+          "immune": [
+            "charmed"
+          ]
+        }
+      }
+    },
+    {
+      "id": "hb-rk-drill-master",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Drill Master",
+      "text": "Practised footwork. Invented for the reader tests.",
+      "category": "fighting-style",
+      "grants": {
+        "armouredAc": 1,
+        "rangedAttack": 1,
+        "bonusActs": [
+          "hide"
+        ],
+        "saves": [
+          "dex"
+        ],
+        "resist": [
+          "cold"
+        ],
+        "conditionImmune": [
+          "frightened"
+        ],
+        "speeds": [
+          "climb"
+        ],
+        "senseRange": {
+          "darkvision": 10
+        },
+        "bareAc": 1,
+        "setAbility": {
+          "str": 14
+        },
+        "abilityBonus": {
+          "con": 1,
+          "max": 20
+        }
+      }
+    },
+    {
+      "id": "hb-rk-wanderers-luck",
+      "source": "homebrew:rk",
+      "tier": "manual",
+      "checked": false,
+      "name": "Wanderer's Luck",
+      "text": "Luck follows you; the table decides how. Invented for the reader tests: the engine runs none of it.",
+      "category": "general",
+      "repeatable": true
+    }
   ]
 }

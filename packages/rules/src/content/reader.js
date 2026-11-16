@@ -17,9 +17,11 @@
 // `hash`      SHA-256 of the entry's canonical JSON (keys sorted), or null for one too big to read.
 //
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
-// throws) gets a short plain answer and never a throw. Only spells are read so far; other kinds are task B13.
-import { ABILITIES, AREA_SHAPES, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, HOOKS, OPS, REACTION_TRIGGERS, REMAINS, SCHOOLS,
-  SKILLS, SPELL_KINDS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS, TIERS, isDuration } from './schema.js';
+// throws) gets a short plain answer and never a throw. Spells, monsters, items and feats are read; weapons, armour and objects are the
+// rest of task B13.
+import { ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+  GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
+  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, isDuration } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
 import { CONTENT } from './index.js';
 import { actionProfile, aimable, BENEFICIAL_CONDITIONS, spellKinds, WORK } from '../effects.js';
@@ -229,7 +231,7 @@ export function readEntry(kind, entry, ctx = {}) {
 // The kinds of entry (the pack's list names, and the singular) and which of them are read so far.
 export const KIND_NAMES = { spell: 'spell', spells: 'spell', monster: 'monster', monsters: 'monster', item: 'item', items: 'item', feat: 'feat', feats: 'feat',
   weapon: 'weapon', weapons: 'weapon', armour: 'armour', armor: 'armour', object: 'object', objects: 'object' };
-export const READ_KINDS = ['spell', 'monster'];
+export const READ_KINDS = ['spell', 'monster', 'item', 'feat'];
 const IS_THE = { spell: 'a spell', monster: 'a monster', item: 'an item', feat: 'a feat', weapon: 'a weapon', armour: 'armour', object: 'an object' };
 
 function readOrThrow(kind, entry) {
@@ -244,8 +246,8 @@ function readOrThrow(kind, entry) {
     const why = over ? 'This entry is too large or too deeply nested to read. It cannot be approved.' : `This is not ${IS_THE[k]} entry (it is not an object). It cannot be approved.`;
     return { kind: k, title: '(unreadable entry)', tier: null, lines: [why], doesNot: [], numbers: [], text: null, problems: [...problems, why], hash: null };
   }
-  const R = k === 'monster' ? new MonsterReading(e, problems) : new Reading(e, problems);
-  if (k === 'monster') R.monster(); else R.spell();
+  const R = k === 'monster' ? new MonsterReading(e, problems) : k === 'item' ? new ItemReading(e, problems) : k === 'feat' ? new FeatReading(e, problems) : new Reading(e, problems);
+  if (k === 'monster') R.monster(); else if (k === 'item') R.item(); else if (k === 'feat') R.feat(); else R.spell();
   return R.result(sha256(canonical(e)));
 }
 
@@ -260,6 +262,8 @@ class Reading {
     this.kind = 'spell';
     this.actor = 'the caster';          // who acts in a step's sentence: a monster's action is its creature's
     this.mon = false;                   // reading a monster (its actions' steps, not a spell's)
+    this.itm = false;                   // reading an item's use or a feat's action (steps run on the user alone, with no spell stats of their own)
+    this.words = null;                  // how the step sentences name the actor and the spell, for a monster, an item or a feat
     this.saveDcs = [];                  // the DC of each save the steps being read sit under (a number, or null), the innermost last
     this.base = 0;                      // extra indent, for the steps of an action under its heading
     this.manualSteps = 0;
@@ -270,11 +274,12 @@ class Reading {
     this.lines.push(`${'  '.repeat(Math.min(depth + this.base, 12))}${cap(this.voice(text), READER_LIMITS.line)}`);
   }
   dm(text) { if (this.doesNot.length < READER_LIMITS.lines) this.doesNot.push(cap(this.voice(text), READER_LIMITS.line)); }
-  // The step sentences were written for a spell's caster; a creature's action is said in its own words.
+  // The step sentences were written for a spell's caster; a creature's action, an item's use and a feat's action are said in their own words.
   voice(text) {
-    if (!this.mon) return text;
+    const w = this.words;
+    if (!w) return text;
     // Never inside quotes: that is the author's own text.
-    return text.split(/("[^"]*")/).map((part, i) => (i % 2 ? part : part.replace(/\b([Tt])he caster\b/g, (m, c) => (c === 'T' ? 'The creature' : 'the creature')).replace(/\bthe spell\b/g, 'the action').replace(/\ba spell\b(?! attack)/g, 'an action'))).join('');
+    return text.split(/("[^"]*")/).map((part, i) => (i % 2 ? part : part.replace(/\b([Tt])he caster\b/g, (m, c) => (c === 'T' ? cap1(w.who) : w.who)).replace(/\b([Tt])he spell\b/g, (m, c) => (c === 'T' ? cap1(w.spell) : w.spell)).replace(/\ba spell\b(?! attack)/g, w.aSpell))).join('');
   }
   bad(text) { if (this.problems.length < READER_LIMITS.problems) this.problems.push(cap(text, READER_LIMITS.line)); }
   num(at, value, unit) { if (this.numbers.length < READER_LIMITS.numbers) this.numbers.push({ at, value, unit }); }
@@ -688,8 +693,8 @@ class Reading {
     const e = st.ends;
     if (e !== undefined && !isObj(e)) this.bad(`Step ${at}: \`ends\` is not an object.`);
     const ends = isObj(e) && ENDS_ON.includes(e.on) ? e : null;
-    if (isObj(e)) this.odd(e, ['on', 'of', 'save', 'at', 'by', 'orDamaged', ...(this.mon ? ['dc'] : [])], `Step ${at}: \`ends\``);
-    if (isObj(e) && this.mon && e.dc !== undefined) { if (isInt(e.dc)) this.num(`${at}.ends.dc`, e.dc, 'DC'); else this.bad(`Step ${at}: the ending's DC is not a whole number.`); }
+    if (isObj(e)) this.odd(e, ['on', 'of', 'save', 'at', 'by', 'orDamaged', ...(this.mon || this.itm ? ['dc'] : [])], `Step ${at}: \`ends\``);
+    if (isObj(e) && (this.mon || this.itm) && e.dc !== undefined) { if (isInt(e.dc)) this.num(`${at}.ends.dc`, e.dc, 'DC'); else this.bad(`Step ${at}: the ending's DC is not a whole number.`); }
     if (!this.fx) {
       if (what === 'modifier') return null;
       return `Nothing in the engine ends it${ends ? ' (its ending is not kept, since the spell does not last)' : ''}: the DM removes it.`;
@@ -709,6 +714,12 @@ class Reading {
     else if (ends.on === 'save') {
       const ab = ABILITY_WORDS[ends.save] ?? 'unreadable';
       const atw = ends.at === 'turnStart' ? 'at the start of each of its turns' : ends.at === 'turnEnd' ? 'at the end of each of its turns' : ends.at === 'damaged' ? 'each time it takes damage' : 'at an unreadable time';
+      if (this.itm) {
+        // engine/rolls.js `endingDc`: the ending's own `dc`, else the step's own; an item's steps have no spell save DC to fall back on.
+        const own = isInt(e.dc) ? e.dc : null, base = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}`, more = ends.orDamaged === true ? '; any damage it takes would also end it' : '';
+        if (own === null) { this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC, so only the DM can end it.`); return `${base}, and a success would end it${more}. But no DC is entered for that save, so the engine does not roll it: it tells the DM when the condition is put on, and the DM ends it.`; }
+        return `${base}, against DC ${own}; a success ends it${more}.`;
+      }
       if (this.mon) {
         // engine/resolve.js `runAction` and rolls.js `endingDc`: the repeated save is against the ending's own DC (`ends.dc`), else the DC of the
         // innermost save above it that has one; with neither, the engine tells the DM and does not roll it.
@@ -735,6 +746,7 @@ function saveSentence({ st, at, depth, Who, say }) {
   let dc = '';
   if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
   say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
+  if (this.itm && st.dc === undefined) { this.line('No DC is written in for this save, and an item\'s own steps have no spell save DC: the engine does not roll it, it tells the DM, who applies it.', depth); this.dm(`The save of step ${at}: it has no DC.`); }
   if (st.advantageIf !== undefined) {
     const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => Object.hasOwn(TAG_WORDS, t)) : [];
     const un = tags.filter((t) => UNJUDGED_TAGS.includes(t));
@@ -770,6 +782,11 @@ export const STEP_SENTENCES = {
     let bonus = '';
     if (kind === 'weapon') { if (isInt(st.bonus)) { this.num(`${at}.bonus`, st.bonus, 'to hit'); bonus = ` with ${signed(st.bonus)} to hit`; } else this.bad(`Step ${at}: a weapon attack has no whole-number bonus.`); }
     say(`The caster makes a ${st.attack === 'melee' ? 'melee' : 'ranged'} ${kind ?? ''} attack roll${bonus} against ${who}.`.replace('  ', ' '));
+    if (this.itm && kind === 'spell') {
+      // effects.js: a spell attack takes its bonus from the spell's caster (`src.attack`); an item's own steps have none (a spell the item casts does).
+      this.line('The engine has no spell attack bonus for an item\'s own steps, so it makes no roll: it tells the DM, who rolls it and says whether it hits, and it counts as a miss meanwhile. A weapon attack with a bonus written in would be rolled.', depth);
+      this.dm(`The attack of step ${at}: it is a spell attack, which has no bonus in an item's own steps: rolling it and saying whether it hits.`);
+    }
     if (this.mon && kind === 'spell') {
       // effects.js: a spell attack takes its bonus from the spell's caster (`src.attack`); a creature's action has none.
       this.bad(`Step ${at}: a creature's action has no spell attack bonus for the engine to use.`);
@@ -795,13 +812,13 @@ export const STEP_SENTENCES = {
   heal({ st, at, Who, say }) {
     if (!isDice(st.heal)) this.bad(`Step ${at}: the healing is not dice.`); else this.num(`${at}.heal`, st.heal, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Hit Points'), `, and at least ${st.atLeast}`) : '';
-    say(`${Who} regains ${isDice(st.heal) ? st.heal : '(unreadable dice)'}${st.addMod === true && !this.mon ? ' plus the caster\'s spellcasting ability modifier' : ''} Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}.`);
+    say(`${Who} regains ${isDice(st.heal) ? st.heal : '(unreadable dice)'}${st.addMod === true && !this.mon && !this.itm ? ' plus the caster\'s spellcasting ability modifier' : ''} Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
   },
   tempHp({ st, at, Who, say }) {
     if (!isDice(st.tempHp)) this.bad(`Step ${at}: the Temporary Hit Points are not dice.`); else this.num(`${at}.tempHp`, st.tempHp, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Temporary Hit Points'), `, at least ${st.atLeast}`) : '';
-    say(`${Who} gains ${isDice(st.tempHp) ? st.tempHp : '(unreadable dice)'}${st.addMod === true && !this.mon ? ' plus the caster\'s spellcasting ability modifier' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
+    say(`${Who} gains ${isDice(st.tempHp) ? st.tempHp : '(unreadable dice)'}${st.addMod === true && !this.mon && !this.itm ? ' plus the caster\'s spellcasting ability modifier' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
   },
   condition({ st, at, depth, Who, say }) {
@@ -908,7 +925,7 @@ function modPhrase(m, at) {
   } else if (m.scope !== undefined) this.bad(`${at}: \`scope\` is not an object.`);
   if (['resist', 'vulnerable', 'immune'].includes(op) || (hook.startsWith('damage') && Array.isArray(m.types))) {
     const types = Array.isArray(m.types) ? m.types.map((t) => (t === 'chosen' ? 'the chosen type' : DAMAGE_TYPES.includes(t) ? t : 'an unreadable type')) : null;
-    if (types && ['resist', 'vulnerable', 'immune'].includes(op)) noun = `${list(types, 'or')} damage`;
+    if (types && ['resist', 'vulnerable', 'immune'].includes(op)) noun = types.every((t) => t === 'the chosen type') ? 'damage of the chosen type' : `${list(types, 'or')} damage`;
     else if (!types && ['resist', 'vulnerable', 'immune'].includes(op)) noun = 'all damage';
   }
   let v = '';
@@ -917,6 +934,11 @@ function modPhrase(m, at) {
     if (typeof val === 'number') { this.num(`${at}.value`, val, 'modifier'); v = op === 'add' ? signed(val) : `${val}${['speed', 'speed.fly'].includes(hook) ? ' feet' : ''}`; if (op === 'add' && ['speed', 'speed.fly'].includes(hook)) v += ' feet'; }
     else if (isObj(val) && typeof val.perLevel === 'number') { this.num(`${at}.value.perLevel`, val.perLevel, 'per level'); v = `${signed(val.perLevel)} for each level of it`; }
     else if (op === 'add' && typeof val === 'string' && MOD_DICE.test(val)) { this.num(`${at}.value`, val, 'dice'); v = signed(val); }
+    // A feature's value may be an amount that grows with the class or the character (derive.js `amount`, put in when the feature is made).
+    else if (isObj(val) && isInt(val.prof)) { this.num(`${at}.value.prof`, val.prof, 'times the Proficiency Bonus'); v = val.prof === 1 ? 'the Proficiency Bonus' : `${val.prof} times the Proficiency Bonus`; }
+    else if (isObj(val) && typeof val.mod === 'string' && ABILITIES.includes(val.mod)) { if (isInt(val.min)) this.num(`${at}.value.min`, val.min, 'least'); v = `the ${ABILITY_WORDS[val.mod]} modifier${isInt(val.min) ? ` (at least ${val.min})` : ''}`; }
+    else if (isObj(val) && isObj(val.byLevel)) { for (const [l, x] of Object.entries(val.byLevel)) if (typeof x === 'number' || isDice(x)) this.num(`${at}.value.byLevel.${l}`, x, 'by class level'); v = `an amount that grows with the class level (${list(Object.entries(val.byLevel).slice(0, 20).map(([l, x]) => `${x} from level ${l}`))})`; }
+    else if (isObj(val) && typeof val.column === 'string') v = 'an amount from the class table';
     else { this.bad(`${at}: the modifier's value is not a number${op === 'add' ? ' or dice' : ''}.`); v = '(an unreadable amount)'; }
   }
   if (op === 'add' && hook.startsWith('damage') && Array.isArray(m.types) && hook === 'damage.dealt') return `${v} ${list(m.types.map((t) => (t === 'chosen' ? 'damage of the chosen type' : `${t} damage`)), 'or')} added to the damage it deals`;
@@ -1058,7 +1080,7 @@ function averageOf(a) {
 class MonsterReading extends Reading {
   constructor(def, problems) {
     super(def, problems);
-    this.kind = 'monster'; this.mon = true; this.actor = 'the creature';
+    this.kind = 'monster'; this.mon = true; this.actor = 'the creature'; this.words = { who: 'the creature', spell: 'the action', aSpell: 'an action' };
     this.later = [];            // lines that follow the title line
     this.textOnly = 0;
     this.id = def.id;
@@ -1454,4 +1476,677 @@ class MonsterReading extends Reading {
     }
   }
   fChecked() { this.line(this.def.checked === true ? 'Marked as checked against the rules text.' : 'Not checked against any rulebook.'); }
+}
+
+// ====================================================================================================
+// Items and feats (task B13, second part). Read from what the engine does with them: `derive.js` (`itemFeature`, `featFeature`: a
+// worn or attuned item's `grants`, and a chosen feat's, become features of the character, whose modifiers `modifiers.js` reads;
+// `validate`/`checkFeats`: where an item is worn, attunement, a feat's prerequisites), `engine/features.js` (`use`, `planItem`,
+// `useItem`: a use of an item), `engine/rests.js` (attuning on a Short Rest, charges at dawn), `engine/casting.js` (a spell cast
+// from an item; a spell cast through a feature's `freeCast`) and `effects.js` (what a step does with no spell behind it).
+// ====================================================================================================
+export const ITEM_FIELDS = {
+  id: 'skip', name: 'skip', source: 'skip', text: 'skip', category: 'header', rarity: 'header', wear: 'fWear', attune: 'fAttune', base: 'fBase', bonus: 'fBonus', damageType: 'fDamageType',
+  properties: 'fProperties', trained: 'fTrained', variant: 'fVariant', grants: 'fGrants', charges: 'fCharges', activate: 'fActivate', tier: 'fTier', checked: 'fChecked',
+};
+export const FEAT_FIELDS = {
+  id: 'skip', name: 'skip', source: 'skip', text: 'skip', category: 'header', prerequisite: 'fPrerequisite', repeatable: 'fRepeatable', increase: 'fIncrease', proficiencies: 'fProficiencies',
+  spellPick: 'fSpellPick', grants: 'fGrants', tier: 'fTier', checked: 'fChecked',
+};
+export const ACTIVATE_FIELDS = { name: 'head', time: 'head', cost: 'charges', consumed: 'gone', spell: 'spell', level: 'spell', upTo: 'spell', self: 'spell', dc: 'spell', effects: 'steps' };
+export const ATTUNE_FIELDS = ['by', 'spellcaster'];
+export const BASE_FIELDS = ['armour', 'weapon'];
+export const CHARGES_FIELDS = ['max', 'regain'];
+export const PREREQUISITE_FIELDS = ['abilities', 'feature', 'level'];
+export const ANY_ABILITY_FIELDS = ['any', 'min'];
+export const INCREASE_FIELDS = ['from', 'max', 'points'];
+export const PROFICIENCIES_FIELDS = ['n'];
+export const SPELLPICK_FIELDS = ['abilities', 'cantrips', 'level1', 'lists'];
+export const AURA_FIELDS = ['immune', 'modifiers', 'range'];
+export const FREECAST_COST_FIELDS = ['slot', 'uses'];
+export const ITEM_CATEGORY_WORDS = { armor: 'armor', potion: 'potion', ring: 'ring', rod: 'rod', scroll: 'scroll', staff: 'staff', wand: 'wand', weapon: 'weapon', wondrous: 'wondrous item' };
+export const RARITY_WORDS = { common: 'common', uncommon: 'uncommon', rare: 'rare', 'very-rare': 'very rare', legendary: 'legendary', artifact: 'artifact', varies: 'of varying rarity,' };
+export const WEAR_WORDS = {
+  feet: 'worn on the feet', hands: 'worn on the hands', wrists: 'worn on the wrists', armour: 'worn as armor', head: 'worn on the head', cloak: 'worn as a cloak', shield: 'held as a Shield',
+  weapon: 'held as a weapon', ring: 'worn on a finger', neck: 'worn on the neck', waist: 'worn at the waist', body: 'worn on the body', eyes: 'worn over the eyes', orbit: 'orbiting the head',
+  carried: 'carried',
+};
+export const ITEM_VARIANT_WORDS = {
+  damageType: 'The sheet that holds it picks a damage type; each "chosen" damage type in its changes below is that type.',
+  spell: 'It is a scroll of one spell, which the sheet that holds it names. Only a creature whose class spell list has that spell can read it; a spell above the level it can cast takes an ability check against DC 10 plus the spell\'s level, and on a failure the spell is lost with the scroll. Reading it needs a use below.',
+};
+export const FEAT_CATEGORY_WORDS = { origin: 'an Origin feat', general: 'a General feat', 'fighting-style': 'a Fighting Style feat', 'epic-boon': 'an Epic Boon feat' };
+export const FEAT_FEATURE_WORDS = { 'fighting-style': 'a Fighting Style feature', spellcasting: 'a Spellcasting feature' };
+export const ACTION_TIME_WORDS = { action: 'an action', bonus: 'a Bonus Action', reaction: 'a Reaction', free: 'no action' };
+export const ITEM_TIER_WORDS = {
+  auto: 'Tier: auto. The engine applies everything above.',
+  assist: 'Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.',
+  manual: 'Tier: manual. The DM applies this item; the engine only shows the description.',
+};
+export const FEAT_TIER_WORDS = {
+  auto: 'Tier: auto. The engine applies everything above.',
+  assist: 'Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.',
+  manual: 'Tier: manual. The DM applies this feat; the engine only shows the description.',
+};
+// The keys the item linter refuses in an item's `grants` (a class's own: lintItem). A test holds this equal to the linter's refusals.
+export const ITEM_NO_GRANTS = ['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips',
+  'spellLists', 'spells', 'proficiency', 'hp'];
+// Where the engine looks for a grant, apart from what a feature does for a class: features of a class only (derive.js reads them through `classFeatures`, or by the class a feature belongs to,
+// and a feat's or an item's feature belongs to none), so a feat or an item that holds the key changes nothing. A test runs derive to hold this to the engine.
+export const GRANTS_CLASS_ONLY = ['attune', 'spells', 'spellLists', 'cantrips'];
+
+// What the freeCast keys say, one sentence for each. `v` is the value, `fc` the freeCast. A test holds the keys equal to HOMEBREW_TYPES.freeCast.
+export const FREECAST_WORDS = {
+  list: (v, fc) => `Any spell on the ${CONTENT.classes?.[v]?.name ?? shown(v)} spell list${isInt(fc?.maxLevel) ? `, of level ${fc.maxLevel} or lower` : ''}, prepared or not, with no slot; it is cast as a Magic action.`,
+  maxLevel: (v) => `The highest spell level is ${v}.`,
+  spells: (v) => `Only ${list((Array.isArray(v) ? v : []).slice(0, 30).map((x) => nameOf('spells', x)), 'or')}, each at its own level and its own casting time, with no slot.`,
+  atWill: () => 'Nothing is spent: it can be cast as often as the holder likes.',
+  cost: (v) => `Each cast spends either a spell slot, as an ordinary cast would (the caster says which), or one use of the holder's feature ${shown(v?.uses)}. With none of those uses left, only the slot is left.`,
+  self: () => 'It can be cast on the holder alone.',
+  dark: () => 'It works only while the holder stands in Dim Light or Darkness.',
+  sureSave: () => 'The holder succeeds on every saving throw the spell asks of it.',
+  maxTemp: () => 'Temporary Hit Point dice the spell rolls count at their highest.',
+  time: () => 'It is cast as a Magic action, whatever its own casting time.',
+  forms: (v) => `The holder may also choose ${list((Array.isArray(v) ? v : []).slice(0, 20).map((x) => nameOf('monsters', x)), 'or')} as a form for a creature the spell makes.`,
+  types: (v) => `A creature the spell makes may be only of the type ${list((Array.isArray(v) ? v : []).map((x) => (CREATURE_TYPES.includes(x) ? cap1(x) : 'an unreadable type')), 'or')}.`,
+  ends: (v) => `The bond with a creature the spell makes also ends ${list((Array.isArray(v) ? v : []).map((x) => SUMMON_END_WORDS[x] ?? 'at an unreadable time'), 'or')}.`,
+  components: () => 'The spell\'s Material component is left out: a costly one hides nothing and gives nothing to see.',
+};
+
+// What a Spell Scroll gives its spell: up to this level, the save DC and the attack bonus (engine/features.js, SCROLL_STATS). A test holds it to the engine's.
+export const SCROLL_STATS = [[2, 13, 5], [4, 15, 7], [6, 17, 9], [8, 18, 10], [9, 19, 11]];
+const abilList = (xs, and = 'or') => list((Array.isArray(xs) ? xs : []).slice(0, 6).map((x) => ABILITY_WORDS[x] ?? 'an unreadable ability'), and);
+const conds = (xs) => list((Array.isArray(xs) ? xs : []).slice(0, 15).map((c) => (CONDITIONS.includes(c) ? `the ${cond(c)} condition` : 'a condition the reader cannot read')));
+const featureNote = (id) => `Only a holder who has the feature ${shown(id)} gets anything from this.`;
+const feetWord = (v) => (isInt(v) ? `${v} feet` : 'an unreadable number of feet');
+const amountWord = (v) => (typeof v === 'number' ? String(v) : isObj(v) && isInt(v.perLevel) ? `${v.perLevel} for each level of the class` : isObj(v) && v.prof !== undefined ? `${v.prof} times the Proficiency Bonus` : isObj(v) && isObj(v.byLevel) ? 'a number that grows with the class level' : isObj(v) && typeof v.column === 'string' ? 'a number from the class table' : isObj(v) && typeof v.mod === 'string' ? `the ${ABILITY_WORDS[v.mod] ?? 'unreadable'} modifier${isInt(v.min) ? ` (at least ${v.min})` : ''}` : 'an unreadable amount');
+// Every number in an amount ({ perLevel }, { prof }, { byLevel }, { min }, a plain number), found where the entry holds it.
+function amountNums(R, v, at, unit) {
+  if (typeof v === 'number') return R.num(at, v, unit);
+  if (!isObj(v)) return;
+  for (const k of ['perLevel', 'prof', 'min']) if (typeof v[k] === 'number') R.num(`${at}.${k}`, v[k], unit);
+  if (isObj(v.byLevel)) for (const [l, x] of Object.entries(v.byLevel)) { if (typeof x === 'number' || isDice(x)) R.num(`${at}.byLevel.${l}`, x, unit); }
+}
+// Every number and dice string under a value, as the test finds them (not ids, names or text).
+const NOT_NUMBERS_HERE = ['id', 'name', 'source', 'text', 'manual', 'action', 'when', 'advantageIf', 'set', 'resource', 'spell', 'checked', 'spells', 'of', 'while', 'after', 'regain', 'list'];
+function deepNums(R, v, at, unit, depth = 0) {
+  if (depth > READER_LIMITS.depth) return;
+  if (typeof v === 'number') R.num(at, v, unit);
+  else if (typeof v === 'string') { if (/\d/.test(v) && isDice(v)) R.num(at, v, 'dice'); }
+  else if (Array.isArray(v)) v.forEach((x, i) => deepNums(R, x, `${at}.${i}`, unit, depth + 1));
+  else if (isObj(v)) for (const [k, x] of Object.entries(v)) if (!NOT_NUMBERS_HERE.includes(k)) deepNums(R, x, `${at}.${k}`, unit, depth + 1);
+}
+
+// One sentence maker per key of `grants` (GRANTS; a test holds the keys equal). `this` is the reading. `v` is the value, `at` its place in the entry.
+export const GRANT_WORDS = {
+  modifiers(v, at) {
+    if (!Array.isArray(v) || !v.length) return this.bad(`${at} is not a list of modifiers.`);
+    this.line('Changes to rolls and numbers:', 1);
+    v.forEach((m, j) => this.grantMod(m, `${at}.${j}`));
+  },
+  aura(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not an aura.`);
+    this.odd(v, AURA_FIELDS, 'The aura');
+    const r = v.range;
+    if (isInt(r)) this.num(`${at}.range`, r, 'feet'); else if (isObj(r) && isObj(r.byLevel)) for (const [l, x] of Object.entries(r.byLevel)) { if (isInt(x)) this.num(`${at}.range.byLevel.${l}`, x, 'feet'); } else this.bad(`${at}.range is not feet.`);
+    this.line(`An aura ${isInt(r) ? `${r} feet` : 'of a range that grows with the class level'} out from the holder. The holder, and every creature on the holder's side in range with no Total Cover between, get what is listed below, for as long as the holder is up and not Incapacitated. Two of the same aura do not add up.`, 1);
+    if (Array.isArray(v.modifiers)) v.modifiers.forEach((m, j) => this.grantMod(m, `${at}.modifiers.${j}`, 2));
+    else if (v.modifiers !== undefined) this.bad(`${at}.modifiers is not a list.`);
+    if (v.immune !== undefined) { if (Array.isArray(v.immune) && v.immune.length && v.immune.every((c) => CONDITIONS.includes(c))) this.line(`Immunity to ${conds(v.immune)}: a creature in the aura is not given ${v.immune.length > 1 ? 'any of them' : 'it'}.`, 2); else this.bad(`${at}.immune is not a list of conditions.`); }
+    if (v.modifiers === undefined && v.immune === undefined) this.bad(`${at} gives neither modifiers nor immunities.`);
+  },
+  cure(v) {
+    if (!isObj(v) || !Array.isArray(v.conditions)) return this.bad('`cure` is not { of, conditions }.');
+    this.line(`Adds ${conds(v.conditions)} to what the holder's pool of healing ${shown(v.of)} can remove, at that pool's own cost. ${featureNote(v.of)}`, 1);
+  },
+  freeCast(v, at) { this.freeCastLines(v, at); },
+  conditionImmune(v) {
+    if (!Array.isArray(v) || !v.length || !v.every((c) => CONDITIONS.includes(c))) return this.bad('`conditionImmune` is not a list of conditions.');
+    this.line(`Immune to ${conds(v)}: the engine never gives the holder ${v.length > 1 ? 'any of them' : 'that condition'}.`, 1);
+  },
+  metamagic(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { id, cost, pool }.`);
+    if (isInt(v.cost)) this.num(`${at}.cost`, v.cost, 'points'); else this.bad(`${at}.cost is not a whole number.`);
+    this.line(`Teaches the holder the Metamagic option ${shown(v.id)}: a spell may carry it for ${isInt(v.cost) ? v.cost : '?'} point${v.cost === 1 ? '' : 's'} of the pool ${shown(v.pool)}.`, 1);
+  },
+  metamagicMax(v, at) {
+    if (!isObj(v) || !isInt(v.n)) return this.bad(`${at} is not { n, while }.`);
+    this.num(`${at}.n`, v.n, 'options');
+    this.line(`A spell may carry up to ${v.n} Metamagic options while the holder's feature ${shown(v.while)} has its effect going.`, 1);
+  },
+  exchange(v, at) {
+    if (!isObj(v) || !isObj(v.costs) || !isObj(v.minLevel)) return this.bad(`${at} is not { costs, minLevel }.`);
+    for (const [l, x] of Object.entries(v.costs)) if (isInt(x)) this.num(`${at}.costs.${l}`, x, 'points');
+    for (const [l, x] of Object.entries(v.minLevel)) if (isInt(x)) this.num(`${at}.minLevel.${l}`, x, 'class level');
+    this.line(`Lets the holder trade the feature's points for spell slots and the other way round. A slot of level ${list(Object.keys(v.costs).slice(0, 9))} costs ${list(Object.values(v.costs).slice(0, 9).map(String))} points, and it can be made from the class level ${list(Object.values(v.minLevel).slice(0, 9).map(String))}.`, 1);
+  },
+  restore(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { of, max }.`);
+    amountNums(this, v.max, `${at}.max`, 'points');
+    this.line(`On a Short Rest, for one use of this feature, the pool ${shown(v.of)} gets back up to ${amountWord(v.max)} points. ${featureNote(v.of)}`, 1);
+  },
+  action(v, at) { this.actionLines(v, at); },
+  reaction(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not a reaction.`);
+    const dm = (x) => this.dm(x);
+    if (v.on === 'saveFailed') {
+      if (isInt(v.range)) this.num(`${at}.range`, v.range, 'feet');
+      return this.line(`A Reaction, taken by a standing instruction: when the holder or an ally within ${isInt(v.range) ? v.range : '?'} feet fails a saving throw against an effect that would apply ${conds(v.conditions)}, the save is rolled again with Advantage.`, 1);
+    }
+    if (v.on === 'damaged' && v.resist === true) return this.line('A Reaction, taken by a standing instruction: when the holder takes damage, it gains Resistance to that type of damage to the end of the turn.', 1);
+    if (v.on === 'damaged') {
+      if (isInt(v.within)) this.num(`${at}.within`, v.within, 'feet');
+      return this.line(`A Reaction, taken by a standing instruction: when a hostile creature within ${isInt(v.within) ? v.within : '?'} feet damages the holder, the holder makes one melee attack against it.`, 1);
+    }
+    if (v.on !== 'hit') { dm(`The reaction at ${at}.`); return this.bad(`${at}: a reaction is set off by a hit, a failed save or damage.`); }
+    let cut = 'half';
+    if (v.cut !== 'half') {
+      if (isObj(v.cut) && isDice(v.cut.dice)) { this.num(`${at}.cut.dice`, v.cut.dice, 'dice'); cut = `${v.cut.dice}${Array.isArray(v.cut.add) && v.cut.add.length ? ' plus an amount that grows with the class' : ''}`; if (Array.isArray(v.cut.add)) v.cut.add.forEach((x, j) => amountNums(this, x, `${at}.cut.add.${j}`, 'amount')); } else this.bad(`${at}.cut is not "half" or { dice, add }.`);
+    }
+    this.line(`A Reaction, taken by a standing instruction: when an attack roll hits the holder${v.seen === true ? ' and the holder can see the attacker' : ''}${Array.isArray(v.types) && v.types.length ? `, if it deals ${list(v.types.filter((t) => DAMAGE_TYPES.includes(t)), 'or')} damage` : ''}, the damage is cut by ${cut === 'half' ? 'half' : cut}.`, 1);
+  },
+  ac(v, at) {
+    if (!isObj(v) || !isInt(v.base)) return this.bad(`${at} is not { base, abilities, shield }.`);
+    this.num(`${at}.base`, v.base, 'Armor Class');
+    this.line(`While wearing no armor${v.shield === true ? '' : ' and holding no Shield'}, Armor Class is ${v.base} plus the ${abilList(v.abilities, 'and')} modifier${Array.isArray(v.abilities) && v.abilities.length > 1 ? 's' : ''}, if that is more than the plain 10 plus Dexterity.`, 1);
+  },
+  armouredAc(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'Armor Class'); this.line(`+${v} Armor Class while the holder wears armor.`, 1); },
+  speed(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { add, unless }.`);
+    amountNums(this, v.add, `${at}.add`, 'feet');
+    this.line(`${amountWord(v.add)} feet added to the holder's Speed${v.unless === 'heavy' ? ', except in heavy armor' : v.unless === 'armour' ? ', except in any armor' : ''}.`, 1);
+  },
+  speeds(v, at) {
+    if (Array.isArray(v)) {
+      this.line(`A ${list(v.filter((m) => ['climb', 'swim'].includes(m)))} speed equal to the holder's Speed.`, 1);
+      if (v.includes('swim')) { this.line('The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.', 2); this.dm('Moving the holder by its swim speed.'); }
+      return;
+    }
+    if (!isObj(v)) return this.bad(`${at} is not a list or a table of speeds.`);
+    const ok = Object.entries(v).filter(([m, x]) => ['climb', 'swim', 'fly'].includes(m) && isInt(x));
+    for (const [m, x] of ok) this.num(`${at}.${m}`, x, 'feet');
+    this.line(`Speeds: ${list(ok.map(([m, x]) => `${m} ${x} feet`))}, each at least that, never less than the holder already has.`, 1);
+    if (ok.some(([m]) => m === 'swim')) { this.line('The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.', 2); this.dm('Moving the holder by its swim speed.'); }
+  },
+  senses(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not a table of senses.`);
+    const ok = Object.entries(v).filter(([k, x]) => Object.hasOwn(SENSE_WORDS, k) && isInt(x));
+    for (const [k, x] of ok) this.num(`${at}.${k}`, x, 'feet');
+    this.line(`Senses: ${list(ok.map(([k, x]) => `${k} ${x} feet`))}; a sense the holder already has at a longer range stays as it is.`, 1);
+  },
+  saves(v, at) {
+    if (v === 'all') return this.line('Proficiency in every saving throw.', 1);
+    if (!Array.isArray(v)) return this.bad(`${at} is not "all" or a list of abilities.`);
+    this.line(`Proficiency in ${abilList(v, 'and')} saving throws.`, 1);
+  },
+  extraAttack(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'attacks'); this.line(`${v} more attack${v === 1 ? '' : 's'} when the holder takes the Attack action (the most of any feature, not the sum).`, 1); },
+  sneak(v, at) { amountNums(this, v, at, 'dice'); this.line(`Sneak Attack damage of ${amountWord(v)}d6.`, 1); },
+  rangedAttack(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'to hit'); this.line(`+${v} to the holder's attack rolls with ranged weapons (not thrown ones).`, 1); },
+  spells(v, at) {
+    if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) return this.bad(`${at} is not a list of spell ids.`);
+    this.line(`Names ${list(v.slice(0, 30).map((x) => nameOf('spells', x)))} among the spells a class always has prepared. A feat or an item belongs to no class, so the engine adds nothing from it.`, 1);
+    this.dm(`Letting the holder cast ${list(v.slice(0, 30).map((x) => nameOf('spells', x)))}: the engine does not add them.`);
+  },
+  martialArts(v, at) { amountNums(this, v, at, 'die'); this.line(`A martial arts die of ${amountWord(v)} for unarmed strikes while the holder wears no armor and holds no Shield.`, 1); },
+  hp(v, at) { amountNums(this, v, at, 'Hit Points'); this.line(`${amountWord(v)} Hit Points added to the holder's maximum.`, 1); },
+  bonusActs(v) {
+    if (!Array.isArray(v) || !v.length || !v.every((x) => BONUS_ACTS.includes(x))) return this.bad('`bonusActs` is not a list of dash, disengage and hide.');
+    this.line(`The holder may ${list(v, 'or')} as a Bonus Action.`, 1);
+  },
+  expertise(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'skills'); this.line(`Expertise in ${v} more skill${v === 1 ? '' : 's'} the holder is already proficient in, chosen on its sheet.`, 1); },
+  skills(v, at) {
+    if (!isObj(v) || !isInt(v.n)) return this.bad(`${at} is not { n, from }.`);
+    this.num(`${at}.n`, v.n, 'skills');
+    this.line(`${v.n} more skill${v.n === 1 ? '' : 's'}, chosen on the holder's sheet from ${v.from === 'any' ? 'any skill' : 'its class\'s list'}.`, 1);
+  },
+  abilityBonus(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not a table of ability bonuses.`);
+    const ok = Object.entries(v).filter(([k, x]) => (ABILITIES.includes(k) || k === 'max') && isInt(x));
+    for (const [k, x] of ok) this.num(`${at}.${k}`, x, k === 'max' ? 'score' : 'points');
+    const gains = ok.filter(([k]) => k !== 'max');
+    this.line(`${list(gains.map(([k, x]) => `${signed(x)} ${ABILITY_WORDS[k]}`))}, ${isInt(v.max) ? `up to a score of ${v.max}` : 'up to 30'}; a score already higher is left as it is.`, 1);
+  },
+  cantrips(v, at) {
+    if (!isInt(v)) return this.bad(`${at} is not a whole number.`);
+    this.num(at, v, 'cantrips');
+    this.line(`${v} more cantrip${v === 1 ? '' : 's'} known by a class that knows cantrips. A feat or an item belongs to no class, so the engine adds none.`, 1);
+    this.dm('Giving the holder the extra cantrips: the engine does not add them.');
+  },
+  proficiency(v) {
+    if (!isObj(v)) return this.bad('`proficiency` is not { weapons, armour }.');
+    const bits = [];
+    if (Array.isArray(v.weapons) && v.weapons.length) bits.push('martial weapons');
+    if (Array.isArray(v.armour) && v.armour.length) bits.push(`${list(v.armour.filter((c) => ARMOUR_CATEGORIES.includes(c)))} armor`);
+    this.line(`Training with ${list(bits) || 'nothing the reader can read'}.`, 1);
+  },
+  recover(v, at) {
+    if (!isObj(v) || !isInt(v.max)) return this.bad(`${at} is not { levels, max }.`);
+    this.num(`${at}.max`, v.max, 'levels');
+    this.line(`On a Short Rest, the holder gets back spell slots whose levels add up to half its class level, rounded up, none above level ${v.max}.`, 1);
+  },
+  resist(v) {
+    if (!Array.isArray(v) || !v.every((t) => DAMAGE_TYPES.includes(t))) return this.bad('`resist` is not a list of damage types.');
+    this.line(`Resistance to ${list(v)} damage: such damage is halved.`, 1);
+  },
+  critOn(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'd20 roll'); this.line(`The holder's attack rolls are Critical Hits on a roll of ${v} or more.`, 1); },
+  spellLists(v) { this.line(`Opens the spell list${Array.isArray(v) && v.length > 1 ? 's' : ''} of ${list((Array.isArray(v) ? v : []).slice(0, 20).map(shown))} to a class's spell picks. A feat or an item belongs to no class, so the engine adds nothing.`, 1); this.dm('Opening those spell lists: the engine does not.'); },
+  setAbility(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not a table of scores.`);
+    const ok = Object.entries(v).filter(([k, x]) => ABILITIES.includes(k) && isInt(x));
+    for (const [k, x] of ok) this.num(`${at}.${k}`, x, 'score');
+    this.line(`${list(ok.map(([k, x]) => `${ABILITY_WORDS[k]} becomes ${x}`))}, unless it is already as high.`, 1);
+  },
+  bareAc(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'Armor Class'); this.line(`+${v} Armor Class while the holder wears no armor and holds no Shield.`, 1); },
+  senseRange(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not a table of senses.`);
+    const ok = Object.entries(v).filter(([k, x]) => Object.hasOwn(SENSE_WORDS, k) && isInt(x));
+    for (const [k, x] of ok) this.num(`${at}.${k}`, x, 'feet');
+    this.line(`${cap1(list(ok.map(([k, x]) => `${k}: ${x} feet`)))} added to the range of the holder's own sense of that kind, or the whole range of it for a holder who has none.`, 1);
+  },
+  moveWith(v) { this.line(`When the holder starts the effect of the feature ${shown(v?.of)} with its action, it also gets up to half its Speed of movement that turn. ${featureNote(v?.of)}`, 1); },
+  brutal(v, at) {
+    if (!isObj(v) || !Array.isArray(v.options)) return this.bad(`${at} is not { after, dice, options }.`);
+    if (v.dice !== undefined) { if (isDice(v.dice)) this.num(`${at}.dice`, v.dice, 'dice'); else this.bad(`${at}.dice is not dice.`); }
+    deepNums(this, v.options, `${at}.options`, 'amount');
+    const names = v.options.filter(isObj).map((o) => (typeof o.name === 'string' && o.name.trim() ? `"${clean(o.name, 40)}"` : 'an unnamed option'));
+    this.line(`Gives a hit one more effect: ${v.after !== undefined ? `once a turn, after the feature ${shown(v.after)} was used that turn, the holder may give up Advantage on one Strength attack roll; on a hit it deals ${isDice(v.dice) ? v.dice : '(unreadable dice)'} more damage of the attack's type and` : 'the holder may add to the options of its Brutal Strike:'} one of ${list(names, 'or')} happens to the target. The engine runs it only for a holder who has that feature.`, 1);
+  },
+  relentless(v, at) {
+    if (!isObj(v) || !isInt(v.dc) || !isInt(v.step)) return this.bad(`${at} is not { while, dc, step, hp }.`);
+    this.num(`${at}.dc`, v.dc, 'DC'); this.num(`${at}.step`, v.step, 'DC');
+    amountNums(this, v.hp, `${at}.hp`, 'Hit Points');
+    this.line(`When the holder would drop to 0 Hit Points without dying outright, while its feature ${shown(v.while)} has its effect going, it makes a Constitution saving throw against DC ${v.dc}, ${v.step} more for each earlier use since its last rest. On a success it is left with ${amountWord(v.hp)} Hit Points instead. ${featureNote(v.while)}`, 1);
+  },
+  initiative(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { regain }.`);
+    if (isInt(v.upTo)) this.num(`${at}.upTo`, v.upTo, 'uses');
+    if (v.heal !== undefined) amountNums(this, v.heal, `${at}.heal`, 'Hit Points');
+    this.line(`When the holder rolls Initiative, the feature ${shown(v.regain)} gets back ${isInt(v.upTo) ? `uses up to ${v.upTo}` : 'all its uses'}${v.heal !== undefined ? ` and the holder regains ${amountWord(v.heal)} Hit Points${v.addLevel === true ? ' plus its class level' : ''}` : ''}. ${featureNote(v.regain)}`, 1);
+  },
+  persist(v) { this.line(`The lasting effect of the feature ${shown(v?.of)} lasts its whole time without being renewed, and ends early only when the holder is Unconscious. ${featureNote(v?.of)}`, 1); },
+  reroll(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { cost }.`);
+    if (v.add !== undefined) amountNums(this, v.add, `${at}.add`, 'bonus');
+    this.line(`When the holder fails a saving throw it may roll it again${v.add !== undefined ? `, adding ${amountWord(v.add)}` : ''}, for one use of the feature ${shown(v.cost)}, and must keep the new roll. ${featureNote(v.cost)}`, 1);
+  },
+  missed(v) { this.line(`When the holder misses with an attack roll, it gets a modifier against that target only, until the ${isObj(v) && isObj(v.ends) && v.ends.on === 'turnStart' ? 'start' : 'end'} of its next turn: ${isObj(v) && isObj(v.modifier) && HOOKS.includes(v.modifier.on) && OPS.includes(v.modifier.op) ? modPhrase.call(this, v.modifier, 'grants.missed.modifier') : 'a change the reader cannot read'}.`, 1); },
+  evasion() { this.line('A Dexterity save for half damage does no damage on a success and half on a failure, while the holder is not Incapacitated.', 1); },
+  surfaces() { this.line('While the holder wears no armor and holds no Shield, it moves across water without falling in, and may not stop there. Vertical surfaces are the DM\'s.', 1); this.dm('Letting the holder run up a vertical surface.'); },
+  selfCure(v) { this.line(`At the end of each of the holder's turns, one of ${conds(isObj(v) ? v.conditions : [])} it has ends (the first of the list).`, 1); },
+  allTypes(v) { this.line(`The Reaction of the feature ${shown(v?.of)} is taken against an attack of any damage type. ${featureNote(v?.of)}`, 1); },
+  fleet(v) { this.line(`After a Bonus Action that is not the feature ${shown(v?.of)}, the holder may use that feature without spending a Bonus Action, once a turn. ${featureNote(v?.of)}`, 1); },
+  cunning(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { max, options }.`);
+    if (isInt(v.max)) this.num(`${at}.max`, v.max, 'effects');
+    this.line(`Changes Cunning Strike: when the holder's Sneak Attack deals damage it may give up Sneak Attack dice for effects${isInt(v.max) ? `, up to ${v.max} at once` : ''}${Array.isArray(v.options) ? `; it adds ${v.options.length} option${v.options.length === 1 ? '' : 's'} listed in the entry` : ''}. The engine runs it only for a holder who has Sneak Attack.`, 1);
+    if (Array.isArray(v.options)) v.options.forEach((o, j) => { if (isObj(o)) { if (isInt(o.cost)) this.num(`${at}.options.${j}.cost`, o.cost, 'dice'); if (o.duration !== undefined && /\d/.test(String(o.duration))) this.num(`${at}.options.${j}.duration`, o.duration, 'duration'); if (Array.isArray(o.effects)) deepNums(this, o.effects, `${at}.options.${j}.effects`, 'amount'); } });
+  },
+  attune(v, at) {
+    if (!isInt(v)) return this.bad(`${at} is not a whole number.`);
+    this.num(at, v, 'items');
+    this.line(`Raises the number of magic items the holder may be attuned to to ${v}. Only a class feature does this in the engine: a feat or an item changes nothing.`, 1);
+    this.dm(`Letting the holder attune to ${v} items.`);
+  },
+  empowered(v) { this.line(`A spell of the ${isObj(v) ? shown(v.school) : '?'} school on the ${isObj(v) ? shown(v.list) : '?'} list adds the holder's ${isObj(v) ? ABILITY_WORDS[v.ability] ?? 'unreadable' : '?'} modifier to one of its damage rolls, the caster's pick.`, 1); },
+  overchannel(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { list, maxSlot, die }.`);
+    this.num(`${at}.maxSlot`, v.maxSlot, 'slot level'); this.num(`${at}.die`, v.die, 'die');
+    this.line(`A damaging spell on the ${shown(v.list)} list, cast with a slot up to level ${v.maxSlot}, may deal its dice at their highest. From the second use before a Long Rest the holder takes d${v.die}s of Necrotic damage for each slot level, one more each time.`, 1);
+  },
+  afterHit(v) { this.line(`A creature that hits the holder with an attack roll gets ${isObj(v) && isObj(v.modifier) && HOOKS.includes(v.modifier.on) && OPS.includes(v.modifier.op) ? modPhrase.call(this, v.modifier, 'grants.afterHit.modifier') : 'a change the reader cannot read'} against the holder, to the end of the current turn.`, 1); },
+  markSpread(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { spell, range }.`);
+    this.num(`${at}.range`, v.range, 'feet');
+    this.line(`Once a turn, when the holder's attack damages a creature marked by ${nameOf('spells', v.spell)}, it may deal the mark's extra damage to another creature it can see within ${v.range} feet of the first.`, 1);
+  },
+  steadfast(v) { this.line(`Taking damage does not make the holder save to keep Concentration on ${nameOf('spells', v?.spell)}.`, 1); },
+  restExhaustion() { this.line('Each Short Rest the holder finishes lowers its Exhaustion by 1.', 1); },
+  spellRange(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { spell, perLevel }.`);
+    this.num(`${at}.perLevel`, v.perLevel, 'feet');
+    this.line(`The range of ${nameOf('spells', v.spell)} is longer by ${v.perLevel} feet for each class level.`, 1);
+  },
+  repel(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { spell, feet }.`);
+    this.num(`${at}.feet`, v.feet, 'feet');
+    this.line(`A Large or smaller creature that ${nameOf('spells', v.spell)} hits with an attack roll may be pushed up to ${v.feet} feet straight away.`, 1);
+  },
+};
+
+class GrantReading extends Reading {
+  constructor(def, problems) {
+    super(def, problems);
+    this.hasUse = false;
+  }
+  // The `grants` of an entry: each key in the order of GRANTS.
+  fGrants() {
+    const g = this.def.grants;
+    if (g === undefined) return;
+    if (!isObj(g)) return this.bad('`grants` is not an object.');
+    this.odd(g, GRANTS, 'What it grants');
+    const keys = GRANTS.filter((k) => Object.hasOwn(g, k));
+    if (!keys.length) return this.bad('`grants` holds nothing.');
+    this.line(this.kind === 'item' ? 'While it is active, the holder gets what follows (the engine makes these a feature of the holder, as for a feat).' : 'The feat gives its holder what follows (the engine makes these a feature of the holder).');
+    for (const k of keys) {
+      if (this.kind === 'item' && ITEM_NO_GRANTS.includes(k)) { this.bad(`An item does not grant "${k}": it is a class's own.`); this.line(`It holds "${k}", which an item cannot give. The engine does not apply it.`, 1); continue; }
+      GRANT_WORDS[k].call(this, g[k], `grants.${k}`);
+    }
+  }
+  // A modifier a grant gives.
+  grantMod(m, at, depth = 1) {
+    if (!isObj(m)) { this.bad(`${at} is not a modifier.`); return this.line('(A modifier the reader cannot read.)', depth); }
+    this.odd(m, MOD_KEYS, `The modifier at ${at}`);
+    this.inTrait = true;
+    try {
+      const phrase = modPhrase.call(this, m, at);
+      this.line(`${cap1(phrase)}.`, depth);
+      const extra = modExtras.call(this, m, at, false);
+      if (extra) this.line(extra, depth + 1);
+    } finally { this.inTrait = false; }
+    if (this.kind === 'item' && m.on === 'ac' && m.op === 'add' && typeof m.value === 'number' && m.when === undefined && m.types === undefined) this.line('A flat bonus like this is put straight into the Armor Class shown on the sheet.', depth + 1);
+    if (TRAIT_DEAD_HOOKS.includes(m.on)) {
+      this.line(`The engine never reads ${HOOK_WORDS[m.on]} from a feature, so this changes nothing.`, depth + 1);
+      this.dm(`The modifier at ${at}: the engine does not read this hook from a feature.`);
+    }
+  }
+  // `freeCast`: cast spells through the feature (engine/casting.js, castSpell with `via`).
+  freeCastLines(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not a freeCast.`);
+    this.odd(v, Object.keys(FREECAST_WORDS), 'The freeCast');
+    const named = Array.isArray(v.spells), byList = typeof v.list === 'string';
+    if (!named && !byList) return this.bad(`${at} names neither a list of spells nor a spell list with a highest level.`);
+    if (named && byList) this.bad(`${at} names both a spell list and spells.`);
+    if (isInt(v.maxLevel)) this.num(`${at}.maxLevel`, v.maxLevel, 'spell level'); else if (byList) this.bad(`${at}.maxLevel is not a spell level.`);
+    this.line(`Lets the holder cast spells without a slot, through this ${this.kind}, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.`, 1);
+    const asAction = byList || v.time === 'action';
+    for (const k of Object.keys(FREECAST_WORDS)) {
+      if (v[k] === undefined) continue;
+      if (k === 'maxLevel') continue;                                            // said with the list
+      if (k === 'list') { this.line(FREECAST_WORDS.list(v.list, v), 2); continue; }
+      if (k === 'spells') { this.line(FREECAST_WORDS.spells(v.spells), 2); continue; }
+      if (k === 'cost') { if (isObj(v.cost)) { this.odd(v.cost, FREECAST_COST_FIELDS, 'The freeCast cost'); this.line(FREECAST_WORDS.cost(v.cost), 2); } else this.bad(`${at}.cost is not { slot, uses }.`); continue; }
+      if (k === 'forms' || k === 'types' || k === 'ends') { if (!Array.isArray(v[k])) this.bad(`${at}.${k} is not a list.`); else this.line(FREECAST_WORDS[k](v[k]), 2); continue; }
+      this.line(FREECAST_WORDS[k](v[k]), 2);
+    }
+    if (named && !asAction) this.line('A spell that takes longer than a turn to cast cannot be cast in a fight, and a Reaction spell is cast only by the holder\'s standing instruction for it.', 2);
+    if (v.cost !== undefined && v.atWill !== undefined) this.bad(`${at}: cost and atWill are two answers to what the cast spends.`);
+    if (v.cost === undefined && v.atWill === undefined) {
+      if (this.kind === 'feat') {
+        this.line('Each cast spends one use of the feat itself. A feat has no uses of its own, so the engine finds none left: every cast is refused ("no uses of it left"). Only the spell pick of Magic Initiate gives its feat a use.', 2);
+        this.bad(`${at}: with neither atWill nor a cost, a feat's freeCast can never be cast.`);
+        this.dm('Letting the holder cast through this feat: the engine refuses every cast.');
+      } else this.line('Each cast spends one use of the feature itself.', 2);
+    }
+  }
+  // `action`: a use the feature gives (engine/features.js, `feature`).
+  actionLines(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not an action.`);
+    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot'], 'The action');
+    if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
+    this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
+    if (isObj(v.cost)) { if (isInt(v.cost.n)) this.num(`${at}.cost.n`, v.cost.n, 'uses'); this.line(`It spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(v.cost.resource)}. ${featureNote(v.cost.resource)}`, 2); }
+    if (v.duration !== undefined) { if (isDuration(v.duration)) { this.line(`What it does lasts ${v.duration === 'instant' ? 'no time' : `up to ${v.duration}`}.`, 2); if (/^\d/.test(v.duration)) this.num(`${at}.duration`, v.duration, 'duration'); } else this.bad(`${at}.duration is not a duration.`); }
+    for (const k of ['form', 'gain', 'pool', 'modes', 'orCost', 'acts', 'after', 'orSlot', 'cure', 'unless', 'renew', 'noSpells', 'firstAttack', 'endsWhenIncapacitated']) if (v[k] !== undefined) deepNums(this, v[k], `${at}.${k}`, 'amount');
+    if (v.form !== undefined) this.line('It lets the holder take the shape of a creature of the pack, as the entry limits it.', 2);
+    if (v.gain !== undefined) this.line('It gives the holder an extra action, or extra attacks, as the entry says.', 2);
+    if (v.pool === true) this.line('It spends points from a pool of healing on a creature.', 2);
+    if (Array.isArray(v.modes)) this.line(`It does one of ${v.modes.length} things, picked when it is used.`, 2);
+    if (v.acts !== undefined) this.line('It also takes the actions named in the entry.', 2);
+    if (v.after === 'hit') this.line('It follows a hit the holder made this turn, once a turn.', 2);
+    const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
+    for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : 'the target', v.duration, 2);
+  }
+  // Steps read in the words of an item's use or a feature's action.
+  stepsUnder(steps, path, who, duration, depth = 0) {
+    if (!Array.isArray(steps)) return;
+    const saved = { def: this.def, aim: this.aim, fx: this.fx, lasting: this.lasting, base: this.base, words: this.words };
+    this.words = this.kind === 'item' ? { who: 'the user', spell: 'the use', aSpell: 'a use' } : { who: 'the holder', spell: 'the action', aSpell: 'an action' };
+    this.def = { effects: steps, range: 0, duration: 'instant', tier: saved.def.tier };
+    this.aim = who === 'the holder' ? 'self' : 'creature';
+    this.lasting = this.bound(); this.fx = isDuration(duration) && duration !== 'instant' ? 'spell' : this.lasting ? 'bound' : null;
+    this.base = depth;
+    try { this.steps(steps, path, 0, who, { top: true }); } finally { Object.assign(this, saved); }
+  }
+  fChecked() { this.line(this.def.checked === true ? 'Marked as checked against the rules text.' : 'Not checked against any rulebook.'); }
+  fTier() {
+    const t = this.def.tier;
+    if (!TIERS.includes(t)) return this.bad('The tier is not auto, assist or manual.');
+    const words = this.kind === 'item' ? ITEM_TIER_WORDS : FEAT_TIER_WORDS;
+    if (t === 'auto' && this.doesNot.length) this.line('Tier: auto, but the engine hands the parts listed for the DM to the DM.');
+    else this.line(words[t]);
+    if (t !== 'auto') {
+      this.line(`The author's description is shown beside this reading; whatever it says beyond the lines above, the DM applies.`);
+      this.dm('Whatever the description says beyond the lines above.');
+    }
+  }
+  run() {
+    const order = Object.entries(this.fields).filter(([, how]) => how !== 'skip' && how !== 'header').map(([, how]) => how);
+    for (const how of order) this[how]();
+  }
+}
+
+class ItemReading extends GrantReading {
+  constructor(def, problems) { super(def, problems); this.kind = 'item'; this.itm = true; this.fields = ITEM_FIELDS; }
+  item() {
+    const d = this.def;
+    this.odd(d, Object.keys(ITEM_FIELDS), 'The item');
+    const cat = ITEM_CATEGORY_WORDS[d.category], rar = RARITY_WORDS[d.rarity];
+    if (!cat) this.bad('The item\'s category is not one the engine knows.');
+    if (!rar) this.bad('The item\'s rarity is not one the engine knows.');
+    this.line(`${this.title()} (${rar ?? 'unreadable rarity'} ${cat ?? 'item of an unreadable category'}).`);
+    this.run();
+    this.dawnText();
+  }
+  fWear() {
+    const w = this.def.wear;
+    if (!WEAR.includes(w)) return this.bad('The item\'s `wear` is not one the engine knows.');
+    if (w === 'carried') return this.line('It works from the holder\'s person: it need not be put on or held.');
+    this.line(`It is ${WEAR_WORDS[w]}. It works only while the holder's sheet marks it as equipped, and gives nothing before.${WEAR_ONE.includes(w) ? ' A sheet that wears two for that place is refused.' : ''}${w === 'orbit' ? ' Up to 3 can orbit a head at once.' : ''}`);
+  }
+  fAttune() {
+    const a = this.def.attune;
+    if (a === undefined) return this.line('It needs no attunement: it works as soon as it is worn, held or carried as above.');
+    let who = 'any creature';
+    if (isObj(a)) {
+      this.odd(a, ATTUNE_FIELDS, 'The attunement');
+      if (Array.isArray(a.by)) who = `only a ${list(a.by.slice(0, 20).map((c) => (typeof c === 'string' && ID.test(c) ? CONTENT.classes?.[c]?.name ?? shown(c) : 'an unreadable class')), 'or')}`;
+      else if (a.spellcaster === true) who = 'only a spellcaster';
+      else this.bad('The attunement is not `by` classes or `spellcaster`.');
+    } else if (a !== true) this.bad('`attune` is true, { by } or { spellcaster }.');
+    this.line(`It needs attunement: ${who} can attune to it. The holder asks for it, never in a fight, and it is done on its next Short Rest; ending it works the same way. A creature is attuned to three items at most, and to one copy of an item. Until the holder is attuned it works as the plain base item at most: no bonus and nothing from its grants.`);
+  }
+  fBase() {
+    const b = this.def.base;
+    if (b === undefined) return;
+    if (!isObj(b)) return this.bad('`base` is not { weapon } or { armour }.');
+    this.odd(b, BASE_FIELDS, 'The base');
+    const what = (v, lookup) => (v === 'any' ? 'any one the sheet picks' : v === 'melee' ? 'any melee weapon the sheet picks' : Array.isArray(v) ? list(v.slice(0, 40).map((x) => nameOf(lookup, x)), 'or') : 'something unreadable');
+    if (b.weapon !== undefined) this.line(`It is a weapon made from ${what(b.weapon, 'weapons')}, and the sheet says which. It attacks as that weapon does; a holder not proficient with it attacks without the Proficiency Bonus.`);
+    if (b.armour !== undefined) this.line(`It is armor made from ${what(b.armour, 'armour')}, and the sheet says which. The holder must be trained in that kind of armor to wear it, or the sheet is refused${this.def.trained === true ? ' (this item says it is worn as if trained)' : ''}.`);
+  }
+  fBonus() {
+    const n = this.def.bonus;
+    if (n === undefined) return;
+    if (!isInt(n)) return this.bad('`bonus` is not a whole number.');
+    this.num('bonus', n, 'bonus');
+    if (isObj(this.def.base) && this.def.base.weapon !== undefined) this.line(`+${n} to attack rolls and to damage rolls with it, while it is active.`);
+    else if (isObj(this.def.base) && this.def.base.armour !== undefined || this.def.wear === 'shield') this.line(`+${n} Armor Class, while it is active, on top of what the armor or Shield gives.`);
+    else this.bad('A bonus goes with a weapon, armor or a Shield.');
+  }
+  fDamageType() {
+    const t = this.def.damageType;
+    if (t === undefined) return;
+    if (!DAMAGE_TYPES.includes(t)) return this.bad('The damage type is not one the engine knows.');
+    this.line(`Its damage is ${t} damage, in place of the weapon's own type, while it is active.`);
+  }
+  fProperties() {
+    const p = this.def.properties;
+    if (p === undefined) return;
+    if (!Array.isArray(p) || !p.every((x) => WEAPON_PROPERTIES.includes(x))) return this.bad('`properties` is not a list of weapon properties.');
+    this.line(`It has the weapon properties ${list(p)}, while it is active.`);
+  }
+  fTrained() {
+    if (this.def.trained === undefined) return;
+    if (this.def.trained !== true) return this.bad('`trained` is true or left out.');
+    this.line('Its wearer counts as trained in the category of its armor while it is worn.');
+  }
+  fVariant() {
+    const v = this.def.variant;
+    if (v === undefined) return;
+    if (!ITEM_VARIANTS.includes(v)) return this.bad('The variant is not one the engine knows.');
+    this.line(ITEM_VARIANT_WORDS[v]);
+    if (v === 'spell' && !(Array.isArray(this.def.activate) && this.def.activate.length)) this.bad('A scroll has no use to read it with.');
+  }
+  fCharges() {
+    const c = this.def.charges;
+    if (c === undefined) return;
+    if (!isObj(c) || !isInt(c.max)) return this.bad('`charges` is not { max, regain }.');
+    this.odd(c, CHARGES_FIELDS, 'The charges');
+    this.num('charges.max', c.max, 'charges');
+    this.line(`It holds up to ${c.max} charges, and starts full.`);
+    if (c.regain !== undefined) {
+      if (!isDice(c.regain)) this.bad('`charges.regain` is not dice.'); else this.num('charges.regain', c.regain, 'dice');
+      this.line(`At dawn (6 in the morning) the engine rolls ${isDice(c.regain) ? c.regain : '(unreadable dice)'} for each dawn that has passed and adds it back, up to ${c.max}. That happens when a rest or the DM moves the clock past dawn, to an item that has been used; the clock moving round by round in a fight is not watched.`);
+    } else { this.line('No charge comes back by itself: the engine never restores them.'); this.dm('Giving charges back to it.'); }
+    this.line('When a use spends its last charge the engine tells the DM; what that does (an item may crumble or not) is the DM\'s.');
+    this.dm('What happens when its last charge is spent.');
+  }
+  // The engine reads a sentence of the author's own text here: at dawn it tells the DM of an item whose text says so (engine/rests.js, dawn).
+  dawnText() {
+    const t = this.def.text;
+    if (typeof t === 'string' && /once a dawn|until the next dawn/i.test(t) && !this.def.charges) {
+      this.line('Its description speaks of a use "once a dawn" or "until the next dawn". The engine does not count such uses: each dawn it only tells the DM to restore them.');
+      this.dm('Restoring its uses each dawn.');
+    }
+  }
+  fActivate() {
+    const us = this.def.activate;
+    if (us === undefined) return this.line('It has nothing to use: its magic works while it is active.');
+    if (!Array.isArray(us) || !us.length) return this.bad('`activate` is not a list of uses.');
+    us.forEach((u, i) => this.use(u, i));
+  }
+  // One use (engine/features.js, planItem, useItem, itemSpell).
+  use(u, i) {
+    const at = `activate.${i}`, d = this.def;
+    if (!isObj(u)) { this.bad(`${at} is not a use.`); return this.line('(A use the reader cannot read.)'); }
+    this.odd(u, Object.keys(ACTIVATE_FIELDS), `Use ${i + 1}`);
+    const label = typeof u.name === 'string' && u.name.trim() ? `"${clean(u.name, 60)}"` : d.variant === 'spell' ? '"Read"' : u.spell ? '"Cast"' : d.category === 'potion' ? '"Drink"' : '"Use"';
+    if (!ACTION_TIMES.includes(u.time)) this.bad(`${at}.time is not one the engine knows.`);
+    const sp = typeof u.spell === 'string' ? CONTENT.spells[u.spell] : null;
+    const scroll = d.variant === 'spell';
+    const time = sp ? sp.time : u.time;
+    const inFight = time === 'free' || time === 'reaction' ? '' : ` In a fight it is done on the user's own turn and spends ${ACTION_TIME_WORDS[time] ?? 'an action'}${time === 'action' ? ' (a Magic action)' : ''}.`;
+    if (scroll) this.line(`Use ${i + 1}, ${label}: reading the scroll. It takes the casting time of the spell the sheet names, not the time the entry names; in a fight that must be a spell cast in a turn, and not a Reaction. The item must be active, and the user up.`);
+    else this.line(`Use ${i + 1}, ${label}: takes ${sp ? `the spell's own casting time (${CAST_TIME_WORDS[time] ?? time}), not the time the entry names` : ACTION_TIME_WORDS[time] ?? 'an unreadable time'}.${inFight} The item must be active, and the user up.`);
+    if (!sp && u.time === 'reaction') { this.line('The engine does not take a Reaction from an item: using it is refused, and the DM applies it.', 1); this.dm(`Use ${i + 1}: it is a Reaction.`); }
+    if (sp && sp.time === 'reaction') { this.line('That spell is cast as a Reaction, which the engine does not do from an item: using it is refused, and the DM applies it.', 1); this.dm(`Use ${i + 1}: the spell is cast as a Reaction.`); }
+    // Charges.
+    const max = isObj(d.charges) && isInt(d.charges.max) ? d.charges.max : null;
+    if (u.cost !== undefined) {
+      if (!(isInt(u.cost) && u.cost > 0)) this.bad(`${at}.cost is not a whole number of charges.`);
+      else {
+        this.num(`${at}.cost`, u.cost, 'charges');
+        if (max === null) this.bad(`${at}: it costs charges, but the item has none.`);
+        else if (u.cost > max) this.bad(`${at}: it costs ${u.cost} charges, but the item holds ${max}, so it can never be used.`);
+        this.line(`It spends ${u.cost} charge${u.cost === 1 ? '' : 's'}, and is refused when fewer are left.`, 1);
+      }
+    } else if (max !== null) this.line('It spends no charge.', 1);
+    if (u.consumed !== undefined) { if (u.consumed === true) this.line('The item is gone from the sheet once it is used.', 1); else this.bad(`${at}.consumed is true or left out.`); }
+    // A Spell Scroll: the cast path takes the scroll's own spell; whatever else the use says is not run (engine/features.js, useItem: `if (spell) return itemSpell`).
+    if (scroll) {
+      this.line(`It casts the scroll's spell with no slot and no Material component; the Verbal and Somatic components stay, so a reader can be countered, and a Verbal one gives a hidden reader away. The save DC and the attack bonus come from the spell's level: ${SCROLL_STATS.map(([n, dc, atk], j) => `DC ${dc} and +${atk} ${j === SCROLL_STATS.length - 1 ? 'at level' : 'up to level'} ${n}`).join('; ')}.`, 1);
+      if (u.spell !== undefined || u.level !== undefined || u.upTo !== undefined || u.self !== undefined || u.dc !== undefined || u.effects !== undefined) {
+        this.line('Whatever else this use names (a spell, a level, a DC, steps) is never run: reading the scroll casts the spell on the sheet, and nothing more.', 1);
+        for (const k of ['level', 'upTo', 'dc']) if (isInt(u[k])) this.num(`${at}.${k}`, u[k], 'ignored');
+        if (u.effects !== undefined) deepNums(this, u.effects, `${at}.effects`, 'ignored');
+      }
+      return;
+    }
+    // A spell.
+    if (u.spell !== undefined) {
+      const lvl = isInt(u.level) ? u.level : sp?.level;
+      const name = nameOf('spells', u.spell);
+      if (isInt(u.level)) this.num(`${at}.level`, u.level, 'spell level');
+      this.line(`It casts ${name}${isInt(lvl) ? ` at level ${lvl}` : ''}: no slot and no components${u.self === true ? ', on the user alone' : ''}. ${isInt(u.dc) ? `The save DC is ${u.dc}.` : 'The save DC is the user\'s own spell save DC (a user with no spellcasting: 8 plus the Proficiency Bonus).'} The attack bonus is the user's own (the Proficiency Bonus with no spellcasting). It is cast as at the lowest caster level, through the usual casting rules, so it can be countered.`, 1);
+      if (isInt(u.dc)) this.num(`${at}.dc`, u.dc, 'DC');
+      if (u.self !== undefined && u.self !== true) this.bad(`${at}.self is true or left out.`);
+      if (u.upTo !== undefined) {
+        if (isInt(u.upTo)) { this.num(`${at}.upTo`, u.upTo, 'spell level'); this.line(`Each charge more than the use's own raises the level by one, up to level ${u.upTo}.`, 1); } else this.bad(`${at}.upTo is not a spell level.`);
+      }
+      if (!sp) { this.line('The engine does not know that spell yet (it must come with the pack): until it does, using this is refused.', 1); }
+      if (typeof u.dc !== 'number' && u.dc !== undefined) this.bad(`${at}.dc is not a whole number.`);
+    }
+    // Steps.
+    if (u.effects !== undefined) {
+      this.hasUse = true;
+      if (!Array.isArray(u.effects) || !u.effects.length) return this.bad(`${at}.effects is not a list of steps.`);
+      const potion = d.category === 'potion';
+      this.line(potion ? 'Its steps run on the user, or on a creature within 5 feet that the user gives it to (a potion may be given). Nothing else can be aimed at.' : 'Its steps run on the user alone: the engine has no way to aim an item\'s steps at anyone else.', 1);
+      const saved = { def: this.def };
+      const harm = (() => { const o = { def: { effects: u.effects } }; let h = false; const go = (xs, depth) => { if (!Array.isArray(xs) || depth > 24) return; for (const st of xs) { if (!isObj(st)) continue; const k = STEPS.find((x) => x in st); if (k === 'attack' || k === 'save' || k === 'damage' || k === 'fall' || (k === 'condition' && !BENEFICIAL_CONDITIONS.includes(st.condition))) h = true; for (const b of BRANCHES) go(st[b], depth + 1); } }; go(o.def.effects, 0); return h; })();
+      void saved;
+      if (harm && !potion) { this.line('Some of these steps do harm, and they run on the user: it would hurt the user, not an enemy. The DM should not approve it unless that is meant.', 1); this.bad(`${at}: harmful steps run on the user of the item.`); }
+      this.stepsUnder(u.effects, `${at}.effects`, potion ? 'the creature it is used on' : 'the user', 'instant', 1);
+    }
+    if (u.spell === undefined && u.effects === undefined) this.bad(`${at} casts a spell or has steps.`);
+  }
+}
+
+class FeatReading extends GrantReading {
+  constructor(def, problems) { super(def, problems); this.kind = 'feat'; this.fields = FEAT_FIELDS; }
+  feat() {
+    const d = this.def;
+    this.odd(d, Object.keys(FEAT_FIELDS), 'The feat');
+    const cat = FEAT_CATEGORY_WORDS[d.category];
+    if (!cat) this.bad('The feat\'s category is not one the engine knows.');
+    this.line(`${this.title()} (${cat ?? 'a feat of an unreadable category'}).`);
+    this.line('A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.');
+    this.run();
+  }
+  fPrerequisite() {
+    const p = this.def.prerequisite;
+    if (p === undefined) return this.line('It has no prerequisite.');
+    if (!isObj(p)) return this.bad('`prerequisite` is not { level, abilities, feature }.');
+    this.odd(p, PREREQUISITE_FIELDS, 'The prerequisite');
+    const bits = [];
+    if (p.level !== undefined) { if (isInt(p.level)) { this.num('prerequisite.level', p.level, 'level'); bits.push(`a place that comes at level ${p.level} or later`); } else this.bad('`prerequisite.level` is not a whole number.'); }
+    if (p.abilities !== undefined) {
+      const a = p.abilities;
+      if (isObj(a) && isInt(a.min) && Array.isArray(a.any)) { this.odd(a, ANY_ABILITY_FIELDS, 'The ability prerequisite'); this.num('prerequisite.abilities.min', a.min, 'score'); bits.push(`${abilList(a.any)} of ${a.min} or more, counted before this feat adds anything`); } else this.bad('`prerequisite.abilities` is not { any, min }.');
+    }
+    if (p.feature !== undefined) { if (Object.hasOwn(FEAT_FEATURE_WORDS, p.feature)) bits.push(`${FEAT_FEATURE_WORDS[p.feature]} the character already has`); else this.bad('`prerequisite.feature` is not one the engine knows.'); }
+    this.line(`Prerequisite: ${bits.join('; ') || 'none the reader can read'}. A sheet that does not meet it is refused.`);
+  }
+  fRepeatable() {
+    const r = this.def.repeatable;
+    if (r === undefined) return this.line('It can be taken only once.');
+    if (r === true) return this.line('It can be taken again, as often as the character has places for it.');
+    if (r === 'list') return this.line('It can be taken again, but only with another spell list each time.');
+    this.bad('`repeatable` is true or "list".');
+  }
+  fIncrease() {
+    const n = this.def.increase;
+    if (n === undefined) return;
+    if (!isObj(n) || !Array.isArray(n.from) || !isInt(n.points) || !isInt(n.max)) return this.bad('`increase` is not { from, points, max }.');
+    this.odd(n, INCREASE_FIELDS, 'The increase');
+    this.num('increase.points', n.points, 'points'); this.num('increase.max', n.max, 'score');
+    this.line(`Raises ability scores: ${n.points === 2 ? '+2 to one score or +1 to each of two' : '+1 to one score'}, from ${n.from.length === 6 ? 'any ability' : abilList(n.from)}, none above ${n.max}. The player chooses when taking it.`);
+  }
+  fProficiencies() {
+    const p = this.def.proficiencies;
+    if (p === undefined) return;
+    if (!isObj(p) || !isInt(p.n)) return this.bad('`proficiencies` is not { n }.');
+    this.odd(p, PROFICIENCIES_FIELDS, 'The proficiencies');
+    this.num('proficiencies.n', p.n, 'proficiencies');
+    this.line(`The player picks up to ${p.n} skills or tools the character is not yet proficient in, and the character gains that proficiency.`);
+  }
+  fSpellPick() {
+    const s = this.def.spellPick;
+    if (s === undefined) return;
+    if (!isObj(s) || !Array.isArray(s.lists) || !isInt(s.cantrips) || !isInt(s.level1)) return this.bad('`spellPick` is not { lists, abilities, cantrips, level1 }.');
+    this.odd(s, SPELLPICK_FIELDS, 'The spell pick');
+    this.num('spellPick.cantrips', s.cantrips, 'cantrips'); this.num('spellPick.level1', s.level1, 'level 1 spells');
+    this.line(`The player picks a spell list (${list(s.lists.slice(0, 20).map((x) => CONTENT.classes?.[x]?.name ?? shown(x)), 'or')}), one of ${abilList(s.abilities)} to cast with, and up to ${s.cantrips} cantrip${s.cantrips === 1 ? '' : 's'} and ${s.level1} level 1 spell${s.level1 === 1 ? '' : 's'} from that list. The holder knows them and casts them with that ability. Each level 1 spell can be cast once before a Long Rest with no slot.`);
+    if (!Array.isArray(s.lists) || s.lists.some((x) => typeof x !== 'string')) this.bad('`spellPick.lists` is not a list of class ids.');
+  }
 }
