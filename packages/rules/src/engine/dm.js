@@ -6,6 +6,7 @@ import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/ind
 import { effectsOf, endEffect } from '../durations.js';
 import { FT, ground, landing, overlapAt, regionAt, SQUARE_RANGES, STEP_MAX, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
+import { copyPacks, packsProblem } from '../content/packs.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
@@ -342,6 +343,14 @@ export const handlers = {
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
     SETTINGS[a.key].includes(a.value) || fail(`That setting can be: ${SETTINGS[a.key].join(', ')}.`);
     s.settings[a.key] = a.value;
+  },
+  // Which homebrew packs the game needs: `{ packs: [{ id, version, hash }] }`, replacing the list (docs/specs/homebrew.md,
+  // Decision 3, row H5). Ids, versions and hashes only: the server holds the pack data, checks it, and then sends this.
+  setPacks(s, a, ctx) {
+    ctx.role === 'dm' || fail('Only the DM can change the table\'s packs.');
+    const problem = packsProblem(a.packs);
+    if (problem) fail(problem);
+    s.packs = copyPacks(a.packs);
   },
 };
 
