@@ -1568,7 +1568,7 @@ function amountNums(R, v, at, unit) {
   if (isObj(v.byLevel)) for (const [l, x] of Object.entries(v.byLevel)) { if (typeof x === 'number' || isDice(x)) R.num(`${at}.byLevel.${l}`, x, unit); }
 }
 // Every number and dice string under a value, as the test finds them (not ids, names or text).
-const NOT_NUMBERS_HERE = ['id', 'name', 'source', 'text', 'manual', 'action', 'when', 'advantageIf', 'set', 'resource', 'spell', 'checked', 'spells', 'uses', 'cost', 'of', 'cost'];
+const NOT_NUMBERS_HERE = ['id', 'name', 'source', 'text', 'manual', 'action', 'when', 'advantageIf', 'set', 'resource', 'spell', 'checked', 'spells', 'of', 'while', 'after', 'regain', 'list'];
 function deepNums(R, v, at, unit, depth = 0) {
   if (depth > READER_LIMITS.depth) return;
   if (typeof v === 'number') R.num(at, v, unit);
@@ -1744,8 +1744,19 @@ export const GRANT_WORDS = {
     this.line(`${cap1(list(ok.map(([k, x]) => `${k}: ${x} feet`)))} added to the range of the holder's own sense of that kind, or the whole range of it for a holder who has none.`, 1);
   },
   moveWith(v) { this.line(`When the holder starts the effect of the feature ${shown(v?.of)} with its action, it also gets up to half its Speed of movement that turn. ${featureNote(v?.of)}`, 1); },
-  brutal(v) { this.line(`Changes a feature's Brutal Strike: ${isObj(v) && v.after ? `once a turn, after the feature ${shown(v.after)} was used, ` : ''}the holder may give up Advantage on a Strength attack for extra damage and an effect chosen from ${isObj(v) && Array.isArray(v.options) ? v.options.length : 0} option${isObj(v) && Array.isArray(v.options) && v.options.length === 1 ? '' : 's'} listed in the entry. The engine runs it only for a holder who has that feature.`, 1); if (isObj(v) && isObj(v) && v.dice !== undefined) deepNums(this, v.dice, 'grants.brutal.dice', 'dice'); },
-  relentless(v, at) { if (isObj(v)) amountNums(this, v.hp, `${at}.hp`, 'Hit Points'); this.line('When the holder would drop to 0 Hit Points it stays up on the number of Hit Points the entry gives, as a feature of a class does. The engine runs it only for a holder who has that feature.', 1); },
+  brutal(v, at) {
+    if (!isObj(v) || !Array.isArray(v.options)) return this.bad(`${at} is not { after, dice, options }.`);
+    if (v.dice !== undefined) { if (isDice(v.dice)) this.num(`${at}.dice`, v.dice, 'dice'); else this.bad(`${at}.dice is not dice.`); }
+    deepNums(this, v.options, `${at}.options`, 'amount');
+    const names = v.options.filter(isObj).map((o) => (typeof o.name === 'string' && o.name.trim() ? `"${clean(o.name, 40)}"` : 'an unnamed option'));
+    this.line(`Gives a hit one more effect: ${v.after !== undefined ? `once a turn, after the feature ${shown(v.after)} was used that turn, the holder may give up Advantage on one Strength attack roll; on a hit it deals ${isDice(v.dice) ? v.dice : '(unreadable dice)'} more damage of the attack's type and` : 'the holder may add to the options of its Brutal Strike:'} one of ${list(names, 'or')} happens to the target. The engine runs it only for a holder who has that feature.`, 1);
+  },
+  relentless(v, at) {
+    if (!isObj(v) || !isInt(v.dc) || !isInt(v.step)) return this.bad(`${at} is not { while, dc, step, hp }.`);
+    this.num(`${at}.dc`, v.dc, 'DC'); this.num(`${at}.step`, v.step, 'DC');
+    amountNums(this, v.hp, `${at}.hp`, 'Hit Points');
+    this.line(`When the holder would drop to 0 Hit Points without dying outright, while its feature ${shown(v.while)} has its effect going, it makes a Constitution saving throw against DC ${v.dc}, ${v.step} more for each earlier use since its last rest. On a success it is left with ${amountWord(v.hp)} Hit Points instead. ${featureNote(v.while)}`, 1);
+  },
   initiative(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not { regain }.`);
     if (isInt(v.upTo)) this.num(`${at}.upTo`, v.upTo, 'uses');
@@ -1758,7 +1769,7 @@ export const GRANT_WORDS = {
     if (v.add !== undefined) amountNums(this, v.add, `${at}.add`, 'bonus');
     this.line(`When the holder fails a saving throw it may roll it again${v.add !== undefined ? `, adding ${amountWord(v.add)}` : ''}, for one use of the feature ${shown(v.cost)}, and must keep the new roll. ${featureNote(v.cost)}`, 1);
   },
-  missed(v) { this.line(`When the holder misses with an attack roll, it gets a modifier against that target only, to the end of ${isObj(v) && isObj(v.ends) && v.ends.on === 'turnStart' ? 'the start' : 'the end'} of its next turn: ${isObj(v) && isObj(v.modifier) && HOOKS.includes(v.modifier.on) && OPS.includes(v.modifier.op) ? modPhrase.call(this, v.modifier, 'grants.missed.modifier') : 'a change the reader cannot read'}.`, 1); },
+  missed(v) { this.line(`When the holder misses with an attack roll, it gets a modifier against that target only, until the ${isObj(v) && isObj(v.ends) && v.ends.on === 'turnStart' ? 'start' : 'end'} of its next turn: ${isObj(v) && isObj(v.modifier) && HOOKS.includes(v.modifier.on) && OPS.includes(v.modifier.op) ? modPhrase.call(this, v.modifier, 'grants.missed.modifier') : 'a change the reader cannot read'}.`, 1); },
   evasion() { this.line('A Dexterity save for half damage does no damage on a success and half on a failure, while the holder is not Incapacitated.', 1); },
   surfaces() { this.line('While the holder wears no armor and holds no Shield, it moves across water without falling in, and may not stop there. Vertical surfaces are the DM\'s.', 1); this.dm('Letting the holder run up a vertical surface.'); },
   selfCure(v) { this.line(`At the end of each of the holder's turns, one of ${conds(isObj(v) ? v.conditions : [])} it has ends (the first of the list).`, 1); },

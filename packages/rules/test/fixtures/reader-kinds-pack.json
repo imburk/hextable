@@ -1263,42 +1263,6 @@
       ]
     },
     {
-      "id": "hb-rk-spite-coal",
-      "source": "homebrew:rk",
-      "tier": "assist",
-      "checked": false,
-      "name": "Spite Coal",
-      "text": "A coal that is never quite cold. Invented for the reader tests: it burns whoever uses it.",
-      "category": "wondrous",
-      "rarity": "common",
-      "wear": "carried",
-      "charges": {
-        "max": 2
-      },
-      "activate": [
-        {
-          "name": "Stoke",
-          "time": "action",
-          "cost": 1,
-          "effects": [
-            {
-              "damage": "1d6",
-              "type": "fire"
-            },
-            {
-              "save": "dex",
-              "dc": 12,
-              "onFail": [
-                {
-                  "condition": "prone"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
       "id": "hb-rk-tidewarden-ring",
       "source": "homebrew:rk",
       "tier": "auto",
@@ -1462,24 +1426,6 @@
           "immune": [
             "charmed"
           ]
-        }
-      }
-    },
-    {
-      "id": "hb-rk-borrowed-fire",
-      "source": "homebrew:rk",
-      "tier": "assist",
-      "checked": false,
-      "name": "Borrowed Fire",
-      "text": "A flame that is not yours to spend. Invented for the reader tests: it can never be cast.",
-      "category": "epic-boon",
-      "prerequisite": {
-        "level": 19
-      },
-      "grants": {
-        "freeCast": {
-          "list": "wizard",
-          "maxLevel": 2
         }
       }
     },
