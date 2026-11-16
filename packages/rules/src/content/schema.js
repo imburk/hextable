@@ -18,6 +18,9 @@ export const CAST_TIMES = ['action', 'bonus', 'reaction', 'minute', '10 minutes'
 export const MOVE_MODES = ['walk', 'climb', 'swim', 'fly', 'burrow'];
 export const AREA_SHAPES = ['cone', 'sphere', 'line', 'cube', 'cylinder', 'emanation'];
 export const TIERS = ['auto', 'assist', 'manual'];
+// What a spell is for, in four words a player sorts by (docs/specs/table-ui.md, E12), in this fixed order.
+// A spell may carry them by hand in `kinds`; `spellKinds` (effects.js) derives them from the steps otherwise.
+export const SPELL_KINDS = ['damage', 'healing', 'control', 'utility'];
 // How long something lasts: "instant", a count of rounds, minutes, hours or days, or one of two
 // forms the engine cannot time ("until dispelled", "special").
 export const isDuration = (x) => typeof x === 'string' && (/^(instant|until dispelled|special)$/.test(x) || /^[1-9]\d* (round|minute|hour|day)s?$/.test(x));
@@ -518,6 +521,15 @@ function lintSpell(e, say) {
     }
   }
   lintSelfSave(e, say);
+  // `kinds`: what the spell is for, tagged by hand (E12, amended 15 November 2026): one to four of SPELL_KINDS,
+  // no repeats, in the fixed order of SPELL_KINDS.
+  if (e.kinds !== undefined) {
+    const k = e.kinds;
+    if (!(Array.isArray(k) && k.length >= 1 && k.length <= SPELL_KINDS.length && k.every((x) => SPELL_KINDS.includes(x))
+      && new Set(k).size === k.length && k.every((x, i) => i === 0 || SPELL_KINDS.indexOf(k[i - 1]) < SPELL_KINDS.indexOf(x)))) {
+      say(`\`kinds\` is a list of one to four of ${SPELL_KINDS.join(', ')}, no repeats, in that order`);
+    }
+  }
   const seen = lintSteps(e.effects, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   if (seen.teleport && !(e.target?.self && e.effects.some((st) => 'teleport' in st))) say('a `teleport` step is for a spell aimed at its caster, in its own list of steps');
