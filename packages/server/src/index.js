@@ -18,7 +18,7 @@ import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { clientAddress, createLimits, limitsFromEnv, proxyFromEnv, LIMIT_MESSAGE } from "./limits.js";
-import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_PACK_FRAME_BYTES } from "./tables.js";
+import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
 import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
@@ -76,7 +76,9 @@ async function siteFile(target, compress) {
 }
 
 // A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
-// only the DM may send a whole map document.
+// only the DM may send a whole map document. The DM's frame limit, 1 MiB plus the envelope, is also what bounds a pack message before
+// it is parsed: a pack is at most 256 KB of JSON, which as text inside a message is at most twice that once its quotes are escaped,
+// well inside 1 MiB (tables.js then reads a pack text only up to 512 KB and the rules' budget holds the pack to 256 KB).
 const FRAME_MAX = MAX_ACTION_BYTES + 4096;
 const DM_FRAME_MAX = MAX_MAP_ACTION_BYTES + 4096;
 
@@ -151,7 +153,7 @@ function save(t) {
   timer ??= setTimeout(() => { timer = null; flush(); }, 1000);
 }
 
-const tables = createTables({ load, save, loadHistory, exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+const tables = createTables({ load, save, loadHistory, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
@@ -275,17 +277,8 @@ server.on("upgrade", (req, socket) => {
       ws.close();
       return;
     }
-    // A pack message costs a parse and a lint, so it has a budget of its own (limits.js `allowPack`), and a frame that says it is one
-    // and is over the pack limit is refused here, before anything is parsed. The DM's frame limit is larger (a map document), so
-    // this is the check that bounds a pack. A pack message that does not begin with its type is counted and bounded after parsing.
-    const packFrame = /^\s*\{\s*"t"\s*:\s*"pack"/.test(text.slice(0, 64));
-    if (packFrame) {
-      if (!limits.allowPack(addr)) { ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE })); return; }
-      if (text.length > MAX_PACK_FRAME_BYTES / 4 && Buffer.byteLength(text) > MAX_PACK_FRAME_BYTES) { ws.send(JSON.stringify({ t: "error", error: "That pack is too large." })); return; }
-    }
     let msg;
     try { msg = JSON.parse(text); } catch { return; }
-    if (msg?.t === "pack" && !packFrame && !limits.allowPack(addr)) { ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE })); return; }
     // A ping costs one bucket token like any message (taken above), so a flood of pings is limited and closed like any other flood.
     // It is not exempt: a free message type would be a free way to keep a connection busy. At one every few seconds it costs a
     // legitimate client nothing.
@@ -295,7 +288,13 @@ server.on("upgrade", (req, socket) => {
       ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
       return;
     }
-    session.receive(msg);
+    // A handler that throws (a damaged table file, a bug) costs that message an error frame, not the process: the failure is logged
+    // with its stack so it is not hidden, and the socket carries on.
+    try { session.receive(msg); }
+    catch (err) {
+      console.error(`A "${String(msg?.t).slice(0, 20)}" message failed: ${err?.stack ?? err}`);
+      try { ws.send(JSON.stringify({ t: "error", error: "The server could not handle that message." })); } catch { /* the socket is gone */ }
+    }
   };
   ws.onclose = () => { release(); if (peer.code) { const set = peers.get(peer.code); set?.delete(peer); if (set && !set.size) peers.delete(peer.code); } if (seat) { sit(seat, -1); seat = null; } session.disconnect(); };
 });

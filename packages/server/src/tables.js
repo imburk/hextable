@@ -21,6 +21,7 @@ import { playerView as rawPlayerView, view as rawView, viewEvents as rawViewEven
 import { hashOf, packsMatch } from "../../rules/src/content/packs.js";
 import { loadPack, installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
+import { LIMIT_MESSAGE } from "./limits.js";
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I/L
 const makeCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
@@ -47,7 +48,11 @@ const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
 // A `pack` message carries one homebrew pack, at most this many bytes of JSON (HOMEBREW_LIMITS.packBytes); the frame it
 // travels in is that plus an envelope. A string pack is measured before it is parsed; index.js measures the frame before it parses it.
 export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
-export const MAX_PACK_FRAME_BYTES = MAX_PACK_BYTES + 4096;
+// A pack sent as JSON text is escaped once more inside the message, which at most doubles it (a quote or a backslash becomes two
+// characters), so the text is read only up to twice the pack limit; the rules' own budget then bounds the pack itself at
+// MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
+export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
+export const HOMEBREW_SUMMON_SENTENCE = "A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.";
 // What a member who is not the DM is sent of a pack (docs/specs/homebrew.md, Decision 5): the pack's id, name and version and
 // these lists. Never monsters. A new kind of homebrew is withheld from players until it is added here on purpose.
 export const PLAYER_PACK_KINDS = ["spells", "items", "feats", "weapons", "armour", "objects"];
@@ -95,6 +100,22 @@ export function usesIn(state, isMine, most = 8) {
   return found;
 }
 
+// Does any spell of this pack summon a creature that comes from a homebrew pack, at any depth: a `summon` step naming a pack monster,
+// or a `forms` list holding one? Until the owner rules on what a player is sent of a summoned homebrew creature, such a pack is refused.
+// (A `forms` filter by type and challenge rating is not looked at: DEBT T49.) One iterative walk over the loaded, budgeted document.
+export function summonsHomebrew(data) {
+  const hb = (x) => typeof x === "string" && x.startsWith("hb-");
+  const stack = (Array.isArray(data?.spells) ? data.spells : []).map((sp) => sp?.effects);
+  while (stack.length) {
+    const x = stack.pop();
+    if (Array.isArray(x)) { for (const y of x) stack.push(y); continue; }
+    if (x === null || typeof x !== "object") continue;
+    if (hb(x.summon) || (Array.isArray(x.forms) && x.forms.some(hb))) return true;
+    for (const k of Object.keys(x)) stack.push(x[k]);
+  }
+  return false;
+}
+
 // Check a list of stored packs `[{ id, version, hash, data }]` the way a pack that was just uploaded is checked: each one through the
 // registry's own budget and strict lint, the id and version it claims, the hash of its data, and the whole set through `overlayOf`
 // (the limit of four, the cross-pack id rules). Used for what a table's file holds at start-up, and for any table that is brought in
@@ -112,6 +133,7 @@ export function vetPacks(list) {
     if (r.pack.id !== p.id) problems.push(`${at}: its id is "${p.id}" but the pack inside is "${r.pack.id}".`);
     else if (r.pack.version !== p.version) problems.push(`${p.id}: its version is ${p.version} but the pack inside is version ${r.pack.version}.`);
     else if (hash !== p.hash) problems.push(`${p.id}: its hash does not match its contents.`);
+    else if (summonsHomebrew(p.data)) problems.push(`${p.id}: ${HOMEBREW_SUMMON_SENTENCE}`);
     else loaded.push(r.pack);
   }
   if (problems.length) return { ok: false, problems };
@@ -119,7 +141,30 @@ export function vetPacks(list) {
   catch (err) { return { ok: false, problems: err instanceof PackError ? err.problems : [`The packs could not be put together (${err.message}).`] }; }
 }
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }) } = {}) {
+// What a table file's `packs` may keep. Never throws, whatever the file holds: a value that is not a list, a record that is not exactly
+// { id, version, hash, data }, data that fails the registry's check or whose hash is not the one written, a pack that summons a homebrew
+// creature, or a set the registry refuses (five packs, ids in two packs) is dropped, with a sentence saying why. Returns
+// { packs: [the records that pass, as new objects], dropped: [{ id, reason }] }. Nothing dropped is ever sent to anyone.
+export function sanitizePacks(raw) {
+  try {
+    if (raw === undefined) return { packs: [], dropped: [] };
+    if (!Array.isArray(raw)) return { packs: [], dropped: [{ id: null, reason: "the saved packs were not a list" }] };
+    const good = [], dropped = [];
+    raw.forEach((p, i) => {
+      const id = typeof p?.id === "string" ? p.id.slice(0, 60) : `pack ${i + 1}`;
+      const keys = p && typeof p === "object" && !Array.isArray(p) ? Object.keys(p).sort().join() : "";
+      if (keys !== "data,hash,id,version") return dropped.push({ id, reason: "it is not a record of an id, a version, a hash and the pack" });
+      const v = vetPacks([p]);
+      if (v.ok) good.push({ id: p.id, version: p.version, hash: p.hash, data: p.data });
+      else dropped.push({ id, reason: v.problems.slice(0, 3).map((x) => String(x).slice(0, 200)).join("; ") });
+    });
+    const set = vetPacks(good);
+    if (!set.ok) return { packs: [], dropped: [...dropped, ...good.map((p) => ({ id: p.id, reason: `the packs cannot be on one table: ${set.problems.slice(0, 2).join("; ")}` }))] };
+    return { packs: good, dropped };
+  } catch (err) { return { packs: [], dropped: [{ id: null, reason: `the saved packs could not be read (${String(err?.message).slice(0, 100)})` }] }; }
+}
+
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true } = {}) {
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
   // rolls (an integer rng, as before version 16) unless they also give a key.
   key ??= seed ? () => null : () => randomBytes(32).toString("hex");
@@ -138,7 +183,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const sig = (t.packs ?? []).map((p) => `${p.id}@${p.version}#${p.hash}`).join(" ");
     const had = overlays.get(t);
     if (had && had.sig === sig) return had;
-    const v = vetPacks(t.packs ?? []);
+    let v;
+    try { v = vetPacks(Array.isArray(t.packs) ? t.packs : []); } catch (err) { v = { ok: false, problems: [`the packs could not be checked (${err.message})`] }; }
     if (!v.ok) console.error(`Table ${t.code}: its homebrew packs were not used: ${v.problems.slice(0, 5).join("; ")}`);
     const made = { sig, overlay: v.ok ? v.overlay : overlayOf([]), loaded: v.ok ? v.loaded : [], problems: v.ok ? [] : v.problems };
     overlays.set(t, made);
@@ -181,8 +227,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const dirtyHistory = new Set();
   for (const t of load()) {
     const was = t.state?.version;
-    t.packs ??= [];
-    engine.migrate(t); t.active ??= now(); tables.set(t.code, t);     // saved tables may predate the current content ids
+    // The packs a file holds are checked before anything reads them: what fails is dropped (the DM is told), never sent, and the game's
+    // `state.packs` is made to say what is installed. One table's bad file is that table's problem alone.
+    const s = sanitizePacks(t.packs);
+    t.packs = s.packs;
+    if (s.dropped.length) { t.packsDropped = s.dropped; console.error(`Table ${t.code}: homebrew packs dropped at load: ${s.dropped.map((d) => `${d.id ?? "?"} (${d.reason})`).join("; ")}`); }
+    engine.migrate(t); t.active ??= now(); tables.set(t.code, t);
+    try { if (t.state && typeof t.state === "object") resyncPacks(t); } catch (err) { console.error(`Table ${t.code}: could not set its packs in the game: ${err.message}`); }     // saved tables may predate the current content ids
     // A table whose dice still come from a 32-bit seed is given a key, once, now: from here on
     // nobody can work its rolls out from the ones they see (rules rng.js). Its undo history is
     // dropped, so that no undo steps back to the old seed.
@@ -312,35 +363,35 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const seen = engine.viewEvents(t, tl.slice(from, to + 1), t.state, { role: m.role, userId: m.id });
     return { entries: seen.slice(0, FIGHT_ENTRIES), cut: seen.length > FIGHT_ENTRIES };
   };
-  // The table's packs as one member is told them (docs/specs/homebrew.md, Decision 5). The DM has the whole pack, `dmNotes` and
-  // monsters included, with its hash; everyone else let in has id, name, version and the lists of PLAYER_PACK_KINDS, no monsters
-  // and no notes. Somebody not yet let in is sent nothing.
+  // What a member is told of the table's packs (docs/specs/homebrew.md, Decision 5). `packs` is only the list, `[{ id, name, version, hash }]`,
+  // so a `sync`, a sit-down or a let-in costs a few hundred bytes. The pack itself comes as `packData` for one pack: to every member let in
+  // when a pack is added or updated, and otherwise only when that member asks (`{t:"packData", id}`; the client keeps what it has by hash).
+  // The DM's `packData` is the whole pack; everyone else's is the id, name and version and the lists of PLAYER_PACK_KINDS (no monsters, no
+  // `dmNotes`), built only from a pack that passed the check. Somebody not yet let in is sent nothing.
   const packsMessage = (t, m) => {
     if (!m.approved) return null;
-    const list = t.packs ?? [];
-    if (m.role === "dm") {
-      const problems = cacheOf(t).problems;
-      return { t: "packs", packs: list.map((p) => ({ id: p.id, name: p.data?.pack?.name, version: p.version, hash: p.hash, data: p.data })), ...(problems.length && { problems }) };
-    }
-    return { t: "packs", packs: list.map((p) => packForPlayer(p.data)) };
+    const dropped = m.role === "dm" && t.packsDropped?.length ? { dropped: t.packsDropped } : {};
+    return { t: "packs", packs: t.packs.map((p) => ({ id: p.id, name: p.data.pack.name, version: p.version, hash: p.hash })), ...dropped };
   };
+  const packDataMessage = (m, p) => ({ t: "packData", id: p.id, version: p.version, hash: p.hash, data: m.role === "dm" ? p.data : packForPlayer(p.data) });
   const tellPacks = (t, changed) => {
     for (const m of t.members) {
       const msg = packsMessage(t, m);
-      if (msg) tell(m, m.role === "dm" && changed ? { ...msg, changed } : msg);
+      if (!msg) continue;
+      tell(m, m.role === "dm" && changed ? { ...msg, changed } : msg);
+      if (changed && changed.op !== "remove") { const p = t.packs.find((x) => x.id === changed.id); if (p) tell(m, packDataMessage(m, p)); }
     }
   };
-  // A table with no packs sends none when someone sits down (the client starts with none); the packs it has are sent before the
-  // first view, so the client can read what the view names.
-  const sendPacks = (t, m, c) => { if (t.packs?.length) c.send(packsMessage(t, m)); };
+  // A table with no packs sends none when someone sits down (the client starts with none).
+  const sendPacks = (t, m, c) => { if (t.packs.length || (m.role === "dm" && t.packsDropped?.length)) c.send(packsMessage(t, m)); };
   // `state.packs` names what the table holds. The DM's undo, redo and rewind put whole trees back, so after each it is made to say
   // so again, through the engine and outside the undo history (the server composes `setPacks`; the DM cannot send it).
-  const resyncPacks = (t) => {
+  function resyncPacks(t) {
     const want = (t.packs ?? []).map(({ id, version, hash }) => ({ id, version, hash }));
     if (packsMatch(t.state.packs ?? [], want) === true && JSON.stringify(t.state.packs) === JSON.stringify(want)) return;
     const r = engine.apply(t, t.state, { type: "setPacks", packs: want }, { role: "dm", userId: "server" });
     if (!r.ok) console.error(`Table ${t.code}: could not set its packs in the game (${r.error})`);
-  };
+  }
   const welcome = (t, m) => ({ t: "welcome", role: m.role, userId: m.id, name: m.name, code: t.code, token: m.token, approved: m.approved });
 
   function lobby(t) {
@@ -531,11 +582,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     handlers.pack = (msg) => {
       if (me.role !== "dm") return error("Only the DM can change the table's packs.");
       const t = table, op = msg.op;
+      if (op !== "add" && op !== "update" && op !== "remove") return error("Say what to do with the pack: add, update or remove.");
+      // The budget of pack messages is the table's, spent only by its seated DM (a frame from anyone else never gets this far).
+      if (!allowPack(t.code)) return error(LIMIT_MESSAGE);
       const refuse = (problems, extra = {}) => {
         const list = problems.slice(0, PACK_PROBLEMS_SHOWN).map((x) => String(x).slice(0, 300));
         conn.send({ t: "error", error: new PackError(list).message, problems: list, ...extra });
       };
-      if (op !== "add" && op !== "update" && op !== "remove") return error("Say what to do with the pack: add, update or remove.");
       if (installed() !== null) return error("The table couldn't make sense of that pack message.");       // never swap packs under an overlay
       const cache = cacheOf(t);
       let id, record = null, loaded = null;
@@ -545,17 +598,24 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       } else {
         let data = msg.pack;
         if (typeof data === "string") {
-          if (Buffer.byteLength(data) > MAX_PACK_BYTES) return error(`That pack is too large: a pack may be at most ${MAX_PACK_BYTES} bytes.`);
+          if (Buffer.byteLength(data) > MAX_PACK_TEXT_BYTES) return error(`That pack is too large: a pack may be at most ${MAX_PACK_BYTES} bytes.`);
           try { data = JSON.parse(data); } catch (err) { return refuse([`pack: is not JSON (${err.message})`]); }
         } else if (data === null || typeof data !== "object") return error("Send the pack as a JSON document.");
-        const r = loadPack(data);                                    // the budget (which also bounds the size of a parsed document), then the strict lint
+        const r = loadPack(data);                                    // the budget (which bounds the pack at MAX_PACK_BYTES of canonical JSON), then the strict lint
         if (!r.ok) return refuse(r.problems);
+        if (summonsHomebrew(data)) return conn.send({ t: "error", error: HOMEBREW_SUMMON_SENTENCE, problems: [HOMEBREW_SUMMON_SENTENCE] });
         id = r.pack.id;
         const cur = t.packs.find((p) => p.id === id);
         if (op === "add" && cur) return error(`The pack "${id}" is already on this table (version ${cur.version}). To change it, update it with a higher version.`);
         if (op === "update" && !cur) return error(`The pack "${id}" is not on this table. Add it first.`);
         if (op === "update" && !(r.pack.version > cur.version)) return error(`The pack "${id}" is at version ${cur.version} here; an update must be version ${cur.version + 1} or higher, and this is ${r.pack.version}.`);
-        if (cache.problems.length) return refuse(["The packs this table already holds could not be loaded, so none can be added or changed until they are removed.", ...cache.problems]);
+        // An update may add and change entries but not drop one the earlier version had: an undo step could bring back a creature or a
+        // sheet that names it. To drop entries, remove the pack (when nothing uses it) and add it again.
+        const old = cur && cache.loaded.find((p) => p.id === id);
+        if (op === "update" && old) {
+          const now = new Set(r.pack.ids), dropped = old.ids.filter((x) => !now.has(x));
+          if (dropped.length) return refuse([`Version ${r.pack.version} of "${id}" drops ${dropped.length} entr${dropped.length === 1 ? "y" : "ies"} that version ${cur.version} had (${dropped.slice(0, 5).join(", ")}${dropped.length > 5 ? ", and more" : ""}). An update may add and change entries but not drop them: remove the pack (when nothing uses it) and add it again instead.`]);
+        }
         try { overlayOf([...cache.loaded.filter((p) => p.id !== id), r.pack]); }
         catch (err) { return refuse(err instanceof PackError ? err.problems : [`The packs could not be put together (${err.message}).`]); }
         let hash;
@@ -563,16 +623,10 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         record = { id, version: r.pack.version, hash, data };
         loaded = r.pack;
       }
-      // What the change would take away from the game: the whole pack for a removal, the ids a new version no longer has for an update.
-      let gone = null;
-      if (op === "remove") gone = (x) => x.startsWith(`hb-${id}-`);
-      else if (op === "update") {
-        const old = cache.loaded.find((p) => p.id === id), now = new Set(loaded.ids);
-        if (old) { const dropped = new Set(old.ids.filter((x) => !now.has(x))); gone = (x) => dropped.has(x); }
-      }
-      if (gone) {
-        const uses = usesIn(t.state, gone);
-        if (uses.length) return refuse([`${op === "remove" ? `The pack "${id}" is in use` : `Version ${record.version} of "${id}" would take away entries that are in use`} and cannot be ${op === "remove" ? "removed" : "updated"} yet: ${uses.join("; ")}.`], { blockers: uses });
+      // A removal is refused while anything in the game uses the pack (an update cannot drop entries, so it takes nothing away).
+      if (op === "remove") {
+        const uses = usesIn(t.state, (x) => x.startsWith(`hb-${id}-`));
+        if (uses.length) return refuse([`The pack "${id}" is in use and cannot be removed yet: ${uses.join("; ")}.`], { blockers: uses });
       }
       const next = op === "remove" ? t.packs.filter((p) => p.id !== id) : op === "update" ? t.packs.map((p) => (p.id === id ? record : p)) : [...t.packs, record];
       const was = mark(t.state);
@@ -581,6 +635,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       catch { putBack(t.state, was); return error("The table couldn't make sense of that pack message."); }
       if (!res.ok) return error(res.error);
       t.packs = next;                                                // the record changes only now: the table is told next
+      delete t.packsDropped;                                         // the DM has dealt with the packs that were dropped at load
       // A removed pack's creatures are gone, but an undo step could bring one back: the undo history is cleared (and the DM told).
       if (op === "remove") { undoOf(t).clear(); dirtyHistory.add(t.code); }
       touch(t);
@@ -588,6 +643,15 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       if (op === "remove") tellUndo(t);
       broadcast(t, []);
       tellPacks(t, { op, id, ...(record && { version: record.version }) });
+    };
+
+    // A member asks for the data of one pack (the client keeps packs by hash and asks only for what it lacks). Rate limited per member.
+    handlers.packData = (msg) => {
+      if (!me.approved) return error("Waiting for the DM to let you in.");
+      if (!allowPackData(me.id)) return error(LIMIT_MESSAGE);
+      const p = typeof msg.id === "string" ? table.packs.find((x) => x.id === msg.id) : undefined;
+      if (!p) return error("That pack is not on this table.");
+      conn.send(packDataMessage(me, p));
     };
 
     // Leaving for good: a player's character is freed for someone else and their seat is removed.
@@ -611,13 +675,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "undo", "redo", "rewind", "leave", "history", "sync", "export", "pack"].includes(msg.t);
+        const seated = ["approve", "act", "undo", "redo", "rewind", "leave", "history", "sync", "export", "pack", "packData"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         const handle = handlers[msg.t];
         if (typeof handle !== "function") return;
         // Everything a seated member's message does runs with the table's homebrew lent to the content lookups. `pack` alone
         // runs outside, because it changes which packs there are (it scopes each of its own engine calls).
-        if (msg.t === "pack") handle(msg); else scoped(table, () => { handle(msg); });
+        if (msg.t === "pack" || msg.t === "packData") handle(msg); else scoped(table, () => { handle(msg); });
       },
       disconnect() {
         if (!me) return;

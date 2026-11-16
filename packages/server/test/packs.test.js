@@ -13,7 +13,7 @@ import { hashOf } from "../../rules/src/content/packs.js";
 import { installed } from "../../rules/src/content/registry.js";
 import { current } from "../../rules/src/engine.js";
 import { createReceiver } from "../../rules/src/patch.js";
-import { createTables, MAX_PACK_BYTES, packForPlayer, PLAYER_PACK_KINDS, usesIn, vetPacks } from "../src/tables.js";
+import { createTables, HOMEBREW_SUMMON_SENTENCE, MAX_PACK_BYTES, MAX_PACK_TEXT_BYTES, packForPlayer, PLAYER_PACK_KINDS, sanitizePacks, summonsHomebrew, usesIn, vetPacks } from "../src/tables.js";
 import { startServer, stopAll } from "./helpers.js";
 
 after(stopAll);
@@ -83,18 +83,21 @@ test("a DM adds a lint-clean pack: the table keeps it, the game names it, the DM
   assert.deepEqual(t.packs.map((p) => [p.id, p.version, p.hash]), [["ember-folk", 1, hashOf(EMBER())]]);
   assert.deepEqual(t.packs[0].data, EMBER());
   assert.deepEqual(t.state.packs, [{ id: "ember-folk", version: 1, hash: hashOf(EMBER()) }]);
-  // The DM is sent the whole pack, notes and monsters too, and what changed.
+  // Everyone let in is sent only the list; the pack itself comes once, as packData, and the DM's is the whole of it, monsters too.
   const d = dm.last("packs");
-  assert.equal(d.packs[0].hash, hashOf(EMBER()));
+  assert.deepEqual(d.packs, [{ id: "ember-folk", name: "The ember-folk pack", version: 1, hash: hashOf(EMBER()) }]);
   assert.deepEqual(d.changed, { op: "add", id: "ember-folk", version: 1 });
-  assert.equal(d.packs[0].data.monsters[0].id, WRAITH);
+  const dd = dm.last("packData");
+  assert.deepEqual([dd.id, dd.version, dd.hash], ["ember-folk", 1, hashOf(EMBER())]);
+  assert.equal(dd.data.monsters[0].id, WRAITH);
   assert.deepEqual(dm.receiver.state.packs, t.state.packs, "the DM's view of the game says which packs it needs");
-  // A player: id, name, version, the six lists. No monsters, no notes, no hash.
-  const p = player.last("packs");
-  assert.deepEqual(p.packs.map((x) => Object.keys(x).sort()), [["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]]);
-  assert.deepEqual(p.packs[0].spells, [spell("ember-folk", "cinder-lash")]);
-  assert.equal(p.packs[0].name, "The ember-folk pack");
-  assert.equal(p.packs[0].version, 1);
+  // A player: the list, and the filtered pack: id, name, version, the six lists. No monsters, no notes.
+  assert.deepEqual(player.last("packs").packs, d.packs);
+  const p = player.last("packData");
+  assert.deepEqual(Object.keys(p.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]);
+  assert.deepEqual(p.data.spells, [spell("ember-folk", "cinder-lash")]);
+  assert.equal(p.data.name, "The ember-folk pack");
+  assert.equal(p.hash, hashOf(EMBER()));
   assert.equal(player.raw.some((x) => x.includes(NAME) || x.includes(TEXT) || x.includes(NOTE) || x.includes(WRAITH)), false, "nothing of the monster or the notes reached the player");
   assert.deepEqual(PLAYER_PACK_KINDS, Object.keys(HOMEBREW_LOOKUPS).filter((k) => k !== "monsters").sort((a, b) => PLAYER_PACK_KINDS.indexOf(a) - PLAYER_PACK_KINDS.indexOf(b)), "a new kind of homebrew is not sent to players until it is chosen");
   assert.equal(player.receiver.state.packs, undefined, "a player's view has no packs");
@@ -120,7 +123,10 @@ test("a player who sits down later is sent the packs before the first view, and 
   const kinds = late.got.map((m) => m.t);
   assert.ok(kinds.indexOf("packs") > kinds.indexOf("welcome") && kinds.indexOf("packs") < kinds.indexOf("update"));
   assert.equal(late.raw.some((x) => x.includes(NOTE)), false);
-  assert.equal(late.last("packs").packs[0].spells[0].id, "hb-noted-glow");
+  assert.equal(late.last("packs").packs[0].id, "noted");
+  assert.equal(late.count("packData"), 0, "sitting down sends the list only");
+  late.say({ t: "packData", id: "noted" });
+  assert.equal(late.last("packData").data.spells[0].id, "hb-noted-glow");
   // Someone resuming is sent them too; a table with none sends none on sitting down.
   const again = client(tables);
   again.say({ t: "resume", code, token: late.last("welcome").token });
@@ -214,8 +220,8 @@ test("the size is bounded before the JSON is parsed", () => {
   const real = JSON.parse;
   let parsed = 0;
   JSON.parse = (...a) => { if (String(a[0]).length > 100_000) parsed++; return real(...a); };
-  try { add(dm, "{" + " ".repeat(MAX_PACK_BYTES + 1) + "}"); } finally { JSON.parse = real; }
-  assert.equal(parsed, 0, "a pack text over the limit is never parsed");
+  try { add(dm, "{" + " ".repeat(MAX_PACK_TEXT_BYTES + 1) + "}"); } finally { JSON.parse = real; }
+  assert.equal(parsed, 0, "a pack text over twice the limit is never parsed");
   assert.match(dm.last("error").error, /too large/);
   assert.equal(snapshotOf(tables, code), before);
   // A document that is parsed already is bounded by the registry's budget, in bytes, before it is copied or linted.
@@ -310,11 +316,11 @@ test("a pack in use cannot be removed: the refusal lists what blocks it; once it
   assert.deepEqual(player.last("packs").packs.map((p) => p.id), ["ember-folk"]);
   dm.say({ t: "pack", op: "remove", id: "frost-kin" });
   assert.match(dm.last("error").error, /not on this table/);
-  // A new version that drops what is in use is refused as well; one that keeps it is accepted.
+  // A new version that drops an entry is refused (undo could bring back what used it); one that keeps them all is accepted.
   const slim = EMBER(2);
   slim.monsters = [];
   add(dm, slim, "update");
-  assert.match(dm.last("error").error, /would take away entries that are in use/);
+  assert.match(dm.last("error").error, /drops 1 entry/);
   assert.equal(t.packs[0].version, 1);
   add(dm, EMBER(2), "update");
   assert.equal(t.packs[0].version, 2);
@@ -517,6 +523,8 @@ test("a table that is saved and loaded again keeps its packs, its overlay and it
   dm2.say({ t: "resume", code, token });
   assert.equal(dm2.last("welcome").role, "dm");
   assert.deepEqual(dm2.last("packs").packs.map((p) => p.id), ["ember-folk", "frost-kin"]);
+  dm2.say({ t: "packData", id: "ember-folk" });
+  assert.equal(dm2.last("packData").data.monsters[0].id, WRAITH);
   assert.ok(Object.values(dm2.last("update").state.entities).some((e) => e.tpl === WRAITH));
   dm2.say({ t: "act", action: { type: "spawn", monster: WRAITH, at: { q: 4, r: 1 } } });
   assert.equal(dm2.count("error"), 0, dm2.last("error")?.error);
@@ -524,28 +532,66 @@ test("a table that is saved and loaded again keeps its packs, its overlay and it
   clean();
 });
 
-test("a table whose saved packs no longer pass the check is loaded without them, says so to the DM, and refuses new packs until they are removed", () => {
+test("a table whose saved packs fail the check is loaded without them: the DM is told, no one is sent them, and the game's packs are reconciled", () => {
   const saved = new Map();
   const tables = createTables({ seed: () => 5, save: (t) => saved.set(t.code, JSON.parse(JSON.stringify(t))) });
   const { dm, code } = seated(tables);
   add(dm, FROST());
-  const rec = JSON.parse(JSON.stringify(saved.get(code)));
-  rec.packs[0].data.spells[0].text = "edited after it was hashed";
+  const good = JSON.parse(JSON.stringify(saved.get(code)));
   const quiet = console.error;
-  console.error = () => {};
-  let again;
-  try { again = createTables({ seed: () => 5, load: () => [rec] }); } finally { console.error = quiet; }
-  const dm2 = client(again);
-  console.error = () => {};
-  try { dm2.say({ t: "resume", code, token: rec.members[0].token }); } finally { console.error = quiet; }
-  assert.match(dm2.last("packs").problems.join(" "), /hash does not match/);
-  add(dm2, EMBER());
-  assert.match(dm2.last("error").error, /could not be loaded/);
-  dm2.say({ t: "pack", op: "remove", id: "frost-kin" });
-  assert.deepEqual(again.get(code).packs, []);
-  add(dm2, EMBER());
-  assert.equal(dm2.count("error"), 1);
-  assert.equal(again.get(code).packs.length, 1);
+  const variants = {
+    "a string": (r) => { r.packs = "x"; },
+    "an object": (r) => { r.packs = {}; },
+    "a null record": (r) => { r.packs = [null]; },
+    "no data": (r) => { delete r.packs[0].data; },
+    "an extra key": (r) => { r.packs[0].extra = 1; },
+    "a stale hash": (r) => { r.packs[0].data.spells[0].text = "edited after it was hashed"; },
+    "five copies": (r) => { r.packs = [0, 1, 2, 3, 4].map(() => structuredClone(r.packs[0])); },
+    "a pack that summons a homebrew creature": (r) => { const d = r.packs[0].data; d.spells[0].effects = [{ summon: "hb-frost-kin-x" }]; r.packs[0].hash = hashOf(d); },
+    "a depth bomb": (r) => { let x = {}; const root = x; for (let i = 0; i < 3000; i++) { x.a = {}; x = x.a; } r.packs[0].data.spells[0].effects = root; },
+  };
+  for (const [what, make] of Object.entries(variants)) {
+    const rec = JSON.parse(JSON.stringify(good));
+    make(rec);
+    const logged = [];
+    console.error = (m) => logged.push(m);
+    let again, dm2, pl;
+    try {
+      again = createTables({ seed: () => 5, load: () => [rec] });
+      dm2 = client(again);
+      dm2.say({ t: "resume", code, token: rec.members[0].token });
+    } finally { console.error = quiet; }
+    assert.equal(dm2.last("welcome")?.role, "dm", `${what}: the table loads`);
+    assert.ok(logged.some((m) => /dropped at load/.test(m)), `${what}: logged`);
+    const t = again.get(code);
+    assert.deepEqual(t.packs, [], what);
+    assert.deepEqual(t.state.packs, [], `${what}: the game names no pack`);
+    assert.ok(dm2.last("packs").dropped.length >= 1 && dm2.last("packs").dropped.every((d) => typeof d.reason === "string"), `${what}: the DM is told which and why`);
+    assert.deepEqual(dm2.last("packs").packs, []);
+    // A player who sits down is sent nothing of it, and a new pack can be added.
+    pl = client(again);
+    pl.say({ t: "join", code, name: "Pat" });
+    dm2.say({ t: "approve", userId: pl.last("welcome").userId, ok: true });
+    pl.say({ t: "sync" });
+    pl.say({ t: "packData", id: "frost-kin" });
+    assert.equal(pl.raw.some((x) => x.includes("frost-kin") || x.includes("Rime Bolt") || x.includes("edited")), false, what);
+    assert.equal(pl.count("packData"), 0);
+    add(dm2, EMBER());
+    assert.equal(dm2.count("error"), 0, `${what}: ${dm2.last("error")?.error}`);
+    assert.equal(again.get(code).packsDropped, undefined, "the note is cleared once the DM changes the packs");
+  }
+  // L5: pack data and hash edited together (a valid pack), the game still naming the old hash: the pack is kept and the game follows it.
+  const edited = JSON.parse(JSON.stringify(good));
+  edited.packs[0].data.spells[0].text = "edited";
+  edited.packs[0].hash = hashOf(edited.packs[0].data);
+  const e = createTables({ seed: () => 5, load: () => [edited] });
+  assert.deepEqual(e.get(code).state.packs, [{ id: "frost-kin", version: 1, hash: edited.packs[0].hash }]);
+  // The file's own game named a pack the file no longer holds: reconciled at load.
+  const rec = JSON.parse(JSON.stringify(good));
+  rec.packs = [];
+  const r = createTables({ seed: () => 5, load: () => [rec] });
+  assert.deepEqual(r.get(code).state.packs, []);
+  assert.deepEqual(sanitizePacks(undefined), { packs: [], dropped: [] });
   clean();
 });
 
@@ -595,14 +641,14 @@ test("end to end: a pack frame over the limit is refused unparsed, pack messages
     dm.send({ t: "host", name: "Dana" });
     const w = await dm.until((g) => g.find((m) => m.t === "welcome"));
     // A pack frame over 256 KB plus the envelope: refused, the table untouched, the socket still open.
-    dm.send(`{"t":"pack","op":"add","pack":"${"x".repeat(300 * 1024)}"}`);
+    dm.send(`{"t":"pack","op":"add","pack":"${"x".repeat(600 * 1024)}"}`);
     const big = await dm.until((g) => g.find((m) => m.t === "error" && /too large/.test(m.error)));
     assert.ok(big);
     // A good one.
     dm.send({ t: "pack", op: "add", pack: FROST() });
     const packs = await dm.until((g) => g.findLast((m) => m.t === "packs"));
     assert.equal(packs.packs[0].id, "frost-kin");
-    // The fourth and later messages in the window are refused with the limit's own sentence (two have been used above).
+    // The fourth and later pack messages of the table's DM in the window are refused with the limit's own sentence (two have been used above).
     for (let i = 0; i < 3; i++) dm.send({ t: "pack", op: "remove", id: "nothing" });
     await dm.until((g) => g.filter((m) => m.t === "error" && /Too many requests/.test(m.error)).length >= 1);
     dm.ws.close();
@@ -615,7 +661,9 @@ test("end to end: a pack frame over the limit is refused unparsed, pack messages
     const back = await talk(s.port);
     back.send({ t: "resume", code: w.code, token: w.token });
     const again = await back.until((g) => g.find((m) => m.t === "packs"));
-    assert.equal(again.packs[0].data.spells[0].id, RIME);
+    assert.equal(again.packs[0].id, "frost-kin");
+    back.send({ t: "packData", id: "frost-kin" });
+    assert.equal((await back.until((g) => g.find((m) => m.t === "packData"))).data.spells[0].id, RIME);
     back.send({ t: "pack", op: "remove", id: "frost-kin" });
     const gone = await back.until((g) => g.findLast((m) => m.t === "packs" && m.packs.length === 0));
     assert.deepEqual(gone.changed, { op: "remove", id: "frost-kin" });
