@@ -1215,6 +1215,15 @@ export function strikeEffect(s, e, t, o, ev) {
   else if (fx && !fx.parts.length) endEffect(s, ev, fx, 'it took no hold');
 }
 
+// A creature's action has no save DC of its own (a spell has the caster's): a condition or a modifier it puts on that ends on a
+// repeated save is rolled against the entry's `ends.dc` if it has one, else the DC of the save that put it on (the SRD's "repeats
+// the save": the same DC). Written on the action's own copy of its steps, so the entry is not changed. The innermost save wins.
+function endingsTakeSaveDc(steps) {
+  const saves = [];
+  walkSteps(steps, (st) => { if ('save' in st && Number.isInteger(st.dc)) saves.push(st); });
+  for (const sv of saves.reverse()) walkSteps([sv], (st) => { if (st.ends?.on === 'save' && st.ends.dc === undefined) st.ends.dc = sv.dc; });
+}
+
 // Run an action's effect steps against its targets. Costs are the caller's. `tag` marks the
 // attack event (an Opportunity Attack).
 export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
@@ -1224,6 +1233,7 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   // An attack roll says what it is in its own event; anything else (a breath, a gaze) is announced.
   if (!('attack' in def.effects[0])) ev.push({ type: 'act', actor: e.id, action: def.id, name: def.name, hexes, targets: (targets ?? []).map((t) => t.id) });
   const steps = structuredClone(def.effects), fx = boundEffect(s, def.name, e.id, steps);
+  endingsTakeSaveDc(steps);
   begin(s, {
     steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
     src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}), ...(fx ? { fx: fx.id } : {}) },
