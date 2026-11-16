@@ -163,3 +163,13 @@ test('a refusal about a finished fight\'s conclusion says where to look; other b
   assert.match(hint(['conclusion.foes: hb-sample-ashling']), /Close the last fight.s summary first/);
   assert.doesNotMatch(hint(['entities.m3 (Ashling): hb-sample-ashling']), /summary first/);
 });
+
+test('an entry the reader marks refused shows its refusals under a plain heading, as text, and a clean one shows none', () => {
+  const refused = { kind: 'monster', title: 'X', tier: 'auto', lines: ['REFUSED: x', 'The reading.'], doesNot: [], problems: [], refused: true, refusals: ['<i>hp</i> is wrong'] };
+  const node = readingNode(refused), all = textOf(node);
+  assert.match(all, /A table would refuse this entry: it cannot be approved/);
+  assert.match(all, /<i>hp<\/i> is wrong/);
+  assert.equal(node.children[0].attrs.role, 'alert');
+  assert.doesNotMatch(textOf(readingNode({ ...refused, refused: false, refusals: [] })), /would refuse/);
+  assert.doesNotMatch(textOf(readingNode({ ...refused, refused: null, refusals: [] })), /would refuse/);
+});

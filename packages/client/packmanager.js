@@ -145,6 +145,13 @@ const TIER_NAME = { auto: 'auto: the engine plays all of it', assist: 'assist: t
 // A reading (readEntry's answer) as nodes: every sentence is text.
 export function readingNode(r) {
   const box = el('div', 'pm-reading');
+  // An entry a table would refuse (strict mode, #431): said first and plainly; what follows is not content anyone has approved.
+  if (r.refused) {
+    const w = el('div', 'pm-refusal'); w.setAttribute('role', 'alert');
+    w.append(el('h5', '', 'A table would refuse this entry: it cannot be approved'));
+    for (const l of r.refusals ?? []) w.append(el('p', 'pm-line bad', String(l)));
+    box.append(w);
+  }
   for (const line of r.lines ?? []) {
     const lead = /^ */.exec(line)[0].length;
     const p = el('p', 'pm-line', line.slice(lead));
@@ -156,7 +163,7 @@ export function readingNode(r) {
   if (r.text) box.append(el('p', 'pm-author', `The author's description: “${r.text}”`));
   return box;
 }
-const tierChip = (tier) => el('span', `pm-tier pm-${tier ?? 'none'}`, tier ?? 'not read');
+const tierChip = (tier, refused) => el('span', `pm-tier pm-${refused ? 'refused' : tier ?? 'none'}`, refused ? 'refused' : tier ?? 'not read');
 
 // The table's refusal: its `error`, the linter's `problems`, and `blockers` (where the pack is in use), as a box of text.
 export function refusalNode(e) {
@@ -227,7 +234,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     if (!found) kids.push(el('p', 'note', 'This table no longer has that entry.'));
     else {
       const r = readEntry('spell', found.entry);
-      const head = el('p', 'note'); head.append(`From the pack “${found.pack.name}”, version ${found.pack.version}. Not checked against any rulebook. Tier: `, tierChip(r.tier));
+      const head = el('p', 'note'); head.append(`From the pack “${found.pack.name}”, version ${found.pack.version}. Not checked against any rulebook. Tier: `, tierChip(r.tier, r.refused));
       kids.push(head, readingNode(r));
     }
     return frame(found ? `${found.entry.name}: its reading` : 'Reading', ...kids);
@@ -300,7 +307,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     const r = readOf('spell', e), k = `${scope}:${e.id}`;
     const d = el('details', 'pm-entry'); d.dataset.key = k; d.dataset.entry = e.id; d.open = keep.has(k);
     d.ontoggle = () => (d.open ? keep.add(k) : keep.delete(k));
-    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier)); d.append(sum);
+    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier, r.refused)); d.append(sum);
     d.append(readingNode(r));
     const out = el('div', 'pm-try-out');
     const fill = () => { out.replaceChildren(); const t = tries.get(k); if (t) { out.append(el('pre', 'pm-try', t.text)); } };
@@ -312,7 +319,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   function readNode(kind, e, scope) {
     const r = readOf(kind, e), k = `${scope}:${e.id}`;
     const d = el('details', `pm-entry pm-${KIND_NAMES[kind]}`); d.dataset.key = k; d.dataset.entry = String(e.id);
-    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier)); d.append(sum);
+    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier, r.refused)); d.append(sum);
     let built = false;
     const fill = () => { if (!built) { built = true; d.append(readingNode(r)); } };
     d.open = keep.has(k); if (d.open) fill();

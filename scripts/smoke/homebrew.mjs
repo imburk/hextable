@@ -27,6 +27,12 @@ async function monsterPack() {
 }
 
 const KINDS_PACK = readFileSync(new URL('../../packages/rules/test/fixtures/reader-kinds-pack.json', import.meta.url), 'utf8');
+async function tierLineOf(doc) {                                          // what the manager should say, worked out from the reader's own tiers
+  const { readEntry } = await import(pathToFileURL(`${ROOT}packages/rules/src/content/reader.js`));
+  const n = { auto: 0, assist: 0, manual: 0 };
+  for (const m of doc.monsters) n[readEntry('monster', m).tier]++;
+  return `Monsters by tier: ${n.auto} auto, ${n.assist} assist, ${n.manual} manual`;
+}
 const SEEN_NAMES = /Cinderjaw|Gloomwing|Hollow Reaver|Pack Tactics|Ember Memory/i;     // what only a monster's data would say
 async function hoardPack() {                                              // a pack of a feat (read since #419) and a weapon and an object (not read yet), made from SRD entries
   const { CONTENT } = await import(pathToFileURL(`${ROOT}packages/rules/src/content/index.js`));
@@ -291,7 +297,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await openManager();
         await choose('reader-kinds.json', KINDS_PACK);
         const t = await host.textContent('#pm-review');
-        if (!/Monsters \(3\)/.test(t) || !/Monsters by tier: 0 auto, 2 assist, 1 manual/.test(t)) throw new Error(`counts: ${t.slice(0, 500)}`);
+        if (!/Monsters \(3\)/.test(t) || !t.includes(await tierLineOf(JSON.parse(KINDS_PACK)))) throw new Error(`counts: ${t.slice(0, 500)}`);
         const rows = await host.$$eval('#pm-review .pm-monster', (l) => l.map((d) => ({ open: d.open, lines: d.querySelectorAll('.pm-line').length, tier: !!d.querySelector('.pm-tier'), h: d.querySelector('summary').getBoundingClientRect().height })));
         if (rows.length !== 3 || rows.some((r) => r.open || r.lines || !r.tier)) throw new Error(`rows ${JSON.stringify(rows)}`);
         if (rows.some((r) => r.h < 43.5)) throw new Error(`a row is under 44px tall: ${JSON.stringify(rows)}`);
@@ -301,7 +307,11 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await host.click('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] summary');       // a tap on the row opens it
         await wait(host, () => document.querySelectorAll('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] .pm-line').length > 20);
         const open = await host.textContent('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"]');
-        if (!/Cinderjaw Hound \(Large, monstrosity/.test(open) || !/The DM does these by hand/.test(open) || !/Moving it by its burrow speed/.test(open)) throw new Error(open.slice(0, 400));
+        const doc = JSON.parse(KINDS_PACK), m = doc.monsters.find((x) => x.id === 'hb-rk-cinderjaw');         // the numbers come from the pack's own data
+        const title = await host.textContent('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] summary .pm-name');
+        if (!title.includes(m.name)) throw new Error(`the row's title: ${title}`);
+        if (!new RegExp(`Armor Class\\D{0,12}${m.ac}\\b`).test(open) || !new RegExp(`Hit Points\\D{0,12}${m.hp}\\b`).test(open)) throw new Error(`no AC ${m.ac} or HP ${m.hp}: ${open.slice(0, 400)}`);
+        if (!(await host.$('#pm-review .pm-monster[data-entry="hb-rk-cinderjaw"] h5:has-text("The DM does these by hand")'))) throw new Error('no block of what the DM does by hand');
         await shot(host, `homebrew-monster-review-${tag}`);
       });
       await run.do('the DM adds it: the pack\'s card has Monsters (3), tiers, and the reading; the player holds nothing of it', async () => {
@@ -309,7 +319,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await waitShown(host, '.pm-pack[data-pack="rk"]');
         const card = '.pm-pack[data-pack="rk"]';
         const t = await host.textContent(card);
-        if (!/3 monsters/.test(t) || !/Monsters by tier: 0 auto, 2 assist, 1 manual/.test(t) || !/Monsters \(3\)/.test(t)) throw new Error(t.slice(0, 400));
+        if (!/3 monsters/.test(t) || !t.includes(await tierLineOf(JSON.parse(KINDS_PACK))) || !/Monsters \(3\)/.test(t)) throw new Error(t.slice(0, 400));
         await host.click(`${card} details.pm-entries >> text=Monsters (3)`);
         await host.click(`${card} .pm-monster[data-entry="hb-rk-hollow-reaver"] summary`);
         await wait(host, (c) => document.querySelectorAll(`${c} .pm-monster[data-entry="hb-rk-hollow-reaver"] .pm-line`).length > 10, card);

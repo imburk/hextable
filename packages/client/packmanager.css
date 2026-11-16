@@ -36,3 +36,4 @@ details.pm-entries > summary, details.pm-entry > summary { cursor: pointer; min-
 details.pm-entries > summary, details.pm-entry > summary { list-style: none; } details.pm-entries > summary::before, details.pm-entry > summary::before { content: '\25B8'; color: var(--muted); } details[open].pm-entries > summary::before, details[open].pm-entry > summary::before { content: '\25BE'; }
 .pm-hint { font-weight: 600; }
 .pm-unread-say { margin: 4px 0; }
+.pm-refused { border-color: var(--bad); color: var(--bad); }
