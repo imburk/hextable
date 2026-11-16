@@ -17,7 +17,7 @@
 import { HOMEBREW_LIMITS } from './shared/content/schema.js';
 import { loadPack, overlayOf, install, uninstall } from './shared/content/registry.js';
 import { hashOf } from './shared/content/packs.js';
-import { readEntry } from './shared/content/reader.js';
+import { readEntry, READ_KINDS, KIND_NAMES } from './shared/content/reader.js';
 import { dryRun } from './shared/content/dryrun.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +29,11 @@ const ASK_WAIT_MS = 4000;                                                    // 
 const KEEP_DATA = 8;                                                         // pack data kept by hash beside the table's own list (older ones are let go)
 const plain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const kb = (n) => (n < 1024 ? `${n} bytes` : `${Math.round(n / 102.4) / 10} KB`);
+// Does the reader read this kind of entry yet? (Its own list answers: a kind it cannot read is not named here, however the pack names it.)
+export const isRead = (kind) => READ_KINDS.includes(KIND_NAMES[kind]);
+export const UNREAD_SAY = 'The game cannot read this kind back yet; you are adding it unread.';
+const SINGULAR = { spells: 'spell', monsters: 'monster' };
+const kindTitle = (kind, n) => `${KIND_NAME[kind][1][0].toUpperCase()}${KIND_NAME[kind][1].slice(1)} (${n})`;
 export const countWords = (doc) => KINDS.filter((k) => doc?.[k]?.length).map((k) => `${doc[k].length} ${KIND_NAME[k][doc[k].length === 1 ? 0 : 1]}`);
 
 // The pack document a member's page loads from what the table sent. The DM's data is the whole document (format and all); a player's is
@@ -147,7 +152,7 @@ export function readingNode(r) {
     if (lead) p.style.paddingLeft = `${(lead / 2) * 0.9}em`;
     box.append(p);
   }
-  if (r.doesNot?.length) { box.append(el('h5', '', 'What the engine does not do')); for (const l of r.doesNot) box.append(el('p', 'pm-line', l)); }
+  if (r.doesNot?.length) { box.append(el('h5', '', 'The DM does these by hand')); for (const l of r.doesNot) box.append(el('p', 'pm-line', l)); }
   if (r.problems?.length) { box.append(el('h5', '', 'What the reader could not read')); for (const l of r.problems) box.append(el('p', 'pm-line bad', l)); }
   if (r.text) box.append(el('p', 'pm-author', `The author's description: “${r.text}”`));
   return box;
@@ -161,6 +166,8 @@ export function refusalNode(e) {
   // The table's `error` often says the first of its `problems` already: a sentence it said is not said again.
   const more = (e?.problems ?? []).filter((x) => !String(e?.error ?? '').includes(String(x)));
   if (more.length) { box.append(el('p', 'pm-sub', 'What the checker found:')); const ul = el('ul'); for (const x of more) ul.append(el('li', '', String(x))); box.append(ul); }
+  // A finished fight's conclusion names the monsters it was fought with, so a pack of theirs stays until the DM has dealt with it (DEBT T52).
+  if ((e?.blockers ?? []).some((x) => /^conclusion(\.|$| )/.test(String(x)))) box.append(el('p', 'pm-sub pm-hint', 'Close the last fight\u2019s summary first: it still names this pack\u2019s monsters. In the fight summary, publish it or choose to skip the rewards, then remove the pack again.'));
   if (e?.blockers?.length) { box.append(el('p', 'pm-sub', 'It is still in use here:')); const ul = el('ul'); for (const x of e.blockers) ul.append(el('li', '', String(x))); box.append(ul); }
   return box;
 }
@@ -172,6 +179,10 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   let open = false, review = null, message = null, busy = false, armed = null, armTimer = null;
   const tries = new Map(), keep = new Set();                  // Try it's results by spell id; the readings left open
   let overlayEl = null, host = null;
+  const readings = new WeakMap();                             // entry object -> its reading (a monster's is long, and the page redraws often)
+  const readOf = (kind, e) => { if (!plain(e)) return readEntry(kind, e); let r = readings.get(e); if (!r) { r = readEntry(kind, e); readings.set(e, r); } return r; };
+  const tiersOf = (doc, kind) => { const t = { auto: 0, assist: 0, manual: 0, none: 0 }; for (const e of doc[kind] ?? []) t[readOf(SINGULAR[kind], e).tier in t ? readOf(SINGULAR[kind], e).tier : 'none']++; return t; };
+  const tierLine = (doc, kind) => { if (!doc[kind]?.length) return null; const t = tiersOf(doc, kind); return `${kind === 'spells' ? 'Spells' : 'Monsters'} by tier: ${t.auto} auto, ${t.assist} assist, ${t.manual} manual${t.none ? `, ${t.none} the reader could not place` : ''}.`; };
 
   // ----- the DM's section in the drawer, and the sheet it opens -----
   function section() {
@@ -261,7 +272,10 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     if (!p.doc) { card.append(el('p', 'note', p.trouble ? 'This page could not use it.' : 'Loading its data from the table…')); }
     else {
       card.append(el('p', 'note', `${counts(p.doc)}. Licence: ${p.doc.pack.license}.`));
+      for (const kind of ['spells', 'monsters']) { const tl = kind === 'monsters' && !isDM() ? null : tierLine(p.doc, kind); if (tl) card.append(el('p', 'note pm-counts', tl)); }
       if (p.doc.spells?.length) card.append(spellList(p.doc, `${p.id}`));
+      if (isDM() && p.doc.monsters?.length) card.append(monsterList(p.doc, `${p.id}`));       // a player's page never builds a monster
+      if (isDM()) for (const kind of KINDS) if (!isRead(kind) && p.doc[kind]?.length) card.append(unreadList(kind, p.doc[kind], `${p.id}`));
     }
     const row = el('div', 'row');
     row.append(button('Update…', () => $('pm-file')?.click(), 'pm-update'));
@@ -284,7 +298,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     return box;
   }
   function spellNode(doc, e, scope) {
-    const r = readEntry('spell', e), k = `${scope}:${e.id}`;
+    const r = readOf('spell', e), k = `${scope}:${e.id}`;
     const d = el('details', 'pm-entry'); d.dataset.key = k; d.dataset.entry = e.id; d.open = keep.has(k);
     d.ontoggle = () => (d.open ? keep.add(k) : keep.delete(k));
     const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier)); d.append(sum);
@@ -294,6 +308,33 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     fill();
     d.append(Object.assign(button('Try it', () => tryIt(doc, e, k, out), 'pm-try-btn'), { title: 'Cast it in a throw-away game and say what happened' }), out);
     return d;
+  }
+  // One monster: its name and tier closed; opened, the reading (built when it is first opened). Monsters are never tried: the reading is the review.
+  function monsterNode(e, scope) {
+    const r = readOf('monster', e), k = `${scope}:${e.id}`;
+    const d = el('details', 'pm-entry pm-monster'); d.dataset.key = k; d.dataset.entry = String(e.id);
+    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier)); d.append(sum);
+    let built = false;
+    const fill = () => { if (!built) { built = true; d.append(readingNode(r)); } };
+    d.open = keep.has(k); if (d.open) fill();
+    d.ontoggle = () => { if (d.open) { fill(); keep.add(k); } else keep.delete(k); };
+    return d;
+  }
+  function monsterList(doc, scope) {
+    const box = el('details', 'pm-entries'); box.dataset.key = `${scope}:monsters`; box.open = keep.has(box.dataset.key);
+    box.ontoggle = () => (box.open ? keep.add(box.dataset.key) : keep.delete(box.dataset.key));
+    box.append(el('summary', '', `Monsters (${doc.monsters.length}): readings`));
+    for (const e of doc.monsters) box.append(monsterNode(e, scope));
+    return box;
+  }
+  // A kind the reader cannot read yet: each entry by name, and one honest line.
+  function unreadList(kind, entries, scope) {
+    const box = el('details', 'pm-entries pm-unread'); box.dataset.key = `${scope}:${kind}`; box.open = keep.has(box.dataset.key);
+    box.ontoggle = () => (box.open ? keep.add(box.dataset.key) : keep.delete(box.dataset.key));
+    box.append(el('summary', '', `${kindTitle(kind, entries.length)}: not read`));
+    box.append(el('p', 'note pm-unread-say', UNREAD_SAY));
+    for (const e of entries) { const d = el('div', 'pm-entry pm-plain'); d.append(el('span', 'pm-name', String(e?.name ?? e?.id ?? '(no name)'))); box.append(d); }
+    return box;
   }
   function tryIt(doc, entry, k, out) {
     out.replaceChildren(el('p', 'note', 'Trying it…'));
@@ -322,10 +363,9 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     try { r = loadPack(text); } catch (err) { r = { ok: false, problems: [`pack: could not be checked (${String(err?.message ?? err).slice(0, 120)})`] }; }
     if (!r.ok) { review = { name: file.name, size: file.size, refused: r.problems }; return render(); }
     const doc = JSON.parse(text);                              // loadPack has parsed it and found it sound
-    const entries = KINDS.flatMap((kind) => (doc[kind] ?? []).map((e) => ({ kind, entry: e, reading: kind === 'spells' ? readEntry('spell', e) : null })));
-    const tiers = { auto: 0, assist: 0, manual: 0, unread: 0 };
-    for (const x of entries) tiers[x.reading?.tier in tiers ? x.reading.tier : 'unread']++;
-    review = { name: file.name, size: file.size, text, doc, pack: r.pack, entries, tiers, hash: hashOf(doc) };
+    const entries = KINDS.flatMap((kind) => (doc[kind] ?? []).map((e) => ({ kind, entry: e })));
+    const unread = entries.filter((x) => !isRead(x.kind)).length;
+    review = { name: file.name, size: file.size, text, doc, pack: r.pack, entries, unread, hash: hashOf(doc) };
     render();
   }
   // What the table would do with the file: add, update, or nothing.
@@ -347,12 +387,13 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
       box.append(refusalNode({ error: 'The checker refused this file, so nothing was sent to the table.', problems: review.refused }));
       return box;
     }
-    const { doc, pack, tiers } = review;
+    const { doc, pack } = review;
     const head = el('div', 'pm-review-head');
     head.append(el('strong', '', doc.pack.name), el('span', 'note', ` version ${pack.version} · ${pack.id}`));
     box.append(head);
     box.append(el('p', 'pm-counts', `Holds ${counts(doc)}.`));
-    box.append(el('p', 'pm-counts', `Spells by tier: ${tiers.auto} auto, ${tiers.assist} assist, ${tiers.manual} manual.${tiers.unread ? ` ${tiers.unread} other ${tiers.unread === 1 ? 'entry is' : 'entries are'} not read by the reader yet: read the file yourself.` : ''}`));
+    for (const kind of ['spells', 'monsters']) { const tl = tierLine(doc, kind); if (tl) box.append(el('p', 'pm-counts', tl)); }
+    if (review.unread) box.append(el('p', 'pm-counts', `${review.unread} other ${review.unread === 1 ? 'entry is' : 'entries are'} not read by the reader yet: read the file yourself.`));
     const lic = el('div', 'pm-licence'); lic.append(el('h4', '', 'Licence and attribution (the author’s words)'), el('p', '', `Licence: ${doc.pack.license}`), el('p', '', `Attribution: ${doc.pack.attribution}`));
     box.append(lic);
     if (doc.monsters?.length) box.append(el('p', 'note', `${doc.monsters.length} of its entries ${doc.monsters.length === 1 ? 'is a monster' : 'are monsters'}. Players are never sent a monster: only you and the table's engine hold them.`));
@@ -367,15 +408,16 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     const lists = el('div', 'pm-entries');
     for (const kind of KINDS) {
       const of = review.entries.filter((x) => x.kind === kind); if (!of.length) continue;
-      lists.append(el('h4', '', `${KIND_NAME[kind][1][0].toUpperCase()}${KIND_NAME[kind][1].slice(1)} (${of.length})`));
-      for (const x of of) lists.append(kind === 'spells' ? spellNode(doc, x.entry, `review:${pack.id}`) : otherNode(kind, x.entry));
+      lists.append(el('h4', '', kindTitle(kind, of.length)));
+      if (!isRead(kind)) lists.append(el('p', 'note pm-unread-say', UNREAD_SAY));
+      for (const x of of) lists.append(kind === 'spells' ? spellNode(doc, x.entry, `review:${pack.id}`) : kind === 'monsters' ? monsterNode(x.entry, `review:${pack.id}`) : otherNode(x.entry));
     }
     box.append(lists);
     return box;
   }
-  function otherNode(kind, e) {
+  function otherNode(e) {
     const d = el('div', 'pm-entry pm-plain');
-    const s = el('span', 'pm-name', String(e.name ?? e.id)); d.append(s, ' ', tierChip(null), el('span', 'note', kind === 'monsters' ? ' a monster: not read yet, never sent to players' : ' not read yet'));
+    d.append(el('span', 'pm-name', String(e?.name ?? e?.id ?? '(no name)')), ' ', tierChip(null));
     return d;
   }
   async function submit(p) {
