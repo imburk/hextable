@@ -1478,5 +1478,592 @@
       "category": "general",
       "repeatable": true
     }
+  ],
+  "weapons": [
+    {
+      "id": "hb-rk-gale-spear",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Gale Spear",
+      "category": "martial",
+      "kind": "melee",
+      "damage": "1d8",
+      "type": "piercing",
+      "properties": [
+        "reach",
+        "thrown",
+        "versatile"
+      ],
+      "range": [
+        20,
+        60
+      ],
+      "versatile": "1d10",
+      "mastery": "topple",
+      "weight": 4,
+      "cost": "12 GP"
+    },
+    {
+      "id": "hb-rk-rook-hammer",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Rook Hammer",
+      "category": "martial",
+      "kind": "melee",
+      "damage": "2d6",
+      "type": "bludgeoning",
+      "properties": [
+        "heavy",
+        "two-handed"
+      ],
+      "mastery": "push",
+      "twoHandedUnlessMounted": true,
+      "weight": 9,
+      "cost": "40 GP"
+    },
+    {
+      "id": "hb-rk-marsh-crossbow",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Marsh Crossbow",
+      "category": "simple",
+      "kind": "ranged",
+      "damage": "1d6",
+      "type": "piercing",
+      "properties": [
+        "ammunition",
+        "loading",
+        "light",
+        "two-handed"
+      ],
+      "range": [
+        60,
+        240
+      ],
+      "ammo": "dart",
+      "mastery": "slow",
+      "weight": 3,
+      "cost": "20 GP"
+    },
+    {
+      "id": "hb-rk-needle-fang",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Needle Fang",
+      "category": "martial",
+      "kind": "melee",
+      "damage": "2",
+      "type": "piercing",
+      "properties": [
+        "finesse",
+        "light"
+      ],
+      "mastery": "nick",
+      "weight": 1,
+      "cost": "5 SP"
+    },
+    {
+      "id": "hb-rk-sky-chakram",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Sky Chakram",
+      "category": "martial",
+      "kind": "ranged",
+      "damage": "1d6",
+      "type": "slashing",
+      "properties": [
+        "finesse",
+        "thrown"
+      ],
+      "range": [
+        30,
+        90
+      ],
+      "mastery": "graze",
+      "weight": 1,
+      "cost": "25 GP"
+    },
+    {
+      "id": "hb-rk-burl-club",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Burl Club",
+      "category": "simple",
+      "kind": "melee",
+      "damage": "1d6",
+      "type": "bludgeoning",
+      "properties": [],
+      "mastery": "sap",
+      "weight": 3,
+      "cost": "1 GP"
+    },
+    {
+      "id": "hb-rk-fen-axe",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Fen Axe",
+      "category": "martial",
+      "kind": "melee",
+      "damage": "1d10",
+      "type": "slashing",
+      "properties": [
+        "heavy",
+        "two-handed"
+      ],
+      "mastery": "cleave",
+      "weight": 7,
+      "cost": "30 GP"
+    },
+    {
+      "id": "hb-rk-quill-lance",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Quill Lance",
+      "category": "martial",
+      "kind": "melee",
+      "damage": "1d6",
+      "type": "piercing",
+      "properties": [
+        "light"
+      ],
+      "mastery": "vex",
+      "weight": 2,
+      "cost": "8 GP"
+    }
+  ],
+  "armour": [
+    {
+      "id": "hb-rk-thornweave-vest",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Thornweave Vest",
+      "category": "light",
+      "ac": 12,
+      "dex": "full",
+      "weight": 8,
+      "cost": "30 GP"
+    },
+    {
+      "id": "hb-rk-barkplate",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Barkplate",
+      "category": "medium",
+      "ac": 14,
+      "dex": 2,
+      "strength": 13,
+      "stealth": "disadvantage",
+      "weight": 30,
+      "cost": "150 GP"
+    },
+    {
+      "id": "hb-rk-cairn-harness",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Cairn Harness",
+      "category": "heavy",
+      "ac": 17,
+      "strength": 15,
+      "stealth": "disadvantage",
+      "weight": 60,
+      "cost": "800 GP"
+    },
+    {
+      "id": "hb-rk-stiff-cuirass",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Stiff Cuirass",
+      "category": "medium",
+      "ac": 13,
+      "dex": 0,
+      "weight": 25,
+      "cost": "60 GP"
+    },
+    {
+      "id": "hb-rk-lantern-shield",
+      "source": "homebrew:rk",
+      "checked": false,
+      "name": "Lantern Shield",
+      "category": "shield",
+      "ac": 3,
+      "weight": 5,
+      "cost": "12 GP"
+    }
+  ],
+  "objects": [
+    {
+      "id": "hb-rk-glasswork-gate",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Glasswork Gate",
+      "text": "A gate of coloured panes on a frame. Invented for the reader tests.",
+      "kind": "door",
+      "states": {
+        "shut": {
+          "name": "shut",
+          "blocks": [
+            "move",
+            "sight"
+          ]
+        },
+        "ajar": {
+          "name": "ajar",
+          "blocks": [
+            "sight"
+          ]
+        },
+        "open": {
+          "name": "open",
+          "blocks": []
+        },
+        "grated": {
+          "name": "grated",
+          "blocks": [
+            "move"
+          ]
+        }
+      },
+      "initial": "shut",
+      "use": [
+        {
+          "id": "nudge",
+          "name": "Nudge",
+          "from": [
+            "shut"
+          ],
+          "to": "ajar",
+          "time": "free"
+        },
+        {
+          "id": "swing",
+          "name": "Swing wide",
+          "from": [
+            "ajar"
+          ],
+          "to": "open",
+          "time": "free"
+        },
+        {
+          "id": "slam",
+          "name": "Slam it",
+          "from": [
+            "shut"
+          ],
+          "to": "open",
+          "time": "action",
+          "check": {
+            "ability": "str",
+            "skill": "athletics",
+            "dc": 13
+          }
+        },
+        {
+          "id": "seal",
+          "name": "Seal",
+          "from": [
+            "open"
+          ],
+          "to": "shut",
+          "time": "action",
+          "key": true
+        },
+        {
+          "id": "crank",
+          "name": "Crank the grille down",
+          "from": [
+            "open"
+          ],
+          "to": "grated",
+          "time": "action",
+          "check": {
+            "ability": "dex",
+            "tool": "tinkers-tools",
+            "dc": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-ember-brazier",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Ember Brazier",
+      "text": "A basin of coals on three legs. Invented for the reader tests.",
+      "kind": "thing",
+      "states": {
+        "cold": {
+          "name": "cold",
+          "blocks": []
+        },
+        "lit": {
+          "name": "lit",
+          "blocks": [
+            "move",
+            "sight"
+          ],
+          "light": {
+            "bright": 20,
+            "dim": 20
+          }
+        }
+      },
+      "initial": "cold",
+      "use": [
+        {
+          "id": "kindle",
+          "name": "Kindle",
+          "from": [
+            "cold"
+          ],
+          "to": "lit",
+          "time": "action",
+          "effects": [
+            {
+              "damage": "1d4",
+              "type": "fire"
+            }
+          ]
+        },
+        {
+          "id": "snuff",
+          "name": "Snuff",
+          "from": [
+            "lit"
+          ],
+          "to": "cold",
+          "time": "free"
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-whisper-tripwire",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Whisper Tripwire",
+      "text": "A thread across the floor, tied to a bundle of needles. Invented for the reader tests.",
+      "kind": "thing",
+      "states": {
+        "hidden": {
+          "name": "unnoticed",
+          "blocks": [],
+          "hidden": true
+        },
+        "found": {
+          "name": "spotted",
+          "blocks": []
+        },
+        "sprung": {
+          "name": "sprung",
+          "blocks": []
+        },
+        "spent": {
+          "name": "spent",
+          "blocks": []
+        }
+      },
+      "initial": "hidden",
+      "find": {
+        "to": "found"
+      },
+      "dc": {
+        "save": 13,
+        "find": 14
+      },
+      "use": [
+        {
+          "id": "cut",
+          "name": "Cut the thread",
+          "from": [
+            "found"
+          ],
+          "to": "spent",
+          "time": "action",
+          "check": {
+            "ability": "dex",
+            "tool": "thieves-tools",
+            "dc": 13
+          }
+        }
+      ],
+      "triggers": [
+        {
+          "on": "enter",
+          "from": [
+            "hidden",
+            "found"
+          ],
+          "to": "sprung",
+          "who": "party",
+          "effects": [
+            {
+              "save": "dex",
+              "half": true,
+              "onFail": [
+                {
+                  "damage": "2d6",
+                  "type": "piercing"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "on": "near",
+          "feet": 10,
+          "from": [
+            "sprung"
+          ],
+          "to": "spent",
+          "area": 15,
+          "effects": [
+            {
+              "attack": "ranged",
+              "kind": "weapon",
+              "bonus": 5,
+              "onHit": [
+                {
+                  "damage": "1d6",
+                  "type": "piercing"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-rope-cradle",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Rope Cradle",
+      "text": "A net of rope hung down a drop. Invented for the reader tests.",
+      "kind": "thing",
+      "connects": true,
+      "states": {
+        "hanging": {
+          "name": "hanging",
+          "blocks": []
+        }
+      },
+      "initial": "hanging",
+      "use": []
+    },
+    {
+      "id": "hb-rk-sack-heap",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Sack Heap",
+      "text": "Sacks lying where someone left them. Invented for the reader tests.",
+      "kind": "pile",
+      "states": {
+        "lying": {
+          "name": "lying",
+          "blocks": []
+        }
+      },
+      "initial": "lying",
+      "use": []
+    },
+    {
+      "id": "hb-rk-shifting-lever",
+      "source": "homebrew:rk",
+      "tier": "auto",
+      "checked": false,
+      "name": "Shifting Lever",
+      "text": "A lever that moves what the DM links to it. Invented for the reader tests.",
+      "kind": "thing",
+      "states": {
+        "up": {
+          "name": "up",
+          "blocks": []
+        },
+        "down": {
+          "name": "down",
+          "blocks": []
+        }
+      },
+      "initial": "up",
+      "use": [
+        {
+          "id": "pull",
+          "name": "Pull",
+          "from": [
+            "up"
+          ],
+          "to": "down",
+          "time": "free",
+          "effects": [
+            {
+              "set": "open",
+              "of": "link"
+            }
+          ]
+        },
+        {
+          "id": "sweep",
+          "name": "Sweep the dust",
+          "from": [
+            "down"
+          ],
+          "time": "action",
+          "effects": [
+            {
+              "reveal": "link"
+            },
+            {
+              "reveal": "self"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-whistling-idol",
+      "source": "homebrew:rk",
+      "tier": "assist",
+      "checked": false,
+      "name": "Whistling Idol",
+      "text": "A hollow idol that sings when someone nears. Invented for the reader tests: the engine runs none of what it sings.",
+      "kind": "thing",
+      "states": {
+        "quiet": {
+          "name": "quiet",
+          "blocks": []
+        },
+        "singing": {
+          "name": "singing",
+          "blocks": []
+        }
+      },
+      "initial": "quiet",
+      "use": [],
+      "triggers": [
+        {
+          "on": "near",
+          "feet": 20,
+          "from": [
+            "quiet"
+          ],
+          "to": "singing",
+          "effects": [
+            {
+              "manual": "The idol sings; every listener within earshot hears it and the DM decides who it draws."
+            }
+          ]
+        },
+        {
+          "on": "leave",
+          "from": [
+            "singing"
+          ],
+          "to": "quiet"
+        }
+      ]
+    }
   ]
 }
