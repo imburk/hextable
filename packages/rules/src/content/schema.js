@@ -2041,8 +2041,11 @@ export const HOMEBREW_RANGES = Object.freeze({
 });
 // What a `grants` may hold beyond the fields above (a feature's grants are many shapes; none needs a big number).
 const GRANTS_ANY = [-100, 100];
-// Dice written as a string: how many, how many sides, and the flat part (the SRD's largest are 26, 12 and 70).
-export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 100, flat: 140 });
+// Dice written as a string, one roll: how many, how many sides, and the flat part. The SRD pack's largest, measured over every
+// dice string of every entry (homebrew-dice.test.js computes them): 26 dice (the Ancient Red Dragon's 26d6), 12 sides (Poison
+// Spray's d12) and a flat 70 (Heal). The ceilings are about twice those (#408: the sides were 100, eight times the SRD's, and
+// the cause of "50d100"). What one use rolls in all is the work estimate's to hold (HOMEBREW_WORK.dice, below).
+export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 24, flat: 140 });
 export const HOMEBREW_DURATIONS = Object.freeze({ round: 12, minute: 20, hour: 48, day: 60 });
 export const HOMEBREW_COST = 3000;                // gold pieces: the dearest thing the SRD sells costs 1,500 GP
 const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
@@ -2061,7 +2064,11 @@ const GRANTS_LEN = 30;
 // most attacks of one Multiattack. The SRD's own largest are printed in the build note of fix round 2. The steps ceiling is
 // measured, not a multiple of the SRD's: the heaviest accepted cast and monster turn at a table of 30 stay well under a second
 // and a megabyte (a test in homebrew-values.test.js); it lets an area spell hold 20 steps of work.
-export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14 });
+// `dice`: the most dice faces one use may roll (#408; diceOf counts them as the engine does). The engine refuses an action over
+// 1,200 (effects.js, WORK.dice); this is three quarters of that, so a use the gate admits has a quarter to spare. This file cannot
+// import effects.js (it imports this one), so a test (homebrew-dice.test.js) compares the two sets of ceilings and fails if the
+// gate's passes the engine's: steps 600 of 1,000, dice 900 of 1,200, attacks 14 of 20, events measured.
+export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14, dice: 900 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
 const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (inGrants ? GRANTS_ANY : undefined);
@@ -2129,8 +2136,9 @@ function multiWork(ma, byId) {
 }
 // { work, attacks, what } for an entry of any kind (0 where it runs no steps).
 export function workOf(kind, e) {
-  let work = 0, attacks = 0, what = '';
+  let work = 0, attacks = 0, what = '', dice = 0, diceWhat = '';
   const take = (n, w) => { if (n > work) { work = n; what = w; } };
+  const takeDice = (n, w) => { if (n > dice) { dice = n; diceWhat = w; } };
   if (kind === 'spells') {
     // Estimated at the top: a 9th-level slot (each level above the spell's adds `higher.slot.targets` creatures and
     // `higher.slot.times` repeats) and, for a cantrip, character level 20 (`higher.targets` by level).
@@ -2139,18 +2147,75 @@ export function workOf(kind, e) {
     let targets = targetsOf(e.target);
     if (!(e.target?.area && !isN(e.target.area.choose))) targets = Math.max(targets + up * (isN(hs.targets) ? hs.targets : 0), levelTargets);
     take(targets * listWork(e.effects, up * (isN(hs.times) ? hs.times : 0)), 'cast at its highest level');
+    const steps = scaledSteps(e, up);
+    takeDice(diceFor(steps, targets, !!e.target?.area || (targets > 1 && !e.target?.creature?.repeat)), 'cast at its highest level');
+    // A zone goes off for one creature at a time, rolling for each: a creature that moves into it (as many as the table has
+    // when the zone itself moves onto them), or two ticks in one end of turn (the end of one creature's, the start of the next).
+    if (e.zone && typeof e.zone === 'object') takeDice((Array.isArray(e.zone.on) && e.zone.on.includes('enter') ? HOMEBREW_WORK.creatures : 2) * diceFor(steps, 1, false), 'zone, going off');
   }
   else if (kind === 'monsters' && Array.isArray(e.actions)) {
     const byId = new Map(e.actions.filter((a) => a && typeof a.id === 'string').map((a) => [a.id, a]));
     for (const a of e.actions) {
       if (!a || typeof a !== 'object') continue;
       take(actionWork(a), `action "${a.id}"`);
+      // Each attack of a Multiattack is an action of its own to the engine, so it is the dearest attack that counts.
+      if (!a.multiattack) takeDice(diceFor(a.effects, targetsOf(a.target), !!a.target?.area), `action "${a.id}"`);
       if (a.multiattack) { const [n, w] = multiWork(a.multiattack, byId); attacks = Math.max(attacks, n); take(w, `Multiattack "${a.id}"`); }
     }
-  } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
-  else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) take(listWork(u?.effects), 'use');
-  return { work, attacks, what };
+  } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) {
+    take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
+    takeDice(diceFor(u?.effects, u?.area ? HOMEBREW_WORK.creatures : 1, !!u?.area), 'use');
+  }
+  else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) { take(listWork(u?.effects), 'use'); takeDice(diceFor(u?.effects, 1, false), 'use'); }
+  return { work, attacks, what, dice, diceWhat };
 }
+
+// ----- the dice of one use (#408) -----
+// The engine counts the dice faces an action rolls for damage and healing (effects.js, `spend('dice', ...)`: the leading count of
+// each roll, a damage step's once for each repeat, an attack's doubled for a critical hit) and refuses an action over a ceiling.
+// So the estimate counts the same: `own` is dice outside an attack roll, which an area (or several creatures at once) rolls once
+// and shares; `each` is dice under an attack roll (doubled, as a critical hit does) and healing, which are rolled for each creature.
+const diceCount = (x) => { const m = typeof x === 'string' ? /^\s*(\d+)d/.exec(x) : null; return m ? +m[1] : 0; };
+function listDice(list, atk = false) {
+  let own = 0, each = 0;
+  if (!Array.isArray(list)) return { own, each };
+  for (const st of list) {
+    if (!st || typeof st !== 'object') continue;
+    if ('damage' in st) { const d = diceCount(st.damage) * Math.max(1, isN(st.times) ? Math.ceil(st.times) : 1); if (atk) each += 2 * d; else own += d; }
+    for (const k of ['heal', 'tempHp']) if (k in st) each += diceCount(st[k]);
+    const inner = atk || 'attack' in st;
+    for (const b of BRANCHES) { const r = listDice(st[b], inner); own += r.own; each += r.each; }
+  }
+  return { own, each };
+}
+// A spell's steps as cast at a 9th-level slot by a level 20 caster: the first damage, heal and temporary Hit Points step grow by
+// `higher.slot` for each level above the spell's, the first damage step repeats more, and a cantrip's first damage step is
+// its dice for character level 20 (effects.js, scaleSteps, which finds the first step of a kind the same way).
+function scaledSteps(e, up) {
+  const steps = structuredClone(Array.isArray(e.effects) ? e.effects : []);
+  const first = (list, key) => {
+    for (const st of list) {
+      if (!st || typeof st !== 'object') continue;
+      if (key in st) return st;
+      for (const b of BRANCHES) if (Array.isArray(st[b])) { const f = first(st[b], key); if (f) return f; }
+    }
+    return null;
+  };
+  const byLevel = e.higher?.level && typeof e.higher.level === 'object' ? e.higher.level : null;
+  if (byLevel) {
+    const reached = Object.keys(byLevel).map(Number).filter((l) => l <= 20).sort((x, y) => y - x)[0], dmg = first(steps, 'damage');
+    if (reached !== undefined && dmg && typeof byLevel[reached] === 'string') dmg.damage = byLevel[reached];
+  }
+  const hs = e.higher?.slot && typeof e.higher.slot === 'object' ? e.higher.slot : null;
+  if (up > 0 && hs) {
+    for (const k of ['damage', 'heal', 'tempHp']) { const st = typeof hs[k] === 'string' ? first(steps, k) : null; if (st) st[k] = `${diceCount(st[k]) + diceCount(hs[k]) * up}d6`; }
+    const st = isN(hs.times) ? first(steps, 'damage') : null;
+    if (st) st.times = (isN(st.times) ? st.times : 1) + hs.times * up;
+  }
+  return steps;
+}
+// The dice one use rolls on `n` creatures: shared damage once, the rest for each creature; or all of it for each.
+const diceFor = (steps, n, shared) => { const { own, each } = listDice(steps); return shared ? own + n * each : n * (own + each); };
 const DICE_STR = /^([+-]?)(?:(\d+)d(\d+))?(?:([+-]\d+))?$/;
 // A dice string's count, sides and flat part within the limits, or a sentence.
 function diceProblem(s) {
@@ -2173,9 +2238,10 @@ function lintNumbers(kind, e, say) {
     const reactions = e.traits.filter((t) => t?.reaction).length + e.actions.filter((a) => a?.time === 'reaction').length;
     if (reactions > HOMEBREW_LENGTHS['monsters.reaction']) say(`it has ${reactions} reactions; the most is ${HOMEBREW_LENGTHS['monsters.reaction']}`);
   }
-  const { work, attacks, what } = workOf(kind, e);
+  const { work, attacks, what, dice, diceWhat } = workOf(kind, e);
   if (attacks > HOMEBREW_WORK.attacks) say(`its Multiattack makes ${thousands(attacks)} attacks; the most is ${HOMEBREW_WORK.attacks}`);
   else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
+  else if (dice > HOMEBREW_WORK.dice) say(`one use (its ${diceWhat}) can roll ${thousands(dice)} dice, counting every repeat, the double dice of a critical hit and every creature that rolls its own (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${thousands(HOMEBREW_WORK.dice)}`);
   for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
     const r = rangeOf(owner, key, g);
     if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }
