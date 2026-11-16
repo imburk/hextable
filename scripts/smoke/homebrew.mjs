@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, seeded, playSolo, ROOT } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
@@ -408,7 +408,7 @@ async function solo(browser, url, label0, opts, tag) {
         await sleep(400); await calm(page);
       };
       const summary = async () => { await openTab(page, 'dm'); await waitShown(page, '#pm-summary'); return page.textContent('#pm-summary'); };
-      const dropped = async () => { await openManager(); const t = await page.$$eval('#pm .pm-refusal', (l) => l.map((x) => x.textContent).join('\n')); await closeManager(); await closeMenu(page); return t; };
+      const dropped = async (shotName) => { await openManager(); const t = await page.$$eval('#pm .pm-refusal', (l) => l.map((x) => x.textContent).join('\n')); if (shotName) await shot(page, shotName); await closeManager(); await closeMenu(page); return t; };
       let ven;
 
       await run.do('a solo game opens, and its DM tab has the pack manager', async () => {
@@ -472,10 +472,20 @@ async function solo(browser, url, label0, opts, tag) {
       });
       await run.do('the DM gives a hero the spell, and casting it at a foe resolves', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'setSheet', sheet: { name: 'Ven', class: 'wizard', level: 2, abilities: { str: 10, dex: 14, con: 14, int: 17, wis: 12, cha: 10 }, skills: ['arcana', 'history'], weapons: ['quarterstaff'], spells: ['hb-sample-ember-dart', 'fire-bolt', 'magic-missile', 'hb-sample-jarring-note'] } }));
-        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'), null, 10000);
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'), null, 10000).catch(async () => { throw new Error(`no Ven: toast "${await page.evaluate(() => document.getElementById('toast')?.textContent)}"`); });
         ven = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ven').id);
         const foe = await spawnNear(page, 'goblin-warrior', { near: ven, min: 2, sightFrom: ven, range: 40, name: 'Target' });
         await calm(page);
+        await page.evaluate((f) => { const h = window.hextable; if (!h.state.encounter) h.act({ type: 'startEncounter', center: h.state.entities[f].pos, radius: 40 }); }, foe);
+        await wait(page, () => window.hextable.state.encounter);
+        for (let i = 0; i < 30; i++) {                                     // the turns go by until it is Ven's: the foe's own are the monster AI's, a hero's the DM's
+          const cur = await page.evaluate(() => { const S = window.hextable.state; return S.encounter.order[S.encounter.turn].id; });
+          if (cur === ven) break;
+          if (cur !== foe) await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+          await sleep(cur === foe ? 700 : 150); await calm(page);
+        }
+        await wait(page, (v) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === v; }, ven).catch(() => { throw new Error('it never became Ven\'s turn'); });
+        await sleep(300); await calm(page);
         await page.evaluate((v) => window.hextable.select(v), ven);
         await calm(page);
         const pos = await page.evaluate((f) => window.hextable.state.entities[f].pos, foe);
@@ -485,7 +495,9 @@ async function solo(browser, url, label0, opts, tag) {
         await page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [pos, foe]);
         await calm(page);
         await openTab(page, 'log');
-        await wait(page, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000);
+        await wait(page, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000).catch(async () => {
+          throw new Error(`the cast did not reach the log: mode ${JSON.stringify(await page.evaluate(() => window.hextable.mode))}; toast "${await page.evaluate(() => document.getElementById('toast')?.textContent)}"; log ${(await page.evaluate(() => document.querySelector('#log-list')?.textContent))?.slice(-300)}`);
+        });
         const log = await page.evaluate(() => [...document.querySelectorAll('#log-list .lg-line')].map((l) => l.textContent).join('\n'));
         if (!/Ven attacks Target( behind [a-z ]+)? with Ember Dart: .*(Miss|Hit|damage)/i.test(log)) throw new Error(`the cast did nothing: ${log.slice(-300)}`);
         await shot(page, `homebrew-solo-cast-${tag}`);
@@ -504,13 +516,17 @@ async function solo(browser, url, label0, opts, tag) {
         await panelTab(page, 'spells');
         await page.waitForSelector(rowOf('spells', 'Ember Dart'), { state: 'visible', timeout: 8000 });
         // the engine, with the overlay the page installed from storage, still takes the cast (asked on a copy, as `spawnNear` asks about a spawn)
-        const cast = await page.evaluate(async ([v]) => {
+        const { spots } = await spotsFor(page, 'goblin-warrior', { near: ven, min: 2, sightFrom: ven, range: 40 });
+        if (!spots.length) throw new Error('no hex near Ven takes a foe');
+        const cast = await page.evaluate(async ([v, at]) => {
           const { apply } = await import('./shared/engine.js');
-          const S = structuredClone({ ...window.hextable.state, timeline: [] });
-          const foe = Object.values(S.entities).find((e) => e.name === 'Target');
-          const r = apply(S, { type: 'cast', actor: v, spell: 'hb-sample-ember-dart', targets: [foe.id] }, { role: 'dm', userId: 'local' });
-          return { ok: r.ok, error: r.error, types: (r.events ?? []).map((e) => e.type) };
-        }, [ven]);
+          const S = structuredClone({ ...window.hextable.state, timeline: [] }), DM = { role: 'dm', userId: 'local' };
+          if (S.encounter) apply(S, { type: 'endEncounter' }, DM);                    // Ven used her action this turn before the reload: ask outside the fight
+          const sp = apply(S, { type: 'spawn', monster: 'goblin-warrior', at, name: 'Second' }, DM);
+          if (!sp.ok) return { ok: false, error: sp.error };
+          const r = apply(S, { type: 'cast', actor: v, spell: 'hb-sample-ember-dart', targets: [sp.events.find((x) => x.type === 'spawned').id] }, DM);
+          return { ok: r.ok, error: r.error };
+        }, [ven, spots[0]]);
         if (!cast.ok) throw new Error(`the cast was refused after the reload: ${cast.error}`);
         await shot(page, `homebrew-solo-reload-${tag}`);
       });
@@ -543,10 +559,9 @@ async function solo(browser, url, label0, opts, tag) {
         await reload();
         const sum = await summary();
         if (!/could not be loaded/.test(sum)) throw new Error(`${name}: the summary says nothing: ${sum}`);
-        const t = await dropped();
+        const t = await dropped(`homebrew-solo-${name}-${tag}`);
         if (!want.test(t)) throw new Error(`${name}: the reason is not given: ${t.slice(0, 300)}`);
         if (await page.evaluate(() => window.hextable.state.packs.length || window.hextable.packs.installed)) throw new Error(`${name}: a pack was used`);
-        await shot(page, `homebrew-solo-${name}-${tag}`);
         return t;
       };
       await run.do('stored packs that are nonsense: the game opens and says what was dropped', async () => {
@@ -572,10 +587,9 @@ async function solo(browser, url, label0, opts, tag) {
         await reload();
         const sum = await summary();
         if (!/could not be loaded/.test(sum)) throw new Error(sum);
-        const t = await dropped();
+        const t = await dropped(`homebrew-solo-lost-${tag}`);
         if (!/sample.*no longer has it, so the game opens without it/.test(t.replace(/\s+/g, ' '))) throw new Error(t.slice(0, 300));
         if (await page.evaluate(() => window.hextable.state.packs.length)) throw new Error('the game still names the pack');
-        await shot(page, `homebrew-solo-lost-${tag}`);
       });
     } finally { await ctx.close(); }
   });
@@ -584,6 +598,7 @@ async function solo(browser, url, label0, opts, tag) {
 export default async function (browser, url) {
   await solo(browser, url, 'homebrew solo: on a phone, with touch', PHONE, 'phone');
   await solo(browser, url, 'homebrew solo: at desktop size', DESKTOP, 'desktop');
+  if (process.env.HB_SOLO_ONLY) return;
   await table(browser, url, 'homebrew: the DM at desktop size, a phone player', DESKTOP, PHONE, 'desktop');
   await table(browser, url, 'homebrew: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
 }

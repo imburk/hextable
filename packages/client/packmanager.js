@@ -462,7 +462,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   return {
     attach(t) {
       store.clear();
-      t.on.packs = (m) => { store.packs(m); soloNotice(m); };
+      t.on.packs = (m) => { store.packs(m); summary(); if (open) render(); soloNotice(m); };     // the list, or only what was dropped, may have changed without the overlay changing
       t.on.packData = (m) => { if (store.packData(m)) t.flushUpdates?.(); };
       t.holdUpdates = () => store.waiting();
       section(); toldDrops = '';
