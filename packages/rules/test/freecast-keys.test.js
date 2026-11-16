@@ -202,3 +202,65 @@ test("freeCast types: undo, redo and replay are exact", () => {
   for (const a of done) ok(apply(again, a, DM));
   assert.equal(json(again), states.at(-1));
 });
+
+// ---------- ends ----------
+test("freeCast ends: a list of masterDies and/or longRest, no repeats, only on a freeCast of named spells", () => {
+  assert.deepEqual(lint({ ...BASE, ends: ["longRest"] }), []);
+  assert.deepEqual(lint({ ...BASE, ends: ["masterDies", "longRest"] }), []);
+  for (const bad of [[], "longRest", ["shortRest"], ["longRest", "longRest"], ["masterDies", "longRest", "masterDies"], null, [1]])
+    assert.ok(lint({ ...BASE, ends: bad }).length > 0, `refused: ${json(bad)}`);
+  assert.ok(lint({ list: "wizard", maxLevel: 1, ends: ["longRest"] }).length > 0);
+  assert.deepEqual(lintStrict({ ...BASE, ends: ["longRest"] }), []);
+  assert.ok(lintStrict({ ...BASE, ends: "longRest" }).some((m) => /ends/.test(m)));
+  assert.ok(lintStrict({ ...BASE, ends: ["masterDies", "longRest", "x"] }).length > 0);
+});
+
+test("freeCast ends, across the pack: the spell must have a summon step with a bond", () => {
+  const withEnds = (spells) => {
+    const doc = structuredClone(PACKS[0]);
+    const f = doc.classes.find((c) => c.id === "warlock").features.find((x) => x.id === "eldritch-invocations").options.find((o) => o.id === "pact-of-the-chain");
+    f.grants.freeCast = { ...f.grants.freeCast, spells, ends: ["longRest"] };
+    return lintPack(doc);
+  };
+  assert.deepEqual(withEnds(["find-familiar"]), []);
+  assert.ok(withEnds(["hex"]).some((m) => /summon step that has a bond/.test(m)));
+});
+
+const longRest = (s) => { s.entities.mor.feats.find((f) => f.id === PACT).freeCast.ends = ["longRest"]; return s; };
+test("freeCast ends: the bond the cast makes ends at the caster's Long Rest, on the map or in the pocket; a slot cast does not add it", () => {
+  const s = longRest(pactField()), mor = s.entities.mor;
+  const id = ok(apply(s, pactCast(s, "owl"), PAT)).events.find((e) => e.type === "summoned").id;
+  assert.deepEqual(s.entities[id].bond.ends, ["longRest"]);
+  const r = ok(apply(s, { type: "rest" }, DM));
+  assert.ok(r.events.some((e) => e.type === "vanished" && e.id === id && e.why === "rest"));
+  assert.equal(s.entities[id], undefined);
+  // In the pocket.
+  const t = longRest(pactField());
+  const id2 = ok(apply(t, pactCast(t, "imp"), PAT)).events.find((e) => e.type === "summoned").id;
+  ok(apply(t, { type: "dismiss", actor: "mor", id: id2 }, PAT));
+  assert.ok(t.entities.mor.pocket?.[id2], "in the pocket");
+  const r2 = ok(apply(t, { type: "rest" }, DM));
+  assert.ok(r2.events.some((e) => e.type === "vanished" && e.id === id2 && e.pocket === true));
+  assert.equal(t.entities.mor.pocket?.[id2], undefined);
+  // A new casting by a slot reforms it with the spell's own endings; a Short Rest does not end the pact one.
+  const u = longRest(pactField()), m = u.entities.mor, lvl = Object.keys(m.slots).find((k) => m.slots[k] > 0);
+  const id3 = ok(apply(u, pactCast(u, "owl"), PAT)).events.find((e) => e.type === "summoned").id;
+  ok(apply(u, { type: "shortRest" }, DM));
+  assert.ok(u.entities[id3], "a Short Rest leaves it");
+  ok(apply(u, { type: "cast", actor: "mor", spell: "find-familiar", slot: +lvl, summon: { form: "cat", type: "fey" } }, PAT));
+  assert.deepEqual(familiars(u)[0].bond.ends, []);
+  assert.equal(CONTENT.spells["find-familiar"].effects[0].bond.ends, undefined, "the spell's data is untouched");
+});
+
+test("freeCast ends: undo, redo and replay are exact", () => {
+  const build = () => longRest(pactField());
+  const s = build(), h = createHistory({ limit: 50 }), states = [json(s)], done = [];
+  const play = (a) => { const before = mark(s), r = ok(apply(s, a, DM)); h.record(before, s, describeStep(a, r.events, before, s)); done.push(a); states.push(json(s)); };
+  play({ type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "owl", type: "fey", at: [near(s, "mor")] } });
+  play({ type: "rest" });
+  for (let i = done.length - 1; i >= 0; i--) { h.undo(s); assert.equal(json(s), states[i], `undo ${i}`); }
+  for (let i = 1; i <= done.length; i++) { h.redo(s); assert.equal(json(s), states[i], `redo ${i}`); }
+  const again = build();
+  for (const a of done) ok(apply(again, a, DM));
+  assert.equal(json(again), states.at(-1));
+});

@@ -568,6 +568,9 @@ function castSpell(s, a, ctx, ev, item) {
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
     const healMod = item ? item.healMod : mod(e.abil[castAbilOf(e, sp.id)] ?? 10);
     if (pick) chooseIn(steps, pick.of, a.choice);
+    // `freeCast.ends` (Wild Companion: a Long Rest; docs/specs/companions.md, C9b): more endings on the bond this cast makes,
+    // put on this cast's own copy of the steps, so the spell's data and any other cast of it are unchanged.
+    if (via?.freeCast.ends) walkSteps(steps, (x) => { if ('summon' in x && x.bond) x.bond.ends = [...new Set([...(x.bond.ends ?? []), ...via.freeCast.ends])]; });
     // Repelling Blast: a hit with the spell's attack pushes a Large or smaller target so many feet away.
     if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
