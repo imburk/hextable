@@ -889,6 +889,43 @@ What was settled while building `content/registry.js`:
   reads `CONTENT`, `SPELLS`, `MONSTERS`, `MONSTER_ACTIONS` or `PREGENS` outside any function; the eight known lines
   are listed.
 
+## Build notes: B3, the reader for spells (#382)
+
+What was settled while building `content/reader.js`:
+
+- **The reading is read from the engine, not from the linter.** Each sentence was written against what
+  `effects.js` `run`, `engine/casting.js` (the cast handler), `rolls.js` (`condition`, `modifier`, `boundEffect`),
+  `durations.js` and `zones.js` do with a field, and the reading says so where that is not what the field seems to
+  promise. Found that way, and said in the reading (and in `docs/DEBT.md`, T32): a spell area's `types` is applied to
+  no one; `fall: "surface"` deals no damage; with `half` and failure steps, success steps never run and a success runs
+  the failure steps at half (damage halved, nothing else); a modifier in a spell that does not last is the DM's; a
+  condition's ending is kept only if the spell makes a lasting effect (an instant one makes one only for a step that
+  ends on a turn or a save, so `ends: { on: "damaged" }` alone is dropped); `set`, `reveal` of an object, `resource`
+  and a `counter` outside a reaction to a cast go to the DM; a step `when` tag the judge has no test for
+  (`long.range`, `target.seesSource`) asks the DM each time, and a modifier that needs one never applies.
+- **Shape of the answer.** `{ kind, title, tier, lines, doesNot, numbers, text, problems, hash }`. Decision 6 named
+  the first six and `hash`; `text` is the author's description, capped and on its own; `problems` is what the reader
+  could not read (wrong types, unknown keys, too big). It is empty for every SRD spell. Nested steps are indented two
+  spaces a level in `lines`. Ember Burst reads with Decision 6's six sentences in order, with lines for components,
+  spell lists, sorting, placement, the shared roll and the DC between them.
+- **`numbers`** is `{ at, value, unit }`, `at` a path into the entry (`effects.0.onFail.0.damage`); the character
+  levels that key `higher.level` and `higher.targets` are `higher.level.5:key`. A test finds every number in each SRD
+  spell without the reader and requires the two lists equal, and each number (but a 1 or a cantrip's level 0) to be
+  said in the lines.
+- **Bounded.** The input is first copied once inside a `try`: own string keys only, no `__proto__`, `constructor` or
+  `prototype`, no function, depth 24, 5,000 nodes, strings 4,000 characters; past the depth or node limit the
+  answer is one line and `hash: null`. Author text is cleaned of control characters and capped (title 80, a quoted
+  manual step 600, `text` 2,000), and `lines` stop at 400. `hash` is SHA-256 of the copy's canonical JSON (keys
+  sorted), done in the module (the rules package runs in the browser, so no `crypto` import).
+- **Words for every list.** The reader exports one table of words per closed list (`STEP_SENTENCES`, `AREA_WORDS`,
+  `HOOK_WORDS`, `OP_WORDS`, `TAG_WORDS`, ...); a test holds each equal to its list in `schema.js`, so a new step,
+  branch, shape, hook, op, tag, trigger or casting time fails until it has words. `ends.on` and `zone.on` are written
+  inline in `schema.js`; the test reads the source for them. Golden text for 32 invented spells, which together use
+  every step, branch, shape, hook, op, tag, ending, zone trigger and casting time, is in
+  `packages/rules/test/reader-golden.txt` (`READER_GOLDEN=update` regenerates it).
+- **Not read:** the `source` string (a homebrew one is the author's), so no publisher or product name can come from
+  the reader's own words. Only spells: `readEntry` answers other kinds with one line saying so (B13).
+
 ## Risks
 
 - **The scoped registry is a workaround, not a design.** It is the cheapest way
