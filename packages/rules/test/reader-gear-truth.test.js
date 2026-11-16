@@ -88,7 +88,7 @@ test('weapons: a thrown attack, a versatile attack, and a Shield on the sheet', 
   assert.deepEqual(Object.keys(attacksOf(fighter({ weapons: ['hb-rk-burl-club'] }))).filter((k) => k.startsWith('hb-rk-burl-club')), ['hb-rk-burl-club']);
 }));
 
-test('weapons: the properties the engine only shows as text change nothing it rolls, and the reading hands them to the DM', () => withGear(() => {
+test('weapons: Heavy, Loading, Two-handed and Ammunition leave the attack record as it is (the rule is applied when it is played), and the reading hands the rest to the DM', () => withGear(() => {
   const noop = { heavy: 'hb-rk-fen-axe', loading: 'hb-rk-marsh-crossbow', 'two-handed': 'hb-rk-rook-hammer', ammunition: 'hb-rk-marsh-crossbow' };
   for (const [p, id] of Object.entries(noop)) {
     const w = W[id], without = { ...w, id: `${id}-bare`, properties: w.properties.filter((x) => x !== p) };
@@ -109,9 +109,9 @@ test('weapons: the properties the engine only shows as text change nothing it ro
   }
   for (const m of MASTERIES) assert.ok(readEntry('weapon', { ...base, mastery: m }).doesNot.some((x) => x.includes(m[0].toUpperCase() + m.slice(1))), `${m} is the DM's`);
   assert.match(say('weapon', base), /The engine applies no mastery property to any weapon/);
-  assert.match(say('weapon', base), /It is two-handed unless the wielder is mounted\. The engine reads neither hands nor mounts for it\./);
+  assert.match(say('weapon', base), /It is two-handed unless the wielder is mounted: a wielder who rides a mount may use it with a Shield, and any other wielder with a Shield is refused\./);
   assert.match(say('weapon', base), /The engine uses no weight for anything/);
-  // Two hands and a Shield: nothing stops the sheet.
+  // Two hands and a Shield: the sheet is accepted (the Shield may be put away), and the attack is refused (see below).
   assert.deepEqual(problems(fighter({ weapons: [base.id], shield: true }), /./), [], 'a Two-handed weapon beside a Shield is accepted');
   assert.ok(WEAPON_PROPERTIES.length === 9);
 }));
@@ -159,9 +159,10 @@ test('weapons: a long-range attack, the reach and the refusals, played through a
     assert.equal(roll(arena(bow, 3), bow.id).mode, 'dis');
     assert.equal(roll(arena(bow, 6), bow.id).mode, 'dis');
     assert.equal(attack(arena(bow, 7), bow.id).ok, false);
-    // Loading and Ammunition: two attacks in one action (Extra Attack), no ammunition anywhere.
+    // Loading: one shot to an action, so the second attack Extra Attack gives is refused. Ammunition: none is counted anywhere.
     const s = arena(bow, 4);
-    ok(attack(s, bow.id)); ok(attack(s, bow.id));
+    ok(attack(s, bow.id));
+    const again = attack(s, bow.id); assert.equal(again.ok, false); assert.match(again.error, /is a Loading weapon: it fires one piece of ammunition each time/);
     assert.deepEqual(s.entities.hero.gear ?? [], s.entities.hero.gear ?? [], 'the sheet holds no ammunition');
   });
   // The damage rolled is the weapon's die, and the type is its own.
