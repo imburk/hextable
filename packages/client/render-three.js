@@ -412,7 +412,7 @@ export class ThreeRenderer {
     if (!hex || !this.state) return [];
     return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
   }
-  screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
+  screenOf(hex, up = 0) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y + up, w.z) : null; }       // `up`: drawing units above the floor (a rider's saddle)
   rotate(d) { this.cam.yaw += d; this.#turned(); }
   // The follow camera (docs/specs/keyboard.md): turn, eased, to look along `yaw`; `snap` at once (reduced motion). A manual turn cancels it.
   face(yaw, snap = false) {
