@@ -12,6 +12,8 @@ import { gridOf } from "../src/grid.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { lintPack } from "../src/content/schema.js";
 import { PACKS } from "../src/content/index.js";
+import { viewEvents } from "../src/view.js";
+import { FT, gap } from "../src/space.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -132,3 +134,91 @@ for (const grid of [null, "square"]) {
     assert.equal(json(again), states.at(-1), "replayed, the same");
   });
 }
+
+// ---------- a Long Rest ends a bond with `ends: ['longRest']`, in the pocket too ----------
+// Wild Companion (9205-9211): "the familiar is Fey and disappears when you finish a Long Rest." No pack spell sets
+// `ends: ['longRest']` until Wild Companion is entered, so these tests set it on the familiar's bond by hand, as the
+// C1/C2 tests do. A Long Rest is finished by its master whether the familiar is on the map or in the pocket dimension.
+const wizard = { name: "Ven", class: "wizard", level: 5, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells: ["find-familiar"] };
+function wizTable(grid) {
+  const s = grid ? newGame(5, { grid }) : newGame(5);
+  s.settings.autoEngage = false;
+  const free = spots(s, s.entities.fighter.pos, 2)[0];
+  s.entities.ven = makeEntity(derive(wizard).record, { id: "ven", kind: "pc", side: "party", pos: { ...free, z: 0 } });
+  ok(apply(s, { type: "claim", entity: "ven", user: "pat", userName: "Pat" }, PAT));
+  return s;
+}
+function owl(s, ends) {
+  const at = spots(s, s.entities.ven.pos, 2).filter((h) => gap(s, s.entities.ven.pos, h) * FT <= 10).at(-1);
+  const id = ok(apply(s, { type: "cast", actor: "ven", spell: "find-familiar", slot: 1, summon: { form: "owl", type: "fey", at: [at] } }, PAT)).events.find((e) => e.type === "summoned").id;
+  if (ends) s.entities[id].bond.ends = ends;
+  return id;
+}
+
+for (const grid of [null, "square"]) {
+  test(`a Long Rest takes a familiar bound by it from the pocket dimension, and only that one, and only when its master rests${grid ? " (squares)" : " (hexes)"}`, () => {
+    const s = wizTable(grid), id = owl(s, ["longRest"]);
+    ok(apply(s, { type: "dismiss", actor: "ven", id }, PAT));
+    assert.ok(s.entities.ven.pocket[id], "in the pocket");
+    // A rest the master is not part of leaves it there.
+    ok(apply(s, { type: "rest", ids: ["fighter"] }, DM));
+    assert.ok(s.entities.ven.pocket?.[id], "its master did not rest");
+    // A Short Rest does not end it.
+    ok(apply(s, { type: "shortRest" }, DM));
+    assert.ok(s.entities.ven.pocket?.[id], "a Short Rest is not a Long Rest");
+    const r = ok(apply(s, { type: "rest" }, DM));
+    assert.equal(s.entities.ven.pocket, undefined, "gone from the pocket, and an empty pocket leaves no field");
+    assert.equal(s.entities[id], undefined, "and not on the map");
+    const v = r.events.find((e) => e.type === "vanished" && e.id === id);
+    assert.deepEqual(v, { type: "vanished", id, name: v.name, why: "rest", seen: true, party: true, pocket: true });
+    assert.ok(viewEvents(r.events, s, PAT).some((e) => e.type === "vanished" && e.id === id && e.why === "rest"), "the party is told");
+    // A familiar with no such end stays in its pocket through the Long Rest, with its Hit Points as they were.
+    const t = wizTable(grid), keep = owl(t);
+    t.entities[keep].hp = 1;
+    ok(apply(t, { type: "dismiss", actor: "ven", id: keep }, PAT));
+    ok(apply(t, { type: "rest" }, DM));
+    assert.equal(t.entities.ven.pocket[keep].hp, 1, "Find Familiar's own familiar is not bound to a rest");
+  });
+
+  test(`a Long Rest takes a bound familiar on the map as before; a recalled one is not left over${grid ? " (squares)" : " (hexes)"}`, () => {
+    const s = wizTable(grid), id = owl(s, ["longRest"]);
+    const r = ok(apply(s, { type: "rest" }, DM));
+    assert.equal(s.entities[id], undefined);
+    assert.ok(r.events.some((e) => e.type === "vanished" && e.id === id && e.why === "rest" && !e.pocket));
+    const t = wizTable(grid), back = owl(t, ["longRest"]);
+    ok(apply(t, { type: "dismiss", actor: "ven", id: back }, PAT));
+    ok(apply(t, { type: "recall", actor: "ven", id: back, at: { ...spots(t, t.entities.ven.pos, 2).find((h) => gap(t, t.entities.ven.pos, h) * FT <= 30) } }, PAT));
+    assert.ok(t.entities[back], "recalled");
+    ok(apply(t, { type: "rest" }, DM));
+    assert.equal(t.entities[back], undefined); assert.equal(t.entities.ven.pocket, undefined);
+  });
+
+  test(`a Long Rest that ends a pocketed familiar: undo, redo and replay are exact${grid ? " (squares)" : " (hexes)"}`, () => {
+    const build = () => { const s = wizTable(grid); owl(s, ["longRest"]); return s; };
+    const s = build(), id = Object.values(s.entities).find((e) => e.bond)?.id, h = createHistory({ limit: 50 }), states = [json(s)], done = [];
+    const play = (a, ctx = DM) => { const before = mark(s), r = ok(apply(s, a, ctx)); h.record(before, s, describeStep(a, r.events, before, s)); done.push([a, ctx]); states.push(json(s)); };
+    play({ type: "dismiss", actor: "ven", id }, PAT);
+    play({ type: "rest" });
+    for (let i = done.length - 1; i >= 0; i--) { h.undo(s); assert.equal(json(s), states[i], `undo ${i}`); }
+    for (let i = 1; i <= done.length; i++) { h.redo(s); assert.equal(json(s), states[i], `redo ${i}`); }
+    const again = build();
+    for (const [a, c] of done) ok(apply(again, a, c));
+    assert.equal(json(again), states.at(-1), "replayed, the same");
+  });
+}
+
+test("a Long Rest by a foe master with a bound familiar in its pocket tells the party nothing", () => {
+  const s = newGame(5);
+  s.settings.autoEngage = false;
+  const mage = ok(apply(s, { type: "spawn", monster: "mage", at: spots(s, s.entities.fighter.pos, 5)[2] }, DM)).events.find((e) => e.type === "spawned").id;
+  const owlId = ok(apply(s, { type: "spawn", monster: "owl", at: spots(s, s.entities[mage].pos, 2)[0] }, DM)).events.find((e) => e.type === "spawned").id;
+  ok(apply(s, { type: "bond", actor: owlId, to: mage, kind: "familiar" }, DM));
+  s.entities[owlId].bond.source = "find-familiar"; s.entities[owlId].bond.ends = ["longRest"];
+  ok(apply(s, { type: "dismiss", actor: mage, id: owlId }, DM));
+  assert.ok(s.entities[mage].pocket[owlId]);
+  const r = ok(apply(s, { type: "rest", ids: [mage] }, DM));
+  assert.equal(s.entities[mage].pocket, undefined);
+  const ev = r.events.find((e) => e.type === "vanished" && e.id === owlId);
+  assert.ok(ev && !ev.seen && !ev.party, "not marked for players");
+  assert.equal(viewEvents(r.events, s, PAT).some((e) => e.type === "vanished" && e.id === owlId), false);
+});
