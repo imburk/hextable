@@ -854,7 +854,8 @@ function saveSentence({ st, at, depth, Who, say }) {
     && Object.keys(x).every((k) => ['damage', 'type'].includes(k)));
   if (simple) {
     fail.forEach((x, i) => this.num(`${at}.onFail.${i}.damage`, x.damage, 'dice'));
-    this.line(`On a failure it takes ${list(fail.map((x) => `${x.damage} ${x.type === 'chosen' ? 'damage of the chosen type' : `${x.type} damage`}`))}; on a success, half.${st.save === 'dex' ? ' A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.' : ''}`, depth);
+    this.line(`On a failure it takes ${list(fail.map((x) => `${x.damage} ${x.type === 'chosen' ? 'damage of the chosen type' : `${x.type} damage`}`))}; on a success, half.`, depth);
+    if (st.save === 'dex') this.line('A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.', depth);
     return;
   }
   if (half && st.save === 'dex') this.line('A creature with Evasion (and not Incapacitated) takes none of that damage on a success and half of it on a failure; whatever else a failure does still happens.', depth);

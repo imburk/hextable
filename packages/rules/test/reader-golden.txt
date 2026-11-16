@@ -4,7 +4,8 @@ Components: Verbal, Somatic and Material (speaking it gives away a hidden caster
 On the spell lists of: wizard.
 Sorted under: damage.
 Each creature in a 20-foot sphere makes a Dexterity saving throw.
-On a failure it takes 8d6 fire damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+On a failure it takes 8d6 fire damage; on a success, half.
+A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 The sphere is centred on a point the caster picks within 150 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
 Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
 Saving throws are against the caster's spell save DC.
@@ -328,7 +329,8 @@ Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
 Each creature in a cylinder 20 feet in radius and 40 feet high makes a Dexterity saving throw.
-On a failure it takes 2d10 bludgeoning damage and 4d6 cold damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+On a failure it takes 2d10 bludgeoning damage and 4d6 cold damage; on a success, half.
+A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 The cylinder is centred on a point the caster picks within 300 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
 Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
 Saving throws are against the caster's spell save DC.
@@ -386,7 +388,8 @@ On the spell lists of: wizard.
 Sorted under: damage.
 The engine cannot lay out this area (the caster arranges 10 of these shapes), so it has nobody to apply the steps to: it hands each step below to the DM.
 Each creature affected makes a Dexterity saving throw.
-On a failure it takes 7d10 fire damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+On a failure it takes 7d10 fire damage; on a success, half.
+A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 The area is 10 of a 10-foot cube, arranged by the caster; the DM decides who is caught.
 Saving throws are against the caster's spell save DC.
 It is instant: nothing it does is kept as a lasting effect.
@@ -494,7 +497,8 @@ On the spell lists of: wizard.
 Sorted under: damage and utility.
 It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask; the default is never, so nothing happens until the player sets it), when a hostile creature the caster can see within the spell's range damages the caster; it is aimed at that creature.
 One creature within 60 feet makes a Dexterity saving throw.
-On a failure it takes 2d10 fire damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+On a failure it takes 2d10 fire damage; on a success, half.
+A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 It has the Invisible condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   Nothing in the engine ends it: the DM removes it.
   The engine applies part of what Invisible does; the DM applies the rest.
