@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import * as INDEX from "../src/content/index.js";
 import { CONTENT, HOMEBREW_LOOKUPS, MONSTER_ACTIONS, MONSTERS, SPELLS } from "../src/content/index.js";
-import { HOMEBREW_KINDS, installed, loadPack, overlayOf, PackError, using } from "../src/content/registry.js";
+import { HOMEBREW_KINDS, install, installed, loadPack, overlayOf, PackError, uninstall, using } from "../src/content/registry.js";
 import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
@@ -274,4 +274,93 @@ test("barriers() never gives back an answer from across an overlay or from a cha
   assert.ok(x.inside.length < x.outside.length / 10, "walled in by its doors inside the overlay");
   assert.equal(x.inside, y.inside, "inside, the same whichever was asked first");
   assert.equal(x.outside, y.outside, "outside, the same whichever was asked first");
+});
+
+// ---------- an overlay kept installed: install and uninstall (B7, the page) ----------
+test("install puts the ids in and uninstall takes them out, leaving the lookups exactly as they were", () => {
+  const a = overlayOf([loaded(EMBER)]);
+  install(a);
+  assert.equal(installed(), a);
+  assert.equal(SPELLS[LASH].name, "Cinder Lash");
+  assert.ok(MONSTERS[CINDER] && CONTENT.spells[LASH]);
+  uninstall(a);
+  assert.equal(installed(), null);
+  assert.equal(SPELLS[LASH], undefined);
+  unchanged();
+  install(a); uninstall(a); unchanged();              // and again
+});
+
+test("a second install is refused, the same overlay or another, and changes nothing", () => {
+  const a = overlayOf([loaded(EMBER)]), b = overlayOf([loaded(FROST)]);
+  install(a);
+  try {
+    assert.throws(() => install(a), /already installed/);
+    assert.throws(() => install(b), /uninstall it first/);
+    assert.equal(installed(), a);
+    assert.ok(SPELLS[LASH]); assert.equal(SPELLS[RIME], undefined);
+  } finally { uninstall(a); }
+  unchanged();
+  install(b); assert.ok(SPELLS[RIME]); assert.equal(SPELLS[LASH], undefined); uninstall(b); unchanged();
+});
+
+test("install and uninstall refuse what is not an overlay, and uninstall refuses the wrong one or one nobody installed", () => {
+  const a = overlayOf([loaded(EMBER)]), b = overlayOf([loaded(FROST)]);
+  assert.throws(() => install({}), /not an overlay/);
+  assert.throws(() => uninstall({}), /not an overlay/);
+  assert.throws(() => uninstall(a), /not the one installed/);
+  install(a);
+  try { assert.throws(() => uninstall(b), /not the one installed/); assert.ok(SPELLS[LASH]); } finally { uninstall(a); }
+  assert.throws(() => uninstall(a), /not the one installed/);
+  // an overlay that using installed is not install's to take out
+  using(a, () => assert.throws(() => uninstall(a), /not the one installed/));
+  unchanged();
+});
+
+test("using while an overlay is installed: the same overlay runs as a no-op re-entry and leaves it installed, another is refused", () => {
+  const a = overlayOf([loaded(EMBER)]), b = overlayOf([loaded(FROST)]);
+  install(a);
+  try {
+    assert.equal(using(a, () => SPELLS[LASH].name), "Cinder Lash");
+    assert.ok(SPELLS[LASH], "the ids stay after using returns");
+    assert.throws(() => using(b, () => 1), /do not nest/);
+    assert.equal(installed(), a);
+  } finally { uninstall(a); }
+  unchanged();
+  assert.equal(using(b, () => SPELLS[RIME].name), "Rime Bolt", "after uninstall, using works for any overlay again");
+  unchanged();
+});
+
+test("an id already in a lookup refuses install, and nothing is left behind", () => {
+  const a = overlayOf([loaded(EMBER)]);
+  install(a);
+  const same = overlayOf([loaded(EMBER)]);           // built while `a` is installed, so its ids are not refused as clashes
+  uninstall(a);
+  SPELLS[LASH] = { id: "planted" };
+  try {
+    assert.throws(() => install(same), /already in the rules/);
+    assert.equal(installed(), null);
+    assert.equal(MONSTERS[CINDER], undefined, "no other id of the overlay was left in");
+  } finally { delete SPELLS[LASH]; }
+  unchanged();
+});
+
+test("a key written into a lookup while installed is reported by uninstall, and the lookups are put back", () => {
+  const a = overlayOf([loaded(EMBER)]);
+  install(a);
+  SPELLS["stray-key"] = { id: "stray-key" };
+  assert.throws(() => uninstall(a), /changed while installed/);
+  assert.equal(installed(), null);
+  assert.equal(SPELLS["stray-key"], undefined);
+  unchanged();
+});
+
+test("a game plays through install as it does through using: a homebrew spell cast while installed resolves, and replays the same", () => {
+  const a = overlayOf([loaded(EMBER)]);
+  const run = () => { const { s, goblin } = duel([LASH]); const r = apply(s, { type: "cast", actor: "wizard", spell: LASH, at: undefined, targets: [goblin] }, DM); return { ok: r.ok, error: r.error, state: JSON.stringify(s) }; };
+  const viaUsing = using(a, run);
+  install(a);
+  let kept; try { kept = run(); } finally { uninstall(a); }
+  assert.equal(kept.ok, viaUsing.ok, kept.error);
+  assert.equal(kept.state, viaUsing.state);
+  unchanged();
 });

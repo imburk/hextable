@@ -29,6 +29,7 @@ import { localTransport, serverTransport, savedSession, hasSoloGame, forgetSessi
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
+import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
 import { initClasses, formOf, formName } from './classes.js';
@@ -682,7 +683,7 @@ function renderSheet() {
       ${e.attacks.map((a) => `<tr><td>${esc(a.name)}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${a.dtype}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`).join('')}</table></section>`}
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${sp.name}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
+      ${e.spells.map((id) => { const sp = SPELLS[id]; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
     ${featuresHtml(e, mine(e))}
     ${mine(e) ? pocketHtml(e) : ''}
     ${mine(e) ? reactionsHtml(S, e) : ''}
@@ -691,6 +692,7 @@ function renderSheet() {
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
+  for (const b of $('sheet-body').querySelectorAll('[data-hb]')) b.onclick = () => PK.reading(b.dataset.hb);
   for (const b of $('sheet-body').querySelectorAll('[data-skill]')) b.onclick = () => act({ type: 'check', actor: e.id, skill: b.dataset.skill });
 }
 
@@ -995,7 +997,7 @@ const LEAVE_NOTE = 'Leaving forgets this table on this device.';
 const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
 function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
 function reallyLeave() {
-  TL.skip(); T.leave?.(); T = null; S = null; SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
+  TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
   $('btn-leave').hidden = $('btn-undo').hidden = true; $('menu-session').hidden = true;
@@ -1008,11 +1010,16 @@ $('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
-for (const [id, m] of Object.entries(MONSTERS)) {
-  const b = document.createElement('button'); b.type = 'button'; b.textContent = `Add ${m.name}`;
-  b.onclick = () => { closeDM(); setMode({ kind: 'spawn', monster: id }); };
-  $('dm-spawn').append(b);
+// The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
+// A player's page is never given one, and the DM's drawer is not theirs.
+function buildSpawn() {
+  $('dm-spawn').replaceChildren(...Object.entries(MONSTERS).map(([id, m]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = `Add ${m.name}`; b.dataset.monster = id;
+    b.onclick = () => { closeDM(); setMode({ kind: 'spawn', monster: id }); };
+    return b;
+  }));
 }
+buildSpawn();
 for (const b of document.querySelectorAll('[data-time]')) b.onclick = () => act({ type: 'advanceTime', minutes: +b.dataset.time });
 $('dm-chron').onsubmit = (ev) => { ev.preventDefault(); const t = $('chron-title').value.trim(); if (t) { act({ type: 'chronicle', title: t }); $('chron-title').value = ''; } };
 addEventListener('keydown', (ev) => {
@@ -1071,6 +1078,13 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) KB.re
 setInterval(() => KB.tick(), 30);
 
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
+// Homebrew packs (packmanager.js): kept installed while a table is open. When they change, what names a pack's entry is dropped or drawn again.
+const PK = initPacks({ transport: () => T, isDM, toast, changed: () => {
+  buildSpawn();
+  if (mode.kind === 'spawn' && !MONSTERS[mode.monster]) mode = MOVE;
+  if (mode.kind === 'spell' && !SPELLS[mode.id]) mode = MOVE;
+  if (S) refresh();
+} });
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });
@@ -1104,7 +1118,7 @@ const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { d
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; }, get keys() { return KB; } /* the keyboard walker, for the smoke pass */ };
+window.hextable = { get packs() { return PK.peek(); }, R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; }, get keys() { return KB; } /* the keyboard walker, for the smoke pass */ };
 
 // ---------- the splash ----------
 // The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to
@@ -1123,6 +1137,7 @@ function start(transport, map = null) {
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
   T = transport; S = null;
+  PK.attach(T);                 // the table's homebrew packs: kept while this table is open (packmanager.js)
   $('splash-text').textContent = T.solo ? 'Opening your game\u2026' : 'Connecting to the table\u2026';
   lobbyBusy(!T.solo);
   T.on.update = received;
@@ -1132,7 +1147,7 @@ function start(transport, map = null) {
     flick = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
-    if (expired) { TL.skip(); S = null; lobbyBusy(false); showLobby(msg); }
+    if (expired) { TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (render.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);
       if (lastMove && Date.now() - lastMove.at < 4000) window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: lastMove.hex }));
