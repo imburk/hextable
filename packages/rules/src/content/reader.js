@@ -2394,12 +2394,12 @@ export const MASTERY_WORDS = {
 export const WEAPON_PROPERTY_WORDS = {
   ammunition: { say: (w) => `Ammunition${typeof w.ammo === 'string' ? ` (${qt(w.ammo, 30)})` : ''}: the engine neither requires nor spends ammunition: every attack is allowed, however many it makes.`, dm: 'Counting and spending its ammunition.' },
   finesse: { say: () => 'Finesse: the wielder uses the better of Strength and Dexterity (Strength on a tie) for the attack roll and the damage roll. A Sneak Attack may be made with it.' },
-  heavy: { say: () => 'Heavy: the engine does nothing with this property.', dm: 'Any penalty a Heavy weapon puts on a small wielder.' },
+  heavy: { say: (w) => `Heavy: a built character has Disadvantage on attack rolls with it while ${w.kind === 'ranged' ? 'its Dexterity is under 13 (it is a Ranged weapon)' : w.kind === 'melee' ? 'its Strength is under 13 (it is a Melee weapon)' : 'the score for its kind (Strength for Melee, Dexterity for Ranged) is under 13'}. A monster's own stat-block attack is not held to it.`, dm: 'Heavy for a creature whose attacks come from a stat block, and for a property a magic item adds.' },
   light: { say: () => 'Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.' },
-  loading: { say: () => 'Loading: the engine does not limit how many times it attacks in one action.', dm: 'Holding a Loading weapon to one attack per action.' },
+  loading: { say: () => 'Loading: it fires once each time an action or Bonus Action is used for it, however many attacks Extra Attack gives; a second shot in the same action is refused with a sentence and nothing is spent, and it fires again in a new action or on the next turn. A monster\'s own stat-block attack is not held to it.', dm: 'Loading for a creature whose attacks come from a stat block (its Multiattack is as printed).' },
   reach: { say: () => 'Reach: it reaches 10 feet instead of 5.' },
   thrown: { say: (w) => w.kind === 'ranged' ? 'Thrown: it is already a ranged weapon, so the property adds nothing: the engine makes no second attack of it.' : `Thrown: the wielder may instead throw it, as a ranged attack with the same attack bonus and the same damage (not the versatile damage). It is rolled normally up to ${Array.isArray(w.range) && isInt(w.range[0]) ? w.range[0] : '?'} feet, has Disadvantage up to ${Array.isArray(w.range) && isInt(w.range[1]) ? w.range[1] : '?'} feet, and a target farther off is refused. An enemy within 5 feet who can see the thrower also gives Disadvantage.` },
-  'two-handed': { say: () => 'Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.', dm: 'Whether the wielder has both hands free for a Two-handed weapon.' },
+  'two-handed': { say: () => 'Two-handed: a built character whose sheet carries a Shield is refused the attack, as it needs both hands. The sheet does not say what each hand holds, so another weapon in hand is not checked.', dm: 'Whether the wielder\'s other hand holds another weapon, which the sheet does not say.' },
   versatile: { say: () => 'Versatile: it has a two-handed damage, said above.' },
 };
 const abilityWord = (a) => ABILITY_WORDS[a] ?? 'an unreadable ability';
@@ -2504,8 +2504,7 @@ class WeaponReading extends GearReading {
     const v = this.def.twoHandedUnlessMounted;
     if (v === undefined) return;
     if (v !== true) return this.bad('`twoHandedUnlessMounted` is true or left out.');
-    this.line('It is two-handed unless the wielder is mounted. The engine reads neither hands nor mounts for it.');
-    this.dm('Whether a mounted wielder uses it in one hand.');
+    this.line('It is two-handed unless the wielder is mounted: a wielder who rides a mount may use it with a Shield, and any other wielder with a Shield is refused.');
   }
 }
 
