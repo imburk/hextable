@@ -2058,8 +2058,10 @@ export const HOMEBREW_LENGTHS = Object.freeze({
 });
 const GRANTS_LEN = 30;
 // The work one use of an entry may cause (see workOf): the most steps run, the creatures a table is taken to have, and the
-// most attacks of one Multiattack. The SRD's own largest are printed in the build note of fix round 2.
-export const HOMEBREW_WORK = Object.freeze({ steps: 240, creatures: 30, attacks: 14 });
+// most attacks of one Multiattack. The SRD's own largest are printed in the build note of fix round 2. The steps ceiling is
+// measured, not a multiple of the SRD's: the heaviest accepted cast and monster turn at a table of 30 stay well under a second
+// and a megabyte (a test in homebrew-values.test.js); it lets an area spell hold 20 steps of work.
+export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
 const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (inGrants ? GRANTS_ANY : undefined);

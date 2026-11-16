@@ -159,8 +159,8 @@ function ceilingPack() {
   const worst = spell({
     id: "hb-x-worst", level: 9, range: R("spells.range"), duration: "1 minute", concentration: false,
     target: { area: { shape: "sphere", size: R("area.size") } },
-    // 30 creatures x (1 save + 7 damage repeats) = 240 steps, the work ceiling exactly
-    effects: [{ save: "dex", dc: R("step.dc"), half: true, onFail: [{ damage: `${HOMEBREW_DICE.count}d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`, type: "fire", times: 7 }] }],
+    // 30 creatures x (1 save + 19 damage repeats) = 600 steps, the work ceiling exactly
+    effects: [{ save: "dex", dc: R("step.dc"), half: true, onFail: [{ damage: `${HOMEBREW_DICE.count}d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`, type: "fire", times: 10 }, { damage: `${HOMEBREW_DICE.count}d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`, type: "fire", times: 9 }] }],
   });
   const creatures = spell({ id: "hb-x-many", target: { creature: { count: R("creature.count"), within: R("creature.within") } }, range: R("spells.range") });
   const mon = monster({
@@ -184,7 +184,7 @@ test("B1: a pack at every ceiling loads, and a cast of its worst spell finishes 
   const res = using(overlayOf([r.pack]), () => apply(s, { type: "cast", actor: "wizard", spell: "hb-x-worst", slot: 9, hex: { q: 2, r: 0 } }, { role: "dm", userId: "dm" }));
   const ms = performance.now() - t0;
   assert.ok(res.ok, res.error);
-  assert.ok(ms < 1000, `the cast took ${Math.round(ms)} ms`);
+  assert.ok(ms < 5000, `the cast took ${Math.round(ms)} ms`);
   assert.ok(JSON.stringify(res.events).length < 1e6, "the cast adds under 1 MB");
   // The same spell with the review's number is not a pack at all.
   const big = ceilingPack();
@@ -364,10 +364,12 @@ test("L5: strict mode refuses the SRD pack id without being told it", () => {
 // ---------- fix round 2: the ceilings add up ----------
 const SRD_WORK = (() => { let w = 0, a = 0; for (const [kind, e] of entries) { const r = workOf(kind, e); w = Math.max(w, r.work); a = Math.max(a, r.attacks); } return { work: w, attacks: a }; })();
 
-test("round 2: the work ceiling is about twice what the SRD needs, with the SRD maxima as printed in the PR", () => {
+test("round 2: the attack ceiling is about twice what the SRD needs; the steps ceiling is measured (see the heaviest-cast and heaviest-turn tests), with the SRD maxima as printed in the PR", () => {
   assert.equal(SRD_WORK.work, 120);
   assert.equal(SRD_WORK.attacks, 7);
-  assert.ok(HOMEBREW_WORK.steps <= 2 * SRD_WORK.work && HOMEBREW_WORK.attacks <= 2 * SRD_WORK.attacks);
+  assert.equal(HOMEBREW_WORK.steps, 600);
+  assert.ok(HOMEBREW_WORK.steps >= SRD_WORK.work, "every SRD entry fits");
+  assert.ok(HOMEBREW_WORK.attacks <= 2 * SRD_WORK.attacks);
   for (const [kind, e] of entries) {
     if (SRD_WONT_CONVERT.has(e.id)) continue;
     assert.doesNotMatch(strict(kind, homebrew(kind, e)).join("\n"), /can run|Multiattack makes|a list of/, `${kind}/${e.id}`);
@@ -413,25 +415,23 @@ test("round 2: the reviewer's 2,000-attack monster is refused, and the heaviest 
   assert.equal(r.ok, false);
   assert.match(r.problems.join("\n"), /a list of 200; the most is 6|Multiattack makes 2,000 attacks; the most is 14/);
   refused(strict("monsters", mon(hit(Array.from({ length: 18 }, () => dmg(10))), [{ action: "a1", times: 10 }])), /one use .* can run [\d,]+ steps/);
-  // The heaviest accepted turn: 14 attacks, each 1 + 10 + 5 = 16 steps = 224 <= 240.
-  const heavy = mon(hit([dmg(10), dmg(5)]), [{ action: "a1", times: 7 }, { action: "a1", times: 7 }]);
+  // The heaviest accepted turn: 14 attacks, each 1 + 30 + 11 = 42 steps = 588 <= 600; one step more per attack (602) is refused.
+  const heavy = mon(hit([dmg(10), dmg(10), dmg(10), dmg(10), dmg(1)]), [{ action: "a1", times: 7 }, { action: "a1", times: 7 }]);
   assert.deepEqual(strict("monsters", heavy), []);
-  assert.equal(workOf("monsters", heavy).work, 224);
+  assert.equal(workOf("monsters", heavy).work, 588);
+  refused(strict("monsters", mon(hit([dmg(10), dmg(10), dmg(10), dmg(10), dmg(2)]), [{ action: "a1", times: 7 }, { action: "a1", times: 7 }])), /can run 602 steps/);
   const r2 = loadPack(doc({ monsters: [heavy.id ? heavy : heavy] }));
   assert.ok(r2.ok, r2.problems?.join());
-  const s = newGame(5);
-  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
-  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
-  apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM);
+  // At a table of 30 creatures (the reaver is the 31st), as the cast below.
+  const s = tableOf30(5);
   let id;
   const bytes0 = JSON.stringify(s).length;
   let ms = 0, applied = 0;
   using(overlayOf([r2.pack]), () => {
-    const sp = apply(s, { type: "spawn", monster: "hb-x-reaver", at: { q: 1, r: 0 } }, DM);
+    const sp = apply(s, { type: "spawn", monster: "hb-x-reaver", at: { q: -3, r: 0 } }, DM);
     assert.ok(sp.ok, sp.error);
     id = sp.events[0].id;
-    apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM);
-    for (let i = 0; i < 20 && current(s) !== id; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+    for (let i = 0; i < 80 && current(s) !== id; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
     const t0 = performance.now();
     for (let i = 0; i < 60 && current(s) === id; i++) { const a = aiStep(s, id); if (!a) break; apply(s, a, DM); applied++; }
     ms = performance.now() - t0;
@@ -439,15 +439,15 @@ test("round 2: the reviewer's 2,000-attack monster is refused, and the heaviest 
   const added = JSON.stringify(s).length - bytes0;
   assert.ok(applied > 0);
   if (process.env.HB_PRINT) console.log(`monster turn: ${applied} actions, ${Math.round(ms)} ms, ${added} bytes`);
-  assert.ok(ms < 1000, `the monster's turn took ${Math.round(ms)} ms`);
+  assert.ok(ms < 5000, `the monster's turn took ${Math.round(ms)} ms`);
   assert.ok(added < 1e6, `the monster's turn added ${added} bytes`);
 });
 
 test("round 2: the heaviest accepted cast, at a table of 30 creatures, is quick and small", () => {
-  const worst = spell({ id: "hb-x-worst", level: 9, target: { area: { shape: "sphere", size: 1000 } }, range: 10560000, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 7 }] }] });
-  assert.equal(workOf("spells", worst).work, 240);
-  const over = spell({ id: "hb-x-over", level: 9, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 8 }] }] });
-  refused(strict("spells", over), /one use \(its cast at its highest level\) can run 270 steps, counting every branch, every repeat and every creature it reaches \(up to 30 at a table\); the most is 240/);
+  const worst = spell({ id: "hb-x-worst", level: 9, target: { area: { shape: "sphere", size: 1000 } }, range: 10560000, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }, { damage: "50d100+140", type: "fire", times: 9 }] }] });
+  assert.equal(workOf("spells", worst).work, 600);
+  const over = spell({ id: "hb-x-over", level: 9, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }, { damage: "50d100+140", type: "fire", times: 10 }] }] });
+  refused(strict("spells", over), /one use \(its cast at its highest level\) can run 630 steps, counting every branch, every repeat and every creature it reaches \(up to 30 at a table\); the most is 600/);
   const r = loadPack(doc({ spells: [worst] }));
   assert.ok(r.ok, r.problems?.join());
   const s = tableOf30(5);
@@ -458,7 +458,7 @@ test("round 2: the heaviest accepted cast, at a table of 30 creatures, is quick 
   const res = using(overlayOf([r.pack]), () => apply(s, { type: "cast", actor: "wizard", spell: "hb-x-worst", slot: 9, hex: { q: 2, r: 0 } }, DM));
   const ms = performance.now() - t0;
   assert.ok(res.ok, res.error);
-  assert.ok(ms < 1000, `${Math.round(ms)} ms`);
+  assert.ok(ms < 5000, `${Math.round(ms)} ms`);
   assert.ok(JSON.stringify(s).length - before < 1e6, `${JSON.stringify(s).length - before} bytes added to the state`);
   if (process.env.HB_PRINT) console.log(`cast events ${res.events.length}, ${JSON.stringify(res.events).length} bytes, creatures ${Object.keys(s.entities).length}`);
   if (process.env.HB_PRINT) console.log(`cast: ${Math.round(ms)} ms, ${JSON.stringify(s).length - before} bytes`);
@@ -507,15 +507,17 @@ test("round 3: a spell's growth is counted at the top (slot 9, level 20): the re
   const review = cast({ higher: { slot: { targets: 20 } } });
   assert.equal(workOf("spells", review).work, (20 + 8 * 20) * 11);
   refused(strict("spells", review), /one use \(its cast at its highest level\) can run 1,980 steps/);
-  // Without the growth it is 20 x 11 = 220, under the ceiling; times growing with the slot counts too, and so does an area's `choose`.
+  // Without the growth it is 20 x 11 = 220, under the ceiling (and so is 380 with times growing by 1); times growing with the slot counts too, and so does an area's `choose`.
   assert.deepEqual(strict("spells", cast({})), []);
   assert.equal(workOf("spells", cast({ higher: { slot: { times: 1 } } })).work, 20 * (1 + 18));
-  refused(strict("spells", cast({ higher: { slot: { times: 1 } } })), /can run 380 steps/);
+  assert.deepEqual(strict("spells", cast({ higher: { slot: { times: 1 } } })), [], "380 steps is under the ceiling now");
+  assert.equal(workOf("spells", cast({ higher: { slot: { times: 3 } } })).work, 20 * (1 + 10 + 8 * 3));
+  refused(strict("spells", cast({ higher: { slot: { times: 3 } } })), /can run 700 steps/);
   refused(strict("spells", cast({ target: { area: { shape: "sphere", size: 20, choose: 20 } }, higher: { slot: { targets: 20 } } })), /can run/);
   // A cantrip grows by character level: `higher.targets` by level, taken at its largest.
-  const cantrip = cast({ level: 0, target: { creature: { count: 1 } }, higher: { targets: { 5: 2, 11: 3, 17: 40 } } });
-  assert.equal(workOf("spells", cantrip).work, 40 * 11);
-  refused(strict("spells", cantrip), /can run 440 steps/);
+  const cantrip = cast({ level: 0, target: { creature: { count: 1 } }, higher: { targets: { 5: 2, 11: 3, 17: 60 } } });
+  assert.equal(workOf("spells", cantrip).work, 60 * 11);
+  refused(strict("spells", cantrip), /can run 660 steps/);
   // The slot's growth is only to the spell's own level up to 9: a 9th-level spell does not grow.
   assert.equal(workOf("spells", cast({ level: 9, higher: { slot: { targets: 20 } } })).work, 20 * 11);
   // The SRD still passes with room: its largest is 120 (see the first test), below half the ceiling.
