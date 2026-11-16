@@ -8,6 +8,7 @@ import { able, control, current, ent, fail, featOf, ft, inFight, need, steering,
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
+import { CONTENT } from '../content/index.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
 import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
@@ -147,6 +148,13 @@ function isAttack(def) {
   return hit;
 }
 
+// Loading (SRD "Weapons", Properties): "You can fire only one piece of ammunition from a Loading weapon when you use an action,
+// a Bonus Action, or a Reaction to fire it, regardless of the number of attacks you can normally make." `budget.loaded` lists
+// the Loading attacks fired in this turn's action (`action:<attack id>`) and Bonus Action (`bonus:<attack id>`); a new action
+// clears its own. A Reaction is one a round, so it fires once of itself. Only an attack that names its weapon has the property:
+// a monster's stat-block attack is the creature's own and is not held to it.
+const isLoading = (atk) => typeof atk?.weapon === 'string' && !!CONTENT.weapons[atk.weapon]?.properties?.includes('loading');
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -175,6 +183,8 @@ export const handlers = {
     // (the Monk's Unarmed Strike); then those Extra Attack left; then the Attack action.
     const flurry = b.bonusAttacks?.with === atk.id && b.bonusAttacks.left > 0, bonusTime = !flurry && atk.time === 'bonus';
     const pooled = !flurry && !bonusTime && fromPool(b, atk.id);
+    const slot = flurry || bonusTime ? 'bonus' : 'action';
+    if (isLoading(atk) && (pooled || slot === 'bonus') && b.loaded?.includes(`${slot}:${atk.id}`)) fail(`${atk.name} is a Loading weapon: it fires one piece of ammunition each time ${e.name} uses ${slot === 'bonus' ? 'a Bonus Action' : 'an action'}, however many attacks ${e.name} can make. Attack with something else, or end the turn.`);
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
@@ -185,9 +195,11 @@ export const handlers = {
     else if (pooled) fromPool(b, atk.id, true);
     else {
       b.action--;
+      if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
     }
+    if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
     const from = ev.length;
     resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });

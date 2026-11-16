@@ -126,11 +126,40 @@ test("Light (today, not built): there is no Bonus Action attack with a second Li
   assert.ok(rec.attacks.every((a) => a.time !== "bonus"), "no attack is offered as a Bonus Action");
 });
 
-test("Loading (today): a Loading weapon fires on every attack Extra Attack gives", () => {
+test("Loading: one shot from a Loading weapon for each action, whatever Extra Attack gives (SRD, Properties, Loading)", () => {
+  const s = field(sheet(STRONG, ["light-crossbow", "longsword"]), { gap: 1 });     // Fighter 5: two attacks with the Attack action
+  const shoot = { type: "attack", actor: "hero", target: s.foe, attack: "light-crossbow" };
+  ok(apply(s, shoot, DM));
+  assert.equal(s.encounter.budget.attacks[0][0].left, 1, "the second attack of the action is still there");
+  refused(s, shoot, /Light Crossbow is a Loading weapon: it fires one piece of ammunition each time .* uses an action/);
+  assert.equal(s.encounter.budget.attacks[0][0].left, 1, "and was not spent by the refusal");
+  ok(apply(s, { ...shoot, attack: "longsword" }, DM));             // the other attack of the action goes on another weapon
+  assert.equal(s.encounter.budget.attacks, undefined);
+});
+
+test("Loading: a new action (Action Surge) fires again; the turn after does too", () => {
   const s = field(sheet(STRONG, ["light-crossbow"]), { gap: 3 });
-  ok(swing(s, "light-crossbow"));
-  ok(swing(s, "light-crossbow"));                                   // the second shot of the same action
-  assert.equal(s.encounter.budget.attacks, undefined, "both attacks of the action went on the crossbow");
+  const shoot = { type: "attack", actor: "hero", target: s.foe, attack: "light-crossbow" };
+  ok(apply(s, shoot, DM));
+  delete s.encounter.budget.attacks;                                  // the first action's other attack is used or given up,
+  s.encounter.budget.action = 1;                                      // and a second action comes, as Action Surge gives
+  ok(apply(s, shoot, DM));
+  assert.deepEqual(s.encounter.budget.loaded, ["action:light-crossbow"], "the new action cleared the old mark");
+  refused(s, shoot, /Loading weapon/);
+  ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
+  for (let i = 0; i < 6 && current(s) !== "hero"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  assert.equal(s.encounter.budget.loaded, undefined, "a new turn has a new budget");
+  ok(apply(s, shoot, DM));
+});
+
+test("Loading: a weapon without the property is not held to it, and a refusal is exact under undo, redo and replay", () => {
+  const s = field(sheet(STRONG, ["longbow", "light-crossbow"]), { gap: 3 });
+  const bow = { type: "attack", actor: "hero", target: s.foe, attack: "longbow" };
+  const out = exact(s, [bow, bow, { type: "endTurn", actor: "hero" }]);
+  assert.equal(out[1].find((e) => e.type === "attack").name, "Longbow", "two arrows in one action");
+  const t = field(sheet(STRONG, ["light-crossbow"]), { gap: 3 });
+  const xb = { type: "attack", actor: "hero", target: t.foe, attack: "light-crossbow" };
+  exact(t, [xb, { type: "endTurn", actor: "hero" }]);
 });
 
 test("Range (already right): Disadvantage beyond normal range, refused beyond long range", () => {
