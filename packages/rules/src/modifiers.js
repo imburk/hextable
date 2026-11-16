@@ -153,7 +153,10 @@ export function armourWorn(e) {
     const def = x && typeof x === 'object' ? CONTENT.items[x.item] : null;
     if (def?.wear !== 'armour' || x.equipped !== true || (def.attune && x.attuned !== true)) continue;
     const want = def.base?.armour, pool = CONTENT.armour, ok = (id) => Object.hasOwn(pool, id) && (want === 'any' ? pool[id].category !== 'shield' : Array.isArray(want) && want.includes(id));
-    return x.base !== undefined ? (ok(x.base) ? pool[x.base] : null) : Array.isArray(want) && want.length === 1 ? pool[want[0]] : null;
+    const base = x.base !== undefined ? (ok(x.base) ? pool[x.base] : null) : Array.isArray(want) && want.length === 1 ? pool[want[0]] : null;
+    // Mithral (SRD "Mithral Armor"): the suit has no Stealth Disadvantage.
+    if (base && def.mithral === true && base.stealth !== undefined) { const { stealth, ...rest } = base; return rest; }
+    return base;
   }
   return e.sheet.armour ? CONTENT.armour[e.sheet.armour] ?? null : null;
 }

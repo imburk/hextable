@@ -328,7 +328,7 @@ export function derive(sheet) {
   // costs 10 feet, and features add.
   let speed = sheet.speed ?? 30;
   why.speed = [`${speed} ft`];
-  if (armour?.strength && abil.str < armour.strength) { speed -= 10; why.speed.push(`${armour.name} needs Strength ${armour.strength}: -10 ft`); }
+  if (armour?.strength && !suit?.def.mithral && abil.str < armour.strength) { speed -= 10; why.speed.push(`${armour.name} needs Strength ${armour.strength}: -10 ft`); }
   for (const x of feats) {
     const sp = x.f.grants?.speed;
     if (!sp) continue;

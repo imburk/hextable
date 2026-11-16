@@ -1382,7 +1382,7 @@ export const WEAR_ONE = ['feet', 'hands', 'wrists', 'armour', 'head', 'cloak', '
 export const ITEM_VARIANTS = ['damageType', 'spell'];
 function lintItem(e, say, ctx = {}) {
   if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source) || !isText(e.text)) say('needs a kebab-case id, a name, a source and text');
-  for (const k of Object.keys(e)) if (!['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'].includes(k)) say(`"${k}" is not something an item has`);
+  for (const k of Object.keys(e)) if (!['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'mithral', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'].includes(k)) say(`"${k}" is not something an item has`);
   if (typeof e.checked !== 'boolean') say('needs `checked`');
   if (!TIERS.includes(e.tier)) say(`tier is one of ${TIERS.join(', ')}`);
   if (!ITEM_CATEGORIES.includes(e.category)) say(`category is one of ${ITEM_CATEGORIES.join(', ')}`);
@@ -1402,6 +1402,7 @@ function lintItem(e, say, ctx = {}) {
   if (e.damageType !== undefined && !(DAMAGE_TYPES.includes(e.damageType) && b?.weapon)) say('damageType is a damage type, on a weapon');
   if (e.properties !== undefined && !(allOf(WEAPON_PROPERTIES)(e.properties) && e.properties.length && b?.weapon)) say('properties are weapon properties, on a weapon');
   if (e.trained !== undefined && !(e.trained === true && b?.armour)) say('trained is true, on armour');
+  if (e.mithral !== undefined && !(e.mithral === true && b?.armour)) say('mithral is true, on armour');
   if (e.variant !== undefined && !ITEM_VARIANTS.includes(e.variant)) say(`variant is one of ${ITEM_VARIANTS.join(', ')}`);
   if (e.charges !== undefined && !(e.charges && isInt(e.charges.max) && e.charges.max > 0 && e.charges.max <= 50 && Object.keys(e.charges).every((k) => ['max', 'regain'].includes(k)) && (e.charges.regain === undefined || isDice(e.charges.regain)))) say('charges is { max, regain? }');
   if (e.grants !== undefined) {
@@ -1919,7 +1920,7 @@ const AMOUNT_KEYS = ['perLevel', 'column', 'mod', 'min', 'die', 'byLevel', 'prof
 const SHAPES = {
   spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'choice', 'costly', 'terrain', 'zone', 'reaction'] },
   monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'tier', 'checked', 'text'] },
-  items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
+  items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'mithral', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
   feats: { what: 'a feat', keys: ['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'] },
   objects: { what: 'an object', keys: ['id', 'name', 'kind', 'source', 'tier', 'checked', 'text', 'states', 'initial', 'use', 'triggers', 'find', 'dc', 'connects'] },
   weapons: { what: 'a weapon', keys: ['id', 'name', 'category', 'kind', 'damage', 'type', 'properties', 'mastery', 'range', 'versatile', 'ammo', 'twoHandedUnlessMounted', 'weight', 'cost', 'source', 'checked'] },
@@ -2332,7 +2333,7 @@ const describe = (spec) => spec.split('|').map((t) => WORDS[t] ?? t).join(' or '
 export const HOMEBREW_TYPES = Object.freeze({
   spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o' },
   monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', tier: 's', checked: 'b', text: 's' },
-  items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
+  items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', mithral: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
   feats: { id: 's', name: 's', category: 's', prerequisite: 'o', repeatable: 's|b', tier: 's', source: 's', checked: 'b', text: 's', increase: 'o', proficiencies: 'o', spellPick: 'o', grants: 'o' },
   objects: { id: 's', name: 's', kind: 's', source: 's', tier: 's', checked: 'b', text: 's', states: 'o', initial: 's', use: 'a', triggers: 'a', find: 'o', dc: 'o', connects: 'b' },
   weapons: { id: 's', name: 's', category: 's', kind: 's', damage: 'd', type: 's', properties: 's[]', mastery: 's', range: 'i[]', versatile: 'd', ammo: 's', twoHandedUnlessMounted: '?', weight: 'n', cost: 's|i', source: 's', checked: 'b' },
