@@ -67,7 +67,7 @@ const TURN = define(spell("turn-burst", { range: 60, target: { area: { shape: "s
   effects: [{ save: "dex", half: true, onFail: [{ damage: "6d6", type: "radiant" }] }] }));
 
 test("a spell area with `types` affects only creatures of those types, as a monster action's does", () => {
-    const { s, ids: [skel, goblin] } = table([TURN.id], [["skeleton", { q: 7, r: 0 }], ["goblin-warrior", { q: 7, r: 1 }]]);
+    const { s, ids: [skel, goblin] } = table([TURN.id], [["skeleton", { q: 5, r: 0 }], ["goblin-warrior", { q: 5, r: 1 }]]);
   const at = { q: 7, r: 0 };
   const a = { type: "cast", actor: "wizard", spell: TURN.id, hex: at };
   const hp = (id) => s.entities[id].hp;
@@ -91,13 +91,13 @@ test("a spell area with `types` and nothing of that type in it catches no one", 
 });
 
 test("a typed spell area: undo, redo and replay are exact", () => {
-    const { s } = table([TURN.id], [["skeleton", { q: 7, r: 0 }], ["goblin-warrior", { q: 7, r: 1 }]]);
+    const { s } = table([TURN.id], [["skeleton", { q: 5, r: 0 }], ["goblin-warrior", { q: 5, r: 1 }]]);
   exact(s, [{ type: "cast", actor: "wizard", spell: TURN.id, hex: { q: 7, r: 0 } }]);
 });
 
 test("an untyped spell area still catches everyone", () => {
   const plain = define(spell("plain-burst", { target: { area: { shape: "sphere", size: 20 } } }));
-  const { s, ids: [skel, goblin] } = table([plain.id], [["skeleton", { q: 7, r: 0 }], ["goblin-warrior", { q: 7, r: 1 }]]);
+  const { s, ids: [skel, goblin] } = table([plain.id], [["skeleton", { q: 5, r: 0 }], ["goblin-warrior", { q: 5, r: 1 }]]);
   const r = apply(s, { type: "cast", actor: "wizard", spell: plain.id, hex: { q: 7, r: 0 } }, DM);
   assert.ok(r.ok, r.error);
   assert.deepEqual([...r.events.find((e) => e.type === "cast").targets].sort(), [skel, goblin].sort());
@@ -245,20 +245,51 @@ test("fall \"surface\": undo, redo and replay are exact", () => {
 const WARD = define(spell("undead-ward", { level: 3, range: "self", duration: "1 minute", concentration: true, target: { area: { shape: "emanation", size: 15, types: ["undead"] } },
   zone: { on: ["turnEnd"] }, effects: [{ save: "wis", onFail: [{ damage: "2d8", type: "radiant" }] }] }));
 
-test("a zone limited by `types` that goes off on a creature of another type tells the DM, once for each creature in a round", () => {
+// #425: a zone limited by `types` leaves a creature of another type alone, whether it was inside when the spell was cast, comes in later
+// (`enter`), or starts or ends its turn there. (Before, it was affected and the DM was told to undo it; the SRD pack has no zone with `types`.)
+test("a zone limited by `types` does not touch a creature of another type, at the end of its turn", () => {
   const { s, ids: [skel, goblin] } = table([WARD.id], [["skeleton", { q: 2, r: 0 }], ["goblin-warrior", { q: 2, r: 1 }]]);
+  const hp = s.entities[goblin].hp, hpSkel = s.entities[skel].hp;
   const r = apply(s, { type: "cast", actor: "wizard", spell: WARD.id }, DM);
   assert.ok(r.ok, r.error);
-  const notes = [];
+  const zones = [];
   for (let i = 0; i < 40 && s.encounter?.round < 3; i++) {
     const rr = apply(s, { type: "endTurn", actor: current(s) }, DM);
     assert.ok(rr.ok, rr.error);
-    for (const e of rr.events) if (e.type === "manual" && /affects only undead/.test(e.text)) notes.push([s.encounter?.round, e.text]);
+    for (const e of rr.events) {
+      assert.ok(!(e.type === "manual" && /affects only/.test(e.text)), "the DM is no longer told to undo it");
+      if (e.type === "zone") zones.push(e.id);
+    }
   }
-  assert.ok(notes.length >= 1, "the DM was told");
-  assert.ok(notes.every(([, t]) => /Goblin Warrior/.test(t) && !/Skeleton/.test(t)), "only for the goblin");
-  assert.equal(new Set(notes.map(([r]) => r)).size, notes.length, "once a round");
-  void skel; void goblin;
+  assert.ok(zones.includes(skel), "it still goes off on the Undead");
+  assert.ok(!zones.includes(goblin), "and never on the goblin");
+  assert.equal(s.entities[goblin].hp, hp, "the goblin is untouched");
+  assert.ok(s.entities[skel].hp < hpSkel || s.entities[skel].dead, "the skeleton is not");
+});
+
+const RING = define(spell("undead-ring", { level: 3, range: "self", duration: "1 minute", concentration: true, target: { area: { shape: "emanation", size: 15, types: ["undead"] } },
+  zone: { on: ["enter", "turnStart", "turnEnd"] }, effects: [{ condition: "prone" }] }));
+test("a zone limited by `types`: a creature of another type that walks in, or starts its turn there, is not affected; one of the type is", () => {
+  const { s, ids: [skel, goblin] } = table([RING.id], [["skeleton", { q: 5, r: 0 }], ["goblin-warrior", { q: 5, r: 1 }]]);
+  assert.ok(apply(s, { type: "cast", actor: "wizard", spell: RING.id }, DM).ok);
+  const walk = (id, to) => {
+    for (let i = 0; i < 40 && current(s) !== id; i++) assert.ok(apply(s, { type: "endTurn", actor: current(s) }, DM).ok);
+    assert.equal(current(s), id);
+    return apply(s, { type: "move", actor: id, to }, DM);
+  };
+  const g = walk(goblin, { q: 2, r: 0 });
+  assert.ok(g.ok, g.error);
+  assert.equal(s.entities[goblin].pos.q, 2, "it is inside the ring");
+  assert.ok(!g.events.some((e) => e.type === "zone"), "nothing went off on the goblin");
+  assert.equal(s.entities[goblin].cond.prone, undefined);
+  const k = walk(skel, { q: 2, r: 1 });
+  assert.ok(k.ok, k.error);
+  assert.ok(k.events.some((e) => e.type === "zone" && e.id === skel), "it went off on the skeleton");
+  assert.ok(s.entities[skel].cond.prone, "Prone");
+  // The start of the goblin's next turn, still inside: still nothing.
+  s.entities[goblin].pos.q === 2 || assert.fail();
+  for (let i = 0; i < 40 && current(s) !== goblin; i++) assert.ok(apply(s, { type: "endTurn", actor: current(s) }, DM).events.every((e) => !(e.type === "zone" && e.id === goblin)));
+  assert.equal(s.entities[goblin].cond.prone, undefined);
 });
 
 test("fall \"surface\": a creature flying by its own Speed is left to the DM, one made Prone first falls", () => {
