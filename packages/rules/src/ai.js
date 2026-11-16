@@ -5,11 +5,11 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering } from './engine.js';
+import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
-import { hiddenFrom } from './sight.js';
+import { canSee, hiddenFrom } from './sight.js';
 import { unknown } from './vision.js';
 
 // Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
@@ -250,21 +250,32 @@ export function companionStep(s, id, opts = {}) {
 }
 const rolled = (p) => p.roll === 'melee' || p.roll === 'ranged' || p.aim === 'multi';
 
-// The Dodge action, then away from any foe within 5 feet, then the end of its turn. "Moves only to avoid harm": it moves
-// only while a foe it knows of stands within 5 feet of it, and only as far as it must: to the cheapest place it can
-// reach that is out of 5 feet of every foe it knows of (then the farthest from them, then the order moveOptions lists
-// places in). Where no such place is in reach it stays: a step that ends beside a foe would only give it an Opportunity
-// Attack (review of #368, L1). It never goes past its leash (it would vanish).
+// The Dodge action, then away from any foe within 5 feet, then the end of its turn. "Moves only to avoid harm" (Animate
+// Dead, 24057-24059; Animate Objects, 24101-24103; Create Undead, 25688-25690) and "uses its movement to avoid danger"
+// (Summon Dragon, 31264-31266; Giant Insect, 27438-27440): it moves only while a foe it knows of stands within 5 feet of
+// it, and only where the move itself is no harm. Leaving a foe's reach is: "If you move heedlessly past your foes, you put
+// yourself in danger by provoking an Opportunity Attack" (Opportunity Attacks, 2085). So it steps away only where no foe
+// it would leave, or pass, could make one: a foe with no melee attack to make it with, one Incapacitated, or one that
+// can't see it (2094: "a creature that you can see"). Whether a foe's Reaction is spent is not read: the party is not
+// told that of a creature not its own (table-ui.md, Decision 3, the tracker), so a party companion may not act on it
+// (re-review of #368, N4). Where a step is no harm it goes to the cheapest place out of 5 feet of every foe it knows of
+// (then the farthest from them, then the order moveOptions lists places in); where none is, it stays and Dodges. It
+// never goes past its leash (it would vanish).
 function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
   if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
+  const threats = foes.filter((f) => opportunityAttack(f) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
+  const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
+  if (!safe(e.pos)) return end;                                     // any step away from it would provoke
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));
+  const reach = moveOptions(s, e);
+  const wayIsSafe = (v) => { for (let x = v; x; x = x.prev !== undefined && x.prev !== null ? reach.get(x.prev) : null) if (!safe(x.h)) return false; return true; };
   let best = null;
-  for (const [, v] of moveOptions(s, e)) {
+  for (const [, v] of reach) {
     if (!v.canStop || (leash && apartAt(s, e, v.h, leash.m, leash.m.pos) * FT > leash.feet)) continue;
     const d = near(v.h);
-    if (d > 1 && (!best || v.cost < best.cost || (v.cost === best.cost && d > best.d))) best = { d, cost: v.cost, h: v.h };
+    if (d > 1 && (!best || v.cost < best.cost || (v.cost === best.cost && d > best.d)) && wayIsSafe(v)) best = { d, cost: v.cost, h: v.h };
   }
   return best ? { type: 'move', actor: id, to: best.h } : end;
 }

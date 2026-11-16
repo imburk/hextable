@@ -43,7 +43,8 @@ for (const grid of GRIDS) {
       ok(apply(s, { type: "setting", key: "unseenTurns", value: "quiet" }, DM));
       const skel = near(s, "cleric", "skeleton", { name: "Skeleton" }, { min: 2, max: 3 });
       ok(apply(s, { type: "bond", actor: skel, to: "cleric", kind: "undead", orders: "command" }, DM));
-      near(s, skel, "goblin-warrior", { name: "Goblin" });
+      const gob = near(s, skel, "goblin-warrior", { name: "Goblin" });
+      ok(apply(s, { type: "condition", actor: gob, condition: "blinded" }, DM));     // no Opportunity Attack, so the skeleton steps away (#372, N4)
       return { s, skel, place: (cell) => { const g = spawn(s, "goblin-warrior", cell, { name: "Lurker" }); s.entities[g].hiding = { dc: 30 }; return g; } };
     };
     // Where the skeleton steps with no lurker near: found in a world with the lurker far off (in the arena, hiding).
