@@ -47,10 +47,17 @@ export function distToSegment(p, [a, b]) {
 // What stands in the way on this map, worked out once and kept until a wall or an object changes.
 // Kept beside the map, never in it: the game state stays plain data.
 const cache = new WeakMap();
+// Each def object an object on a map is read from gets a number, the first time it is seen; no def is 0. The signature
+// holds it, so an answer worked out with one def (an SRD def, a homebrew overlay's, or none outside the overlay) is
+// never given back where the id names another def or none (DEBT P31). A homebrew def is frozen and a new version of a
+// pack is new objects, so a changed def is a new number. The numbers are only compared, never shown or stored.
+const defMarks = new WeakMap();
+let defCount = 0;
+const defMark = (def) => { if (!def || typeof def !== 'object') return 0; let n = defMarks.get(def); if (!n) defMarks.set(def, n = ++defCount); return n; };
 function signature(map) {
   let n = 0;
   for (const w of map.walls) n += w.a[0] + 2 * w.a[1] + 3 * w.b[0] + 5 * w.b[1] + w.kind.length;
-  return `${map.walls.length}:${n}|${map.objects.map((o) => `${o.id}:${o.def}:${o.state}:${o.level}:${o.at.q},${o.at.r}:${o.edge ?? ''}`).join(';')}`;
+  return `${map.walls.length}:${n}|${map.objects.map((o) => `${o.id}:${o.def}#${defMark(objectDef(o))}:${o.state}:${o.level}:${o.at.q},${o.at.r}:${o.edge ?? ''}`).join(';')}`;
 }
 export function barriers(map) {
   const sig = signature(map), had = cache.get(map);
