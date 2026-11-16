@@ -14,10 +14,10 @@ const TARGETS = [...new Set(Object.values(HOMEBREW_LOOKUPS).flatMap((l) => l.map
 const picture = () => TARGETS.map((t) => Object.keys(t).join("\n"));
 
 // ---------- the sample pack ----------
-test("the sample pack passes strict lint through loadPack and holds 12 to 16 spells", () => {
+test("the sample pack passes strict lint through loadPack and holds 12 to 17 spells", () => {
   const r = loadPack(JSON.stringify(PACK));
   assert.ok(r.ok, r.problems?.join("; "));
-  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 16, `${PACK.spells.length} spells`);
+  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 17, `${PACK.spells.length} spells`);
   assert.equal(PACK.spells.length, r.pack.ids.length);
   for (const s of PACK.spells) assert.ok(s.text.length > 20 && s.text.length < 300 && (s.text.match(/\./g) ?? []).length <= 2, `${s.id}: text is one or two plain sentences`);
 });
@@ -159,7 +159,7 @@ test("the repeats are bounded, and the result says when a ceiling stopped them",
   assert.ok(r.events.length <= DRYRUN_LIMITS.shown);
   assert.equal(r.truncated, r.events.length === DRYRUN_LIMITS.shown);
   // A spell the checks refuse for its work is never run.
-  const toomuch = { ...heavy, effects: [...many, ...many] };
+  const toomuch = { ...heavy, effects: [...many, ...many, ...many] };
   assert.equal(dryRun("spell", toomuch, { seed: 1 }).ok, false);
 });
 

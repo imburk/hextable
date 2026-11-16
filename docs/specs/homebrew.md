@@ -1002,11 +1002,15 @@ What was settled while building it (`content/schema.js`, the end of the file; te
   traits 20, reactions 4, Multiattack entries 6, ...), found like the number ranges; a list with none is refused, and a test
   walks the SRD and the type table. `workOf(kind, entry)` counts the worst-case steps of one use (every branch, a damage
   step `times` over, a cast's or action's steps once for each creature it reaches: its chosen creatures or count, or the
-  table's 30 for an area; a monster's worst action or Multiattack, entries times counts); `HOMEBREW_WORK` limits it to 240
-  steps and a Multiattack to 14 attacks. SRD maxima: 120 steps (Hypnotic Pattern on 30 creatures; the planetar's
-  Multiattack), 7 attacks (the marilith), 1 reaction, 5 actions (behir), 10 traits (the vampire); the ceilings are about twice those.
-  The heaviest accepted cast at a table of 30 took about 0.1 s and 276 KB of events; the heaviest accepted monster turn
-  about 12 ms and 79 KB.
+  table's 30 for an area; a monster's worst action or Multiattack, entries times counts); `HOMEBREW_WORK` limits it to 600
+  steps (an area spell may hold 20 steps of work; #398 raised it from 240, which refused an ordinary save, half-damage and
+  condition spell) and a Multiattack to 14 attacks. SRD maxima: 120 steps (Hypnotic Pattern on 30 creatures; the planetar's
+  Multiattack), 7 attacks (the marilith), 1 reaction, 5 actions (behir), 10 traits (the vampire); the attack, reaction, action
+  and trait ceilings are about twice those, but the steps ceiling is a measured one: a test builds the heaviest accepted cast
+  and monster turn at a table of 30 and holds each under a second and 1 MB.
+  At 600 steps the heaviest accepted cast at a table of 30 took about 0.09 s and 728 KB added to the state (123 events,
+  730 KB); the heaviest accepted monster turn (14 attacks of 42 steps) about 15 ms and 205 KB (#398; before, about 0.1 s and
+  276 KB of events, and 12 ms and 79 KB). The test asserts work and bytes (under 1 MB) and time only loosely (under 5 s).
 - **Names.** In strict mode a `name` and a pack name are Latin-script only (see DEBT T39); `text` and `dmNotes` may hold
   any visible script but no control, bidi, zero-width, tag, filler (U+3164, U+115F, U+1160, U+FFA0, U+2800, U+FFFC) or
   variation-selector character. SRD look-alikes are compared after NFKD, with marks removed, case folded and only letters
@@ -1036,7 +1040,7 @@ What was settled while building `content/dryrun.js`, `scripts/hb.mjs` and `packa
   dummy's Hit Points) are the setup of a game that is thrown away; everything the spell does goes through `apply()`.
 - **Pure and isolated.** The whole run, summary included, is one synchronous `using(overlayOf([pack]), ...)`; after it the lookups
   have their keys as before and `installed()` is null. A test keeps a second game alive beside it and compares its JSON before and
-  after. Same seed, byte-identical output (a test runs all 16 sample spells twice).
+  after. Same seed, byte-identical output (a test runs all the sample spells twice).
 - **The repeats.** The first cast uses `seed`, the next `seed + 1` and so on, up to `runs` (200). Two ceilings, both in
   `DRYRUN_LIMITS`: `work` (10,000; a cast counts 5 for building the game plus the larger of its `workOf` steps and the events of the
   first cast) and `events` (20,000 in all). When either stops the repeats, `repeated.stopped` is a sentence and the summary says it.
@@ -1048,7 +1052,7 @@ What was settled while building `content/dryrun.js`, `scripts/hb.mjs` and `packa
   reads the one file it is given, `stat`s it first and refuses one over `HOMEBREW_LIMITS.packBytes` without opening it, then gives the
   text to `loadPack` (so the registry's checks, not copies of them, decide), then to `readEntry` or `dryRun`. Problems go to stderr as
   `problem: ...`; exit 0 well, 1 problems, 2 wrong use. `schema` is B2.
-- **The sample pack** holds 16 invented spells, one small idea each, that between them use all 20 step kinds, all six area shapes,
+- **The sample pack** holds 17 invented spells (16 in #388; #398 added Ashen Pulse, the ordinary area, save, half-damage and condition shape that the old work ceiling refused), one small idea each, that between them use all 20 step kinds, all six area shapes,
   five of the seven branch lists (`onHit`, `onFail`, `blocked`, `onZero`, `onKill`; `onMiss` and `onSuccess` are not used), a
   save for half, an attack roll, a condition with a repeated save, a zone, a push, healing, growth by slot, a cantrip that grows by
   level and one manual step. A test fails if a step kind or shape stops being covered. A DM, or an AI helping one, can copy from it.

@@ -663,6 +663,59 @@
       "tier": "manual",
       "checked": false,
       "text": "A wisp of light works a latch or a lock and the DM decides what opens."
+    },
+    {
+      "id": "hb-sample-ashen-pulse",
+      "name": "Ashen Pulse",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "necromancy",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": 120,
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 minute",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "area": {
+          "shape": "sphere",
+          "size": 20
+        }
+      },
+      "effects": [
+        {
+          "save": "con",
+          "half": true,
+          "onFail": [
+            {
+              "damage": "5d6",
+              "type": "necrotic"
+            },
+            {
+              "condition": "poisoned",
+              "ends": {
+                "on": "save",
+                "save": "con",
+                "at": "turnEnd"
+              }
+            }
+          ]
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A pulse of grey ash bursts in a sphere; creatures in it take half damage if they save, and those that fail are poisoned. A higher slot repeats the damage.",
+      "higher": {
+        "slot": {
+          "times": 1
+        }
+      }
     }
   ]
 }
