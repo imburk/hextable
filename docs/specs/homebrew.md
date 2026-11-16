@@ -1004,7 +1004,7 @@ What was settled while building it (`content/schema.js`, the end of the file; te
   step `times` over, a cast's or action's steps once for each creature it reaches: its chosen creatures or count, or the
   table's 30 for an area; a monster's worst action or Multiattack, entries times counts); `HOMEBREW_WORK` limits it to 240
   steps and a Multiattack to 14 attacks. SRD maxima: 120 steps (Hypnotic Pattern on 30 creatures; the planetar's
-  Multiattack), 7 attacks (the marilith), 1 reaction, 10 actions (behir has 5), 10 traits (the vampire).
+  Multiattack), 7 attacks (the marilith), 1 reaction, 5 actions (behir), 10 traits (the vampire); the ceilings are about twice those.
   The heaviest accepted cast at a table of 30 took about 0.1 s and 276 KB of events; the heaviest accepted monster turn
   about 12 ms and 79 KB.
 - **Names.** In strict mode a `name` and a pack name are Latin-script only (see DEBT T38); `text` and `dmNotes` may hold
