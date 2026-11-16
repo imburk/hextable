@@ -301,7 +301,7 @@ function refusal(kind, entry, ctx, r) {
 export const KIND_NAMES = { spell: 'spell', spells: 'spell', monster: 'monster', monsters: 'monster', item: 'item', items: 'item', feat: 'feat', feats: 'feat',
   weapon: 'weapon', weapons: 'weapon', armour: 'armour', armor: 'armour', object: 'object', objects: 'object' };
 export const READ_KINDS = ['spell', 'monster', 'item', 'feat', 'weapon', 'armour', 'object'];
-const IS_THE = { spell: 'a spell', monster: 'a monster', item: 'an item', feat: 'a feat', weapon: 'a weapon', armour: 'armour', object: 'an object' };
+const IS_THE = { spell: 'a spell', monster: 'a monster', item: 'an item', feat: 'a feat', weapon: 'a weapon', armour: 'an armour', object: 'an object' };
 
 function readOrThrow(kind, entry) {
   const problems = [];
