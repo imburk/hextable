@@ -107,17 +107,33 @@ Sorted under: control.
 One creature within 60 feet has the Poisoned condition.
   Nothing in the engine ends it: the DM removes it.
 It gets -2 to its Armor Class.
+  Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
+It has the Deafened condition.
+  It ends when it takes damage.
+  The engine applies part of what Deafened does; the DM applies the rest.
+The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
+It is instant, but what its steps put on creatures stays until its own ending, as said above; a step that names no ending is the DM's to end.
+Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Not checked against any rulebook.
+DM: Ending what step effects.0 puts on a creature: nothing ends it on its own.
+DM: The modifier of step effects.1: nothing in the spell ends it.
+
+== hb-test-dull-curse
+Dull Curse (level 1 evocation, 60 feet, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: control.
+One creature within 60 feet gets -1 to its Armor Class.
   The spell does not last, so the engine has nothing to hang this on: the DM applies it.
 It has the Deafened condition.
-  Nothing in the engine ends it (its ending is not kept, since the spell does not last): the DM removes it.
+  Nothing in the engine ends it: the DM removes it.
   The engine applies part of what Deafened does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
 It is instant: nothing it does is kept as a lasting effect.
 Tier: auto, but the engine hands the parts listed for the DM to the DM.
 Not checked against any rulebook.
-DM: Removing the Poisoned condition that step effects.0 puts on.
-DM: The modifier of step effects.1: the spell does not last.
-DM: Removing the Deafened condition that step effects.2 puts on.
+DM: The modifier of step effects.0: the spell does not last.
+DM: Removing the Deafened condition that step effects.1 puts on.
 
 == hb-test-stinging-mark
 Stinging Mark (level 1 evocation, 60 feet, action, instant).
@@ -128,15 +144,15 @@ One creature within 60 feet has the Grappled condition.
   It ends at the end of its next turn, or when the fight ends.
   The engine applies part of what Grappled does; the DM applies the rest.
 It has the Stunned condition.
-  Nothing ends it on its own: the DM ends it.
+  Nothing in the engine ends it: the DM removes it.
 It gets its Speed set to 0 feet.
-  Nothing ends it on its own: the DM ends it.
+  Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
-It is instant, but what its steps put on creatures stays until each part's own ending, as said above.
+It is instant, but what its steps put on creatures stays until its own ending, as said above; a step that names no ending is the DM's to end.
 Tier: auto, but the engine hands the parts listed for the DM to the DM.
 Not checked against any rulebook.
 DM: Ending what step effects.1 puts on a creature: nothing ends it on its own.
-DM: Ending what step effects.2 puts on a creature: nothing ends it on its own.
+DM: The modifier of step effects.2: nothing in the spell ends it.
 
 == hb-test-many-blessings
 Many Blessings (level 4 abjuration, 60 feet, action, 10 minutes, concentration).

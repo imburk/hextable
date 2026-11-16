@@ -11,7 +11,7 @@
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
 import { BRANCHES, SIZES, SPELL_KINDS, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
-import { useUp } from './durations.js';
+import { effectsOf, useUp } from './durations.js';
 
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
@@ -489,7 +489,10 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'modifier') {
     if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
-    return handOver(`${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
+    const bound = f.src.fx && effectsOf(s).find((x) => x.id === f.src.fx)?.bound;
+    return handOver(bound
+      ? `${f.src.name} changes a number, but nothing in it says when that ends, and the engine keeps only what ends by itself. The DM applies it and ends it.`
+      : `${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
   if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
   // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).

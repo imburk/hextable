@@ -135,3 +135,74 @@ test("Animate Objects: undo, redo and replay are exact", () => {
   const { s, at } = summoner();
   exact(s, [{ type: "cast", actor: "ven", spell: "animate-objects", slot: 5, summon: { variant: "medium", at: [at] } }]);
 });
+
+// ---------- 4. endings in an instant spell (T32 (3) and (4)) ----------
+const effectsOfSpell = (s, id) => (s.effects ?? []).filter((x) => x.spell === id);
+const manuals = (r) => r.events.filter((e) => e.type === "manual").map((e) => e.text).join("\n");
+const endTurns = (s, until) => { for (let i = 0; i < 40 && !until(); i++) assert.ok(apply(s, { type: "endTurn", actor: current(s) }, DM).ok); };
+
+const HEX = define(spell("lone-damaged", { effects: [{ condition: "frightened", ends: { on: "damaged" } }] }));
+
+test("an instant spell whose only ending is `damaged` keeps its condition until the creature takes damage", () => {
+  const { s, ids: [goblin] } = table([HEX.id, "magic-missile"], [["goblin-warrior", { q: 2, r: 0 }]]);
+  const r = apply(s, { type: "cast", actor: "wizard", spell: HEX.id, target: goblin }, DM);
+  assert.ok(r.ok, r.error);
+  assert.ok(s.entities[goblin].cond.frightened, "frightened");
+  assert.equal(effectsOfSpell(s, HEX.id).length, 1, "an effect holds it");
+  assert.ok(!/Nothing ends it yet/.test(manuals(r)), "the DM is not told it never ends");
+  endTurns(s, () => current(s) === "wizard" && s.entities[goblin].cond.frightened && s.encounter.round > 1);   // a round passes: still there
+  assert.ok(s.entities[goblin].cond.frightened, "it lasts past turns");
+  const d = apply(s, { type: "cast", actor: "wizard", spell: "magic-missile", target: goblin, slot: 1 }, DM);
+  assert.ok(d.ok, d.error);
+  assert.ok(d.events.some((e) => e.type === "damage" && e.target === goblin && e.amount > 0));
+  assert.ok(!s.entities[goblin].cond.frightened, "damage ends it");
+  assert.equal(effectsOfSpell(s, HEX.id).length, 0, "and the effect with it");
+});
+
+// The endTurn actions that bring the wizard's next turn round (worked out on a copy).
+const toWizard = (s) => { const c = structuredClone(s), out = []; do { out.push({ type: "endTurn", actor: current(c) }); assert.ok(apply(c, out.at(-1), DM).ok); } while (current(c) !== "wizard" && out.length < 40); return out; };
+
+test("a lone `damaged` ending: undo, redo and replay are exact", () => {
+  const { s, ids: [goblin] } = table([HEX.id, "magic-missile"], [["goblin-warrior", { q: 2, r: 0 }]]);
+  const first = { type: "cast", actor: "wizard", spell: HEX.id, target: goblin }, c = structuredClone(s);
+  apply(c, first, DM);
+  exact(s, [first, ...toWizard(c), { type: "cast", actor: "wizard", spell: "magic-missile", target: goblin, slot: 1 }]);
+});
+
+const MIXED = define(spell("mixed-ends", { effects: [
+  { condition: "poisoned" },
+  { condition: "frightened", ends: { on: "turnEnd" } },
+  { modifier: { on: "ac", op: "add", value: -2 } },
+  { modifier: { on: "speed", op: "set", value: 0 }, ends: { on: "turnEnd" } }] }));
+
+test("an instant spell made lasting by one step's ending: a step with no ending of its own is handed to the DM, not held for ever", () => {
+  const { s, ids: [goblin] } = table([MIXED.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  const r = apply(s, { type: "cast", actor: "wizard", spell: MIXED.id, target: goblin }, DM);
+  assert.ok(r.ok, r.error);
+  const g = s.entities[goblin], [fx] = effectsOfSpell(s, MIXED.id);
+  assert.ok(g.cond.poisoned && g.cond.frightened);
+  assert.equal(g.cond.poisoned.effect, undefined, "the condition with no ending is not tied to the effect");
+  assert.equal(g.cond.frightened.effect, fx.id);
+  assert.deepEqual(fx.parts.map((p) => p.cond ?? Object.values(p.modifier).join(":")), ["frightened", "speed:set:0"], "held: only what ends");
+  const text = manuals(r);
+  assert.match(text, /poisoned/i);
+  assert.match(text, /Nothing ends it yet: the DM removes it/, "the DM is told the Poisoned condition stays");
+  assert.match(text, /nothing in it says when that ends/, "and that the -2 to AC was not applied");
+  // The effect ends with its own parts; the Poisoned condition stays for the DM, as it was told.
+  endTurns(s, () => !g.cond.frightened);
+  assert.equal(effectsOfSpell(s, MIXED.id).length, 0, "the effect ended with its last part");
+  assert.ok(g.cond.poisoned, "the DM's condition is still there");
+});
+
+test("a modifier used up by use (`uses`) is held by an instant spell's effect, as before (Staggering Blow's shape)", () => {
+  const ONCE = define(spell("once-ends", { effects: [{ modifier: { on: "save", op: "disadvantage", uses: 1 } }, { condition: "frightened", ends: { on: "turnEnd" } }] }));
+  const { s, ids: [goblin] } = table([ONCE.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  assert.ok(apply(s, { type: "cast", actor: "wizard", spell: ONCE.id, target: goblin }, DM).ok);
+  const [fx] = effectsOfSpell(s, ONCE.id);
+  assert.deepEqual(fx.parts.map((p) => p.cond ?? "uses"), ["uses", "frightened"]);
+});
+
+test("an instant spell with endings and others: undo, redo and replay are exact", () => {
+  const { s, ids: [goblin] } = table([MIXED.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  exact(s, [{ type: "cast", actor: "wizard", spell: MIXED.id, target: goblin }, { type: "endTurn", actor: "wizard" }]);
+});

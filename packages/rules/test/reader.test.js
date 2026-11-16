@@ -45,6 +45,7 @@ const FIXTURES = [
     onSuccess: [{ modifier: { on: 'attack.roll', op: 'disadvantage' }, ends: { on: 'turnEnd', of: 'source' } }] }],
     higher: { slot: { targets: 1 } } }),
   base('quick-curse', 'Quick Curse', { target: { creature: {} }, effects: [{ condition: 'poisoned' }, { modifier: { on: 'ac', op: 'add', value: -2 } }, { condition: 'deafened', ends: { on: 'damaged' } }] }),
+  base('dull-curse', 'Dull Curse', { target: { creature: {} }, effects: [{ modifier: { on: 'ac', op: 'add', value: -1 } }, { condition: 'deafened' }] }),
   base('stinging-mark', 'Stinging Mark', { target: { creature: {} },
     effects: [{ condition: 'grappled', ends: { on: 'turnEnd' } }, { condition: 'stunned' }, { modifier: { on: 'speed', op: 'set', value: 0 } }] }),
   // One modifier for every hook, and one for every op.
@@ -284,9 +285,12 @@ test('the reading says what the engine hands to the DM', () => {
   has(r1z, /does not apply the limit to a zone/); assert.ok(r1z.doesNot.length);
   // A line with a range, ten cubes: no layout, every step to the DM.
   for (const id of ['hb-test-far-line', 'hb-test-ten-cubes']) { const r = dm(FIXTURES.find((f) => f.id === id)); has(r, /cannot lay out this area/); }
-  // A modifier in an instant spell has nothing to hang on.
+  // An instant spell made lasting by one step's ending (here, damage) keeps only what ends: the engine says so for the rest.
   const r2 = dm(FIXTURES.find((f) => f.id === 'hb-test-quick-curse'));
-  has(r2, /nothing to hang this on: the DM applies it/); has(r2, /Nothing in the engine ends it: the DM removes it/); has(r2, /its ending is not kept/);
+  has(r2, /does not keep it: the DM applies it and ends it/); has(r2, /Nothing in the engine ends it: the DM removes it/); has(r2, /It ends when it takes damage\./);
+  // No step with an ending: no lasting effect at all, so a modifier has nothing to hang on.
+  const r2b = dm(FIXTURES.find((f) => f.id === 'hb-test-dull-curse'));
+  has(r2b, /nothing to hang this on: the DM applies it/); has(r2b, /Nothing in the engine ends it: the DM removes it/);
   // A fall to "surface", a map object step, a resource, a counter outside a reaction to a cast.
   const r3 = dm(FIXTURES.find((f) => f.id === 'hb-test-gravity-well'));
   for (const re of [/records the fall but deals no damage/, /set a map object/, /reveal a map object/, /spend or give a resource/, /no spell is being cast/]) has(r3, re);
