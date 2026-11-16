@@ -10,7 +10,7 @@ import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, finishTurn, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -89,7 +89,8 @@ function brutalFor(s, e, t, atk, id) {
   flags[`${base.brutal.after}:${e.id}`] || fail(`${base.name} needs ${featOf(e, base.brutal.after)?.name ?? base.brutal.after} this turn.`);
   !flags[`brutal:${e.id}`] || fail(`${e.name} has already used ${base.name} this turn.`);
   atk.abil === 'str' || fail(`${base.name} is for an attack using Strength.`);
-  const m = rollMode(s, e, t, atk);
+  const m = rollMode(s, e, t, atk), heavy = heavyWeak(e, atk);
+  if (heavy) m.dis.push(heavy);
   !m.dis.length || fail(`That attack roll has Disadvantage (${m.dis.join(', ')}), so ${base.name} can't be used on it.`);
   return { ...structuredClone(o), dice: base.brutal.dice };
 }

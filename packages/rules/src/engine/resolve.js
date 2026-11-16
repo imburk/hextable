@@ -899,6 +899,17 @@ function studied(s, e, t, ev) {
   }
 }
 
+// Heavy (SRD "Weapons", Properties): "You have Disadvantage on attack rolls with a Heavy weapon if it's a Melee weapon and your
+// Strength score isn't at least 13 or if it's a Ranged weapon and your Dexterity score isn't at least 13." It goes by the weapon's
+// own kind, not by how it is used (a thrown Melee weapon is still a Melee weapon). Only an attack that names its weapon (`atk.weapon`,
+// a built character's) has one: a monster's stat-block attack is the creature's own and names none. Returns the reason, or ''.
+export function heavyWeak(e, atk) {
+  const w = typeof atk?.weapon === 'string' ? CONTENT.weapons[atk.weapon] : null;
+  if (!w?.properties?.includes('heavy')) return '';
+  const abil = w.kind === 'ranged' ? 'dex' : 'str', score = e.abil?.[abil];
+  return Number.isFinite(score) && score < 13 ? `Heavy weapon, ${abil === 'str' ? 'Strength' : 'Dexterity'} ${score}` : '';
+}
+
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 // `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
 // `keepHidden`: the attack does not end its hiding yet (Stealth Attack; resolveAttack decides).
@@ -915,6 +926,8 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
   const from = v ? { ...e, pos: v.pos, size: v.size } : e;
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
+  const heavy = heavyWeak(from, atk);
+  if (heavy) { dis = [...dis, heavy]; mode = adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal'; }
   if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
   if (!keepHidden) unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);

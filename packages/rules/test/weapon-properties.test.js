@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
+import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -31,6 +32,35 @@ function field(sh, { gap = 1, foeAc = 1 } = {}) {
   s.entities[foe].pos = { q: gap, r: 0, z: 0 };         // moved after the fight began, so far shots can be tried
   return s;
 }
+const bytes = (s) => JSON.stringify(s);
+// Play `actions` as the DM with history kept; then undo them all (the state is byte for byte the start), redo them
+// (byte for byte the end) and replay them on a copy of the start (the same events and the same end). Returns the events.
+function exact(s, actions) {
+  const h = createHistory(), start = bytes(s), copy = structuredClone(s), out = [];
+  for (const a of actions) {
+    const before = mark(s), r = apply(s, a, DM);
+    assert.ok(r.ok, r.error);
+    h.record(before, s, describeStep(a, r.events, before, s));
+    out.push(r.events);
+  }
+  const end = bytes(s);
+  for (let i = 0; i < actions.length; i++) assert.ok(h.undo(s));
+  assert.equal(bytes(s), start, "undone");
+  for (let i = 0; i < actions.length; i++) assert.ok(h.redo(s));
+  assert.equal(bytes(s), end, "redone");
+  const again = actions.map((a) => { const r = apply(copy, a, DM); assert.ok(r.ok, r.error); return r.events; });
+  assert.deepEqual(again, out, "replayed events");
+  assert.equal(bytes(copy), end, "replayed state");
+  return out;
+}
+// A refused action says why in a sentence and leaves the state as it was.
+function refused(s, action, re) {
+  const before = bytes(s), r = apply(s, action, DM);
+  assert.equal(r.ok, false, "refused");
+  assert.match(r.error, re);
+  assert.match(r.error, /^[A-Z].*[.!]$/, "a plain sentence");
+  assert.equal(bytes(s), before, "nothing changed");
+}
 const swing = (s, attack, target = s.foe) => apply(s, { type: "attack", actor: "hero", target, attack }, DM);
 const roll = (r) => r.events.find((e) => e.type === "attack");
 
@@ -52,14 +82,43 @@ test("Finesse (already right): the better of Strength and Dexterity, the same mo
   assert.equal(b.abil, "str", "Strength 16 beats Dexterity 14");
 });
 
-test("Heavy (today): no Disadvantage for Strength 8 with a Greatsword, nor Dexterity 8 with a Longbow", () => {
+test("Heavy: Disadvantage with a Melee weapon below Strength 13, or a Ranged one below Dexterity 13 (SRD, Properties, Heavy)", () => {
+  const s = field(sheet(WEAK, ["greatsword"]));                      // Strength 8
+  const r = roll(ok(swing(s, "greatsword")));
+  assert.equal(r.mode, "dis");
+  assert.deepEqual(r.why, ["Heavy weapon, Strength 8"]);
+  assert.equal(r.rolls.length, 2, "two dice, the lower taken");
+  const t = field(sheet(CLUMSY, ["longbow"]), { gap: 3 });          // Dexterity 8
+  const q = roll(ok(swing(t, "longbow")));
+  assert.equal(q.mode, "dis");
+  assert.deepEqual(q.why, ["Heavy weapon, Dexterity 8"]);
+});
+
+test("Heavy: the right score for the kind, and 13 is enough", () => {
+  assert.equal(roll(ok(swing(field(sheet(STRONG, ["greatsword"])), "greatsword"))).mode, "normal", "Strength 16 with a Melee weapon");
+  assert.equal(roll(ok(swing(field(sheet(CLUMSY, ["greatsword"])), "greatsword"))).mode, "normal", "Dexterity does not matter to a Melee weapon");
+  assert.equal(roll(ok(swing(field(sheet(WEAK, ["longbow"]), { gap: 3 }), "longbow"))).mode, "normal", "Strength does not matter to a Ranged weapon");
+  assert.equal(roll(ok(swing(field(sheet({ ...WEAK, str: 13 }, ["greatsword"])), "greatsword"))).mode, "normal", "Strength 13 is enough");
+  assert.equal(roll(ok(swing(field(sheet({ ...WEAK, str: 12 }, ["greatsword"])), "greatsword"))).mode, "dis", "Strength 12 is not");
+  assert.equal(roll(ok(swing(field(sheet(WEAK, ["longsword"])), "longsword"))).mode, "normal", "a weapon without the property");
+});
+
+test("Heavy: it cancels an Advantage, and a Disadvantage already there does not double", () => {
   const s = field(sheet(WEAK, ["greatsword"]));
+  s.entities[s.foe].cond.prone = {};                                 // a Melee attack on a Prone target has Advantage
   const r = roll(ok(swing(s, "greatsword")));
   assert.equal(r.mode, "normal");
-  assert.deepEqual(r.why, []);
-  const t = field(sheet(CLUMSY, ["longbow"]), { gap: 3 });
+  const t = field(sheet(CLUMSY, ["longbow"]), { gap: 31 });          // 155 ft, past the longbow's 150: long range, and Dexterity 8
   const q = roll(ok(swing(t, "longbow")));
-  assert.equal(q.mode, "normal");
+  assert.equal(q.mode, "dis");
+  assert.deepEqual(q.why.sort(), ["Heavy weapon, Dexterity 8", "long range"]);
+});
+
+test("Heavy: a thrown Javelin and a Dagger are not Heavy; undo, redo and replay are exact", () => {
+  const s = field(sheet(WEAK, ["greatsword", "javelin"]));
+  const out = exact(s, [{ type: "attack", actor: "hero", target: s.foe, attack: "greatsword" }, { type: "attack", actor: "hero", target: s.foe, attack: "javelin" }]);
+  assert.equal(roll({ events: out[0] }).mode, "dis");
+  assert.equal(roll({ events: out[1] }).mode, "normal");
 });
 
 test("Light (today, not built): there is no Bonus Action attack with a second Light weapon", () => {
