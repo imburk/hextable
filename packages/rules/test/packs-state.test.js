@@ -146,7 +146,7 @@ test("one undo step: undo and redo restore state.packs exactly; a game from befo
   const s = newGame(5), h = createHistory();
   const send = (a) => { const before = mark(s), r = apply(s, a, DM); assert.ok(r.ok, r.error); h.record(before, s, describeStep(a, r.events, before, s)); return json(s); };
   const s0 = json(s);
-  assert.equal(Object.hasOwn(s, "packs"), false, "newGame itself holds no packs until it is saved and loaded (migrate)");
+  assert.deepEqual(s.packs, [], "newGame gives no packs");
   const s1 = send({ type: "setPacks", packs: [pk("a")] });
   const s2 = send({ type: "setPacks", packs: [pk("a", 2, H2), pk("b")] });
   const s3 = send({ type: "setPacks", packs: [] });
@@ -180,8 +180,11 @@ test("a version 23 state loads with packs: [] and is otherwise unchanged; migrat
   assert.equal(VERSION, 24);
   assert.equal(s.version, 24);
   assert.deepEqual(s.packs, []);
-  const { packs, ...rest } = s;
-  assert.equal(json({ ...rest, version: 23 }), json(was));
+  assert.equal(json({ ...s, version: 23 }), json(was), "newGame already holds packs: [], so nothing moves");
+  const old = newGame(5); delete old.packs; old.version = 23;
+  migrate(old);
+  assert.deepEqual(old.packs, []);
+  assert.equal(json({ ...old, packs: undefined, version: 24 }), json({ ...s, packs: undefined }));
   const again = json(s);
   migrate(s);
   assert.equal(json(s), again);
@@ -215,4 +218,14 @@ test("a player is sent no packs from the state: neither playerView nor a player'
   const r = apply(s2, { type: "setPacks", packs: [pk("ember-folk-secret-ogre")] }, DM);
   assert.ok(!json(r.events).includes("ember-folk-secret-ogre"));
   assert.ok(!json(s2.timeline).includes("ember-folk-secret-ogre"), "the chronicle holds no pack id either");
+});
+
+test("the undo label of setPacks is the DM's: players are shown nothing and no pack id is in it", () => {
+  const s = newGame(5), before = mark(s), a = { type: "setPacks", packs: [pk("ember-folk-secret-ogre")] };
+  const r = apply(s, a, DM), step = describeStep(a, r.events, before, s);
+  assert.equal(typeof step, "object");
+  assert.equal(step.shown, null);
+  assert.ok(!step.label.includes("ember-folk"));
+  const h = createHistory(); h.record(before, s, step);
+  assert.deepEqual(h.undo(s).shown, null);
 });

@@ -1023,13 +1023,12 @@ What was settled while building the rules side (`content/packs.js`, `migrate.js`
 
 - **`state.packs`** is `[{ id, version, hash }]`, ids, versions and hashes only. State version 24; the migration gives a
   state saved before `packs: []`, keeps a whole list (as a copy) and drops one that is not whole. A state that is already
-  at version 24 and has no `packs` at all is left alone: `newGame` (scenario.js, outside this job) does not set the field,
-  and migrating a current state must change nothing. Reading code must take an absent list as none until `newGame` gives
-  `packs: []` (DEBT T42).
+  at version 24 and has no `packs` at all is left alone, as a state saved by a build between the bump and `newGame` setting
+  the field cannot exist; `newGame` now gives `packs: []`, so the allowance only keeps `migrate` idempotent on a hand-built state.
 - **`setPacks { packs }`**: DM only; the whole list is checked by `packsProblem` before anything is written and the state
   gets a clean copy. A pack is exactly `id` (the pack id pattern, at most 60 letters), `version` (whole, 1 or more) and
   `hash` (64 lowercase hex); no other key, so no pack data can be stored; at most `HOMEBREW_LIMITS.packs`; no id twice. The
-  order given is kept. It leaves no event; it is one undo step like any DM action.
+  order given is kept. It leaves no event; it is one undo step like any DM action, labelled "The table's homebrew packs were set" for the DM and not shown to players (`shown: null`).
 - **`hashOf(pack)`** is SHA-256 of `canonical(pack)` (keys sorted by code unit at every depth, no whitespace, lists in order,
   an undefined value left out as JSON leaves it; a function, NaN or a non-plain object is refused). The SHA-256 is pure
   JavaScript (`sha256`), tested against the FIPS vectors, including the million "a", and against `node:crypto` in the test
@@ -1041,6 +1040,44 @@ What was settled while building the rules side (`content/packs.js`, `migrate.js`
   (a test pins it, with a pack id and a hash that must not appear anywhere in it); the DM's `view` is the whole state and has
   them. The members' pack id, name and version of Decision 5 are the server's filtered `packs` message (second half of B5),
   not part of the state view. `view.js` was not changed.
+## Build notes: B6 and the first half of B12, the dry run, the CLI and the sample pack (#388)
+
+What was settled while building `content/dryrun.js`, `scripts/hb.mjs` and `packages/rules/test/fixtures/sample-pack.json`:
+
+- **`dryRun(kind, entry, { seed, pack, slot, level, runs })`**, spells only (`kind` `"spell"` or `"spells"`; another kind is
+  refused with a sentence until B13). It returns `{ ok: false, problems }` for anything the registry's `loadPack` refuses (the budget,
+  strict lint, ids, the work ceiling) and for bad options (seed 0 to 2^31 - 1, level 1 to 20, slot 1 to 9, runs 1 to 200); nothing
+  runs then and there is no `events`. Otherwise `{ ok: true, ran, id, name, tier, seed, level, slot, events, truncated?, summary, repeated }`.
+  `events` are the raw events of the first cast in table order (at most `DRYRUN_LIMITS.shown`, 400); the client words them. `summary` is
+  `{ text, lines, targets, handedToDM, ... }`, a plain account in this module's own words. `dryRunPack(pack, opts)` does every spell of a
+  pack. A lone entry is tried in a one-entry pack named from its `source`; pass the whole pack as `pack` for a spell that names the
+  pack's monsters.
+- **The game.** `newGame(seed)`, foes removed, the ground within 12 hexes made plain grass, `autoEngage` off, the pregenerated wizard
+  at the middle with slots 1 to 9, a fight started and the wizard's turn reached. Creature spells get goblin warrior dummies (25 Hit
+  Points) at a range that fits, or, for a healing or other kind spell, the three other starter characters at half health. Area spells get
+  a spread of dummies for each shape (two friends and up to eight foes, some outside the area). A self spell gets nobody; a teleport gets
+  a place to go. One foe always stands far off so the fight goes on. Direct writes to that game (tiles, slots, level, Hit Points, a
+  dummy's Hit Points) are the setup of a game that is thrown away; everything the spell does goes through `apply()`.
+- **Pure and isolated.** The whole run, summary included, is one synchronous `using(overlayOf([pack]), ...)`; after it the lookups
+  have their keys as before and `installed()` is null. A test keeps a second game alive beside it and compares its JSON before and
+  after. Same seed, byte-identical output (a test runs all 16 sample spells twice).
+- **The repeats.** The first cast uses `seed`, the next `seed + 1` and so on, up to `runs` (200). Two ceilings, both in
+  `DRYRUN_LIMITS`: `work` (10,000; a cast counts 5 for building the game plus the larger of its `workOf` steps and the events of the
+  first cast) and `events` (20,000 in all). When either stops the repeats, `repeated.stopped` is a sentence and the summary says it.
+  There is no clock: the ceilings count work, so the result is the same on any machine. Average damage, damage to friends, healing,
+  how often saves held and attacks hit, and in how many casts something went to the DM are counted.
+- **What it does not do** is in DEBT T42: zones over time, Reaction spells (it says "did not run"), summon placement, growth of targets
+  by slot, and other kinds. A cast the engine refuses comes back `ran: false` with the engine's sentence.
+- **The CLI.** `node scripts/hb.mjs lint|read|dryrun <file> [--seed n] [--level n] [--slot n] [--runs n] [--events]` (`npm run hb -- ...`). It
+  reads the one file it is given, `stat`s it first and refuses one over `HOMEBREW_LIMITS.packBytes` without opening it, then gives the
+  text to `loadPack` (so the registry's checks, not copies of them, decide), then to `readEntry` or `dryRun`. Problems go to stderr as
+  `problem: ...`; exit 0 well, 1 problems, 2 wrong use. `schema` is B2.
+- **The sample pack** holds 16 invented spells, one small idea each, that between them use all 20 step kinds, all six area shapes,
+  five of the seven branch lists (`onHit`, `onFail`, `blocked`, `onZero`, `onKill`; `onMiss` and `onSuccess` are not used), a
+  save for half, an attack roll, a condition with a repeated save, a zone, a push, healing, growth by slot, a cantrip that grows by
+  level and one manual step. A test fails if a step kind or shape stops being covered. A DM, or an AI helping one, can copy from it.
+- **For the client job (B10).** `dryRun` returns raw events; the builder words them with the client's `describe` (or shows
+  `summary.text`) and may show `repeated` as "average of N casts". It must call `dryRun` outside any other `using`.
 
 ## Risks
 

@@ -53,8 +53,9 @@ test("the monster AI is byte-identical to main for creatures with no bond: the r
     assert.equal(actions.length, want.steps, `${sc.name}: steps`);
     assert.equal(actions.filter((a) => a.refused).length, want.refused, `${sc.name}: refused`);
     assert.equal(sha(actions), want.actions, `${sc.name}: the actions chosen`);
-    // Recorded at version 23; the version has moved (24, #390) and nothing else in the state.
-    assert.equal(sha({ ...s, version: 23 }), want.state, `${sc.name}: the end state`);
+    // Recorded at version 23; the version has moved (24, #390) and `packs: []` is new; nothing else in the state.
+    const { packs, ...rest } = s;
+    assert.equal(sha({ ...rest, version: 23 }), want.state, `${sc.name}: the end state`);
     assert.equal(!s.encounter, want.ended);
   }
 });

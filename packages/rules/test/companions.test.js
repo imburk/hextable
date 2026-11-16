@@ -336,9 +336,7 @@ test("an old table loads unchanged but for its version", () => {
   migrate(s);
   assert.equal(VERSION, 24);
   assert.equal(s.version, 24);
-  const { packs, ...rest } = s;                       // version 24 (#390) adds `packs: []` to a table saved before it
-  assert.deepEqual(packs, []);
-  assert.equal(json({ ...rest, version: 22 }), json(was));
+  assert.equal(json({ ...s, version: 22 }), json(was));
   const again = json(s);
   migrate(s);
   assert.equal(json(s), again, "migrating twice changes nothing");
