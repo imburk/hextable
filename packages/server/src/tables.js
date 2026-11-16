@@ -18,8 +18,8 @@ import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
-import { forPlayers as packFilteredCopy, hashOf, HOMEBREW_SUMMON_SENTENCE, packForPlayer, packsMatch, PLAYER_PACK_KINDS, summonsHomebrew, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
-import { loadPack, installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
+import { forPlayers as packFilteredCopy, HOMEBREW_SUMMON_SENTENCE, packForPlayer, packsMatch, PLAYER_PACK_KINDS, cleanPacks, summonsHomebrew, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
+import { installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
 import { LIMIT_MESSAGE } from "./limits.js";
 
@@ -52,32 +52,9 @@ export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
 // characters), so the text is read only up to twice the pack limit; the rules' own budget then bounds the pack itself at
 // MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
 export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
-export { HOMEBREW_SUMMON_SENTENCE, summonsHomebrew, usesIn, vetPacks };
+export { cleanPacks as sanitizePacks, HOMEBREW_SUMMON_SENTENCE, summonsHomebrew, usesIn, vetPacks };
 export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
-
-// What a table file's `packs` may keep. Never throws, whatever the file holds: a value that is not a list, a record that is not exactly
-// { id, version, hash, data }, data that fails the registry's check or whose hash is not the one written, a pack that summons a homebrew
-// creature, or a set the registry refuses (five packs, ids in two packs) is dropped, with a sentence saying why. Returns
-// { packs: [the records that pass, as new objects], dropped: [{ id, reason }] }. Nothing dropped is ever sent to anyone.
-export function sanitizePacks(raw) {
-  try {
-    if (raw === undefined) return { packs: [], dropped: [] };
-    if (!Array.isArray(raw)) return { packs: [], dropped: [{ id: null, reason: "the saved packs were not a list" }] };
-    const good = [], dropped = [];
-    raw.forEach((p, i) => {
-      const id = typeof p?.id === "string" ? p.id.slice(0, 60) : `pack ${i + 1}`;
-      const keys = p && typeof p === "object" && !Array.isArray(p) ? Object.keys(p).sort().join() : "";
-      if (keys !== "data,hash,id,version") return dropped.push({ id, reason: "it is not a record of an id, a version, a hash and the pack" });
-      const v = vetPacks([p]);
-      if (v.ok) good.push({ id: p.id, version: p.version, hash: p.hash, data: p.data });
-      else dropped.push({ id, reason: v.problems.slice(0, 3).map((x) => String(x).slice(0, 200)).join("; ") });
-    });
-    const set = vetPacks(good);
-    if (!set.ok) return { packs: [], dropped: [...dropped, ...good.map((p) => ({ id: p.id, reason: `the packs cannot be on one table: ${set.problems.slice(0, 2).join("; ")}` }))] };
-    return { packs: good, dropped };
-  } catch (err) { return { packs: [], dropped: [{ id: null, reason: `the saved packs could not be read (${String(err?.message).slice(0, 100)})` }] }; }
-}
 
 export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true } = {}) {
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
@@ -144,7 +121,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const was = t.state?.version;
     // The packs a file holds are checked before anything reads them: what fails is dropped (the DM is told), never sent, and the game's
     // `state.packs` is made to say what is installed. One table's bad file is that table's problem alone.
-    const s = sanitizePacks(t.packs);
+    const s = cleanPacks(t.packs);
     t.packs = s.packs;
     if (s.dropped.length) { t.packsDropped = s.dropped; console.error(`Table ${t.code}: homebrew packs dropped at load: ${s.dropped.map((d) => `${d.id ?? "?"} (${d.reason})`).join("; ")}`); }
     engine.migrate(t); t.active ??= now(); tables.set(t.code, t);

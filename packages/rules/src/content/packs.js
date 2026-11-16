@@ -253,3 +253,27 @@ export function usesIn(state, isMine, most = 8) {
 // that names one of the pack's ids) that still use it, as a list of plain reasons, empty when nothing does. The server sends the list
 // as `blockers`. An update cannot drop entries, so it never needs this. Pure.
 export const inUse = (state, packId) => usesIn(state, (x) => x.startsWith(`hb-${packId}-`));
+
+// ---------- a table file's packs at load (moved from the server, #428) ----------
+// What a table file's `packs` may keep. Never throws, whatever the file holds: a value that is not a list, a record that is not exactly
+// { id, version, hash, data }, data that fails the registry's check or whose hash is not the one written, a pack that summons a homebrew
+// creature, or a set the registry refuses (five packs, ids in two packs) is dropped, with a sentence saying why. Returns
+// { packs: [the records that pass, as new objects], dropped: [{ id, reason }] }. Nothing dropped is ever sent to anyone.
+export function cleanPacks(records) {
+  try {
+    if (records === undefined) return { packs: [], dropped: [] };
+    if (!Array.isArray(records)) return { packs: [], dropped: [{ id: null, reason: 'the saved packs were not a list' }] };
+    const good = [], dropped = [];
+    records.forEach((p, i) => {
+      const id = typeof p?.id === 'string' ? p.id.slice(0, 60) : `pack ${i + 1}`;
+      const keys = p && typeof p === 'object' && !Array.isArray(p) ? Object.keys(p).sort().join() : '';
+      if (keys !== 'data,hash,id,version') return dropped.push({ id, reason: 'it is not a record of an id, a version, a hash and the pack' });
+      const v = vetPacks([p]);
+      if (v.ok) good.push({ id: p.id, version: p.version, hash: p.hash, data: p.data });
+      else dropped.push({ id, reason: v.problems.slice(0, 3).map((x) => String(x).slice(0, 200)).join('; ') });
+    });
+    const set = vetPacks(good);
+    if (!set.ok) return { packs: [], dropped: [...dropped, ...good.map((p) => ({ id: p.id, reason: `the packs cannot be on one table: ${set.problems.slice(0, 2).join('; ')}` }))] };
+    return { packs: good, dropped };
+  } catch (err) { return { packs: [], dropped: [{ id: null, reason: `the saved packs could not be read (${String(err?.message).slice(0, 100)})` }] }; }
+}
