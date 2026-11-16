@@ -7,7 +7,7 @@ Faithful Steed), Pact of the Chain, the Find Familiar, Find Steed, Summon and Co
 mounted combat (P3's "mounted"). Every number below is from `reference/srd52/srd52-flow.txt`;
 line numbers refer to that file.
 
-Built (as of 16 November): stages C1 to C8 and C10 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369, #375). Not built: C9 (the rest of the features).
+Built (as of 16 November): stages C1 to C8 and C10 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369, #375). Not built: C9 (the rest of the features; C9a, #411, built Faithful Steed and the Long Rest for a pocketed familiar; C9b, #414, built the `freeCast` keys and with them Wild Companion and Pact of the Chain's seven extra forms; still to build: the forgone attack, Investment of the Chain Master, Life Bond).
 
 ## Problem
 
@@ -483,9 +483,9 @@ and dropping fields it does not know.
 | Animate Objects | assist | `summon: 'animated-object'` with `variants` as size, at points the caster names | which objects (map things are not checked), the count by size against the modifier, reverting to the object |
 | Phantom Steed | auto; **C4 set assist**: a part's `ends: damaged` and `mount` (C6) are not in the vocabulary yet | `summon: 'riding-horse'`, `over: { speed: { walk: 100 } }`, part ends on damage, `mount` via the mounts list | travel pace, the vanishing tack, the minute to dismount |
 | Unseen Servant | assist; **C4 left manual**: `turn: 'none'`, commands and a block of one score are not in the vocabulary | a block built from the spell's numbers (AC 10, HP 1, Str 2), `turn: 'none'`, `orders: 'command'`, `leash: 60`, `noAttack`, Invisible | its other ability scores (none in the SRD), the tasks |
-| Wild Companion | auto | feature casting Find Familiar through `freeCast`-like spending of a slot or a Wild Shape use, `types: ['fey']`, `ends: ['longRest']` | as Find Familiar |
-| Faithful Steed | auto | `freeCast { spells: ['find-steed'] }` and always prepared (vocabulary exists; data entry) | — |
-| Pact of the Chain | assist | Find Familiar learned, Magic action, no slot; the seven extra forms; forgo an attack for the familiar's Reaction attack (C9) | — |
+| Wild Companion | auto (**C9b built, #414**; was manual) | feature casting Find Familiar through `freeCast`-like spending of a slot or a Wild Shape use, `types: ['fey']`, `ends: ['longRest']` | as Find Familiar |
+| Faithful Steed | auto (**C9a built, #411**) | `freeCast { spells: ['find-steed'] }`, one use per Long Rest, and always prepared | the spell's own leftovers (Life Bond, the steed acting to protect its rider) are Find Steed's tier, not the feature's |
+| Pact of the Chain | assist (**C9a: the casting part was already entered (#232) and is now tested; C9b, #414: the seven extra forms built as `freeCast.forms`**; the forgone attack is left) | Find Familiar learned, Magic action, no slot; the seven extra forms; forgo an attack for the familiar's Reaction attack (C9) | — |
 | Investment of the Chain Master | assist (C9) | bake options (Fly or Swim 40, the master's DC); the Bonus Action command to Attack; the damage type swap; the Reaction Resistance as a reaction instruction | — |
 | Conjure Animals, Woodland Beings, Minor Elementals, Celestial, Elemental, Fey | manual (zones work, not this spec) | they are spirits with no block: areas that move with or apart from the caster (S4's "moving a zone after casting") | everything until then |
 | Faithful Hound | manual | seen by its caster only | everything |
@@ -1031,9 +1031,87 @@ key `one` (CLAUDE.md: a step's vocabulary is an engine change), as Decision 2 na
   master nothing and needs nothing of it, so the DM's `remove` of the master is never stuck. A player can't: for them it is
   the master's Magic action. A twin run of the review's case (a hiding foe master and its hiding owl in a fight with a seen goblin between them)
   gives three players the same events, views, record and `seq` with the attempt as without, on hexes and squares.
-- **Left** (in DEBT): an unseen familiar can't go to or come from the pocket in a fight (above); Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
-  pocket (rests.js); a seen foe familiar's new form reaches players only through their view, with no event; the client has
+- **Left** (in DEBT): an unseen familiar can't go to or come from the pocket in a fight (above); ~~Wild Companion's `ends: ['longRest']` (C9) is not checked for a familiar in a
+  pocket (rests.js)~~ (C9a, #411); a seen foe familiar's new form reaches players only through their view, with no event; the client has
   no Dismiss, Recall or Deliver (C8).
+
+### C9a, Faithful Steed, the Long Rest and the pocket, and what stopped (#411)
+
+The first half of C9. Built and tested in `test/companions-c9a.test.js`; the SRD lines are 9205-9211 (Wild Companion),
+11982-11987 (Faithful Steed) and 16619-16631 (Pact of the Chain).
+
+- **Faithful Steed (Paladin 5): built, `auto`.** Data only: `uses { max: 1, recharge: 'long' }`, `grants.spells ['find-steed']`
+  (always prepared) and `grants.freeCast { spells: ['find-steed'] }`, as Favored Enemy does for Hunter's Mark. A cast with
+  `via: 'faithful-steed'` spends the use and no slot, at the spell's own level (2); the type is chosen each casting, a new
+  casting replaces the steed, and a cast with a slot is still open (the spell is prepared). A Short Rest does not give the
+  use back; a Long Rest does (`rest` refills every feature's `uses`). The tier is the feature's: what the *spell* leaves to
+  the DM (Life Bond, the steed acting to protect its rider) stays in Find Steed's `assist` entry.
+- **A Long Rest ends a bond with `ends: ['longRest']` for a familiar in its master's pocket too** (`rests.js`, `rest`). The
+  loop that vanished bound companions read `state.entities` only, so a pocketed familiar (whose record is in `master.pocket`)
+  was missed. Now each rested master's pocket is checked as well: a record whose `bond.ends` has `longRest` leaves the pocket
+  (an empty pocket leaves no field) and `vanished { id, name, why: 'rest', pocket: true }` is told, with `seen` and `party`
+  only for the party's own (as `unpocketForever` does), so a foe master's pocket tells players nothing. A master that did not
+  rest keeps it. No pack spell sets `ends: ['longRest']` yet (Wild Companion is the one that will), so the tests set it on a
+  Find Familiar's bond by hand.
+- **Wild Companion (Druid 2): stopped, stays `manual`.** Three things it needs are not in the vocabulary, and the first
+  half's files could not hold them (`content/schema.js` is out of scope): (1) a cost of a spell slot *or* a use of another
+  feature (`freeCast` spends only the feature's own `uses`, or none with `atWill`; `casting.js` takes `a.slot` as refused when
+  `via` is set; the druid does not know Find Familiar, so it can't be cast the ordinary way either); (2) a feature-level
+  restriction of the summon's creature type to Fey (`types` belongs to the spell's step); (3) a feature-level `ends:
+  ['longRest']` on the bond the cast makes (`ends` belongs to the step's `bond`, and Find Familiar's has none), plus the
+  waiver of the costly Material component. One schema amendment would cover all three, for example `freeCast` keys `cost: {
+  slotOr: 'wild-shape' }`, `types: ['fey']` and `ends: ['longRest']`, with `casting.js` and the summon step reading them.
+  The engine half (the Long Rest ending a pocketed familiar) is built above, so only the entry is waiting.
+- **Pact of the Chain (Warlock): the casting part is entered and tested; the seven extra forms are stopped.** The casting
+  part was entered in #232 (`freeCast { spells: ['find-familiar'], atWill, time: 'action' }`): a Magic action, no slot, no
+  use, even in a fight; the test plays it, with the normal forms, the type choice, one familiar, and the refusals. The extra
+  forms (Imp, Pseudodragon, Quasit, Skeleton, Sphinx of Wonder, Sprite, Venomous Snake; all seven have blocks in the pack)
+  need a form list that belongs to the *casting feature*, not the spell: Find Familiar's `forms` is the spell's, so the
+  warlock and the wizard see the same list. Neither `freeCast` (closed: `atWill`, `self`, `dark`, `sureSave`, `maxTemp`,
+  `time`) nor the summon step has a place for it. A `freeCast.forms` list (ids of pack monsters, checked against
+  homebrew first as `summonFor` does, #403) read by `summonFor` would do. Until then the extras are refused for everyone, a
+  test pins that the wizard's refusal holds, and the tier stays `assist`. The forgone attack, Investment of the Chain Master
+  and Life Bond are the second half.
+
+### Amendment C9b, five optional keys on a feature's `freeCast` (#414)
+
+Wild Companion and Pact of the Chain's extra forms were stopped by #411 because `freeCast` could not say them. This amendment
+adds the vocabulary, closed and small. Every key is optional and belongs to a `freeCast` of named spells (`{ spells }`); a
+`{ list, maxLevel }` freeCast takes none of them. A feature that uses none of them behaves exactly as before. The SRD lines
+(srd52-flow.txt): Wild Companion 9205-9211, "As a Magic action, you can expend a spell slot or a use of Wild Shape to cast the
+Find Familiar spell without Material components. When you cast the spell in this way, the familiar is Fey and disappears when
+you finish a Long Rest."; Pact of the Chain 16619-16631, "When you cast the spell, you choose one of the normal forms for your
+familiar or one of the following special forms: Imp, Pseudodragon, Quasit, Skeleton, Sphinx of Wonder, Sprite, or Venomous
+Snake".
+
+| Key | Shape | What the engine does with it |
+|---|---|---|
+| `forms` | a list of pack monster ids, 1 to 20, no repeats | Extra forms for the spell's summon step (one with `forms`), for a caster who HAS the feature: `summonFor` accepts them in `summon.form` besides the step's own, **after** the homebrew check (#403), so a homebrew monster is never a form. It applies to every casting of that spell by that caster, through the feature or by a slot (the SRD says "when you cast the spell"), and to no other caster. Only a creature that holds the feature gets them. |
+| `types` | a list of creature types, 1 to 14, no repeats | The creature types a summon may take for a cast **through the feature** (`via`), replacing the step's own `types` for that cast. The cast's `summon.type` must be in the list and in the step's own `types`; a list of one is the default when `type` is left out. A slot cast of the same spell keeps the step's own types. |
+| `ends` | a list of `masterDies` and/or `longRest`, no repeats | Added to the `bond.ends` of what a cast **through the feature** makes, for a new creature and for a reformed one. A cast without the feature keeps the spell's own endings (a plain Find Familiar reforms the familiar and so takes the endings off again, as the SRD's new casting replaces the creature). |
+| `cost` | `{ slot: true, uses: <feature id> }`, exactly these two keys | What the cast spends instead of the feature's own `uses`: **a spell slot or a use of the named feature, chosen by the caster, never both**. The feature then has no `uses` of its own and no `atWill`. The `cast` action says `pay: 'slot'` or `pay: 'uses'`; with no `pay`, or any other, it is refused. `pay: 'slot'` takes `slot` as an ordinary cast does (the spell's own level or higher, a slot the caster has, one slot a turn in a fight, handed back if the cast is countered); `pay: 'uses'` refuses `slot`, needs a use of the named feature and spends one. `pay` on a feature with no `cost` is refused. Everything is checked before anything is spent. |
+| `components` | `'none'` | The cast needs no Material component: the cast's component list has no `m`, and a `costly` Material component no longer makes it unhideable by Subtle Spell or visible to a Counterspell for that reason. (The engine keeps no Material components; this is all the waiver changes.) |
+
+The linter (`content/schema.js`) knows exactly these shapes and refuses any other, and the homebrew strict lists have a
+`freeCast` shape (key list, a type for each key, a length ceiling for each list). The pack linter also checks across the pack:
+`forms` ids are pack monsters, `types` and `forms` need a freeCast spell with a summon step that has `types` or `forms`,
+`ends` needs a spell with a summon step, and `cost.uses` names a feature of the class that has `uses`.
+
+**C9b build notes (#414).** Built as amended above, in `engine/casting.js` (`castSpell`, `summonFor`), `content/schema.js` and the two
+class entries; tested in `test/freecast-keys.test.js`. What was settled where the amendment left room:
+- The cast action names the payment as `pay: 'slot' | 'uses'`. A feature with a `cost` needs it; a feature without one refuses it.
+- `forms` is read from every feature of the caster that names the spell, whether the cast goes through the feature or by a slot
+  (the SRD says "when you cast the spell"). A homebrew monster is refused first (#403) even if a feature lists it.
+- `types` and `ends` apply to a cast through the feature only. `ends` is put on the cast's own copy of the steps, so the spell's data
+  is untouched and a later slot cast that reforms the familiar gives it the spell's own endings again.
+- `components: 'none'` changes only what the engine looks at (Subtle Spell and the Counterspell window): the engine keeps no components.
+- **Tiers.** Wild Companion manual -> auto: the feature's whole text is played (the choice, no Material, Fey, the Long Rest in the pocket
+  too); what Find Familiar itself leaves to the DM stays the spell's `assist`. Pact of the Chain stays assist (the forgone attack).
+- **Fix round 1 (#415).** In homebrew strict mode `forms` is refused altogether ("A homebrew feature cannot add familiar forms yet."): a
+  feat could otherwise make any SRD monster a familiar. In every pack each `forms` id must be a monster of the pack (a typo fails). Strict
+  `cost.uses` must name an SRD feature with uses. `lintPack` never throws on a malformed `freeCast`; each bad shape is told with its own key.
+  `pay` sent to a feature with no `cost` is refused (it used to be ignored): a client never sends it.
+- Not done: the chooser for `pay` and the extra forms (client), the forgone attack, Investment of the Chain Master, Life Bond.
 
 ### C6a, riding, the first half (#346)
 

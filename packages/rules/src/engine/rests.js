@@ -91,6 +91,19 @@ export const handlers = {
     for (const x of Object.values(s.entities)) {
       if (Object.hasOwn(s.entities, x.id) && !x.vanished && rested.has(x.bond?.to) && Array.isArray(x.bond.ends) && x.bond.ends.includes('longRest')) vanish(s, x, 'rest', ev);
     }
+    // One in its master's pocket dimension (a familiar sent there, Find Familiar) is bound the same way: the Long Rest is
+    // finished whether or not it is on the map, so it goes from the pocket (C9; the pocket keeps no other life of its own).
+    // Told as a familiar dismissed from the pocket is (resolve.js, unpocketForever), with its own reason; players hear of
+    // the party's own only.
+    for (const m of Object.values(s.entities)) {
+      if (!m.pocket || typeof m.pocket !== 'object' || !rested.has(m.id)) continue;
+      for (const [id, x] of Object.entries(m.pocket)) {
+        if (!(x?.bond?.to === m.id && Array.isArray(x.bond.ends) && x.bond.ends.includes('longRest'))) continue;
+        delete m.pocket[id];
+        ev.push({ type: 'vanished', id, name: x.name, why: 'rest', ...(x.side === 'party' ? { seen: true, party: true } : {}), pocket: true });
+      }
+      if (!Object.keys(m.pocket).length) delete m.pocket;
+    }
   },
   // SRD Short Rest: an hour. { type: 'shortRest', ids?, spend?: { id: n }, recover?: { id: [slot levels] } }
   // Each who rests (the party when `ids` is not given) can spend Hit Point Dice (`spend`): each rolls

@@ -983,7 +983,7 @@ function lintGrants(g, cls, say) {
   }
   // `freeCast`: for one of the feature's uses, cast a spell with no slot as a Magic action: any
   // spell of a class's list up to a level ({ list, maxLevel }), or one of these ({ spells }).
-  if (g.freeCast !== undefined && !validFreeCast(g.freeCast)) say('freeCast is { list, maxLevel } or { spells }');
+  if (g.freeCast !== undefined) for (const m of freeCastProblems(g.freeCast)) say(m);
   // `metamagic`: a Metamagic option known, by its id, its cost from a pool (engine/casting.js, metamagicFor);
   // `metamagicMax`: so many options a spell while the feature `while` names has its effect going.
   if (g.metamagic !== undefined && !(g.metamagic && ['careful', 'distant', 'empowered', 'extended', 'heightened', 'quickened', 'seeking', 'subtle', 'transmuted', 'twinned'].includes(g.metamagic.id)
@@ -1155,9 +1155,39 @@ function lintGrants(g, cls, say) {
 // Dim Light or Darkness), `sureSave` (its caster succeeds on the spell's saves), `maxTemp` (Temporary Hit Point
 // dice at their highest) and `time: 'action'` (cast as a Magic action whatever its casting time).
 const FREE_CAST_FLAGS = ['atWill', 'self', 'dark', 'sureSave', 'maxTemp'];
-const validFreeCast = (x) => !!x && typeof x === 'object' && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
-  || (Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => ID.test(id))
-    && Object.keys(x).every((k) => k === 'spells' || (FREE_CAST_FLAGS.includes(k) && x[k] === true) || (k === 'time' && x[k] === 'action'))));
+// And (#414, docs/specs/companions.md, amendment C9b), each optional and only on a freeCast of named spells: `forms` (extra
+// pack monsters its caster may choose for a summon of forms), plus the keys below as they are built.
+const FREE_CAST_LISTS = {
+  ends: (v) => Array.isArray(v) && v.length >= 1 && v.length <= SUMMON_ENDS.length && v.every((x) => SUMMON_ENDS.includes(x)) && new Set(v).size === v.length,
+  types: (v) => Array.isArray(v) && v.length >= 1 && v.length <= CREATURE_TYPES.length && v.every((x) => CREATURE_TYPES.includes(x)) && new Set(v).size === v.length,
+  forms: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((id) => typeof id === 'string' && ID.test(id)) && new Set(v).size === v.length,
+};
+const validFreeCastCost = (c) => !!c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).length === 2 && c.slot === true && typeof c.uses === 'string' && ID.test(c.uses);
+// What is wrong with a freeCast, one sentence for each thing, naming the key (never throws, whatever it is given).
+const FC_WHAT = {
+  forms: 'is a list of 1 to 20 pack monster ids, no repeats', types: 'is a list of 1 to 14 different creature types', ends: 'is a list of masterDies and/or longRest, no repeats',
+  cost: 'is { slot: true, uses: <feature id> }', components: 'is "none"', time: 'is "action"',
+};
+function freeCastProblems(x) {
+  const base = 'freeCast is { list, maxLevel } or { spells }';
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return [base];
+  if (Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9) return [];
+  if (!(Array.isArray(x.spells) && x.spells.length > 0 && x.spells.every((id) => typeof id === 'string' && ID.test(id)))) return [base];
+  const out = [];
+  for (const k of Object.keys(x)) {
+    const v = x[k];
+    if (k === 'spells') continue;
+    if (FREE_CAST_FLAGS.includes(k)) { if (v !== true) out.push(`freeCast ${k} is true or left out`); }
+    else if (k === 'time') { if (v !== 'action') out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else if (Object.hasOwn(FREE_CAST_LISTS, k)) { if (!FREE_CAST_LISTS[k](v)) out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else if (k === 'cost') { if (!validFreeCastCost(v)) out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else if (k === 'components') { if (v !== 'none') out.push(`freeCast ${k} ${FC_WHAT[k]}`); }
+    else out.push(`freeCast has no "${k}"`);
+  }
+  if (x.cost !== undefined && x.atWill !== undefined) out.push('freeCast cost and atWill are two answers to what the cast spends: say one');
+  return out;
+}
+const validFreeCast = (x) => freeCastProblems(x).length === 0;
 function lintFeature(f, cls, say, ids) {
   const sub = (m) => say(`feature ${f?.id}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
@@ -1198,13 +1228,15 @@ function lintFeature(f, cls, say, ids) {
         && (o.requires.level === undefined || (isInt(o.requires.level) && o.requires.level >= 1 && o.requires.level <= LEVELS))
         && (o.requires.option === undefined || f.options.some((x) => x?.id === o.requires.option && x !== o)) && (o.requires.spell === undefined || ID.test(o.requires.spell)))) os('requires gives a level, another option of the feature, or a spell');
       if (o?.uses !== undefined && !(o.uses && isInt(o.uses.max) && o.uses.max > 0 && RESTS.includes(o.uses.recharge) && Object.keys(o.uses).length === 2)) os('uses is { max, recharge }');
-      if (o?.grants?.freeCast && !o.uses && !o.grants.freeCast.atWill) os('a freeCast needs uses, or atWill');
+      if (o?.grants?.freeCast && !o.uses && !o.grants.freeCast.atWill && !o.grants.freeCast.cost) os('a freeCast needs uses, atWill or a cost');
+      if (o?.grants?.freeCast?.cost && o.uses) os('a freeCast with a cost spends that, and has no uses of its own');
       // `feat`: the option is that feat (a Fighting Style feat); it grants what the feat grants (lintPack checks it is one).
       if (o?.feat !== undefined && !(o.feat === o.id && o.grants === undefined)) os('an option that is a feat has the feat\'s id and no grants of its own');
     }
   }
   // A feature that only adds steps to another's (`with`: Sear Undead in Turn Undead) grants nothing of its own.
-  if (f.grants?.freeCast && !f.uses && !f.grants.freeCast.atWill) sub('a freeCast needs uses, or atWill');
+  if (f.grants?.freeCast && !f.uses && !f.grants.freeCast.atWill && !f.grants.freeCast.cost) sub('a freeCast needs uses, atWill or a cost');
+  if (f.grants?.freeCast?.cost && f.uses) sub('a freeCast with a cost spends that, and has no uses of its own');
   // A feature whose whole effect is an aura's range growing at its level (Aura Expansion) grants nothing itself.
   if (f.tier === 'auto' && !f.grants && !f.options && !f.uses && !f.feat && !['spellcasting', 'pact-magic'].includes(f.id) && !withRefs(cls).has(f.id) && !byLevelAt(cls).has(f.level)) sub('marked auto but grants nothing');
   // A manual feature may still have its cost enforced: an action whose only steps are manual.
@@ -1465,6 +1497,20 @@ function lintPackCore(doc, opts) {
     }
     const pools = new Set(all.filter((f) => f.uses).map((f) => f.id));
     for (const g of grants) if (g.action?.cost && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
+    // A freeCast's extra keys (#414) need what they change: a summon step of forms, of types, and pack monsters for the forms.
+    if (spells.length) for (const g of grants) {
+      const fc = g.freeCast;
+      if (!validFreeCast(fc) || !fc.spells) continue;           // the feature's own linter says what is wrong with its shape
+      const steps = [];
+      for (const id of fc.spells) walkSteps(spells.find((x) => x.id === id)?.effects, (st) => { if (st && typeof st === 'object' && 'summon' in st) steps.push(st); });
+      if (fc.types !== undefined && !steps.some((st) => Array.isArray(st.types) && fc.types.some((x) => st.types.includes(x)))) say('a freeCast with `types` needs a spell with a summon step that offers one of them');
+      if (fc.cost !== undefined && !pools.has(fc.cost.uses)) say(`a freeCast cost names "${fc.cost.uses}", which is not a feature with uses`);
+      if (fc.ends !== undefined && !steps.some((st) => st.bond)) say('a freeCast with `ends` needs a spell with a summon step that has a bond');
+      if (fc.forms !== undefined) {
+        if (!steps.some((st) => st.forms !== undefined)) say('a freeCast with `forms` needs a spell with a summon step of forms');
+        if (monsters.length) for (const id of fc.forms) if (!beasts.has(id)) say(`a freeCast form is not a pack monster: "${id}"`);
+      }
+    }
   }
   // A feat's spell lists are classes of the pack.
   const classIds = new Set(classes.map((c) => c.id));
@@ -1539,7 +1585,7 @@ function lintFeat(f, say) {
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
   }
   if (f.recover !== undefined && !(f.recover && f.recover.levels === 'half-up' && isInt(f.recover.max))) sub('it recovers { levels: half-up, max }.');
-  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && (f.uses || f.freeCast.atWill))) sub('its freeCast is { list, maxLevel } or { spells }, with uses or atWill.');
+  if (f.freeCast !== undefined && !(validFreeCast(f.freeCast) && (f.uses || f.freeCast.atWill || f.freeCast.cost) && !(f.freeCast.cost && f.uses))) sub('its freeCast is { list, maxLevel } or { spells }, with uses, atWill or a cost (a cost and no uses).');
   if (f.metamagic !== undefined && !(f.metamagic && typeof f.metamagic.id === 'string' && isInt(f.metamagic.cost) && f.metamagic.cost > 0 && f.metamagic.cost <= 10 && ID.test(f.metamagic.pool ?? ''))) sub('its metamagic is { id, cost, pool }.');
   if (f.metamagicMax !== undefined && !(f.metamagicMax && isInt(f.metamagicMax.n) && f.metamagicMax.n >= 2 && f.metamagicMax.n <= 3 && ID.test(f.metamagicMax.while ?? ''))) sub('its metamagicMax is { n, while }.');
   if (f.exchange !== undefined && !(f.uses && f.exchange && ['costs', 'minLevel'].every((k) => f.exchange[k] && Object.values(f.exchange[k]).every((v) => isInt(v) && v > 0)))) sub('its exchange is { costs, minLevel }, with uses.');
@@ -1909,6 +1955,8 @@ const SHAPES = {
   proficiencies: { what: 'proficiencies', keys: ['n'] },
   spellPick: { what: 'a spell pick', keys: ['lists', 'abilities', 'cantrips', 'level1'] },
   grants: { what: 'grants', keys: GRANTS },
+  freeCast: { what: 'a freeCast', keys: ['list', 'maxLevel', 'spells', ...FREE_CAST_FLAGS, 'time', ...Object.keys(FREE_CAST_LISTS), 'cost', 'components'] },
+  freeCastCost: { what: 'a freeCast cost', keys: ['slot', 'uses'] },
   aura: { what: 'an aura', keys: ['range', 'modifiers', 'immune'] },
   map: { what: 'a map', keys: null },
   speedMap: { what: 'speeds', keys: null }, senseMap: { what: 'senses', keys: null }, skillMap: { what: 'skills', keys: null }, saveMap: { what: 'saves', keys: null },
@@ -1931,7 +1979,8 @@ const CHILD = {
   state: { light: 'light' },
   trigger: { effects: 'steps' }, use: { check: 'check', effects: 'steps' }, activate: { effects: 'steps' },
   prerequisite: { abilities: 'anyAbility' },
-  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap' },
+  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast' },
+  freeCast: { cost: 'freeCastCost' },
   aura: { range: 'value', modifiers: 'modifier[]' },
   bond: {}, over: { speed: 'speedMap' },
 };
@@ -2026,7 +2075,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100],
   'targets.#': [1, 20], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
-  'bond.range': [5, 1000], 'bond.leash': [5, 1000],
+  'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'byLevel.#': [-40, 40],
@@ -2041,15 +2090,18 @@ export const HOMEBREW_RANGES = Object.freeze({
 });
 // What a `grants` may hold beyond the fields above (a feature's grants are many shapes; none needs a big number).
 const GRANTS_ANY = [-100, 100];
-// Dice written as a string: how many, how many sides, and the flat part (the SRD's largest are 26, 12 and 70).
-export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 100, flat: 140 });
+// Dice written as a string, one roll: how many, how many sides, and the flat part. The SRD pack's largest, measured over every
+// dice string of every entry (homebrew-dice.test.js computes them): 26 dice (the Ancient Red Dragon's 26d6), 12 sides (Poison
+// Spray's d12) and a flat 70 (Heal). The ceilings are about twice those (#408: the sides were 100, eight times the SRD's, and
+// the cause of "50d100"). What one use rolls in all is the work estimate's to hold (HOMEBREW_WORK.dice, below).
+export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 24, flat: 140 });
 export const HOMEBREW_DURATIONS = Object.freeze({ round: 12, minute: 20, hour: 48, day: 60 });
 export const HOMEBREW_COST = 3000;                // gold pieces: the dearest thing the SRD sells costs 1,500 GP
 const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
 // The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
 // SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
 export const HOMEBREW_LENGTHS = Object.freeze({
-  '*.step': 20, '*.blocks': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  '*.step': 20, '*.blocks': 2, 'freeCast.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
@@ -2061,7 +2113,11 @@ const GRANTS_LEN = 30;
 // most attacks of one Multiattack. The SRD's own largest are printed in the build note of fix round 2. The steps ceiling is
 // measured, not a multiple of the SRD's: the heaviest accepted cast and monster turn at a table of 30 stay well under a second
 // and a megabyte (a test in homebrew-values.test.js); it lets an area spell hold 20 steps of work.
-export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14 });
+// `dice`: the most dice faces one use may roll (#408; diceOf counts them as the engine does). The engine refuses an action over
+// 1,200 (effects.js, WORK.dice); this is three quarters of that, so a use the gate admits has a quarter to spare. This file cannot
+// import effects.js (it imports this one), so a test (homebrew-dice.test.js) compares the two sets of ceilings and fails if the
+// gate's passes the engine's: steps 600 of 1,000, dice 900 of 1,200, attacks 14 of 20, events measured.
+export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14, dice: 900 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
 const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (inGrants ? GRANTS_ANY : undefined);
@@ -2129,8 +2185,9 @@ function multiWork(ma, byId) {
 }
 // { work, attacks, what } for an entry of any kind (0 where it runs no steps).
 export function workOf(kind, e) {
-  let work = 0, attacks = 0, what = '';
+  let work = 0, attacks = 0, what = '', dice = 0, diceWhat = '';
   const take = (n, w) => { if (n > work) { work = n; what = w; } };
+  const takeDice = (n, w) => { if (n > dice) { dice = n; diceWhat = w; } };
   if (kind === 'spells') {
     // Estimated at the top: a 9th-level slot (each level above the spell's adds `higher.slot.targets` creatures and
     // `higher.slot.times` repeats) and, for a cantrip, character level 20 (`higher.targets` by level).
@@ -2139,18 +2196,75 @@ export function workOf(kind, e) {
     let targets = targetsOf(e.target);
     if (!(e.target?.area && !isN(e.target.area.choose))) targets = Math.max(targets + up * (isN(hs.targets) ? hs.targets : 0), levelTargets);
     take(targets * listWork(e.effects, up * (isN(hs.times) ? hs.times : 0)), 'cast at its highest level');
+    const steps = scaledSteps(e, up);
+    takeDice(diceFor(steps, targets, !!e.target?.area || (targets > 1 && !e.target?.creature?.repeat)), 'cast at its highest level');
+    // A zone goes off for one creature at a time, rolling for each: a creature that moves into it (as many as the table has
+    // when the zone itself moves onto them), or two ticks in one end of turn (the end of one creature's, the start of the next).
+    if (e.zone && typeof e.zone === 'object') takeDice((Array.isArray(e.zone.on) && e.zone.on.includes('enter') ? HOMEBREW_WORK.creatures : 2) * diceFor(steps, 1, false), 'zone, going off');
   }
   else if (kind === 'monsters' && Array.isArray(e.actions)) {
     const byId = new Map(e.actions.filter((a) => a && typeof a.id === 'string').map((a) => [a.id, a]));
     for (const a of e.actions) {
       if (!a || typeof a !== 'object') continue;
       take(actionWork(a), `action "${a.id}"`);
+      // Each attack of a Multiattack is an action of its own to the engine, so it is the dearest attack that counts.
+      if (!a.multiattack) takeDice(diceFor(a.effects, targetsOf(a.target), !!a.target?.area), `action "${a.id}"`);
       if (a.multiattack) { const [n, w] = multiWork(a.multiattack, byId); attacks = Math.max(attacks, n); take(w, `Multiattack "${a.id}"`); }
     }
-  } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
-  else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) take(listWork(u?.effects), 'use');
-  return { work, attacks, what };
+  } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) {
+    take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
+    takeDice(diceFor(u?.effects, u?.area ? HOMEBREW_WORK.creatures : 1, !!u?.area), 'use');
+  }
+  else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) { take(listWork(u?.effects), 'use'); takeDice(diceFor(u?.effects, 1, false), 'use'); }
+  return { work, attacks, what, dice, diceWhat };
 }
+
+// ----- the dice of one use (#408) -----
+// The engine counts the dice faces an action rolls for damage and healing (effects.js, `spend('dice', ...)`: the leading count of
+// each roll, a damage step's once for each repeat, an attack's doubled for a critical hit) and refuses an action over a ceiling.
+// So the estimate counts the same: `own` is dice outside an attack roll, which an area (or several creatures at once) rolls once
+// and shares; `each` is dice under an attack roll (doubled, as a critical hit does) and healing, which are rolled for each creature.
+const diceCount = (x) => { const m = typeof x === 'string' ? /^\s*(\d+)d/.exec(x) : null; return m ? +m[1] : 0; };
+function listDice(list, atk = false) {
+  let own = 0, each = 0;
+  if (!Array.isArray(list)) return { own, each };
+  for (const st of list) {
+    if (!st || typeof st !== 'object') continue;
+    if ('damage' in st) { const d = diceCount(st.damage) * Math.max(1, isN(st.times) ? Math.ceil(st.times) : 1); if (atk) each += 2 * d; else own += d; }
+    for (const k of ['heal', 'tempHp']) if (k in st) each += diceCount(st[k]);
+    const inner = atk || 'attack' in st;
+    for (const b of BRANCHES) { const r = listDice(st[b], inner); own += r.own; each += r.each; }
+  }
+  return { own, each };
+}
+// A spell's steps as cast at a 9th-level slot by a level 20 caster: the first damage, heal and temporary Hit Points step grow by
+// `higher.slot` for each level above the spell's, the first damage step repeats more, and a cantrip's first damage step is
+// its dice for character level 20 (effects.js, scaleSteps, which finds the first step of a kind the same way).
+function scaledSteps(e, up) {
+  const steps = structuredClone(Array.isArray(e.effects) ? e.effects : []);
+  const first = (list, key) => {
+    for (const st of list) {
+      if (!st || typeof st !== 'object') continue;
+      if (key in st) return st;
+      for (const b of BRANCHES) if (Array.isArray(st[b])) { const f = first(st[b], key); if (f) return f; }
+    }
+    return null;
+  };
+  const byLevel = e.higher?.level && typeof e.higher.level === 'object' ? e.higher.level : null;
+  if (byLevel) {
+    const reached = Object.keys(byLevel).map(Number).filter((l) => l <= 20).sort((x, y) => y - x)[0], dmg = first(steps, 'damage');
+    if (reached !== undefined && dmg && typeof byLevel[reached] === 'string') dmg.damage = byLevel[reached];
+  }
+  const hs = e.higher?.slot && typeof e.higher.slot === 'object' ? e.higher.slot : null;
+  if (up > 0 && hs) {
+    for (const k of ['damage', 'heal', 'tempHp']) { const st = typeof hs[k] === 'string' ? first(steps, k) : null; if (st) st[k] = `${diceCount(st[k]) + diceCount(hs[k]) * up}d6`; }
+    const st = isN(hs.times) ? first(steps, 'damage') : null;
+    if (st) st.times = (isN(st.times) ? st.times : 1) + hs.times * up;
+  }
+  return steps;
+}
+// The dice one use rolls on `n` creatures: shared damage once, the rest for each creature; or all of it for each.
+const diceFor = (steps, n, shared) => { const { own, each } = listDice(steps); return shared ? own + n * each : n * (own + each); };
 const DICE_STR = /^([+-]?)(?:(\d+)d(\d+))?(?:([+-]\d+))?$/;
 // A dice string's count, sides and flat part within the limits, or a sentence.
 function diceProblem(s) {
@@ -2173,9 +2287,10 @@ function lintNumbers(kind, e, say) {
     const reactions = e.traits.filter((t) => t?.reaction).length + e.actions.filter((a) => a?.time === 'reaction').length;
     if (reactions > HOMEBREW_LENGTHS['monsters.reaction']) say(`it has ${reactions} reactions; the most is ${HOMEBREW_LENGTHS['monsters.reaction']}`);
   }
-  const { work, attacks, what } = workOf(kind, e);
+  const { work, attacks, what, dice, diceWhat } = workOf(kind, e);
   if (attacks > HOMEBREW_WORK.attacks) say(`its Multiattack makes ${thousands(attacks)} attacks; the most is ${HOMEBREW_WORK.attacks}`);
   else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
+  else if (dice > HOMEBREW_WORK.dice) say(`one use (its ${diceWhat}) can roll ${thousands(dice)} dice, counting every repeat, the double dice of a critical hit and every creature that rolls its own (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${thousands(HOMEBREW_WORK.dice)}`);
   for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
     const r = rangeOf(owner, key, g);
     if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }
@@ -2252,6 +2367,8 @@ export const HOMEBREW_TYPES = Object.freeze({
   increase: { from: 's[]', points: 'i', max: 'i' },
   proficiencies: { n: 'i' },
   spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
+  freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]', types: 's[]', ends: 's[]', cost: 'o', components: 's' },
+  freeCastCost: { slot: 't', uses: 'id' },
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
@@ -2303,6 +2420,16 @@ const CONFUSABLE = { '\u0430': 'a', '\u0435': 'e', '\u043e': 'o', '\u0440': 'p',
   '\u0391': 'a', '\u0392': 'b', '\u0395': 'e', '\u0397': 'h', '\u0399': 'i', '\u039a': 'k', '\u039c': 'm', '\u039d': 'n', '\u039f': 'o', '\u03a1': 'p', '\u03a4': 't', '\u03a7': 'x', '\u03b9': 'i', '\u03bf': 'o', '\u03bd': 'v', '\u0131': 'i' };
 // A name as it reads: NFKD, marks removed, case folded, look-alike letters made Latin, and only letters and digits kept ("Fire-ball", "Fire_ball" and "F\u00edreball" are "fireball").
 export const nameKey = (s) => s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\u00df/g, 'ss').replace(/[\u0391-\u03bf\u0430-\u0501\u0131]/g, (c) => CONFUSABLE[c] ?? c).replace(/[^\p{L}\p{Nd}]/gu, '');
+const SRD_POOLS = new WeakMap();
+function srdPools(classes) {
+  let pools = SRD_POOLS.get(classes);
+  if (!pools) {
+    pools = new Set();
+    for (const c of Object.values(classes)) for (const f of [...(c.features ?? []), ...(c.subclass?.features ?? [])]) { if (f.uses) pools.add(f.id); for (const o of f.options ?? []) if (o.uses) pools.add(o.id); }
+    SRD_POOLS.set(classes, pools);
+  }
+  return pools;
+}
 const SRD_NAMES = new WeakMap();
 function srdNames(table) {
   let names = SRD_NAMES.get(table);
@@ -2314,7 +2441,11 @@ function srdNames(table) {
 function lintShape(kind, e, say, { homebrew }) {
   if (!HOMEBREW_ENTRY_KINDS.includes(kind)) { if (homebrew) say(`${kind} cannot be homebrew`); return 0; }
   let bad = 0;                                                   // wrong types and numbers: what the kind's linter must not be given
-  lintKeys(kind, e, say, (shape, key, value, path) => { const t = typeProblem(shape, key, value); if (t) { bad++; say(`${path} ${t}`); } });
+  lintKeys(kind, e, say, (shape, key, value, path) => {
+    // Extra familiar forms are not for homebrew yet (#414): a feature that adds forms could make any SRD monster a familiar.
+    if (homebrew && shape === 'freeCast' && key === 'forms') { bad++; say('A homebrew feature cannot add familiar forms yet.'); return; }
+    const t = typeProblem(shape, key, value); if (t) { bad++; say(`${path} ${t}`); }
+  });
   if (homebrew && !bad) lintNumbers(kind, e, (m) => { bad++; say(m); });
   return bad;
 }
@@ -2323,6 +2454,9 @@ function lintRules(kind, e, say, { homebrew, pack, srd }) {
   if (!homebrew || !HOMEBREW_ENTRY_KINDS.includes(kind)) return;
   const ref = srd ?? SRD_REF;
   lintUnchecked(kind, e, say);
+  // A freeCast's cost names a feature that has uses: one of the SRD's (a homebrew feat has none of its own).
+  const cu = e.grants?.freeCast?.cost?.uses;
+  if (kind === 'feats' && typeof cu === 'string' && !(ref?.classes && srdPools(ref.classes).has(cu))) say(`its freeCast cost names "${cu}", which is not a feature with uses in the SRD`);
   const prefix = `hb-${pack}-`;
   if (typeof e.id !== 'string' || !e.id.startsWith(prefix) || !ID.test(e.id.slice(prefix.length))) {
     const taken = typeof e.id === 'string' && ref?.[kind] && Object.hasOwn(ref[kind], e.id);

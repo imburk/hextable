@@ -391,15 +391,16 @@ test("the heaviest entries the gate accepts complete at a table of 30 and never 
   const { HOMEBREW_DICE, HOMEBREW_WORK } = await import("../src/content/schema.js");
   const D = `${HOMEBREW_DICE.count}d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`;
   const strict = (kind, e) => lintEntry(kind, e, { pack: "x", srd: CONTENT });
-  assert.ok(WORK.steps >= 1.25 * HOMEBREW_WORK.steps && WORK.attacks >= 1.25 * HOMEBREW_WORK.attacks, "steps and attacks sit a quarter above the gate's");
+  assert.ok(WORK.steps >= 1.25 * HOMEBREW_WORK.steps && WORK.attacks >= 1.25 * HOMEBREW_WORK.attacks && WORK.dice >= 1.25 * HOMEBREW_WORK.dice, "steps, dice and attacks sit a quarter above the gate's");
   const fine = (r) => { assert.ok(r.ok, r.error); assert.ok(r.events.length <= WORK.events); assert.ok(!r.events.some((e) => e.type === "manual" && /more than the engine allows/.test(e.text))); return r; };
-  // 1. the gate's worst spell: 30 creatures x (1 save + 19 repeats of 50d100+140), 950 dice
-  const worst = spell("hb-x-worst", { level: 9, duration: "1 minute", range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: D, type: "fire", times: 10 }, { damage: D, type: "fire", times: 9 }] }] });
+  // 1. the gate's worst spell: 30 creatures x (1 save + 19 repeats, 10 of 50d24+140 and 9 of 40d24+140), 860 dice (#408: the gate holds the dice to 900)
+  const worst = spell("hb-x-worst", { level: 9, duration: "1 minute", range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: D, type: "fire", times: 10 }, { damage: `40d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`, type: "fire", times: 9 }] }] });
   // 2. the spell that writes the most events for its steps: 10 damage and 10 heal steps for each of 30 creatures
   const busy = spell("hb-x-busy", { range: 10560000, target: { area: { shape: "sphere", size: 1000 } }, effects: Array(10).fill(0).flatMap(() => [{ damage: "1d6", type: "fire" }, { heal: "1d4" }]) });
   // 3. a monster's heaviest area action (20 steps for each of 30 creatures) and its Multiattack of 14
   const roar = { id: "roar", name: "Roar", text: "A roar.", target: { area: { shape: "emanation", size: 1000 } }, effects: Array(10).fill({ save: "dex", dc: 50, onFail: [{ damage: "1d6", type: "fire" }] }) };
-  const a1 = attackAction("a1", [{ damage: D, type: "slashing", times: 10 }, { damage: D, type: "slashing", times: 9 }], { text: "A blow." });
+  const D2 = `22d${HOMEBREW_DICE.sides}+${HOMEBREW_DICE.flat}`;        // an attack of 19 repeats of 22 dice, doubled by a critical hit: 836 dice (#408)
+  const a1 = attackAction("a1", [{ damage: D2, type: "slashing", times: 10 }, { damage: D2, type: "slashing", times: 9 }], { text: "A blow." });
   const multi = { id: "multi", name: "Multiattack", text: "Many blows.", multiattack: [{ action: "a1", times: 10 }, { action: "a1", times: 4 }] };
   const titan = monsterOf("hb-x-titan", [a1, roar, multi]);
   for (const [kind, e] of [["spells", worst], ["spells", busy], ["monsters", titan]]) assert.deepEqual(strict(kind, e), [], `${e.id}: the gate accepts it`);

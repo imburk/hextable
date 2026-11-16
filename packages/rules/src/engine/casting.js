@@ -243,7 +243,7 @@ function evokerFor(e, sp, a, slot, via, targets) {
 // tells the DM what to add, with the numbers the block would be baked with (resolve.js, `summon`). Returns
 // { count } then. A companion still can't cast one and the cap still holds: neither depends on the picks.
 // Any other value (null, a string, an array, an object with a key it does not take or no spaces) is refused.
-function summonFor(s, e, sp, a, slot, range, ctx) {
+function summonFor(s, e, sp, a, slot, range, ctx, fc) {
   const step = sp.def.effects.find((x) => 'summon' in x);
   if (!step) { a.summon === undefined || fail(`${sp.name} summons nothing.`); return null; }
   const p = a.summon;
@@ -264,12 +264,22 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   const out = {};
   if (step.variants) { step.variants.includes(p.variant) || fail(`Choose what ${sp.name} summons: ${step.variants.join(', ')}.`); out.variant = p.variant; }
   else p.variant === undefined || fail(`${sp.name} has no choice of that kind.`);
-  if (step.types) { step.types.includes(p.type) || fail(`Choose its creature type: ${step.types.join(', ')}.`); out.type = p.type; }
+  if (step.types) {
+    // `freeCast.types` (Wild Companion: Fey; docs/specs/companions.md, C9b) narrows the step's own for a cast through the feature;
+    // a list of one is the default.
+    const pool = fc?.types ? step.types.filter((x) => fc.types.includes(x)) : step.types;
+    pool.length > 0 || fail(`${sp.name} can't summon a creature of a type that feature allows.`);
+    const type = p.type === undefined && fc?.types && pool.length === 1 ? pool[0] : p.type;
+    pool.includes(type) || fail(`Choose its creature type: ${pool.join(', ')}.`); out.type = type;
+  }
   else p.type === undefined || fail(`${sp.name} has no choice of creature type.`);
   if (step.forms !== undefined) {
     const m = typeof p.form === 'string' && Object.hasOwn(CONTENT.monsters, p.form) ? CONTENT.monsters[p.form] : null;
     !isHomebrew(m) || fail(HOMEBREW_FORM);   // before the filter: a filter never matches one, and the refusal says nothing of its type or rating
-    const fits = m && (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr);
+    // Forms a feature of the caster adds for this spell (`freeCast.forms`, Pact of the Chain; docs/specs/companions.md, C9b): after the
+    // homebrew check above, so a homebrew monster is never one, and the caster's own, whether it casts through the feature or by a slot.
+    const extra = (e.feats ?? []).some((f) => f.freeCast?.spells?.includes(sp.id) && f.freeCast.forms?.includes(p.form));
+    const fits = m && (extra || (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr));
     fits || fail(`Choose a form ${sp.name} can take.`);
     out.form = p.form;
   } else p.form === undefined || fail(`${sp.name} has no choice of form.`);
@@ -441,8 +451,20 @@ function castSpell(s, a, ctx, ev, item) {
     if (via) {
       const fc = via.freeCast;
       (sp && (fc.spells ? fc.spells.includes(a.spell) : (sp.def.classes ?? []).includes(fc.list) && sp.level <= fc.maxLevel)) || fail(`${via.name} can't cast that spell.`);
-      (fc.atWill || (e.uses[via.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${via.name} left.`);
-      a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
+      // `freeCast.cost` (Wild Companion: a spell slot or a use of Wild Shape; docs/specs/companions.md, C9b): the caster says which in
+      // `a.pay`, 'slot' (as an ordinary cast: `a.slot`) or 'uses' (one use of the named feature), never both, all checked here.
+      if (fc.cost) {
+        const pool = featOf(e, fc.cost.uses);
+        a.pay === 'slot' || a.pay === 'uses' || fail(`Choose what ${via.name} spends: pay "slot" (a spell slot) or "uses" (a use of ${pool?.name ?? fc.cost.uses}).`);
+        if (a.pay === 'uses') {
+          a.slot === undefined || fail(`${via.name} spends a spell slot or a use of ${pool?.name ?? fc.cost.uses}, not both: leave out the slot.`);
+          (pool && (e.uses[pool.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${pool?.name ?? fc.cost.uses} left.`);
+        }
+      } else {
+        a.pay === undefined || fail(`${via.name} spends nothing that could be chosen: leave out "pay".`);
+        (fc.atWill || (e.uses[via.id] ?? 0) > 0) || fail(`${e.name} has no uses of ${via.name} left.`);
+        a.slot === undefined || fail(`${via.name} casts a spell at its own level, without a slot.`);
+      }
       if (fc.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${via.name} casts ${sp.name} on ${e.name} only.`);
       if (fc.dark) lightAt(s, e.pos) !== 'bright' || fail(`${via.name} works only while ${e.name} is in Dim Light or Darkness.`);
     } else if (!item) (sp && e.spells.includes(a.spell)) || fail(`${e.name} doesn't know that spell.`);
@@ -457,6 +479,7 @@ function castSpell(s, a, ctx, ev, item) {
     !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
+    const paysSlot = !!via?.freeCast.cost && a.pay === 'slot';      // a cast through a feature that spends a slot as the caster chose
     const asAction = !!via?.freeCast.list || via?.freeCast.time === 'action';      // Divine Intervention, Pact of the Chain: the spell is a Magic action
     if (!sp.turn && s.encounter && !asAction) fail(`${sp.name} takes longer than a turn to cast, so it can't be cast during a fight.`);
     let time = asAction ? 'action' : sp.time;
@@ -495,23 +518,23 @@ function castSpell(s, a, ctx, ev, item) {
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
     const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
     // A summon names its choices and a space for each creature (`a.summon`), checked now, before anything is spent.
-    const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx);
+    const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx, via?.freeCast);
     const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);
     const repel = repelFor(e, sp, a);
 
     // What it costs.
-    if (sp.level > 0 && !via && !item) {
+    if (sp.level > 0 && (!via || paysSlot) && !item) {
       (Number.isInteger(slot) && slot >= sp.level && slot <= 9) || fail(`${sp.name} needs a spell slot of level ${sp.level} or higher.`);
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
     // E23: the DM's hostile cast at a party member, with `autoEngage` on and no fight, lands and then the fight starts
     // (landThenFight, below). Any other harmful cast aimed at others outside a fight starts the fight and is not cast, as before.
-    const lands = !s.encounter && sp.harmful && aimed && landsFirst(s, e, targets, ctx) ? { from: ev.length, time, slotted: sp.level > 0 && !via && !item, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) } : null;
+    const lands = !s.encounter && sp.harmful && aimed && landsFirst(s, e, targets, ctx) ? { from: ev.length, time, slotted: sp.level > 0 && (!via || paysSlot) && !item, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) } : null;
     if (!s.encounter && sp.harmful && aimed && !lands) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     const done = () => { if (lands) landThenFight(s, e, sp, targets, ev, lands); checkEnd(s, ev); };
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;
-    const slotted = sp.level > 0 && !via && !item;
+    const slotted = sp.level > 0 && (!via || paysSlot) && !item;
     if (mm.has.quickened) time = 'bonus';
     if (lands) lands.time = time;
     if (s.encounter) {
@@ -527,12 +550,15 @@ function castSpell(s, a, ctx, ev, item) {
     }
     if (slotted) e.slots[slot]--;
     if (toucher && s.encounter) toucher.reactionUsed = true;
-    if (via && !via.freeCast.atWill) e.uses[via.id]--;
+    if (via?.freeCast.cost) { if (a.pay === 'uses') e.uses[via.freeCast.cost.uses]--; }
+    else if (via && !via.freeCast.atWill) e.uses[via.id]--;
     if (mm.cost) e.uses[mm.pool] -= mm.cost;
     if (mm.has.quickened && s.encounter) s.encounter.flags.slot = true;      // and no level 1+ spell after it this turn
     if (mm.list.length) ev.push({ type: 'std', id: e.id, action: `Metamagic: ${mm.names.join(', ')}` });
     // From an item: its charges and its event now; a scroll of a spell above its reader's level may fade.
-    const comps = item ? item.comps : sp.def.components ?? [];
+    // `freeCast.components: 'none'` (Wild Companion): no Material component, so a costly one hides nothing and gives nothing to see.
+    const noMaterial = via?.freeCast.components === 'none';
+    const comps = item ? item.comps : (sp.def.components ?? []).filter((c) => !(noMaterial && c === 'm'));
     if (item) {
       item.spend(e);
       if (item.check && !item.check(e)) { item.done?.(e); return done(); }
@@ -543,7 +569,7 @@ function castSpell(s, a, ctx, ev, item) {
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
     // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
-    const counteredBy = mm.has.subtle && !sp.def.costly ? null : counterWindow(s, e, sp, ev, comps);
+    const counteredBy = mm.has.subtle && !(sp.def.costly && !noMaterial) ? null : counterWindow(s, e, sp, ev, comps);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
       ev.push({ type: 'countered', id: e.id, spell: a.spell, name: sp.name, by: counteredBy });
@@ -558,6 +584,9 @@ function castSpell(s, a, ctx, ev, item) {
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
     const healMod = item ? item.healMod : mod(e.abil[castAbilOf(e, sp.id)] ?? 10);
     if (pick) chooseIn(steps, pick.of, a.choice);
+    // `freeCast.ends` (Wild Companion: a Long Rest; docs/specs/companions.md, C9b): more endings on the bond this cast makes,
+    // put on this cast's own copy of the steps, so the spell's data and any other cast of it are unchanged.
+    if (via?.freeCast.ends) walkSteps(steps, (x) => { if ('summon' in x && x.bond) x.bond.ends = [...new Set([...(x.bond.ends ?? []), ...via.freeCast.ends])]; });
     // Repelling Blast: a hit with the spell's attack pushes a Large or smaller target so many feet away.
     if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
