@@ -55,7 +55,15 @@ export function deathSave(s, e, ev) {
 // ---------- healing, rolls and their results ----------
 
 // `r`, if given, is the roll the amount came from, for the event's dice.
-export function heal(s, t, amount, ev, r = null) {
+// An amount of healing or Temporary Hit Points that is not a finite number (an action with no modifier to add: #421) is never applied:
+// Hit Points would become NaN. The DM is told instead. Returns true if it was not applied.
+const noAmount = (t, amount, what, ev, f) => {
+  if (Number.isFinite(amount)) return false;
+  ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src?.name ?? what, partial: true, text: `${what} for ${t.name} has no amount the engine can work out, so none was applied. The DM applies it.` });
+  return true;
+};
+export function heal(s, t, amount, ev, r = null, f = null) {
+  if (noAmount(t, amount, 'Healing', ev, f)) return;
   if (t.hp <= 0) { delete t.cond.unconscious; delete t.cond.stable; t.death = { s: 0, f: 0 }; }
   t.hp = Math.min(t.maxHp, t.hp + amount);
   ev.push({ type: 'heal', target: t.id, amount, hp: t.hp, ...rolledOf(r, amount) });
@@ -70,6 +78,7 @@ const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'h
 // vanish when it ends. They never wake a creature at 0 Hit Points.
 export function tempHp(s, t, amount, ev, f = null, r = null) {
   if (t.dead) return;
+  if (noAmount(t, amount, 'Temporary Hit Points', ev, f)) return;
   const had = t.tempHp ?? 0;
   if (amount <= had) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true, ...rolledOf(r, 0) });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;

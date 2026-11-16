@@ -906,6 +906,12 @@ function studied(s, e, t, ev) {
 // attack roll, with its own bonus, conditions and senses, but the touch is made from the familiar's space: distance,
 // cover and what can be seen are worked out as if the caster stood there with the familiar's size.
 function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = false } = {}) {
+  // An attack with no bonus the engine can read (a spell attack in a creature's action has none: #421) is not rolled: a total that is not a
+  // number would be neither a hit nor a miss. The DM is told, and nothing is spent or changed but the attack itself.
+  if (!Number.isFinite(atk.bonus)) {
+    ev.push({ type: 'manual', actor: e.id, name: atk.name, partial: true, text: `${atk.name} has no attack bonus the engine can use, so the roll was not made. The DM rolls it and says whether it hits ${t.name}.` });
+    return { hit: false, crit: false, mode: 'normal' };
+  }
   const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
   const from = v ? { ...e, pos: v.pos, size: v.size } : e;
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
