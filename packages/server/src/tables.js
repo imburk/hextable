@@ -18,7 +18,7 @@ import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
-import { hashOf, packsMatch } from "../../rules/src/content/packs.js";
+import { forPlayers as packFilteredCopy, hashOf, packForPlayer, packsMatch, PLAYER_PACK_KINDS } from "../../rules/src/content/packs.js";
 import { loadPack, installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
 import { LIMIT_MESSAGE } from "./limits.js";
@@ -53,24 +53,8 @@ export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
 // MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
 export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
 export const HOMEBREW_SUMMON_SENTENCE = "A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.";
-// What a member who is not the DM is sent of a pack (docs/specs/homebrew.md, Decision 5): the pack's id, name and version and
-// these lists. Never monsters. A new kind of homebrew is withheld from players until it is added here on purpose.
-export const PLAYER_PACK_KINDS = ["spells", "items", "feats", "weapons", "armour", "objects"];
+export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
-
-// One pack as a player may know it: id, name, version, the lists above, and no `dmNotes` at any depth.
-function withoutNotes(x) {
-  if (Array.isArray(x)) return x.map(withoutNotes);
-  if (x === null || typeof x !== "object") return x;
-  const out = {};
-  for (const [k, v] of Object.entries(x)) if (k !== "dmNotes") out[k] = withoutNotes(v);
-  return out;
-}
-export function packForPlayer(data) {
-  const out = { id: data.pack.id, name: data.pack.name, version: data.pack.version ?? 1 };
-  for (const k of PLAYER_PACK_KINDS) out[k] = withoutNotes(data[k] ?? []);
-  return out;
-}
 
 // Where in the game state some of a pack is still in use: every place (up to `most`) holding an id for which `isMine(id)` is true,
 // as a short path like "entities.m3 (Cinderling 1)". The timeline is the record of what happened, not what is on the table, and is
@@ -371,7 +355,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // What a player is sent of a pack is its filtered form, and the hash they are given is the hash of that (made once per stored pack), never
   // the hash of the whole pack: a hash of content they are not sent would be a fingerprint of it. The DM's hash is the pack's own.
   const filtered = new WeakMap();                 // a stored pack record -> { data, hash }
-  const playerPack = (p) => { let f = filtered.get(p); if (!f) { const data = packForPlayer(p.data); f = { data, hash: hashOf(data) }; filtered.set(p, f); } return f; };
+  const playerPack = (p) => { let f = filtered.get(p); if (!f) { f = packFilteredCopy(p.data); filtered.set(p, f); } return f; };
   const hashFor = (m, p) => (m.role === "dm" ? p.hash : playerPack(p).hash);
   const packsMessage = (t, m) => {
     if (!m.approved) return null;

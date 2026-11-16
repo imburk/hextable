@@ -105,3 +105,29 @@ export function packsMatch(statePacks, overlayPacks) {
   for (const id of [...have.keys()].sort()) if (!need.has(id)) return `The pack "${id}" is installed, but the game does not name it.`;
   return true;
 }
+
+// ---------- what a player is sent of a pack (docs/specs/homebrew.md, Decision 5; moved from the server, #428) ----------
+// What a member who is not the DM is sent of a pack: the pack's id, name and version and these lists. Never monsters. A new kind of
+// homebrew is withheld from players until it is added here on purpose.
+export const PLAYER_PACK_KINDS = ['spells', 'items', 'feats', 'weapons', 'armour', 'objects'];
+
+// One pack as a player may know it: id, name, version, the lists above, and no `dmNotes` at any depth.
+function withoutNotes(x) {
+  if (Array.isArray(x)) return x.map(withoutNotes);
+  if (x === null || typeof x !== 'object') return x;
+  const out = {};
+  for (const [k, v] of Object.entries(x)) if (k !== 'dmNotes') out[k] = withoutNotes(v);
+  return out;
+}
+export function packForPlayer(data) {
+  const out = { id: data.pack.id, name: data.pack.name, version: data.pack.version ?? 1 };
+  for (const k of PLAYER_PACK_KINDS) out[k] = withoutNotes(data[k] ?? []);
+  return out;
+}
+
+// The filtered copy of a pack that passed the check, and its hash: `{ data, hash }`. The hash a player is given is the hash of this
+// copy, never of the whole pack: a hash of content they are not sent would be a fingerprint of it. Pure; the caller keeps the result.
+export function forPlayers(pack) {
+  const data = packForPlayer(pack);
+  return { data, hash: hashOf(data) };
+}
