@@ -71,7 +71,7 @@ export function main(argv) {
   }
   // `read` reads every kind the reader has words for, in the order of READ_KINDS; the others are named as not read yet.
   const readable = READ_KINDS.flatMap((k) => (Array.isArray(pack[`${k}s`]) ? pack[`${k}s`].map((e) => [k, e]) : []));
-  if (cmd === "read" ? !readable.length : !spells.length) { err("problem: the pack has no " + (cmd === "read" ? "spells or monsters to read" : "spells to try")); return 1; }
+  if (cmd === "read" ? !readable.length : !spells.length) { err("problem: the pack has no " + (cmd === "read" ? "spells, monsters, items or feats to read" : "spells to try")); return 1; }
   let bads = 0;
   if (cmd === "read") {
     for (const [kind, e] of readable) {
