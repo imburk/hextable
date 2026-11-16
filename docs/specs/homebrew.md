@@ -1325,12 +1325,16 @@ kinds that are). What was settled:
   own sentences (`STEP_SENTENCES`, `modPhrase`, `modExtras`, the area words). A reading says "the creature" where a spell's says "the
   caster", and "the action" where it says "the spell", outside quoted author text. The few steps that differ for a creature are
   said in the step sentences themselves (a spell attack, `addMod`, a repeated save).
-- **What the reader found the engine does less with (DEBT T54).** A repeated save that ends a creature's condition never succeeds
-  (no DC is read, 15 SRD monsters); a spell attack in an action has no bonus; `addMod` in an action makes Hit Points `NaN`; a creature
-  target with no `reach` or `range` throws (and so does the AI); an area's `choose` is ignored; `swim` and `burrow` speeds, and trait
-  modifiers at `hp.max` and `carry`, are read by nothing; a trait id `nimble-escape` is magic. Each is said in the reading and, where
-  it breaks something, is a `problem` (the DM should not approve the entry). `reader-kinds.test.js` runs the engine to check each
-  claim, so a fix in the engine fails the test until the sentence is changed.
+- **What the reader found the engine does less with (DEBT T54).** Items 1 to 5 are closed by #422: a repeated save that ends a creature's
+  condition is rolled against the ending's own `ends.dc`, else the DC of the save that put it on (`runAction` writes it on the action's copy
+  of its steps; with none the DM is told); the linter refuses a spell attack, `addMod` on a heal or `tempHp`, and a creature target with neither
+  `reach` nor `range` in a creature's action, and the engine makes no roll and applies no amount that is not a number, refuses an action it
+  cannot aim with a sentence (the AI skips it); an area's `choose` is applied (a player picks only among creatures the party is told of; the
+  AI picks the nearest foes). Nine SRD entries whose SRD text repeats the save once and then makes a second failure lasting carry no automatic
+  repeat and a `manual` step instead. Still open, and said in the reading: `swim` and `burrow` speeds, and trait modifiers at `hp.max` and
+  `carry`, are read by nothing; a trait id `nimble-escape` is magic (T54 6 to 8). Each is a `problem` where it breaks something (the DM
+  should not approve the entry). `reader-kinds.test.js` runs the engine to check each claim, so a fix in the engine fails the test until
+  the sentence is changed.
 - **Coverage.** The tables of words (`MONSTER_FIELDS`, `TRAIT_FIELDS`, `ACTION_FIELDS`, `CREATURE_FIELDS`, `AREA_FIELDS`, `SIZE_WORDS`,
   `MOVE_WORDS`, `SENSE_WORDS`, `TRAIT_ID_WORDS`) are held equal to the key lists of `HOMEBREW_TYPES` and to the lists in the sources, so
   a new monster field, trait or action key, size, speed, sense or trait id the engine learns fails a test until it has words. Golden
