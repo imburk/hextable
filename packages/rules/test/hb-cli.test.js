@@ -57,7 +57,7 @@ test("read: prints each spell's reading, the tier and the author's text, and exi
   assert.equal(hb("read", file("bad2.json", JSON.stringify({ ...sample(), v: 2 }))).code, 1);
 });
 
-test("read: reads the monsters of a pack too, says what is not read yet, and a problem the reader finds exits 1", () => {
+test("read: reads the monsters of a pack too, and a problem the reader finds exits 1", () => {
   const PACK = new URL("./fixtures/reader-kinds-pack.json", import.meta.url).pathname;
   const r = hb("read", PACK);
   assert.equal(r.code, 0, r.err);
@@ -75,8 +75,9 @@ test("read: reads the monsters of a pack too, says what is not read yet, and a p
   const ok = hb("read", file("monsters.json", JSON.stringify(pack)));
   assert.equal(ok.code, 0, ok.err);
   assert.match(ok.out, /^Gloomwing Warden \[assist\]$/m);
-  assert.match(ok.out, /^Not read yet \(the reader has no words for them\): 1 weapons\.$/m);
-  const none = { ...pack, monsters: [], items: [], feats: [], weapons: [] }; delete none.spells;
+  assert.match(ok.out, /^Stick \[no tier\]$/m);
+  assert.doesNotMatch(ok.out, /Not read yet/);
+  const none = { ...pack, monsters: [], items: [], feats: [], weapons: [], armour: [], objects: [] }; delete none.spells;
   assert.equal(hb("read", file("empty.json", JSON.stringify(none))).code, 1);
 });
 
@@ -93,6 +94,29 @@ test("read: reads the items and feats of a pack, in words, and says what the DM 
   const only = { ...pack, monsters: [], spells: undefined };
   delete only.spells;
   assert.equal(hb("read", file("itemsfeats.json", JSON.stringify(only))).code, 0);
+});
+
+test("read: reads the weapons, armour and objects of a pack, in words, and reads nothing as not read yet", () => {
+  const PACK = new URL("./fixtures/reader-kinds-pack.json", import.meta.url).pathname;
+  const r = hb("read", PACK);
+  assert.equal(r.code, 0, r.err);
+  const pack = JSON.parse(readFileSync(PACK, "utf8"));
+  for (const e of pack.weapons.concat(pack.armour)) assert.ok(r.out.includes(`${e.name} [no tier]`), `${e.id} is read`);
+  for (const e of pack.objects) assert.ok(r.out.includes(`${e.name} [${e.tier}]`), `${e.id} is read`);
+  assert.doesNotMatch(r.out, /Not read yet/);
+  assert.match(r.out, /Strength modifier/);
+  assert.match(r.out, /sets the Armor Class to/);
+  assert.match(r.out, /^ {4}State "shut", called "shut"/m);
+  assert.match(r.out, /^ {2}The DM does: /m);
+  const gear = { ...pack, monsters: [], items: [], feats: [] };
+  delete gear.spells;
+  assert.equal(hb("read", file("gear.json", JSON.stringify(gear))).code, 0);
+  const onlyObjects = { ...gear, weapons: [], armour: [] };
+  assert.equal(hb("read", file("objects.json", JSON.stringify(onlyObjects))).code, 0);
+  // A weapon the gate refuses is not read as if it passed: the reader says it is refused, and exits 1.
+  const refused = { ...gear, weapons: [{ ...pack.weapons[0], properties: ["glows"] }], armour: [], objects: [] };
+  const bad = hb("read", file("refused.json", JSON.stringify(refused)));
+  assert.notEqual(bad.code, 0);
 });
 
 test("dryrun: prints each spell's cast, is the same twice for a seed, and differs for another", () => {
