@@ -9,6 +9,7 @@ import { aiStep } from "../src/ai.js";
 import { derive } from "../src/derive.js";
 import { WORK } from "../src/effects.js";
 import { apply, current, makeEntity } from "../src/engine.js";
+import * as H from "../src/hex.js";
 import { newGame } from "../src/scenario.js";
 
 const SRD = PACKS[0];
@@ -166,4 +167,202 @@ test("#408 part 3: the reviewer's three cases are refused, with plain sentences 
   const hits = (d) => monster({ actions: [attackAction("a1", Array(4).fill({ damage: d, type: "slashing", times: 10 })), multi({ action: "a1", times: 7 }, { action: "a1", times: 7 })] });
   refused(strict("monsters", hits("50d100+140")), /dice of 100 sides/);
   refused(strict("monsters", hits("50d24+140")), /\(its action "a1"\) can roll 4,000 dice/);
+});
+
+// ---------- part 4: the heaviest entry the gate accepts, of each kind, used once at a table of 30 ----------
+// A table of 30 creatures: the party, and goblin warriors around the wizard's target; nobody can die, so every creature is there to be reached.
+function tableOf30(seed = 5) {
+  const s = newGame(seed);
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM);
+  let n = Object.keys(s.entities).length;
+  for (let q = -4; q <= 4 && n < 30; q++) for (let r = -4; r <= 4 && n < 30; r++) {
+    if (Math.abs(q + r) > 4) continue;
+    if (apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: q + 2, r } }, DM).ok) n++;
+  }
+  assert.ok(n >= 30, `${n} creatures at the table`);
+  for (const e of Object.values(s.entities)) e.hp = e.hpMax = 1e9;
+  apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 12 }, DM);
+  for (let i = 0; i < 40 && current(s) !== "wizard"; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+  assert.equal(current(s), "wizard");
+  return s;
+}
+const loaded = (lists) => { const r = loadPack(doc(lists)); assert.ok(r.ok, r.problems?.join("; ")); return overlayOf([r.pack]); };
+// One result that went well: it was applied, wrote no `manual` stop (nothing was left to the DM or half done), and stayed under 0.75 of the engine's events.
+const WENT = (r, what) => {
+  assert.ok(r.ok, `${what}: ${r.error}`);
+  const manual = r.events.filter((e) => e.type === "manual");
+  assert.deepEqual(manual.map((e) => e.text), [], `${what}: a manual stop`);
+  assert.ok(r.events.length <= 0.75 * WORK.events, `${what}: ${r.events.length} events, the gate's share of the engine's ${WORK.events} is ${0.75 * WORK.events}`);
+  return r;
+};
+const wizardWith = (s, id) => { Object.assign(s.entities.wizard, { slots: { 1: 4, 2: 4, 3: 4, 9: 4 }, slotsMax: { 1: 4, 2: 4, 3: 4, 9: 4 } }); s.entities.wizard.spells.push(id); };
+const area = (size = 1000) => ({ area: { shape: "sphere", size } });
+const mage = (id, over = {}) => boom("1d6", { id: hb(id), range: 10560000, ...over });
+
+test("#408 part 4: a spell: the heaviest area cast (600 steps, 860 dice) and the heaviest at a 9th-level slot (900 dice) complete", () => {
+  const worst = mage("worst", { level: 9, target: area(), effects: [{ save: "dex", dc: 50, half: true, onFail: [D(50, 10), { damage: "40d24+140", type: "fire", times: 9 }] }] });
+  const grown = mage("grown", { level: 1, target: area(), effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "50d24+140", type: "fire", times: 2 }] }], higher: { slot: { damage: "50d24" } } });
+  for (const sp of [worst, grown]) assert.deepEqual(strict("spells", sp), [], sp.id);
+  assert.equal(dice("spells", worst), 860);
+  assert.equal(dice("spells", grown), 900);
+  const overlay = loaded({ spells: [worst, grown] });
+  for (const sp of [worst, grown]) {
+    const s = tableOf30();
+    wizardWith(s, sp.id);
+    const r = using(overlay, () => apply(s, { type: "cast", actor: "wizard", spell: sp.id, slot: 9, hex: { q: 2, r: 0 } }, DM));
+    WENT(r, sp.id);
+    assert.ok(r.events.filter((e) => e.type === "damage").length >= 25, "it reached the table");
+  }
+});
+
+test("#408 part 4: a spell whose rolls are made for each creature (an attack's damage, doubled by a critical hit, on 20 creatures) completes", () => {
+  const rays = mage("rays", { level: 1, target: { creature: { count: 20 } }, effects: [{ attack: "ranged", kind: "spell", onHit: [{ damage: "22d24+140", type: "fire" }] }] });
+  assert.deepEqual(strict("spells", rays), []);
+  assert.equal(dice("spells", rays), 880);
+  const overlay = loaded({ spells: [rays] });
+  const s = tableOf30();
+  wizardWith(s, rays.id);
+  const foes = Object.keys(s.entities).filter((id) => id !== "wizard").slice(0, 20);
+  const r = using(overlay, () => apply(s, { type: "cast", actor: "wizard", spell: rays.id, slot: 1, targets: foes }, DM));
+  WENT(r, "rays");
+  assert.equal(r.events.filter((e) => e.type === "attack").length, 20);
+});
+
+// A monster at the table of 30, on its turn.
+function monsterTurn(overlay, id, s = tableOf30()) {
+  const sp = using(overlay, () => apply(s, { type: "spawn", monster: id, at: { q: -3, r: 0 } }, DM));
+  assert.ok(sp.ok, sp.error);
+  const m = sp.events[0].id;
+  s.entities[m].hp = s.entities[m].hpMax = 1e9;
+  for (let i = 0; i < 80 && current(s) !== m; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+  assert.equal(current(s), m);
+  return { s, m };
+}
+
+test("#408 part 4: a monster: the heaviest Multiattack (14 attacks of 900 dice with a critical hit), played by the AI, completes with no refusal", () => {
+  const dire = monster({ actions: [attackAction("a1", [D(45, 10)]), multi({ action: "a1", times: 7 }, { action: "a1", times: 7 })] });
+  assert.deepEqual(strict("monsters", dire), []);
+  assert.equal(dice("monsters", dire), 900);
+  assert.equal(workOf("monsters", dire).attacks, 14);
+  const overlay = loaded({ monsters: [dire] });
+  // Seeds are tried until an attack of the turn is a critical hit: its 900 dice are the most one use can roll (the engine allows 1,200).
+  let crit = 0;
+  for (let seed = 1; seed <= 60 && !crit; seed++) {
+    const { s, m } = monsterTurn(overlay, dire.id, tableOf30(seed));
+    const all = [];
+    using(overlay, () => { for (let i = 0; i < 60 && current(s) === m; i++) { const a = aiStep(s, m); if (!a) break; const r = WENT(apply(s, a, DM), `${a.type} ${a.action ?? ""}`); all.push(a.type); crit += r.events.filter((e) => e.type === "attack" && e.crit).length; } });
+    assert.deepEqual(all, [...Array(15).fill("act"), "endTurn"], "the Multiattack, its 14 attacks, then the end of the turn");
+  }
+  assert.ok(crit > 0, "a critical hit came up");
+});
+
+test("#408 part 4: a monster's heaviest area action (860 dice on 30 creatures, 600 steps) completes", () => {
+  const roar = { id: "roar", name: "Roar", text: "x", target: { area: { shape: "emanation", size: 1000 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [D(50, 10), { damage: "40d24+140", type: "fire", times: 9 }] }] };
+  const dire = monster({ actions: [roar] });
+  assert.deepEqual(strict("monsters", dire), []);
+  assert.equal(dice("monsters", dire), 860);
+  const overlay = loaded({ monsters: [dire] });
+  const { s, m } = monsterTurn(overlay, dire.id);
+  const r = using(overlay, () => apply(s, { type: "act", actor: m, action: "roar", hex: { q: -3, r: 0 } }, DM));
+  WENT(r, "roar");
+  assert.ok(r.events.filter((e) => e.type === "damage").length >= 25);
+});
+
+test("#408 part 4: an item: the heaviest potion (900 dice) is drunk, and the Bonus Action and the potion are spent", () => {
+  const A = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 };
+  const sheet = { name: "Brenna", class: "fighter", level: 5, subclass: "champion", abilities: A, skills: ["athletics", "perception"], choices: { "fighting-style": "defense" }, weapons: ["longbow"], items: [{ id: "i1", item: hb("potion") }] };
+  for (const [name, effects] of [["heals", Array(18).fill({ heal: "50d24+140" })], ["damage", [D(50, 10), D(40, 10)]]]) {
+    const p = potion(effects);
+    assert.deepEqual(strict("items", p), [], name);
+    assert.equal(dice("items", p), 900, name);
+    const overlay = loaded({ items: [p] });
+    const s = newGame(7);
+    for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+    s.settings.autoEngage = false;
+    const r = using(overlay, () => {
+      s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: "pat", ownerName: "Pat" });
+      s.entities.hero.sheet = structuredClone(sheet);
+      s.entities.hero.hp = s.entities.hero.hpMax = 1e9;
+      return apply(s, { type: "use", actor: "hero", item: "i1" }, { role: "player", userId: "pat" });
+    });
+    WENT(r, name);
+    assert.ok(!(s.entities.hero.sheet.items ?? []).some((x) => x.id === "i1"), `${name}: the potion is gone`);
+    assert.ok(r.events.some((e) => e.type === (name === "heals" ? "heal" : "damage")), name);
+  }
+});
+
+// The wizard steps onto a trap one hex away (the creature that stood there is put elsewhere).
+function stepOnto(s, overlay, def) {
+  const at = { q: 1, r: 0 }, there = Object.values(s.entities).find((e) => e.pos.q === at.q && e.pos.r === at.r);
+  if (there) assert.ok(apply(s, { type: "place", actor: there.id, to: { q: -7, r: 4 } }, DM).ok, "made room");
+  s.map.objects.push({ id: "trap", def, level: s.map.levels[0].id, at, state: "armed" });
+  return using(overlay, () => apply(s, { type: "move", actor: "wizard", to: at }, DM));
+}
+
+test("#408 part 4: an object: the heaviest trigger (860 dice on the 30 creatures within its area; and 900 rolled for each of them) fires and completes", () => {
+  const traps = [
+    thing([{ save: "dex", dc: 50, onFail: [D(50, 10), { damage: "40d24+140", type: "fire", times: 9 }] }]),
+    thing([{ attack: "ranged", kind: "weapon", bonus: 40, onHit: [{ damage: "15d24+140", type: "fire" }] }], { id: hb("shooter") }),
+  ];
+  assert.deepEqual(traps.map((t) => strict("objects", t)), [[], []]);
+  assert.deepEqual(traps.map((t) => dice("objects", t)), [860, 900]);
+  for (const t of traps) {
+    const overlay = loaded({ objects: [t] });
+    const s = tableOf30();
+    const r = stepOnto(s, overlay, t.id);
+    WENT(r, t.id);
+    assert.ok(r.events.some((e) => e.type === "triggered"), `${t.id} went off`);
+    assert.ok(r.events.filter((e) => e.type === "damage").length >= 25, `${t.id} reached the table`);
+  }
+});
+
+// One round of the table: every creature ends its turn, so every zone goes off at the end of one creature's and the start of the next one's.
+function round(s, overlay) {
+  const out = [];
+  using(overlay, () => { for (let i = 0, n = Object.keys(s.entities).length + 1; i < n; i++) out.push(WENT(apply(s, { type: "endTurn", actor: current(s) }, DM), `end of turn ${i}`)); });
+  return out;
+}
+
+test("#408 part 4: a zone ticking for a round: the heaviest accepted (450 dice a tick, two ticks in an end of turn) completes every turn of a table of 30", () => {
+  const zone = mage("pyre", { level: 2, duration: "1 minute", target: area(100), zone: { on: ["turnStart", "turnEnd"] }, effects: [{ save: "dex", dc: 50, half: true, onFail: [D(45, 10)] }] });
+  assert.deepEqual(strict("spells", zone), []);
+  assert.equal(dice("spells", zone), 900);
+  const overlay = loaded({ spells: [zone] });
+  const s = tableOf30();
+  wizardWith(s, zone.id);
+  WENT(using(overlay, () => apply(s, { type: "cast", actor: "wizard", spell: zone.id, slot: 2, hex: { q: 2, r: 0 } }, DM)), "the cast");
+  const ends = round(s, overlay);
+  assert.ok(ends.length >= 30);
+  const ticks = ends.flatMap((r) => r.events).filter((e) => e.type === "damage").length;
+  assert.ok(ticks >= 30, `${ticks} damage events in a round: the zone went off on most of the table`);
+});
+
+test("#408 part 4: a zone that goes off on entering (30 dice a creature): the caster's emanation moving onto 30 creatures at once, and a round after, complete", () => {
+  const zone = mage("aegis", { level: 2, duration: "1 minute", target: { area: { shape: "emanation", size: 60 } }, zone: { on: ["enter", "turnStart", "turnEnd"] }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "30d24+140", type: "fire" }] }] });
+  assert.deepEqual(strict("spells", zone), []);
+  assert.equal(dice("spells", zone), 900);
+  const overlay = loaded({ spells: [zone] });
+  const s = newGame(5);
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  apply(s, { type: "place", actor: "wizard", to: { q: -8, r: 0 } }, DM);
+  // 26 goblin warriors outside the emanation (12 hexes) from where the wizard stands, and inside it from where it walks to: 30 creatures.
+  const from = { q: -8, r: 0 }, to = { q: -3, r: 0 };
+  for (let q = 0, n = 0; q < 14 && n < 26; q++) for (let r = -6; r <= 6 && n < 26; r++) {
+    const at = { q, r };
+    if (H.dist(at, from) > 12 && H.dist(at, to) <= 12 && apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM).ok) n++;
+  }
+  assert.equal(Object.keys(s.entities).length, 30);
+  for (const e of Object.values(s.entities)) e.hp = e.hpMax = 1e9;
+  apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 16 }, DM);
+  for (let i = 0; i < 40 && current(s) !== "wizard"; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+  wizardWith(s, zone.id);
+  WENT(using(overlay, () => apply(s, { type: "cast", actor: "wizard", spell: zone.id, slot: 2 , hex: { q: -7, r: 0 } }, DM)), "the cast");
+  const walk = using(overlay, () => apply(s, { type: "move", actor: "wizard", to }, DM));
+  WENT(walk, "the move");
+  const entered = walk.events.filter((e) => e.type === "damage").length;
+  if (process.env.HB_PRINT) console.log("creatures the zone went off on as it moved:", entered);
+  assert.equal(entered, 26, `the zone went off on ${entered} creatures in one move`);
+  round(s, overlay);
 });
