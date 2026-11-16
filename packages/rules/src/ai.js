@@ -12,19 +12,6 @@ import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { unknown } from './vision.js';
 
-// The most the AI looks at when it plans one action (DEBT T40): places to move to, and foes to aim an area at. Far above what
-// the SRD pack needs (measured over 300 fights: 1,251 places and 8 foes at most), so SRD play is unchanged; past them it keeps
-// the nearest places (the cheapest to reach) and the nearest foes, so a huge Speed or a crowded table cannot make one step cost
-// without end. docs/specs/homebrew.md, build notes on the engine's own ceilings.
-export const AI_LOOK = Object.freeze({ places: 8000, foes: 40 });
-// A creature's places to move to as the AI scores them: all of them, or past the bound the cheapest AI_LOOK.places (ties in the
-// order moveOptions lists them).
-function placesOf(s, e) {
-  const all = moveOptions(s, e);
-  if (all.size <= AI_LOOK.places) return all;
-  return new Map([...all].map((x, i) => [x, i]).sort((p, q) => p[0][1].cost - q[0][1].cost || p[1] - q[1]).slice(0, AI_LOOK.places).map(([x]) => x));
-}
-
 // Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
 // pinpoints it: both on the ground and within range (it is still unseen, so attacks at it have Disadvantage).
 export function aware(s, e, o) {
@@ -61,7 +48,7 @@ export function aiStep(s, id, opts) {
 function approach(s, e, foes) {
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));       // between the nearest parts of the two, whatever their size
   let best = null;
-  for (const [k, v] of placesOf(s, e)) {
+  for (const [k, v] of moveOptions(s, e)) {
     if (!v.canStop) continue;
     const nd = near(v.h);
     if (!best || nd < best.nd || (nd === best.nd && v.cost < best.cost)) best = { k, nd, cost: v.cost, h: v.h };
@@ -91,7 +78,7 @@ function withActions(s, e, foes, lim = {}) {
   // Where to aim an area so that it catches the most foes and none of its own side (itself included).
   const aim = (x) => {
     let best = null;
-    const spots = x.p.area.shape === 'emanation' ? [null] : order.slice(0, AI_LOOK.foes).map((t) => t.pos);
+    const spots = x.p.area.shape === 'emanation' ? [null] : order.map((t) => t.pos);
     for (const hex of spots) {
       const caught = areaTargets(s, e, x.def, hex);
       if (!caught || caught.some((t) => !hostile(t, e))) continue;
@@ -288,7 +275,7 @@ function guard(s, e, foes, leash) {
   const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
   if (!safe(e.pos)) return end;                                     // any step away from it would provoke
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));
-  const reach = placesOf(s, e);
+  const reach = moveOptions(s, e);
   const wayIsSafe = (v) => { for (let x = v; x; x = x.prev !== undefined && x.prev !== null ? reach.get(x.prev) : null) if (!safe(x.h)) return false; return true; };
   let best = null;
   for (const [, v] of reach) {
@@ -321,7 +308,7 @@ function protect(s, e, m, foes) {
     const less = (x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
     const here = score(e.pos);
     let best = null;
-    for (const [, v] of placesOf(s, e)) {
+    for (const [, v] of moveOptions(s, e)) {
       if (!v.canStop) continue;
       const sc = score(v.h);
       if (less(sc, here) < 0 && (!best || less(sc, best.sc) < 0 || (less(sc, best.sc) === 0 && v.cost < best.cost))) best = { sc, cost: v.cost, h: v.h };

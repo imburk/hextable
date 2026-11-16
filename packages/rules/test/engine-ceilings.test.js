@@ -10,6 +10,8 @@ import { aiStep } from "../src/ai.js";
 import { WORK, loadOf } from "../src/effects.js";
 import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
+import { newMap } from "../src/map.js";
+import * as H from "../src/hex.js";
 
 const DM = { role: "dm", userId: "dm" };
 const json = (s) => JSON.stringify(s);
@@ -226,7 +228,7 @@ test("the monster AI's search is bounded: 30 monsters with a 1,000-ft emanation 
   });
 });
 
-test("the monster AI aims an area at the nearest 40 foes of a crowd of 100, and a step stays fast", () => {
+test("the monster AI aims an area against a crowd of 100 foes, and a step stays fast", () => {
   const id = "hb-x-cone", breath = { id: "breath", name: "Breath", time: "action", target: { area: { shape: "cone", size: 1000 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "2d6", type: "fire" }] }] };
   withEntries([["monsters", monsterOf(id, [breath])]], () => {
     const { s } = table(100);
@@ -238,4 +240,38 @@ test("the monster AI aims an area at the nearest 40 foes of a crowd of 100, and 
     assert.ok(r, "it has a step");
     assert.ok(ms < 400, `took ${Math.round(ms)} ms`);
   });
+});
+
+// The AI chooses exactly as it did before the ceilings (the lead's rule, review of #401, M1 and M2): these are the results recorded on main.
+function openMap(radius) { return newMap({ id: "m", name: "m", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "G", z: 0, tiles: Object.fromEntries(H.range({ q: 0, r: 0 }, radius).map((h) => [H.col(h), { t: "stone" }])) }], walls: [], objects: [] }); }
+function lone(map, monster, foes, radius, party = { q: -28, r: 20, z: 0 }) {
+  const s = newGame(5);
+  apply(s, { type: "loadMap", map }, DM); apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  for (const k of Object.keys(s.entities)) if (/^m\d+$/.test(k)) apply(s, { type: "remove", actor: k }, DM);
+  for (const k of ["fighter", "rogue", "cleric", "wizard"]) s.entities[k].pos = party;
+  const d = apply(s, { type: "spawn", monster, at: { q: 0, r: 0 } }, DM).events[0].id;
+  for (const at of foes) { const r = apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM); if (r.ok) { const g = r.events[0].id; s.entities[g].side = "party"; s.entities[g].hp = s.entities[g].maxHp = 1e6; } }
+  apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius }, DM);
+  for (let i = 0; i < 200 && current(s) !== d; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+  return { s, d };
+}
+test("a Ghost's Horrific Visage with 40 foes near it and a pack of 37 further off is aimed where main aimed it", () => {
+  const map = openMap(30);
+  for (const [nNear, want] of [[39, { q: 9, r: -4 }], [40, { q: 9, r: -4 }], [44, { q: 9, r: -4 }], [52, { q: -4, r: 2 }]]) {
+    const near = [];
+    for (const r of [4, 5, 6, 7]) for (const h of H.range({ q: 0, r: 0 }, r).filter((x) => H.dist(x, { q: 0, r: 0 }) === r)) if (h.q <= -1 && near.length < nNear) near.push(h);
+    const { s, d } = lone(map, "ghost", [...near, ...H.range({ q: 12, r: -4 }, 3)], 40);
+    const a = aiStep(s, d);
+    assert.equal(a.action, "horrific-visage");
+    assert.deepEqual({ q: a.hex.q, r: a.hex.r }, want, `${nNear} near foes`);
+  }
+});
+test("a Solar flies to the foe it can reach, as main chose: 28 hexes off it goes to the hex beside it", () => {
+  const map = openMap(40);
+  for (const [dist, want] of [[28, { q: 26, r: 0 }], [33, { q: -29, r: 28 }]]) {
+    const { s, d } = lone(map, "solar", [{ q: dist, r: 0 }], 45, { q: -30, r: 30, z: 0 });
+    const a = aiStep(s, d);
+    assert.equal(a.type, "move");
+    assert.deepEqual({ q: a.to.q, r: a.to.r }, want, `foe ${dist} hexes off`);
+  }
 });
