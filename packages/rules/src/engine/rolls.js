@@ -180,7 +180,18 @@ function ending(s, step, f, ev, t) {
 // a lasting effect the condition is tied to it and ends when it does; otherwise only the DM
 // (or standing up, for Prone) ends it, and the DM is told so.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined) {
-  if (!up(t) || t.cond[id]) return;
+  if (!up(t) || t.cond[id]) {
+    // From a step (a spell's, an action's, an object's) the table is told it did nothing, and why; the DM's own `condition`
+    // action and the engine's Prone from a fall or a shove refuse or say what they do themselves.
+    if (f || step) {
+      const name = conditionName(id), levels = !!conditionDef(id)?.levels;
+      if (t.dead) ev.push({ type: 'note', id: t.id, text: `${t.name} is dead: ${name} is not put on it` });
+      else if (t.hp <= 0) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} is at 0 Hit Points, and the engine puts no condition on a creature that is down, so ${name} was not put on it. The DM applies it if it matters.` });
+      else if (levels) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} already has ${name}, and its levels stack, but the engine adds none from a step. The DM adds the level.` });
+      else ev.push({ type: 'note', id: t.id, text: `Already ${name}: nothing added` });
+    }
+    return;
+  }
   if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
   // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the

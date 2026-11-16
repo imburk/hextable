@@ -76,7 +76,7 @@ test('remains: a body that is not dead is left as it is and the DM is told; the 
 });
 
 // ---------- a condition it already has, a creature at 0 Hit Points ----------
-test('a condition step does nothing for a creature that already has it, and the reading says so', () => {
+test('a condition step adds nothing for a creature that already has it, and says so (#434); the reading says so', () => {
   const { s, M } = scene();
   const def = learn(s, 'wizard', { effects: [{ condition: 'frightened' }], duration: '1 minute' });
   fight(s); turnOf(s, 'wizard');
@@ -85,11 +85,13 @@ test('a condition step does nothing for a creature that already has it, and the 
   again(s, 'wizard');
   const twice = cast(s, def, { target: M.id }); assert.ok(twice.ok, twice.error);
   assert.ok(!twice.events.some((e) => e.type === 'cond'), 'no second condition');
+  assert.ok(twice.events.some((e) => e.type === 'note' && e.id === M.id && /^Already Frightened: nothing added$/.test(e.text)), 'the table is told');
   void fx;
   again(s, 'wizard'); M.cond = {}; M.hp = 0;
   const down = cast(s, def, { target: M.id });
   assert.ok(!down.events?.some((e) => e.type === 'cond'), 'none for a creature at 0 Hit Points');
-  assert.ok(has(read(def), /The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it/));
+  assert.ok(down.events.some((e) => e.type === 'manual' && /at 0 Hit Points.*Frightened was not put on it\. The DM applies it/.test(e.text)), 'the DM is told');
+  assert.ok(has(read(def), /A creature that already has it gets nothing added, and the table is told; at 0 Hit Points the DM is told to apply it by hand; a dead or immune creature gets a note/));
 });
 
 // ---------- Evasion ----------
