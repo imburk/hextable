@@ -1016,7 +1016,7 @@ export function targetsFor(s, e, { attack, spell, action }) {
 
 // Who or what an action is aimed at: { targets, hexes, origin }. `targets` is null for an area
 // the engine cannot lay out (a line, a cube), which the DM then applies.
-export function aimAction(s, e, def, a, all = false) {
+export function aimAction(s, e, def, a, all = false, ctx = null) {
   const t = def.target;
   if (t.self) return { targets: [e], hexes: null, origin: null };
   if (t.creature) {
@@ -1031,8 +1031,9 @@ export function aimAction(s, e, def, a, all = false) {
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
   const aimed = aimArea(s, e, def.name, t.area, t.area.range ?? 0, a.hex);          // `types` is applied inside
   // `choose`: up to so many of those the area catches, the creature's pick (as a spell's: casting.js); with `all` (who would be caught: the
-  // AI and the screen ask this) every one caught is listed, for the pick to be made from.
-  if (t.area.choose && !all) aimed.targets = pickCaught(e, def.name, aimed.targets, a.targets, t.area.choose);
+  // AI and the screen ask this) every one caught is listed, for the pick to be made from. A player picks only among creatures the party is told of
+  // (`unknown`, #136): one it is not told of is never offered, never counted for the refusal, and not affected by the pick; the DM sees all.
+  if (t.area.choose && !all) aimed.targets = pickCaught(e, def.name, ctx && ctx.role !== 'dm' ? aimed.targets.filter((x) => !unknown(s, x)) : aimed.targets, a.targets, t.area.choose);
   return aimed;
 }
 // Of the creatures an area catches, those its user picks (an area with `choose`): `ids`, or all of them if that is no more than may be picked.

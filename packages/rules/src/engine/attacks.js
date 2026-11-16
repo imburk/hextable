@@ -54,10 +54,10 @@ export function actionSpent(e, def) {
 // Use an action: aim it, pay for it, run it. In a fight it costs the creature's action (or its
 // Bonus Action, for one with `time: 'bonus'`), unless it is one of the attacks a Multiattack
 // left this turn, which it spends instead.
-function takeAction(s, e, def, a, ev) {
+function takeAction(s, e, def, a, ev, ctx = null) {
   const why = actionSpent(e, def);
   if (why) fail(why);
-  const { targets, hexes, origin } = aimAction(s, e, def, a);
+  const { targets, hexes, origin } = aimAction(s, e, def, a, false, ctx);
   const p = actionProfile(def);
   if (!s.encounter && p.harmful && targets !== null && !def.target.self) {          // roll initiative first
     showPlace(s, e, ev);
@@ -158,7 +158,7 @@ export const handlers = {
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
-      return takeAction(s, e, def, { target: a.target }, ev);
+      return takeAction(s, e, def, { target: a.target }, ev, ctx);
     }
     const atk = e.attacks.find((x) => x.id === a.attack) || fail('Unknown attack.');
     up(e) || fail(`${e.name} is down.`);
@@ -208,7 +208,7 @@ export const handlers = {
     !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
-    if (!def.multiattack) return takeAction(s, e, def, a, ev);
+    if (!def.multiattack) return takeAction(s, e, def, a, ev, ctx);
     // Multiattack spends the action and leaves the attacks it gives in the budget, to be made
     // one at a time, each at a target chosen when it is made. What is not made by the end of
     // the turn is lost.

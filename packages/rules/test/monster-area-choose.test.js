@@ -75,3 +75,46 @@ test("the AI with an area without `choose` still will not aim where an ally woul
   const { s, g } = field([BLAST()]);
   assert.notEqual(aiStep(s, g.id).action, "blast");
 });
+
+// Fix round 1 of #422 (M2): a player picks only among creatures the party is told of. A hidden creature in the area is never counted, so it
+// can neither make the action refused nor be affected by a pick; the player's results and view are the same with and without it.
+import { view, viewEvents } from "../src/view.js";
+const PLAYER = { role: "player", userId: "u1" };
+function playerField(withHidden) {
+  const s = newGame(7);
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+  for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) apply(s, { type: "place", actor: id, to: { q, r } }, DM);
+  const f = s.entities.fighter; f.owner = "u1"; f.ownerName = "Pat"; f.hp = f.maxHp = 500;
+  f.actions = [BLAST(2)];
+  const mk = (at) => { const g = s.entities[ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM)).events[0].id]; Object.assign(g, { hp: 500, maxHp: 500 }); g.saveBonus = { dex: -100 }; return g; };
+  const a = mk({ q: 2, r: 0 }), b = mk({ q: 3, r: 0 });
+  const ghost = withHidden ? mk({ q: 4, r: 0 }) : null;
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 10 }, DM));
+  for (let i = 0; i < 20 && current(s) !== "fighter"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  if (ghost) ghost.hidden = true;          // the fight's start reveals creatures; the DM hides it again
+  return { s, a, b, ghost };
+}
+test("a player's area action with `choose` gives byte-identical results and views with and without a hidden creature in the area", () => {
+  const out = [];
+  for (const withHidden of [false, true]) {
+    const { s, ghost } = playerField(withHidden);
+    const refused = apply(s, { type: "act", actor: "fighter", action: "blast", targets: ["nobody"] }, PLAYER);
+    s.rng = 987654;                                    // the same dice for both runs (the hidden creature's spawn used some)
+    const from = s.timeline.length;
+    const r = apply(s, { type: "act", actor: "fighter", action: "blast" }, PLAYER);          // two visible creatures, choose 2: no pick needed
+    assert.equal(r.ok, true, `${withHidden}: ${r.error}`);
+    // The setup differs by one spawn (a counter in the record), so compare what the action did, and the view's creatures and map.
+    const v = view(s, PLAYER);
+    out.push(JSON.stringify({ refused, did: viewEvents(s.timeline.slice(from), s, PLAYER), rng: s.rng, creatures: v.entities ?? v.creatures, map: v.map }));
+    if (ghost) assert.equal(ghost.hp, 500, "the hidden creature was not affected by it");
+  }
+  assert.equal(out[0], out[1]);
+});
+test("the DM sees every creature in the area when running a player's creature", () => {
+  const { s } = playerField(true);
+  const r = apply(s, { type: "act", actor: "fighter", action: "blast" }, DM);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Pick them/);
+});
