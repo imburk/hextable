@@ -60,12 +60,17 @@ test("read: prints each spell's reading, the tier and the author's text, and exi
 test("read: reads the monsters of a pack too, says what is not read yet, and a problem the reader finds exits 1", () => {
   const PACK = new URL("./fixtures/reader-kinds-pack.json", import.meta.url).pathname;
   const r = hb("read", PACK);
-  assert.equal(r.code, 1, "the invented pack holds a monster the reader flags");
+  assert.equal(r.code, 0, r.err);
   assert.match(r.out, /^Cinderjaw Hound \[assist\]$/m);
   assert.match(r.out, /^ {2}Trait "Pack Tactics": the engine runs this\.$/m);
   assert.match(r.out, /^ {2}The DM does: The trait "Ember Memory": text only\.$/m);
-  assert.match(r.err, /problem: hb-rk-hollow-reaver: .*neither `reach` nor `range`/);
   const pack = JSON.parse(readFileSync(PACK, "utf8"));
+  // A problem the reader finds that the gate lets through (#421: a creature target with no reach or range is refused by the gate now): exit 1.
+  const odd = structuredClone(pack);
+  odd.monsters[2].actions.push({ id: "odd-lash", name: "Odd Lash", text: "x", target: { creature: { reach: 5 } }, effects: [{ save: "str", dc: 12, half: true, onFail: [{ damage: "1d6", type: "fire" }], onSuccess: [{ damage: "1d4", type: "fire" }] }] });
+  const flagged = hb("read", file("odd.json", JSON.stringify(odd)));
+  assert.equal(flagged.code, 1, "the pack holds a monster the reader flags");
+  assert.match(flagged.err, /problem: hb-rk-hollow-reaver: .*success steps beside half are never run/);
   pack.monsters = pack.monsters.slice(0, 2); pack.weapons = [{ id: "hb-rk-stick", name: "Stick", category: "simple", kind: "melee", damage: "1d4", type: "bludgeoning", properties: [], mastery: "graze", weight: 4, cost: "2 SP", source: "homebrew:rk", checked: false }];
   const ok = hb("read", file("monsters.json", JSON.stringify(pack)));
   assert.equal(ok.code, 0, ok.err);
