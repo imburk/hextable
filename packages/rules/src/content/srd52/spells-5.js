@@ -161,9 +161,9 @@ export const spells5 = [
     time: "minute", range: "self", components: ["v","s","m"],
     duration: "8 hours", concentration: false, ritual: false,
     target: {"self":true},
-    effects: [{"manual":"Dream: the range is Special in the SRD: the caster targets a creature they know on the same plane at any distance. The caster, or a willing creature the caster touches, enters a trance (Incapacitated, Speed 0) as a dream messenger for up to 8 hours. If the target is asleep the messenger appears in its dreams, can converse and shape the dream, and the target recalls it on waking; if awake, the messenger can wait for it to sleep or end the spell. The messenger can be terrifying: after a message of up to ten words the target makes a Wisdom save, and on a failure gains no benefit from its rest and takes 3d6 Psychic damage on waking. The DM runs it."}],
+    effects: [{"manual":"Dream: the range is Special in the SRD: the caster targets a creature they know on the same plane at any distance. The caster, or a willing creature the caster touches, enters a trance (Incapacitated, Speed 0) as a dream messenger for up to 8 hours. If the target is asleep the messenger appears in its dreams, can converse and shape the dream, and the target recalls it on waking; if awake, the messenger can wait for it to sleep or end the spell. The messenger can be terrifying: after a message of up to ten words the target makes a Wisdom save, and on a failure gains no benefit from its rest and takes 3d6 Psychic damage on waking. The messenger can leave the trance at any time, which ends the spell. The DM runs it."}],
     kinds: ["damage", "utility"],
-    tier: "manual", checked: false,
+    tier: "manual", checked: true,
     text: "A dream messenger visits a known creature for up to 8 hours; it can be made terrifying, costing the sleeper its rest and 3d6 psychic damage on a failed Wisdom save.",
   },
   {
