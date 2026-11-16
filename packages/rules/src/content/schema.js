@@ -7,6 +7,9 @@
 //
 //   lintPack({ pack, spells, monsters, summons, pregens, conditions, objects }) -> [ "spells/fire-bolt: problem", ... ]
 //   coverage({ spells, monsters })                -> { spells: { auto, assist, manual, unchecked, total }, ... }
+//   lintPack(doc, { strict: true })               -> a homebrew pack: budget first, then the closed key lists and homebrew rules
+//   lintEntry(kind, entry, { pack })              -> one entry, strict by default
+//   budget(doc), budgetEntry, budgetTable, HOMEBREW_LIMITS (the end of this file; docs/specs/homebrew.md, Decision 2)
 
 import { bake, castings, CASTER_AMOUNTS, isAmount, isByAmount, isCasterAmount } from '../summons.js';
 
@@ -1392,8 +1395,20 @@ function lintItem(e, say, ctx = {}) {
   if (findFunction(e)) say('content is data only');
 }
 
-export function lintPack({ pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement }) {
+// `opts.strict`: the gate for a homebrew pack (docs/specs/homebrew.md, Decision 2): the budget first (and nothing else
+// if it fails), then the closed key lists, the homebrew id, source and `checked` rules, on top of the lint below.
+// `opts.keys`: the closed key lists alone (the SRD pack passes them). Without options, as it always was.
+export function lintPack(doc, opts = {}) {
+  if (!opts.strict) return lintPackCore(doc, opts);
+  // Strict mode never throws, whatever it is given: what it cannot read it refuses in a sentence.
+  try { return lintPackCore(doc, opts); } catch { return ['pack: could not be checked, because something in it is not the shape a pack has']; }
+}
+function lintPackCore(doc, opts) {
+  if (opts.strict) { const over = budget(doc, opts.limits); if (over.length) return over; }
+  const { pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement } = doc;
   const problems = [];
+  const strict = opts.strict || opts.keys ? strictOptions(doc, opts, problems) : null;
+  if (strict && problems.length) return problems;               // the document's own shape is wrong: nothing below can be read
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
   const itemCtx = { weapons: new Set(weapons.map((w) => w.id)), armour: new Set(armour.filter((a) => a.category !== 'shield').map((a) => a.id)), spells: spells.length ? new Set(spells.map((x) => x.id)) : null };
   for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['summons', summons ?? [], lintSummonBlock], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)]]) {
@@ -1403,7 +1418,9 @@ export function lintPack({ pack, spells = [], monsters = [], summons, pregens = 
       if (!e || typeof e !== 'object') { problems.push(`${kind}: an entry is not an object`); continue; }
       if (seen.has(e.id)) say('duplicate id');
       seen.add(e.id);
+      if (strict && lintShape(kind, e, say, strict) && strict.homebrew) continue;
       lint(e, say);
+      if (strict) lintRules(kind, e, say, strict);
     }
   }
   const spellIds = new Set(spells.map((s) => s.id));
@@ -1676,4 +1693,671 @@ export function featureCoverage(classes) {
     for (const f of [...c.features, ...(c.subclass?.features ?? [])]) { row[f.tier]++; row.total++; if (f.checked !== true) row.unchecked++; }
   }
   return out;
+}
+
+// ---------- homebrew: the budget, strict mode and lintEntry (docs/specs/homebrew.md, Decisions 1, 2 and 6; task B1) ----------
+// A homebrew pack is untrusted input. `budget(doc)` runs first: one walk with its own stack (no recursion), which stops
+// at the first container nested too deep and at the most bytes a pack may have, so a hostile document is refused in
+// time bounded by the limits, whatever its size or shape. Only a document within the budget is linted, strictly:
+// every object has a closed list of keys, ids carry the pack's prefix, nothing claims to be checked against a rulebook.
+
+// The kinds a homebrew pack may hold (Decision 1), in the order a pack lists them.
+export const HOMEBREW_ENTRY_KINDS = ['spells', 'monsters', 'items', 'feats', 'objects', 'weapons', 'armour'];
+// The owner's limits (Decision 2; confirmed in #380). `packs` is per table, the rest per pack.
+export const HOMEBREW_LIMITS = Object.freeze({
+  packs: 4,                 // packs on one table
+  packBytes: 256 * 1024,    // the pack document, as JSON (UTF-8 bytes)
+  entries: 200,             // entries in one pack, all kinds together
+  entryBytes: 8 * 1024,     // one entry, as JSON
+  text: 1500,               // letters of a `text` (and of a manual step's text)
+  name: 60,                 // letters of a `name`
+  string: 200,              // letters of any other string, keys included
+  steps: 40,                // effect steps in one entry, nested ones included
+  stepDepth: 6,             // lists of steps inside steps (`onHit` inside `onFail` ...), the entry's own list being 1
+  depth: 16,                // objects and lists inside each other, the document being 1
+});
+const BAD_KEYS = ['__proto__', 'constructor', 'prototype'];
+const TEXT_KEYS = ['text', 'manual', 'dmNotes'];
+const NEWLINE_KEYS = ['text', 'dmNotes'];       // the only places a line break may be
+const STEP_LISTS = ['effects', ...BRANCHES];
+// Characters no name, id or text may hold (by Unicode property: Cc, Cf, Zs, Zl, Zp, Co, Cn and lone surrogates, a few invisible
+// letters and marks; the only blank allowed is U+0020, and the line break in `text` and `dmNotes`): control characters (C0, DEL, C1; a line break only in `text` and `dmNotes`), the
+// soft hyphen, bidirectional controls (U+061C, U+200E/F, U+202A-E, U+2066-9), zero-width characters (U+200B-D, U+2060-4, U+FEFF,
+// U+180E), line and paragraph separators, other invisible format characters, tag characters (U+E0000-E007F) and a lone
+// surrogate. Written with escapes so the source shows what is refused.
+const CONTROL = /(?! )[\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}\u034f\ufffc\u17b4\u17b5\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
+const CONTROL_NL = /(?![ \n])[\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}\u034f\ufffc\u17b4\u17b5\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
+// A name is Latin-script only for now: letters (A-Z, the accented letters of Latin-1, Latin Extended-A and the Latin
+// Extended Additional block), digits, single spaces inside it and ' - , . ( ) & : ! ? / + and the typographic apostrophe (the SRD's own names use + and U+2019). No combining mark survives NFC.
+const NAME_OK = /^[A-Za-z0-9\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff\u0100-\u017f\u1e00-\u1eff'\u2019+\-,.()&:!?/]+(?: [A-Za-z0-9\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff\u0100-\u017f\u1e00-\u1eff'\u2019+\-,.()&:!?/]+)*$/;
+export const nameProblem = (s) => (NAME_OK.test(s.normalize('NFC')) ? null : 'a name holds only Latin letters (with accents), digits, single spaces and the marks \' \u2019 + - , . ( ) & : ! ? /');
+const badChar = (s, key) => (NEWLINE_KEYS.includes(key) ? CONTROL_NL : CONTROL).test(s);
+const letters = (s) => { let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c < 0xdc00 || c > 0xdfff || i === 0 || s.charCodeAt(i - 1) < 0xd800 || s.charCodeAt(i - 1) > 0xdbff) n++; } return n; };
+// UTF-8 bytes of a string as JSON writes it (quotes and escapes included).
+function jsonBytes(s) {
+  const j = JSON.stringify(s);
+  let n = 0;
+  for (let i = 0; i < j.length; i++) {
+    const c = j.charCodeAt(i);
+    if (c < 0x80) n += 1; else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < j.length && j.charCodeAt(i + 1) >= 0xdc00 && j.charCodeAt(i + 1) <= 0xdfff) { n += 4; i++; } else n += 3;
+  }
+  return n;
+}
+const plainObject = (x) => { const p = Object.getPrototypeOf(x); return p === Object.prototype || p === null; };
+const shortId = (e) => (e && typeof e === 'object' && typeof e.id === 'string' ? (e.id.length > 80 ? `${e.id.slice(0, 80)}...` : e.id) : '?');
+const thousands = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const at = (path) => (path ? ` at ${path}` : '');
+
+// Walks one value with an explicit stack. `level` is the nesting of the value's container (the pack document is 1,
+// an entry is 3). Says what is over a limit; returns the JSON bytes counted (it stops counting past `room`).
+function scan(root, level, limits, say, room, base = '') {
+  let bytes = 0, steps = 0, over = false;
+  const stack = [[root, level, base, 0, base || null]];
+  while (stack.length && !over) {
+    const [v, lv, path, sd, key] = stack.pop();
+    if (v === undefined) { bytes += 4; continue; }                       // in a list JSON writes null; an object's is skipped below
+    if (v === null || typeof v === 'boolean') { bytes += v ? 4 : v === null ? 4 : 5; continue; }
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) { say(`a number${at(path)} is not one JSON can hold`); continue; }
+      bytes += String(v).length; continue;
+    }
+    if (typeof v === 'string') {
+      bytes += jsonBytes(v);
+      const n = letters(v), most = TEXT_KEYS.includes(key) ? limits.text : key === 'name' ? limits.name : limits.string;
+      if (n > most) say(`${key === 'name' ? 'the name' : TEXT_KEYS.includes(key) ? 'the text' : 'a piece of text'}${at(path)} is ${thousands(n)} letters long; the most is ${thousands(most)}`);
+      if (key === 'name' && !badChar(v, key)) { const np = nameProblem(v); if (np) say(`the name${at(path)} is not allowed: ${np}`); }
+      if (badChar(v, key)) say(`the text${at(path)} has a control character, or an invisible or direction-changing one (or a line break outside \`text\`); text is plain text`);
+      continue;
+    }
+    if (typeof v !== 'object') { say(`${typeof v === 'function' ? 'a function' : `a ${typeof v}`}${at(path)} is not data; content is data only`); continue; }
+    if (!Array.isArray(v) && !plainObject(v)) { say(`something${at(path)} is not plain data (only objects, lists, text, numbers, true, false and null)`); continue; }
+    if (lv > limits.depth) { say(`it nests deeper than ${limits.depth} levels${at(path)}`); continue; }
+    if (Array.isArray(v)) {
+      // A list is measured before it is walked: each element takes at least two bytes of JSON, so a length the room cannot
+      // hold is refused at once (an in-memory array can be `new Array(1e9)`), and a list with gaps is not data.
+      if (bytes + 2 * v.length > room + 2) { bytes = room + 1; over = true; continue; }          // the caller says the bytes are over
+      if (Object.keys(v).length !== v.length) { say(`a list${at(path)} has gaps in it; a list is a run of values`); continue; }
+      const list = STEP_LISTS.includes(key), d = list ? sd + 1 : sd;
+      if (list && d > limits.stepDepth) { say(`its steps nest deeper than ${limits.stepDepth} levels${at(path)}`); continue; }
+      if (list) steps += v.length;
+      bytes += 2 + Math.max(0, v.length - 1);
+      for (let i = v.length - 1; i >= 0; i--) stack.push([v[i], lv + 1, `${path}[${i}]`, d, list ? null : key]);
+    } else {
+      const keys = Object.keys(v).filter((k) => v[k] !== undefined);
+      bytes += 2 + Math.max(0, keys.length - 1);
+      for (let i = keys.length - 1; i >= 0; i--) {
+        const k = keys[i], p = path ? `${path}.${k}` : k;
+        bytes += jsonBytes(k) + 1;
+        if (BAD_KEYS.includes(k)) { say(`it has a key "${k}"${at(path)}, which no content may have`); continue; }
+        if (letters(k) > limits.string) say(`a key${at(path)} is ${thousands(letters(k))} letters long; the most is ${thousands(limits.string)}`);
+        if (CONTROL.test(k)) say(`a key${at(path)} has a character that cannot be shown or that hides what it says`);
+        stack.push([v[k], lv + 1, p, sd, k]);
+      }
+    }
+    if (bytes > room) over = true;
+  }
+  return { bytes, steps, over };
+}
+
+// The budget of one homebrew pack document (a parsed object). Returns plain sentences, [] when it is within every limit.
+export function budget(doc, limits = HOMEBREW_LIMITS) {
+  const L = { ...HOMEBREW_LIMITS, ...limits }, problems = [], MOST = 20;
+  const push = (m) => { if (problems.length < MOST) problems.push(m); };
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc) || !plainObject(doc)) return ['pack: is not a pack document'];
+  const keys = Object.keys(doc).filter((k) => doc[k] !== undefined);
+  let bytes = 2 + Math.max(0, keys.length - 1), entries = 0, stop = false;
+  for (const k of keys) {
+    bytes += jsonBytes(k) + 1;
+    if (BAD_KEYS.includes(k)) { push(`pack: it has a key "${k}", which no content may have`); continue; }
+    const v = doc[k];
+    if (!Array.isArray(v)) {
+      const r = scan(v, 2, L, (m) => push(`pack: ${m}`), L.packBytes - bytes, k);
+      bytes += r.bytes;
+      if (r.over) { stop = true; break; }
+      continue;
+    }
+    if (letters(k) > L.string) { push(`pack: a key is ${thousands(letters(k))} letters long; the most is ${thousands(L.string)}`); continue; }
+    entries += v.length;
+    if (entries > L.entries) { push(`pack: it has more than ${thousands(L.entries)} entries; the most a pack may have is ${thousands(L.entries)}`); stop = true; break; }
+    bytes += 2 + Math.max(0, v.length - 1);
+    for (const e of v) {
+      const label = `${k}/${shortId(e)}`;
+      const r = scan(e, 3, L, (m) => push(`${label}: ${m}`), Math.min(L.packBytes - bytes, L.entryBytes));
+      bytes += r.bytes;
+      if (r.bytes > L.entryBytes) push(`${label}: it is over ${thousands(L.entryBytes)} bytes as JSON; the most for one entry is ${thousands(L.entryBytes)}`);
+      if (r.steps > L.steps) push(`${label}: it has ${r.steps} effect steps; the most for one entry is ${L.steps}`);
+      if (bytes > L.packBytes) { stop = true; break; }
+    }
+    if (stop) break;
+  }
+  if (bytes > L.packBytes) push(`pack: it is over ${thousands(L.packBytes)} bytes as JSON; the most for a pack is ${thousands(L.packBytes)}`);
+  return problems;
+}
+// The budget of one entry alone (lintEntry), measured as it would be inside a pack (an entry is nested at level 3).
+export function budgetEntry(kind, entry, limits = HOMEBREW_LIMITS) {
+  const L = { ...HOMEBREW_LIMITS, ...limits }, problems = [], label = `${kind}/${shortId(entry)}`;
+  const r = scan(entry, 3, L, (m) => { if (problems.length < 20) problems.push(`${label}: ${m}`); }, L.entryBytes);
+  if (r.bytes > L.entryBytes) problems.push(`${label}: it is over ${thousands(L.entryBytes)} bytes as JSON; the most for one entry is ${thousands(L.entryBytes)}`);
+  if (r.steps > L.steps) problems.push(`${label}: it has ${r.steps} effect steps; the most for one entry is ${L.steps}`);
+  return problems;
+}
+// How many packs a table may have: `packs` is the table's list after the change.
+export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
+  const most = { ...HOMEBREW_LIMITS, ...limits }.packs, n = Array.isArray(packs) ? packs.length : NaN;
+  if (!Number.isInteger(n)) return ['table: packs must be a list'];
+  return n > most ? [`table: a table may have ${most} homebrew packs; this would make ${n}`] : [];
+}
+
+// ---------- strict mode: the closed key lists ----------
+// Every key an object of each shape may have. Written from the linter above and from what the engine reads; a test
+// holds every SRD entry of the seven kinds to them (so they are never stricter than the vocabulary), and docs/specs
+// homebrew.md, Decision 6, has shapes.js derive them in B2. A shape of `null` keys has its keys checked by the
+// linter already (a map of skills, of states, of levels); its values are walked for the shapes below.
+const STEP_KEYS = {
+  attack: ['kind', 'bonus', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill'],
+  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends'], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [],
+  summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
+};
+const AMOUNT_KEYS = ['perLevel', 'column', 'mod', 'min', 'die', 'byLevel', 'prof'];
+const SHAPES = {
+  spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'choice', 'costly', 'terrain', 'zone', 'reaction'] },
+  monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'tier', 'checked', 'text'] },
+  items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
+  feats: { what: 'a feat', keys: ['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'] },
+  objects: { what: 'an object', keys: ['id', 'name', 'kind', 'source', 'tier', 'checked', 'text', 'states', 'initial', 'use', 'triggers', 'find', 'dc', 'connects'] },
+  weapons: { what: 'a weapon', keys: ['id', 'name', 'category', 'kind', 'damage', 'type', 'properties', 'mastery', 'range', 'versatile', 'ammo', 'twoHandedUnlessMounted', 'weight', 'cost', 'source', 'checked'] },
+  armour: { what: 'armour', keys: ['id', 'name', 'category', 'ac', 'dex', 'stealth', 'strength', 'weight', 'cost', 'source', 'checked'] },
+  target: { what: 'a target', keys: ['self', 'creature', 'area'] },
+  area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'] },
+  creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range'] },
+  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
+  value: { what: 'a modifier value', keys: AMOUNT_KEYS },
+  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition'] },
+  ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged'] },
+  higher: { what: 'casting higher', keys: ['level', 'targets', 'slot'] },
+  slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
+  choice: { what: 'a choice', keys: ['of', 'from'] },
+  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare'] },
+  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts'] },
+  reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
+  bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
+  count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
+  over: { what: 'what a summon replaces', keys: ['speed'] },
+  forms: { what: 'summon forms', keys: ['type', 'cr'] },
+  trait: { what: 'a trait', keys: ['id', 'name', 'text', 'modifiers', 'reaction'] },
+  action: { what: 'an action', keys: ['id', 'name', 'text', 'time', 'target', 'effects', 'uses', 'recharge', 'multiattack'] },
+  uses: { what: 'uses', keys: ['per', 'n'] },
+  attackEntry: { what: 'a multiattack entry', keys: ['action', 'times'] },
+  orList: { what: 'a multiattack', keys: ['or'] },
+  abilities: { what: 'ability scores', keys: ABILITIES },
+  state: { what: 'a state', keys: ['name', 'blocks', 'hidden', 'light'] },
+  light: { what: 'light', keys: ['bright', 'dim'] },
+  objectDc: { what: 'DCs', keys: ['save', 'find'] },
+  find: { what: '`find`', keys: ['to'] },
+  trigger: { what: 'a trigger', keys: ['on', 'from', 'to', 'feet', 'who', 'area', 'effects'] },
+  use: { what: 'a use', keys: ['id', 'name', 'from', 'to', 'time', 'key', 'check', 'effects'] },
+  check: { what: 'a check', keys: ['ability', 'skill', 'tool', 'dc'] },
+  activate: { what: 'an item use', keys: ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'] },
+  attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
+  base: { what: 'a base item', keys: ['weapon', 'armour'] },
+  charges: { what: 'charges', keys: ['max', 'regain'] },
+  prerequisite: { what: 'a prerequisite', keys: ['level', 'abilities', 'feature'] },
+  anyAbility: { what: 'an ability prerequisite', keys: ['any', 'min'] },
+  increase: { what: 'an ability increase', keys: ['from', 'points', 'max'] },
+  proficiencies: { what: 'proficiencies', keys: ['n'] },
+  spellPick: { what: 'a spell pick', keys: ['lists', 'abilities', 'cantrips', 'level1'] },
+  grants: { what: 'grants', keys: GRANTS },
+  aura: { what: 'an aura', keys: ['range', 'modifiers', 'immune'] },
+  map: { what: 'a map', keys: null },
+  speedMap: { what: 'speeds', keys: null }, senseMap: { what: 'senses', keys: null }, skillMap: { what: 'skills', keys: null }, saveMap: { what: 'saves', keys: null },
+  abilityMap: { what: 'ability scores', keys: null }, levelMap: { what: 'a table by level', keys: null },
+  open: { what: 'a value', keys: null },
+};
+// The shape of a child: by its parent's shape and its key. A list's items take the shape given for the list.
+const CHILD = {
+  spells: { target: 'target', effects: 'steps', higher: 'higher', choice: 'choice', zone: 'zone', terrain: 'terrain', reaction: 'reaction' },
+  monsters: { speed: 'speedMap', senses: 'senseMap', skills: 'skillMap', saves: 'saveMap', abilities: 'abilities', traits: 'trait[]', actions: 'action[]' },
+  items: { attune: 'attune', base: 'base', charges: 'charges', grants: 'grants', activate: 'activate[]' },
+  feats: { prerequisite: 'prerequisite', increase: 'increase', proficiencies: 'proficiencies', spellPick: 'spellPick', grants: 'grants' },
+  objects: { states: 'states', find: 'find', dc: 'objectDc', triggers: 'trigger[]', use: 'use[]' },
+  target: { creature: 'creature', area: 'area' },
+  modifier: { value: 'value', scope: 'scope' },
+  value: { byLevel: 'levelMap' },
+  higher: { level: 'levelMap', targets: 'levelMap', slot: 'slot' },
+  trait: { modifiers: 'modifier[]', reaction: 'reaction' },
+  action: { target: 'target', effects: 'steps', uses: 'uses', multiattack: 'multiattack' },
+  state: { light: 'light' },
+  trigger: { effects: 'steps' }, use: { check: 'check', effects: 'steps' }, activate: { effects: 'steps' },
+  prerequisite: { abilities: 'anyAbility' },
+  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap' },
+  aura: { range: 'value', modifiers: 'modifier[]' },
+  bond: {}, over: { speed: 'speedMap' },
+};
+// Inside a shape the linter closes in its own way (grants' many parts, a map's values), steps and modifiers are still
+// found by their key and held to their lists.
+const BY_KEY = { effects: 'steps', modifiers: 'modifier[]', modifier: 'modifier', target: 'target' };
+
+// `visit(shape, key, value, path, owner)` (optional) is called for every key of every shape the walk meets; a step's shape
+// is `step.<kind>`. The value checks of strict mode ride on it.
+export function lintKeys(kind, entry, say, visit) {
+  const stack = [[entry, kind, '']];
+  while (stack.length) {
+    const [v, shape, path] = stack.pop();
+    if (v === null || typeof v !== 'object') continue;
+    const where = path ? `${path}: ` : '';
+    if (shape.endsWith('[]')) { if (Array.isArray(v)) v.forEach((x, i) => { visit?.(shape, i, x, `${path}[${i}]`, v); stack.push([x, shape.slice(0, -2), `${path}[${i}]`]); }); continue; }
+    if (shape === 'steps') {
+      if (!Array.isArray(v)) continue;
+      v.forEach((st, i) => {
+        if (!st || typeof st !== 'object' || Array.isArray(st)) { visit?.('step[]', i, st, `${path}[${i}]`, v); return; }
+        const p = `${path}[${i}]`, kinds = STEPS.filter((k) => Object.hasOwn(st, k));
+        if (kinds.length !== 1) return;                       // the linter says so already
+        const allowed = ['when', kinds[0], ...STEP_KEYS[kinds[0]]];
+        for (const k of Object.keys(st)) {
+          if (BAD_KEYS.includes(k)) { say(`${p}: has a key "${k}", which no content may have`); continue; }
+          if (!allowed.includes(k)) { say(`${p}: "${k}" is not something a ${kinds[0]} step has`); continue; }
+          visit?.(`step.${kinds[0]}`, k, st[k], `${p}.${k}`, st);
+          const child = BRANCHES.includes(k) ? 'steps' : kinds[0] === 'summon' ? { bond: 'bond', count: 'count', reassert: 'count', over: 'over', forms: Array.isArray(st.forms) ? 'open' : 'forms' }[k] ?? 'open'
+            : k === 'modifier' ? 'modifier' : k === 'ends' ? 'ends' : 'open';
+          stack.push([st[k], child, `${p}.${k}`]);
+        }
+      });
+      continue;
+    }
+    if (shape === 'multiattack') { stack.push([v, Array.isArray(v) ? 'attackEntry[]' : 'orList', path]); continue; }
+    if (shape === 'orList' || shape === 'states') {
+      for (const k of Object.keys(v)) { if (BAD_KEYS.includes(k)) { say(`${where}has a key "${k}", which no content may have`); continue; }
+        if (shape === 'orList' && k !== 'or') { say(`${where}"${k}" is not something a multiattack has`); continue; }
+        if (shape === 'orList') { visit?.('orList', k, v[k], `${path}.${k}`, v); if (Array.isArray(v.or)) v.or.forEach((l, i) => stack.push([l, 'attackEntry[]', `${path}.or[${i}]`])); } else { visit?.('states', k, v[k], `${path ? `${path}.` : ''}states.${k}`, v); stack.push([v[k], 'state', `${path ? `${path}.` : ''}states.${k}`]); } }
+      continue;
+    }
+    const S = SHAPES[shape];
+    for (const k of Object.keys(v)) {
+      if (BAD_KEYS.includes(k)) { say(`${where}has a key "${k}", which no content may have`); continue; }
+      if (S.keys && !Array.isArray(v) && !S.keys.includes(k)) { say(`${where}"${k}" is not something ${S.what} has`); continue; }
+      const p = Array.isArray(v) ? `${path}[${k}]` : path ? `${path}.${k}` : k;
+      visit?.(shape, k, v[k], p, v);
+      const child = CHILD[shape]?.[k] ?? (S.keys === null || shape === 'grants' || shape === 'open' ? BY_KEY[k] ?? 'open' : 'open');
+      stack.push([v[k], child === 'states' ? 'states' : child, child === 'states' ? path : p]);
+    }
+  }
+}
+// Values the linter above leaves unchecked because the SRD pack's are known good; a homebrew pack's are not.
+function lintUnchecked(kind, e, say) {
+  const size = (n) => n === undefined || (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 10000);
+  if (kind === 'monsters' && e.hover !== undefined && e.hover !== true) say('hover is true or left out');
+  if (kind === 'weapons' || kind === 'armour') {
+    if (!size(e.weight)) say('weight is pounds, a number from 0 to 10,000');
+    if (e.cost !== undefined && !(size(e.cost) || (typeof e.cost === 'string' && /^(\d{1,6}|\d{1,3}(,\d{3})+) (CP|SP|EP|GP|PP)$/.test(e.cost)))) say('cost is a number or a price like "5 GP"');
+  }
+  if (kind === 'weapons' && e.ammo !== undefined && !ID.test(e.ammo)) say('ammo names a kind of ammunition, in kebab-case');
+  if (kind === 'weapons' && e.twoHandedUnlessMounted !== undefined && e.twoHandedUnlessMounted !== true) say('twoHandedUnlessMounted is true or left out');
+  const steps = [];
+  const lists = kind === 'spells' ? [e.effects] : kind === 'monsters' ? (e.actions ?? []).map((a) => a?.effects)
+    : kind === 'objects' ? [...(e.use ?? []), ...(e.triggers ?? [])].map((u) => u?.effects) : kind === 'items' ? (e.activate ?? []).map((u) => u?.effects) : [];
+  for (const l of lists) walkSteps(l, (st) => { if (st && typeof st === 'object') steps.push(st); });
+  for (const st of steps) {
+    if (st.half !== undefined && typeof st.half !== 'boolean') say('a save step\'s `half` is true or false');
+    if (st.largest !== undefined && !SIZES.includes(st.largest)) say(`a move step's \`largest\` is one of ${SIZES.join(', ')}`);
+  }
+  const area = kind === 'spells' ? [e.target?.area] : kind === 'monsters' ? (e.actions ?? []).map((a) => a?.target?.area) : [];
+  for (const a of area) if (a?.height !== undefined && !(isInt(a.height) && a.height > 0 && a.height % 5 === 0)) say('an area\'s height is feet, a multiple of 5');
+}
+
+// ---------- strict mode: values (fix round 1 of #389: the numbers, the types, the characters) ----------
+// Strict mode checks what a value IS, not only which key it sits under. Every number in an entry has a whole-number range
+// in HOMEBREW_RANGES, found by the name of the object that holds it and its key ("area.size", "step.times", "speed.*"); a
+// number with no range is refused. The ceilings are written from what play needs: about twice the largest value the SRD
+// pack uses for that field (a test computes the SRD's maxima and holds every SRD entry inside them), and for a field the
+// SRD never uses, what a table could want. The engine itself still trusts a number it is handed by other means (DEBT).
+const FEET = [5, 1000];
+export const HOMEBREW_RANGES = Object.freeze({
+  // creatures
+  'abilities.*': [1, 40], 'abilityBonus.*': [0, 10], 'abilityBonus.max': [1, 40], 'setAbility.*': [1, 40],
+  'monsters.ac': [1, 50], 'monsters.cr': [0, 60, 8], 'monsters.hp': [1, 1400], 'monsters.initiative': [-10, 40], 'monsters.pb': [2, 18], 'monsters.xp': [0, 310000],
+  'saves.*': [-10, 30], 'skills.*': [-10, 40], 'senses.*': [0, 300], 'senseRange.*': [0, 150], 'speed.*': [0, 300], 'speeds.*': [0, 100],
+  'action.recharge': [2, 6], 'uses.n': [1, 10], 'multiattack.times': [1, 10], 'or.times': [1, 10], 'reaction.ac': [1, 10],
+  'forms.cr': [0, 60, 8],
+  // spells
+  'spells.level': [0, 9], 'spells.range': [1, 10560000],
+  'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
+  'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100],
+  'targets.#': [1, 20], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
+  'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
+  'bond.range': [5, 1000], 'bond.leash': [5, 1000],
+  // steps and modifiers
+  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
+  'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'byLevel.#': [-40, 40],
+  'ends.dc': [1, 50],
+  // items, feats, objects, weapons, armour
+  'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
+  'increase.max': [20, 30], 'increase.points': [1, 2], 'prerequisite.level': [1, 20], 'proficiencies.n': [1, 5], 'spellPick.cantrips': [0, 4], 'spellPick.level1': [0, 2],
+  'grants.armouredAc': [0, 10], 'grants.bareAc': [0, 10], 'grants.rangedAttack': [0, 10], 'aura.range': [5, 100],
+  'light.bright': [0, 100], 'light.dim': [0, 100], 'dc.save': [1, 50], 'dc.find': [1, 50], 'check.dc': [1, 50], 'trigger.feet': [5, 100], 'trigger.area': [5, 100],
+  'weapons.range': [1, 1200], 'weapons.weight': [0, 40, 16], 'weapons.cost': [0, 3000], 'armour.ac': [1, 20], 'armour.dex': [0, 10], 'armour.strength': [1, 30],
+  'armour.weight': [0, 130, 16], 'armour.cost': [0, 3000],
+});
+// What a `grants` may hold beyond the fields above (a feature's grants are many shapes; none needs a big number).
+const GRANTS_ANY = [-100, 100];
+// Dice written as a string: how many, how many sides, and the flat part (the SRD's largest are 26, 12 and 70).
+export const HOMEBREW_DICE = Object.freeze({ count: 50, sides: 100, flat: 140 });
+export const HOMEBREW_DURATIONS = Object.freeze({ round: 12, minute: 20, hour: 48, day: 60 });
+export const HOMEBREW_COST = 3000;                // gold pieces: the dearest thing the SRD sells costs 1,500 GP
+const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
+// The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
+// SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
+export const HOMEBREW_LENGTHS = Object.freeze({
+  '*.step': 20, '*.blocks': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
+  'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
+  'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
+  'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
+  'step.cure': 14, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 3,
+});
+const GRANTS_LEN = 30;
+// The work one use of an entry may cause (see workOf): the most steps run, the creatures a table is taken to have, and the
+// most attacks of one Multiattack. The SRD's own largest are printed in the build note of fix round 2.
+export const HOMEBREW_WORK = Object.freeze({ steps: 240, creatures: 30, attacks: 14 });
+const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
+const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
+const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (inGrants ? GRANTS_ANY : undefined);
+// The numbers of an entry with the name that finds their range: [context, value, path, inGrants].
+export function numbersOf(kind, entry) {
+  const out = [], stack = [];
+  for (const k of Object.keys(entry)) stack.push([entry[k], kind, k, k, false]);
+  while (stack.length) {
+    const [v, owner, key, path, g] = stack.pop();
+    if (typeof v === 'number') out.push([`${owner}.${nameOf(key)}`, v, path, g, owner, nameOf(key)]);
+    else if (Array.isArray(v)) v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g]));
+    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push([v[k], nameOf(key), k, `${path}.${k}`, g || key === 'grants']);
+  }
+  return out;
+}
+// The lists of an entry with the name that finds their ceiling: [context, length, path, inGrants, owner, key].
+export function arraysOf(kind, entry) {
+  const out = [], stack = [];
+  for (const k of Object.keys(entry)) stack.push([entry[k], kind, k, k, false]);
+  while (stack.length) {
+    const [v, owner, key, path, g] = stack.pop();
+    if (Array.isArray(v)) { out.push([`${owner}.${nameOf(key)}`, v.length, path, g, owner, nameOf(key)]); v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g])); }
+    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push([v[k], nameOf(key), k, `${path}.${k}`, g || key === 'grants']);
+  }
+  return out;
+}
+export const lengthOf = (owner, key, inGrants) => HOMEBREW_LENGTHS[`${owner}.${key}`] ?? HOMEBREW_LENGTHS[`*.${key}`] ?? (inGrants ? GRANTS_LEN : undefined);
+// ----- the work of one use -----
+// The worst-case number of steps one use of an entry can run: every branch taken, a damage step `times` over, a spell's or an
+// action's steps once for each creature it can reach (its chosen creatures or count, or the table's creatures for an area), a
+// monster's worst single action or worst Multiattack (entries times their counts, an alternative taking the dearest).
+const isN = (x) => typeof x === 'number' && Number.isFinite(x);
+function listWork(list, more = 0) {
+  let n = 0;
+  if (!Array.isArray(list)) return 0;
+  for (const st of list) {
+    if (!st || typeof st !== 'object') continue;
+    let kids = 0;
+    for (const b of BRANCHES) kids += listWork(st[b], more);
+    n += (1 + kids) * ('damage' in st ? Math.max(1, (isN(st.times) ? st.times : 1) + more) : 1);
+  }
+  return n;
+}
+function targetsOf(t) {
+  if (!t || typeof t !== 'object' || t.self) return 1;
+  if (t.area) return isN(t.area.choose) ? t.area.choose : HOMEBREW_WORK.creatures;
+  return isN(t.creature?.count) ? t.creature.count : 1;
+}
+const actionWork = (a) => (a && typeof a === 'object' && !a.multiattack ? targetsOf(a.target) * listWork(a.effects) : 0);
+const attackEntries = (m) => (Array.isArray(m) ? [m] : m && Array.isArray(m.or) ? m.or.filter(Array.isArray) : []);
+// What a monster's Multiattack makes: [attacks, steps] of its dearest alternative.
+function multiWork(ma, byId) {
+  let attacks = 0, steps = 0;
+  for (const list of attackEntries(ma)) {
+    let a = 0, w = 0;
+    for (const en of list) {
+      if (!en || typeof en !== 'object') continue;
+      const times = isN(en.times) ? Math.max(1, en.times) : 1;
+      const names = Array.isArray(en.action) ? en.action : [en.action];
+      a += times; w += times * Math.max(1, ...names.map((id) => (typeof id === 'string' && byId.has(id) ? actionWork(byId.get(id)) : 1)));
+    }
+    attacks = Math.max(attacks, a); steps = Math.max(steps, w);
+  }
+  return [attacks, steps];
+}
+// { work, attacks, what } for an entry of any kind (0 where it runs no steps).
+export function workOf(kind, e) {
+  let work = 0, attacks = 0, what = '';
+  const take = (n, w) => { if (n > work) { work = n; what = w; } };
+  if (kind === 'spells') {
+    // Estimated at the top: a 9th-level slot (each level above the spell's adds `higher.slot.targets` creatures and
+    // `higher.slot.times` repeats) and, for a cantrip, character level 20 (`higher.targets` by level).
+    const up = e.level >= 1 && e.level < 9 && e.higher?.slot ? 9 - e.level : 0, hs = e.higher?.slot ?? {};
+    const levelTargets = Math.max(0, ...Object.values(e.higher?.targets && typeof e.higher.targets === 'object' ? e.higher.targets : {}).filter(isN));
+    let targets = targetsOf(e.target);
+    if (!(e.target?.area && !isN(e.target.area.choose))) targets = Math.max(targets + up * (isN(hs.targets) ? hs.targets : 0), levelTargets);
+    take(targets * listWork(e.effects, up * (isN(hs.times) ? hs.times : 0)), 'cast at its highest level');
+  }
+  else if (kind === 'monsters' && Array.isArray(e.actions)) {
+    const byId = new Map(e.actions.filter((a) => a && typeof a.id === 'string').map((a) => [a.id, a]));
+    for (const a of e.actions) {
+      if (!a || typeof a !== 'object') continue;
+      take(actionWork(a), `action "${a.id}"`);
+      if (a.multiattack) { const [n, w] = multiWork(a.multiattack, byId); attacks = Math.max(attacks, n); take(w, `Multiattack "${a.id}"`); }
+    }
+  } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
+  else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) take(listWork(u?.effects), 'use');
+  return { work, attacks, what };
+}
+const DICE_STR = /^([+-]?)(?:(\d+)d(\d+))?(?:([+-]\d+))?$/;
+// A dice string's count, sides and flat part within the limits, or a sentence.
+function diceProblem(s) {
+  const m = DICE_STR.exec(s);
+  if (!m || !s.length || !/d|^[+-]\d+$/.test(s)) return null;
+  const D = HOMEBREW_DICE;
+  if (m[2] !== undefined && (+m[2] < 1 || +m[2] > D.count)) return `"${s}" rolls ${thousands(+m[2])} dice; the most is ${D.count}`;
+  if (m[3] !== undefined && (+m[3] < 2 || +m[3] > D.sides)) return `"${s}" has dice of ${thousands(+m[3])} sides; they have 2 to ${D.sides}`;
+  const flat = m[4] !== undefined ? Math.abs(+m[4]) : m[2] === undefined ? Math.abs(+s) : 0;
+  if (flat > D.flat) return `"${s}" adds ${thousands(flat)}; the most is ${D.flat}`;
+  return null;
+}
+function lintNumbers(kind, e, say) {
+  for (const [ctx, n, path, g, owner, key] of arraysOf(kind, e)) {
+    const most = lengthOf(owner, key, g);
+    if (most === undefined) say(`${path}: a list is not allowed here (no length is set for "${ctx}")`);
+    else if (n > most) say(`${path}: a list of ${n}; the most is ${most}`);
+  }
+  if (kind === 'monsters' && Array.isArray(e.traits) && Array.isArray(e.actions)) {
+    const reactions = e.traits.filter((t) => t?.reaction).length + e.actions.filter((a) => a?.time === 'reaction').length;
+    if (reactions > HOMEBREW_LENGTHS['monsters.reaction']) say(`it has ${reactions} reactions; the most is ${HOMEBREW_LENGTHS['monsters.reaction']}`);
+  }
+  const { work, attacks, what } = workOf(kind, e);
+  if (attacks > HOMEBREW_WORK.attacks) say(`its Multiattack makes ${thousands(attacks)} attacks; the most is ${HOMEBREW_WORK.attacks}`);
+  else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
+  for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
+    const r = rangeOf(owner, key, g);
+    if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }
+    const [lo, hi, frac] = r;
+    if (!(frac ? Number.isInteger(v * frac) : Number.isInteger(v)) || v < lo || v > hi) say(`${path}: ${v} is not allowed; ${frac ? 'a number' : 'a whole number'} from ${thousands(lo)} to ${thousands(hi)}`);
+  }
+  const stack = Object.values(e);
+  while (stack.length) {
+    const v = stack.pop();
+    if (typeof v === 'string') {
+      const d = diceProblem(v), du = /^([1-9]\d*) (round|minute|hour|day)s?$/.exec(v), c = /^([\d,]{1,12}) (CP|SP|EP|GP|PP)$/.exec(v);
+      if (d) say(`dice ${d}`);
+      if (du && +du[1] > HOMEBREW_DURATIONS[du[2]]) say(`a duration of ${thousands(+du[1])} ${du[2]}s is too long; the most is ${HOMEBREW_DURATIONS[du[2]]}`);
+      if (c) { const gp = +c[1].replace(/,/g, '') * COIN_GP[c[2]]; if (gp > HOMEBREW_COST) say(`a price of ${c[1]} ${c[2]} is ${thousands(Math.round(gp))} gold pieces; the most is ${thousands(HOMEBREW_COST)} gold pieces`); }
+    } else if (Array.isArray(v)) for (const x of v) stack.push(x);
+    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push(v[k]);
+  }
+}
+
+// The type of every field, by the shape that holds it (the shapes of SHAPES; a step's is `step.<kind>`):
+//   b true or false, t true, s text, id a kebab-case name of at most 60 letters, id[] a list of them, i a number (its range is in HOMEBREW_RANGES), n a number (a fraction may be), d dice, o an object,
+//   a a list, s[] a list of text, i[] a list of numbers, '|' either; '*' is the type of every key of a map; '?' is checked by the
+//   kind's own linter alone (a feature's grants have many shapes).
+const WORDS = { id: 'a kebab-case name', 'id[]': 'a list of kebab-case names', b: 'true or false', t: 'true', s: 'text', i: 'a whole number', n: 'a number', d: 'dice like 2d6+3', o: 'an object', a: 'a list', 's[]': 'a list of text', 'i[]': 'a list of numbers', 'o[]': 'a list of objects' };
+const isId = (x) => typeof x === 'string' && x.length <= 60 && ID.test(x);
+const fits = (spec, v) => spec.split('|').some((t) => (t === 'id' ? isId(v) : t === 'id[]' ? Array.isArray(v) && v.every(isId) : t === 'b' ? typeof v === 'boolean' : t === 't' ? v === true : t === 's' ? typeof v === 'string' : t === 'i' || t === 'n' ? typeof v === 'number'
+  : t === 'd' ? typeof v === 'string' && (DICE.test(v) || /^\d{1,3}$/.test(v)) && v.length > 0 : t === 'o' ? !!v && typeof v === 'object' && !Array.isArray(v) : t === 'a' ? Array.isArray(v)
+  : t === 's[]' ? Array.isArray(v) && v.every((x) => typeof x === 'string') : t === 'i[]' ? Array.isArray(v) && v.every((x) => typeof x === 'number') : t === '?'));
+const describe = (spec) => spec.split('|').map((t) => WORDS[t] ?? t).join(' or ');
+export const HOMEBREW_TYPES = Object.freeze({
+  spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o' },
+  monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', tier: 's', checked: 'b', text: 's' },
+  items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
+  feats: { id: 's', name: 's', category: 's', prerequisite: 'o', repeatable: 's|b', tier: 's', source: 's', checked: 'b', text: 's', increase: 'o', proficiencies: 'o', spellPick: 'o', grants: 'o' },
+  objects: { id: 's', name: 's', kind: 's', source: 's', tier: 's', checked: 'b', text: 's', states: 'o', initial: 's', use: 'a', triggers: 'a', find: 'o', dc: 'o', connects: 'b' },
+  weapons: { id: 's', name: 's', category: 's', kind: 's', damage: 'd', type: 's', properties: 's[]', mastery: 's', range: 'i[]', versatile: 'd', ammo: 's', twoHandedUnlessMounted: '?', weight: 'n', cost: 's|i', source: 's', checked: 'b' },
+  armour: { id: 's', name: 's', category: 's', ac: 'i', dex: 'i|s', stealth: 's', strength: 'i', weight: 'n', cost: 's|i', source: 's', checked: 'b' },
+  target: { self: 'b', creature: 'o', area: 'o' },
+  area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i' },
+  creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]' },
+  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
+  value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i' },
+  scope: { skill: 's', ability: 's', condition: 's' },
+  ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b' },
+  higher: { level: 'o', targets: 'o', slot: 'o' },
+  slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
+  choice: { of: 's', from: 's[]' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b' },
+  terrain: { difficult: 'b', obscured: 's', lasts: 's' },
+  reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
+  bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's' },
+  count: { slot: 'i', base: 'i', above: 'i' },
+  over: { speed: 'o' },
+  forms: { type: 's', cr: 'n' },
+  trait: { id: 'id', name: 's', text: 's', modifiers: 'a', reaction: 'o' },
+  action: { id: 'id', name: 's', text: 's', time: 's', target: 'o', effects: 'a', uses: 'o', recharge: 'i[]', multiattack: 'a|o' },
+  uses: { per: 's', n: 'i' },
+  attackEntry: { action: 's|s[]', times: 'i' },
+  orList: { or: 'a' },
+  abilities: { str: 'i', dex: 'i', con: 'i', int: 'i', wis: 'i', cha: 'i' },
+  state: { name: 's', blocks: 's[]', hidden: 'b', light: 'o' },
+  light: { bright: 'i', dim: 'i' },
+  objectDc: { save: 'i', find: 'i' },
+  find: { to: 's' },
+  trigger: { on: 's', from: 's[]', to: 's', feet: 'i', who: 's', area: 'i', effects: 'a' },
+  use: { id: 'id', name: 's', from: 's[]', to: 's', time: 's', key: 'b', check: 'o', effects: 'a' },
+  check: { ability: 's', skill: 's', tool: 'id', dc: 'i' },
+  activate: { name: 's', time: 's', cost: 'i', consumed: 'b', spell: 'id', level: 'i', upTo: 'i', self: 'b', dc: 'i', effects: 'a' },
+  attune: { by: 's[]', spellcaster: 'b' },
+  base: { weapon: 's|s[]', armour: 's|s[]' },
+  charges: { max: 'i', regain: 'd' },
+  prerequisite: { level: 'i', abilities: 'o', feature: 's' },
+  anyAbility: { any: 's[]', min: 'i' },
+  increase: { from: 's[]', points: 'i', max: 'i' },
+  proficiencies: { n: 'i' },
+  spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
+  grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
+  aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
+  speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
+  states: { '*': 'o' }, 'trait[]': { '*': 'o' }, 'action[]': { '*': 'o' }, 'modifier[]': { '*': 'o' }, 'trigger[]': { '*': 'o' }, 'use[]': { '*': 'o' }, 'activate[]': { '*': 'o' }, 'attackEntry[]': { '*': 'o' },
+  'step.attack': { attack: 's', kind: 's', bonus: 'i', onHit: 'a', onMiss: 'a' },
+  'step.save': { save: 's', dc: 'i', half: 'b', advantageIf: 's[]', onFail: 'a', onSuccess: 'a' },
+  'step.damage': { damage: 'd', type: 's', times: 'i', onZero: 'a', onKill: 'a' },
+  'step.heal': { heal: 'd', addMod: 'b', atLeast: 'i' }, 'step.tempHp': { tempHp: 'd', addMod: 'b', atLeast: 'i' },
+  'step.condition': { condition: 's', ends: 'o' }, 'step.modifier': { modifier: 'o', ends: 'o', to: 's' },
+  'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
+  'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
+  'step[]': { '*': 'o' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.manual': { manual: 's' },
+  'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
+});
+// The check a key gets while the key lists are walked: its type, in words, or null.
+function typeProblem(shape, key, value) {
+  const T = HOMEBREW_TYPES[shape];
+  const spec = T?.[key] ?? T?.['*'] ?? (shape.startsWith('step.') && key === 'when' ? 's[]' : undefined);
+  if (!spec || spec === '?' || fits(spec, value)) return null;
+  return `must be ${describe(spec)}`;
+}
+
+const PACK_DOC_KEYS = ['format', 'v', 'pack', ...HOMEBREW_ENTRY_KINDS];
+const PACK_HEAD_KEYS = ['id', 'name', 'version', 'license', 'attribution'];
+// What strict mode needs for a pack: the document's own shape checked, and the options for each entry.
+function strictOptions(doc, opts, problems) {
+  const homebrew = !!opts.strict, id = doc?.pack?.id;
+  if (homebrew) {
+    for (const k of Object.keys(doc)) if (!PACK_DOC_KEYS.includes(k)) problems.push(`pack: "${k}" cannot be homebrew (the kinds are ${HOMEBREW_ENTRY_KINDS.join(', ')})`);
+    for (const k of HOMEBREW_ENTRY_KINDS) if (doc[k] !== undefined && !Array.isArray(doc[k])) problems.push(`${k}: must be a list`);
+    if (doc.format !== 'hextable-pack' || doc.v !== 1) problems.push('pack: format must be "hextable-pack", v 1');
+    const head = doc.pack;
+    if (head && typeof head === 'object') {
+      for (const k of Object.keys(head)) if (!PACK_HEAD_KEYS.includes(k)) problems.push(`pack: "${k}" is not something a pack has (it has ${PACK_HEAD_KEYS.join(', ')})`);
+      if (head.version !== undefined && !(isInt(head.version) && head.version >= 1)) problems.push('pack: version is a whole number from 1');
+    }
+    for (const k of HOMEBREW_ENTRY_KINDS) if (Array.isArray(doc[k])) doc[k].forEach((x) => { if (!x || typeof x !== 'object' || Array.isArray(x)) problems.push(`${k}: an entry is not an object`); });
+    if (typeof id === 'string' && (id === SRD_PACK_ID || (opts.srd ?? SRD_REF)?.pack === id)) problems.push(`pack: "${id}" is the SRD pack's id`);
+  }
+  return { homebrew, pack: id, srd: opts.srd };
+}
+// The SRD pack id a homebrew pack may not take, and the SRD's entries (their ids and names): `useSrdReference` is called by
+// registry.js with the content lookups, so a caller of lintPack or lintEntry passes nothing and still gets the rule.
+const SRD_PACK_ID = 'srd52';
+let SRD_REF = null;
+export function useSrdReference(ref) { SRD_REF = ref; }
+const CONFUSABLE = { '\u0430': 'a', '\u0435': 'e', '\u043e': 'o', '\u0440': 'p', '\u0441': 'c', '\u0443': 'y', '\u0445': 'x', '\u0456': 'i', '\u0458': 'j', '\u0455': 's', '\u04bb': 'h', '\u0501': 'd',
+  '\u0391': 'a', '\u0392': 'b', '\u0395': 'e', '\u0397': 'h', '\u0399': 'i', '\u039a': 'k', '\u039c': 'm', '\u039d': 'n', '\u039f': 'o', '\u03a1': 'p', '\u03a4': 't', '\u03a7': 'x', '\u03b9': 'i', '\u03bf': 'o', '\u03bd': 'v', '\u0131': 'i' };
+// A name as it reads: NFKD, marks removed, case folded, look-alike letters made Latin, and only letters and digits kept ("Fire-ball", "Fire_ball" and "F\u00edreball" are "fireball").
+export const nameKey = (s) => s.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\u00df/g, 'ss').replace(/[\u0391-\u03bf\u0430-\u0501\u0131]/g, (c) => CONFUSABLE[c] ?? c).replace(/[^\p{L}\p{Nd}]/gu, '');
+const SRD_NAMES = new WeakMap();
+function srdNames(table) {
+  let names = SRD_NAMES.get(table);
+  if (!names) { names = new Set(); for (const id of Object.keys(table)) if (typeof table[id]?.name === 'string') names.add(nameKey(table[id].name)); SRD_NAMES.set(table, names); }
+  return names;
+}
+// What strict mode checks of an entry's shape: the key lists, the type of every value and, for homebrew, every number and
+// every dice string. When it says anything, the kind's own linter is not run: it reads what the types now vouch for.
+function lintShape(kind, e, say, { homebrew }) {
+  if (!HOMEBREW_ENTRY_KINDS.includes(kind)) { if (homebrew) say(`${kind} cannot be homebrew`); return 0; }
+  let bad = 0;                                                   // wrong types and numbers: what the kind's linter must not be given
+  lintKeys(kind, e, say, (shape, key, value, path) => { const t = typeProblem(shape, key, value); if (t) { bad++; say(`${path} ${t}`); } });
+  if (homebrew && !bad) lintNumbers(kind, e, (m) => { bad++; say(m); });
+  return bad;
+}
+// The homebrew rules for an entry that passed its kind's linter: id, source, `checked` and the name (Decision 1).
+function lintRules(kind, e, say, { homebrew, pack, srd }) {
+  if (!homebrew || !HOMEBREW_ENTRY_KINDS.includes(kind)) return;
+  const ref = srd ?? SRD_REF;
+  lintUnchecked(kind, e, say);
+  const prefix = `hb-${pack}-`;
+  if (typeof e.id !== 'string' || !e.id.startsWith(prefix) || !ID.test(e.id.slice(prefix.length))) {
+    const taken = typeof e.id === 'string' && ref?.[kind] && Object.hasOwn(ref[kind], e.id);
+    say(taken ? `"${e.id}" is the id of an SRD entry, and homebrew cannot replace it: give it an id that starts "${prefix}"`
+      : `a homebrew id is "${prefix}" followed by a kebab-case name, like "${prefix}ember-burst"`);
+  }
+  if (e.checked !== false) say('homebrew is not checked against any rulebook: `checked` must be false');
+  if (e.source !== `homebrew:${pack}`) say(`its source must be "homebrew:${pack}"`);
+  if (typeof e.name === 'string' && ref?.[kind] && srdNames(ref[kind]).has(nameKey(e.name))) say(`the name "${e.name}" is the name of an SRD ${kind === 'armour' ? 'armour' : kind.replace(/s$/, '')}: give it a name of its own, so nobody takes it for the SRD's`);
+}
+
+// One entry of one kind, by the linter of its kind (Decision 6). Strict by default: then the entry's budget first (and
+// nothing else if it fails), the closed key lists, and the homebrew rules for `ctx.pack`, the homebrew pack's id.
+//   ctx: { strict = true, pack, srd: { spells: { id: ... }, ... } (the SRD's ids, for a plainer sentence),
+//          spells, weapons, armour (ids an item may name: Sets or lists), keys (the key lists alone, not strict),
+//          limits }
+// Only checks of one entry: what lintPack checks across a pack (duplicate ids, what a summon names) is not done here.
+const ENTRY_LINTERS = {
+  spells: lintSpell, monsters: (e, say) => lintMonster(e, say), summons: lintSummonBlock, conditions: lintCondition, objects: lintObject, classes: lintClass,
+  weapons: lintWeapon, armour: lintArmour, feats: lintFeatDef, items: lintItem,
+};
+const asSet = (x) => (x === undefined || x === null ? undefined : x instanceof Set ? x : new Set(x));
+export function lintEntry(kind, entry, ctx = {}) {
+  // Never throws, whatever it is given (a wrong kind, no pack, an entry that is not the shape it must be): sentences.
+  try { return lintEntryCore(kind, entry, ctx ?? {}); } catch { return [`${typeof kind === 'string' ? kind : 'entry'}/${shortId(entry)}: could not be checked, because something in it is not the shape an entry has`]; }
+}
+function lintEntryCore(kind, entry, ctx) {
+  if (typeof kind !== 'string' || !Object.hasOwn(ENTRY_LINTERS, kind)) return [`lintEntry: unknown kind (one of ${Object.keys(ENTRY_LINTERS).join(', ')})`];
+  const strict = ctx.strict ?? true;
+  if (strict && !HOMEBREW_ENTRY_KINDS.includes(kind)) return [`${kind}/${shortId(entry)}: ${kind} cannot be homebrew`];
+  if (strict && !(typeof ctx.pack === 'string' && ID.test(ctx.pack))) return [`${kind}/${shortId(entry)}: strict mode needs the homebrew pack's id (ctx.pack)`];
+  if (strict) { const over = budgetEntry(kind, entry, ctx.limits); if (over.length) return over; }
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [`${kind}: an entry is not an object`];
+  const problems = [], say = (m) => problems.push(`${kind}/${shortId(entry)}: ${m}`);
+  const o = { homebrew: strict, pack: ctx.pack, srd: ctx.srd };
+  if ((strict || ctx.keys) && lintShape(kind, entry, say, o) && strict) return problems;
+  ENTRY_LINTERS[kind](entry, say, { weapons: asSet(ctx.weapons), armour: asSet(ctx.armour), spells: asSet(ctx.spells) ?? null });
+  if (strict || ctx.keys) lintRules(kind, entry, say, o);
+  return problems;
 }

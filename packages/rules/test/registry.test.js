@@ -225,13 +225,13 @@ test("the registry module is pure: no I/O, clock or randomness", () => {
   for (const bad of [/Math\.random/, /Date\b/, /performance\./, /from ['"]node:/, /\bprocess\./, /\bfetch\(/, /setTimeout|setInterval/]) assert.doesNotMatch(src, bad);
 });
 
-// ---------- caches built from content (finding of B4; docs/DEBT.md) ----------
+// ---------- caches built from content (finding of B4, DEBT P31, fixed in #380) ----------
 // walls.js `barriers(map)` keeps what blocks, beside the map, under a signature of the walls and of each object's
-// id, def, state and place, but not of what the def says. A homebrew object's def exists only inside `using`, so a
-// read of the same map outside the overlay (or under an older version of the pack) is kept and given back inside it.
-// sight.js, vision.js and view.js key their own caches on `barriers(map).sig`, so they inherit it.
-// This test pins the gap as it is; when walls.js keys its cache on the defs too, flip the last assertions.
-test("FINDING: barriers() read outside the overlay is kept and given back inside it", () => {
+// id, def, state and place. Until #380 the signature had the def's id but not which def it named, so a read of the
+// same map outside the overlay (or under an older version of the pack) was kept and given back inside it. Now it
+// holds a number for the def object itself (none outside the overlay), so no answer crosses an overlay or outlives
+// a changed def; sight.js, vision.js and view.js key their caches on `barriers(map).sig`, so they follow it.
+test("barriers() never gives back an answer from across an overlay or from a changed def (was the FINDING of #379)", () => {
   const thing = { id: "hb-ember-folk-ember-wall", name: "Ember wall", kind: "thing", source: "homebrew:ember-folk", tier: "auto", checked: false,
     states: { up: { name: "burning", blocks: ["move", "sight"] } }, initial: "up", use: [], text: "A wall of embers." };
   const ov = overlayOf([loaded(doc("ember-folk", { objects: [thing] }))]);
@@ -240,13 +240,38 @@ test("FINDING: barriers() read outside the overlay is kept and given back inside
   // Read inside the overlay on a fresh map: the thing fills its hex, as it should.
   const a = fresh();
   assert.equal(using(ov, () => solid(a, barriers(a.map))), true);
-  // Read outside first (where the def is unknown), then inside, on the same map: the outside answer is given back.
+  // Read outside first (where the def is unknown), then inside, on the same map: inside is worked out again.
   const b = fresh();
   const outside = barriers(b.map);
   assert.equal(solid(b, outside), false);
   const later = using(ov, () => barriers(b.map));
-  assert.equal(later, outside, "the cached answer from outside the overlay is reused inside it");
-  assert.equal(solid(b, later), false, "GAP: inside the overlay the homebrew thing does not block (it should)");
-  // And the other way: an answer made inside is kept after using ends.
-  assert.equal(solid(a, barriers(a.map)), true, "GAP: outside the overlay the unknown thing still blocks");
+  assert.notEqual(later, outside, "the answer from outside the overlay is not reused inside it");
+  assert.equal(solid(b, later), true, "inside the overlay the homebrew thing blocks");
+  // And the other way: an answer made inside is not kept after using ends.
+  assert.equal(solid(a, barriers(a.map)), false, "outside the overlay the unknown thing does not block");
+  // Inside again, the overlay's answer is the cached one (nothing changed since it was made: the cache still works).
+  const again = using(ov, () => barriers(b.map));
+  assert.equal(using(ov, () => barriers(b.map)), again, "the same overlay and map give back the cached answer");
+  // A new version of the pack (the thing no longer blocks) is a new def: the old answer is not given back under it.
+  const v2 = overlayOf([loaded(doc("ember-folk", { objects: [{ ...thing, states: { up: { name: "embers", blocks: [] } } }] }))]);
+  assert.equal(using(ov, () => solid(b, barriers(b.map))), true);
+  assert.equal(using(v2, () => solid(b, barriers(b.map))), false, "the changed def is read, not the old answer");
+  // What the players are sent follows. Under the los rule the fighter, alone, is walled in by six homebrew doors that
+  // block sight, one on each side of its hex: inside the overlay the player is sent almost nothing, outside (where the
+  // def is unknown) the valley. Before #380 the first answer was given back in both, whichever came first.
+  const sightSent = (first) => {
+    const c = newGame(5), f = c.entities.fighter.pos;
+    apply(c, { type: "setting", key: "sight", value: "los" }, DM);
+    for (const id of Object.keys(c.entities)) if (c.entities[id].side === "party" && id !== "fighter") delete c.entities[id];
+    const door = { ...thing, id: "hb-ember-folk-ember-door", kind: "door" };
+    const ov2 = overlayOf([loaded(doc("ember-folk", { objects: [door] }))]);
+    for (let e = 0; e < 6; e++) c.map.objects.push({ id: `d${e}`, def: door.id, state: "up", level: c.map.levels[0].id, at: { q: f.q, r: f.r }, edge: e });
+    const sent = () => JSON.stringify(view(c, PLAYER).sight);
+    const inside = () => using(ov2, sent);
+    return first === "inside" ? { inside: inside(), outside: sent() } : { outside: sent(), inside: inside() };
+  };
+  const x = sightSent("outside"), y = sightSent("inside");
+  assert.ok(x.inside.length < x.outside.length / 10, "walled in by its doors inside the overlay");
+  assert.equal(x.inside, y.inside, "inside, the same whichever was asked first");
+  assert.equal(x.outside, y.outside, "outside, the same whichever was asked first");
 });

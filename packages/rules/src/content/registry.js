@@ -12,50 +12,30 @@
 // promise, and refuses a second, different overlay while one is installed (the same overlay again is a no-op).
 //
 // Pure: no I/O, no clock, no randomness. What `using` changes is a registry of derived lookups, never game state.
-import { lintPack } from './schema.js';
+import { budget, budgetTable, HOMEBREW_LIMITS, lintPack, useSrdReference } from './schema.js';
 import { HOMEBREW_LOOKUPS, SRD_PACK_ID } from './index.js';
 
 export const HOMEBREW_KINDS = Object.keys(HOMEBREW_LOOKUPS);
 const PACK_KEYS = ['format', 'v', 'pack', ...HOMEBREW_KINDS];
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
-// Interim bounds until B1's budget (HOMEBREW_LIMITS) lands; see the seam below.
-const MAX_DEPTH = 64, MAX_NODES = 200000;
-
 export class PackError extends Error {
   constructor(problems) { super(`The homebrew was refused: ${problems.slice(0, 5).join('; ')}${problems.length > 5 ? ` (and ${problems.length - 5} more)` : ''}`); this.problems = problems; }
 }
 
 // ---------- checking one pack ----------
-// Iterative and bounded, so a deep or huge document cannot overflow the stack of the linter that follows.
-function guard(root) {
-  const stack = [[root, 0]];
-  let n = 0;
-  while (stack.length) {
-    const [x, d] = stack.pop();
-    if (++n > MAX_NODES) return `is larger than ${MAX_NODES} values`;
-    if (x === null || typeof x !== 'object') continue;
-    if (d > MAX_DEPTH) return `nests deeper than ${MAX_DEPTH} levels`;
-    for (const k of Object.keys(x)) {
-      if (BAD_KEY.has(k)) return `has a key "${k}", which no content may have`;
-      stack.push([x[k], d + 1]);
-    }
-  }
-  return null;
-}
-
 // ===== SEAM for job B1 (budget, strict mode; docs/specs/homebrew.md, Decision 2, task B1) =====
-// Two plugs, both here. Until B1 lands, the budget is the interim `guard` above and the lint is today's `lintPack`.
-// When B1 lands: `budgetHomebrew` returns `budget(data, HOMEBREW_LIMITS)` (and `guard` goes), and `lintHomebrew`
-// returns `lintPack(data, { strict: true })`. Nothing else in this module needs to change.
-// The budget runs on the document as given, before it is copied (a copy of a depth bomb would overflow the stack).
+// The budget runs on the document as given, before it is copied (a copy of a depth bomb would overflow the stack):
+// one iterative walk, bounded by HOMEBREW_LIMITS, refusing prototype keys, functions and anything not plain data.
 function budgetHomebrew(raw) {
-  const bad = guard(raw);
-  return bad ? [`pack: ${bad}`] : [];
+  return budget(raw, HOMEBREW_LIMITS);
 }
-// The lint runs on the plain copy, the same data that is then built and played.
+// The lint runs on the plain copy, the same data that is then built and played: strict, so every key is in its kind's
+// list, every id carries the pack's prefix (an SRD id is named as one), the source is `homebrew:<pack id>` and nothing
+// claims `checked: true`. The SRD ids are this module's own lookups (`HOMEBREW_LOOKUPS[kind][0]` is `CONTENT[kind]`).
+const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])) };
+useSrdReference(SRD_IDS);                      // lintPack and lintEntry then refuse the SRD's pack id, ids and names without being told
 function lintHomebrew(data) {
-  try { return lintPack(data); } catch (err) { return [`pack: could not be checked (${err instanceof RangeError ? 'too deeply nested' : err.message})`]; }
+  try { return lintPack(data, { strict: true, srd: SRD_IDS }); } catch (err) { return [`pack: could not be checked (${err.message})`]; }
 }
 // ===== end of the B1 seam =====
 
@@ -127,12 +107,18 @@ export function overlayOf(packs = []) {
     if (!r.ok) throw new PackError(r.problems);
     return r.pack;
   }).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const problems = [], ids = new Set(), ops = [];
+  const problems = [...budgetTable(loaded)], ids = new Set(), ops = [], owner = new Map();
   const mine = active ? OVERLAYS.get(active).ids : null;
   for (let i = 0; i < loaded.length; i++) if (i && loaded[i].id === loaded[i - 1].id) problems.push(`pack: "${loaded[i].id}" is on the table twice`);
+  // An id names one entry. Ids carry their pack's id as a prefix, and one pack's id may begin with another's ("a" and "a-b"
+  // can both own "hb-a-b-x"), so a pack id that starts with another's followed by a hyphen is refused, and so is any
+  // entry id that two packs hold, whatever their ids: the later pack must never replace an entry of the earlier.
+  for (const a of loaded) for (const b of loaded) if (a !== b && b.id.startsWith(`${a.id}-`)) problems.push(`pack: "${a.id}" and "${b.id}" cannot be on one table: the second's id begins with the first's, and their entries' ids could be the same`);
   for (const p of loaded) for (const op of LOADED.get(p)) {
     const [target, id] = op;
     if (Object.hasOwn(target, id) && !mine?.has(id)) problems.push(`${id}: is already in the rules`);
+    if (owner.has(id) && owner.get(id) !== p.id) problems.push(`${id}: is an entry of both "${owner.get(id)}" and "${p.id}"; an id must name one entry`);
+    owner.set(id, p.id);
     ops.push(op); ids.add(id);
   }
   if (problems.length) throw new PackError([...new Set(problems)]);
@@ -158,17 +144,28 @@ export function using(overlay, fn) {
   if (active === overlay) return settle(fn());                                     // re-entered: already installed
   if (active) throw new Error("using: another table's homebrew is installed; overlays do not nest");
   for (const [target, id] of o.ops) if (Object.hasOwn(target, id)) throw new Error(`using: "${id}" is already in the rules`);
-  const targets = [...new Set(o.ops.map(([t]) => t))], sizes = targets.map((t) => Object.keys(t).length);
-  let result, i = 0;
+  const targets = [...new Set(o.ops.map(([t]) => t))], before = targets.map((t) => Object.entries(t));
+  let result, i = 0, strayed = false;
   active = overlay;
   try {
     for (; i < o.ops.length; i++) { const [target, id, value] = o.ops[i]; target[id] = value; }
     result = fn();
   } finally {
+    // Every id of the overlay goes (one `fn` deleted is simply not there), then any key `fn` added to a lookup, whether
+    // `fn` returned or threw: the lookups come back with the keys they had.
     for (let j = i - 1; j >= 0; j--) delete o.ops[j][0][o.ops[j][1]];
     active = null;
+    // Each lookup is compared with the snapshot taken on entry: if anything differs (a key added, deleted or changed, a delete
+    // and an add that cancel in the count), it is put back as it was, every key and value in its original order.
+    targets.forEach((t, k) => {
+      const snap = before[k], now = Object.keys(t);
+      if (now.length === snap.length && snap.every(([key, v], n) => now[n] === key && t[key] === v)) return;
+      strayed = true;
+      for (const key of now) delete t[key];
+      for (const [key, v] of snap) t[key] = v;
+    });
   }
-  if (targets.some((t, k) => Object.keys(t).length !== sizes[k])) throw new Error('using: the content lookups were changed during the call');
+  if (strayed) throw new Error('using: the content lookups were changed during the call; the lookups have been put back');
   return settle(result);
 }
 function settle(result) {
