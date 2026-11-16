@@ -45,13 +45,16 @@ function guard(root) {
 }
 
 // ===== SEAM for job B1 (budget, strict mode; docs/specs/homebrew.md, Decision 2, task B1) =====
-// Until B1 lands this is today's `lintPack` behind the interim guard above. When B1 lands, replace the body with
-//   const over = budget(data, HOMEBREW_LIMITS); if (over.length) return over;
-//   return lintPack(data, { strict: true });
-// and drop `guard` (the budget does its work). Nothing else in this module needs to change.
+// Two plugs, both here. Until B1 lands, the budget is the interim `guard` above and the lint is today's `lintPack`.
+// When B1 lands: `budgetHomebrew` returns `budget(data, HOMEBREW_LIMITS)` (and `guard` goes), and `lintHomebrew`
+// returns `lintPack(data, { strict: true })`. Nothing else in this module needs to change.
+// The budget runs on the document as given, before it is copied (a copy of a depth bomb would overflow the stack).
+function budgetHomebrew(raw) {
+  const bad = guard(raw);
+  return bad ? [`pack: ${bad}`] : [];
+}
+// The lint runs on the plain copy, the same data that is then built and played.
 function lintHomebrew(data) {
-  const bad = guard(data);
-  if (bad) return [`pack: ${bad}`];
   try { return lintPack(data); } catch (err) { return [`pack: could not be checked (${err instanceof RangeError ? 'too deeply nested' : err.message})`]; }
 }
 // ===== end of the B1 seam =====
@@ -75,7 +78,10 @@ function deepFreeze(root) {
 // checking and the spell profiles are done once, not on every call.
 export function loadPack(input) {
   let data;
-  try { data = typeof input === 'string' ? JSON.parse(input) : structuredClone(input); }        // a plain copy: no getters, no functions
+  try { data = typeof input === 'string' ? JSON.parse(input) : input; } catch (err) { return { ok: false, problems: [`pack: is not JSON (${err.message})`] }; }
+  const over = budgetHomebrew(data);
+  if (over.length) return { ok: false, problems: over };
+  try { data = structuredClone(data); }                    // a plain copy: no getters, no functions, nothing the caller can change later
   catch (err) { return { ok: false, problems: [`pack: is not plain data (${err.message})`] }; }
   if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['pack: is not a pack document'] };
   const problems = [];
