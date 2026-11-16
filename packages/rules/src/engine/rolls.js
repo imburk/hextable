@@ -159,13 +159,20 @@ export function acOf(s, t) {
   return bounded(m, (m.set ?? t.ac) + m.add);
 }
 
-// The DC a repeated save that ends a condition or a modifier is rolled against: the ending's own (`ends.dc`: an entry says it
-// for a creature's action, and runAction fills it in from the save that put the condition on when it does not), else the DC of
-// the effect (a spell's save DC). With none, the save could never succeed, so the DM is told and ends it (never silently).
-function endingDc(step, f, ev, t) {
-  const dc = step.ends.dc ?? step.dc ?? f.src.dc;
-  if (step.ends.on === 'save' && !Number.isFinite(dc)) ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name}'s ${step.ends.save?.toUpperCase()} save to end this has no DC entered, so the engine does not roll it. The DM ends it.` });
-  return dc;
+// The ending a step gives its condition or modifier, as the part keeps it: with the DC it is rolled against (the ending's own,
+// `ends.dc`: an entry says it for a creature's action, and runAction fills it in from the save that put the condition on when
+// it does not; else the DC of the effect, a spell's save DC). A repeated save with no DC anywhere could never succeed, so it is
+// not rolled at all: the DM is told, once, now, and the part carries no ending (the DM ends it). `told` is true then.
+function ending(s, step, f, ev, t) {
+  if (!step?.ends) return { told: false, part: {} };
+  const dc = step.ends.dc ?? step.dc ?? f?.src.dc;
+  if (step.ends.on === 'save' && !Number.isFinite(dc)) {
+    // `orDamaged`: damage to it still ends it, with no save (an ending on damage, which durations.js runs).
+    const dmg = step.ends.orDamaged === true;
+    ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? t.name, partial: true, text: `${t.name}'s ${step.ends.save?.toUpperCase()} save to end this has no DC entered, so the engine does not roll it. The DM ends it${dmg ? ' (any damage it takes still ends it)' : ''}.` });
+    return { told: true, part: dmg ? { ends: { on: 'damaged', ...(step.ends.by !== undefined ? { by: step.ends.by } : {}) }, born: turnKey(s) } : {} };
+  }
+  return { told: false, part: { ends: step.ends, dc, born: turnKey(s) } };
 }
 
 // Put a condition on a creature. What the condition does is data (content/srd52/conditions.js).
@@ -179,14 +186,16 @@ export function condition(s, t, id, ev, f = null, step = null, level = undefined
   // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the
   // effect instead, and the DM is told below that nothing ends it (T32).
   const held = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
-  const fx = held && !(held.bound && step && !step.ends) ? held : null;
+  // The ending of a step is judged first: a repeated save with no DC is not an ending the engine can run (the DM is told here).
+  const end = ending(s, step, f, ev, t);
+  const fx = held && !(held.bound && step && (!step.ends || (end.told && !end.part.ends))) ? held : null;
   t.cond[id] = { ...(f ? { source: f.actor } : {}), ...(level ? { level } : {}), ...(fx ? { effect: fx.id } : {}) };
-  if (fx) fx.parts.push({ target: t.id, cond: id, ...(step?.ends ? { ends: step.ends, dc: endingDc(step, f, ev, t), born: turnKey(s) } : {}) });
+  if (fx) fx.parts.push({ target: t.id, cond: id, ...end.part });
   ev.push({ type: 'cond', id: t.id, cond: id });
   const def = conditionDef(id), name = conditionName(id);
   const rest = def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
-  const ending = fx || id === 'prone' ? '' : ' Nothing ends it yet: the DM removes it.';
-  if (rest || ending) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} ${conditionPhrase(id)}.${rest}${ending}` });
+  const nothing = fx || id === 'prone' || end.told ? '' : ' Nothing ends it yet: the DM removes it.';
+  if (rest || nothing) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} ${conditionPhrase(id)}.${rest}${nothing}` });
   concentrationLost(s, ev, t, `${t.name} ${conditionPhrase(id)}`);
 }
 
@@ -203,8 +212,10 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   if (fx.bound && !step.ends && !Number.isInteger(mod_.uses)) return false;
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
+  const end = ending(s, step, f, ev, t);
+  if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses)) return false;       // nothing could end it: the DM applies it and ends it
   const { against, except, ...m } = mod_;
-  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...(step.ends ? { ends: step.ends, dc: endingDc(step, f, ev, t), born: turnKey(s) } : {}) };
+  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...end.part };
   if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {
     holder.maxHp += m.value;
     holder.hp = m.value > 0 && holder.hp > 0 ? holder.hp + m.value : Math.min(holder.hp, holder.maxHp);
