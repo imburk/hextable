@@ -77,6 +77,7 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
   }
   if (e.riding && S.entities[e.riding.on]) tags.push(`Riding ${S.entities[e.riding.on].name}`);
   if (item.carried) tags.push('Carries its rider: no turn of its own');
+  else if (e.rider && S.entities[e.rider]) tags.push(`Carrying ${S.entities[e.rider].name}`);      // a mount that keeps its own place in the order (it is told of its rider only where the rider is sent too)
   if (full && enc && inFight(S, e.id) && e.reactionUsed) tags.push('Reaction used');
   const conds = Object.keys(e.cond || {}).filter((c) => e.cond[c] && c !== 'stable').map((c) => conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : ''));
   if (e.cond?.stable && !stable) conds.push('Stable');

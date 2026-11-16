@@ -7,7 +7,7 @@ Faithful Steed), Pact of the Chain, the Find Familiar, Find Steed, Summon and Co
 mounted combat (P3's "mounted"). Every number below is from `reference/srd52/srd52-flow.txt`;
 line numbers refer to that file.
 
-Built (as of 16 November): stages C1 to C8 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369). Not built: C9 (the rest of the features) and C10 (drawing).
+Built (as of 16 November): stages C1 to C8 and C10 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369, #375). Not built: C9 (the rest of the features).
 
 ## Problem
 
@@ -1465,7 +1465,7 @@ when it is pressed. One answer per state is kept until the next update.
 - **Keys.** The order field is a text input, so keys.js and the tab digits stay quiet while it has the focus; the typed text survives the panel's redraws.
 - **Log.** `commanded`, `companionOrder`, `pocketed`, `recalled`, `reformed`, `delivered`, `reasserted`, `mounted`, `dismounted`, `commandedTurn`, and the `lapsed`, `replaced` and
   `ended` reasons. `commanded` and `commandedTurn` may hold typed words and are `typed` in `LINE_KINDS`; the others are `engine`.
-- **Not built:** the pocket on the sheet; a rider drawn on its mount (C10); a flyer's `z` for a summon; the chooser for a spell cast through an item or a feature (`via`); targeting a
+- **Not built:** (the pocket on the sheet and the rider drawn on its mount were built in #375, see C10 below); a flyer's `z` for a summon; the chooser for a spell cast through an item or a feature (`via`); targeting a
   creature from horseback with an attack (W16); the highlights of a delivered touch are the caster's reach.
 
 ## Amendments of 14 November
@@ -1823,3 +1823,25 @@ read against `reference/srd52/srd52-flow.txt` and the vocabulary on main. Data o
   compulsion: a bargain, the DM's by nature); Finger of Death (a summon on a creature the spell kills, at the start of
   the caster's next turn: a `summon` under `onKill`); Simulacrum (a block copied from a creature, half its Hit Points).
 - Tests: `packages/rules/test/summons-385.test.js`.
+
+### C10, a rider drawn on its mount (#375)
+
+What was settled while building C10. The client draws only what the view sends.
+
+- **What the view sends** (read from `view.js`, `rideSeen`, and checked by the smoke pass with the engine's own `playerView`). The party's own pair: `riding { on, controlled, size }` on the
+  rider and `rider` on the mount. A pair of anyone else: `riding { on }` and `rider` only, and only where the viewer is sent BOTH halves. A hidden mount under a seen rider: the mount is not
+  sent and the rider carries no `riding`, so it is drawn as any creature on its own spot. A hidden rider on a seen mount: the rider is not sent and the mount carries no `rider`. Nothing
+  marks the missing half, and so the renderer draws nothing for it (no raised pawn, no gap, no mount label at its foot). The party's own creatures are never hidden from the party.
+- **Where it is drawn** (`render-three.js`, `#ride`). A rider whose mount is in the view takes its mount's drawn place every frame, after every pawn has walked, so the pair never differs by a
+  frame (walk, push, teleport: the mount's own path is the pair's). The pawn is raised by `lift`, the height of the mount's pawn (`pawnHeight`: the top of the theme's profile times the
+  girth, so Large on squares is taller), drawn only (as `hop` is); the pawn's own `y` stays on the floor. `lift` eases (`dt * 12`), so a reveal or getting down is not a jump, and
+  is set at once after an undo or on first sight. A mount tilted Prone lowers it by the cosine of the tilt. The rider's blob shadow is not drawn (the mount's is).
+- **Mounting and dismounting.** On `mounted` the rider walks to its mount's place, then rides; on `dismounted` (a fall too) it walks to where it lands, from the saddle, and `lift` eases to 0.
+- **Labels and taps.** The mount's label is put at its foot while it carries a rider drawn on it; the rider's is above. In `#pick` a tap on the pair picks the pawn drawn higher where both are
+  met (the rider above, the mount below), and on the floor under the pair the mount (the one not riding). The aiming code in `app.js` is untouched.
+- **`vanished`** fades as `removed` does: the renderer reads both (`app.js` also sends a `removed` beat for it, which is harmless).
+- **Tracker.** A mount that keeps its own place in the order (a steed standing `after` its master) says "Carrying <rider>"; one drawn under its rider keeps "Carries its rider". Both only where
+  the view sends the rider.
+- **The old renderer** (`render.js`, due for removal, #355) raises a rider by its mount's pawn height and nothing more; it does not move the pair as one.
+- **Also built:** the pocket on the sheet (`pocketHtml`, the party's own characters), the tap guard of `paneltabs.mjs` in `classes.mjs` (DEBT T30).
+- **Not built:** a rider's lift on a flying mount's ground shadow; a different look for a rider (the pawn is the rider's own); a rider seen only as `someone`.

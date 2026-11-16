@@ -6,6 +6,27 @@ import { scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle,
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
 // casts with one Metamagic option and the Sorcery Points go down. Every control is driven by tapping.
+// Tap a creature on the map where the renderer says it is, and make sure the renderer picked IT: a party pawn between the camera and the target takes the
+// tap, so the view is turned and the creature focused again until a tap lands on it (the guard paneltabs.mjs has, DEBT T30). `fail` is told what was seen.
+async function tapGuarded(page, touch, target) {
+  const ev = (f, a) => page.evaluate(f, a);
+  await ev((t) => { const R = window.hextable.R; window.__tap = R.onTap; window.__hits = []; R.onTap = (h) => { window.__hits.push(h.id ?? null); if (h.id === t) window.__tap(h); }; }, target);
+  try {
+    const turns = [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2, (2 * Math.PI) / 3, (-2 * Math.PI) / 3, Math.PI];
+    for (let k = 0; k < turns.length; k++) {
+      if (k > 0) await ev(([t, turn]) => { const R = window.hextable.R; R.focus(t, true); R.face((window.__yaw0 ??= R.cameraAngles().yaw) + turn, true); }, [target, turns[k]]);
+      await settle(page, target);
+      const pt = await ev((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
+      if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;      // off screen or under a panel: another view
+      await ev(() => { window.__hits = []; });
+      await tapAt(page, touch, pt.x, pt.y);
+      await wait(page, () => window.__hits.length > 0, null, 3000).catch(() => {});
+      if ((await ev(() => window.__hits)).includes(target)) return;
+    }
+    throw new Error(`no view of the map puts ${target} where a tap reaches it (taps landed on ${JSON.stringify(await ev(() => window.__hits))})`);
+  } finally { await ev(() => { window.hextable.R.onTap = window.__tap; delete window.__yaw0; }); }
+}
+
 async function classes(browser, url, label, opts) {
   await scenario(label, async (run) => {
     const touch = !!opts.hasTouch, tap = (page, sel) => (touch ? page.locator(sel).tap() : page.click(sel));
@@ -26,12 +47,7 @@ async function classes(browser, url, label, opts) {
       // The Features tab holds a row for each class feature; the spells and Metamagic are rows of the Spells tab.
       const feat = async (name) => { await panelTab(page, 'features'); await tap(page, `#ap-features [data-row]:has-text("${name}")`); };
       const spellsTab = async () => { await panelTab(page, 'spells'); };
-      const tapCreature = async (target) => {
-        await settle(page, target);
-        const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error('the target is off screen or under a panel');
-        await tapAt(page, touch, pt.x, pt.y);
-      };
+      const tapCreature = (target) => tapGuarded(page, touch, target);
       const newest = (since) => state(page, (S, n) => S.timeline.slice(n).map((e) => e.type), since);
 
       await run.do('a level 14 cleric, a level 14 druid and a level 15 sorcerer join the party', async () => {
@@ -299,14 +315,13 @@ export async function casters(browser, url, label, opts) {
       const text = (sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g, ' ').trim());
       const tapCreature = async (target) => {
         await settle(page, target);
-        let pt = null;
         for (let k = 0; k < 40; k++) {                                       // a dice tray (an Initiative roll) may cover it for a moment
-          pt = await ev((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
+          const pt = await ev((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
           if (pt && (await onCanvas(page, pt.x, pt.y))) break;
           await sleep(250);
         }
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) { await page.screenshot({ path: `/tmp/caster-screens/${size}-failed.png` }); throw new Error(`the target is off screen or under a panel: ${JSON.stringify(pt)}`); }
-        await tapAt(page, touch, pt.x, pt.y);
+        try { await tapGuarded(page, touch, target); }
+        catch (err) { await page.screenshot({ path: `/tmp/caster-screens/${size}-failed.png` }).catch(() => {}); throw err; }
       };
       // A goblin next to `who`, on the free hex around it that shows furthest from it on the screen (one behind its pawn cannot be tapped); returns its id.
       const foeBeside = async (who, hp = 500) => {

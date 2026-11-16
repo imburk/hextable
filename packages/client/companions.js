@@ -23,6 +23,11 @@ export const sideOf = (c) => c?.bond?.orderNext ?? c?.bond?.order ?? 'after';
 const isFamiliar = (c) => c?.bond?.kind === 'familiar' && typeof c.bond.source === 'string';
 // The words an order carries, as the party was sent them (text a person typed: always drawn escaped).
 export const orderText = (c) => (typeof c?.bond?.commanded?.order === 'string' ? c.bond.commanded.order : typeof c?.bond?.standing === 'string' ? c.bond.standing : '');
+// A section for the sheet: who is in this creature's pocket dimension (a familiar dismissed there), as the master's own record says. Nothing when none.
+export const pocketHtml = (e) => {
+  const list = pocketOf(e); if (!list.length) return '';
+  return `<section><h3>Pocket dimension</h3><div class="facts">${list.map((p) => `<span>${esc(p.name ?? 'A familiar')}${typeof p.hp === 'number' ? ` · HP ${p.hp}${typeof p.maxHp === 'number' ? ` / ${p.maxHp}` : ''}` : ''}</span>`).join('')}</div></section>`;
+};
 const nameOf = (S, c) => {
   const m = S?.entities?.[c?.bond?.to];
   return !m || c.name.startsWith(m.name) ? c?.name ?? '' : `${m.name}'s ${MONSTERS[c.tpl]?.name === c.name ? c.name.toLowerCase() : c.name}`;

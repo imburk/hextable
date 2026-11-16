@@ -971,6 +971,8 @@ export class Renderer {
       a.flash = Math.max(0, (a.flash ?? 0) - dt); a.shake = Math.max(0, (a.shake ?? 0) - dt);
       a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;                                            // drawn only; where it stands does not change
     }
+    // A rider is drawn on top of its mount (C10): raised by the height of the mount's pawn. The newer renderer does the rest (it moves the pair as one).
+    for (const [id, a] of this.actors) { const on = this.state?.entities[id]?.riding?.on, ma = on && this.actors.get(on); a.lift = ma ? Math.max(...th.pawn.profile.map(([, y]) => y)) * (ma.k ?? 1) : 0; }
     const C = (this.C = this.#camera());
     const td = this.tod, k = Math.min(1, dt * 1.5);
     if (td) { const n = td.now, g = td.goal; td.now = { light: n.light.map((v, i) => v + (g.light[i] - v) * k), sky: n.sky + (g.sky - n.sky) * k }; }
@@ -1030,7 +1032,7 @@ export class Renderer {
     gl.depthMask(true);
 
     for (const a of this.actors.values()) {
-      const p = this.#project(C, a.x, a.y + (1.95 - 1.05 * Math.min(1, (a.tiltNow ?? 0) / 0.9)) * (a.k ?? 1), a.z);
+      const p = this.#project(C, a.x, a.y + (a.lift ?? 0) + (1.95 - 1.05 * Math.min(1, (a.tiltNow ?? 0) / 0.9)) * (a.k ?? 1), a.z);
       a.el.style.display = p ? '' : 'none';
       if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
     }
@@ -1049,7 +1051,7 @@ export class Renderer {
   // One pawn at its place, tilted as far as it has fallen, with `alpha` (1 is solid). A hit flash and a critical shake are drawn only.
   #drawPawn(a, mesh, alpha) {
     const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0, tl = a.tiltNow ?? 0;      // the pawn is not really moved; it shakes across the screen whichever way the camera faces
-    mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + 0.15 * Math.min(1, tl / 0.5) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, tl),
+    mesh.draw(this.loc, model(a.x + sh * Math.cos(this.cam.yaw), a.y + (a.lift ?? 0) + 0.15 * Math.min(1, tl / 0.5) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, tl),
       f ? [1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, alpha] : [1, 1, 1, alpha]);
   }
   #drawDoorsNow() {
