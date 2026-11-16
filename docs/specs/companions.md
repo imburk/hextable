@@ -7,6 +7,8 @@ Faithful Steed), Pact of the Chain, the Find Familiar, Find Steed, Summon and Co
 mounted combat (P3's "mounted"). Every number below is from `reference/srd52/srd52-flow.txt`;
 line numbers refer to that file.
 
+Built (as of 16 November): stages C1 to C8 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369). Not built: C9 (the rest of the features) and C10 (drawing).
+
 ## Problem
 
 A creature that belongs to another creature cannot exist in the engine today. Every spell that
