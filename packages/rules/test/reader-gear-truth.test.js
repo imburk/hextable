@@ -292,3 +292,50 @@ test('armour: training, the category on the table, and a Shield that is a mark o
   assert.ok(readEntry('armour', sh).doesNot.length === 1);
   assert.ok(!say('armour', AR['hb-rk-barkplate']).includes('never reads it'));
 }));
+
+// ====================================================================================================
+// Objects
+// ====================================================================================================
+import * as H from '../src/hex.js';
+import { newMap } from '../src/map.js';
+import { barriers } from '../src/walls.js';
+import { lightSources } from '../src/sight.js';
+import { objectShown } from '../src/engine.js';
+
+const PAT = { role: 'player', userId: 'pat' };
+const OB = Object.fromEntries(PACK.objects.map((o) => [o.id, o]));
+const withObjects = (fn) => lend('objects', PACK.objects, fn);
+const GEAR = (g) => ({ ...fighter(), ...g });
+// A stone floor, the hero (a fighter owned by Pat) at `at`, the placed objects; no fight unless asked for.
+function stage(objects, { at = { q: 0, r: 0 }, gear = [], fight = false, sheet = fighter({ skills: ['athletics', 'perception'] }), seed = 5, foes = [] } = {}) {
+  const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 8).map((h) => [H.col(h), { t: 'stone' }]));
+  const s = newGame(seed);
+  for (const id of Object.keys(s.entities)) delete s.entities[id];
+  ok(apply(s, { type: 'loadMap', map: newMap({ id: 'f', name: 'F', starts: [{ q: 0, r: 0 }], levels: [{ id: 'ground', name: 'G', z: 0, tiles }], walls: [], objects }) }, DM));
+  ok(apply(s, { type: 'setting', key: 'autoEngage', value: false }, DM));
+  s.entities.hero = makeEntity(rec(sheet), { id: 'hero', kind: 'pc', side: 'party', pos: { q: at.q, r: at.r, z: 0 }, owner: 'pat', ownerName: 'Pat' });
+  s.entities.hero.gear = [...gear];
+  for (const [id, pos] of foes) { ok(apply(s, { type: 'spawn', monster: 'goblin-warrior', at: pos }, DM)); }
+  if (fight) {
+    ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM));
+    for (let n = 0; current(s) !== 'hero' && n < 30; n++) ok(apply(s, { type: 'endTurn', actor: current(s) }, DM));
+  }
+  return s;
+}
+const O = (id, def, at, extra = {}) => ({ id, def, level: 'ground', at, state: OB[def].initial, ...extra });
+const use = (s, object, verb, who = PAT) => apply(s, { type: 'use', actor: 'hero', object, verb }, who);
+const stateOf = (s, id) => s.map.objects.find((o) => o.id === id).state;
+
+test('objects: what each state blocks is what the reading says it blocks, for a door and for a thing', () => withObjects(() => {
+  const gate = OB['hb-rk-glasswork-gate'];
+  // A door on the line between (3,0) and its neighbour across edge 0: look through the line itself.
+  for (const state of Object.keys(gate.states)) {
+    const s = stage([O('g', gate.id, { q: 3, r: 0 }, { edge: 0, state })]), B = barriers(s.map);
+    const a = { q: 3, r: 0 }, b = H.neighbors ? H.neighbors(a)[0] : null;
+    const blocks = gate.states[state].blocks;
+    assert.equal(B.blocked('ground', a, b, 'move'), blocks.includes('move'), `${state}: movement`);
+    assert.equal(B.blocked('ground', a, b, 'sight'), blocks.includes('sight'), `${state}: sight`);
+    const line = say('object', gate).split('\n').find((l) => l.startsWith(`  State "${state}"`));
+    assert.ok(line.includes(blocks.includes('move') && blocks.includes('sight') ? 'it stops both' : blocks.includes('move') ? 'nothing can walk across its line, but it can be seen across' : blocks.includes('sight') ? 'it can be walked across, but nothing can be seen across it' : 'it can be walked across and seen across'), `${state}: ${line}`);
+  }
+}));
