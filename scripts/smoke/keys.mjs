@@ -10,6 +10,9 @@ import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 // ends the walk. Settings lists the keys. A phone (390x844, touch) plays as before and Settings still lays out.
 
 const MAP = squareRoom();
+// SMOKE_SEED=<n> plays the valley of seed n (the game takes a random one: transport.js), so a failing map can be replayed. Only the
+// Math.random() that transport.js makes the seed with is bent; the page's other calls stay random.
+const seeded = (ctx) => (process.env.SMOKE_SEED ? ctx.addInitScript((n) => { const real = Math.random; Math.random = () => (new Error().stack.includes('transport.js') ? n / 1e9 + 1e-10 : real()); }, Number(process.env.SMOKE_SEED)) : null);
 const yawNow = (page) => page.evaluate(() => window.hextable.R.cameraAngles().yaw);
 const posOf = (page, id) => state(page, (S, i) => S.entities[i].pos, id);
 const same = (a, b) => a.q === b.q && a.r === b.r;
@@ -32,7 +35,7 @@ const faceAlong = (page, d) => page.evaluate(async (d0) => { const K = await imp
 
 async function desktop(browser, url) {
   await scenario('keyboard movement (desktop 1280x800)', async (run) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await seeded(ctx);
     try {
       const page = await ctx.newPage();
       run.watch(page);
@@ -166,7 +169,17 @@ async function desktop(browser, url) {
       await run.do('in a fight a key\'s step spends movement exactly as a click on the same hex does', async () => {
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         const here = await posOf(page, id);
-        await act({ type: 'spawn', monster: 'goblin-minion', at: { q: here.q - dir[0] * 5, r: here.r - dir[1] * 5 } });      // behind, out of the way: a fight needs a foe
+        // A foe, behind and out of the way: a fight needs one. The map is random, so the hex the engine takes the spawn on is asked of the
+        // engine, nearest first behind the fighter, and the foe is checked to be there. (A refused spawn left a fight of heroes only, which
+        // ended at the first end of turn: #406.)
+        const foeAt = [5, 4, 6, 3, 7].flatMap((k) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => ({ q: here.q - dir[0] * k + a, r: here.r - dir[1] * k + b })));
+        let foe = null;
+        for (const at of foeAt) {
+          await act({ type: 'spawn', monster: 'goblin-minion', at });
+          foe = await state(page, (S, h) => Object.values(S.entities).find((e) => e.kind !== 'pc' && e.pos.q === h.q && e.pos.r === h.r && /goblin/.test(e.id + e.name))?.id ?? null, at);
+          if (foe) break;
+        }
+        if (!foe) throw new Error(`no hex behind the fighter took a goblin: toast "${await page.textContent('#toast')}"`);
         await act({ type: 'startEncounter', center: here, radius: 8 });
         if (!(await state(page, (S) => !!S.encounter))) throw new Error('no fight started');
         // The DM ends turns until it is the fighter's. Each end of turn is waited for on the state (the turn has moved on), not on the clock:
@@ -270,7 +283,7 @@ async function desktop(browser, url) {
 
 async function classic(browser, url) {
   await scenario('keyboard movement on the classic renderer (?renderer=gl)', async (run) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await seeded(ctx);
     try {
       const page = await ctx.newPage();
       run.watch(page);
@@ -279,15 +292,25 @@ async function classic(browser, url) {
         await wait(page, () => window.hextable.state.entities.fighter && window.hextable.R.constructor.name === 'Renderer');
         await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
         await closePanels(page); await page.evaluate(() => window.hextable.select('fighter')); await calm(page); await blur(page);
-        const want = await expected(page, 'fighter', 1, 0);
-        const free = await state(page, (S, w) => !Object.values(S.entities).some((e) => e.pos.q === w.q && e.pos.r === w.r), want);
-        const got = free ? await press(page, 'w', 'fighter') : null;
-        if (free && !same(got, want)) throw new Error(`walked to ${JSON.stringify(got)}, keys.js says ${JSON.stringify(want)}`);
+        // The classic view cannot be turned to face a free hex, so the key is chosen instead: of W, D, S and A the first whose hex keys.js
+        // names is one the fighter can stand on and no one is on. The map is random; a hex ahead can be a tree or water (#406).
+        let key = null, want = null;
+        for (const [k, f, r] of [['w', 1, 0], ['d', 0, 1], ['s', -1, 0], ['a', 0, -1]]) {
+          const w = await expected(page, 'fighter', f, r);
+          const ok = await page.evaluate(async (w0) => {
+            const S = window.hextable.state, { moveOptions } = await import('./shared/engine.js');
+            return [...moveOptions(S, S.entities.fighter).values()].some((o) => o.canStop && o.h.q === w0.q && o.h.r === w0.r) && !Object.values(S.entities).some((e) => e.pos.q === w0.q && e.pos.r === w0.r);
+          }, w);
+          if (ok) { key = k; want = w; break; }
+        }
+        if (!key) throw new Error('no hex next to the fighter is free to walk to on this map');
+        const got = await press(page, key, 'fighter');
+        if (!same(got, want)) throw new Error(`${key} walked to ${JSON.stringify(got)}, keys.js says ${JSON.stringify(want)}`);
         await page.evaluate(() => { window.hextable.R.rotate(1); });
         await page.keyboard.press('Space'); await sleep(1500);
         const r = await page.evaluate(async (w) => { const K = await import('./keys.js'), R = window.hextable.R, S = window.hextable.state, e = S.entities.fighter;
           return { yaw: R.cameraAngles().yaw, moved: e.pos.q === w.q && e.pos.r === w.r }; }, want);
-        if (free && !r.moved) throw new Error('not where it walked');
+        if (!r.moved) throw new Error('not where it walked');
       });
     } finally { await ctx.close(); }
   });
