@@ -12,7 +12,7 @@ import { footprint, ground, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { arenaFlashCells, hpFraction, lightAt, zoneHexes } from './render.js';
-import { Builder, UNIT, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, makeBlob, makePawn, makeVeil, model, sightSig, spot, stand, surfY, swingDoor, tileSig } from './three-build.js';
+import { Builder, UNIT, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
@@ -230,7 +230,7 @@ export class ThreeRenderer {
     this.#fetchPictures();
     if (tk !== this.terrainKey) { this.terrainKey = tk; this.#buildTerrain(); }
     else if (this.wallsDirty) { this.wallsDirty = false; this.#buildWalls(true); }
-    const removed = idsOf('removed'), appeared = new Set([...idsOf('spawned'), ...idsOf('revealed'), ...idsOf('placed')]);
+    const removed = new Set([...idsOf('removed'), ...idsOf('vanished')]), appeared = new Set([...idsOf('spawned'), ...idsOf('revealed'), ...idsOf('placed')]);
     this.fell = idsOf('fell');
     for (const [id, a] of this.actors) if (!state.entities[id]) {
       if (!snap && removed.has(id) && !a.unseen) { this.#ghost(a, { t0: now, dur: SECS.vanish, el: a.el, label: true }); a.piece.show(false); }      // a removed creature fades out
@@ -250,6 +250,7 @@ export class ThreeRenderer {
         this.actors.set(e.id, a);
       }
       a.unseen = !!e.hidden;
+      if (snap) a.lift = undefined;
       if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
       const key = `${e.dead}|${e.side}|${e.size}|${this.G.kind}`; a.k = girth(e, this.G);
       if (key !== a.key) {
@@ -277,6 +278,10 @@ export class ThreeRenderer {
     for (const ev of events) {
       const a = this.actors.get(ev.id);
       if (ev.type === 'moved' && a) for (const h of ev.path) a.way.push(spot(state.map, state.entities[ev.id], h));
+      // A rider climbs on: it walks to its mount's place (then rides, #ride); on getting down it walks to where it lands, from the saddle.
+      const here = (x) => (this.G.kind === 'hex' ? this.#stand(x.pos) : spot(state.map, x, x.pos));
+      if (ev.type === 'mounted' && a && !snap && !a.unseen && state.entities[ev.mount] && this.actors.has(ev.mount)) { a.boarding = true; a.way.push(here(state.entities[ev.mount])); }
+      if (ev.type === 'dismounted' && a && !snap && !a.unseen && state.entities[ev.id]) a.way.push(here(state.entities[ev.id]));
       if (ev.type === 'placed' && a && !snap && !a.unseen && !a.hold && a.fade >= 1) {
         this.#ghost(a, { t0: now, dur: SECS.placed, el: null });
         a.fade = 0; a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.placed };
@@ -286,7 +291,9 @@ export class ThreeRenderer {
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {
-      const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);      // as render.js: on hexes a big creature is put at its own hex here, on squares at the middle of its squares
+      const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);
+      if (e.riding && this.actors.has(e.riding.on) && !a.boarding) continue;       // a rider is where its mount is drawn (#ride); the frame sets it
+      // as render.js: on hexes a big creature is put at its own hex here, on squares at the middle of its squares
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
       const yy = spot(state.map, e, e.pos).y;
       if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
@@ -299,7 +306,7 @@ export class ThreeRenderer {
   // A creature that stays on screen a moment after it is gone from where it was: it fades out as a copy of its pawn (its geometry is shared).
   #ghost(a, g) {
     const piece = new Piece(this, { order: 5, cast: true }).share(a.piece);
-    this.ghosts.push({ piece, src: a, x: a.x, y: a.y, z: a.z, yaw: a.yaw, tiltNow: a.tiltNow ?? 0, k: a.k ?? 1, ...g });
+    this.ghosts.push({ piece, src: a, x: a.x, y: a.y, z: a.z, lift: a.lift ?? 0, yaw: a.yaw, tiltNow: a.tiltNow ?? 0, k: a.k ?? 1, ...g });
   }
 
   #flashEdge(hex) {
@@ -405,7 +412,8 @@ export class ThreeRenderer {
     if (!hex || !this.state) return [];
     return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
   }
-  screenOf(hex) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y, w.z) : null; }
+  screenOf(hex, up = 0) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y + up, w.z) : null; }       // `up`: drawing units above the floor (a rider's saddle)
+  screenOfPawn(id, up = 0) { const a = this.actors.get(id); return a && this.C ? this.#project(this.C, a.x, a.y + up, a.z) : null; }       // where a pawn is drawn, `up` drawing units over its foot (the smoke script's, to tap a rider and a mount apart)
   rotate(d) { this.cam.yaw += d; this.#turned(); }
   // The follow camera (docs/specs/keyboard.md): turn, eased, to look along `yaw`; `snap` at once (reduced motion). A manual turn cancels it.
   face(yaw, snap = false) {
@@ -626,6 +634,7 @@ export class ThreeRenderer {
       a.flash = Math.max(0, (a.flash ?? 0) - dt); a.shake = Math.max(0, (a.shake ?? 0) - dt);
       a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;
     }
+    this.#ride(dt);
     const C = (this.C = this.#camera());
     const td = this.tod, k = Math.min(1, dt * 1.5);
     if (td) { const n = td.now, g = td.goal; td.now = { light: n.light.map((v, i) => v + (g.light[i] - v) * k), sky: n.sky + (g.sky - n.sky) * k }; }
@@ -640,12 +649,32 @@ export class ThreeRenderer {
     this.anim += dt;
     this.#labels(C, dt);
   }
+  // A rider is drawn on its mount (docs/specs/companions.md, C10): where the mount is drawn, so the pair moves as one with no frame between,
+  // and its pawn raised by the height of the mount's (`lift`, a drawing offset like `hop`; it eases, so mounting, a reveal and getting down are not jumps).
+  // Only what the view sends is used: a rider shows `riding` only where the mount is sent too, and a mount shows `rider` likewise.
+  #ride(dt) {
+    const S = this.state;
+    for (const a of this.actors.values()) a.carry = false;
+    for (const [id, a] of this.actors) {
+      const e = S?.entities[id], m = e?.riding && S.entities[e.riding.on], ma = m && this.actors.get(e.riding.on);
+      if (a.boarding && !a.way.length) a.boarding = false;
+      let want = 0;
+      if (ma && ma !== a) {
+        want = pawnHeight(this.theme, m, this.G) * Math.cos(Math.min(1.45, ma.tiltNow ?? 0));
+        if (!a.boarding) { a.x = ma.x; a.y = ma.y; a.z = ma.z; a.way.length = 0; a.fall = null; a.yaw = ma.yaw; a.face = ma.face; a.hop = ma.hop; a.walk = ma.walk; }
+        ma.carry = true;
+      }
+      a.rides = !!ma && ma !== a;
+      a.lift = a.lift === undefined ? want : a.lift + (want - a.lift) * Math.min(1, dt * 12);
+      if (Math.abs(a.lift - want) < 0.004) a.lift = want;
+    }
+  }
   // Puts every moving thing where it is now and sets how it is drawn: pawns (solid, fading, dying, ghosts), blob shadows, the arena edge, veils, doors.
   #placeThings() {
     const ident = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
     const pawn = (a, piece, alpha) => {
       const f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0, tl = a.tiltNow ?? 0;
-      piece.place(model(a.x + sh * Math.cos(this.cam.yaw), a.y + 0.15 * Math.min(1, tl / 0.5) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, tl));
+      piece.place(model(a.x + sh * Math.cos(this.cam.yaw), a.y + (a.lift ?? 0) + 0.15 * Math.min(1, tl / 0.5) + (a.hop ?? 0), a.z - sh * Math.sin(this.cam.yaw), a.yaw, tl));
       if (f) piece.tint(1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, alpha); else piece.tint(1, 1, 1, alpha);
       piece.mat.transparent = alpha < 1; piece.mat.depthWrite = true;
     };
@@ -654,7 +683,7 @@ export class ThreeRenderer {
       a.piece.show(!(a.dying && fading)); pawn(a, a.piece, fading ? a.fade : 1);
       if (a.dying) { a.dying.piece.show(true); pawn(a, a.dying.piece, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur)); }
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);
-      a.blob.show(!this.sh.on);
+      a.blob.show(!this.sh.on && !a.rides);       // a rider's shadow is its mount's
       a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));
     }
     for (const g of this.ghosts) { pawn(g, g.piece, 1 - Math.min(1, (this.now - g.t0) / g.dur)); }
@@ -686,15 +715,16 @@ export class ThreeRenderer {
   }
   #labels(C, dt) {
     for (const a of this.actors.values()) {
-      const p = this.#project(C, a.x, a.y + (1.95 - 1.05 * Math.min(1, (a.tiltNow ?? 0) / 0.9)) * (a.k ?? 1), a.z);
+      // A mount with a rider drawn on it is named at its foot: the space above it is the rider's.
+      const p = this.#project(C, a.x, a.y + (a.carry ? 0 : (a.lift ?? 0) + (1.95 - 1.05 * Math.min(1, (a.tiltNow ?? 0) / 0.9)) * (a.k ?? 1)), a.z);
       a.el.style.display = p ? '' : 'none';
-      if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
+      if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, ${a.carry ? '6px' : '-100%'})`;
     }
     this.floaters = this.floaters.filter((f) => {
       f.t += dt;
       if (f.t < 0) return true;
       const a = this.actors.get(f.id), k = f.t / f.life;
-      const p = a && this.#project(C, a.x, a.y + 2.3 + k * 1.2, a.z);
+      const p = a && this.#project(C, a.x, a.y + (a.lift ?? 0) + 2.3 + k * 1.2, a.z);
       if (k >= 1 || !p) { f.el.remove(); return false; }
       f.el.style.visibility = 'visible'; f.el.style.opacity = String(Math.min(1, (1 - k) * 2.5));
       f.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
@@ -743,13 +773,17 @@ export class ThreeRenderer {
     const acts = [...this.actors].filter(([id]) => !this.state.entities[id]?.dead);
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
-      for (const [id, a] of acts) if (y > a.y && y < a.y + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < 0.5 * (a.k ?? 1)) return { id, hex: this.state.entities[id].pos };
+      // A ridden pair stands on one spot: the rider's pawn is the higher, so where both are met the rider is the one tapped.
+      let top = null;
+      for (const [id, a] of acts) { const y0 = a.y + (a.lift ?? 0); if (y > y0 && y < y0 + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < 0.5 * (a.k ?? 1) && (!top || y0 > top.y0)) top = { id, y0 }; }
+      if (top) return { id: top.id, hex: this.state.entities[top.id].pos };
       const h = this.G.fromWorld(x, z), column = surfaces(this.state.map, h);
       for (let i = column.length - 1; i >= 0; i--) {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;
         const hex = { q: h.q, r: h.r, z: column[i].z };
-        const occ = Object.values(this.state.entities).find((e) => !e.dead && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
+        const here = Object.values(this.state.entities).filter((e) => !e.dead && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
+        const occ = here.find((e) => !e.riding) ?? here[0];       // on the ground of a ridden pair: the mount (the rider is on top of it)
         return { hex, id: occ?.id ?? null };
       }
       if (y < -60) break;

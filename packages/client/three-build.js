@@ -135,6 +135,8 @@ export function makePawn(e, th, G = HEX) {
   b.lathe(0, 0, 0, p.profile.map(([r, y]) => [r * k, y * k]), p.sides, p.sides === 4 ? Math.PI / 4 : 0, (seg) => (seg < 2 ? base : body));
   return b;
 }
+// How tall a creature's pawn stands (drawing units): where a rider on it sits.
+export const pawnHeight = (th, e, G = HEX) => Math.max(...th.pawn.profile.map(([, y]) => y)) * girth(e, G);
 export function makeBlob(th) { const b = new Builder(), sh = th.shadow ?? { a: 0.4 }; b.blob(0, 0, 0, 1, sh.a, sh); return b; }
 
 const VEIL = [0.04, 0.05, 0.09];
