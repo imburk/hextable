@@ -171,9 +171,12 @@ function applyInner(s, action, ctx) {
   const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
   const snap = asks || heavy ? freeze(s) : null;
   const putBack = asks || heavy === true;
-  // An action that plays a pack's own steps (a creature's action, a spell) may meet content that makes the engine throw something that is
-  // not a rule refusal, part way through; it too is taken back (below), so a copy is kept for it (#421). Not for the rest: nothing there reads content.
-  const net = snap ?? (action?.type === 'act' || action?.type === 'cast' ? freeze(s) : null);
+  // Any handler may throw something that is not a rule refusal (a TypeError, a bad dice expression met in content, a state a bug or an
+  // old save left wrong) after it has changed things; the game is then put back as it was (below, and for the settle phase after it) and the
+  // error goes on up (#421 for `act` and `cast`, #425 for every action). So a copy is kept for every action a handler exists for (an
+  // unknown action changes nothing). `freeze` costs about 1.4 ms at 70 creatures (docs/DEBT.md, T55).
+  const net = snap ?? (handlers.has(action?.type) ? freeze(s) : null);
+  const tlLen = s.timeline?.length;
   setRun({ action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap });
   startWork();
   try {
@@ -205,11 +208,20 @@ function applyInner(s, action, ctx) {
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
   try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return overWork(s, snap, err, ev, action, was); }
-    if (!(err instanceof RuleError)) throw err;
+    if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
   }
   stopWork();
-  fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
-  return record(s, ev);
+  try {
+    fightEndsScene(s, ev);                         // a fight, however it began, ends a scene
+    return record(s, ev);
+  } catch (err) { throw err instanceof RuleError ? err : restoreAfter(s, net, tlLen, err); }
+}
+
+// A throw that is not a rule refusal, after the handler is done: the game goes back to the copy taken before the action, and
+// whatever `record` had already put on the timeline is taken off. Gives the error back, to be thrown again.
+function restoreAfter(s, net, tlLen, err) {
+  if (net) { thaw(s, net); if (Array.isArray(s.timeline) && tlLen !== undefined) s.timeline.length = tlLen; }
+  return err;
 }
 
 // An action ran into the work ceiling (effects.js, WORK). With the copy taken before it, the game goes back to how it
