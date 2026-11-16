@@ -14,7 +14,7 @@ after(() => rmSync(tmp, { recursive: true, force: true }));
 // a small stand-in for the page: enough of a node to see what text and which classes the manager builds
 globalThis.document = { createElement: (tag) => { const n = { tag, className: '', textContent: '', children: [], style: {}, dataset: {}, attrs: {}, append(...k) { for (const c of k) this.children.push(typeof c === 'string' ? { tag: '#text', textContent: c, children: [] } : c); }, setAttribute(k, v) { this.attrs[k] = v; } }; return n; } };
 const textOf = (n) => (n.children.length ? n.children.map(textOf).join(' ') : n.textContent);
-const { createPackStore, documentOf, countWords, isRead, UNREAD_SAY, readingNode, refusalNode } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
+const { createPackStore, documentOf, countWords, isRead, UNREAD_SAY, readingNode, refusalNode, unreadBody, tierChip } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
 const { answersPack } = await import(pathToFileURL(join(tmp, 'transport.js')));
 const { SPELLS, MONSTERS, CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 const { hashOf } = await import(pathToFileURL(join(tmp, 'shared/content/packs.js')));
@@ -143,6 +143,11 @@ test('a kind is unread when the reader says so (its own READ_KINDS), not by a li
   }
   for (const k of ['spells', 'monsters']) assert.equal(isRead(k), true);
   assert.equal(isRead('nonsense'), false);
+  // a kind the reader does not (yet) read: a list that leaves it out makes the page say so, by name, with the one line
+  assert.equal(isRead('items', ['spell', 'monster']), false);
+  const body = textOf({ children: unreadBody([{ name: 'Bright Blade' }, { id: 'hb-x-y' }]), textContent: '' });
+  assert.match(body, /The game cannot read this kind back yet; you are adding it unread\./);
+  assert.match(body, /Bright Blade/); assert.match(body, /hb-x-y/);
   assert.equal(UNREAD_SAY, 'The game cannot read this kind back yet; you are adding it unread.');
 });
 
@@ -172,4 +177,15 @@ test('an entry the reader marks refused shows its refusals under a plain heading
   assert.equal(node.children[0].attrs.role, 'alert');
   assert.doesNotMatch(textOf(readingNode({ ...refused, refused: false, refusals: [] })), /would refuse/);
   assert.doesNotMatch(textOf(readingNode({ ...refused, refused: null, refusals: [] })), /would refuse/);
+});
+
+test('an entry with no tier (a weapon, armour) has no tier pill, and a refused or unreadable one says so', async () => {
+  const { readEntry } = await import(pathToFileURL(join(tmp, 'shared/content/reader.js')));
+  const w = readEntry('weapons', CONTENT.weapons.club);
+  assert.equal(w.tier, null);
+  assert.equal(tierChip(w), null);
+  assert.equal(tierChip(readEntry('armour', CONTENT.armour['padded-armor'])), null);
+  assert.equal(tierChip({ tier: 'assist' }).textContent, 'assist');
+  assert.equal(tierChip({ tier: 'auto', refused: true }).textContent, 'refused');
+  assert.equal(tierChip(readEntry('monsters', 5)).textContent, 'unreadable');
 });

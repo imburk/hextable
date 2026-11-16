@@ -34,11 +34,13 @@ async function tierLineOf(doc) {                                          // wha
   return `Monsters by tier: ${n.auto} auto, ${n.assist} assist, ${n.manual} manual`;
 }
 const SEEN_NAMES = /Cinderjaw|Gloomwing|Hollow Reaver|Pack Tactics|Ember Memory/i;     // what only a monster's data would say
-async function hoardPack() {                                              // a pack of a feat (read since #419) and a weapon and an object (not read yet), made from SRD entries
+async function hoardPack() {                                              // a feat, a weapon, a piece of armour and an object, made from SRD entries (the numbers the check looks for are the entries' own)
   const { CONTENT } = await import(pathToFileURL(`${ROOT}packages/rules/src/content/index.js`));
   const mk = (c, id, name) => Object.assign(structuredClone(c), { id, name, source: 'homebrew:hoard', checked: false });
-  return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'hoard', name: 'Hoard', version: 1, license: 'CC0', attribution: 'Written for the smoke test.' },
-    feats: [mk(CONTENT.feats.alert, 'hb-hoard-sharp-eyes', 'Sharp Eyes')], weapons: [mk(CONTENT.weapons.club, 'hb-hoard-bright-club', 'Bright Club')], objects: [mk(CONTENT.objects['door-wooden'], 'hb-hoard-oak-gate', 'Oak Gate')] });
+  const doc = { format: 'hextable-pack', v: 1, pack: { id: 'hoard', name: 'Hoard', version: 1, license: 'CC0', attribution: 'Written for the smoke test.' },
+    feats: [mk(CONTENT.feats.alert, 'hb-hoard-sharp-eyes', 'Sharp Eyes')], weapons: [mk(CONTENT.weapons.club, 'hb-hoard-bright-club', 'Bright Club')],
+    armour: [mk(CONTENT.armour['padded-armor'], 'hb-hoard-quilt', 'Fine Quilt')], objects: [mk(CONTENT.objects['secret-door'], 'hb-hoard-oak-gate', 'Oak Gate')] };
+  return { text: JSON.stringify(doc), doc };
 }
 
 async function table(browser, url, label0, hostOpts, playerOpts, tag) {
@@ -337,22 +339,41 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await wait(host, (i) => !window.hextable.state.entities[i], id);
         await closeManager();
       });
-      await run.do('kinds the reader cannot read are listed by name with one honest line, in the review and on the card; a kind it reads has readings', async () => {
+      await run.do('a weapon, a piece of armour and an object have readings in the review and on the card (no tier for the first two)', async () => {
         await openManager();
-        await choose('hoard.json', await hoardPack());
-        const r = await host.textContent('#pm-review');
-        if (!/Weapons \(1\)/.test(r) || !/Objects \(1\)/.test(r) || !/Bright Club/.test(r) || !/Oak Gate/.test(r)) throw new Error(r.slice(0, 400));
-        if ((r.match(/The game cannot read this kind back yet; you are adding it unread\./g) ?? []).length !== 2) throw new Error(`the honest line: ${r.slice(0, 600)}`);
-        if (await host.$('#pm-review .pm-plain .pm-line')) throw new Error('an unread entry got a reading');
-        if (!(await host.$('#pm-review .pm-feat[data-entry="hb-hoard-sharp-eyes"] .pm-tier'))) throw new Error('a feat, which the reader reads, has no row with a tier');
+        const { text, doc } = await hoardPack();
+        await choose('hoard.json', text);
+        const w = doc.weapons[0], a = doc.armour[0], o = doc.objects[0];
+        const want = [['weapon', 'hb-hoard-bright-club', w.name, w.damage], ['armour', 'hb-hoard-quilt', a.name, String(a.ac)], ['object', 'hb-hoard-oak-gate', o.name, String(o.dc)]];
+        const check = async (root, where) => {
+          const h = await host.textContent(root);
+          if (/could not place|cannot read this kind back/.test(h)) throw new Error(`${where}: says the reader cannot read a kind`);
+          for (const [kind, id, name, num] of want) {
+            const row = `${root} .pm-${kind}[data-entry="${id}"]`;
+            if (!(await host.$(row))) throw new Error(`${where}: no ${kind} row`);
+            if (!(await host.textContent(`${row} summary .pm-name`)).includes(name)) throw new Error(`${where}: the ${kind} row's title`);
+            if (kind !== 'object' && await host.$(`${row} summary .pm-tier`)) throw new Error(`${where}: the ${kind} has a tier pill`);
+            if (await host.$(`${row} .pm-line`)) throw new Error(`${where}: the ${kind} row is open or not lazy`);
+            await host.click(`${row} summary`);
+            await wait(host, (r) => document.querySelectorAll(`${r} .pm-line`).length > 0, row);
+            if (!new RegExp(`\\b${num}\\b`).test(await host.textContent(row))) throw new Error(`${where}: the ${kind} reading lacks ${num} from the pack`);
+          }
+        };
+        await check('#pm-review', 'review');
+        if (!(await host.$('#pm-review .pm-feat[data-entry="hb-hoard-sharp-eyes"] .pm-tier'))) throw new Error('a feat has no tier pill');
+        await host.evaluate(() => document.querySelector('#pm-review .pm-weapon').scrollIntoView());
+        await shot(host, `homebrew-weapon-review-${tag}`);
+        await host.evaluate(() => document.querySelector('#pm-review .pm-armour').scrollIntoView());
+        await shot(host, `homebrew-armour-review-${tag}`);
         await host.click('#pm-go');
         await waitShown(host, '.pm-pack[data-pack="hoard"]');
         const card = '.pm-pack[data-pack="hoard"]';
-        await host.evaluate((c) => document.querySelectorAll(`${c} details.pm-unread`).forEach((d) => { d.open = true; }), card);
+        await host.evaluate((c) => document.querySelectorAll(`${c} details.pm-entries`).forEach((d) => { d.open = true; }), card);
+        await check(card, 'card');
         const t = await host.textContent(card);
-        if (!/Bright Club/.test(t) || !/Oak Gate/.test(t) || !/you are adding it unread/.test(t) || !/Feats by tier/.test(t)) throw new Error(t.slice(0, 400));
-        await host.evaluate((c) => document.querySelector(c).scrollIntoView(), card);
-        await shot(host, `homebrew-unread-${tag}`);
+        if (!/Feats by tier/.test(t) || /Weapons by tier|Armour by tier/.test(t)) throw new Error(`tier lines: ${t.slice(0, 300)}`);
+        await host.evaluate((c) => document.querySelector(`${c} .pm-object`).scrollIntoView(), card);
+        await shot(host, `homebrew-object-card-${tag}`);
         await closeManager();
       });
     } finally { await hostCtx.close(); await playerCtx.close(); }

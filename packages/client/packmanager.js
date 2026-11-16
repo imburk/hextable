@@ -30,7 +30,7 @@ const KEEP_DATA = 8;                                                         // 
 const plain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const kb = (n) => (n < 1024 ? `${n} bytes` : `${Math.round(n / 102.4) / 10} KB`);
 // Does the reader read this kind of entry yet? (Its own list answers: a kind it cannot read is not named here, however the pack names it.)
-export const isRead = (kind) => READ_KINDS.includes(KIND_NAMES[kind]);
+export const isRead = (kind, readKinds = READ_KINDS) => readKinds.includes(KIND_NAMES[kind]);     // `readKinds` is the reader's own list; a test hands another
 export const UNREAD_SAY = 'The game cannot read this kind back yet; you are adding it unread.';
 const kindTitle = (kind, n) => `${KIND_NAME[kind][1][0].toUpperCase()}${KIND_NAME[kind][1].slice(1)} (${n})`;
 export const countWords = (doc) => KINDS.filter((k) => doc?.[k]?.length).map((k) => `${doc[k].length} ${KIND_NAME[k][doc[k].length === 1 ? 0 : 1]}`);
@@ -163,7 +163,8 @@ export function readingNode(r) {
   if (r.text) box.append(el('p', 'pm-author', `The author's description: “${r.text}”`));
   return box;
 }
-const tierChip = (tier, refused) => el('span', `pm-tier pm-${refused ? 'refused' : tier ?? 'none'}`, refused ? 'refused' : tier ?? 'not read');
+// The pill beside an entry: its tier, "refused", or "unreadable"; null for an entry the reader gives no tier (a weapon, a piece of armour).
+export const tierChip = (r) => (r.refused ? el('span', 'pm-tier pm-refused', 'refused') : r.tier ? el('span', `pm-tier pm-${r.tier}`, r.tier) : r.title === '(unreadable entry)' ? el('span', 'pm-tier pm-none', 'unreadable') : null);
 
 // The table's refusal: its `error`, the linter's `problems`, and `blockers` (where the pack is in use), as a box of text.
 export function refusalNode(e) {
@@ -178,6 +179,11 @@ export function refusalNode(e) {
   return box;
 }
 
+// What is shown for a kind the reader cannot read: the one honest line, then each entry by its name.
+export function unreadBody(entries) {
+  return [el('p', 'note pm-unread-say', UNREAD_SAY), ...entries.map((e) => { const d = el('div', 'pm-entry pm-plain'); d.append(el('span', 'pm-name', String(e?.name ?? e?.id ?? '(no name)'))); return d; })];
+}
+
 // ---------- the page ----------
 export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   const T = () => transport();
@@ -187,8 +193,9 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   let overlayEl = null, host = null;
   const readings = new WeakMap();                             // entry object -> its reading (a monster's is long, and the page redraws often)
   const readOf = (kind, e) => { if (!plain(e)) return readEntry(kind, e); let r = readings.get(e); if (!r) { r = readEntry(kind, e); readings.set(e, r); } return r; };
-  const tiersOf = (doc, kind) => { const t = { auto: 0, assist: 0, manual: 0, none: 0 }; for (const e of doc[kind] ?? []) { const tier = readOf(kind, e).tier; t[tier in t ? tier : 'none']++; } return t; };
-  const tierLine = (doc, kind) => { if (!doc[kind]?.length) return null; const t = tiersOf(doc, kind); return `${KIND_NAME[kind][1][0].toUpperCase()}${KIND_NAME[kind][1].slice(1)} by tier: ${t.auto} auto, ${t.assist} assist, ${t.manual} manual${t.none ? `, ${t.none} the reader could not place` : ''}.`; };
+  // Only entries with a tier are counted by tier: a kind the reader gives no tier (a weapon, a piece of armour) has no such line, only its count.
+  const tiersOf = (doc, kind) => { const t = { auto: 0, assist: 0, manual: 0 }; for (const e of doc[kind] ?? []) { const tier = readOf(kind, e).tier; if (tier in t) t[tier]++; } return t; };
+  const tierLine = (doc, kind) => { if (!doc[kind]?.length) return null; const t = tiersOf(doc, kind); if (!(t.auto + t.assist + t.manual)) return null; return `${KIND_NAME[kind][1][0].toUpperCase()}${KIND_NAME[kind][1].slice(1)} by tier: ${t.auto} auto, ${t.assist} assist, ${t.manual} manual.`; };
 
   // ----- the DM's section in the drawer, and the sheet it opens -----
   function section() {
@@ -234,7 +241,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     if (!found) kids.push(el('p', 'note', 'This table no longer has that entry.'));
     else {
       const r = readEntry('spell', found.entry);
-      const head = el('p', 'note'); head.append(`From the pack “${found.pack.name}”, version ${found.pack.version}. Not checked against any rulebook. Tier: `, tierChip(r.tier, r.refused));
+      const head = el('p', 'note'); const chip = tierChip(r); head.append(`From the pack “${found.pack.name}”, version ${found.pack.version}. Not checked against any rulebook.${chip ? ' Tier: ' : ''}`); if (chip) head.append(chip);
       kids.push(head, readingNode(r));
     }
     return frame(found ? `${found.entry.name}: its reading` : 'Reading', ...kids);
@@ -307,7 +314,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     const r = readOf('spell', e), k = `${scope}:${e.id}`;
     const d = el('details', 'pm-entry'); d.dataset.key = k; d.dataset.entry = e.id; d.open = keep.has(k);
     d.ontoggle = () => (d.open ? keep.add(k) : keep.delete(k));
-    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier, r.refused)); d.append(sum);
+    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ...(tierChip(r) ? [' ', tierChip(r)] : [])); d.append(sum);
     d.append(readingNode(r));
     const out = el('div', 'pm-try-out');
     const fill = () => { out.replaceChildren(); const t = tries.get(k); if (t) { out.append(el('pre', 'pm-try', t.text)); } };
@@ -319,7 +326,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   function readNode(kind, e, scope) {
     const r = readOf(kind, e), k = `${scope}:${e.id}`;
     const d = el('details', `pm-entry pm-${KIND_NAMES[kind]}`); d.dataset.key = k; d.dataset.entry = String(e.id);
-    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ' ', tierChip(r.tier, r.refused)); d.append(sum);
+    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ...(tierChip(r) ? [' ', tierChip(r)] : [])); d.append(sum);
     let built = false;
     const fill = () => { if (!built) { built = true; d.append(readingNode(r)); } };
     d.open = keep.has(k); if (d.open) fill();
@@ -338,8 +345,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     const box = el('details', 'pm-entries pm-unread'); box.dataset.key = `${scope}:${kind}`; box.open = keep.has(box.dataset.key);
     box.ontoggle = () => (box.open ? keep.add(box.dataset.key) : keep.delete(box.dataset.key));
     box.append(el('summary', '', `${kindTitle(kind, entries.length)}: not read`));
-    box.append(el('p', 'note pm-unread-say', UNREAD_SAY));
-    for (const e of entries) { const d = el('div', 'pm-entry pm-plain'); d.append(el('span', 'pm-name', String(e?.name ?? e?.id ?? '(no name)'))); box.append(d); }
+    box.append(...unreadBody(entries));
     return box;
   }
   function tryIt(doc, entry, k, out) {
@@ -423,7 +429,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   }
   function otherNode(e) {
     const d = el('div', 'pm-entry pm-plain');
-    d.append(el('span', 'pm-name', String(e?.name ?? e?.id ?? '(no name)')), ' ', tierChip(null));
+    d.append(el('span', 'pm-name', String(e?.name ?? e?.id ?? '(no name)')), ' ', el('span', 'pm-tier pm-none', 'not read'));
     return d;
   }
   async function submit(p) {
