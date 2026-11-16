@@ -84,7 +84,7 @@ export function createPackStore({ ask, changed = () => {}, isDM = () => false, n
     // The table's list: it replaces what was known. Data for a pack that is no longer listed is let go.
     packs(msg) {
       list = (Array.isArray(msg.packs) ? msg.packs : []).filter((p) => plain(p) && typeof p.id === 'string' && typeof p.hash === 'string').map((p) => ({ id: p.id, name: String(p.name ?? p.id), version: p.version, hash: p.hash }));
-      info = { dropped: Array.isArray(msg.dropped) ? msg.dropped.filter(plain).map((d) => ({ id: String(d.id), reason: String(d.reason) })) : [], changed: plain(msg.changed) ? msg.changed : null };
+      info = { dropped: Array.isArray(msg.dropped) ? msg.dropped.filter(plain).map((d) => ({ id: d.id === null || d.id === undefined ? '' : String(d.id).slice(0, 60), reason: String(d.reason).slice(0, 400) })) : [], changed: plain(msg.changed) ? msg.changed : null };
       const keep = new Set(list.map((p) => p.hash));
       for (const h of [...data.keys(), ...built.keys(), ...asked.keys(), ...trouble.keys()]) if (!keep.has(h)) forget(h);
       for (const [h] of [...data].slice(0, Math.max(0, data.size - KEEP_DATA))) if (!keep.has(h)) forget(h);
@@ -187,6 +187,9 @@ export function unreadBody(entries) {
 // ---------- the page ----------
 export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   const T = () => transport();
+  const solo = () => !!T()?.solo;                              // a solo game: the packs are this browser's, and the player is the DM
+  const where = () => (solo() ? 'game' : 'table');
+  let toldDrops = '';
   const store = createPackStore({ ask: (id) => T()?.packData?.(id), changed: () => { summary(); if (open) render(); changed(); }, isDM });
   let open = false, review = null, message = null, busy = false, armed = null, armTimer = null;
   const tries = new Map(), keep = new Set();                  // Try it's results by spell id; the readings left open
@@ -202,16 +205,18 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     if (host) return host;
     host = $('dm-packs'); if (!host) return null;
     host.append(el('h3', '', 'Homebrew packs'));
-    host.append(el('p', 'note', 'Spells, items and more that this table adds to the rules, from a file. Players are sent the spells, items, feats, weapons, armour and objects, never a monster.'));
+    const intro = el('p', 'note'); intro.id = 'pm-intro'; host.append(intro);
     host.append(Object.assign(el('p', 'note'), { id: 'pm-summary' }));
     const row = el('div', 'row'); row.append(Object.assign(button('Manage packs', () => show()), { id: 'pm-open' })); host.append(row);
     return host;
   }
   function summary() {
+    const intro = $('pm-intro');
+    if (intro) intro.textContent = solo() ? 'Spells, items and more that this game adds to the rules, from a file. They are kept in this browser, beside the saved game, and checked again each time the game opens.' : 'Spells, items and more that this table adds to the rules, from a file. Players are sent the spells, items, feats, weapons, armour and objects, never a monster.';
     const s = $('pm-summary'); if (!s) return;
     const l = store.list();
     const gone = store.info().dropped.length;
-    s.textContent = (l.length ? `${l.length} of ${HOMEBREW_LIMITS.packs}: ${l.map((p) => `${p.name} (version ${p.version})`).join(', ')}.` : 'None on this table yet.') + (gone ? ` ${gone} could not be loaded.` : '');
+    s.textContent = (l.length ? `${l.length} of ${HOMEBREW_LIMITS.packs}: ${l.map((p) => `${p.name} (version ${p.version})`).join(', ')}.` : `None in this ${where()} yet.`) + (gone ? ` ${gone} could not be loaded.` : '');
   }
   function shell() {
     if (overlayEl) return overlayEl;
@@ -256,17 +261,17 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   function managerView() {
     const kids = [];
     const st = store.info();
-    for (const d of st.dropped) kids.push(refusalNode({ error: `The pack “${d.id}” could not be loaded when the table started, so the table plays without it: ${d.reason}` }));
+    for (const d of st.dropped) kids.push(refusalNode({ error: d.id ? `The pack “${d.id}” could not be loaded when the ${solo() ? 'game opened' : 'table started'}, so the ${where()} plays without it: ${d.reason}` : `The packs this browser kept could not be loaded, so the game plays without them: ${d.reason}` }));
     for (const p of store.list()) if (p.trouble) kids.push(refusalNode({ error: `This page could not use the pack “${p.name}”: ${p.trouble}` }));
     if (message) kids.push(message.ok ? Object.assign(el('p', 'pm-done', message.ok), { role: 'status' }) : refusalNode(message));
     // the list
-    const list = el('section'); list.append(el('h3', '', `This table's packs (${store.list().length} of ${HOMEBREW_LIMITS.packs})`));
+    const list = el('section'); list.append(el('h3', '', `This ${where()}'s packs (${store.list().length} of ${HOMEBREW_LIMITS.packs})`));
     if (!store.list().length) list.append(el('p', 'note', 'No packs yet. Choose a pack file below to read it and add it.'));
     for (const p of store.list()) list.append(packCard(p));
     kids.push(list);
     // add
     const add = el('section'); add.append(el('h3', '', 'Add a pack from a file'));
-    add.append(el('p', 'note', 'The file is read here first and nothing is sent until you have looked at what it holds. A new version of a pack on the table is an update.'));
+    add.append(el('p', 'note', solo() ? 'The file is read here first and nothing is kept until you have looked at what it holds. A new version of a pack in this game is an update.' : 'The file is read here first and nothing is sent until you have looked at what it holds. A new version of a pack on the table is an update.'));
     const input = el('input'); input.type = 'file'; input.id = 'pm-file'; input.accept = '.json,application/json'; input.setAttribute('aria-label', 'Pack file');
     input.onchange = () => choose(input.files?.[0] ?? null);
     add.append(input);
@@ -282,7 +287,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     const t = el('div'); t.append(el('strong', '', p.name), el('span', 'note', ` version ${p.version} · ${p.id}`));
     head.append(t);
     card.append(head);
-    if (!p.doc) { card.append(el('p', 'note', p.trouble ? 'This page could not use it.' : 'Loading its data from the table…')); }
+    if (!p.doc) { card.append(el('p', 'note', p.trouble ? 'This page could not use it.' : `Loading its data from the ${where()}…`)); }
     else {
       card.append(el('p', 'note', `${counts(p.doc)}. Licence: ${p.doc.pack.license}.`));
       for (const kind of KINDS) { const tl = isRead(kind) && (kind !== 'monsters' || isDM()) ? tierLine(p.doc, kind) : null; if (tl) card.append(el('p', 'note pm-counts', tl)); }
@@ -300,7 +305,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   async function remove(p) {
     if (armed !== p.id) { armed = p.id; clearTimeout(armTimer); armTimer = setTimeout(() => { armed = null; render(); }, 5000); message = null; return render(); }
     armed = null; clearTimeout(armTimer);
-    await send({ op: 'remove', id: p.id }, `Removed “${p.name}” from the table.`);
+    await send({ op: 'remove', id: p.id }, `Removed “${p.name}” from the ${where()}.`);
   }
   // One spell: its name and tier, the reading, and Try it.
   function spellList(doc, scope) {
@@ -383,9 +388,9 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   // What the table would do with the file: add, update, or nothing.
   function plan() {
     const there = store.list().find((p) => p.id === review.pack.id);
-    if (!there) return store.list().length >= HOMEBREW_LIMITS.packs ? { why: `This table already has ${HOMEBREW_LIMITS.packs} packs, the most it can hold. Remove one first.` } : { op: 'add', label: 'Add to this table' };
-    if (there.hash === review.hash) return { why: 'The table already has exactly this pack.' };
-    if (!(review.pack.version > there.version)) return { why: `The table has version ${there.version} of this pack. An update needs a higher version than that; this file is version ${review.pack.version}.` };
+    if (!there) return store.list().length >= HOMEBREW_LIMITS.packs ? { why: `This ${where()} already has ${HOMEBREW_LIMITS.packs} packs, the most it can hold. Remove one first.` } : { op: 'add', label: `Add to this ${where()}` };
+    if (there.hash === review.hash) return { why: `The ${where()} already has exactly this pack.` };
+    if (!(review.pack.version > there.version)) return { why: `The ${where()} has version ${there.version} of this pack. An update needs a higher version than that; this file is version ${review.pack.version}.` };
     const before = there.doc ? KINDS.flatMap((k) => (there.doc[k] ?? []).map((e) => e.id)) : [];
     const lost = before.filter((id) => !review.pack.ids.includes(id));
     if (lost.length) return { why: `This version leaves out ${lost.length} entr${lost.length === 1 ? 'y' : 'ies'} of version ${there.version} (${lost.slice(0, 3).join(', ')}${lost.length > 3 ? ', ...' : ''}). An update cannot drop entries: remove the pack and add it again.` };
@@ -396,7 +401,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     box.append(el('p', 'note', `${review.name} (${kb(review.size)})`));
     if (review.refused) {
       box.classList.add('refused');
-      box.append(refusalNode({ error: 'The checker refused this file, so nothing was sent to the table.', problems: review.refused }));
+      box.append(refusalNode({ error: solo() ? 'The checker refused this file, so nothing was kept.' : 'The checker refused this file, so nothing was sent to the table.', problems: review.refused }));
       return box;
     }
     const { doc, pack } = review;
@@ -408,7 +413,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     if (review.unread) box.append(el('p', 'pm-counts', `${review.unread} other ${review.unread === 1 ? 'entry is' : 'entries are'} not read by the reader yet: read the file yourself.`));
     const lic = el('div', 'pm-licence'); lic.append(el('h4', '', 'Licence and attribution (the author’s words)'), el('p', '', `Licence: ${doc.pack.license}`), el('p', '', `Attribution: ${doc.pack.attribution}`));
     box.append(lic);
-    if (doc.monsters?.length) box.append(el('p', 'note', `${doc.monsters.length} of its entries ${doc.monsters.length === 1 ? 'is a monster' : 'are monsters'}. Players are never sent a monster: only you and the table's engine hold them.`));
+    if (doc.monsters?.length) box.append(el('p', 'note', `${doc.monsters.length} of its entries ${doc.monsters.length === 1 ? 'is a monster' : 'are monsters'}. ${solo() ? 'Only you, the DM, see a monster\'s data.' : "Players are never sent a monster: only you and the table's engine hold them."}`));
     box.append(el('p', 'note', 'Nothing here is checked against any rulebook. Each reading is made by the game from the data, not from the author’s description.'));
     const p = plan();
     const row = el('div', 'row pm-actions');
@@ -433,26 +438,34 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     return d;
   }
   async function submit(p) {
-    await send({ op: p.op, pack: review.text }, p.op === 'add' ? `Added “${review.doc.pack.name}” to the table.` : `Updated “${review.doc.pack.name}” to version ${review.pack.version}.`, true);
+    await send({ op: p.op, pack: review.text }, p.op === 'add' ? `Added “${review.doc.pack.name}” to the ${where()}.` : `Updated “${review.doc.pack.name}” to version ${review.pack.version}.`, true);
   }
   // One `pack` message, one answer in words. A refusal leaves the review where it is, so the file can be changed and tried again.
   async function send(msg, done, clearReview = false) {
     const tr = T();
-    if (!tr?.packOp) { message = { error: 'This game has no table server to keep packs.' }; return render(); }
+    if (!tr?.packOp) { message = { error: 'This game has nowhere to keep packs.' }; return render(); }
     busy = true; message = null; render();
     try { await tr.packOp({ t: 'pack', ...msg }); message = { ok: done }; if (clearReview) review = null; }
     catch (e) { message = plain(e) ? e : { error: String(e?.message ?? e) }; }
     busy = false; render();
   }
 
+  // A solo game opens with what was wrong in what the browser kept said once in a toast (the manager keeps saying it until the packs are changed).
+  function soloNotice(m) {
+    const gone = Array.isArray(m.dropped) ? m.dropped : [], sig = gone.map((d) => `${d.id}:${d.reason}`).join('|');
+    if (!solo() || !gone.length || sig === toldDrops) { if (!gone.length) toldDrops = ''; return; }
+    toldDrops = sig;
+    toast(`${gone.length === 1 ? 'A homebrew pack' : `${gone.length} homebrew packs`} could not be loaded, so this game plays without ${gone.length === 1 ? 'it' : 'them'}. Open Homebrew packs in the DM tab to see why.`);
+  }
+
   // ----- what the page uses -----
   return {
     attach(t) {
       store.clear();
-      t.on.packs = (m) => store.packs(m);
+      t.on.packs = (m) => { store.packs(m); soloNotice(m); };
       t.on.packData = (m) => { if (store.packData(m)) t.flushUpdates?.(); };
       t.holdUpdates = () => store.waiting();
-      const h = section(); if (h) h.hidden = !!t.solo;          // solo keeps no packs yet
+      section(); toldDrops = '';
       summary();
     },
     clear() { store.clear(); review = null; message = null; hide(); for (const k of [...tries.keys()]) tries.delete(k); keep.clear(); },
