@@ -7,7 +7,9 @@ import { test } from "node:test";
 import { SPELLS } from "../src/content/index.js";
 import { lintPack } from "../src/content/schema.js";
 import { spellProfile } from "../src/effects.js";
-import { apply, current } from "../src/engine.js";
+import { derive } from "../src/derive.js";
+import { apply, current, makeEntity } from "../src/engine.js";
+import { gridOf } from "../src/grid.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
 
@@ -99,4 +101,37 @@ test("an untyped spell area still catches everyone", () => {
   const r = apply(s, { type: "cast", actor: "wizard", spell: plain.id, hex: { q: 7, r: 0 } }, DM);
   assert.ok(r.ok, r.error);
   assert.deepEqual([...r.events.find((e) => e.type === "cast").targets].sort(), [skel, goblin].sort());
+});
+
+// ---------- 2. a summon on spaces keeps its bond's command `range` ----------
+const PAT = { role: "player", userId: "pat" };
+function summoner() {
+  const s = newGame(5);
+  s.settings.autoEngage = false;
+  const d = derive({ name: "Ven", class: "wizard", level: 17, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 }, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells: ["animate-objects"] });
+  const G = gridOf(s.map);
+  const spot = G.range(s.entities.fighter.pos, 4).find((h) => apply(structuredClone(s), { type: "spawn", monster: "wolf", at: h }, DM).ok);
+  s.entities.ven = makeEntity(d.record, { id: "ven", kind: "pc", side: "party", pos: { ...spot, z: 0 } });
+  assert.ok(apply(s, { type: "claim", entity: "ven", user: "pat", userName: "Pat" }, PAT).ok);
+  const at = G.range(s.entities.ven.pos, 4).filter((h) => apply(structuredClone(s), { type: "spawn", monster: "wolf", at: h }, DM).ok)[5];
+  return { s, at };
+}
+
+test("Animate Objects: the object's bond carries the 500 ft command range, and a command beyond it is refused", () => {
+  const { s, at } = summoner();
+  const r = apply(s, { type: "cast", actor: "ven", spell: "animate-objects", slot: 5, summon: { variant: "medium", at: [at] } }, PAT);
+  assert.ok(r.ok, r.error);
+  const id = r.events.find((e) => e.type === "summoned").id;
+  assert.equal(s.entities[id].bond.range, 500);
+  assert.ok(apply(structuredClone(s), { type: "command", actor: "ven", ids: [id], order: "guard" }, PAT).ok, "near: obeys");
+  s.entities[id].pos = { q: 150, r: 0, z: 0 };                      // 150 hexes: 750 ft from the caster, which is near the origin
+  const before = json(s), far = apply(s, { type: "command", actor: "ven", ids: [id], order: "guard" }, PAT);
+  assert.equal(far.ok, false);
+  assert.match(far.error, /A command reaches 500 ft/);
+  assert.equal(json(s), before, "a refused command changes nothing");
+});
+
+test("Animate Objects: undo, redo and replay are exact", () => {
+  const { s, at } = summoner();
+  exact(s, [{ type: "cast", actor: "ven", spell: "animate-objects", slot: 5, summon: { variant: "medium", at: [at] } }]);
 });

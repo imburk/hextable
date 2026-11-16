@@ -1525,7 +1525,7 @@ function summon(s, m, step, src, ev) {
     const id = `m${++s.seq}`;
     const n = Object.values(s.entities).filter((o) => o.tpl === made.tplId && (!CONTENT.summons[made.tplId] || o.name?.startsWith(`${made.name} `))).length + 1;
     const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
-      ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: false };
+      ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: false };
     const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, ...(made.type ? { type: made.type } : {}), bond });
     s.entities[id] = e;
     if (fx) fx.parts.push({ target: id, summon: true });
@@ -1560,7 +1560,7 @@ function reform(s, m, step, src, ev) {
   const fx = src.fx ? effectsOf(s).find((x) => x.id === src.fx) ?? null : null;
   const n = Object.values(s.entities).filter((o) => o.id !== id && o.tpl === made.tplId).length + 1;
   const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
-    ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
+    ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
   const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: { ...old.pos }, side: old.side, ...(made.type ? { type: made.type } : {}), bond });
   for (const k of KEPT_ON_REFORM) if (old[k] !== undefined) e[k] = structuredClone(old[k]);
   if (old.bond?.order !== undefined) e.bond.order = old.bond.order;

@@ -1887,7 +1887,8 @@ read against `reference/srd52/srd52-flow.txt` and the vocabulary on main. Data o
   takes the Dodge action"), so the C5a command, the never-commanded lock and the brain's Dodge (C7) apply to it. Still
   `assist`: the count by the caster's modifier and the objects' sizes, and reverting to the object. **The engine drops
   the step's `range` for a summon on spaces** (resolve.js builds the bond without it; only the corpse path keeps it), so
-  a command to an object is not measured: the spell's text tells the DM. Phantom Steed's text now says it is ridden as
+  a command to an object is not measured: the spell's text tells the DM. (Fixed in #416: the bond keeps `range`, the
+  command is measured, and the text no longer asks the DM to check it for the object the engine makes.) Phantom Steed's text now says it is ridden as
   a Riding Horse (a trained mount, C6a); still `assist` for its end on damage.
 - **Already entered, unchanged:** Find Steed (Life Bond, C9), Animate Dead (bones and the Skeleton), Create Undead
   ("only at night", the other blocks of levels 8 and 9).
