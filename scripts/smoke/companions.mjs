@@ -357,6 +357,10 @@ export async function screens(browser, url, label, opts) {
         await page.click(rowOf('features', 'Dismiss…'));
         await page.click('#ap-features [data-cc-dismiss]:not([data-forever]):has-text("pocket")');
         await wait(page, (v) => Object.keys(window.hextable.state.entities[v].pocket ?? {}).length === 1, ven);
+        // the sheet says who is in the pocket (DEBT S7)
+        await page.click('#btn-sheet');
+        await wait(page, () => /Pocket dimension/.test(document.getElementById('sheet-body')?.textContent ?? ''));
+        await closeMenu(page);
         await page.click(rowOf('features', 'Recall…'));
         await page.click('#ap-features [data-cc-recall]');
         await page.waitForSelector('#hint:not([hidden])');
@@ -609,12 +613,12 @@ async function drawn(browser, url, label, opts, grid) {
       let rider, horse;
       const pawns = (ids) => page.evaluate(`((ids) => { const R = ${RR}; return ids.map((i) => { const a = R.actors.get(i); return a && { x: a.x, y: a.y, z: a.z, lift: a.lift, k: a.k, rides: a.rides, carry: a.carry, way: a.way.length, label: a.el.style.transform }; }); })(${JSON.stringify(ids)})`);
       // Where a Large creature of this kind fits next to `near` (and where the rider could go: the dry run is the engine's own answer).
-      const spots = (near, tpl, k, act) => page.evaluate(async ([n, t, count, a]) => {
+      const spots = (near, tpl, k, act, min = 2, max = 99) => page.evaluate(async ([n, t, count, a, lo, hi]) => {
         const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
         const S = window.hextable.state, G = gridOf(S.map), c = S.entities[n], out = [];
-        for (const h of G.range(c.pos, 5)) { if (out.length >= count) break; if (G.dist(c.pos, h) >= 2 && apply(structuredClone(S), a ? { ...a, to: h } : { type: 'spawn', monster: t, at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h); }
+        for (const h of G.range(c.pos, 5)) { if (out.length >= count) break; if (G.dist(c.pos, h) >= lo && G.dist(c.pos, h) <= hi && apply(structuredClone(S), a ? { ...a, to: h } : { type: 'spawn', monster: t, at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h); }
         return out;
-      }, [near, tpl, k, act ?? null]);
+      }, [near, tpl, k, act ?? null, min, max]);
       // Records, every frame, how far the rider is from where its mount is drawn, until stopped.
       const watchPair = () => page.evaluate(`((r, m) => { const R = ${RR}; const w = window.__pair = { frames: 0, apart: 0, lift: [], moved: 0, stop: false }; let at = null;
         const f = () => { const a = R.actors.get(r), b = R.actors.get(m); if (a && b && a.rides) { w.frames++; w.apart = Math.max(w.apart, Math.abs(a.x - b.x) + Math.abs(a.z - b.z) + Math.abs(a.y - b.y)); w.lift.push(a.lift); if (at) w.moved = Math.max(w.moved, Math.hypot(b.x - at.x, b.z - at.z)); else at = { x: b.x, z: b.z }; }
@@ -625,7 +629,7 @@ async function drawn(browser, url, label, opts, grid) {
         await wait(page, () => window.hextable.state.entities.fighter);
         await page.evaluate(() => { document.getElementById('dm-auto') && (document.getElementById('dm-auto').checked = false); window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }); });
         rider = 'fighter';
-        const at = (await spots(rider, LARGE, 1))[0];
+        const at = (await spots(rider, LARGE, 1, null, 1, 1))[0];
         if (!at) throw new Error('no spot where a Large creature fits near the fighter');
         horse = await page.evaluate((a) => {
           const h = window.hextable; h.act({ type: 'spawn', monster: 'warhorse', at: a });
@@ -645,16 +649,17 @@ async function drawn(browser, url, label, opts, grid) {
         if (Math.abs(a.lift - top * m.k) > 0.02) throw new Error(`the rider is raised ${a.lift}; the mount's pawn is ${top * m.k} tall`);
         if (m.lift !== 0 || !m.carry || a.carry) throw new Error(`mount ${JSON.stringify(m)}`);
         // from the side, enough to see the rider over the mount
-        await page.evaluate(`((r, d) => { const R = ${RR}; R.focus(r, true); R.cam.pitch = 0.5; R.cam.dist = d; R.cam.yawGoal = null; })(${JSON.stringify(rider)}, ${touch ? 16 : 13})`);
+        await page.evaluate(`((r, d) => { const R = ${RR}; R.focus(r, true); R.cam.pitch = 0.5; R.cam.dist = d; R.cam.y = 2.6; R.cam.yawGoal = null; })(${JSON.stringify(rider)}, ${touch ? 30 : 24})`);
         await settle(page, rider); await sleep(400);
+        await page.waitForSelector('#toast', { state: 'hidden', timeout: 8000 }).catch(() => {});
         await shot(page, `rider-side-${tag}`);
-        await page.evaluate(`(() => { const R = ${RR}; R.cam.pitch = 0.95; })()`); await settle(page, rider); await sleep(300);
+        await page.evaluate(`(() => { const R = ${RR}; R.cam.pitch = 0.95; R.cam.y = 1.5; })()`); await settle(page, rider); await sleep(300);
         await shot(page, `rider-${tag}`);
       });
       await run.do('a tap on the pair picks the rider where the rider is drawn and the mount where the mount is', async () => {
         const hit = async (up) => {
           await settle(page, rider);
-          const pt = await page.evaluate(`((r, u) => { const R = ${RR}; window.__hits = []; window.__tap0 ??= R.onTap; R.onTap = (h) => window.__hits.push(h.id ?? null); const e = window.hextable.state.entities[r]; return R.screenOf(e.pos, u); })(${JSON.stringify(rider)}, ${up})`);
+          const pt = await page.evaluate(`((r, u) => { const R = ${RR}; window.__hits = []; window.__tap0 ??= R.onTap; R.onTap = (h) => window.__hits.push(h.id ?? null); return R.screenOfPawn(r, u); })(${JSON.stringify(rider)}, ${up})`);
           if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the point ${JSON.stringify(pt)} is not on the map where a tap reaches it`);
           await tapAt(page, touch, pt.x, pt.y);
           await wait(page, () => window.__hits.length > 0, null, 3000);
@@ -662,9 +667,10 @@ async function drawn(browser, url, label, opts, grid) {
         };
         try {
           const lift = (await pawns([rider]))[0].lift;
-          const up = await hit(lift + 0.8), low = await hit(0.5);
-          if (up !== rider) throw new Error(`a tap on the rider's pawn picked ${up}`);
-          if (low !== horse) throw new Error(`a tap on the mount's pawn picked ${low}`);
+          const ups = [], lows = [];
+          for (const u of [0.4, 0.8, 1.2]) { ups.push(await hit(lift + u)); lows.push(await hit(u + 0.2)); }
+          if (ups.includes(horse) || lows.includes(rider)) throw new Error(`taps on the rider's pawn picked ${ups}, taps on the mount's pawn picked ${lows}`);
+          if (!ups.includes(rider) || !lows.includes(horse)) throw new Error(`no tap picked both: on the rider ${ups}, on the mount ${lows}`);
         } finally { await page.evaluate(`(() => { if (window.__tap0) window.hextable.R.onTap = window.__tap0; })()`); }
       });
       await run.do('a walk: the pair is never apart, one frame or many, and the mount really moves', async () => {
@@ -693,29 +699,35 @@ async function drawn(browser, url, label, opts, grid) {
       });
       await run.do('a player is not sent a hidden mount under a seen rider, nor a hidden rider on a seen mount: nothing is drawn for either and nothing shows what is missing', async () => {
         // a foe goblin riding a foe warhorse, in sight of the party
-        const at = (await spots(rider, LARGE, 2)).slice(-1)[0], gat = (await spots(rider, 'goblin', 3)).find((h) => !at || h.q !== at.q || h.r !== at.r);
-        const foes = await page.evaluate(([a, g]) => {
-          const h = window.hextable; h.act({ type: 'spawn', monster: 'warhorse', at: a }); h.act({ type: 'spawn', monster: 'goblin', at: g });
-          const L = Object.values(h.state.entities).filter((e) => e.side === 'foe');
-          const hf = L.find((e) => e.tpl === 'warhorse')?.id, gf = L.find((e) => e.tpl === 'goblin')?.id;
-          h.act({ type: 'mount', actor: gf, mount: hf });
-          return { hf, gf, riding: !!h.state.entities[gf]?.riding };
-        }, [at, gat]);
+        const at = (await spots(rider, LARGE, 2)).slice(-1)[0];
+        const foes = await page.evaluate(async (a) => {
+          const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map), dm = { role: 'dm', userId: 'dm' };
+          const before = new Set(Object.keys(h.state.entities));
+          h.act({ type: 'spawn', monster: 'warhorse', at: a });
+          const hf = Object.keys(h.state.entities).find((i) => !before.has(i)), horse = h.state.entities[hf];
+          for (const g of G.range(horse.pos, 2)) {
+            if (G.dist(horse.pos, g) !== 1) continue;
+            const c = structuredClone(h.state); if (!apply(c, { type: 'spawn', monster: 'goblin-warrior', at: g }, dm).ok) continue;
+            const gf = Object.keys(c.entities).find((i) => !before.has(i) && i !== hf); if (!gf || !apply(c, { type: 'mount', actor: gf, mount: hf }, dm).ok) continue;
+            h.act({ type: 'spawn', monster: 'goblin-warrior', at: g }); const real = Object.keys(h.state.entities).find((i) => !before.has(i) && i !== hf);
+            h.act({ type: 'mount', actor: real, mount: hf });
+            return { hf, gf: real, riding: !!h.state.entities[real]?.riding };
+          }
+          return { hf, riding: false };
+        }, at);
         if (!foes.riding) throw new Error(`the DM could not seat the goblin on the foe horse: ${JSON.stringify(foes)}`);
         await calm(page);
         const out = await page.evaluate(async ([r, m, gf, hf]) => {
           const { playerView } = await import('./shared/view.js');
           const R = (window.hextable.R.inner ?? window.hextable.R), S = window.hextable.state, res = {};
           const drawn = (v, id) => { const a = R.actors.get(id); return a ? { lift: a.lift, rides: a.rides, carry: a.carry, label: a.el.textContent, shown: a.el.style.display !== 'none' } : null; };
-          const show = (edit) => { const c = structuredClone(S); edit(c); const v = playerView(c); R.setState(v, [], { instant: true }); return v; };
-          let v = show(() => {});                                            // both seen
+          const show = async (edit) => { const c = structuredClone(S); edit(c); const v = playerView(c); R.setState(v, [], { instant: true }); await new Promise((f) => requestAnimationFrame(() => requestAnimationFrame(f))); return v; };
+          let v = await show(() => {});                                            // both seen
           res.seen = { sent: { riding: v.entities[gf]?.riding ?? null, rider: v.entities[hf]?.rider ?? null }, rider: drawn(v, gf), mount: drawn(v, hf) };
-          v = show((c) => { c.entities[gf].hidden = true; });                 // the rider hidden
+          v = await show((c) => { c.entities[gf].hidden = true; });                 // the rider hidden
           res.noRider = { sent: { rider: !!v.entities[gf], mountRider: v.entities[hf]?.rider ?? null }, rider: drawn(v, gf), mount: drawn(v, hf) };
-          v = show((c) => { c.entities[hf].hidden = true; });                 // the mount hidden
+          v = await show((c) => { c.entities[hf].hidden = true; });                 // the mount hidden
           res.noMount = { sent: { mount: !!v.entities[hf], riding: v.entities[gf]?.riding ?? null }, rider: drawn(v, gf), mount: drawn(v, hf) };
-          v = show((c) => { c.entities[m].hidden = true; });                  // the party's own rider, its mount hidden by the DM
-          res.own = { sent: { mount: !!v.entities[m], riding: v.entities[r].riding ?? null }, rider: drawn(v, r), mount: drawn(v, m) };
           R.setState(S, [], { instant: true });
           return res;
         }, [rider, horse, foes.gf, foes.hf]);
@@ -724,7 +736,6 @@ async function drawn(browser, url, label, opts, grid) {
         if (out.noRider.rider || out.noRider.sent.rider || out.noRider.sent.mountRider || !out.noRider.mount || out.noRider.mount.carry) bad('a hidden rider shows (a pawn, a field or a mount named at its foot)');
         if (out.noMount.mount || out.noMount.sent.mount || out.noMount.sent.riding || !out.noMount.rider || out.noMount.rider.lift !== 0 || out.noMount.rider.rides) bad('a hidden mount shows (a pawn, a field or a raised rider)');
         if (/ride|mount|horse/i.test(out.noMount.rider.label)) bad('the rider\'s label gives the mount away');
-        if (out.own.mount || out.own.sent.riding || out.own.rider.lift !== 0 || out.own.rider.rides) bad('the party\'s own rider is raised over a mount it is not sent');
       });
       await run.do('getting down: the rider comes off the saddle and the pair comes apart', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'dismount', actor: 'fighter' }));

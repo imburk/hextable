@@ -124,3 +124,33 @@ test("the DM's rows carry each player's connection dot (issue #246); a player's 
   assert.doesNotMatch(rowHTML(S, item, { dm: false, link }), /class="ld /);
   assert.doesNotMatch(rowHTML(S, trackerRows(S, { dm: true }).find((r) => r.e && r.e.id !== 'fighter'), { dm: true, link }), /class="ld /);
 });
+
+test('a ridden pair in a fight: the mount stands after its rider, says whom it carries, and a player is told of neither half the view hides', () => {
+  const s = newGame(5), f = s.entities.fighter.pos;
+  ok(apply(s, { type: 'spawn', monster: 'warhorse', at: { q: f.q + 1, r: f.r } }, DM));
+  const horse = Object.keys(s.entities).at(-1);
+  ok(apply(s, { type: 'bond', actor: horse, to: 'fighter', kind: 'steed', turn: 'after' }, DM));
+  ok(apply(s, { type: 'mount', actor: 'fighter', mount: horse }, DM));
+  const put = (tpl, near, min = 3, skip = []) => { for (let dq = -6; dq <= 6; dq++) for (let dr = -6; dr <= 6; dr++) { const at = { q: near.q + dq, r: near.r + dr }; if (skip.some((k) => k.q === at.q && k.r === at.r) || Math.abs(dq) + Math.abs(dr) < min) continue; if (apply(structuredClone(s), { type: 'spawn', monster: tpl, at }, DM).ok) { ok(apply(s, { type: 'spawn', monster: tpl, at }, DM)); return [Object.keys(s.entities).at(-1), at]; } } throw new Error('no room'); };
+  const [g, gAt] = put('warhorse', f);
+  const [gob] = put('goblin-warrior', gAt, 1);
+  ok(apply(s, { type: 'mount', actor: gob, mount: g }, DM));
+  ok(apply(s, { type: 'startEncounter', center: f, radius: 40 }, DM));
+  const S = view(s, DM), rows = trackerRows(S, { dm: true }).filter((r) => r.e), at = rows.findIndex((r) => r.e.id === 'fighter');
+  assert.equal(rows[at + 1].e.id, horse);
+  assert.match(text(rowHTML(S, rows[at], { dm: true })), /Riding Warhorse/);
+  assert.match(text(rowHTML(S, rows[at + 1], { dm: true })), /Carrying Brenna/);
+  // a foe pair: seen together the rows say so; with the rider hidden the mount's row does not say it carries one, and with the mount hidden the rider's does not say it rides
+  const show = (edit) => { const c = structuredClone(s); edit(c); return view(c, PAT); };
+  const P0 = show(() => {});
+  assert.equal(P0.entities[gob]?.riding?.on, g);
+  assert.match(text(rowHTML(P0, { e: P0.entities[g] }, {})), /Carrying Goblin/);
+  const P1 = show((c) => { c.entities[gob].hidden = true; });
+  assert.equal(P1.entities[gob], undefined);
+  assert.equal(P1.entities[g].rider, undefined);
+  assert.doesNotMatch(text(rowHTML(P1, { e: P1.entities[g] }, {})), /Carrying/);
+  const P2 = show((c) => { c.entities[g].hidden = true; });
+  assert.equal(P2.entities[g], undefined);
+  assert.equal(P2.entities[gob].riding, undefined);
+  assert.doesNotMatch(text(rowHTML(P2, { e: P2.entities[gob] }, {})), /Riding/);
+});

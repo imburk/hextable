@@ -413,6 +413,7 @@ export class ThreeRenderer {
     return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
   }
   screenOf(hex, up = 0) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y + up, w.z) : null; }       // `up`: drawing units above the floor (a rider's saddle)
+  screenOfPawn(id, up = 0) { const a = this.actors.get(id); return a && this.C ? this.#project(this.C, a.x, a.y + up, a.z) : null; }       // where a pawn is drawn, `up` drawing units over its foot (the smoke script's, to tap a rider and a mount apart)
   rotate(d) { this.cam.yaw += d; this.#turned(); }
   // The follow camera (docs/specs/keyboard.md): turn, eased, to look along `yaw`; `snap` at once (reduced motion). A manual turn cancels it.
   face(yaw, snap = false) {
