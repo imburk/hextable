@@ -190,7 +190,7 @@ test("Thrown (already right): a second, ranged attack with the same ability", ()
 test("Two-Handed: a Shield takes a hand, so a Two-Handed weapon is refused with a sentence and nothing changes (SRD, Properties, Two-Handed)", () => {
   const s = field(sheet(STRONG, ["greatsword", "longsword", "longbow", "shortsword"], { shield: true }));
   assert.equal(s.entities.hero.shield, true, "the sheet records the Shield");
-  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "greatsword" }, /^Greatsword is a Two-Handed weapon and needs both hands, and Fi carries a Shield\. Attack with another weapon, or put the Shield away\.$/);
+  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "greatsword" }, /^Greatsword is a Two-Handed weapon and needs both hands, and Fi carries a Shield, which only the DM can change in a fight \(out of a fight Fi can unequip it\)\.$/);
   refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "longbow" }, /Longbow is a Two-Handed weapon/);
   assert.ok(s.encounter.budget.action === 1 && !s.encounter.budget.attacks, "no action was spent");
   const out = exact(s, [{ type: "attack", actor: "hero", target: s.foe, attack: "longsword" }, { type: "attack", actor: "hero", target: s.foe, attack: "shortsword" }]);

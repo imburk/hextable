@@ -23,7 +23,7 @@ export function handsFull(s, e, atk) {
   const w = weaponOf(atk);
   if (!w?.properties?.includes('two-handed') || !e.shield) return '';
   if (w.twoHandedUnlessMounted && riding(s, e)) return '';
-  return `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. Attack with another weapon, or put the Shield away.`;
+  return `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield, which only the DM can change in a fight (out of a fight ${e.name} can unequip it).`;
 }
 
 // Loading (SRD "Weapons", Properties): "You can fire only one piece of ammunition from a Loading weapon when you use an action,
