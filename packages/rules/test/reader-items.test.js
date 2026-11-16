@@ -26,7 +26,7 @@ const read = (url) => readFileSync(new URL(url, import.meta.url), 'utf8');
 const base = (id, name, tier, text) => ({ id: `hb-rk-${id}`, source: 'homebrew:rk', tier, checked: false, name, text });
 
 // Entries that strict mode lets through but the reader flags (they can never work, or they hurt the user), or that need what loadPack does not
-// give (DEBT T55 below), so they cannot be in the pack the hb tool reads clean.
+// give (DEBT T56 below), so they cannot be in the pack the hb tool reads clean.
 const EXTRA_ITEMS = [
   { ...base('spite-coal', 'Spite Coal', 'assist', 'A coal that is never quite cold. Invented for the reader tests: it burns whoever uses it.'),
     category: 'wondrous', rarity: 'common', wear: 'carried', charges: { max: 2 },
@@ -35,7 +35,7 @@ const EXTRA_ITEMS = [
 const EXTRA_FEATS = [
   { ...base('borrowed-fire', 'Borrowed Fire', 'assist', 'A flame that is not yours to spend. Invented for the reader tests: it can never be cast.'),
     category: 'epic-boon', prerequisite: { level: 19 }, grants: { freeCast: { list: 'wizard', maxLevel: 2 } } },
-  { ...base('hedge-druid', 'Hedge Druid', 'assist', 'A little of the wild, kept in a pocket. Invented for the reader tests: loadPack cannot take its cost (DEBT T55).'),
+  { ...base('hedge-druid', 'Hedge Druid', 'assist', 'A little of the wild, kept in a pocket. Invented for the reader tests: loadPack cannot take its cost (DEBT T56).'),
     category: 'general', prerequisite: { feature: 'fighting-style' },
     grants: { freeCast: { spells: ['find-familiar'], cost: { slot: true, uses: 'wild-shape' }, components: 'none', time: 'action', types: ['fey'], ends: ['longRest'] } } },
   { ...base('chain-pact', 'Chain Pact', 'assist', 'A bargain with small things. Invented for the reader tests: loadPack refuses extra forms.'),
@@ -351,7 +351,7 @@ test('the engine does what the reading says of a feat\'s freeCast and of grants 
   void items3;
 });
 
-test('the engine as the reading says: loadPack cannot take a feat\'s freeCast cost or forms, though the entry linter can (DEBT T55)', () => {
+test('the engine as the reading says: loadPack cannot take a feat\'s freeCast cost or forms, though the entry linter can (DEBT T56)', () => {
   const doc = (e) => ({ ...structuredClone(PACK), monsters: [], items: [], feats: [e] });
   const hedge = EXTRA_FEATS.find((e) => e.id === 'hb-rk-hedge-druid'), chain = EXTRA_FEATS.find((e) => e.id === 'hb-rk-chain-pact');
   assert.match(loadPack(doc(hedge)).problems.join('\n'), /not a feature with uses in the SRD/);
