@@ -13,7 +13,7 @@ const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
 const A = { str: 16, dex: 14, con: 14, int: 8, wis: 12, cha: 10 };
-const fighter = (more = {}) => ({ name: "Ka", class: "fighter", level: 1, abilities: A, skills: ["athletics", "stealth"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"], ...more });
+const fighter = (more = {}) => ({ name: "Ka", class: "fighter", level: 1, abilities: A, skills: ["athletics", "perception"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"], ...more });
 
 function table(sheet, seed = 11) {
   const s = newGame(seed);
@@ -87,4 +87,21 @@ test("a starter with no sheet lists Chain Mail in its gear: one die is rolled an
 
 test("Stealth Disadvantage: undo, redo and replay are exact", () => {
   exact(table(fighter()), [{ type: "check", actor: "hero", skill: "stealth" }, { type: "hide", actor: "hero" }, { type: "check", actor: "hero", skill: "stealth", dc: 12 }]);
+});
+
+// ---------- item 2: the Strength column ----------
+// SRD "Armor": "Strength. If the table shows a Strength score in the Strength column for an armor type, that armor
+// reduces the wearer's speed by 10 feet unless the wearer has a Strength score equal to or higher than the listed score."
+// The engine already did this (derive.js); this pins it, and the data, through setSheet.
+test("the Strength column: Chain Mail 13, Splint 15, Plate 15; speed is 10 feet less below it", () => {
+  assert.deepEqual(Object.values(CONTENT.armour).filter((a) => a.strength).map((a) => [a.id, a.strength]).sort(), [["chain-mail", 13], ["plate-armor", 15], ["splint-armor", 15]]);
+  const speed = (armour, str) => {
+    const s = newGame(2);
+    const id = ok(apply(s, { type: "setSheet", sheet: fighter({ armour, abilities: { ...A, str } }) }, DM)).events.find((e) => e.type === "spawned").id;
+    return s.entities[id].speed;
+  };
+  assert.equal(speed("chain-mail", 12), 20); assert.equal(speed("chain-mail", 13), 30);
+  assert.equal(speed("plate-armor", 14), 20); assert.equal(speed("plate-armor", 15), 30);
+  assert.equal(speed("ring-mail", 8), 30, "Ring Mail has no Strength score");
+  assert.equal(speed("leather-armor", 8), 30);
 });
