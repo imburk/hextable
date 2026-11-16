@@ -4,11 +4,11 @@ import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, featOf, ft, inFight, mountOf, need, steering, up, walled } from './shared.js';
+import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { CONTENT } from '../content/index.js';
+import { attackRefusal, freshAction, isLoading } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
 import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
@@ -148,24 +148,6 @@ function isAttack(def) {
   return hit;
 }
 
-// Loading (SRD "Weapons", Properties): "You can fire only one piece of ammunition from a Loading weapon when you use an action,
-// a Bonus Action, or a Reaction to fire it, regardless of the number of attacks you can normally make." `budget.loaded` lists
-// the Loading attacks fired in this turn's action (`action:<attack id>`) and Bonus Action (`bonus:<attack id>`); a new action
-// clears its own. A Reaction is one a round, so it fires once of itself. Only an attack that names its weapon has the property:
-// a monster's stat-block attack is the creature's own and is not held to it.
-const isLoading = (atk) => typeof atk?.weapon === 'string' && !!CONTENT.weapons[atk.weapon]?.properties?.includes('loading');
-
-// Two-Handed (SRD "Weapons", Properties): "A Two-Handed weapon requires two hands when you attack with it." The sheet records a
-// Shield (`shield`) and not what each hand holds: weapons are what the character carries, any of which it may use. So the engine
-// can tell that a Shield takes a hand, and cannot tell that another weapon does: that is the DM's (the weapon's reading says so).
-// A Lance (`twoHandedUnlessMounted`) is one-handed while its wielder rides a mount. Returns the reason, or ''.
-function handsFull(s, e, atk) {
-  const w = typeof atk?.weapon === 'string' ? CONTENT.weapons[atk.weapon] : null;
-  if (!w?.properties?.includes('two-handed') || !e.shield) return '';
-  if (w.twoHandedUnlessMounted && mountOf(s, e)) return '';
-  return `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. Attack with another weapon, or put the Shield away.`;
-}
-
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -183,8 +165,8 @@ export const handlers = {
     const atk = e.attacks.find((x) => x.id === a.attack) || fail('Unknown attack.');
     up(e) || fail(`${e.name} is down.`);
     able(e);
-    const full = handsFull(s, e, atk);
-    if (full) fail(full);
+    const early = attackRefusal(s, e, atk);                          // hands, before a fight is started by it
+    if (early) fail(early);
     !t.dead || fail(`${t.name} is already dead.`);
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
@@ -195,9 +177,14 @@ export const handlers = {
     // Attacks a feature gave this turn (Flurry of Blows) come first; then a Bonus Action attack
     // (the Monk's Unarmed Strike); then those Extra Attack left; then the Attack action.
     const flurry = b.bonusAttacks?.with === atk.id && b.bonusAttacks.left > 0, bonusTime = !flurry && atk.time === 'bonus';
-    const pooled = !flurry && !bonusTime && fromPool(b, atk.id);
+    let pooled = !flurry && !bonusTime && fromPool(b, atk.id);
+    const refusal = attackRefusal(s, e, atk, pooled);
+    if (refusal) fail(refusal);
+    // A Loading weapon already fired this action, with the Attack action's other attacks left and another action to use (Action Surge):
+    // the shot is the new action's, and what is left of the old action's attacks goes on beside the new one's.
+    const surged = pooled && isLoading(atk) && b.loaded?.includes(`action:${atk.id}`) && freshAction(b);
+    if (surged) pooled = false;
     const slot = flurry || bonusTime ? 'bonus' : 'action';
-    if (isLoading(atk) && (pooled || slot === 'bonus') && b.loaded?.includes(`${slot}:${atk.id}`)) fail(`${atk.name} is a Loading weapon: it fires one piece of ammunition each time ${e.name} uses ${slot === 'bonus' ? 'a Bonus Action' : 'an action'}, however many attacks ${e.name} can make. Attack with something else, or end the turn.`);
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
@@ -210,7 +197,7 @@ export const handlers = {
       b.action--;
       if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
-      if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
+      if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack + (surged ? b.attacks[0][0].left : 0) }]];
     }
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;

@@ -21,6 +21,7 @@ import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters,
 import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
+import { handsFull } from '../weapons.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -1157,7 +1158,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
 // player when it says `ask`. It attacks with its first melee attack, as an Opportunity Attack is made.
 // Returns true if it was taken.
 function strikeBack(s, t, e, r, ev, why) {
-  const x = r.reaction, atk = (t.attacks ?? []).find((a) => a.type === 'melee');
+  const x = r.reaction, atk = (t.attacks ?? []).find((a) => a.type === 'melee' && !handsFull(s, t, a));       // one it may make (weapons.js)
   if (!atk || t.actions || apart(s, t, e) * FT > x.within) return false;
   if (atk.reach !== undefined && apart(s, t, e) * FT > atk.reach) return false;
   const w = instruction(t, r);

@@ -28,7 +28,7 @@ export const OPPORTUNITY_RIDER = 'opportunity-attack-rider';       // walking th
 function threatsAt(s, e, pos, sense = false) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && canReact(o) &&
-    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && (sense ? sensesFor : seesFor)(s, o, e)      // SRD: a creature it can see (and its side knows of)
+    !!opportunityAttack(o, s) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && (sense ? sensesFor : seesFor)(s, o, e)      // SRD: a creature it can see (and its side knows of)
     && !modifiers(s, o, 'opportunity').autoFail);                                                                       // Staggering Blow: it can't make them now
 }
 // A creature has just stepped from `prev` to where it stands now: whatever that sets off, goes
@@ -118,7 +118,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
         if (t === e && !seesFor(s, o, e)) found.push(findFor(s, o, e, ev));
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
-        const oa = opportunityAttack(o);
+        const oa = opportunityAttack(o, s);
         if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, t, oa, ev, { opportunity: true });
         // A rider knocked down or Prone by it may fall off here, before the mount goes on (settleRide).

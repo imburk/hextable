@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
+import { aiStep } from "../src/ai.js";
+import { opportunityAttack, reactionsOf } from "../src/reactions.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
 
@@ -226,4 +228,67 @@ test("Versatile (already right): the two-handed damage is its own attack, offere
   const free = derive(sheet(STRONG, ["longsword"])).record.attacks.find((a) => a.id === "longsword-two-handed");
   assert.equal(free.damage, "1d10+3");
   assert.equal(derive(sheet(STRONG, ["longsword"], { shield: true })).record.attacks.find((a) => a.id === "longsword-two-handed"), undefined);
+});
+
+test("Loading and Action Surge: the shot of a new action is allowed while the first action's other attacks are left", () => {
+  const s = field(sheet(STRONG, ["light-crossbow"]), { gap: 3 });
+  const shoot = { type: "attack", actor: "hero", target: s.foe, attack: "light-crossbow" };
+  ok(apply(s, shoot, DM));
+  assert.equal(s.encounter.budget.attacks[0][0].left, 1);
+  s.encounter.budget.action = 1;                                      // Action Surge's extra action
+  ok(apply(s, shoot, DM));
+  assert.equal(s.encounter.budget.action, 0, "the new action was spent");
+  assert.equal(s.encounter.budget.attacks[0][0].left, 2, "the first action's attack and the new action's Extra Attack");
+  refused(s, shoot, /Loading weapon/);
+});
+
+// The turn of the creature `id`, played by the AI, every action sent is allowed.
+function aiTurn(s, id) {
+  const sent = [];
+  for (let i = 0; i < 30 && current(s) === id && !s.pending; i++) {
+    const a = aiStep(s, id) ?? { type: "endTurn", actor: id };
+    const r = apply(s, a, DM);
+    assert.ok(r.ok, `${a.type} ${a.attack ?? ""} refused: ${r.error}`);
+    sent.push(a);
+  }
+  return sent;
+}
+
+test("AI: a creature with a Shield, a Two-Handed weapon and a one-handed one attacks with the one-handed", () => {
+  const s = field(sheet(STRONG, ["greatsword", "longsword"], { shield: true }));
+  const sent = aiTurn(s, "hero");
+  assert.ok(sent.some((a) => a.type === "attack" && a.attack === "longsword"));
+  assert.ok(sent.every((a) => a.attack !== "greatsword"));
+});
+
+test("AI: a creature whose only attack is Two-Handed, with a Shield, takes the Dodge action and not a refusal", () => {
+  const s = field(sheet(STRONG, ["greatsword"], { shield: true }));
+  const sent = aiTurn(s, "hero");
+  assert.deepEqual(sent.map((a) => a.type), ["dodge", "endTurn"]);
+});
+
+test("AI: an archer with a Loading weapon and Extra Attack shoots once, then does something it may do", () => {
+  const s = field(sheet(STRONG, ["light-crossbow"]), { gap: 3 });
+  const sent = aiTurn(s, "hero");
+  assert.equal(sent.filter((a) => a.attack === "light-crossbow").length, 1, "one shot");
+  assert.equal(sent.at(-1).type, "endTurn", "then the turn ends: it has nothing else it may do, and sent nothing refused");
+  const t = field(sheet(STRONG, ["light-crossbow", "shortsword"]), { gap: 3 });
+  assert.ok(aiTurn(t, "hero").length >= 2, "with a sword too it closes in");
+});
+
+test("Opportunity Attack: made with an allowed weapon, and not offered when none is", () => {
+  const sh = sheet(STRONG, ["greatsword", "longsword"], { shield: true });
+  const s = field(sh);
+  const hero = s.entities.hero;
+  assert.equal(opportunityAttack(hero, s).id, "longsword");
+  assert.ok(reactionsOf(hero).some((r) => r.kind === "attack"));
+  const bare = field(sheet(STRONG, ["greatsword"], { shield: true })).entities.hero;
+  assert.equal(opportunityAttack(bare), null);
+  assert.ok(!reactionsOf(bare).some((r) => r.kind === "attack"), "not offered");
+  // Played: the goblin walks away from the fighter, who takes its Opportunity Attack with the Longsword.
+  s.entities[s.foe].pos = { q: 1, r: 0, z: 0 };
+  for (let i = 0; i < 6 && current(s) !== s.foe; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  const r = ok(apply(s, { type: "move", actor: s.foe, to: { q: 3, r: 0 } }, DM));
+  const oa = r.events.find((e) => e.type === "attack" && e.actor === "hero");
+  assert.equal(oa?.name, "Longsword");
 });
