@@ -98,4 +98,7 @@ test("AI: with any allowed weapon attack it does what it did; with none it punch
   assert.equal(aiStep(field(fighter(STR16, [])), "hero").attack, "unarmed-strike");
   // An Opportunity Attack with a Shield and a Greatsword is the punch.
   assert.equal(opportunityAttack(field(fighter(STR16, ["greatsword"], { shield: true })).entities.hero).id, "unarmed-strike");
+  // Not beside a foe it does as it did: the Dodge action (nothing allowed), or the end of the turn (no weapon at all); it does not walk in.
+  assert.equal(aiStep(field(fighter(STR16, ["greatsword"], { shield: true }), 3), "hero").type, "dodge");
+  assert.equal(aiStep(field(fighter(STR16, []), 3), "hero").type, "endTurn");
 });

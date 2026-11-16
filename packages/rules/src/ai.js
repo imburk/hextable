@@ -157,10 +157,11 @@ function withAttacks(s, e, foes) {
   const spare = (a) => a.id === 'unarmed-strike' && !e.sheet?.weapons?.includes('unarmed-strike') && !e.attacks.some((x) => x.id === 'unarmed-strike-bonus');
   let melee = e.attacks.find((a) => a.type === 'melee' && !spare(a) && allowed(a)), ranged = e.attacks.find((a) => a.type === 'ranged' && allowed(a));
   const d = apart(s, e, target);
-  if (!melee && !ranged) melee = e.attacks.find((a) => spare(a) && allowed(a));
+  // With none, it punches a foe beside it (and does not walk in to punch: that is the Dodge it took before).
+  if (!melee && !ranged && d <= 1 && open(target)) melee = e.attacks.find((a) => spare(a) && allowed(a));
   const can = b.action > 0 || !!b.attacks;
   // Attacks it has but may not make now (a Shield and nothing but a Two-Handed weapon): it takes the Dodge action rather than lose the turn.
-  if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.length && !e.cond?.dodging) return { type: 'dodge', actor: id };
+  if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.some((a) => !spare(a)) && !e.cond?.dodging) return { type: 'dodge', actor: id };
   if (can && melee && d <= 1 && open(target)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
   if (melee && d > 1 && b.move >= FT) { const mv = approach(s, e, foes); if (mv) return mv; }
   if (can && ranged && d * FT <= ranged.range[1] && open(target)) return { type: 'attack', actor: id, target: target.id, attack: ranged.id };
