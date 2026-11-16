@@ -744,7 +744,7 @@ class Reading {
     if (un.length) {
       this.dm(`Deciding whether ${list(un.map((t) => TAG_WORDS[t]))}, each time step ${at} runs.`);
       const how = un.some((t) => t === 'attack.advantage' || t === 'attack.disadvantage') ? ' (the engine knows how an attack roll went only for the steps under that attack\'s hit or miss)' : '';
-      text += ` The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))} ${un.length > 1 ? 'hold' : 'holds'}${how}, so it does not run this step itself: unless an earlier condition already fails, it tells the DM, who applies the step if it holds.`;
+      text += ` The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))}${how}, so it does not run this step itself: unless an earlier condition already fails, it tells the DM, who applies the step if it holds.`;
     }
     return text;
   }
@@ -810,7 +810,7 @@ function saveSentence({ st, at, depth, Who, say }) {
   if (st.advantageIf !== undefined) {
     const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t)) : [];
     const un = tags.filter((t) => !JUDGED_ADVANTAGE_IF.includes(t));
-    this.line(`It has Advantage on this save if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? `. The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))} ${un.length > 1 ? 'hold' : 'holds'}: it rolls the save without that Advantage and tells the DM, who decides` : ''}.`, depth);
+    this.line(`It has Advantage on this save if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? `. The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))}: it rolls the save without that Advantage and tells the DM, who decides` : ''}.`, depth);
     if (un.length) this.dm(`Deciding Advantage on the save of step ${at}.`);
   }
   const fail = Array.isArray(st.onFail) ? st.onFail : null, succ = st.onSuccess;
@@ -1043,11 +1043,11 @@ function modExtras(m, at, toCaster) {
       }
       if (never.length) {
         this.never++;
-        bits.push(`the engine never applies this: at ${HOOK_WORDS[hook]} it cannot tell whether ${list(never.map(word))} ${never.length > 1 ? 'hold' : 'holds'}, and it skips a modifier it cannot be sure of, without telling anyone`);
+        bits.push(`the engine never applies this: at ${HOOK_WORDS[hook]} it cannot tell whether ${list(never.map(word))}, and it skips a modifier it cannot be sure of, without telling anyone`);
       } else if (sometimes.length && !this.inTrait) {
         bits.push(hook === 'damage.dealt'
-          ? `the engine can tell whether ${list(sometimes.map(word))} ${sometimes.length > 1 ? 'hold' : 'holds'} only for the damage of an attack a character makes from its own sheet; for the damage of a spell or of a creature's action it cannot, and there it skips the modifier without telling anyone`
-          : `the engine can tell whether ${list(sometimes.map(word))} ${sometimes.length > 1 ? 'hold' : 'holds'} only for a character's attack (which names its ability) and a spell's attack roll; for a creature's own action it cannot, and there it skips the modifier without telling anyone`);
+          ? `the engine can tell whether ${list(sometimes.map(word))} only for the damage of an attack a character makes from its own sheet; for the damage of a spell or of a creature's action it cannot, and there it skips the modifier without telling anyone`
+          : `the engine can tell whether ${list(sometimes.map(word))} only for a character's attack (which names its ability) and a spell's attack roll; for a creature's own action it cannot, and there it skips the modifier without telling anyone`);
       }
     }
   }

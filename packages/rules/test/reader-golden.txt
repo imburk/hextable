@@ -172,16 +172,16 @@ The caster gets +1 to Wisdom saving throws.
 The caster gets Advantage on saving throws to avoid or end the Poisoned condition.
   It lasts as long as the spell.
 The caster gets +2 to its attack rolls.
-  It holds only when it is a melee attack, the two are within 5 feet of each other, the attack is made with a weapon and the attack uses Strength.
+  It holds only when it is a melee attack, the two are within 5 feet of each other, the attack is made with a weapon and the attack uses Strength. The engine never applies this: at its attack rolls it cannot tell whether the attack is made with a weapon, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 The caster gets Disadvantage on attack rolls made against it.
-  It holds only when it is a ranged attack, the two are more than 5 feet apart and the attack is at long range, which the engine cannot tell, so the engine never applies it.
+  It holds only when it is a ranged attack, the two are more than 5 feet apart and the attack is at long range. The engine never applies this: at attack rolls made against it it cannot tell whether the attack is at long range, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 The caster gets a Critical Hit on every hit, among attack rolls made against it.
   It holds only when the target is Prone and the target is Unconscious.
   It lasts as long as the spell.
 The caster gets +1d6 radiant damage added to the damage it deals.
-  It applies at most once a turn. It holds only when the damage comes from an attack roll that hit, the damage is a cantrip's and it is a spell's attack roll.
+  It applies at most once a turn. It holds only when the damage comes from an attack roll that hit, the damage is a cantrip's and it is a spell's attack roll. The engine never applies this: at the damage it deals it cannot tell whether it is a spell's attack roll, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 The caster gets +2 to the damage it deals.
   It holds only for the damage of Fire Bolt.
@@ -198,7 +198,7 @@ The caster gets -3 to damage it takes.
 The caster gets its Armor Class of at least 16.
   It lasts as long as the spell.
 The caster gets its Armor Class of at most 20.
-  It holds only when the target has Half Cover and the target has Three-Quarters Cover.
+  It holds only when the target has Half Cover and the target has Three-Quarters Cover. The engine never applies this: at its Armor Class it cannot tell whether the target has Half Cover and the target has Three-Quarters Cover, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 The caster gets +10 feet to its Speed.
   It lasts as long as the spell.
@@ -240,15 +240,13 @@ The caster gets +1d6 to a D20 Test it fails.
 The caster gets no Opportunity Attacks (it cannot make them).
   It lasts as long as the spell.
 The caster gets Advantage on attack rolls made against it.
-  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack and the target is not a Fiend, which the engine cannot tell, so the engine never applies it.
+  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack and the target is not a Fiend. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 It is aimed at the caster alone.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
 It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
-Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Tier: auto, but the engine never applies the parts said above never to take effect, and tells nobody.
 Not checked against any rulebook.
-DM: effects.6.modifier: the modifier needs the attack is at long range, which the engine cannot tell.
-DM: effects.33.modifier: the modifier needs the target can see the caster, which the engine cannot tell.
 
 == hb-test-hunters-sting
 Hunter's Sting (level 1 divination, 90 feet, Bonus Action, 1 hour, concentration).

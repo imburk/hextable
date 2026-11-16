@@ -7,7 +7,7 @@ While it is active, the holder gets what follows (the engine makes these a featu
   Advantage on Perception checks.
   Resistance to fire damage.
   +1 to Dexterity saving throws.
-    It holds only when it is a ranged attack.
+    It holds only when it is a ranged attack. The engine never applies this: at Dexterity saving throws it cannot tell whether it is a ranged attack, and it skips a modifier it cannot be sure of, without telling anyone.
   +5 to its Hit Point maximum.
     The engine never reads its Hit Point maximum from a feature, so this changes nothing.
   An aura 10 feet out from the holder. The holder, and every creature on the holder's side in range with no Total Cover between, get what is listed below, for as long as the holder is up and not Incapacitated. Two of the same aura do not add up.
@@ -31,6 +31,7 @@ Use 2, "Scorch": takes the spell's own casting time (action), not the time the e
   It casts Scorching Ray at level 2: no slot and no components. The save DC is 14. The attack bonus is the user's own (the Proficiency Bonus with no spellcasting). It is cast as at the lowest caster level, through the usual casting rules, so it can be countered.
   Each charge more than the use's own raises the level by one, up to level 4.
 Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.
+Parts of this entry never take effect, as said above: the engine does not apply them and tells nobody.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM applies.
 Not checked against any rulebook.
 DM: The modifier at grants.modifiers.3: the engine does not read this hook from a feature.
