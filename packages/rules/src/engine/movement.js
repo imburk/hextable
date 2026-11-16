@@ -13,7 +13,7 @@ import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, KIT, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, KIT, seesFor, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -26,7 +26,7 @@ export const OPPORTUNITY_RIDER = 'opportunity-attack-rider';       // walking th
 function threatsAt(s, e, pos) {
   return fighters(s).filter((o) =>
     o.id !== e.id && up(o) && hostile(o, e) && canReact(o) &&
-    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && canSee(s, o, e) !== 'no'     // SRD: a creature it can see
+    !!opportunityAttack(o) && apartAt(s, o, o.pos, e, pos) <= 1 && clear(s, o.pos, pos) && seesFor(s, o, e)      // SRD: a creature it can see (and its side knows of)
     && !modifiers(s, o, 'opportunity').autoFail);                                                                       // Staggering Blow: it can't make them now
 }
 // A creature has just stepped from `prev` to where it stands now: whatever that sets off, goes

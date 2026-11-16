@@ -931,6 +931,14 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
 
 // ---------- reactions (asking a player is ask() in shared.js) ----------
 
+// Can `t` see `e` for a reaction whose trigger says "that you can see" (Counterspell: "when you see a creature ... casting a
+// spell"; Hellish Rebuke: "a creature that you can see"; Uncanny Dodge: "an attacker that you can see"; the Opportunity
+// Attack: "a creature that you can see leaves your reach", SRD 2093-2094)? Its senses must find it (`canSee`), and a
+// party creature never sees a creature the party does not know of: one the DM has hidden, one hiding, one in a place not
+// yet revealed, or under `los`/`light` one nobody in the party sees (vision.js `unknown`; fix round 1 of #373, M1). A
+// creature is never asked, and never reacts, against what its side does not know is there.
+export const seesFor = (s, t, e) => !!e && !e.object && canSee(s, t, e) !== 'no' && !(t.side === 'party' && unknown(s, e));
+
 // Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
 // its player chose), and its steps run at once on `targets` (the caster, or the creature that set
 // it off), inside whatever action set it off (on the effect stack, above the frames already there,
@@ -982,7 +990,7 @@ function reactToHit(s, t, e, atk, roll_, ev) {
       o = { reaction: r.id, name: r.name, ac: r.ac };
     } else if (r.kind === 'feature') {
       const x = r.reaction;
-      if (x.seen && (e.object || canSee(s, t, e) === 'no')) continue;                  // "an attacker that you can see"
+      if (x.seen && !seesFor(s, t, e)) continue;                                        // "an attacker that you can see"
       if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;      // Deflect Attacks: Bludgeoning, Piercing or Slashing
       o = { reaction: r.id, name: r.name };
     } else continue;
@@ -991,7 +999,7 @@ function reactToHit(s, t, e, atk, roll_, ev) {
   }
   let chosen = offers.find((x) => x.w !== 'ask') ?? null, slot;
   if (offers.some((x) => x.w === 'ask')) {
-    const seen = !e.object && canSee(s, t, e) !== 'no';
+    const seen = seesFor(s, t, e);
     const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id } : {}), attack: atk.name, total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
     if (a === null) for (const x of offers) { if (x.w === 'ask') tellDM(t, x.r, `${t.name} is hit by ${e.object ? 'a trap' : e.name}'s attack.`, ev); }
     else { chosen = offers.find((x) => x.r.id === a.take) ?? null; slot = a.slot; }
@@ -1030,7 +1038,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
     const w = instruction(t, r);
     if (w === 'never') continue;
     const sp = SPELLS[r.id], slots = slotsFor(s, t, sp);
-    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || canSee(s, t, e) === 'no') continue;
+    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || !seesFor(s, t, e)) continue;
     let slot = slots[0];
     if (w === 'ask') {
       const a = ask(s, t, { trigger: on, by: e.id }, [spellOffer(r, slots)]);

@@ -13,7 +13,7 @@ import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, f
 import { aimArea, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
 import { incapacitatedBy } from '../modifiers.js';
 
@@ -60,7 +60,7 @@ function blockSpell(s, caster, spellId, targets, ev) {
     if (!slots.length) continue;
     let slot = slots[0];
     if (instruction(t, r) === 'ask') {
-      const seen = canSee(s, t, caster) !== 'no';
+      const seen = seesFor(s, t, caster);
       const a = ask(s, t, { trigger: 'targeted', spell: spellId, ...(seen ? { by: caster.id } : {}) }, [spellOffer(r, slots)]);
       if (a === null) { tellDM(t, r, `${t.name} is targeted by ${SPELLS[spellId]?.name ?? 'a spell'}.`, ev); continue; }
       if (a.take !== r.id) continue;

@@ -200,7 +200,10 @@ function record(s, ev) {
     // A copy all through: an event may hold an object of the state itself (`placed` its creature's `pos`), and
     // an entry sharing it would change with it; undo and redo, which put the state back field by field, then
     // could not give the record back as it was (#320).
-    s.timeline.push(structuredClone({ t: s.clock, ...e, ...(ids.length ? { unseen: [...new Set(ids)] } : {}) }));
+    // An event may carry its own `unseen` already (E23: the creatures the party did not know of while a spell was cast,
+    // before the fight's start revealed them; casting.js): both are kept (fix round 1 of #373, L1).
+    const all = [...new Set([...(Array.isArray(e.unseen) ? e.unseen : []), ...ids])];
+    s.timeline.push(structuredClone({ t: s.clock, ...e, ...(all.length ? { unseen: all } : {}) }));
   }
   return { ok: true, events: ev };
 }
