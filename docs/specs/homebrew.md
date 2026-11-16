@@ -1183,3 +1183,16 @@ answered on 15 November (the comment "Beej (lead 4), 15 November, 09:45 ET").
 ## Adventure modules
 
 A DM may also add their own pack inside their adventure module, through the same gate and limits: see [adventure-module.md](adventure-module.md) (Decision 3).
+
+## Build notes: a homebrew monster cannot be a form (#402)
+
+Until the owner rules on #193, a homebrew monster (an entry whose `source` starts `homebrew:`) cannot be chosen as a form, so a player is never sent its stat block. One helper, `isHomebrew(entry)` in `summons.js`, with the sentence `HOMEBREW_FORM` ("A homebrew creature cannot be chosen as a form yet."). Places where an action's own field or a spell's filter names a creature by id, and what was done:
+
+- `cast` with a `summon` step that has `forms` (Find Familiar, a list or a type-and-rating filter): `summonFor` in `engine/casting.js` refuses a homebrew `summon.form` first, before the filter, for a player and for the DM casting for a character. A reforming casting uses the same check. Done.
+- Wild Shape, the `feature` handler (`shapeShift`, `engine/features.js`): refused before the type and rating checks, whose messages would name the monster. Done.
+- `summonMade` and the hand-over text (`engine/resolve.js`): they run after the cast check, or name only ids a spell lists (a pack spell naming a homebrew creature is already refused by the linter). Nothing needed.
+- Find Steed, Phantom Steed, the summon blocks, Animate Dead: the spell fixes the creature; the caster picks no id. Nothing needed.
+- The DM's `spawn`, `bond`: the DM names a creature; unaffected by design.
+- The choices a player is offered: the server sends the filter only (`spellProfile` in `effects.js`) and the client lists its own SRD lookup, which holds no overlay. Nothing sends a list of ids, so nothing offers one.
+
+The refusal says the creature is homebrew, so a player who guesses an id learns that it exists; its stat block stays unsent.

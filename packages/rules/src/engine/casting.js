@@ -16,6 +16,7 @@ import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
 import { incapacitatedBy } from '../modifiers.js';
+import { HOMEBREW_FORM, isHomebrew } from '../summons.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -267,6 +268,7 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   else p.type === undefined || fail(`${sp.name} has no choice of creature type.`);
   if (step.forms !== undefined) {
     const m = typeof p.form === 'string' && Object.hasOwn(CONTENT.monsters, p.form) ? CONTENT.monsters[p.form] : null;
+    !isHomebrew(m) || fail(HOMEBREW_FORM);   // before the filter: a filter never matches one, and the refusal says nothing of its type or rating
     const fits = m && (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr);
     fits || fail(`Choose a form ${sp.name} can take.`);
     out.form = p.form;
