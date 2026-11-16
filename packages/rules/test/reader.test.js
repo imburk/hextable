@@ -346,7 +346,9 @@ test('hostile input gets a bounded plain answer and never a throw', () => {
   assert.ok(readEntry('spell', deep).lines[0].includes('too large or too deeply nested'));
   assert.equal(readEntry('spell', deep).hash, null);
   assert.ok(readEntry('spell', many).problems.length > 0);
-  assert.equal(readEntry('monster', EMBER_BURST).lines[0], 'The reader reads spells only so far; this kind of entry is not read yet.');
+  // Monsters are read now (reader-kinds.test.js); a kind not read yet, and a kind the reader does not know, say so in one line.
+  assert.equal(readEntry('weapon', EMBER_BURST).lines[0], 'The reader does not read weapons yet; this kind of entry is not read.');
+  assert.equal(readEntry('gizmo', EMBER_BURST).lines[0], 'The reader does not know this kind of entry.');
   assert.equal(readEntry(undefined, EMBER_BURST).title, '(not read)');
 });
 

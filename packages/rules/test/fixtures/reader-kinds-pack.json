@@ -1,0 +1,1069 @@
+{
+  "format": "hextable-pack",
+  "v": 1,
+  "pack": {
+    "id": "rk",
+    "name": "Reader Kinds Pack",
+    "version": 1,
+    "license": "CC0, by the author",
+    "attribution": "Written for the Hextable reader tests; free to copy."
+  },
+  "monsters": [
+    {
+      "id": "hb-rk-cinderjaw",
+      "source": "homebrew:rk",
+      "tier": "assist",
+      "checked": false,
+      "name": "Cinderjaw Hound",
+      "text": "A smouldering hound that hunts in a pack. Invented for the reader tests.",
+      "size": "large",
+      "type": "monstrosity",
+      "cr": 0.25,
+      "xp": 50,
+      "pb": 2,
+      "ac": 13,
+      "hp": 30,
+      "speed": {
+        "walk": 40,
+        "climb": 20,
+        "swim": 30,
+        "burrow": 10
+      },
+      "senses": {
+        "darkvision": 60,
+        "tremorsense": 30,
+        "blindsight": 10,
+        "truesight": 5
+      },
+      "abilities": {
+        "str": 15,
+        "dex": 14,
+        "con": 13,
+        "int": 3,
+        "wis": 12,
+        "cha": 6
+      },
+      "initiative": 3,
+      "languages": [
+        "Understands one tongue but cannot speak",
+        "telepathy 30 ft."
+      ],
+      "skills": {
+        "perception": 4,
+        "stealth": 5,
+        "animal-handling": 1
+      },
+      "resist": [
+        "fire"
+      ],
+      "vulnerable": [
+        "cold"
+      ],
+      "immune": [
+        "poison"
+      ],
+      "conditionImmune": [
+        "poisoned"
+      ],
+      "saves": {
+        "con": 4,
+        "wis": 2
+      },
+      "traits": [
+        {
+          "id": "pack-tactics",
+          "name": "Pack Tactics",
+          "text": "Fights better beside friends.",
+          "modifiers": [
+            {
+              "on": "attack.roll",
+              "op": "advantage",
+              "when": [
+                "ally.adjacentToTarget"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "nimble-escape",
+          "name": "Nimble Escape",
+          "text": "Slips away quickly.",
+          "modifiers": []
+        },
+        {
+          "id": "keen-nose",
+          "name": "Keen Nose",
+          "text": "Smells what hides.",
+          "modifiers": [
+            {
+              "on": "check",
+              "op": "advantage",
+              "scope": {
+                "skill": "perception"
+              }
+            },
+            {
+              "on": "save.dex",
+              "op": "add",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": "ember-memory",
+          "name": "Ember Memory",
+          "text": "Remembers every face it has burned.",
+          "modifiers": []
+        }
+      ],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name": "Multiattack",
+          "text": "Bites once and rakes twice.",
+          "multiattack": [
+            {
+              "action": "bite",
+              "times": 1
+            },
+            {
+              "action": [
+                "rake",
+                "tail-slap"
+              ],
+              "times": 2
+            }
+          ]
+        },
+        {
+          "id": "bite",
+          "name": "Bite",
+          "text": "Bite, invented for the reader's tests.",
+          "target": {
+            "creature": {
+              "reach": 5
+            }
+          },
+          "effects": [
+            {
+              "attack": "melee",
+              "kind": "weapon",
+              "bonus": 4,
+              "onHit": [
+                {
+                  "damage": "1d8+2",
+                  "type": "piercing"
+                },
+                {
+                  "damage": "1d6",
+                  "type": "fire",
+                  "when": [
+                    "attack.advantage"
+                  ]
+                },
+                {
+                  "condition": "prone"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "rake",
+          "name": "Rake",
+          "text": "Rake, invented for the reader's tests.",
+          "target": {
+            "creature": {
+              "reach": 5
+            }
+          },
+          "effects": [
+            {
+              "attack": "melee",
+              "kind": "weapon",
+              "bonus": 4,
+              "onHit": [
+                {
+                  "damage": "1d6+2",
+                  "type": "slashing",
+                  "times": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "tail-slap",
+          "name": "Tail Slap",
+          "text": "Tail Slap, invented for the reader's tests.",
+          "target": {
+            "creature": {
+              "reach": 10
+            }
+          },
+          "effects": [
+            {
+              "attack": "melee",
+              "kind": "weapon",
+              "bonus": 4,
+              "onHit": [
+                {
+                  "damage": "1d4+2",
+                  "type": "bludgeoning"
+                },
+                {
+                  "move": 10,
+                  "dir": "away",
+                  "largest": "medium"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ash-cloud",
+          "name": "Ash Cloud",
+          "text": "A burst of ash.",
+          "recharge": [
+            5,
+            6
+          ],
+          "time": "action",
+          "target": {
+            "area": {
+              "shape": "sphere",
+              "size": 15,
+              "range": 30
+            }
+          },
+          "effects": [
+            {
+              "save": "con",
+              "dc": 12,
+              "half": true,
+              "onFail": [
+                {
+                  "damage": "2d6",
+                  "type": "fire"
+                },
+                {
+                  "condition": "blinded",
+                  "ends": {
+                    "on": "turnEnd",
+                    "of": "source"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "smoke-step",
+          "name": "Smoke Step",
+          "text": "Dashes in a swirl of smoke.",
+          "time": "bonus",
+          "uses": {
+            "per": "day",
+            "n": 2
+          },
+          "target": {
+            "self": true
+          },
+          "effects": [
+            {
+              "modifier": {
+                "on": "speed",
+                "op": "add",
+                "value": 10
+              },
+              "ends": {
+                "on": "turnStart"
+              }
+            },
+            {
+              "modifier": {
+                "on": "attack.received",
+                "op": "disadvantage",
+                "when": [
+                  "ranged"
+                ]
+              },
+              "ends": {
+                "on": "damaged"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-gloomwing",
+      "source": "homebrew:rk",
+      "tier": "assist",
+      "checked": false,
+      "name": "Gloomwing Warden",
+      "text": "A hovering warden of the dusk. Invented for the reader tests.",
+      "size": "medium",
+      "type": "undead",
+      "cr": 3,
+      "xp": 700,
+      "pb": 2,
+      "ac": 15,
+      "hp": 58,
+      "hover": true,
+      "speed": {
+        "walk": 20,
+        "fly": 40
+      },
+      "senses": {
+        "darkvision": 120
+      },
+      "abilities": {
+        "str": 10,
+        "dex": 16,
+        "con": 12,
+        "int": 11,
+        "wis": 14,
+        "cha": 15
+      },
+      "languages": [],
+      "resist": [],
+      "vulnerable": [
+        "radiant"
+      ],
+      "immune": [
+        "necrotic",
+        "poison"
+      ],
+      "conditionImmune": [
+        "charmed",
+        "frightened",
+        "exhaustion"
+      ],
+      "traits": [
+        {
+          "id": "shadow-parry",
+          "name": "Shadow Parry",
+          "text": "Turns a shot aside.",
+          "modifiers": [],
+          "reaction": {
+            "on": "hit",
+            "ac": 3,
+            "attack": "ranged"
+          }
+        },
+        {
+          "id": "bracing-stance",
+          "name": "Bracing Stance",
+          "text": "Hard to move.",
+          "modifiers": [
+            {
+              "on": "save",
+              "op": "advantage",
+              "scope": {
+                "ability": "str"
+              }
+            },
+            {
+              "on": "damage.taken",
+              "op": "add",
+              "value": -2,
+              "once": "turn"
+            },
+            {
+              "on": "ac",
+              "op": "min",
+              "value": 14
+            },
+            {
+              "on": "speed",
+              "op": "max",
+              "value": 40
+            },
+            {
+              "on": "initiative",
+              "op": "set",
+              "value": 10
+            },
+            {
+              "on": "attack.received",
+              "op": "crit",
+              "when": [
+                "target.unconscious"
+              ]
+            },
+            {
+              "on": "damage.dealt",
+              "op": "add",
+              "value": "1d4",
+              "types": [
+                "cold"
+              ],
+              "once": "turn",
+              "when": [
+                "attack.hit"
+              ]
+            },
+            {
+              "on": "check",
+              "op": "floor",
+              "value": 8,
+              "when": [
+                "check.proficient"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "strange-gifts",
+          "name": "Strange Gifts",
+          "text": "A little of everything.",
+          "modifiers": [
+            {
+              "on": "save.str",
+              "op": "autoFail"
+            },
+            {
+              "on": "save.con",
+              "op": "autoSucceed"
+            },
+            {
+              "on": "damage.taken",
+              "op": "resist",
+              "types": [
+                "cold"
+              ]
+            },
+            {
+              "on": "damage.taken",
+              "op": "vulnerable",
+              "types": [
+                "fire"
+              ]
+            },
+            {
+              "on": "damage.taken",
+              "op": "immune",
+              "types": [
+                "psychic"
+              ]
+            },
+            {
+              "on": "opportunity",
+              "op": "autoFail"
+            },
+            {
+              "on": "hp.max",
+              "op": "add",
+              "value": 10
+            },
+            {
+              "on": "carry",
+              "op": "set",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "id": "warding-light",
+          "name": "Warding Light",
+          "text": "A pale glow shields it.",
+          "modifiers": [
+            {
+              "on": "save.wis",
+              "op": "add",
+              "value": 2
+            },
+            {
+              "on": "save.int",
+              "op": "disadvantage"
+            },
+            {
+              "on": "save.cha",
+              "op": "add",
+              "value": 1
+            },
+            {
+              "on": "save.death",
+              "op": "advantage",
+              "uses": 1
+            },
+            {
+              "on": "concentration",
+              "op": "advantage"
+            },
+            {
+              "on": "d20",
+              "op": "add",
+              "value": "1d6",
+              "onFail": true,
+              "cost": "ward"
+            },
+            {
+              "on": "attack.received",
+              "op": "disadvantage",
+              "except": "source",
+              "when": [
+                "beyond5",
+                "target.seesSource"
+              ]
+            },
+            {
+              "on": "speed.fly",
+              "op": "set",
+              "value": 40
+            }
+          ]
+        },
+        {
+          "id": "borrowed-craft",
+          "name": "Borrowed Craft",
+          "text": "Casting numbers it never uses.",
+          "modifiers": [
+            {
+              "on": "spell.dc",
+              "op": "add",
+              "value": 1
+            },
+            {
+              "on": "spell.attack",
+              "op": "add",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": "legendary-actions",
+          "name": "Legendary Actions",
+          "text": "Acts between turns; the DM runs it.",
+          "modifiers": []
+        }
+      ],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name": "Multiattack",
+          "text": "Either two slashes, or a bolt then a slash.",
+          "multiattack": {
+            "or": [
+              [
+                {
+                  "action": "slash",
+                  "times": 2
+                }
+              ],
+              [
+                {
+                  "action": "gloom-bolt",
+                  "times": 1
+                },
+                {
+                  "action": "slash",
+                  "times": 1
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "id": "slash",
+          "name": "Spectral Slash",
+          "text": "Spectral Slash, invented for the reader's tests.",
+          "target": {
+            "creature": {
+              "reach": 5
+            }
+          },
+          "effects": [
+            {
+              "attack": "melee",
+              "kind": "weapon",
+              "bonus": 5,
+              "onHit": [
+                {
+                  "damage": "2d6+3",
+                  "type": "necrotic"
+                },
+                {
+                  "condition": "frightened",
+                  "ends": {
+                    "on": "save",
+                    "save": "wis",
+                    "at": "turnStart",
+                    "orDamaged": true
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "gloom-bolt",
+          "name": "Gloom Bolt",
+          "text": "A bolt of cold dark.",
+          "target": {
+            "creature": {
+              "range": [
+                30,
+                120
+              ]
+            }
+          },
+          "effects": [
+            {
+              "attack": "ranged",
+              "kind": "weapon",
+              "bonus": 5,
+              "onHit": [
+                {
+                  "damage": "3d6",
+                  "type": "cold",
+                  "onZero": [
+                    {
+                      "kill": true
+                    }
+                  ],
+                  "onKill": [
+                    {
+                      "remains": "dust"
+                    }
+                  ]
+                }
+              ],
+              "onMiss": [
+                {
+                  "condition": "invisible",
+                  "ends": {
+                    "on": "turnStart"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chain-dark",
+          "name": "Chain Dark",
+          "text": "Jumps between three foes.",
+          "target": {
+            "creature": {
+              "count": 3,
+              "within": 10,
+              "range": [
+                60,
+                60
+              ],
+              "repeat": true
+            }
+          },
+          "effects": [
+            {
+              "save": "dex",
+              "dc": 13,
+              "advantageIf": [
+                "target.fought"
+              ],
+              "onFail": [
+                {
+                  "damage": "2d6",
+                  "type": "necrotic"
+                }
+              ],
+              "onSuccess": [
+                {
+                  "modifier": {
+                    "on": "speed",
+                    "op": "add",
+                    "value": -10
+                  },
+                  "ends": {
+                    "on": "turnEnd"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "wail",
+          "name": "Wail",
+          "text": "A keening cone.",
+          "recharge": [
+            6,
+            6
+          ],
+          "target": {
+            "area": {
+              "shape": "cone",
+              "size": 30
+            }
+          },
+          "effects": [
+            {
+              "save": "wis",
+              "dc": 13,
+              "onFail": [
+                {
+                  "condition": "frightened",
+                  "ends": {
+                    "on": "damaged",
+                    "by": "source"
+                  }
+                },
+                {
+                  "damage": "1d8",
+                  "type": "psychic"
+                }
+              ],
+              "onSuccess": [
+                {
+                  "condition": "deafened"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dark-line",
+          "name": "Dark Line",
+          "text": "A line of dark.",
+          "target": {
+            "area": {
+              "shape": "line",
+              "size": 60,
+              "width": 10,
+              "exceptCaster": true,
+              "choose": 2
+            }
+          },
+          "effects": [
+            {
+              "damage": "3d6",
+              "type": "necrotic",
+              "times": 2
+            }
+          ]
+        },
+        {
+          "id": "pillar",
+          "name": "Pillar of Dusk",
+          "text": "A tall column.",
+          "target": {
+            "area": {
+              "shape": "cylinder",
+              "size": 10,
+              "height": 40,
+              "range": 60
+            }
+          },
+          "effects": [
+            {
+              "save": "con",
+              "dc": 13,
+              "half": true,
+              "onFail": [
+                {
+                  "damage": "2d8",
+                  "type": "cold"
+                },
+                {
+                  "damage": "1d6",
+                  "type": "necrotic"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chill",
+          "name": "Chill",
+          "text": "A cube of cold.",
+          "target": {
+            "area": {
+              "shape": "cube",
+              "size": 15,
+              "range": 30
+            }
+          },
+          "effects": [
+            {
+              "damage": "2d4",
+              "type": "cold"
+            }
+          ]
+        },
+        {
+          "id": "aura",
+          "name": "Dread Aura",
+          "text": "Dread rolls out.",
+          "target": {
+            "area": {
+              "shape": "emanation",
+              "size": 10
+            }
+          },
+          "effects": [
+            {
+              "save": "wis",
+              "dc": 13,
+              "onFail": [
+                {
+                  "condition": "frightened"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mend",
+          "name": "Draw Warmth",
+          "text": "Drinks in warmth.",
+          "time": "bonus",
+          "target": {
+            "self": true
+          },
+          "effects": [
+            {
+              "heal": "2d6",
+              "atLeast": 2
+            },
+            {
+              "tempHp": "1d8",
+              "atLeast": 1
+            },
+            {
+              "cure": [
+                "poisoned",
+                "deafened"
+              ]
+            },
+            {
+              "reveal": "target"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hb-rk-hollow-reaver",
+      "source": "homebrew:rk",
+      "tier": "manual",
+      "checked": false,
+      "name": "Hollow Reaver",
+      "text": "A huge flawed creature, written to show what the reader reports. Invented for the reader tests.",
+      "resist": [],
+      "vulnerable": [],
+      "immune": [],
+      "size": "huge",
+      "type": "hollow-kin",
+      "cr": 10,
+      "xp": 5900,
+      "pb": 4,
+      "ac": 17,
+      "hp": 148,
+      "speed": {
+        "fly": 30
+      },
+      "abilities": {
+        "str": 21,
+        "dex": 8,
+        "con": 19,
+        "int": 6,
+        "wis": 10,
+        "cha": 5
+      },
+      "traits": [
+        {
+          "id": "lair-presence",
+          "name": "Lair Presence",
+          "text": "Shapes its lair; the DM runs it.",
+          "modifiers": []
+        }
+      ],
+      "actions": [
+        {
+          "id": "spell-lash",
+          "name": "Spell Lash",
+          "text": "Flawed: a spell attack.",
+          "target": {
+            "creature": {
+              "reach": 10
+            }
+          },
+          "effects": [
+            {
+              "attack": "melee",
+              "kind": "spell",
+              "onHit": [
+                {
+                  "damage": "2d8",
+                  "type": "force"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "siphon",
+          "name": "Siphon",
+          "text": "Flawed: heals with a modifier.",
+          "target": {
+            "self": true
+          },
+          "effects": [
+            {
+              "heal": "1d8",
+              "addMod": true
+            },
+            {
+              "tempHp": "1d6",
+              "addMod": true
+            }
+          ]
+        },
+        {
+          "id": "blind-grip",
+          "name": "Blind Grip",
+          "text": "Flawed: no reach or range.",
+          "target": {
+            "creature": {}
+          },
+          "effects": [
+            {
+              "save": "str",
+              "dc": 17,
+              "onFail": [
+                {
+                  "damage": "3d8+5",
+                  "type": "bludgeoning"
+                },
+                {
+                  "condition": "grappled"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "dread-gaze",
+          "name": "Dread Gaze",
+          "text": "Flawed: the repeat save has no DC the engine reads.",
+          "target": {
+            "creature": {
+              "range": [
+                30,
+                30
+              ]
+            }
+          },
+          "effects": [
+            {
+              "save": "wis",
+              "dc": 16,
+              "onFail": [
+                {
+                  "condition": "frightened",
+                  "ends": {
+                    "on": "save",
+                    "save": "wis",
+                    "at": "turnEnd",
+                    "dc": 16
+                  }
+                },
+                {
+                  "condition": "stunned",
+                  "ends": {
+                    "on": "save",
+                    "save": "con",
+                    "at": "damaged"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "vanish",
+          "name": "Vanish",
+          "text": "Steps through the dark.",
+          "target": {
+            "self": true
+          },
+          "effects": [
+            {
+              "teleport": 30,
+              "see": true,
+              "blocked": [
+                {
+                  "damage": "2d6",
+                  "type": "force"
+                }
+              ]
+            },
+            {
+              "endConcentration": true
+            }
+          ]
+        },
+        {
+          "id": "quake",
+          "name": "Quake",
+          "text": "The ground drops away.",
+          "time": "bonus",
+          "target": {
+            "area": {
+              "shape": "sphere",
+              "size": 20
+            }
+          },
+          "effects": [
+            {
+              "fall": 20
+            },
+            {
+              "fall": "surface"
+            },
+            {
+              "set": "open"
+            },
+            {
+              "resource": "dread"
+            }
+          ]
+        },
+        {
+          "id": "rain",
+          "name": "Falling Stones",
+          "text": "Stones fall in several places.",
+          "target": {
+            "area": {
+              "shape": "cube",
+              "size": 10,
+              "range": 60,
+              "count": 3
+            }
+          },
+          "effects": [
+            {
+              "damage": "2d6",
+              "type": "bludgeoning"
+            }
+          ]
+        },
+        {
+          "id": "whisper",
+          "name": "Whisper",
+          "text": "Speaks into minds.",
+          "target": {
+            "self": true
+          },
+          "effects": [
+            {
+              "manual": "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
