@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { apply } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { apartAt, footprint, overlapAt } from "../src/space.js";
+import { coverOf } from "../src/sight.js";
 import { gridOf } from "../src/grid.js";
 import { squareRoom } from "./fixtures/square-room.js";
 
@@ -47,3 +48,20 @@ for (const grid of GRIDS) {
     });
   }
 }
+
+// W27: a rider standing between an attacker and its target is measured at its raised height (sight.js, coverOf), as the
+// attacker and the target are: between two creatures 10 ft up, a rider on a Large mount gives Half Cover; the same
+// creature on its own feet, at the floor, does not.
+test("hex: W27, a rider in the way gives cover at its raised height", () => {
+  const s = newGame(7);
+  for (const id of Object.keys(s.entities)) if (!["fighter", "wizard", "rogue"].includes(id)) delete s.entities[id];
+  for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+  const { fighter: a, wizard: t, rogue: r } = s.entities;
+  a.pos = { q: 0, r: 0, z: 10 }; t.pos = { q: 4, r: 0, z: 10 }; r.pos = { q: 2, r: 0, z: 0 };
+  const others = Object.values(s.entities);
+  assert.equal(coverOf(s, a, t, others), "none", "on its own feet it is below the line");
+  r.riding = { on: "horse", size: "large" };
+  assert.equal(coverOf(s, a, t, others), "half", "riding, it is on the line");
+  r.pos = { q: 2, r: 2, z: 0 };
+  assert.equal(coverOf(s, a, t, others), "none", "off the line, nothing");
+});
