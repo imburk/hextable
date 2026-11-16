@@ -445,13 +445,12 @@ That creature makes a Wisdom saving throw.
 On a failure:
   It takes 2d8 radiant damage.
 The emanation reaches out from the caster all round; it catches every creature in it except the caster; a wall between the area's origin and a creature keeps that creature out.
-The entry limits the area to Undead: of the creatures caught when it is cast, only those are affected. A creature of another type that enters the area later, or starts or ends its turn there, is affected all the same: the engine does not apply the limit to a zone, and says so to the DM (once for each creature in a round), who undoes it.
+The entry limits the area to Undead: of the creatures caught when it is cast, only those are affected, and a creature of another type that enters the area later, or starts or ends its turn there, is left alone.
 Saving throws are against the caster's spell save DC.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
 It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
-Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
-DM: Undoing what a zone does to a creature of another type than its `types`, when the engine tells the DM it went off on one.
 
 == hb-test-mire
 "Mire" (level 2 evocation, 120 feet, action, 1 hour).
