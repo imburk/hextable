@@ -92,12 +92,16 @@ test("a DM adds a lint-clean pack: the table keeps it, the game names it, the DM
   assert.equal(dd.data.monsters[0].id, WRAITH);
   assert.deepEqual(dm.receiver.state.packs, t.state.packs, "the DM's view of the game says which packs it needs");
   // A player: the list, and the filtered pack: id, name, version, the six lists. No monsters, no notes.
-  assert.deepEqual(player.last("packs").packs, d.packs);
+  const mine = hashOf(packForPlayer(EMBER()));
+  assert.notEqual(mine, hashOf(EMBER()));
+  assert.deepEqual(player.last("packs").packs, [{ ...d.packs[0], hash: mine }], "a player's list carries the hash of what they are sent");
   const p = player.last("packData");
   assert.deepEqual(Object.keys(p.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]);
   assert.deepEqual(p.data.spells, [spell("ember-folk", "cinder-lash")]);
   assert.equal(p.data.name, "The ember-folk pack");
-  assert.equal(p.hash, hashOf(EMBER()));
+  assert.equal(p.hash, mine);
+  assert.equal(hashOf(p.data), mine, "the hash is of the data they hold");
+  assert.equal(player.raw.some((x) => x.includes(hashOf(EMBER()))), false, "the whole pack's hash never reaches a player");
   assert.equal(player.raw.some((x) => x.includes(NAME) || x.includes(TEXT) || x.includes(NOTE) || x.includes(WRAITH)), false, "nothing of the monster or the notes reached the player");
   assert.deepEqual(PLAYER_PACK_KINDS, Object.keys(HOMEBREW_LOOKUPS).filter((k) => k !== "monsters").sort((a, b) => PLAYER_PACK_KINDS.indexOf(a) - PLAYER_PACK_KINDS.indexOf(b)), "a new kind of homebrew is not sent to players until it is chosen");
   assert.equal(player.receiver.state.packs, undefined, "a player's view has no packs");
@@ -780,7 +784,8 @@ test("M4: sync, sitting down and being let in carry only the list; the data come
   // On request: the member's own filtered form.
   player.say({ t: "packData", id: "ember-folk" });
   assert.equal(player.last("packData").data.monsters, undefined);
-  assert.equal(player.last("packData").hash, hashOf(EMBER(2)));
+  assert.equal(player.last("packData").hash, hashOf(packForPlayer(EMBER(2))));
+  assert.equal(dm.last("packData").hash, hashOf(EMBER(2)), "the DM keeps the full hash");
   dm.say({ t: "packData", id: "ember-folk" });
   assert.equal(dm.last("packData").data.monsters[0].id, WRAITH);
   player.say({ t: "packData", id: "nope" });

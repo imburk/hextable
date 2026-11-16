@@ -89,7 +89,7 @@ as an action: it is refused, and the server keeps `state.packs` in step with the
   (`hashOf`); `setPacks` through `apply`; and only then the record changes and the table is told. A refusal changes nothing and tells no one but the sender.
 - A refusal is `{t:"error", error, problems?, blockers?}`: `problems` are the linter's sentences (at most 20), `blockers` say where a
   pack is in use (`entities.m3 (Name): hb-ember-folk-quillwraith`). Removing a pack clears the DM's undo history, since an undo step could bring back a creature made from it.
-- What members are sent. `{t:"packs", packs:[{id, name, version, hash}]}` is only the list: it is sent to every member let in after a change, and
+- What members are sent. `{t:"packs", packs:[{id, name, version, hash}]}` is only the list (the DM's `hash` is the pack's own; everyone else's is the hash of the filtered data they are sent, so no one holds a fingerprint of what they are not sent): it is sent to every member let in after a change, and
   before the first `update` on sitting down, being let in, or `sync` (when the table has packs; a table with none sends none).
   On a change the DM's copy also has `changed: {op, id, version?}`. The data of a pack is `{t:"packData", id, version, hash, data}`: sent once
   to every member let in when a pack is added or updated, and otherwise only to a member who asks with `{t:"packData", id}` (a client keeps

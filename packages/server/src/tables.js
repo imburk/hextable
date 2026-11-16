@@ -368,12 +368,17 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // when a pack is added or updated, and otherwise only when that member asks (`{t:"packData", id}`; the client keeps what it has by hash).
   // The DM's `packData` is the whole pack; everyone else's is the id, name and version and the lists of PLAYER_PACK_KINDS (no monsters, no
   // `dmNotes`), built only from a pack that passed the check. Somebody not yet let in is sent nothing.
+  // What a player is sent of a pack is its filtered form, and the hash they are given is the hash of that (made once per stored pack), never
+  // the hash of the whole pack: a hash of content they are not sent would be a fingerprint of it. The DM's hash is the pack's own.
+  const filtered = new WeakMap();                 // a stored pack record -> { data, hash }
+  const playerPack = (p) => { let f = filtered.get(p); if (!f) { const data = packForPlayer(p.data); f = { data, hash: hashOf(data) }; filtered.set(p, f); } return f; };
+  const hashFor = (m, p) => (m.role === "dm" ? p.hash : playerPack(p).hash);
   const packsMessage = (t, m) => {
     if (!m.approved) return null;
     const dropped = m.role === "dm" && t.packsDropped?.length ? { dropped: t.packsDropped } : {};
-    return { t: "packs", packs: t.packs.map((p) => ({ id: p.id, name: p.data.pack.name, version: p.version, hash: p.hash })), ...dropped };
+    return { t: "packs", packs: t.packs.map((p) => ({ id: p.id, name: p.data.pack.name, version: p.version, hash: hashFor(m, p) })), ...dropped };
   };
-  const packDataMessage = (m, p) => ({ t: "packData", id: p.id, version: p.version, hash: p.hash, data: m.role === "dm" ? p.data : packForPlayer(p.data) });
+  const packDataMessage = (m, p) => ({ t: "packData", id: p.id, version: p.version, hash: hashFor(m, p), data: m.role === "dm" ? p.data : playerPack(p).data });
   const tellPacks = (t, changed) => {
     for (const m of t.members) {
       const msg = packsMessage(t, m);
