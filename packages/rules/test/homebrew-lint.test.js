@@ -64,8 +64,9 @@ test("an invented entry of each of the seven kinds passes strict mode, alone and
   // The other kinds are not homebrew.
   assert.match(lintEntry("classes", SRD.classes[0], { pack: P }).join(), /classes cannot be homebrew/);
   refused(lintPack({ ...EMBER, classes: [] }, { strict: true }), /"classes" cannot be homebrew/);
-  assert.throws(() => lintEntry("spells", spell()), /ctx\.pack/);
-  assert.throws(() => lintEntry("dragons", {}), /unknown kind/);
+  // Fix round 1 (L2): lintEntry never throws; a missing pack id or an unknown kind is a sentence, as the other refusals are.
+  refused(lintEntry("spells", spell()), /ctx\.pack/);
+  refused(lintEntry("dragons", {}), /unknown kind/);
 });
 
 // ---------- strict mode refusals (the spec's row H1) ----------

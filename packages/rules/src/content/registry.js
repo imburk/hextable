@@ -12,7 +12,7 @@
 // promise, and refuses a second, different overlay while one is installed (the same overlay again is a no-op).
 //
 // Pure: no I/O, no clock, no randomness. What `using` changes is a registry of derived lookups, never game state.
-import { budget, HOMEBREW_LIMITS, lintPack } from './schema.js';
+import { budget, HOMEBREW_LIMITS, lintPack, useSrdReference } from './schema.js';
 import { HOMEBREW_LOOKUPS, SRD_PACK_ID } from './index.js';
 
 export const HOMEBREW_KINDS = Object.keys(HOMEBREW_LOOKUPS);
@@ -33,6 +33,7 @@ function budgetHomebrew(raw) {
 // list, every id carries the pack's prefix (an SRD id is named as one), the source is `homebrew:<pack id>` and nothing
 // claims `checked: true`. The SRD ids are this module's own lookups (`HOMEBREW_LOOKUPS[kind][0]` is `CONTENT[kind]`).
 const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])) };
+useSrdReference(SRD_IDS);                      // lintPack and lintEntry then refuse the SRD's pack id, ids and names without being told
 function lintHomebrew(data) {
   try { return lintPack(data, { strict: true, srd: SRD_IDS }); } catch (err) { return [`pack: could not be checked (${err.message})`]; }
 }
