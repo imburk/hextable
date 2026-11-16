@@ -86,11 +86,16 @@ function withActions(s, e, foes, lim = {}) {
   const aim = (x) => {
     let best = null;
     const spots = x.p.area.shape === 'emanation' ? [null] : order.map((t) => t.pos);
+    const most = x.def.target.area.choose;
     for (const hex of spots) {
-      const caught = areaTargets(s, e, x.def, hex);
-      if (!caught || caught.some((t) => !hostile(t, e))) continue;
+      let caught = areaTargets(s, e, x.def, hex);
+      if (!caught) continue;
+      // An area that lets it choose (`choose`): it picks up to that many of the foes caught, the nearest first and then the most hurt (the
+      // order it strikes in), and no ally is hurt however many stand in it. Without `choose` every one caught is hit, so it aims where none is an ally.
+      if (most) caught = order.filter((t) => caught.includes(t) && up(t) && inFight(s, t.id)).slice(0, most);
+      else if (caught.some((t) => !hostile(t, e))) continue;
       const n = caught.filter((t) => up(t) && inFight(s, t.id)).length;
-      if (n && (!best || n > best.n)) best = { n, extra: hex ? { hex: { q: hex.q, r: hex.r, z: hex.z } } : {} };
+      if (n && (!best || n > best.n)) best = { n, extra: { ...(hex ? { hex: { q: hex.q, r: hex.r, z: hex.z } } : {}), ...(most ? { targets: caught.map((t) => t.id) } : {}) } };
     }
     return best;
   };
