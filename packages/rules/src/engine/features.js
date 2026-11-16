@@ -139,6 +139,14 @@ function abilityCheck(s, e, what, dimToo = false) {
   return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
     ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
+// A hand-typed character (no sheet: the four starters) lists what it carries in `gear`, and the engine cannot tell worn
+// from carried. If that lists armour with Disadvantage on Stealth, the DM is told on the check, to apply it if it is worn.
+function stealthGearNote(e, ev) {
+  if (e.sheet || e.tpl || e.stealthNoted || !Array.isArray(e.gear)) return;
+  const suit = e.gear.map((g) => CONTENT.armour[slug(g)]).find((a) => a?.stealth === 'disadvantage');
+  if (suit) e.stealthNoted = true;      // told once for the creature, for the whole game
+  if (suit) ev.push({ type: 'manual', actor: e.id, name: 'Stealth', partial: true, text: `${e.name}'s gear lists ${suit.name}, which gives Disadvantage on Dexterity (Stealth) checks while worn. The engine cannot tell worn from carried for a character with no sheet, so it rolled one die: if ${e.name} wears it, the DM rolls with Disadvantage.` });
+}
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const hasTool = (e, tool) => e.gear.some((g) => slug(g) === tool);
 const toolName = (tool) => (tool === 'thieves-tools' ? "Thieves' Tools" : tool.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' '));
@@ -354,6 +362,7 @@ export const handlers = {
     }
     const r = abilityCheck(s, e, { ability, skill });
     ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
+    if (skill === 'stealth') stealthGearNote(e, ev);
   },
   // The Search action: one Wisdom (Perception) check against everything hidden within 15 feet, and
   // against every enemy hiding where the searcher could see it but for its hiding (its Stealth total
@@ -383,6 +392,7 @@ export const handlers = {
     if (s.encounter && inFight(s, e.id)) { const time = actTime(e, 'hide', a); need(s, e, time); s.encounter.budget[time]--; }
     const r = abilityCheck(s, e, { skill: 'stealth' }), success = r.total >= HIDE_DC;
     ev.push({ type: 'check', id: e.id, ability: 'dex', skill: 'stealth', ...r, hide: true, success });
+    stealthGearNote(e, ev);
     if (!success) return;
     e.hiding = { dc: r.total };
     ev.push({ type: 'hid', id: e.id });

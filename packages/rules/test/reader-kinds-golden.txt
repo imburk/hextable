@@ -176,7 +176,7 @@ Action "Spectral Slash": an action. In a fight it spends the creature's action.
   On a hit:
     It takes 2d6+3 necrotic damage.
     It has the Frightened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
-      It makes a Wisdom saving throw at the start of each of its turns, and a success would end it; any damage it takes would also end it. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition.
+      It makes a Wisdom saving throw at the start of each of its turns, and a success would end it; any damage it takes would also end it. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine does not roll that save.
       The engine applies part of what Frightened does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 10 when it hits.
   The monster AI uses this action on its own turns: it makes the attack at the nearest foe it can reach (a melee attack before a ranged one).
