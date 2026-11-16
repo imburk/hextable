@@ -17,7 +17,7 @@ test("every spell's kinds, listed", (t) => {
     assert.ok(k.every((x) => SPELL_KINDS.includes(x)), def.id);
     assert.deepEqual(k, SPELL_KINDS.filter((x) => k.includes(x)), "in the fixed order");
     assert.deepEqual(SPELLS[def.id].kinds, k, "spellProfile carries them");
-    // WIP assert.ok(k.length >= 1, `${def.id}: every SRD spell has at least one kind (tag it by hand from its SRD text)`);
+    assert.ok(k.length >= 1, `${def.id}: every SRD spell has at least one kind (tag it by hand from its SRD text)`);
     if (def.kinds) tagged.push(def.id);
     (by[k.join("+")] ??= []).push(def.kinds ? `${def.id}*` : def.id);
   }
@@ -25,14 +25,14 @@ test("every spell's kinds, listed", (t) => {
   t.diagnostic(`* tagged by hand: ${tagged.length} of ${Object.keys(CONTENT.spells).length}`);
 });
 
-test("a spell that derives no kind carries its own tag", { todo: "WIP: tagging" }, () => {
+test("a spell that derives no kind carries its own tag", () => {
   for (const def of Object.values(CONTENT.spells)) {
     if (!derivedKinds(def).length) assert.ok(Array.isArray(def.kinds), `${def.id}: its steps say nothing of what it is for, so it needs \`kinds\``);
   }
 });
 
 test("spell kinds: what a reader would expect of the plain cases", () => {
-  const is = (id, kinds) => assert.deepEqual(spellKinds(CONTENT.spells[id]), kinds, id);
+  const is = (id, kinds, why = "") => assert.deepEqual(spellKinds(CONTENT.spells[id]), kinds, `${id} ${why}`);
   is("fireball", ["damage"]);
   is("cure-wounds", ["healing"]);
   is("healing-word", ["healing"]);
@@ -49,9 +49,19 @@ test("spell kinds: what a reader would expect of the plain cases", () => {
   is("thunderwave", ["damage", "control"]);
   is("hunters-mark", ["damage"]);
   is("dimension-door", ["utility"]);
+  // Tagged by hand from the SRD text (E12, amended).
+  is("wish", ["damage", "healing", "control", "utility"]);
+  is("mending", ["utility"]);
+  is("revivify", ["healing"]);
+  is("command", ["control"]);
+  is("spiritual-weapon", ["damage"]);
+  is("wall-of-fire", ["damage", "control"]);
+  is("conjure-celestial", ["damage", "healing"]);
+  is("vampiric-touch", ["damage", "healing"], "derives damage only: the healing is the DM's");
+  is("contact-other-plane", ["utility"], "derives damage, which falls on the caster");
 });
 
-test("the derivation is unchanged for an untagged spell; `wish` derives nothing", { todo: "WIP: tagging" }, () => {
+test("the derivation is unchanged for an untagged spell; `wish` derives nothing", () => {
   // The cases above derive their kinds from steps (none of them is tagged), so the derivation is what it was.
   for (const id of ["fireball", "cure-wounds", "hold-person", "bless", "ray-of-frost", "hunters-mark"]) {
     assert.equal(CONTENT.spells[id].kinds, undefined, `${id} is not tagged`);
@@ -90,5 +100,6 @@ test("the linter refuses a bad `kinds` and takes a good one", () => {
 
 test("every tag in the pack is a list the linter takes", () => {
   const spells = Object.values(CONTENT.spells).filter((d) => d.kinds);
+  assert.ok(spells.length >= 211, "the spells the steps cannot place, and a few where the steps tell only part");
   for (const def of spells) assert.deepEqual(lintPack({ pack: PACK, spells: [def] }).filter((p) => /kinds/.test(p)), [], def.id);
 });
