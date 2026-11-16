@@ -304,6 +304,8 @@ import { objectShown } from '../src/engine.js';
 
 const PAT = { role: 'player', userId: 'pat' };
 const OB = Object.fromEntries(PACK.objects.map((o) => [o.id, o]));
+// Read before lending: an entry that is already in the content table would be refused as a duplicate.
+const OSAY = Object.fromEntries(PACK.objects.map((o) => [o.id, say('object', o)]));
 const withObjects = (fn) => lend('objects', PACK.objects, fn);
 const GEAR = (g) => ({ ...fighter(), ...g });
 // A stone floor, the hero (a fighter owned by Pat) at `at`, the placed objects; no fight unless asked for.
@@ -335,7 +337,121 @@ test('objects: what each state blocks is what the reading says it blocks, for a 
     const blocks = gate.states[state].blocks;
     assert.equal(B.blocked('ground', a, b, 'move'), blocks.includes('move'), `${state}: movement`);
     assert.equal(B.blocked('ground', a, b, 'sight'), blocks.includes('sight'), `${state}: sight`);
-    const line = say('object', gate).split('\n').find((l) => l.startsWith(`  State "${state}"`));
+    const line = OSAY[gate.id].split('\n').find((l) => l.startsWith(`  State "${state}"`));
     assert.ok(line.includes(blocks.includes('move') && blocks.includes('sight') ? 'it stops both' : blocks.includes('move') ? 'nothing can walk across its line, but it can be seen across' : blocks.includes('sight') ? 'it can be walked across, but nothing can be seen across it' : 'it can be walked across and seen across'), `${state}: ${line}`);
   }
+}));
+
+test('objects: a use works only from its states, within reach, with its key and tool, and a failed check stops the rest', () => withObjects(() => {
+  const gate = OB['hb-rk-glasswork-gate'], here = { q: 0, r: 0 };
+  const play = (over = {}, o = {}) => stage([O('g', gate.id, here, { edge: 0, ...o })], over);
+  // From: a use in any other state is refused, and the refusal names the state.
+  let s = play();
+  const e1 = use(s, 'g', 'swing'); assert.equal(e1.ok, false); assert.match(e1.error, /is shut\./);
+  ok(use(s, 'g', 'nudge')); assert.equal(stateOf(s, 'g'), 'ajar');
+  ok(use(s, 'g', 'swing')); assert.equal(stateOf(s, 'g'), 'open');
+  // Outside a fight nothing is spent; a verb the entry does not list is refused.
+  assert.match(use(s, 'g', 'nope').error, /can't be used that way/);
+  // Reach: from far away the engine refuses.
+  s = stage([O('g', gate.id, { q: 6, r: 0 }, { edge: 0 })]);
+  assert.match(use(s, 'g', 'nudge').error, /too far/);
+  // A key: none set on the object, no lock; set, the user needs a gear item of that name.
+  s = play({}, { state: 'open' }); assert.match(use(s, 'g', 'seal').error, /has no lock/);
+  s = play({}, { state: 'open', key: 'Iron Key' }); assert.match(use(s, 'g', 'seal').error, /doesn't have the key/);
+  s = play({ gear: ['iron key'] }, { state: 'open', key: 'Iron Key' }); ok(use(s, 'g', 'seal')); assert.equal(stateOf(s, 'g'), 'shut');
+  // A tool: the check needs a gear item of the tool's name; with it the check is rolled against the use's DC, or the one the DM set.
+  s = play({}, { state: 'open' }); assert.match(use(s, 'g', 'crank').error, /needs .*Tinker/i);
+  const dcOf = (st, verb, o) => { const ev = ok(use(st, 'g', verb)).events.find((x) => x.type === 'check' && x.dc !== undefined); return ev; };
+  s = play({ gear: ['Tinkers Tools'] }, { state: 'open' }); assert.equal(dcOf(s, 'crank').dc, 12);
+  s = play({ gear: ['Tinkers Tools'] }, { state: 'open', dc: { crank: 25 } }); const hard = dcOf(s, 'crank'); assert.equal(hard.dc, 25);
+  assert.equal(stateOf(s, 'g'), hard.success ? 'grated' : 'open', 'a failed check changes nothing');
+  // A failed check changes nothing and runs nothing; a passing one goes on. Find a seed of each for the slam (Athletics DC 13).
+  const seen = new Set();
+  for (let seed = 1; seed < 60 && seen.size < 2; seed++) {
+    const st = play({ seed }), c = ok(use(st, 'g', 'slam')).events.find((x) => x.type === 'check');
+    seen.add(c.success);
+    assert.equal(stateOf(st, 'g'), c.success ? 'open' : 'shut', `seed ${seed}: the state follows the check`);
+    assert.equal(c.dc, 13);
+  }
+  assert.equal(seen.size, 2, 'both a pass and a fail were played');
+  // Time in a fight: the first free use is free, a second (or a slow one) takes the action.
+  s = stage([O('g', gate.id, here, { edge: 0 })], { fight: true });
+  const before = s.encounter.budget.action;
+  ok(use(s, 'g', 'nudge')); assert.equal(s.encounter.budget.action, before, 'the first free handling costs nothing');
+  ok(use(s, 'g', 'swing')); assert.equal(s.encounter.budget.action, before - 1, 'a second costs the action');
+  s = stage([O('g', gate.id, here, { edge: 0 })], { fight: true });
+  ok(use(s, 'g', 'slam')); assert.equal(s.encounter.budget.action, before - 1, 'an action use costs it');
+  // A state that would block movement under a creature is refused (a thing that fills its hex).
+  const brazier = OB['hb-rk-ember-brazier'];
+  s = stage([O('b', brazier.id, { q: 0, r: 0 })]);
+  assert.match(use(s, 'b', 'kindle').error, /standing where/);
+  assert.match(OSAY[brazier.id], /no creature can walk into it or stand in it/);
+  // A hidden state: a player may not use it, the DM may.
+  const wire = OB['hb-rk-whisper-tripwire'];
+  for (const [state, shown] of [['hidden', false], ['found', true]]) assert.equal(objectShown(stage([O('w', wire.id, { q: 1, r: 0 }, { state })]).map, stage([O('w', wire.id, { q: 1, r: 0 }, { state })]).map.objects[0]), shown, `${state}: a player is shown it only when it is not hidden`);
+  s = stage([O('w', wire.id, { q: 1, r: 0 }, { state: 'found' })], { gear: ["Thieves' Tools"] });
+  const cut = ok(use(s, 'w', 'cut')).events.find((x) => x.type === 'check'); assert.equal(cut.dc, 13); assert.equal(cut.tool, 'thieves-tools');
+}));
+
+const go = (s, to, who = PAT) => apply(s, { type: 'move', actor: 'hero', to }, who);
+const WIRE = OB['hb-rk-whisper-tripwire'];
+test('objects: triggers fire for who the reading says, once, end the walk, and use the DC the reading names', () => withObjects(() => {
+  // Enter: a party walker sets it off; the walk ends on its hex; the object goes to its state; the save and the damage follow.
+  const seen = new Set();
+  for (let seed = 1; seed < 40 && seen.size < 2; seed++) {
+    const s = stage([O('w', WIRE.id, { q: 3, r: 0 })], { seed }), r = ok(go(s, { q: 6, r: 0 }));
+    assert.deepEqual(s.entities.hero.pos, { q: 3, r: 0, z: 0 }, 'the walk ends where it was set off');
+    assert.equal(stateOf(s, 'w'), 'sprung');
+    const save = r.events.find((e) => e.type === 'save'), dmg = r.events.find((e) => e.type === 'damage');
+    assert.deepEqual([save.abil, save.dc], ['dex', 13], 'the DC the entry lists');
+    assert.equal(dmg.dtype, 'piercing'); assert.ok(dmg.dice.length === 2 && dmg.dice.every((d) => d.sides === 6));
+    assert.equal(dmg.amount, save.success ? Math.floor(dmg.dice[0].value / 1 + dmg.dice[1].value) / 2 | 0 : dmg.dice[0].value + dmg.dice[1].value, 'half on a success, all on a failure');
+    seen.add(save.success);
+  }
+  assert.equal(seen.size, 2);
+  // The DM's own DC where it is placed wins; with none in the entry either, 10.
+  const dcOf = (s) => ok(go(s, { q: 3, r: 0 })).events.find((e) => e.type === 'save').dc;
+  assert.equal(dcOf(stage([O('w', WIRE.id, { q: 3, r: 0 }, { dc: { save: 18 } })])), 18);
+  const bare = { ...WIRE, id: 'hb-rk-bare-wire', dc: { find: 14 } };
+  lend('objects', [bare], () => assert.equal(dcOf(stage([{ ...O('w', WIRE.id, { q: 3, r: 0 }), def: bare.id }])), 10));
+  // Who: a party-only trigger ignores a creature of another side; a spent or unlisted state does nothing.
+  // The engine's own monsters will not step onto a trap, so who-sets-it-off is played with a trigger that fires when a creature comes within 10 feet.
+  const near = (who) => ({ ...WIRE, id: who ? 'hb-rk-near-party' : 'hb-rk-near-any', triggers: [{ on: 'near', feet: 10, from: ['hidden'], to: 'sprung', ...(who ? { who: 'party' } : {}), effects: [{ damage: '1d4', type: 'piercing' }] }] });
+  for (const who of [true, false]) lend('objects', [near(who)], () => {
+    const s0 = stage([{ ...O('w', WIRE.id, { q: 3, r: 0 }), def: near(who).id }], { foes: [['g', { q: 6, r: 0 }]] });
+    const gob = Object.keys(s0.entities).find((id) => id !== 'hero');
+    const walk = ok(apply(s0, { type: 'move', actor: gob, to: { q: 4, r: 0 } }, DM));
+    assert.equal(walk.events.some((e) => e.type === 'triggered'), !who, `a creature of another side sets off ${who ? 'a party-only' : 'an unrestricted'} trigger: ${!who}`);
+    const s1 = stage([{ ...O('w', WIRE.id, { q: 3, r: 0 }), def: near(who).id }]);
+    assert.ok(ok(go(s1, { q: 1, r: 0 })).events.some((e) => e.type === 'triggered'), 'a party walker sets off both');
+  });
+  let s;
+  s = stage([O('w', WIRE.id, { q: 3, r: 0 }, { state: 'spent' })]);
+  assert.ok(!ok(go(s, { q: 3, r: 0 })).events.some((e) => e.type === 'triggered'));
+  s = stage([O('w', WIRE.id, { q: 3, r: 0 }, { state: 'found' })]);
+  assert.ok(ok(go(s, { q: 3, r: 0 })).events.some((e) => e.type === 'triggered'), 'a listed state');
+  const text = OSAY[WIRE.id];
+  assert.match(text, /party/); assert.match(text, /13/);
+}));
+
+test('objects: a trigger that names an area hits every living creature within it, the first matching trigger wins, and shared dice are shared', () => withObjects(() => {
+  // Near (10 feet) from "sprung", area 15: the hero and a goblin beside the wire are both attacked; the object goes to "spent".
+  const foe = [['g', { q: 5, r: 0 }]];
+  let s = stage([O('w', WIRE.id, { q: 4, r: 0 }, { state: 'sprung' })], { foes: foe });
+  const r = ok(go(s, { q: 6, r: 0 }));
+  const targets = r.events.filter((e) => e.type === 'attack').map((e) => e.target ?? e.defender).sort();
+  assert.equal(stateOf(s, 'w'), 'spent');
+  assert.ok(targets.length === 2, `two targets in the area: ${JSON.stringify(r.events.filter((e) => e.type === 'attack'))}`);
+  // A creature out of the area is untouched.
+  s = stage([O('w', WIRE.id, { q: 4, r: 0 }, { state: 'sprung' })], { foes: [['g', { q: 8, r: 0 }]] });
+  assert.equal(ok(go(s, { q: 6, r: 0 })).events.filter((e) => e.type === 'attack').length, 1);
+  // Plain damage with several targets: one roll, shared.
+  const share = { ...WIRE, id: 'hb-rk-share', triggers: [{ on: 'enter', from: ['hidden'], to: 'sprung', area: 20, effects: [{ damage: '4d8', type: 'fire' }] }] };
+  lend('objects', [share], () => {
+    const st = stage([{ ...O('w', WIRE.id, { q: 3, r: 0 }), def: share.id }], { foes: [['g', { q: 4, r: 0 }], ['h', { q: 2, r: 1 }]] });
+    const d = ok(go(st, { q: 3, r: 0 })).events.filter((e) => e.type === 'damage');
+    assert.equal(d.length, 3);
+    assert.ok(d.every((x) => JSON.stringify(x.dice) === JSON.stringify(d[0].dice)), 'the same dice for each');
+  });
+  assert.match(readEntry('object', { ...WIRE, id: 'hb-rk-share', triggers: [{ on: 'enter', from: ['hidden'], to: 'sprung', area: 20, effects: [{ damage: '4d8', type: 'fire' }] }] }).lines.join('\n'), /share|same roll|one roll/i);
 }));
