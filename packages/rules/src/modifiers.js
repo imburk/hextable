@@ -143,6 +143,21 @@ function inScope(m, sit) {
   return true;
 }
 
+// The armour a built character wears, from its sheet: the suit named on it, or a worn magic suit's base (a magic suit is
+// worn only when equipped and, if it needs it, attuned). A creature in a form wears none (it melds into the form), and a
+// record with no sheet (a monster, a hand-typed starter) is not known to wear anything: the engine does not guess.
+export function armourWorn(e) {
+  if (!e?.sheet || e.form) return null;
+  // (derive.js has the same rule as itemBase; it cannot be imported here without a new import cycle.)
+  for (const x of Array.isArray(e.sheet.items) ? e.sheet.items : []) {
+    const def = x && typeof x === 'object' ? CONTENT.items[x.item] : null;
+    if (def?.wear !== 'armour' || x.equipped !== true || (def.attune && x.attuned !== true)) continue;
+    const want = def.base?.armour, pool = CONTENT.armour, ok = (id) => Object.hasOwn(pool, id) && (want === 'any' ? pool[id].category !== 'shield' : Array.isArray(want) && want.includes(id));
+    return x.base !== undefined ? (ok(x.base) ? pool[x.base] : null) : Array.isArray(want) && want.length === 1 ? pool[want[0]] : null;
+  }
+  return e.sheet.armour ? CONTENT.armour[e.sheet.armour] ?? null : null;
+}
+
 // Everything that applies to creature `e` at `hook` in this situation, added up:
 //   { add, set, advantage: [reasons], disadvantage: [reasons], autoFail, autoSucceed, crit,
 //     resist, vulnerable, immune,   (the last three: true for all damage, or a list of types)
@@ -158,6 +173,8 @@ function inScope(m, sit) {
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
     resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null };
+  // SRD "Armor": if the Armor table shows Disadvantage in the Stealth column, the wearer has Disadvantage on Dexterity (Stealth) checks.
+  if (hook === 'check' && sit.skill === 'stealth') { const suit = armourWorn(e); if (suit?.stealth === 'disadvantage') out.disadvantage.push(suit.name); }
   const once = new Set();
   for (const src of sources(s, e)) {
     if (src.against && sit.target?.id !== src.against) continue;

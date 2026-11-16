@@ -121,7 +121,7 @@ test('a spell for a Reaction does nothing until the player sets its instruction:
 });
 
 // ---------- a repeated save with no DC ----------
-test('a repeated save with no DC anywhere: the engine tells the DM, and still rolls the save, which cannot succeed; the reading says both', () => {
+test('a repeated save with no DC anywhere: the engine tells the DM and does not roll the save at all (#434); the reading says so', () => {
   const { s, F, M } = scene();
   const grip = { id: 'grip', name: 'Grip', target: { creature: { reach: 5 } }, effects: [{ attack: 'melee', kind: 'weapon', bonus: 40, onHit: [{ condition: 'restrained', ends: { on: 'save', save: 'str', at: 'turnStart' } }] }] };
   M.actions.push(grip);
@@ -132,13 +132,13 @@ test('a repeated save with no DC anywhere: the engine tells the DM, and still ro
   assert.ok(told.events.some((e) => e.type === 'manual' && /has no DC entered, so the engine does not roll it\. The DM ends it/.test(e.text)));
   const saves = [];
   for (let i = 0; i < 12 && saves.length < 2; i++) { const r = apply(s, { type: 'endTurn', actor: current(s) }, DM); saves.push(...r.events.filter((e) => e.type === 'save')); }
-  // The save at the start of its turn is rolled with no DC to meet: it is shown as a failure, whatever the bonus, and the condition stays.
-  assert.ok(saves.length >= 1 && saves.every((e) => e.success === false && e.dc === undefined), JSON.stringify(saves));
+  // No save is rolled at the start of its turn (it was once rolled with no DC to meet, shown as a failure every time); the condition stays.
+  assert.deepEqual(saves, []);
   assert.ok(F.cond.restrained, 'it is still Restrained');
   const mon = { id: 'hb-truth-grip', name: 'Gripper', source: 'homebrew:truth', size: 'small', type: 'beast', cr: 1, xp: 200, pb: 2, ac: 12, hp: 20, speed: { walk: 30 }, abilities: { str: 10, dex: 10, con: 10, int: 2, wis: 10, cha: 4 }, resist: [], vulnerable: [], immune: [], traits: [], actions: [grip], tier: 'auto', checked: false, text: 'x' };
   const r = readEntry('monster', mon, { strict: false });
-  assert.ok(has(r, /no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it\. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition/), r.lines.join('\n'));
-  assert.ok(!has(r, /does not roll it/));
+  assert.ok(has(r, /no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it\. The engine does not roll that save\./), r.lines.join('\n'));
+  assert.ok(!has(r, /shows a failure every time/));
 });
 
 test('the nine SRD monsters whose save repeats once carry a manual step, and the reading promises no automatic save for them', () => {
