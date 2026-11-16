@@ -1973,21 +1973,26 @@ is marked **new rule**.
   Points, Temporary Hit Points, ending conditions or curses and bringing back the dead (as the derivation treats Lesser
   Restoration); control for what hinders, moves, binds or shuts out a creature against its will; utility for the rest,
   and for what helps a willing creature. A spell with several uses carries each (Wish: all four, because it can duplicate
-  any spell). The test `spell-kinds.test.js` prints every spell's kinds, marks the hand-tagged ones with `*`, and fails if
+  any spell). Summons (fix round 1 of #378): a creature that fights for the caster is damage (Giant Insect, Summon
+  Dragon, Animate Objects, Animate Dead, Create Undead), one that is ridden is utility too (Find Steed), one that cannot
+  attack or whose acts the text leaves to the DM is utility (Find Familiar, Phantom Steed, Unseen Servant, Planar Ally,
+  Gate, Simulacrum). The test `spell-kinds.test.js` prints every spell's kinds, marks the hand-tagged ones with `*`, and fails if
   any SRD spell has no kind.
 - **Kind not known.** No SRD spell has an empty `sp.kinds` any more. A homebrew spell with only `manual` steps and no
   `kinds` still has none (DEBT W35), so the client's "kind not known" stays. `npm run content` does not count untagged
   spells yet (its script was not in this change's files).
-- **B1 (re-review of #373, L1).** `resolve.js`: `sensesFor(s, t, e)` is `seesFor` or a party reactor whose own Blindsight
-  or Truesight finds a foe that is only hiding (not DM-hidden, not somewhere unrevealed, and one the party would know of
-  once it stopped hiding); `findFor` makes it stop hiding (`unhidden`, `found`, by the reactor) before the reaction is
-  offered or taken. Used for the Opportunity Attack (the walk), Counterspell and Hellish Rebuke (`reactAgainst`) and
-  Uncanny Dodge (`reactToHit`). Against main and against #373: a hiding foe sensed this way is reacted to again (as on
-  main), and the party is now told first (main reacted and found it only after the action, #373 did not react). A DM-hidden foe, or one
-  in an unrevealed place, gets no reaction whatever the senses (#373's rule, kept). Foes' reactions are unchanged. Under
-  `ask` the question comes before the reveal is kept (DEBT W34). Twin runs in `reactions-senses.test.js`.
+- **B1 (re-review of #373, L1; as changed by fix round 1 of #378).** `resolve.js`: `sensesFor(s, t, e)` is `seesFor` or a
+  party reactor whose own Blindsight or Truesight sees a foe that is only hiding (not DM-hidden, not somewhere unrevealed,
+  and one the party would know of once it stopped hiding, read from a copy as partyView reads it). Such a reaction may be
+  offered or asked (the question has no `by`); `findFor` makes the foe stop hiding (`unhidden`, `found`, by the reactor)
+  only when the reaction is taken, just before it, and marks the action's earlier events naming it `unseen`. The walk, and
+  a reaction in a fight, drop those marks when the end of the action would have found the foe anyway (`unfind`, the
+  `watch` rule). So `never` and a declined question send the same, and a taken one sends nothing earlier that `never`
+  would not. Used for the Opportunity Attack, Counterspell and Hellish Rebuke (`reactAgainst`) and Uncanny Dodge. A
+  DM-hidden foe, or one in an unrevealed place, gets no reaction whatever the senses. Foes' reactions are unchanged.
+  What is left is DEBT W34 and W36. Twin runs in `reactions-senses.test.js`.
 - **B2 (L2).** The hit question (Shield, Uncanny Dodge, Deflect Attacks) names the attack only when it names the attacker.
 - **B3 (L3).** Retaliation is left ungated (the SRD gives it no sight clause): DEBT W33.
 - **Part C.** W24 (the monster AI ends the turn of a steered mount on a turn of its own and of a creature at 0 in its own
   turn), W26 (a rider grown past its mount is set down), W27 (a rider in the way gives cover at its raised height) are
-  fixed; W25 (Flyby) is left: seven SRD creatures have it, and it needs the walk to know a creature flies out.
+  fixed (W26 also sets a Large rider down on a nearer cell than before); W25 (Flyby) is left: seven SRD creatures have it, and it needs the walk to know a creature flies out.
