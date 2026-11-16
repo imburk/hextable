@@ -282,7 +282,7 @@ test('the reading says what the engine hands to the DM', () => {
   const r1 = dm(FIXTURES.find((f) => f.id === 'hb-test-self-cube'));
   has(r1, /of the creatures caught, only those are affected/); assert.equal(r1.doesNot.length, 0);
   const r1z = dm(FIXTURES.find((f) => f.id === 'hb-test-turning-ring'));
-  has(r1z, /does not apply the limit to a zone/); assert.ok(r1z.doesNot.length);
+  has(r1z, /does not apply the limit to a zone, and says so to the DM/); assert.ok(r1z.doesNot.length);
   // A line with a range, ten cubes: no layout, every step to the DM.
   for (const id of ['hb-test-far-line', 'hb-test-ten-cubes']) { const r = dm(FIXTURES.find((f) => f.id === id)); has(r, /cannot lay out this area/); }
   // An instant spell made lasting by one step's ending (here, damage) keeps only what ends: the engine says so for the rest.

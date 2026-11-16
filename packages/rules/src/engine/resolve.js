@@ -18,7 +18,7 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { aloft, below, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 
@@ -39,6 +39,7 @@ export function fall(s, t, feet, ev) {
   if (feet === 'surface') {
     const said = (text, manual) => ev.push(manual ? { type: 'manual', actor: null, name: 'Falling', partial: true, text } : { type: 'note', id: t.id, text });
     if (ground(s.map, t.pos)) return said(`${t.name} is standing on a surface, so it does not fall`);
+    if (aloft(s, t) && !t.dead) return said(`${t.name} is flying or hovering by its own Speed, so by the SRD's Flying rule it does not fall: a flying creature falls only if it has the Incapacitated or Prone condition or its Fly Speed is reduced to 0, unless it can hover. The engine leaves ${t.name} where it is; if the effect should bring it down, the DM moves it down and works out the fall (1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt).`, true);
     if (t.riding || t.rider) return said(`${t.name} is to fall to the surface below, but it is riding or being ridden, and the engine would part the pair. The DM moves ${t.name} down and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.`, true);
     const sf = under(s.map, t.pos);
     if (!sf) return said(`${t.name} is to fall to the surface below, but the engine finds no surface under it. The DM places ${t.name} and works out the fall.`, true);
@@ -1754,5 +1755,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

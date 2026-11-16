@@ -109,7 +109,7 @@ One creature within 60 feet has the Poisoned condition.
 It gets -2 to its Armor Class.
   Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
 It has the Deafened condition.
-  It ends when it takes damage.
+  It ends when it takes damage. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
   The engine applies part of what Deafened does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
 It is instant, but what its steps put on creatures stays until its own ending, as said above; a step that names no ending is the DM's to end.
@@ -444,13 +444,13 @@ That creature makes a Wisdom saving throw.
 On a failure:
   It takes 2d8 radiant damage.
 The emanation reaches out from the caster all round; it catches every creature in it except the caster; a wall between the area's origin and a creature keeps that creature out.
-The entry limits the area to Undead: of the creatures caught when it is cast, only those are affected. A creature that enters the area later, or starts or ends its turn there, is affected whatever its type: the engine does not apply the limit to a zone. The DM leaves out the others.
+The entry limits the area to Undead: of the creatures caught when it is cast, only those are affected. A creature of another type that enters the area later, or starts or ends its turn there, is affected all the same: the engine does not apply the limit to a zone, and says so to the DM (once for each creature in a round), who undoes it.
 Saving throws are against the caster's spell save DC.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
 It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
 Tier: auto, but the engine hands the parts listed for the DM to the DM.
 Not checked against any rulebook.
-DM: Leaving out the creatures of other types in the area when they enter it or start or end a turn there: the engine applies a spell area's `types` only to those caught when it is cast.
+DM: Undoing what a zone does to a creature of another type than its `types`, when the engine tells the DM it went off on one.
 
 == hb-test-mire
 Mire (level 2 evocation, 120 feet, action, 1 hour).

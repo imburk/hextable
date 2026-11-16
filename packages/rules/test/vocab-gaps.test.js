@@ -240,3 +240,37 @@ test("fall \"surface\": undo, redo and replay are exact", () => {
   s.entities[goblin].pos = { ...s.entities[goblin].pos, z: 40 };
   exact(s, [{ type: "cast", actor: "wizard", spell: DROP.id, target: goblin }]);
 });
+
+// ---------- fix round 1 ----------
+const WARD = define(spell("undead-ward", { level: 3, range: "self", duration: "1 minute", concentration: true, target: { area: { shape: "emanation", size: 15, types: ["undead"] } },
+  zone: { on: ["turnEnd"] }, effects: [{ save: "wis", onFail: [{ damage: "2d8", type: "radiant" }] }] }));
+
+test("a zone limited by `types` that goes off on a creature of another type tells the DM, once for each creature in a round", () => {
+  const { s, ids: [skel, goblin] } = table([WARD.id], [["skeleton", { q: 2, r: 0 }], ["goblin-warrior", { q: 2, r: 1 }]]);
+  const r = apply(s, { type: "cast", actor: "wizard", spell: WARD.id }, DM);
+  assert.ok(r.ok, r.error);
+  const notes = [];
+  for (let i = 0; i < 40 && s.encounter?.round < 3; i++) {
+    const rr = apply(s, { type: "endTurn", actor: current(s) }, DM);
+    assert.ok(rr.ok, rr.error);
+    for (const e of rr.events) if (e.type === "manual" && /affects only undead/.test(e.text)) notes.push([s.encounter?.round, e.text]);
+  }
+  assert.ok(notes.length >= 1, "the DM was told");
+  assert.ok(notes.every(([, t]) => /Goblin Warrior/.test(t) && !/Skeleton/.test(t)), "only for the goblin");
+  assert.equal(new Set(notes.map(([r]) => r)).size, notes.length, "once a round");
+  void skel; void goblin;
+});
+
+test("fall \"surface\": a creature flying by its own Speed is left to the DM, one made Prone first falls", () => {
+  const { s, ids: [goblin] } = table([DROP.id], [["goblin-warrior", { q: 2, r: 0 }]]);
+  const g = s.entities[goblin];
+  g.pos = { ...g.pos, z: 40 }; g.speeds = { ...(g.speeds ?? {}), fly: 30 };
+  const before = json(g.pos), r = apply(s, { type: "cast", actor: "wizard", spell: DROP.id, target: goblin }, DM);
+  assert.ok(r.ok, r.error);
+  assert.equal(json(g.pos), before, "it stays up");
+  assert.ok(r.events.some((e) => e.type === "manual" && /does not fall/.test(e.text)));
+  assert.ok(!r.events.some((e) => e.type === "fell"));
+  const t2 = table([DROP.id], [["goblin-warrior", { q: 2, r: 0 }]]), h = t2.s.entities[t2.ids[0]];
+  h.pos = { ...h.pos, z: 40 }; h.speeds = { fly: 30 }; h.cond.prone = {};
+  assert.ok(apply(t2.s, { type: "cast", actor: "wizard", spell: DROP.id, target: t2.ids[0] }, DM).events.some((e) => e.type === "fell"), "Prone: it falls");
+});

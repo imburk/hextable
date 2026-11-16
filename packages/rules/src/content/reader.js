@@ -441,8 +441,8 @@ class Reading {
         const only = ts.length ? list(ts.map(cap1), 'or') : 'some creature types';
         if (d.zone === undefined) this.line(`The entry limits the area to ${only}: of the creatures caught, only those are affected.`);
         else {
-          this.line(`The entry limits the area to ${only}: of the creatures caught when it is cast, only those are affected. A creature that enters the area later, or starts or ends its turn there, is affected whatever its type: the engine does not apply the limit to a zone. The DM leaves out the others.`);
-          this.dm('Leaving out the creatures of other types in the area when they enter it or start or end a turn there: the engine applies a spell area\'s `types` only to those caught when it is cast.');
+          this.line(`The entry limits the area to ${only}: of the creatures caught when it is cast, only those are affected. A creature of another type that enters the area later, or starts or ends its turn there, is affected all the same: the engine does not apply the limit to a zone, and says so to the DM (once for each creature in a round), who undoes it.`);
+          this.dm('Undoing what a zone does to a creature of another type than its `types`, when the engine tells the DM it went off on one.');
         }
       }
       if (d.zone === undefined && this.damageOutside()) this.line('Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.');
@@ -677,6 +677,7 @@ class Reading {
       text = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}, against the caster's spell save DC; a success ends it${ends.orDamaged === true ? '. Any damage it takes also ends it' : ''}${this.fx === 'spell' ? '. It also ends with the spell' : ''}.`;
     } else {
       text = `It ends when it takes damage${ends.by === 'source' ? ' from the caster or the caster\'s side' : ''}${this.fx === 'spell' ? ', or with the spell' : ''}.`;
+      if (this.fx === 'bound') text += ' Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.';
     }
     return text;
   }
