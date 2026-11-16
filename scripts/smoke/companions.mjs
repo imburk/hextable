@@ -532,8 +532,10 @@ export async function screensTable(browser, url) {
         const v = await phone.$$eval('#cc-chooser [data-cc-pick^="variant|"]', (b) => b[0].dataset.ccPick);
         await phone.click(`#cc-chooser [data-cc-pick="${v}"]`);
         const spots = await near(3); await tapHex(spots[spots.length - 1]);
+        await phone.evaluate(() => { window.__sent = []; const h = window.hextable, a = h.act; h.act = (x) => { window.__sent.push(JSON.stringify(x)); return a(x); }; });
+        const pre = await phone.evaluate(() => document.getElementById('cc-chooser').innerText.replace(/\n/g, ' | '));
         await phone.tap('#cc-chooser [data-cc-cast="picks"]');
-        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(() => { throw new Error('the dragon was not made'); });
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(async () => { throw new Error('the dragon was not made DBG ' + JSON.stringify({ spots, last: spots[spots.length - 1], pre, post: await phone.evaluate(() => document.getElementById('cc-chooser').innerText.replace(/\n/g, ' | ') + ' hidden=' + document.getElementById('cc-chooser').hidden), sent: await phone.evaluate(() => window.__sent), toast: await toastText(phone) })); });
         await host.evaluate(async (v) => {
           const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map), c = h.state.entities[v];
           for (const x of G.range(c.pos, 3)) if (G.dist(c.pos, x) === 2 && apply(structuredClone({ ...h.state, timeline: [] }), { type: 'spawn', monster: 'bandit', at: x }, { role: 'dm', userId: 'dm' }).ok) { h.act({ type: 'spawn', monster: 'bandit', at: x }); break; }
