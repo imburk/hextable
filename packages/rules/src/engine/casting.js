@@ -243,7 +243,7 @@ function evokerFor(e, sp, a, slot, via, targets) {
 // tells the DM what to add, with the numbers the block would be baked with (resolve.js, `summon`). Returns
 // { count } then. A companion still can't cast one and the cap still holds: neither depends on the picks.
 // Any other value (null, a string, an array, an object with a key it does not take or no spaces) is refused.
-function summonFor(s, e, sp, a, slot, range, ctx) {
+function summonFor(s, e, sp, a, slot, range, ctx, fc) {
   const step = sp.def.effects.find((x) => 'summon' in x);
   if (!step) { a.summon === undefined || fail(`${sp.name} summons nothing.`); return null; }
   const p = a.summon;
@@ -264,7 +264,14 @@ function summonFor(s, e, sp, a, slot, range, ctx) {
   const out = {};
   if (step.variants) { step.variants.includes(p.variant) || fail(`Choose what ${sp.name} summons: ${step.variants.join(', ')}.`); out.variant = p.variant; }
   else p.variant === undefined || fail(`${sp.name} has no choice of that kind.`);
-  if (step.types) { step.types.includes(p.type) || fail(`Choose its creature type: ${step.types.join(', ')}.`); out.type = p.type; }
+  if (step.types) {
+    // `freeCast.types` (Wild Companion: Fey; docs/specs/companions.md, C9b) narrows the step's own for a cast through the feature;
+    // a list of one is the default.
+    const pool = fc?.types ? step.types.filter((x) => fc.types.includes(x)) : step.types;
+    pool.length > 0 || fail(`${sp.name} can't summon a creature of a type that feature allows.`);
+    const type = p.type === undefined && fc?.types && pool.length === 1 ? pool[0] : p.type;
+    pool.includes(type) || fail(`Choose its creature type: ${pool.join(', ')}.`); out.type = type;
+  }
   else p.type === undefined || fail(`${sp.name} has no choice of creature type.`);
   if (step.forms !== undefined) {
     const m = typeof p.form === 'string' && Object.hasOwn(CONTENT.monsters, p.form) ? CONTENT.monsters[p.form] : null;
@@ -498,7 +505,7 @@ function castSpell(s, a, ctx, ev, item) {
     const tpStep = sp.teleport ? sp.def.effects.find((x) => 'teleport' in x) : null;
     const tpTo = tpStep && a.hex !== undefined ? teleportSpot(s, e, tpStep, a.hex, sp.name, ctx.role !== 'dm') : null;
     // A summon names its choices and a space for each creature (`a.summon`), checked now, before anything is spent.
-    const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx);
+    const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx, via?.freeCast);
     const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);
     const repel = repelFor(e, sp, a);
 

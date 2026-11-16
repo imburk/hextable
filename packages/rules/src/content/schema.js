@@ -1158,6 +1158,7 @@ const FREE_CAST_FLAGS = ['atWill', 'self', 'dark', 'sureSave', 'maxTemp'];
 // And (#414, docs/specs/companions.md, amendment C9b), each optional and only on a freeCast of named spells: `forms` (extra
 // pack monsters its caster may choose for a summon of forms), plus the keys below as they are built.
 const FREE_CAST_LISTS = {
+  types: (v) => Array.isArray(v) && v.length >= 1 && v.length <= CREATURE_TYPES.length && v.every((x) => CREATURE_TYPES.includes(x)) && new Set(v).size === v.length,
   forms: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((id) => typeof id === 'string' && ID.test(id)) && new Set(v).size === v.length,
 };
 const validFreeCast = (x) => !!x && typeof x === 'object' && !Array.isArray(x) && ((Object.keys(x).length === 2 && ID.test(x.list ?? '') && isInt(x.maxLevel) && x.maxLevel >= 1 && x.maxLevel <= 9)
@@ -1477,6 +1478,7 @@ function lintPackCore(doc, opts) {
       if (!fc?.spells) continue;
       const steps = [];
       for (const id of fc.spells) walkSteps(spells.find((x) => x.id === id)?.effects, (st) => { if (st && typeof st === 'object' && 'summon' in st) steps.push(st); });
+      if (fc.types !== undefined && !steps.some((st) => st.types !== undefined && fc.types.some((x) => st.types.includes(x)))) say('a freeCast with `types` needs a spell with a summon step that offers one of them');
       if (fc.forms !== undefined) {
         if (!steps.some((st) => st.forms !== undefined)) say('a freeCast with `forms` needs a spell with a summon step of forms');
         if (summons !== undefined) for (const id of fc.forms) if (!beasts.has(id)) say(`a freeCast form is not a pack monster: "${id}"`);
@@ -2336,7 +2338,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   increase: { from: 's[]', points: 'i', max: 'i' },
   proficiencies: { n: 'i' },
   spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
-  freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]' },
+  freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]', types: 's[]' },
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },

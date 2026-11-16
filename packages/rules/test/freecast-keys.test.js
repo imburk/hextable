@@ -150,3 +150,55 @@ for (const grid of [null, "square"]) {
     assert.equal(familiars(again)[0].tpl, "skeleton");
   });
 }
+
+// ---------- types ----------
+test("freeCast types: a list of 1 to 14 different creature types, only on a freeCast of named spells", () => {
+  assert.deepEqual(lint({ ...BASE, types: ["fey"] }), []);
+  assert.deepEqual(lint({ ...BASE, types: ["celestial", "fey", "fiend"] }), []);
+  for (const bad of [[], "fey", ["Fey"], ["fey", "fey"], ["elf"], [1], null, {}])
+    assert.ok(lint({ ...BASE, types: bad }).length > 0, `refused: ${json(bad)}`);
+  assert.ok(lint({ list: "wizard", maxLevel: 1, types: ["fey"] }).length > 0);
+  assert.deepEqual(lintStrict({ ...BASE, types: ["fey"] }), []);
+  assert.ok(lintStrict({ ...BASE, types: "fey" }).some((m) => /types/.test(m)));
+  assert.ok(lintStrict({ ...BASE, types: Array.from({ length: 15 }, () => "fey") }).length > 0);
+});
+
+test("freeCast types, across the pack: the spell's summon step must offer one of them", () => {
+  const withTypes = (types) => {
+    const doc = structuredClone(PACKS[0]);
+    const f = doc.classes.find((c) => c.id === "warlock").features.find((x) => x.id === "eldritch-invocations").options.find((o) => o.id === "pact-of-the-chain");
+    f.grants.freeCast = { ...f.grants.freeCast, types };
+    return lintPack(doc);
+  };
+  assert.deepEqual(withTypes(["fey"]), []);
+  assert.ok(withTypes(["undead"]).some((m) => /summon step that offers/.test(m)));
+});
+
+// A feature that says `types` is hand-set on the pact's record here (no pack feature uses it until Wild Companion is entered below).
+const fey = (s) => { s.entities.mor.feats.find((f) => f.id === PACT).freeCast.types = ["fey"]; return s; };
+test("freeCast types: through the feature the creature is of that type, by default or by choice; any other type is refused; a slot cast keeps the spell's own", () => {
+  const s = fey(pactField()), mor = s.entities.mor;
+  refused(s, pactCast(s, "owl"), PAT, /Choose its creature type: fey/);   // pactCast names "fiend"
+  const at = near(s, "mor");
+  const r = ok(apply(s, { type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "owl", at: [at] } }, PAT));
+  assert.equal(s.entities[r.events.find((e) => e.type === "summoned").id].type, "fey", "the one type is the default");
+  ok(apply(s, { type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "cat", type: "fey" } }, PAT));
+  assert.equal(familiars(s)[0].type, "fey");
+  refused(s, { type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "cat", type: "celestial" } }, PAT, /Choose its creature type/);
+  const lvl = Object.keys(mor.slots).find((k) => mor.slots[k] > 0);
+  ok(apply(s, { type: "cast", actor: "mor", spell: "find-familiar", slot: +lvl, summon: { form: "cat", type: "fiend" } }, PAT));
+  assert.equal(familiars(s)[0].type, "fiend", "by a slot the spell's own choice stands");
+});
+
+test("freeCast types: undo, redo and replay are exact", () => {
+  const build = () => fey(pactField());
+  const s = build(), h = createHistory({ limit: 50 }), states = [json(s)], done = [];
+  const play = (a) => { const before = mark(s), r = ok(apply(s, a, DM)); h.record(before, s, describeStep(a, r.events, before, s)); done.push(a); states.push(json(s)); };
+  play({ type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "owl", at: [near(s, "mor")] } });
+  play({ type: "cast", actor: "mor", spell: "find-familiar", via: PACT, summon: { form: "imp", type: "fey" } });
+  for (let i = done.length - 1; i >= 0; i--) { h.undo(s); assert.equal(json(s), states[i], `undo ${i}`); }
+  for (let i = 1; i <= done.length; i++) { h.redo(s); assert.equal(json(s), states[i], `redo ${i}`); }
+  const again = build();
+  for (const a of done) ok(apply(again, a, DM));
+  assert.equal(json(again), states.at(-1));
+});
