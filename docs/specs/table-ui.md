@@ -16,6 +16,8 @@ the combat tracker, the context action panel, what happens when a fight is
 lost or won, the log, and where preferences and table settings live. It says
 what the engine already gives, what it must add, and the order to build in.
 
+Built (as of 16 November): T1, T2, T3, T4a, T4b, T4e, T4f (for casts only), T5e, T5c, T6e, T6c, T6g, T7e and T7c. T3b (the lead rule) is built in part: the engine and the formation popup let a player lead, but the Explore tab's always-shown row and the lead mark were not checked.
+
 Nothing here changes a rule except one: when a fight is lost (Decision 1). It
 is marked there. Everything else is presentation, or new records the engine
 keeps.

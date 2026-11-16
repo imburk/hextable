@@ -1,4 +1,4 @@
-// Two facts docs/PATH-TO-0.2.md found by reading, shown as they are today (#380, part D; docs/DEBT.md C17, T32).
+// Two facts docs/PATH-TO-0.2.md found by reading, shown as they are today (#380, part D; docs/DEBT.md C17, T33).
 // These tests pin the gaps; they do not fix them. When a gap is fixed, flip its assertions.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -51,7 +51,7 @@ test("editCharacter's dropped `hidden` sends players nothing they were not sent:
 
 // The DM's "Add a monster" buttons are made once, when app.js is first run, from MONSTERS as it is then: a homebrew
 // monster added later (by the registry's `using`) is never a button until B7 builds the list again.
-test("GAP (DEBT T32): the client's Add a monster list is built once at load", () => {
+test("GAP (DEBT T33): the client's Add a monster list is built once at load", () => {
   const src = readFileSync(new URL("../../client/app.js", import.meta.url), "utf8").split("\n");
   const at = src.findIndex((l) => l.startsWith("for (const [id, m] of Object.entries(MONSTERS)) {"));
   assert.ok(at > 0, "the loop that makes the buttons");
