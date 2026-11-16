@@ -942,7 +942,7 @@ export function mayBeHeavy(s, a) {
       const t = def.target ?? {};
       per = t.area ? living(s).length : Math.max(1, t.creature?.count ?? 1);
     } else if (a.type === 'use' || a.type === 'feature') {
-      return true;       // an item's effect, a feature's, an object's: not read from here, so the copy is taken (a few ms for a rare action)
+      return 'copy';       // an item's effect, a feature's, an object's: not read from here, so the copy is taken (a few ms for a rare action)
     } else return false;
     return load.steps * per > WORK.steps / 4 || load.dice * per > WORK.dice / 4;
   } catch (err) {

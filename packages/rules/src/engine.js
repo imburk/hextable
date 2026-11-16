@@ -167,7 +167,10 @@ function applyInner(s, action, ctx) {
   // A copy is taken only when the action could stop to ask a player (reactions.js, mayAsk), or
   // when it answers one: the rest of the time nothing can pause and this costs nothing.
   // It is also taken for one that could meet the work ceiling (effects.js, WORK), so that it can be refused cleanly.
-  const snap = s.pending || action?.type === 'react' || mayAsk(s) || mayBeHeavy(s, action ?? {}) ? freeze(s) : null;
+  const asks = !!s.pending || action?.type === 'react' || mayAsk(s);
+  const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
+  const snap = asks || heavy ? freeze(s) : null;
+  const putBack = asks || heavy === true;
   setRun({ action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap });
   startWork();
   try {
@@ -189,7 +192,7 @@ function applyInner(s, action, ctx) {
       setRun(null);
       return record(s, ev);
     }
-    if (snap) thaw(s, snap);                         // a refused answer leaves the question waiting, as it was
+    if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
     setRun(null);
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
