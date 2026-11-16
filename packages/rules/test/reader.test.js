@@ -97,6 +97,8 @@ const FIXTURES = [
   base('self-cube', 'Self Cube', { range: 'self', target: { area: { shape: 'cube', size: 15, types: ['undead', 'fiend'] } }, effects: [{ damage: '2d8', type: 'radiant' }] }),
   base('guarding-ring', 'Guarding Ring', { level: 3, range: 'self', duration: '10 minutes', concentration: true, target: { area: { shape: 'emanation', size: 10 } },
     zone: { on: ['turnStart', 'enter'], atCast: true, spare: true, once: 'turn' }, effects: [{ save: 'con', onFail: [{ damage: '2d8', type: 'psychic' }], onSuccess: [{ condition: 'incapacitated', ends: { on: 'turnEnd' } }] }] }),
+  base('turning-ring', 'Turning Ring', { level: 3, range: 'self', duration: '10 minutes', concentration: true, target: { area: { shape: 'emanation', size: 10, types: ['undead'] } },
+    zone: { on: ['enter'] }, effects: [{ save: 'wis', onFail: [{ damage: '2d8', type: 'radiant' }] }] }),
   base('mire', 'Mire', { level: 2, range: 120, duration: '1 hour', target: { area: { shape: 'sphere', size: 15 } }, zone: { on: ['turnEnd'] }, terrain: { obscured: 'light' },
     effects: [{ save: 'str', half: true, onFail: [{ damage: '1d6', type: 'acid' }, { condition: 'restrained' }], onSuccess: [{ condition: 'prone' }] }] }),
   base('hardy-shield', 'Hardy Shield', { time: 'reaction', range: 'self', duration: '1 round', target: { self: true }, reaction: { on: 'hit', blocks: ['magic-missile', 'hb-test-unknown'] },
@@ -275,9 +277,11 @@ test('the reading never names a publisher or a product, and never voices the aut
 test('the reading says what the engine hands to the DM', () => {
   const dm = (e) => readEntry('spell', e);
   const has = (r, re) => assert.ok(r.lines.some((l) => re.test(l)), `${re} in:\n${r.lines.join('\n')}`);
-  // An area's creature types: the cast handler does not apply them to a spell.
+  // An area's creature types: applied to the creatures a spell catches when it is cast, not to a zone's later comers.
   const r1 = dm(FIXTURES.find((f) => f.id === 'hb-test-self-cube'));
-  has(r1, /does not apply that limit to a spell/); assert.ok(r1.doesNot.length);
+  has(r1, /of the creatures caught, only those are affected/); assert.equal(r1.doesNot.length, 0);
+  const r1z = dm(FIXTURES.find((f) => f.id === 'hb-test-turning-ring'));
+  has(r1z, /does not apply the limit to a zone/); assert.ok(r1z.doesNot.length);
   // A line with a range, ten cubes: no layout, every step to the DM.
   for (const id of ['hb-test-far-line', 'hb-test-ten-cubes']) { const r = dm(FIXTURES.find((f) => f.id === id)); has(r, /cannot lay out this area/); }
   // A modifier in an instant spell has nothing to hang on.

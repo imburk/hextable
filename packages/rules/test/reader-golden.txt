@@ -388,12 +388,11 @@ On the spell lists of: wizard.
 Sorted under: damage.
 Each creature in a 15-foot cube takes 2d8 radiant damage.
 The cube is laid out from the caster in a direction the caster picks; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
-The entry limits the area to Undead or Fiend, but the engine does not apply that limit to a spell: every creature caught is affected. The DM leaves out the others.
+The entry limits the area to Undead or Fiend: of the creatures caught, only those are affected.
 Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
 It is instant: nothing it does is kept as a lasting effect.
-Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
-DM: Leaving out the creatures of other types in the area: the engine applies a spell area's `types` to no one.
 
 == hb-test-guarding-ring
 Guarding Ring (level 3 evocation, self, action, 10 minutes, concentration).
@@ -417,6 +416,26 @@ It lasts up to 10 minutes. The engine times it, and when it ends, so does everyt
 It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
+
+== hb-test-turning-ring
+Turning Ring (level 3 evocation, self, action, 10 minutes, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: damage.
+A 10-foot emanation stays for as long as the spell lasts. It moves with the caster and never affects the caster.
+As it appears it affects nobody.
+From then on, the steps below run on a creature each time it enters the area (or the area reaches it). Each creature rolls its own damage.
+That creature makes a Wisdom saving throw.
+On a failure:
+  It takes 2d8 radiant damage.
+The emanation reaches out from the caster all round; it catches every creature in it except the caster; a wall between the area's origin and a creature keeps that creature out.
+The entry limits the area to Undead: of the creatures caught when it is cast, only those are affected. A creature that enters the area later, or starts or ends its turn there, is affected whatever its type: the engine does not apply the limit to a zone. The DM leaves out the others.
+Saving throws are against the caster's spell save DC.
+It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Not checked against any rulebook.
+DM: Leaving out the creatures of other types in the area when they enter it or start or end a turn there: the engine applies a spell area's `types` only to those caught when it is cast.
 
 == hb-test-mire
 Mire (level 2 evocation, 120 feet, action, 1 hour).

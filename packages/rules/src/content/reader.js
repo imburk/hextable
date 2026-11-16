@@ -438,8 +438,12 @@ class Reading {
       if (isInt(a.choose)) { this.num('target.area.choose', a.choose, 'creatures'); this.line(`Of those caught, the caster picks up to ${a.choose} creatures; only they are affected.`); }
       if (a.types !== undefined) {
         const ts = Array.isArray(a.types) ? a.types.filter((x) => CREATURE_TYPES.includes(x)) : [];
-        this.line(`The entry limits the area to ${ts.length ? list(ts.map(cap1), 'or') : 'some creature types'}, but the engine does not apply that limit to a spell: every creature caught is affected. The DM leaves out the others.`);
-        this.dm('Leaving out the creatures of other types in the area: the engine applies a spell area\'s `types` to no one.');
+        const only = ts.length ? list(ts.map(cap1), 'or') : 'some creature types';
+        if (d.zone === undefined) this.line(`The entry limits the area to ${only}: of the creatures caught, only those are affected.`);
+        else {
+          this.line(`The entry limits the area to ${only}: of the creatures caught when it is cast, only those are affected. A creature that enters the area later, or starts or ends its turn there, is affected whatever its type: the engine does not apply the limit to a zone. The DM leaves out the others.`);
+          this.dm('Leaving out the creatures of other types in the area when they enter it or start or end a turn there: the engine applies a spell area\'s `types` only to those caught when it is cast.');
+        }
       }
       if (d.zone === undefined && this.damageOutside()) this.line('Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.');
     }
