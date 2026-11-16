@@ -59,6 +59,15 @@ test("spell kinds: what a reader would expect of the plain cases", () => {
   is("conjure-celestial", ["damage", "healing"]);
   is("vampiric-touch", ["damage", "healing"], "derives damage only: the healing is the DM's");
   is("contact-other-plane", ["utility"], "derives damage, which falls on the caster");
+  is("wind-wall", ["damage", "control", "utility"]);
+  // The summons (fix round 1 of #378, L4): a creature that fights for the caster is damage, one that is ridden is
+  // utility too, one that cannot attack is utility.
+  is("giant-insect", ["damage"]);
+  is("summon-dragon", ["damage", "utility"]);
+  is("find-steed", ["damage", "utility"]);
+  is("animate-dead", ["damage"]);
+  is("find-familiar", ["utility"]);
+  is("phantom-steed", ["utility"]);
 });
 
 test("the derivation is unchanged for an untagged spell; `wish` derives nothing", () => {

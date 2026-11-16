@@ -65,6 +65,7 @@ export const spells6 = [
     duration: "instant", concentration: false, ritual: false,
     target: {"self":true},
     effects: [{"summon":"ghoul","on":"corpse","count":{"slot":1,"base":3,"above":6},"bond":{"kind":"undead","turn":"own","orders":"command","range":120,"at0":"dies"}}],
+    kinds: ["damage"],
     tier: "assist", checked: true,
     text: "At night, up to three corpses of Medium or Small Humanoids in range each become a Ghoul the caster controls for 24 hours (a Bonus Action commands those within 120 feet); casting it on the caster's own Ghouls first renews control over as many. Levels 7 to 9 give four to six Ghouls. The DM checks that it is night, whether a standing order is kept, and the other higher-slot choices: two Ghasts or Wights at level 8; three Ghasts or Wights, or two Mummies, at level 9 (cast with no picks, then spawn and bond them as undead with orders command).",
   },

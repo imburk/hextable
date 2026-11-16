@@ -219,6 +219,7 @@ export const spells4 = [
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"self":true},
     effects: [{"summon":"giant-insect","variants":["centipede","spider","wasp"],"bond":{"kind":"summon","turn":"after","orders":"free","at0":"vanish"}}],
+    kinds: ["damage"],
     tier: "auto", checked: true,
     text: "Summons a giant centipede, spider or wasp, an ally that acts straight after the caster, for up to 10 minutes; its numbers grow with the slot level. It disappears at 0 Hit Points or when the spell ends.",
   },
