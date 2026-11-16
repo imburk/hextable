@@ -176,7 +176,7 @@ async function desktop(browser, url) {
         let foe = null;
         for (const at of foeAt) {
           await act({ type: 'spawn', monster: 'goblin-minion', at });
-          foe = await state(page, (S, h) => Object.values(S.entities).find((e) => e.kind !== 'pc' && e.pos.q === h.q && e.pos.r === h.r && /goblin/.test(e.id + e.name))?.id ?? null, at);
+          foe = await state(page, (S, h) => Object.values(S.entities).find((e) => e.kind !== 'pc' && e.pos.q === h.q && e.pos.r === h.r && /goblin/i.test(e.name))?.id ?? null, at);
           if (foe) break;
         }
         if (!foe) throw new Error(`no hex behind the fighter took a goblin: toast "${await page.textContent('#toast')}"`);
