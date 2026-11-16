@@ -108,7 +108,7 @@ export const spells7 = [
     target: {"self":true},
     effects: [{"manual":"Mirage Arcane: the range is Sight in the SRD: the caster makes terrain in an area up to 1 mile square look, sound, smell and feel like another terrain for 10 days, and can alter or add structures but cannot disguise, conceal or add creatures. It can make clear ground Difficult Terrain or the reverse. A piece of the illusion removed from the area disappears. Creatures with Truesight see the true terrain but can still physically interact with the illusion. The DM applies it."}],
     kinds: ["utility"],
-    tier: "manual", checked: false,
+    tier: "manual", checked: true,
     text: "Takes 10 minutes to make terrain up to a mile square look and feel like another terrain for 10 days.",
   },
   {
@@ -206,7 +206,7 @@ export const spells7 = [
     target: {"self":true},
     effects: [{"manual":"Symbol: the SRD duration is until dispelled or triggered. The caster inscribes a nearly imperceptible harmful glyph (Wisdom (Perception) against the spell save DC to notice) up to 10 feet across on a surface or inside a closable object, with a chosen trigger and effect: Death, Discord, Fear, Pain, Sleep or Stunning. When triggered it fills a 60-foot-radius Sphere with Dim Light for 10 minutes, then the spell ends, targeting each creature in it and each creature that enters or ends its turn there (once per turn). Death: Constitution save, 10d10 Necrotic damage or half. Discord: Wisdom save or argue for 1 minute, with Disadvantage on attack rolls and ability checks. Fear: Wisdom save or Frightened for 1 minute, moving at least 30 feet away each turn. Pain: Constitution save or Incapacitated for 1 minute. Sleep: Wisdom save or Unconscious for 10 minutes (waking on damage or being shaken). Stunning: Wisdom save or Stunned for 1 minute. The DM runs the glyph."}],
     kinds: ["damage", "control"],
-    tier: "manual", checked: false,
+    tier: "manual", checked: true,
     text: "A hidden glyph with a chosen trigger and one of six harmful effects (death, discord, fear, pain, sleep, stunning) that bursts in a 60-foot sphere when triggered.",
   },
   {
