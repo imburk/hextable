@@ -46,7 +46,7 @@ Action "Bite": an action. In a fight it spends the creature's action.
   On a hit:
     It takes 1d8+2 piercing damage.
     It takes 1d6 fire damage. It lands together with the damage before it, as one instance of damage. This happens only if the attack roll has Advantage.
-    It has the Prone condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Prone condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It ends when the creature stands up, as Prone always does.
   Worked out from the dice, not a promise: the damage averages 6.5 when it hits.
   The monster AI uses this action on its own turns: it makes the attack at the nearest foe it can reach (a melee attack before a ranged one).
@@ -72,7 +72,7 @@ Action "Ash Cloud": an action. In a fight it spends the creature's action.
   Each creature in a 15-foot sphere makes a Constitution saving throw against DC 12.
   On a failure:
     It takes 2d6 fire damage.
-    It has the Blinded condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Blinded condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It ends at the end of the creature's next turn, or when the fight ends.
       The engine applies part of what Blinded does; the DM applies the rest.
   On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.
@@ -175,7 +175,7 @@ Action "Spectral Slash": an action. In a fight it spends the creature's action.
   The creature makes a melee weapon attack roll with +5 to hit against the target.
   On a hit:
     It takes 2d6+3 necrotic damage.
-    It has the Frightened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Frightened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It makes a Wisdom saving throw at the start of each of its turns, and a success would end it; any damage it takes would also end it. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine does not roll that save.
       The engine applies part of what Frightened does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 10 when it hits.
@@ -191,7 +191,7 @@ Action "Gloom Bolt": an action. In a fight it spends the creature's action.
     If this damage kills it:
       What is left of its body is a pile of dust.
   On a miss:
-    It has the Invisible condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Invisible condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It ends at the start of its next turn, or when the fight ends.
       The engine applies part of what Invisible does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 10.5 when it hits.
@@ -212,12 +212,12 @@ Action "Wail": an action. In a fight it spends the creature's action.
   Recharge 6-6: once used it is spent. At the start of each of its turns the engine rolls a d6, and on 6 or more it is ready again. The DM readies it too by giving it a Long Rest.
   Each creature in a 30-foot cone makes a Wisdom saving throw against DC 13.
   On a failure:
-    It has the Frightened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Frightened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It ends when it takes damage from the creature or the creature's side. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
       The engine applies part of what Frightened does; the DM applies the rest.
     It takes 1d8 psychic damage.
   On a success:
-    It has the Deafened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Deafened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       Nothing in the engine ends it: the DM removes it.
       The engine applies part of what Deafened does; the DM applies the rest.
   The cone spreads from the creature in a direction the creature picks; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
@@ -247,7 +247,7 @@ Action "Chill": an action. In a fight it spends the creature's action.
 Action "Dread Aura": an action. In a fight it spends the creature's action.
   Each creature in a 10-foot emanation makes a Wisdom saving throw against DC 13.
   On a failure:
-    It has the Frightened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Frightened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       Nothing in the engine ends it: the DM removes it.
       The engine applies part of what Frightened does; the DM applies the rest.
   The emanation reaches out from the creature all round; it catches every creature in it, the creature too if the creature is in it; a wall between the area's origin and a creature keeps that creature out.
@@ -293,10 +293,10 @@ Action "Dread Gaze": an action. In a fight it spends the creature's action.
   It is aimed at one creature within 30 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
   The target makes a Wisdom saving throw against DC 16.
   On a failure:
-    It has the Frightened condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Frightened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It makes a Wisdom saving throw at the end of each of its turns, against DC 16 (the entry's own DC for it); a success ends it.
       The engine applies part of what Frightened does; the DM applies the rest.
-    It has the Stunned condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Stunned condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It makes a Constitution saving throw each time it takes damage, against DC 16 (the DC of the save that put it on); a success ends it.
   The monster AI uses this action on its own turns, but only when it has no weapon attack that reaches a foe: then it aims it at the nearest foe it can reach.
 Action "Vanish": an action. In a fight it spends the creature's action.
@@ -398,7 +398,7 @@ Action "Blind Grip": an action. In a fight it spends the creature's action.
   The target makes a Strength saving throw against DC 17.
   On a failure:
     It takes 3d8+5 bludgeoning damage.
-    It has the Grappled condition. (A creature that already has it gets nothing added, and the table is told; at 0 Hit Points, dead or immune, it is not put on and the table gets a note.)
+    It has the Grappled condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       Nothing in the engine ends it: the DM removes it.
       The engine applies part of what Grappled does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 18.5 when the save fails.

@@ -81,8 +81,9 @@ test("a starter with no sheet lists Chain Mail in its gear: one die is rolled an
   const note = r.events.find((e) => e.type === "manual");
   assert.equal(note.partial, true);
   assert.match(note.text, /Chain Mail.*Disadvantage on Dexterity \(Stealth\).*cannot tell worn from carried/);
+  assert.equal(ok(apply(s, { type: "check", actor: "fighter", skill: "stealth" }, DM)).events.some((e) => e.type === "manual"), false, "told once");
+  assert.equal(ok(apply(s, { type: "hide", actor: "fighter" }, DM)).events.some((e) => e.type === "manual"), false, "told once, Hide too");
   assert.equal(ok(apply(s, { type: "check", actor: "rogue", skill: "stealth" }, DM)).events.some((e) => e.type === "manual"), false, "Leather Armor has no Disadvantage");
-  assert.equal(ok(apply(s, { type: "check", actor: "fighter", skill: "athletics" }, DM)).events.some((e) => e.type === "manual"), false);
 });
 
 test("Stealth Disadvantage: undo, redo and replay are exact", () => {

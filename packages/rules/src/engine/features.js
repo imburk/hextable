@@ -142,8 +142,9 @@ function abilityCheck(s, e, what, dimToo = false) {
 // A hand-typed character (no sheet: the four starters) lists what it carries in `gear`, and the engine cannot tell worn
 // from carried. If that lists armour with Disadvantage on Stealth, the DM is told on the check, to apply it if it is worn.
 function stealthGearNote(e, ev) {
-  if (e.sheet || e.tpl || !Array.isArray(e.gear)) return;
+  if (e.sheet || e.tpl || e.stealthNoted || !Array.isArray(e.gear)) return;
   const suit = e.gear.map((g) => CONTENT.armour[slug(g)]).find((a) => a?.stealth === 'disadvantage');
+  if (suit) e.stealthNoted = true;      // told once for the creature, for the whole game
   if (suit) ev.push({ type: 'manual', actor: e.id, name: 'Stealth', partial: true, text: `${e.name}'s gear lists ${suit.name}, which gives Disadvantage on Dexterity (Stealth) checks while worn. The engine cannot tell worn from carried for a character with no sheet, so it rolled one die: if ${e.name} wears it, the DM rolls with Disadvantage.` });
 }
 const slug = (x) => String(x).toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
