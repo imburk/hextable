@@ -598,7 +598,6 @@ async function solo(browser, url, label0, opts, tag) {
 export default async function (browser, url) {
   await solo(browser, url, 'homebrew solo: on a phone, with touch', PHONE, 'phone');
   await solo(browser, url, 'homebrew solo: at desktop size', DESKTOP, 'desktop');
-  if (process.env.HB_SOLO_ONLY) return;
   await table(browser, url, 'homebrew: the DM at desktop size, a phone player', DESKTOP, PHONE, 'desktop');
   await table(browser, url, 'homebrew: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
 }
