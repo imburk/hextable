@@ -28,7 +28,13 @@ export function aiStep(s, id, opts) {
   // A companion (a creature with a `bond`) is played by the companion brain (below). Everything after this line is the
   // monster AI as it was before the brain, for every creature with no bond (companions-brain-replay.test.js).
   if (e.bond) return companionStep(s, id, opts);
-  if (!up(e)) return null;
+  // Dropped to 0 in its own turn (an Opportunity Attack on its way): its turn ends, as the brain ends a companion's,
+  // instead of waiting for the DM (DEBT W24). A character at 0 is its player's and is not played here.
+  if (!up(e)) return e.kind === 'pc' ? null : end;
+  // A mount its rider steers moves on its rider's turn and can only Dash, Disengage or Dodge (engine/shared.js,
+  // control): on a turn of its own (its rider got back on after its place) it is offered nothing it would be refused,
+  // and its turn ends (DEBT W24).
+  if (steering(s, e)) return end;
   // It does not act on creatures it has not found.
   const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id) && aware(s, e, o));
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.

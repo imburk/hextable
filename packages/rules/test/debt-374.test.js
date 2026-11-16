@@ -1,9 +1,10 @@
-// #374, Part C: riding gaps from docs/DEBT.md, on hexes and the square room.
+// #374, Part C: gaps from docs/DEBT.md (W24, W26, W27), on hexes and the square room.
 //   W26: a rider grown past its mount (Huge on a Large horse) is set down within 5 ft of the mount, as a Large one is,
 //        instead of staying on, cramped, with no room to get down (world.js, riderLanding looked one cell round the mount).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply } from "../src/engine.js";
+import { apply, current } from "../src/engine.js";
+import { aiStep } from "../src/ai.js";
 import { newGame } from "../src/scenario.js";
 import { apartAt, footprint, overlapAt } from "../src/space.js";
 import { coverOf } from "../src/sight.js";
@@ -65,3 +66,49 @@ test("hex: W27, a rider in the way gives cover at its raised height", () => {
   r.pos = { q: 2, r: 2, z: 0 };
   assert.equal(coverOf(s, a, t, others), "none", "off the line, nothing");
 });
+
+// W24: the monster AI offers a mount its rider steers nothing it would be refused, and ends the turn of a creature dropped
+// to 0 in its own turn instead of leaving the table waiting.
+for (const grid of GRIDS) {
+  test(`${grid}: W24, a steered mount on a turn of its own is played as ending its turn, not attacking`, () => {
+    const { s, horse } = table(grid);
+    const P = SPOTS[grid], at = grid === "hex" ? { q: P.horse.q + 2, r: P.horse.r } : { q: P.horse.q + 2, r: P.horse.r };
+    ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM));
+    ok(apply(s, { type: "startEncounter", center: P.horse, radius: 6 }, DM));
+    // The rider cannot steer when the mount's place comes round, so the mount has its own turn; then it can again.
+    s.entities.fighter.cond.incapacitated = true;
+    for (let i = 0; i < 8 && current(s) !== horse; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    assert.equal(current(s), horse);
+    delete s.entities.fighter.cond.incapacitated;
+    const a = aiStep(s, horse);
+    assert.deepEqual(a, { type: "endTurn", actor: horse });
+    ok(apply(s, a, DM));
+  });
+
+  test(`${grid}: W24, a goblin dropped to 0 by an Opportunity Attack on its own turn has its turn ended by the AI`, () => {
+    let done = false;
+    for (let seed = 1; seed <= 40 && !done; seed++) {
+      const s = newGame(seed);
+      if (grid === "square") ok(apply(s, { type: "loadMap", map: squareRoom() }, DM));
+      ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+      for (const id of Object.keys(s.entities)) if (id !== "fighter") ok(apply(s, { type: "remove", actor: id }, DM));
+      const P = SPOTS[grid];
+      s.entities.fighter.pos = { ...P.fighter, z: 0 };
+      const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: P.horse }, DM)).events.find((e) => e.type === "spawned").id;
+      const far = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: P.horse.q + 4, r: P.horse.r } }, DM)).events.find((e) => e.type === "spawned").id;
+      ok(apply(s, { type: "startEncounter", center: P.fighter, radius: 8 }, DM));
+      for (let i = 0; i < 8 && current(s) !== gob; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+      s.entities[gob].hp = 1;
+      ok(apply(s, { type: "move", actor: gob, to: { q: P.horse.q + 3, r: P.horse.r } }, DM));
+      if (s.entities[gob].hp > 0) continue;
+      assert.equal(current(s), gob, "its turn is still going");
+      const a = aiStep(s, gob);
+      assert.deepEqual(a, { type: "endTurn", actor: gob });
+      ok(apply(s, a, DM));
+      assert.notEqual(current(s), gob);
+      assert.ok(far);
+      done = true;
+    }
+    assert.ok(done, "an Opportunity Attack dropped it");
+  });
+}
