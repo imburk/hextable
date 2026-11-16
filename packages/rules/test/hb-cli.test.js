@@ -1,0 +1,90 @@
+// The command-line tool scripts/hb.mjs (docs/specs/homebrew.md, task B12): each command, run on a sample file.
+import assert from "node:assert/strict";
+import { test, after } from "node:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { HOMEBREW_LIMITS } from "../src/content/schema.js";
+
+const HB = new URL("../../../scripts/hb.mjs", import.meta.url).pathname;
+const SAMPLE = new URL("./fixtures/sample-pack.json", import.meta.url).pathname;
+const dir = mkdtempSync(join(tmpdir(), "hb-cli-"));
+after(() => rmSync(dir, { recursive: true, force: true }));
+const hb = (...args) => { const r = spawnSync(process.execPath, [HB, ...args], { encoding: "utf8", timeout: 60000 }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const file = (name, text) => { const p = join(dir, name); writeFileSync(p, text); return p; };
+const sample = () => JSON.parse(readFileSync(SAMPLE, "utf8"));
+
+test("lint: a good pack prints ok and exits 0", () => {
+  const r = hb("lint", SAMPLE);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /Sample Pack: ok \(16 spells\)/);
+  assert.equal(r.err, "");
+});
+
+test("lint: problems go to stderr in plain sentences and the exit is 1", () => {
+  const bad = sample(); bad.spells[0].glow = true; bad.spells[1].id = "frost-burst";
+  const r = hb("lint", file("bad.json", JSON.stringify(bad)));
+  assert.equal(r.code, 1);
+  assert.match(r.err, /problem: .*"glow" is not something a spell has/);
+  assert.equal(r.out, "");
+  const notjson = hb("lint", file("junk.json", "{ nope"));
+  assert.equal(notjson.code, 1);
+  assert.match(notjson.err, /not JSON/);
+  assert.equal(hb("lint", join(dir, "missing.json")).code, 1);
+  assert.equal(hb("lint", dir).code, 1);
+});
+
+test("a file over the pack byte limit is refused before it is parsed", () => {
+  const big = file("big.json", "x".repeat(HOMEBREW_LIMITS.packBytes + 1));
+  for (const cmd of ["lint", "read", "dryrun"]) {
+    const r = hb(cmd, big);
+    assert.equal(r.code, 1, cmd);
+    assert.match(r.err, /at most 262144 bytes/);
+    assert.doesNotMatch(r.err, /not JSON/, "it was never parsed");
+  }
+});
+
+test("read: prints each spell's reading, the tier and the author's text, and exits 0", () => {
+  const r = hb("read", SAMPLE);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /^Ember Dart \[auto\]$/m);
+  assert.match(r.out, /The caster makes a ranged spell attack roll against one creature within 120 feet\./);
+  assert.match(r.out, /^Latch Wisp \[manual\]$/m);
+  assert.match(r.out, /The DM does: .*latch, bolt or lock/);
+  assert.match(r.out, /Author's text: "A wisp of light/);
+  assert.equal(r.out.match(/^[A-Z][A-Za-z' ]+ \[(auto|assist|manual)\]$/gm).length, 16);
+  assert.equal(hb("read", file("bad2.json", JSON.stringify({ ...sample(), v: 2 }))).code, 1);
+});
+
+test("dryrun: prints each spell's cast, is the same twice for a seed, and differs for another", () => {
+  const a = hb("dryrun", SAMPLE, "--seed", "7", "--runs", "3"), b = hb("dryrun", SAMPLE, "--seed", "7", "--runs", "3"), c = hb("dryrun", SAMPLE, "--seed", "8", "--runs", "3");
+  assert.equal(a.code, 0, a.err);
+  assert.equal(a.out, b.out);
+  assert.notEqual(a.out, c.out);
+  assert.match(a.out, /^== Ember Dart \(seed 7\)$/m);
+  assert.match(a.out, /Tavin \(level 1\) casts Ember Dart\./);
+  assert.match(a.out, /Over 3 casts \(seeds 7 to 9\)/);
+  assert.match(a.out, /The DM does this \(Latch Wisp\)/);
+  assert.equal((a.out.match(/^== /gm) ?? []).length, 16);
+  const ev = hb("dryrun", SAMPLE, "--runs", "1", "--events");
+  assert.match(ev.out, /^ {2}\{"type":"cast"/m);
+});
+
+test("dryrun: the options are checked, and the default seed is 1", () => {
+  assert.equal(hb("dryrun", SAMPLE, "--seed", "x").code, 2);
+  assert.equal(hb("dryrun", SAMPLE, "--seed").code, 2);
+  assert.equal(hb("dryrun", SAMPLE, "--wat").code, 2);
+  const tooMany = hb("dryrun", SAMPLE, "--runs", "999");
+  assert.equal(tooMany.code, 1);
+  assert.match(tooMany.err, /number of casts/);
+  assert.match(hb("dryrun", SAMPLE, "--runs", "1").out, /\(seed 1\)/);
+});
+
+test("wrong use prints the usage and exits 2", () => {
+  for (const args of [[], ["lint"], ["lint", SAMPLE, SAMPLE], ["shout", SAMPLE], ["lint", SAMPLE, "--seed", "1"]]) {
+    const r = hb(...args);
+    assert.equal(r.code, 2, args.join(" "));
+    assert.match(r.err, /Usage:/);
+  }
+});
