@@ -249,3 +249,21 @@ test("a pack over its budget is not linted: only the budget's sentences come bac
   assert.doesNotMatch(problems.join(), /level must be/);
   plain(problems);
 });
+
+// ---------- the registry's seam (part C of #380) ----------
+test("loadPack uses the budget and strict mode: the interim guard is gone", async () => {
+  const { loadPack, HOMEBREW_KINDS } = await import("../src/content/registry.js");
+  assert.deepEqual(HOMEBREW_KINDS, HOMEBREW_ENTRY_KINDS, "the registry and the linter agree on the kinds");
+  const r = loadPack(EMBER);
+  assert.ok(r.ok, r.problems?.join("; "));
+  assert.deepEqual([...r.pack.ids].sort(), HOMEBREW_ENTRY_KINDS.map((k) => ENTRY[k]().id).sort());
+  const no = (d, re) => { const x = loadPack(d); assert.equal(x.ok, false); assert.match(x.problems.join("\n"), re); plain(x.problems); };
+  no(doc({ spells: [spell({ glow: true })] }), /"glow" is not something a spell has/);
+  no(doc({ spells: [spell({ id: "fire-bolt" })] }), /is the id of an SRD entry/);
+  no(doc({ spells: [spell({ source: "SRD 5.2.1" })] }), /its source must be "homebrew:ember-folk"/);
+  no(doc({ spells: [spell({ text: "x".repeat(1501) })] }), /1,501 letters/);
+  no(doc({ weapons: Array.from({ length: 201 }, (_, i) => weapon({ id: hb(`w-${i}`) })) }), /more than 200 entries/);
+  // A depth bomb as JSON text: parsed, then refused by the budget before anything recursive sees it.
+  no(`{"format":"hextable-pack","v":1,"pack":{"id":"ember-folk","name":"E","license":"L","attribution":"A"},"spells":[${"[".repeat(50000)}${"]".repeat(50000)}]}`, /nests deeper than 16/);
+  no(`{"format":"hextable-pack","v":1,"constructor":{"x":1}}`, /"constructor"/);
+});

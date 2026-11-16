@@ -12,50 +12,29 @@
 // promise, and refuses a second, different overlay while one is installed (the same overlay again is a no-op).
 //
 // Pure: no I/O, no clock, no randomness. What `using` changes is a registry of derived lookups, never game state.
-import { lintPack } from './schema.js';
+import { budget, HOMEBREW_LIMITS, lintPack } from './schema.js';
 import { HOMEBREW_LOOKUPS, SRD_PACK_ID } from './index.js';
 
 export const HOMEBREW_KINDS = Object.keys(HOMEBREW_LOOKUPS);
 const PACK_KEYS = ['format', 'v', 'pack', ...HOMEBREW_KINDS];
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
-// Interim bounds until B1's budget (HOMEBREW_LIMITS) lands; see the seam below.
-const MAX_DEPTH = 64, MAX_NODES = 200000;
-
 export class PackError extends Error {
   constructor(problems) { super(`The homebrew was refused: ${problems.slice(0, 5).join('; ')}${problems.length > 5 ? ` (and ${problems.length - 5} more)` : ''}`); this.problems = problems; }
 }
 
 // ---------- checking one pack ----------
-// Iterative and bounded, so a deep or huge document cannot overflow the stack of the linter that follows.
-function guard(root) {
-  const stack = [[root, 0]];
-  let n = 0;
-  while (stack.length) {
-    const [x, d] = stack.pop();
-    if (++n > MAX_NODES) return `is larger than ${MAX_NODES} values`;
-    if (x === null || typeof x !== 'object') continue;
-    if (d > MAX_DEPTH) return `nests deeper than ${MAX_DEPTH} levels`;
-    for (const k of Object.keys(x)) {
-      if (BAD_KEY.has(k)) return `has a key "${k}", which no content may have`;
-      stack.push([x[k], d + 1]);
-    }
-  }
-  return null;
-}
-
 // ===== SEAM for job B1 (budget, strict mode; docs/specs/homebrew.md, Decision 2, task B1) =====
-// Two plugs, both here. Until B1 lands, the budget is the interim `guard` above and the lint is today's `lintPack`.
-// When B1 lands: `budgetHomebrew` returns `budget(data, HOMEBREW_LIMITS)` (and `guard` goes), and `lintHomebrew`
-// returns `lintPack(data, { strict: true })`. Nothing else in this module needs to change.
-// The budget runs on the document as given, before it is copied (a copy of a depth bomb would overflow the stack).
+// The budget runs on the document as given, before it is copied (a copy of a depth bomb would overflow the stack):
+// one iterative walk, bounded by HOMEBREW_LIMITS, refusing prototype keys, functions and anything not plain data.
 function budgetHomebrew(raw) {
-  const bad = guard(raw);
-  return bad ? [`pack: ${bad}`] : [];
+  return budget(raw, HOMEBREW_LIMITS);
 }
-// The lint runs on the plain copy, the same data that is then built and played.
+// The lint runs on the plain copy, the same data that is then built and played: strict, so every key is in its kind's
+// list, every id carries the pack's prefix (an SRD id is named as one), the source is `homebrew:<pack id>` and nothing
+// claims `checked: true`. The SRD ids are this module's own lookups (`HOMEBREW_LOOKUPS[kind][0]` is `CONTENT[kind]`).
+const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])) };
 function lintHomebrew(data) {
-  try { return lintPack(data); } catch (err) { return [`pack: could not be checked (${err instanceof RangeError ? 'too deeply nested' : err.message})`]; }
+  try { return lintPack(data, { strict: true, srd: SRD_IDS }); } catch (err) { return [`pack: could not be checked (${err.message})`]; }
 }
 // ===== end of the B1 seam =====
 
