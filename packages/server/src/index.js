@@ -18,7 +18,7 @@ import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { clientAddress, createLimits, limitsFromEnv, proxyFromEnv, LIMIT_MESSAGE } from "./limits.js";
-import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
+import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_PACK_FRAME_BYTES } from "./tables.js";
 import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
@@ -275,8 +275,17 @@ server.on("upgrade", (req, socket) => {
       ws.close();
       return;
     }
+    // A pack message costs a parse and a lint, so it has a budget of its own (limits.js `allowPack`), and a frame that says it is one
+    // and is over the pack limit is refused here, before anything is parsed. The DM's frame limit is larger (a map document), so
+    // this is the check that bounds a pack. A pack message that does not begin with its type is counted and bounded after parsing.
+    const packFrame = /^\s*\{\s*"t"\s*:\s*"pack"/.test(text.slice(0, 64));
+    if (packFrame) {
+      if (!limits.allowPack(addr)) { ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE })); return; }
+      if (text.length > MAX_PACK_FRAME_BYTES / 4 && Buffer.byteLength(text) > MAX_PACK_FRAME_BYTES) { ws.send(JSON.stringify({ t: "error", error: "That pack is too large." })); return; }
+    }
     let msg;
     try { msg = JSON.parse(text); } catch { return; }
+    if (msg?.t === "pack" && !packFrame && !limits.allowPack(addr)) { ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE })); return; }
     // A ping costs one bucket token like any message (taken above), so a flood of pings is limited and closed like any other flood.
     // It is not exempt: a free message type would be a free way to keep a connection busy. At one every few seconds it costs a
     // legitimate client nothing.

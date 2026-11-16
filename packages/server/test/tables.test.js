@@ -573,7 +573,8 @@ test("export: the DM gets the whole table, a player is refused, and no member or
 
   dm.say({ t: "export" });
   const reply = dm.last("export");
-  assert.deepEqual(Object.keys(reply.table).sort(), ["assetLimit", "assets", "assetsSkipped", "code", "exportedAt", "state"]);
+  assert.deepEqual(Object.keys(reply.table).sort(), ["assetLimit", "assets", "assetsSkipped", "code", "exportedAt", "packs", "state"]);
+  assert.deepEqual(reply.table.packs, []);
   assert.deepEqual(reply.table.assets, []);
   assert.equal(reply.table.code, code);
   assert.ok(Math.abs(Date.parse(reply.table.exportedAt) - Date.now()) < 5000);

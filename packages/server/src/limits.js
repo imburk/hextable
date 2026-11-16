@@ -5,6 +5,7 @@
 //   const release = limits.openConnection(addr);    // null when the address has too many open
 //   limits.allowHost(addr) / limits.allowJoin(addr) // false when over the window's budget
 //   const bucket = limits.messageBucket();          // one per connection; bucket.take() -> boolean
+//   limits.allowPack(addr)                          // false when the address has sent too many pack messages (add, update, remove) in the window
 //   limits.allowUpload(addr)                        // false when over the window's budget of uploads
 //   const slot = limits.uploadSlot(addr, code)      // { release } or { refused: "server" | "address" | "table" }
 //   limits.uploadPace(elapsedMs, bytes)             // null, "slow" or "deadline": cut an upload body off?
@@ -23,6 +24,8 @@ export const DEFAULT_LIMITS = {
   hostWindowMs: 60 * 60 * 1000,
   joins: 20,                 // join messages per address per joinWindowMs
   joinWindowMs: 10 * 60 * 1000,
+  packs: 10,                 // pack messages (add, update, remove) per address per packWindowMs: each one costs a parse and a lint of up to 256 KB
+  packWindowMs: 10 * 60 * 1000,
   burst: 20,                 // messages a connection may send at once
   perSecond: 5,              // and sustain
   uploads: 30,               // asset uploads (and deletions) per address per uploadWindowMs
@@ -56,6 +59,7 @@ export function limitsFromEnv(env = {}) {
     connections: n("LIMIT_CONNECTIONS", d.connections),
     hosts: n("LIMIT_HOSTS", d.hosts), hostWindowMs: n("LIMIT_HOST_WINDOW_MS", d.hostWindowMs),
     joins: n("LIMIT_JOINS", d.joins), joinWindowMs: n("LIMIT_JOIN_WINDOW_MS", d.joinWindowMs),
+    packs: n("LIMIT_PACKS", d.packs), packWindowMs: n("LIMIT_PACK_WINDOW_MS", d.packWindowMs),
     burst: n("LIMIT_BURST", d.burst), perSecond: n("LIMIT_RATE", d.perSecond),
     uploads: n("LIMIT_UPLOADS", d.uploads), uploadWindowMs: n("LIMIT_UPLOAD_WINDOW_MS", d.uploadWindowMs),
     assetBytes: n("LIMIT_ASSET_BYTES", d.assetBytes), tableAssetBytes: n("LIMIT_TABLE_ASSET_BYTES", d.tableAssetBytes),
@@ -75,6 +79,7 @@ export function createLimits(config = {}, now = Date.now) {
   const open = new Map();          // address -> open connections
   const hosts = new Map();         // address -> timestamps of recent host messages
   const joins = new Map();         // address -> timestamps of recent join messages
+  const packMsgs = new Map();      // address -> timestamps of recent pack messages
   const uploads = new Map();       // address -> timestamps of recent uploads and deletions
   const uploading = { all: 0, byAddr: new Map(), byTable: new Map() };   // upload bodies being read now
   const reads = new Map();         // address -> { tokens, last }: file reads
@@ -106,6 +111,7 @@ export function createLimits(config = {}, now = Date.now) {
     },
     allowHost: (addr) => admit(hosts, addr, c.hosts, c.hostWindowMs),
     allowJoin: (addr) => admit(joins, addr, c.joins, c.joinWindowMs),
+    allowPack: (addr) => admit(packMsgs, addr, c.packs, c.packWindowMs),
     allowUpload: (addr) => admit(uploads, addr, c.uploads, c.uploadWindowMs),
     // Two windows at once: a report is admitted only if both the minute's and the hour's budget have room (a refusal costs nothing).
     allowFeedback(address) {
@@ -164,7 +170,7 @@ export function createLimits(config = {}, now = Date.now) {
     // Forget addresses whose windows have passed, so the maps do not grow for ever.
     sweep() {
       const t = now();
-      for (const [map, windowMs] of [[hosts, c.hostWindowMs], [joins, c.joinWindowMs], [uploads, c.uploadWindowMs]]) {
+      for (const [map, windowMs] of [[hosts, c.hostWindowMs], [joins, c.joinWindowMs], [uploads, c.uploadWindowMs], [packMsgs, c.packWindowMs]]) {
         for (const [addr, list] of map) if (!list.some((x) => t - x < windowMs)) map.delete(addr);
       }
       for (const [addr, list] of feedback) if (!list.some((x) => t - x < 3_600_000)) feedback.delete(addr);
