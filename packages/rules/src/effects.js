@@ -355,7 +355,7 @@ function exec(s, ev, kit, f, step, at) {
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;                       // someone left the table mid-effect
-  if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to: its area is one it cannot lay out here (a cube of more than 1,000 feet is one, and a line or cube the DM places). The DM places the area, picks the creatures it catches and applies the effect.`);
+  if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. ${kit.whyNobody?.(f.src) ?? ''}The DM applies it.`);
   for (const tag of step.when ?? []) {
     const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s);
     if (ok === null) return handOver(`Part of ${f.src.name} depends on "${tag}", which the engine cannot judge yet. The DM applies it if it holds.`);
