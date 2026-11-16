@@ -9,7 +9,7 @@
 // ask a player about a reaction (engine.js, apply, which also holds the react handler) is put back whole and run again from its start
 // with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
-import { BRANCHES, SIZES, STEPS } from './content/schema.js';
+import { BRANCHES, SIZES, SPELL_KINDS, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
 import { useUp } from './durations.js';
 
@@ -123,16 +123,19 @@ function summarise(def) {
 export const BENEFICIAL_CONDITIONS = ['invisible'];
 
 // What a spell is for, in four words a player sorts by (docs/specs/table-ui.md, E12): `damage`, `healing`,
-// `control` and `utility`, worked out from its effect steps, never entered by hand. A spell may be more than one.
+// `control` and `utility` (SPELL_KINDS, kept in content/schema.js). A spell may be more than one. A spell's own
+// `kinds`, tagged by hand from its SRD text (E12, amended 15 November 2026), wins; without one they are worked
+// out from its effect steps:
 //   damage   a damage, fall or kill step; a modifier on the damage it or its caster deals (Hex, Divine Favor)
 //   healing  a heal, Temporary Hit Points or cure step
 //   control  a harmful condition, forced movement, a counter, difficult terrain, a modifier that hinders
 //   utility  a helpful modifier or condition (Invisible), a teleport, a reveal; and a spell with steps
 //            that none of the others fit
-// A spell whose only steps are `manual` (the DM applies it, its words in the step's text), perhaps behind
-// an attack roll or a save, gets no kind: the engine cannot tell what it is for and does not guess. The
-// client shows such a spell under every kind, marked as not known.
-export const SPELL_KINDS = ['damage', 'healing', 'control', 'utility'];
+// An untagged spell whose only steps are `manual` (the DM applies it, its words in the step's text), perhaps
+// behind an attack roll or a save, gets no kind: the engine cannot tell what it is for and does not guess. Every
+// SRD spell is tagged or derives a kind; a homebrew spell may still have none, and the client shows such a spell
+// under every kind, marked as not known.
+export { SPELL_KINDS };
 function hinders(m) {
   const neg = (typeof m.value === 'number' && m.value < 0) || (typeof m.value === 'string' && m.value.startsWith('-'));
   if (m.on.startsWith('attack.received')) return m.op === 'advantage' || m.op === 'crit';
@@ -142,6 +145,11 @@ function hinders(m) {
   return m.op === 'add' && neg;
 }
 export function spellKinds(def) {
+  if (Array.isArray(def.kinds)) return SPELL_KINDS.filter((x) => def.kinds.includes(x));
+  return derivedKinds(def);
+}
+// The kinds read from a spell's steps alone, as if it carried no tag.
+export function derivedKinds(def) {
   const k = new Set();
   let steps = false;
   walk(def.effects, (st, at) => {

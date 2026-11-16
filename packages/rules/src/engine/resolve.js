@@ -7,11 +7,11 @@ import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/ind
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { begin, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
-import { apart, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
-import { seenName, unknown } from '../vision.js';
+import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
+import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
-import { canSee, COVER, coverOf } from '../sight.js';
+import { canSee, COVER, coverOf, inViewOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
@@ -19,7 +19,7 @@ import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
@@ -938,6 +938,67 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
 // yet revealed, or under `los`/`light` one nobody in the party sees (vision.js `unknown`; fix round 1 of #373, M1). A
 // creature is never asked, and never reacts, against what its side does not know is there.
 export const seesFor = (s, t, e) => !!e && !e.object && canSee(s, t, e) !== 'no' && !(t.side === 'party' && unknown(s, e));
+// A party creature whose own senses find a creature that is hiding from it (Blindsight within range sees it whatever it
+// does; Truesight sees the Invisible, and hiding is the Invisible condition against its enemies: sight.js) can see it,
+// though the party is not yet told of it. It may then react to it (#374, B1; the re-review of #373, L1). Only hiding
+// gives way: a creature the DM has hidden, one somewhere not revealed, or one nobody in the party would see once it
+// stopped hiding (`los`, `light`, read as vision.js partyView reads them) stays unknown, and nobody in the party reacts
+// to it. Asked of a copy: the state is not touched (fix round 1 of #378, L2).
+function foundBySense(s, t, e) {
+  if (!e || e.object || t.side !== 'party' || !e.hiding || e.hidden || canSee(s, t, e) === 'no') return false;
+  const shadow = { ...e, hiding: undefined };
+  if (concealed(s.map, shadow)) return false;
+  const rule = sightRule(s);
+  if (rule === 'rooms') return true;
+  const eyes = Object.values(s.entities).filter((v) => v.side === 'party' && up(v)).map(raised), at = raised(shadow);
+  return eyes.some((v) => (rule === 'los' ? inViewOf(s.map, v, at) : canSee(s, v, at) !== 'no'));
+}
+// May `t` react to `e` by a trigger that says "that you can see": it sees it and its side knows of it (`seesFor`), or
+// its own senses find it (above). Offering or asking needs nothing more: a question about a creature the party is not
+// told of names nobody (no `by`). The finding itself is made only when the reaction is taken (`findFor`), so a
+// reaction set to `never` and one asked and declined send every player the same (fix round 1 of #378, M1).
+export const sensesFor = (s, t, e) => seesFor(s, t, e) || foundBySense(s, t, e);
+// The events of the action so far that name a creature.
+const NAMED = (x, id) => [x.id, x.actor, x.target, x.by, x.against, x.source, ...(Array.isArray(x.targets) ? x.targets : [])].includes(id);
+// `t` takes a reaction against `e`, which its own senses found: `e` stops hiding (`unhidden`, why `found`, by `t`) just
+// before the reaction, so the party is told first. What happened earlier in the action happened while the party did not
+// know of `e`, and stays told so: each earlier event naming it carries it in `unseen` (as an E23 cast marks its own,
+// casting.js; apply()'s record keeps the mark). Returns what was done, for `unfind`, or null when nothing was.
+export function findFor(s, t, e, ev) {
+  if (seesFor(s, t, e) || !foundBySense(s, t, e)) return null;
+  const marked = [], dc = e.hiding.dc;
+  for (const x of ev) {
+    if (!x || !NAMED(x, e.id) || (Array.isArray(x.unseen) && x.unseen.includes(e.id))) continue;
+    x.unseen = [...(Array.isArray(x.unseen) ? x.unseen : []), e.id];
+    marked.push(x);
+  }
+  unhide(s, e, ev, 'found', t);
+  return { e, dc, marked };
+}
+// A finding made by a reaction inside an attack or a cast. In a fight the creature does not move again before the action
+// ends, so whether the end would have found it anyway is asked now (unfind). Outside a fight the only attack or harmful
+// spell that reaches a reaction is an E23 cast (casting.js, landThenFight), which marks what the party did not know of
+// while it was cast whatever happens after: the marks stay, as that cast would have made them.
+function settleFound(s, found) { if (found && s.encounter) unfind(s, found); }
+// Would the end of the action have found this creature anyway, had it still been hiding (features.js `watch`: an enemy
+// that sees it, or, with the table rule passiveFind 'all', one whose passive Perception meets its DC and that has it in
+// view)? Then the events before the finding are told as the end of the action would have told them: the marks go.
+export function unfind(s, found) {
+  if (!found) return;
+  const h = { ...found.e, hiding: { dc: found.dc } };
+  const anyway = living(s).some((o) => {
+    if (!up(o) || !hostile(o, h)) return false;
+    if (canSee(s, o, h) !== 'no') return true;
+    if (s.settings.passiveFind !== 'all') return false;
+    const w = canSee(s, o, h, { ignoreHiding: true });
+    return w !== 'no' && passive(s, o, 'perception', w === 'dim' ? ['dim light'] : []) >= found.dc;
+  });
+  if (!anyway) return;
+  for (const x of found.marked) {
+    x.unseen = x.unseen.filter((id) => id !== found.e.id);
+    if (!x.unseen.length) delete x.unseen;
+  }
+}
 
 // Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
 // its player chose), and its steps run at once on `targets` (the caster, or the creature that set
@@ -990,7 +1051,7 @@ function reactToHit(s, t, e, atk, roll_, ev) {
       o = { reaction: r.id, name: r.name, ac: r.ac };
     } else if (r.kind === 'feature') {
       const x = r.reaction;
-      if (x.seen && !seesFor(s, t, e)) continue;                                        // "an attacker that you can see"
+      if (x.seen && !sensesFor(s, t, e)) continue;                                      // "an attacker that you can see"
       if (x.types && !attackTypes(atk).some((d) => x.types.includes(d))) continue;      // Deflect Attacks: Bludgeoning, Piercing or Slashing
       o = { reaction: r.id, name: r.name };
     } else continue;
@@ -1000,11 +1061,14 @@ function reactToHit(s, t, e, atk, roll_, ev) {
   let chosen = offers.find((x) => x.w !== 'ask') ?? null, slot;
   if (offers.some((x) => x.w === 'ask')) {
     const seen = seesFor(s, t, e);
-    const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id } : {}), attack: atk.name, total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
+    // An attacker the party does not know of is not named, nor is its weapon (#374, B2; the re-review of #373, L2): the
+    // total and the Armor Class are what the answer turns on.
+    const a = ask(s, t, { trigger: 'hit', ...(seen ? { by: e.id, attack: atk.name } : {}), total: roll_.total, ac: roll_.ac, ...(roll_.critRoll ? { crit: true } : {}) }, offers.map((x) => x.o));
     if (a === null) for (const x of offers) { if (x.w === 'ask') tellDM(t, x.r, `${t.name} is hit by ${e.object ? 'a trap' : e.name}'s attack.`, ev); }
     else { chosen = offers.find((x) => x.r.id === a.take) ?? null; slot = a.slot; }
   }
   if (!chosen) return null;
+  if (chosen.r.kind === 'feature' && chosen.r.reaction.seen) settleFound(s, findFor(s, t, e, ev));    // taken against a foe its senses found: the party is told first
   const { r } = chosen, against = e.object ? {} : { against: e.id };
   if (r.kind === 'spell') {
     castReaction(s, t, SPELLS[r.id], slot ?? chosen.slots[0], 'hit', e.object ? null : e.id, ev);
@@ -1038,14 +1102,16 @@ export function reactAgainst(s, t, e, on, ev, why) {
     const w = instruction(t, r);
     if (w === 'never') continue;
     const sp = SPELLS[r.id], slots = slotsFor(s, t, sp);
-    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || !seesFor(s, t, e)) continue;
+    if (!slots.length || apart(s, t, e) * FT > (typeof sp.range === 'number' ? sp.range : 0) || !sensesFor(s, t, e)) continue;
     let slot = slots[0];
     if (w === 'ask') {
-      const a = ask(s, t, { trigger: on, by: e.id }, [spellOffer(r, slots)]);
+      // A creature the party is not told of is not named in the question (fix round 1 of #378, L3).
+      const a = ask(s, t, { trigger: on, ...(seesFor(s, t, e) ? { by: e.id } : {}) }, [spellOffer(r, slots)]);
       if (a === null) { tellDM(t, r, why, ev); continue; }
       if (a.take !== r.id) return null;
       slot = a.slot ?? slot;
     }
+    settleFound(s, findFor(s, t, e, ev));                                               // taken against a foe its senses found: the party is told first
     return castReaction(s, t, sp, slot, on, e.id, ev, [e.id]);
   }
   return null;

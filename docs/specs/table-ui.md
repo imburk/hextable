@@ -1953,3 +1953,46 @@ is marked **new rule**.
   Hold Person, a Wand of Magic Missiles; Shield, Counterspell, a player asked; undo, redo, replay, save and load; saves
   from main, `fixtures/e23-main-saves.json`; the constant both ways), `e23-hidden-caster.test.js`, `e23-replay.test.js`
   (`fixtures/e23-main-replay.json`, made by `fixtures/e23-record.mjs` from main's rules); on hexes and the square room.
+
+### E12 amended: spell kinds by hand, and the re-review of #373 (PR for #374)
+
+- **The field.** `kinds`, an optional spell field: one to four of `SPELL_KINDS` (`damage`, `healing`, `control`,
+  `utility`), no repeats, in that order. `SPELL_KINDS` now lives in `content/schema.js` (effects.js imports it and exports
+  it again, so every importer is unchanged; no new import cycle). `lintSpell` refuses an empty list, a word outside the
+  list, a repeat, a list out of order, or anything that is not a list. The field is optional, so the state shape and
+  saves are unchanged.
+- **`spellKinds(def)`** returns the spell's own `kinds` when it has them, else the derivation, which is now exported as
+  `derivedKinds(def)` and is unchanged. `sp.kinds` keeps its shape (a list in the fixed order).
+- **The tagging.** Every spell whose steps derive no kind (203 of 339 when built, not 211: some were automated since
+  the spec counted) was read in `reference/srd52/srd52-flow.txt` and tagged by hand, data only, no other field changed.
+  Nine whose derived kinds were plainly incomplete or wrong were tagged too: Aid, Aura of Life (healing that is the
+  DM's), Vampiric Touch (healing), Fire Shield, Wind Wall (damage plus protection), Befuddlement, Dissonant Whispers,
+  Spirit Guardians (a hindrance the steps do not carry), and Contact Other Plane (its damage falls on the caster: it is
+  utility). 212 spells carry `kinds`. How they were decided: damage for anything that deals damage or kills, a weapon
+  buff that adds damage included (Magic Weapon, Shillelagh, as the derivation treats Hunter's Mark); healing for Hit
+  Points, Temporary Hit Points, ending conditions or curses and bringing back the dead (as the derivation treats Lesser
+  Restoration); control for what hinders, moves, binds or shuts out a creature against its will; utility for the rest,
+  and for what helps a willing creature. A spell with several uses carries each (Wish: all four, because it can duplicate
+  any spell). Summons (fix round 1 of #378): a creature that fights for the caster is damage (Giant Insect, Summon
+  Dragon, Animate Objects, Animate Dead, Create Undead), one that is ridden is utility too (Find Steed), one that cannot
+  attack or whose acts the text leaves to the DM is utility (Find Familiar, Phantom Steed, Unseen Servant, Planar Ally,
+  Gate, Simulacrum). The test `spell-kinds.test.js` prints every spell's kinds, marks the hand-tagged ones with `*`, and fails if
+  any SRD spell has no kind.
+- **Kind not known.** No SRD spell has an empty `sp.kinds` any more. A homebrew spell with only `manual` steps and no
+  `kinds` still has none (DEBT W35), so the client's "kind not known" stays. `npm run content` does not count untagged
+  spells yet (its script was not in this change's files).
+- **B1 (re-review of #373, L1; as changed by fix round 1 of #378).** `resolve.js`: `sensesFor(s, t, e)` is `seesFor` or a
+  party reactor whose own Blindsight or Truesight sees a foe that is only hiding (not DM-hidden, not somewhere unrevealed,
+  and one the party would know of once it stopped hiding, read from a copy as partyView reads it). Such a reaction may be
+  offered or asked (the question has no `by`); `findFor` makes the foe stop hiding (`unhidden`, `found`, by the reactor)
+  only when the reaction is taken, just before it, and marks the action's earlier events naming it `unseen`. The walk, and
+  a reaction in a fight, drop those marks when the end of the action would have found the foe anyway (`unfind`, the
+  `watch` rule). So `never` and a declined question send the same, and a taken one sends nothing earlier that `never`
+  would not. Used for the Opportunity Attack, Counterspell and Hellish Rebuke (`reactAgainst`) and Uncanny Dodge. A
+  DM-hidden foe, or one in an unrevealed place, gets no reaction whatever the senses. Foes' reactions are unchanged.
+  What is left is DEBT W34 and W36. Twin runs in `reactions-senses.test.js`.
+- **B2 (L2).** The hit question (Shield, Uncanny Dodge, Deflect Attacks) names the attack only when it names the attacker.
+- **B3 (L3).** Retaliation is left ungated (the SRD gives it no sight clause): DEBT W33.
+- **Part C.** W24 (the monster AI ends the turn of a steered mount on a turn of its own and of a creature at 0 in its own
+  turn), W26 (a rider grown past its mount is set down), W27 (a rider in the way gives cover at its raised height) are
+  fixed (W26 also sets a Large rider down on a nearer cell than before); W25 (Flyby) is left: seven SRD creatures have it, and it needs the walk to know a creature flies out.

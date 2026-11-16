@@ -59,8 +59,10 @@ export function riderLanding(s, e, m0, want = null, from = null) {
     const p = landing(s.map, want, want.z ?? m.pos.z);
     return p && landingFits(s, e, m, p) && free(p) ? out(p) : null;
   }
-  const spots = [];
-  for (const f of footprint(m, m.pos, G)) for (const h of G.range(f, 1)) {
+  // Anchors as far from the mount as the rider's own body reaches, and a cell more: a rider bigger than one cell stands
+  // with its anchor further off than that and still within 5 ft of the mount (a Huge rider off a Large horse; DEBT W26).
+  const spots = [], reach = 1 + Math.max(0, ...shapeOf(body, G).map(([dq, dr]) => G.dist({ q: 0, r: 0 }, { q: dq, r: dr })));
+  for (const f of footprint(m, m.pos, G)) for (const h of G.range(f, reach)) {
     const p = landing(s.map, h, m.pos.z);
     if (p && !spots.some((x) => key(x) === key(p)) && landingFits(s, e, m, p)) spots.push(p);
   }

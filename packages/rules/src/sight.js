@@ -104,7 +104,10 @@ export const squareCover = (s) => (SQUARE_COVERS.includes(s.settings?.squareCove
 // nobody is lifted twice. Distances (reach, range, the reach of a sense) are measured from the creature as it stands.
 const lift = (s, e) => (e?.riding && e.pos && SIZES[e.riding.size] && s?.entities?.[e.id] === e ? { ...e, pos: { ...e.pos, z: (e.pos.z ?? 0) + SIZES[e.riding.size].height } } : e);
 export function coverOf(s, from, target, others = []) {
+  // A rider in the way is measured at its raised height too, as the attacker and the target are (DEBT W27).
+  const f0 = from, t0 = target;
   from = lift(s, from); target = lift(s, target);
+  others = others.filter((c) => c !== f0 && c !== t0).map((c) => lift(s, c));
   const map = s.map, rules = s.settings ?? {}, G = gridOf(map);
   if (G.kind === 'square' && squareCover(s) === 'obstacle') return obstacleCover(s, from, target, others);
   const n = CORNERS[G.kind];
@@ -125,7 +128,7 @@ export function coverOf(s, from, target, others = []) {
   if (rules.creatureCover !== 'off' && G.dist(best.o, best.t) > 1) {
     const p = G.center(best.o), q = G.center(best.t), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     for (const c of others) {
-      if (c === from || c === target || c.dead || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
+      if (c === from || c === target || c.dead || (c.id && (c.id === from.id || c.id === target.id)) || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
       for (const f of shapeOf(c, G).length === 1 ? [c.pos] : footprint(c, c.pos, G)) {
         const m = G.center(f), t = ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / (len * len);
         if (t > 0.05 && t < 0.95 && Math.hypot(m[0] - (p[0] + t * (q[0] - p[0])), m[1] - (p[1] + t * (q[1] - p[1]))) < 1.5) return 'half';
