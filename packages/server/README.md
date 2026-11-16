@@ -73,28 +73,40 @@ from each player. Everything else, including who may speak as whom, is the engin
 A table can hold up to four homebrew packs (`docs/specs/homebrew.md`, Decisions 3 and 5). They are kept in the
 table's record beside `state` (`table.packs = [{id, version, hash, data}]`, in the table's file) and the game names
 them in `state.packs` (`[{id, version, hash}]`, set through the engine's `setPacks`). The DM cannot send `setPacks`
-as an action: it is refused, and the server keeps `state.packs` in step with the record (also after undo, redo and rewind).
+as an action: it is refused, and the server keeps `state.packs` in step with the record (at load, and after undo, redo and rewind).
 
 - `{t:"pack", op:"add"|"update", pack}` from the DM; `pack` is the pack document or its JSON text. `{t:"pack", op:"remove", id}`.
   Anyone else, and anyone not let in, is answered `Only the DM can change the table's packs.`
-- The checks, in order: who; the size (a JSON text over 256 KB is refused before it is parsed, and `index.js` refuses a pack
-  frame over 256 KB plus 4 KB of envelope before parsing it); the registry's `loadPack` (budget, then strict lint); `add` needs a
-  new id and `update` the same id and a higher version; the set the table would have goes through `overlayOf` (at most four
-  packs, no id in two packs, no SRD id); a removal, or an update that drops entries, is refused while anything in the game uses
-  them; the hash (`hashOf`); `setPacks` through `apply`; and only then the record changes and the table is told. A refusal
-  changes nothing and tells no one but the sender.
+- Sizes. A seated DM's frame is bounded before it is parsed at 1 MiB plus 4 KB (the same as a map document; everyone else's at 16 KB). That
+  holds a 256 KB pack in text form even when every character needs escaping (at most twice its size). A pack sent as text is read
+  only up to 512 KB (twice the pack limit); the rules' budget then holds the pack to 256 KB of canonical JSON, whatever form it came in.
+  Nothing reads the start of the frame.
+- The checks, in order: who; the operation; the table's pack budget; the size; the registry's `loadPack` (budget, then strict lint); a
+  spell that summons a homebrew creature is refused (`A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.`);
+  `add` needs a new id and `update` the same id and a higher version; an update may add and change entries but not drop one the
+  earlier version had (remove the pack, when nothing uses it, and add it again); the set the table would have goes through `overlayOf`
+  (at most four packs, no id in two packs, no SRD id); a removal is refused while anything in the game uses the pack; the hash
+  (`hashOf`); `setPacks` through `apply`; and only then the record changes and the table is told. A refusal changes nothing and tells no one but the sender.
 - A refusal is `{t:"error", error, problems?, blockers?}`: `problems` are the linter's sentences (at most 20), `blockers` say where a
   pack is in use (`entities.m3 (Name): hb-ember-folk-quillwraith`). Removing a pack clears the DM's undo history, since an undo step could bring back a creature made from it.
-- After a change, every member let in is sent `{t:"packs", packs}`. The DM's list is the whole thing: `[{id, name, version, hash, data}]`
-  (and `changed: {op, id, version?}` on the answer to a change, and `problems` if the table's saved packs failed to load). Every
-  other member's is `[{id, name, version, spells, items, feats, weapons, armour, objects}]`: no monsters, no `dmNotes`, no hash.
-  Someone not yet let in is sent nothing. A member who sits down, is let in, or asks to `sync` is sent `packs` before the first
-  `update` when the table has any; a table with none sends none. The list always replaces what the client holds.
+- What members are sent. `{t:"packs", packs:[{id, name, version, hash}]}` is only the list: it is sent to every member let in after a change, and
+  before the first `update` on sitting down, being let in, or `sync` (when the table has packs; a table with none sends none).
+  On a change the DM's copy also has `changed: {op, id, version?}`. The data of a pack is `{t:"packData", id, version, hash, data}`: sent once
+  to every member let in when a pack is added or updated, and otherwise only to a member who asks with `{t:"packData", id}` (a client keeps
+  packs by hash and asks only for what it lacks; rate limited per member, `LIMIT_PACK_DATA` per `LIMIT_PACK_DATA_WINDOW_MS`, 30 per minute; refused
+  for a pending member, who is sent nothing of any pack). The DM's `data` is the whole pack; everyone else's is
+  `{id, name, version, spells, items, feats, weapons, armour, objects}`: no monsters, no `dmNotes`.
 - Every call of the engine and the views for a table runs inside that table's overlay (`using(overlayOf(...))`) through one wrapper in
-  `tables.js`; the overlay is built once and rebuilt only when the packs change. At start-up each saved table's packs are checked
-  again as if uploaded (`vetPacks`); a table whose packs fail is played without them, the DM is told, and no pack is added until they are removed.
+  `tables.js`; the overlay is built once and rebuilt only when the packs change.
+- Saved tables. At start-up (and for any table brought in from a file) a table's `packs` is checked as if uploaded: it must be a list of
+  exactly `{id, version, hash, data}` records whose data passes `loadPack`, whose hash matches, that summon nothing homebrew, and that the registry accepts together.
+  Whatever fails is dropped, never sent to anyone, written to the server log, and listed to the DM as `dropped: [{id, reason}]` on the `packs` message at
+  sitting down until the DM next changes a pack; the table plays without them and `state.packs` is set to what is installed. One table's bad file does not
+  stop the server or another table.
+- A handler that throws costs that message an error frame (`The server could not handle that message.`) and a log line with the stack; the socket and the process carry on.
 - `export` carries `packs` (`[{id, version, hash, data}]`) beside `state`.
-- Limit: `LIMIT_PACKS` pack messages per address per `LIMIT_PACK_WINDOW_MS` (10 per 10 minutes), counted before parsing.
+- Limits. `LIMIT_PACKS` pack messages per table per `LIMIT_PACK_WINDOW_MS` (20 per 10 minutes), spent only by the table's seated DM (a message with no
+  valid operation, and anything from a player or an unseated socket, spends none; those meet the ordinary per-connection limits).
 
 ### Connection quality (#246)
 

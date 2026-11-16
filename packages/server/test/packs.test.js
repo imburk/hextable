@@ -2,7 +2,7 @@
 // checks, what members are told, that a refusal changes nothing, that everything that reads content for a table runs inside the
 // table's overlay, and that a restart and an export keep the packs. The homebrew here is invented for these tests.
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -670,4 +670,192 @@ test("end to end: a pack frame over the limit is refused unparsed, pack messages
     back.ws.close();
     await s.stop();
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
+// ---------- fix round 1 of #400 ----------
+test("M1: a table file with a bad `packs` value does not stop the server or another table, and a handler that throws does not stop the process", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hextable-packs-bad-"));
+  try {
+    let s = await startServer({ data: dir, stderr: "pipe" });
+    const host = async () => { const c = await talk(s.port); c.send({ t: "host", name: "Dana" }); const w = await c.until((g) => g.find((m) => m.t === "welcome")); c.send({ t: "pack", op: "add", pack: FROST() }); await c.until((g) => g.find((m) => m.t === "packs")); c.ws.close(); return w; };
+    const bad = await host(), good = await host(), damaged = await host();
+    await s.stop();
+    const edit = (code, f) => { const p = join(dir, `${code}.json`), r = JSON.parse(readFileSync(p, "utf8")); f(r); writeFileSync(p, JSON.stringify(r)); };
+    edit(bad.code, (r) => { r.packs = "x"; });
+    edit(damaged.code, (r) => { r.members = 5; });             // makes a join throw inside the handler
+    s = await startServer({ data: dir, stderr: "pipe" });       // rejects if the server exits early
+    assert.match(s.stderr(), /dropped at load/);
+    const a = await talk(s.port);
+    a.send({ t: "resume", code: bad.code, token: bad.token });
+    const told = await a.until((g) => g.find((m) => m.t === "packs"));
+    assert.deepEqual(told.packs, []);
+    assert.match(told.dropped[0].reason, /not a list/);
+    const b = await talk(s.port);
+    b.send({ t: "resume", code: good.code, token: good.token });
+    assert.equal((await b.until((g) => g.find((m) => m.t === "packs"))).packs[0].id, "frost-kin", "the other table is untouched");
+    // The throw: an error frame, the socket stays open, the process lives, and the log has the stack.
+    const c = await talk(s.port);
+    c.send({ t: "join", code: damaged.code, name: "Pat" });
+    assert.match((await c.until((g) => g.find((m) => m.t === "error"))).error, /could not handle/);
+    assert.match(s.stderr(), /"join" message failed/);
+    c.send({ t: "join", code: good.code, name: "Pat" });
+    await c.until((g) => g.find((m) => m.t === "welcome"));
+    assert.equal(s.child.exitCode, null);
+    for (const x of [a, b, c]) x.ws.close();
+    await s.stop();
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
+});
+
+test("M2: a pack with a spell that summons a homebrew creature is refused with the plain sentence, whatever the depth", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player, code } = seated(tables);
+  const call = (summon, extra = {}) => spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" }, ...extra }] });
+  const bad = doc("ember-folk", { spells: [call(WRAITH)], monsters: [monster("ember-folk", "quillwraith")] });
+  const before = snapshotOf(tables, code), seen = player.raw.length;
+  add(dm, bad);
+  assert.equal(dm.last("error").error, HOMEBREW_SUMMON_SENTENCE, dm.last("error").error);
+  assert.equal(snapshotOf(tables, code), before);
+  assert.equal(player.raw.length, seen);
+  // The walk itself: any depth, a `forms` list, another pack's monster; not an SRD summon or an ordinary spell.
+  const wrap = (x, n) => { let y = x; for (let i = 0; i < n; i++) y = { onFail: [y] }; return y; };
+  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "hb-other-imp" }, 5)] }] }), true);
+  assert.equal(summonsHomebrew({ spells: [{ effects: [{ onHit: [{ summon: "form", forms: ["hb-x-a", "hb-x-b"] }] }] }] }), true);
+  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "celestial" }, 3), { summon: "form", forms: ["wolf"] }, { damage: "1d4" }] }] }), false);
+  assert.equal(summonsHomebrew({ spells: [spell("a", "b")], monsters: [{ summon: "hb-x-y" }] }), false, "only spells are walked");
+  assert.equal(summonsHomebrew({}), false);
+  // A stored pack that does so is dropped at load as well.
+  const d = bad;
+  assert.equal(vetPacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).ok, false);
+});
+
+test("M3: the pack budget is the table's and is spent only by its seated DM", () => {
+  const spent = [];
+  const tables = createTables({ seed: () => 5, allowPack: (key) => { spent.push(key); return spent.length <= 3; } });
+  const { dm, player, code } = seated(tables);
+  const stray = client(tables);
+  for (const who of [stray, player]) for (let i = 0; i < 30; i++) who.say({ t: "pack", op: "add", pack: {} });
+  assert.deepEqual(spent, [], "unseated and player frames spend nothing");
+  dm.say({ t: "pack", op: "add", pack: FROST() });
+  dm.say({ t: "pack", op: "install" });
+  assert.deepEqual(spent, [code], "a frame with no valid operation spends nothing");
+  dm.say({ t: "pack", op: "add", pack: "{not json" });
+  dm.say({ t: "pack", op: "remove", id: "nope" });
+  assert.deepEqual(spent, [code, code, code]);
+  const before = snapshotOf(tables, code);
+  add(dm, EMBER());
+  assert.equal(dm.last("error").error, "Too many requests. Wait a moment and try again.");
+  assert.equal(snapshotOf(tables, code), before);
+});
+
+test("M3 end to end: frames from sockets that are not the DM cannot use up the DM's pack messages", async () => {
+  const s = await startServer({ stderr: "pipe", env: { LIMIT_RATE: "1000", LIMIT_BURST: "1000" } });
+  const dm = await talk(s.port);
+  dm.send({ t: "host", name: "Dana" });
+  const w = await dm.until((g) => g.find((m) => m.t === "welcome"));
+  const junk = await talk(s.port);
+  for (let i = 0; i < 30; i++) junk.send({ t: "pack", op: "add", pack: {} });
+  await junk.until((g) => g.filter((m) => m.t === "error").length >= 30);
+  assert.equal(junk.got.some((m) => /Too many/.test(m.error ?? "")), false);
+  dm.send({ t: "pack", op: "add", pack: FROST() });
+  assert.equal((await dm.until((g) => g.find((m) => m.t === "packs"))).packs[0].id, "frost-kin");
+  assert.ok(w);
+  dm.ws.close(); junk.ws.close();
+});
+
+test("M4: sync, sitting down and being let in carry only the list; the data comes once on add or update and on request, rate limited, never to a pending member", () => {
+  let allow = true;
+  const tables = createTables({ seed: () => 5, allowPackData: () => allow });
+  const { dm, player, code } = seated(tables);
+  add(dm, EMBER());
+  assert.equal(dm.count("packData"), 1);
+  assert.equal(player.count("packData"), 1);
+  add(dm, EMBER(2), "update");
+  assert.equal(player.count("packData"), 2, "an update sends the data again");
+  assert.equal(player.last("packData").version, 2);
+  for (const who of [dm, player]) { who.say({ t: "sync" }); who.say({ t: "sync" }); }
+  assert.equal(dm.count("packData"), 2);
+  assert.equal(player.count("packData"), 2, "a sync sends no pack data");
+  const sync = player.raw.filter((x) => x.startsWith('{"t":"packs"')).at(-1);
+  assert.ok(sync.length < 400, `the list is small: ${sync.length} bytes`);
+  // On request: the member's own filtered form.
+  player.say({ t: "packData", id: "ember-folk" });
+  assert.equal(player.last("packData").data.monsters, undefined);
+  assert.equal(player.last("packData").hash, hashOf(EMBER(2)));
+  dm.say({ t: "packData", id: "ember-folk" });
+  assert.equal(dm.last("packData").data.monsters[0].id, WRAITH);
+  player.say({ t: "packData", id: "nope" });
+  assert.match(player.last("error").error, /not on this table/);
+  player.say({ t: "packData" });
+  assert.match(player.last("error").error, /not on this table/);
+  // A pending member is refused and learns nothing, a rate limit says so.
+  const waiting = client(tables);
+  waiting.say({ t: "join", code, name: "Wes" });
+  waiting.say({ t: "packData", id: "ember-folk" });
+  assert.match(waiting.last("error").error, /Waiting for the DM/);
+  assert.equal(waiting.raw.some((x) => x.includes("ember") || x.includes("Cinder")), false);
+  allow = false;
+  const n = player.count("packData");
+  player.say({ t: "packData", id: "ember-folk" });
+  assert.equal(player.last("error").error, "Too many requests. Wait a moment and try again.");
+  assert.equal(player.count("packData"), n);
+});
+
+// A pack of about 251 KB made of many entries whose text is full of quotes, so that as text inside a message it is much longer.
+function bigPack() {
+  const d = doc("big", { spells: [] });
+  for (let i = 0; i < 200; i++) {
+    d.spells.push(spell("big", `s${i}`, { name: "Big Spell", text: '"q'.repeat(i < 199 ? 620 : 1) }));
+    if (JSON.stringify(d).length > 251_000) break;
+  }
+  return d;
+}
+test("L1: a valid 251 KB pack sent as text is accepted, however much longer the escaped frame is", async () => {
+  const d = bigPack(), text = JSON.stringify(d);
+  assert.ok(text.length > 245_000 && text.length < 256 * 1024, `${text.length}`);
+  const frame = JSON.stringify({ t: "pack", op: "add", pack: text });
+  assert.ok(frame.length > 256 * 1024 + 4096, `the frame is ${frame.length}: more than the old bound`);
+  const s = await startServer({ stderr: "pipe", env: { LIMIT_RATE: "1000", LIMIT_BURST: "1000" } });
+  const dm = await talk(s.port);
+  dm.send({ t: "host", name: "Dana" });
+  await dm.until((g) => g.find((m) => m.t === "welcome"));
+  // The key order of the message does not matter: nothing reads the start of the frame.
+  dm.send(`{"op":"add","pack":${JSON.stringify(text)},"t":"pack"}`);
+  const got = await dm.until((g) => g.find((m) => m.t === "packs" || (m.t === "error" && !/Waiting/.test(m.error))));
+  assert.equal(got.t, "packs", got.error);
+  assert.equal(got.packs[0].hash, hashOf(d));
+  // One byte of pack over the limit is refused by the rules' budget, with its own sentence, whatever the form.
+  const over = structuredClone(d); over.pack.attribution = "z".repeat(MAX_PACK_BYTES - text.length + 200);
+  dm.send({ t: "pack", op: "update", pack: JSON.stringify({ ...over, pack: { ...over.pack, version: 2 } }) });
+  const e = await dm.until((g) => g.findLast((m) => m.t === "error"));
+  assert.match(e.error, /refused/);
+  assert.ok(e.problems.length > 0);
+  dm.ws.close();
+});
+
+test("L4: an update may not drop an entry the earlier version had: undo cannot bring back a creature of a dropped template", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, code } = seated(tables);
+  const t = play(tables, code);
+  add(dm, EMBER());
+  dm.say({ t: "act", action: { type: "spawn", monster: WRAITH, at: { q: 3, r: 0 } } });
+  const id = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WRAITH);
+  dm.say({ t: "act", action: { type: "remove", entity: id } });
+  if (t.state.entities[id]) delete t.state.entities[id];
+  const slim = EMBER(2); slim.monsters = [];
+  add(dm, slim, "update");
+  const e = dm.last("error");
+  assert.match(e.error, /drops 1 entry/);
+  assert.match(e.error, new RegExp(WRAITH));
+  assert.match(e.error, /remove the pack \(when nothing uses it\) and add it again/);
+  assert.equal(t.packs[0].version, 1);
+  // Adding and changing entries is fine.
+  const more = EMBER(2); more.spells.push(spell("ember-folk", "extra", { name: "Extra Lash" }));
+  add(dm, more, "update");
+  assert.equal(t.packs[0].version, 2);
+  // And the way the message says: remove it, add the smaller pack again.
+  dm.say({ t: "pack", op: "remove", id: "ember-folk" });
+  assert.deepEqual(t.packs, []);
+  add(dm, slim);
+  assert.equal(t.packs[0].id, "ember-folk");
+  clean();
 });

@@ -102,7 +102,7 @@ export function usesIn(state, isMine, most = 8) {
 
 // Does any spell of this pack summon a creature that comes from a homebrew pack, at any depth: a `summon` step naming a pack monster,
 // or a `forms` list holding one? Until the owner rules on what a player is sent of a summoned homebrew creature, such a pack is refused.
-// (A `forms` filter by type and challenge rating is not looked at: DEBT T49.) One iterative walk over the loaded, budgeted document.
+// (A `forms` filter by type and challenge rating is not looked at: DEBT T48.) One iterative walk over the loaded, budgeted document.
 export function summonsHomebrew(data) {
   const hb = (x) => typeof x === "string" && x.startsWith("hb-");
   const stack = (Array.isArray(data?.spells) ? data.spells : []).map((sp) => sp?.effects);

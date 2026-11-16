@@ -1097,6 +1097,12 @@ What was settled while building the server side (`tables.js`, `index.js`, `limit
 - **The server composes `setPacks`.** An `act` of type `setPacks` is refused. After undo, redo and rewind the server sets `state.packs` back from the record, outside the undo history.
 - **In use** is a walk over the state's keys and strings (not the timeline) for ids of the pack's `hb-<id>-` prefix; an update is refused if it drops an id that is in use.
 - **Saved tables** are vetted at start-up with `vetPacks` (the registry's `loadPack`, the claimed id, version and hash, then `overlayOf`); a table that fails is played without its packs and the DM's `packs` message carries `problems`.
+- **Fix round 1 (review of #400).** Saved packs are sanitised at load (`sanitizePacks`): any bad record or set is dropped with a reason, never
+  sent, told to the DM (`dropped`) and `state.packs` is reconciled; a throwing handler is caught per message in `index.js`. A pack whose
+  spell summons a homebrew creature is refused until the owner rules (DEBT T47). The pack budget is the table's and only its seated DM spends it.
+  `packs` is only a list; the data is `packData`, once on add or update and on request. The raw frame is bounded by the DM's frame limit (1 MiB + 4 KB), the
+  text of a pack at 512 KB, the pack at 256 KB by the rules' budget. An update may not drop entries (undo could bring back a creature of a dropped template).
+- **Ruled by the lead (L3):** the action names of a creature a player has seen appear in events as any creature's do; this is accepted.
 - **Not done:** guest packs (B8), the operator's delete and the lobby count (B15), the client (B7), an import (there is none on the server).
 - **Found:** DEBT T44, T45, T46. A homebrew creature's default name and its `tpl` reach players in the state view.
 
