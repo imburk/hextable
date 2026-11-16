@@ -178,3 +178,17 @@ test("normaliseAddress: IPv4-mapped IPv6 is plain IPv4; ports and zones are drop
   assert.equal(normaliseAddress("1.2.3.4.5"), null);
   assert.equal(normaliseAddress(undefined), null);
 });
+
+test("pack messages have a limit of their own per address and window, set from the environment, and swept", () => {
+  const c = clock(), l = createLimits({ packs: 3, packWindowMs: 60_000 }, c.now);
+  assert.deepEqual([1, 2, 3, 4].map(() => l.allowPack("1.1.1.1")), [true, true, true, false]);
+  assert.equal(l.allowPack("2.2.2.2"), true, "another address has its own budget");
+  c.advance(60_001);
+  assert.equal(l.allowPack("1.1.1.1"), true, "the window passes");
+  assert.deepEqual([DEFAULT_LIMITS.packs, DEFAULT_LIMITS.packWindowMs], [10, 600_000]);
+  const e = limitsFromEnv({ LIMIT_PACKS: "2", LIMIT_PACK_WINDOW_MS: "1000" });
+  assert.deepEqual([e.packs, e.packWindowMs], [2, 1000]);
+  c.advance(120_000);
+  l.sweep();
+  assert.equal(l.allowPack("1.1.1.1"), true);
+});
