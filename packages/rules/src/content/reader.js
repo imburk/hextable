@@ -818,7 +818,7 @@ class Reading {
       if (this.itm) {
         // engine/rolls.js `endingDc`: the ending's own `dc`, else the step's own; an item's steps have no spell save DC to fall back on.
         const own = isInt(e.dc) ? e.dc : null, base = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}`, more = ends.orDamaged === true ? '; any damage it takes would also end it' : '';
-        if (own === null) { this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC, so only the DM can end it.`); return `${base}, and a success would end it${more}. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition.`; }
+        if (own === null) { this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC, so only the DM can end it.`); return `${base}, and a success would end it${more}. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine does not roll that save.`; }
         return `${base}, against DC ${own}; a success ends it${more}.`;
       }
       if (this.mon) {
@@ -828,7 +828,7 @@ class Reading {
         const base = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}`, more = ends.orDamaged === true ? '; any damage it takes would also end it' : '';
         if (dc === null) {
           this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC anywhere (neither \`ends.dc\` nor a save above it), so only the DM can end it.`);
-          return `${base}, and a success would end it${more}. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition.`;
+          return `${base}, and a success would end it${more}. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine does not roll that save.`;
         }
         return `${base}, against DC ${dc} (${own !== null ? 'the entry\'s own DC for it' : 'the DC of the save that put it on'}); a success ends it${more}.`;
       }
@@ -2553,8 +2553,8 @@ class ArmourReading extends GearReading {
     const x = this.def.stealth;
     if (x === undefined) return this.line('It puts no penalty on Stealth.');
     if (x !== 'disadvantage') return this.bad('`stealth` is "disadvantage" or left out.');
-    this.line('It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.');
-    this.dm('Disadvantage on the wearer\'s Dexterity (Stealth) checks.');
+    this.line('It gives Disadvantage on Dexterity (Stealth) checks. The engine applies this to a wearer built from a sheet that names it (or a magic suit made from it, worn): the Hide action, a Stealth check the DM calls and passive Stealth are made with Disadvantage. A character with no sheet whose gear lists it gets a note for the DM instead, because the engine cannot tell worn from carried.');
+    this.dm('Whether a character with no sheet, whose gear lists this armor, wears it (Disadvantage on its Stealth checks).');
   }
 }
 

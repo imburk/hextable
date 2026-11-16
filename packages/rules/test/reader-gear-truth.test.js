@@ -249,24 +249,26 @@ test('armour: the Armor Class and the Speed the reading states are the engine\'s
   assert.ok(say('armour', AR['hb-rk-thornweave-vest']).includes('A formula that gives Armor Class to a creature with no armor does not apply while it is worn.'));
 }));
 
-test('armour: Stealth Disadvantage is not applied, as the reading says', () => withGear(() => {
+test('armour: Stealth Disadvantage is applied to a wearer built from a sheet (#434), as the reading says', () => withGear(() => {
   const barkplate = AR['hb-rk-barkplate'], bare = { ...barkplate, id: 'hb-rk-bare', stealth: undefined }; delete bare.stealth;
   lend('armour', [bare], () => {
     const play = (armour, seed) => {
       const sheet = fighter({ armour, skills: ['athletics', 'stealth'] });
       const s = newGame(seed);
       s.entities.hero = makeEntity(rec(sheet), { id: 'hero', kind: 'pc', side: 'party', pos: { q: 0, r: 0, z: 0 }, owner: 'pat', ownerName: 'Pat' });
+      s.entities.hero.sheet = structuredClone(sheet);                 // a built character keeps its sheet, as setSheet and the scenario do
       return ok(apply(s, { type: 'check', actor: 'hero', skill: 'stealth' }, DM)).events[0];
     };
     for (let seed = 1; seed < 12; seed++) {
       const a = play(barkplate.id, seed), b = play('hb-rk-bare', seed);
-      assert.deepEqual(a, b, 'the same roll with and without the penalty');
-      assert.equal(a.mode, undefined); assert.equal(a.dice.length, 1, 'one die: no Disadvantage');
+      assert.equal(a.mode, 'dis', 'Disadvantage with the penalty'); assert.deepEqual(a.why, [barkplate.name]); assert.equal(a.dice.length, 2, 'two dice');
+      assert.equal(b.mode, undefined); assert.equal(b.dice.length, 1, 'one die: no penalty');
+      assert.equal(a.roll, Math.min(...a.rolls));
     }
   });
   const r = readEntry('armour', barkplate);
-  assert.ok(r.lines.includes('It gives Disadvantage on Dexterity (Stealth) checks. The engine does not apply this: the wearer rolls Stealth checks as it would without the armor.'));
-  assert.ok(r.doesNot.includes('Disadvantage on the wearer\'s Dexterity (Stealth) checks.'));
+  assert.ok(r.lines.some((l) => /^It gives Disadvantage on Dexterity \(Stealth\) checks\. The engine applies this to a wearer built from a sheet/.test(l)));
+  assert.ok(r.doesNot.includes('Whether a character with no sheet, whose gear lists this armor, wears it (Disadvantage on its Stealth checks).'));
   assert.ok(readEntry('armour', AR['hb-rk-thornweave-vest']).lines.includes('It puts no penalty on Stealth.'));
 }));
 
