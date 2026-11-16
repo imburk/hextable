@@ -162,7 +162,7 @@ test('every SRD monster reads without a problem, and its numbers are the entry\'
 test('the reading says what the engine hands to the DM, for the SRD\'s own monsters', () => {
   const has = (id, re) => assert.ok(readEntry('monster', CONTENT.monsters[id]).lines.some((l) => re.test(l)), `${id}: ${re}`);
   has('quasit', /against DC 10 \(the DC of the save that put it on\); a success ends it/);
-  has('gorgon', /against DC 15 \(the entry's own DC for it\); a success ends it/);
+  has('doppelganger', /against DC 12 \(the entry's own DC for it\); a success ends it/);
   has('wolf', /Advantage on its attack rolls/);
   has('knight', /Reaction, taken by a standing instruction/);
   has('adult-red-dragon', /Recharge 5-6/);
