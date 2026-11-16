@@ -255,6 +255,11 @@ async function leftovers(browser, url, label, opts) {
 // ---------- the screens of companions (C8, issue #367) ----------
 // A wizard casts Find Familiar, Summon Dragon and Animate Dead through the cast chooser, commands the skeleton and plays its turn, dismisses and
 // recalls the familiar, mounts and dismounts a warhorse and delivers a touch through the familiar: solo, at both sizes.
+// A Large summon (the dragon) needs room for two hexes' worth of creature, so the spot a test taps is found by asking the engine whether a Large creature (a warhorse) fits
+// there: a spot that holds a wolf can be one a dragon cannot take (#394). What the game said back (its toast) is kept, so a refusal fails the step in the game's own words.
+const LARGE = 'warhorse';
+const refused = (page, what) => async (e) => { throw new Error(`${what}: ${e.message.split('\n')[0]}; the game said ${JSON.stringify(await page.evaluate(() => window.__toasts ?? []))}`); };
+const spyToast = (page) => page.evaluate(() => { window.__toasts = []; const t = document.getElementById('toast'); new MutationObserver(() => { if (t.textContent) window.__toasts.push(t.textContent); }).observe(t, { childList: true, characterData: true, subtree: true, attributes: true }); });
 const toastText = (page) => page.evaluate(() => { const t = document.getElementById('toast'); return t && !t.hidden ? t.textContent : ''; });
 const ents = (page, fn, arg) => page.evaluate(`(${fn})(window.hextable.state, ${JSON.stringify(arg ?? null)})`);
 export async function screens(browser, url, label, opts) {
@@ -266,12 +271,12 @@ export async function screens(browser, url, label, opts) {
       run.watch(page);
       let ven, spots;
       const tapHex = (hex, id) => page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [hex, id ?? null]);
-      const free = (n, r = 2) => page.evaluate(async ([v, k, rad]) => {
+      const free = (n, r = 2, tpl = 'wolf') => page.evaluate(async ([v, k, rad, t]) => {
         const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
         const S = window.hextable.state, G = gridOf(S.map), c = S.entities[v], out = [];
-        for (const h of G.range(c.pos, rad)) { if (out.length >= k) break; if (G.dist(c.pos, h) >= 1 && apply(structuredClone(S), { type: 'spawn', monster: 'wolf', at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h); }
+        for (const h of G.range(c.pos, rad)) { if (out.length >= k) break; if (G.dist(c.pos, h) >= 1 && apply(structuredClone(S), { type: 'spawn', monster: t, at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h); }
         return out;
-      }, [ven, n, r]);
+      }, [ven, n, r, tpl]);
       const clickRow = async (tab, text) => { await panelTab(page, tab); await page.click(rowOf(tab, text)); };
       const chooser = () => page.waitForSelector('#cc-chooser:not([hidden])', { timeout: 5000 });
       await run.do('a wizard who knows the summon spells, in the open', async () => {
@@ -313,9 +318,9 @@ export async function screens(browser, url, label, opts) {
         const cs = await page.$$eval('#cc-chooser [data-cc-pick^="choice|"]', (b) => b.map((x) => x.dataset.ccPick));
         if (!v || cs.length < 2) throw new Error(`picks: ${v} ${cs}`);
         await page.click(`#cc-chooser [data-cc-pick="${v}"]`); await page.click(`#cc-chooser [data-cc-pick="${cs[1]}"]`);
-        spots = await free(6, 5); await tapHex(spots[3]);
+        spots = await free(6, 5, LARGE); await tapHex(spots[3]); await spyToast(page);
         await page.click('#cc-chooser [data-cc-cast="picks"]');
-        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(async (e) => { throw new Error(`${e.message}; spots ${JSON.stringify(spots)}; chooser: ${await page.evaluate(() => document.getElementById('cc-chooser').textContent.slice(-160))}`); });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(async (e) => { throw new Error(`${e.message}; refused: ${JSON.stringify(await page.evaluate(() => window.__toasts))}; spots ${JSON.stringify(spots)}; chooser: ${await page.evaluate(() => document.getElementById('cc-chooser').textContent.slice(-160))}`); });
         await calm(page);
         await shot(page, `companions-dragon-${tag}`);
       });
@@ -479,12 +484,12 @@ export async function screensTable(browser, url) {
       run.watch(host, ' (host)'); run.watch(phone, ' (phone)');
       let ven;
       const tapHex = (hex, id) => phone.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [hex, id ?? null]);
-      const near = (r) => host.evaluate(async ([v, rad]) => {
+      const near = (r, tpl = 'wolf') => host.evaluate(async ([v, rad, t]) => {
         const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
         const S = window.hextable.state, G = gridOf(S.map), c = S.entities[v], out = [];
-        for (const h of G.range(c.pos, rad)) if (G.dist(c.pos, h) >= 1 && apply(structuredClone({ ...S, timeline: [] }), { type: 'spawn', monster: 'wolf', at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h);
+        for (const h of G.range(c.pos, rad)) if (G.dist(c.pos, h) >= 1 && apply(structuredClone({ ...S, timeline: [] }), { type: 'spawn', monster: t, at: h }, { role: 'dm', userId: 'dm' }).ok) out.push(h);
         return out;
-      }, [ven, r]);
+      }, [ven, r, tpl]);
       await run.do('host a table, the phone joins and plays a wizard the DM adds', async () => {
         await open(host, url);
         await host.fill('#lobby-name', 'Smoke DM'); await host.click('#lobby-host');
@@ -531,11 +536,10 @@ export async function screensTable(browser, url) {
         await phone.waitForSelector('#cc-chooser:not([hidden])');
         const v = await phone.$$eval('#cc-chooser [data-cc-pick^="variant|"]', (b) => b[0].dataset.ccPick);
         await phone.click(`#cc-chooser [data-cc-pick="${v}"]`);
-        const spots = await near(3); await tapHex(spots[spots.length - 1]);
-        await phone.evaluate(() => { window.__sent = []; const h = window.hextable, a = h.act; h.act = (x) => { window.__sent.push(JSON.stringify(x)); return a(x); }; });
-        const pre = await phone.evaluate(() => document.getElementById('cc-chooser').innerText.replace(/\n/g, ' | '));
+        const spots = await near(3, LARGE); await tapHex(spots[spots.length - 1]);
+        await spyToast(phone);
         await phone.tap('#cc-chooser [data-cc-cast="picks"]');
-        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(async () => { throw new Error('the dragon was not made DBG ' + JSON.stringify({ spots, last: spots[spots.length - 1], pre, post: await phone.evaluate(() => document.getElementById('cc-chooser').innerText.replace(/\n/g, ' | ') + ' hidden=' + document.getElementById('cc-chooser').hidden), sent: await phone.evaluate(() => window.__sent), toast: await toastText(phone) })); });
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'summon-dragon')).catch(refused(phone, 'the dragon was not made'));
         await host.evaluate(async (v) => {
           const h = window.hextable, { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), G = gridOf(h.state.map), c = h.state.entities[v];
           for (const x of G.range(c.pos, 3)) if (G.dist(c.pos, x) === 2 && apply(structuredClone({ ...h.state, timeline: [] }), { type: 'spawn', monster: 'bandit', at: x }, { role: 'dm', userId: 'dm' }).ok) { h.act({ type: 'spawn', monster: 'bandit', at: x }); break; }
