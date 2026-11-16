@@ -1720,12 +1720,13 @@ const BAD_KEYS = ['__proto__', 'constructor', 'prototype'];
 const TEXT_KEYS = ['text', 'manual', 'dmNotes'];
 const NEWLINE_KEYS = ['text', 'dmNotes'];       // the only places a line break may be
 const STEP_LISTS = ['effects', ...BRANCHES];
-// Characters no name, id or text may hold: control characters (C0, DEL, C1; a line break only in `text` and `dmNotes`), the
+// Characters no name, id or text may hold (by Unicode property: Cc, Cf, Zs, Zl, Zp, Co, Cn and lone surrogates, a few invisible
+// letters and marks; the only blank allowed is U+0020, and the line break in `text` and `dmNotes`): control characters (C0, DEL, C1; a line break only in `text` and `dmNotes`), the
 // soft hyphen, bidirectional controls (U+061C, U+200E/F, U+202A-E, U+2066-9), zero-width characters (U+200B-D, U+2060-4, U+FEFF,
 // U+180E), line and paragraph separators, other invisible format characters, tag characters (U+E0000-E007F) and a lone
 // surrogate. Written with escapes so the source shows what is refused.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffc\ud800-\udfff\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
-const CONTROL_NL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffc\ud800-\udfff\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f]|[\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/u;
+const CONTROL = /(?! )[\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}\u034f\ufffc\u17b4\u17b5\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
+const CONTROL_NL = /(?![ \n])[\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Co}\p{Cn}\p{Cs}\u034f\ufffc\u17b4\u17b5\u115f\u1160\u3164\uffa0\u2800\u180b-\u180d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
 // A name is Latin-script only for now: letters (A-Z, the accented letters of Latin-1, Latin Extended-A and the Latin
 // Extended Additional block), digits, single spaces inside it and ' - , . ( ) & : ! ? / + and the typographic apostrophe (the SRD's own names use + and U+2019). No combining mark survives NFC.
 const NAME_OK = /^[A-Za-z0-9\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff\u0100-\u017f\u1e00-\u1eff'\u2019+\-,.()&:!?/]+(?: [A-Za-z0-9\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff\u0100-\u017f\u1e00-\u1eff'\u2019+\-,.()&:!?/]+)*$/;
@@ -2091,14 +2092,14 @@ export const lengthOf = (owner, key, inGrants) => HOMEBREW_LENGTHS[`${owner}.${k
 // action's steps once for each creature it can reach (its chosen creatures or count, or the table's creatures for an area), a
 // monster's worst single action or worst Multiattack (entries times their counts, an alternative taking the dearest).
 const isN = (x) => typeof x === 'number' && Number.isFinite(x);
-function listWork(list) {
+function listWork(list, more = 0) {
   let n = 0;
   if (!Array.isArray(list)) return 0;
   for (const st of list) {
     if (!st || typeof st !== 'object') continue;
     let kids = 0;
-    for (const b of BRANCHES) kids += listWork(st[b]);
-    n += (1 + kids) * (isN(st.times) && 'damage' in st ? Math.max(1, st.times) : 1);
+    for (const b of BRANCHES) kids += listWork(st[b], more);
+    n += (1 + kids) * ('damage' in st ? Math.max(1, (isN(st.times) ? st.times : 1) + more) : 1);
   }
   return n;
 }
@@ -2128,7 +2129,15 @@ function multiWork(ma, byId) {
 export function workOf(kind, e) {
   let work = 0, attacks = 0, what = '';
   const take = (n, w) => { if (n > work) { work = n; what = w; } };
-  if (kind === 'spells') take(targetsOf(e.target) * listWork(e.effects) * (isN(e.higher?.slot?.times) ? Math.max(1, e.higher.slot.times) : 1), 'cast');
+  if (kind === 'spells') {
+    // Estimated at the top: a 9th-level slot (each level above the spell's adds `higher.slot.targets` creatures and
+    // `higher.slot.times` repeats) and, for a cantrip, character level 20 (`higher.targets` by level).
+    const up = e.level >= 1 && e.level < 9 && e.higher?.slot ? 9 - e.level : 0, hs = e.higher?.slot ?? {};
+    const levelTargets = Math.max(0, ...Object.values(e.higher?.targets && typeof e.higher.targets === 'object' ? e.higher.targets : {}).filter(isN));
+    let targets = targetsOf(e.target);
+    if (!(e.target?.area && !isN(e.target.area.choose))) targets = Math.max(targets + up * (isN(hs.targets) ? hs.targets : 0), levelTargets);
+    take(targets * listWork(e.effects, up * (isN(hs.times) ? hs.times : 0)), 'cast at its highest level');
+  }
   else if (kind === 'monsters' && Array.isArray(e.actions)) {
     const byId = new Map(e.actions.filter((a) => a && typeof a.id === 'string').map((a) => [a.id, a]));
     for (const a of e.actions) {

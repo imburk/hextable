@@ -447,7 +447,7 @@ test("round 2: the heaviest accepted cast, at a table of 30 creatures, is quick 
   const worst = spell({ id: "hb-x-worst", level: 9, target: { area: { shape: "sphere", size: 1000 } }, range: 10560000, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 7 }] }] });
   assert.equal(workOf("spells", worst).work, 240);
   const over = spell({ id: "hb-x-over", level: 9, target: { area: { shape: "sphere", size: 1000 } }, effects: [{ save: "dex", half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 8 }] }] });
-  refused(strict("spells", over), /one use \(its cast\) can run 270 steps, counting every branch, every repeat and every creature it reaches \(up to 30 at a table\); the most is 240/);
+  refused(strict("spells", over), /one use \(its cast at its highest level\) can run 270 steps, counting every branch, every repeat and every creature it reaches \(up to 30 at a table\); the most is 240/);
   const r = loadPack(doc({ spells: [worst] }));
   assert.ok(r.ok, r.problems?.join());
   const s = tableOf30(5);
@@ -499,4 +499,34 @@ test("round 2: a price is converted to gold pieces and capped at about twice the
   assert.equal(HOMEBREW_COST, 2 * dearest);
   for (const ok of ["3000 GP", "300 PP", "6000 EP", "30000 SP", "300000 CP", "1,500 GP"]) assert.deepEqual(price(ok), [], ok);
   for (const bad of ["3001 GP", "301 PP", "6002 EP", "30010 SP", "300100 CP", "5,000 GP", "999999 PP"]) refused(price(bad), /gold pieces; the most is 3,000 gold pieces/);
+});
+
+// ---------- fix round 3 ----------
+test("round 3: a spell's growth is counted at the top (slot 9, level 20): the reviewer's 180-target spell is refused", () => {
+  const cast = (over) => spell({ id: "hb-x-h", level: 1, range: 10560000, target: { creature: { count: 20 } }, effects: [{ save: "dex", dc: 50, half: true, onFail: [{ damage: "50d100+140", type: "fire", times: 10 }] }], ...over });
+  const review = cast({ higher: { slot: { targets: 20 } } });
+  assert.equal(workOf("spells", review).work, (20 + 8 * 20) * 11);
+  refused(strict("spells", review), /one use \(its cast at its highest level\) can run 1,980 steps/);
+  // Without the growth it is 20 x 11 = 220, under the ceiling; times growing with the slot counts too, and so does an area's `choose`.
+  assert.deepEqual(strict("spells", cast({})), []);
+  assert.equal(workOf("spells", cast({ higher: { slot: { times: 1 } } })).work, 20 * (1 + 18));
+  refused(strict("spells", cast({ higher: { slot: { times: 1 } } })), /can run 380 steps/);
+  refused(strict("spells", cast({ target: { area: { shape: "sphere", size: 20, choose: 20 } }, higher: { slot: { targets: 20 } } })), /can run/);
+  // A cantrip grows by character level: `higher.targets` by level, taken at its largest.
+  const cantrip = cast({ level: 0, target: { creature: { count: 1 } }, higher: { targets: { 5: 2, 11: 3, 17: 40 } } });
+  assert.equal(workOf("spells", cantrip).work, 40 * 11);
+  refused(strict("spells", cantrip), /can run 440 steps/);
+  // The slot's growth is only to the spell's own level up to 9: a 9th-level spell does not grow.
+  assert.equal(workOf("spells", cast({ level: 9, higher: { slot: { targets: 20 } } })).work, 20 * 11);
+  // The SRD still passes with room: its largest is 120 (see the first test), below half the ceiling.
+  assert.equal(SRD_WORK.work, 120);
+});
+
+test("round 3: in text and dmNotes the only blank is U+0020 (and the line break); every other space or blank-looking character is refused", () => {
+  const BLANKS = [" ", " ", " ", " ", " ", " ", "　", " ", " ", " ", "͏", "឴", "឵", " ", " ", "­", "​", "﻿",
+    "ㅤ", "ᅟ", "ᅠ", "ﾠ", "⠀", "￼", "", "\u{f0000}", "͸", "᠎", "️", "\t", "\r", "\v", "\f", "\u0085", "⁠"];
+  for (const c of BLANKS) refused(strict("spells", spell({ text: `Embers${c}burn` })), /invisible or direction-changing/);
+  refused(strict("spells", spell({ effects: [{ manual: `Do this` }] })), /invisible or direction-changing/);
+  assert.deepEqual(strict("spells", spell({ text: "Embers burn.\nThey do." })), [], "a space and a line break are text");
+  assert.deepEqual(strict("spells", spell({ text: "Фire ファイア éñ \u{1F525}, “quoted” — dash" })), []);
 });
