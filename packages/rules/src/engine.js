@@ -11,7 +11,8 @@ import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
 import { control, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
-import { aloft, lookAround } from './engine/world.js';
+import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
+import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, settleBonds } from './engine/resolve.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
@@ -160,12 +161,17 @@ export function apply(s, action, ctx = { role: 'dm' }) {
   let ev = [];
   // A copy is taken only when the action could stop to ask a player (reactions.js, mayAsk), or
   // when it answers one: the rest of the time nothing can pause and this costs nothing.
-  const snap = s.pending || action?.type === 'react' || mayAsk(s) ? freeze(s) : null;
+  // It is also taken for one that could meet the work ceiling (effects.js, WORK), so that it can be refused cleanly.
+  const snap = s.pending || action?.type === 'react' || mayAsk(s) || mayBeHeavy(s, action ?? {}) ? freeze(s) : null;
   setRun({ action, ctx: { role: ctx.role, ...(typeof ctx.userId === 'string' ? { userId: ctx.userId } : {}) }, answers: [], i: 0, canPause: !!snap });
+  startWork();
   try {
     dispatch(s, action, ctx, ev);
+    checkEvents(ev);
   } catch (err) {
+    stopWork();
     delete s.stack;                                  // never leave half an effect behind
+    if (err instanceof WorkLimit) return overWork(s, snap, err, ev, action);
     if (err instanceof Pause) {
       // Stop and ask: the game goes back to how it was before the action (the dice seed too), and
       // keeps the action, the answers given so far and the question. Only the player asked and
@@ -185,9 +191,25 @@ export function apply(s, action, ctx = { role: 'dm' }) {
   }
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
-  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); } catch (err) { if (!(err instanceof RuleError)) throw err; }
+  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
+    if (err instanceof WorkLimit) { stopWork(); delete s.stack; return overWork(s, snap, err, ev, action); }
+    if (!(err instanceof RuleError)) throw err;
+  }
+  stopWork();
   fightEndsScene(s, ev);                           // a fight, however it began, ends a scene
   return record(s, ev);
+}
+
+// An action ran into the work ceiling (effects.js, WORK). With the copy taken before it, the game goes back to how it
+// was and the action is refused with a sentence: nothing changed, as with any refused action. Without one (the action
+// was not seen to be heavy) the engine cannot undo what it did, and does not pretend: what was done stays done, and
+// a `manual` event says what was not applied, for the DM.
+function overWork(s, snap, err, ev, action) {
+  setRun(null);
+  if (snap) { thaw(s, snap); return { ok: false, error: `${err.message} Nothing was done.`, events: [] }; }
+  const actor = typeof action?.actor === 'string' && Object.hasOwn(s.entities, action.actor) ? action.actor : null;
+  const text = `${err.what ?? 'An action'} would ${err.limit} in one action, which is more than the engine allows. The engine stopped it there: what it did so far is done, and the rest was not applied. The DM applies the rest.`;
+  return record(s, [...ev, { type: 'manual', actor, name: err.what ?? String(action?.type ?? 'action'), text }]);
 }
 
 // The record keeps, with each entry, the creatures the party did not know of when it happened,

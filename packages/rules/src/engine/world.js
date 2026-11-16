@@ -4,7 +4,7 @@
 import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
-import { actionProfile } from '../effects.js';
+import { actionProfile, loadOf, targetCount, WORK } from '../effects.js';
 import { apart, apartAt, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
@@ -918,6 +918,37 @@ export function areaHexes(s, e, sp, aim) {
   if (!sp.area) return [];
   const l = layout(s, e, sp.area, areaRange(sp), aim);
   return l ? l.hexes.filter((h) => hasColumn(s.map, h)) : [];
+}
+
+// Could this action run enough work to meet the ceiling (effects.js, WORK)? apply() keeps a copy of the game before
+// such an action, so that one that does pass the ceiling is refused with nothing changed. A guess from the content,
+// counting every branch and every creature at the table: it errs on the side of "yes" (a copy costs a little time and
+// changes nothing), and for what it cannot read it says yes. What it does not look at (a lasting zone's later turns, an
+// object's trigger, a reaction) is stopped by the count itself, with a `manual` event, if it ever meets the ceiling.
+export function mayBeHeavy(s, a) {
+  try {
+    let load = null, per = 1;
+    if (a.type === 'cast') {
+      const sp = typeof a.spell === 'string' && Object.hasOwn(SPELLS, a.spell) ? SPELLS[a.spell] : null;
+      if (!sp) return false;
+      const def = sp.def;
+      const bySlot = def.higher?.slot;
+      load = loadOf(def.effects);
+      // The slot adds repeats of the first damage step and targets; take the 9th-level slot.
+      if (bySlot?.times) { const extra = bySlot.times * Math.max(0, 9 - def.level); load = { steps: load.steps + extra, dice: load.dice * (1 + extra) }; }
+      per = def.target?.area ? living(s).length : Math.max(1, targetCount(def, 20, Math.max(9, def.level)));
+    } else if (a.type === 'act') {
+      const e = typeof a.actor === 'string' && Object.hasOwn(s.entities, a.actor) ? s.entities[a.actor] : null;
+      const def = e?.actions?.find((x) => x.id === a.action);
+      if (!def || def.multiattack) return false;
+      load = loadOf(def.effects);
+      const t = def.target ?? {};
+      per = t.area ? living(s).length : Math.max(1, t.creature?.count ?? 1);
+    } else return false;
+    return load.steps * per > WORK.steps / 4 || load.dice * per > WORK.dice / 4;
+  } catch (err) {
+    return true;
+  }
 }
 
 // Who an area catches when `e` aims it at `hex`: { targets, hexes, origin }. See layout().

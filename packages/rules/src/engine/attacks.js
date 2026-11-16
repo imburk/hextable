@@ -1,6 +1,6 @@
 // Attacks and a creature's turn (engine.js): attack, act (a monster's actions), dodge, reaction
 // instructions, endTurn; and the attacks a turn allows (Multiattack, Extra Attack).
-import { actionProfile, stepKind, walk } from '../effects.js';
+import { actionProfile, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { checkInstructions, reactionsOf } from '../reactions.js';
@@ -213,6 +213,11 @@ export const handlers = {
     // one at a time, each at a target chosen when it is made. What is not made by the end of
     // the turn is lost.
     s.encounter || fail(`${def.name} is for a fight. Make one of ${e.name}'s attacks to start one.`);
+    // The most attacks one Multiattack may give (effects.js, WORK): more is refused before anything is spent. The SRD's largest is 7.
+    for (const list of Array.isArray(def.multiattack) ? [def.multiattack] : def.multiattack.or) {
+      const n = list.reduce((sum, x) => sum + (Number(x.times) || 0), 0);
+      n <= WORK.attacks || fail(`${def.name} would make ${n.toLocaleString('en-US')} attacks; the engine allows at most ${WORK.attacks} from one Multiattack.`);
+    }
     need(s, e, 'action');
     const b = s.encounter.budget;
     b.action--;
