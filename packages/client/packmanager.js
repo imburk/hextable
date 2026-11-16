@@ -48,10 +48,11 @@ export function createPackStore({ ask, changed = () => {}, isDM = () => false, n
   const data = new Map();                  // hash -> the data kept (a player's: the lists a player is sent only)
   const built = new Map();                 // hash -> { pack: loadPack's record, doc }
   const asked = new Map();                 // hash -> when it was asked for
+  const retried = new Set();               // hashes whose data failed its check once and was asked for again
   const trouble = new Map();               // hash -> why this page could not use the data
   let overlay = null, key = '', info = { dropped: [], changed: null };
 
-  const forget = (hash) => { data.delete(hash); built.delete(hash); asked.delete(hash); trouble.delete(hash); };
+  const forget = (hash) => { retried.delete(hash); data.delete(hash); built.delete(hash); asked.delete(hash); trouble.delete(hash); };
   function sync() {
     // build what has data, ask for what has none
     for (const p of list) {
@@ -86,20 +87,26 @@ export function createPackStore({ ask, changed = () => {}, isDM = () => false, n
       for (const [h, at] of [...asked]) if (!data.has(h) && now() - at > 15000) asked.delete(h);   // a hash asked for and never answered is asked for again, slowly (the table limits it too)
       sync();
     },
-    // A pack's data. Kept only if its hash is the hash it was sent under; a player keeps the lists a player is sent and nothing else.
+    // A pack's data. Kept only for an id and hash the latest list names, and only if the hash of what arrived (a player's: the lists a player is
+    // sent and nothing else) is THAT hash. Anything else is dropped; a listed hash whose data failed the check is asked for once more.
     packData(msg) {
-      if (!plain(msg) || typeof msg.hash !== 'string' || !plain(msg.data)) return false;
-      let ok = false;
-      try { ok = hashOf(msg.data) === msg.hash; } catch { /* not plain data */ }
-      if (!ok) return false;
+      if (!plain(msg) || typeof msg.id !== 'string' || typeof msg.hash !== 'string' || !plain(msg.data)) return false;
+      const listed = list.find((p) => p.id === msg.id && p.hash === msg.hash);
+      if (!listed) return false;
       const kept = isDM() ? msg.data : Object.fromEntries(['id', 'name', 'version', ...PLAYER_KINDS].filter((k) => msg.data[k] !== undefined).map((k) => [k, msg.data[k]]));
-      data.set(msg.hash, kept); trouble.delete(msg.hash);
+      let ok = false;
+      try { ok = hashOf(kept) === listed.hash; } catch { /* not plain data */ }
+      if (!ok) {
+        if (!retried.has(listed.hash)) { retried.add(listed.hash); asked.delete(listed.hash); sync(); }
+        return false;
+      }
+      data.set(listed.hash, kept); trouble.delete(listed.hash);
       sync();
       return true;
     },
     // Everything is let go: the table is left (or a new one is started).
     clear() {
-      list = []; data.clear(); built.clear(); asked.clear(); trouble.clear(); info = { dropped: [], changed: null };
+      list = []; retried.clear(); data.clear(); built.clear(); asked.clear(); trouble.clear(); info = { dropped: [], changed: null };
       if (overlay) { try { uninstall(overlay); } catch (err) { console.warn(err); } overlay = null; }
       key = '';
       changed();
@@ -302,12 +309,15 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   }
 
   // ----- the file and its review -----
+  let chosen = 0;                                             // which choice of a file is the latest: a slower read of an earlier one is let go
   async function choose(file) {
+    const mine = ++chosen;
     review = null; message = null;
     if (!file) return render();
     if (file.size > TOO_BIG) { review = { name: file.name, size: file.size, refused: [`The file is ${kb(file.size)}. A pack is at most ${kb(HOMEBREW_LIMITS.packBytes)} of data, so a file over ${kb(TOO_BIG)} cannot be one. It was not read.`] }; return render(); }
     let text;
-    try { text = await file.text(); } catch { review = { name: file.name, size: file.size, refused: ['The file could not be read.'] }; return render(); }
+    try { text = await file.text(); } catch { if (mine !== chosen) return; review = { name: file.name, size: file.size, refused: ['The file could not be read.'] }; return render(); }
+    if (mine !== chosen) return;
     let r;
     try { r = loadPack(text); } catch (err) { r = { ok: false, problems: [`pack: could not be checked (${String(err?.message ?? err).slice(0, 120)})`] }; }
     if (!r.ok) { review = { name: file.name, size: file.size, refused: r.problems }; return render(); }
@@ -347,6 +357,12 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     box.append(lic);
     if (doc.monsters?.length) box.append(el('p', 'note', `${doc.monsters.length} of its entries ${doc.monsters.length === 1 ? 'is a monster' : 'are monsters'}. Players are never sent a monster: only you and the table's engine hold them.`));
     box.append(el('p', 'note', 'Nothing here is checked against any rulebook. Each reading is made by the game from the data, not from the author’s description.'));
+    const p = plan();
+    const row = el('div', 'row pm-actions');
+    if (p.op) { const b = button(p.label, () => submit(p), 'pm-go'); b.id = 'pm-go'; b.disabled = busy; row.append(b); }
+    else box.append(el('p', 'pm-why', p.why));
+    row.append(button('Cancel', () => { review = null; render(); }, 'pm-cancel'));
+    box.append(row);
     // each entry
     const lists = el('div', 'pm-entries');
     for (const kind of KINDS) {
@@ -355,12 +371,6 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
       for (const x of of) lists.append(kind === 'spells' ? spellNode(doc, x.entry, `review:${pack.id}`) : otherNode(kind, x.entry));
     }
     box.append(lists);
-    const p = plan();
-    const row = el('div', 'row');
-    if (p.op) { const b = button(p.label, () => submit(p), 'pm-go'); b.id = 'pm-go'; b.disabled = busy; row.append(b); }
-    else box.append(el('p', 'pm-why', p.why));
-    row.append(button('Cancel', () => { review = null; render(); }, 'pm-cancel'));
-    box.append(row);
     return box;
   }
   function otherNode(kind, e) {

@@ -279,15 +279,17 @@ test("barriers() never gives back an answer from across an overlay or from a cha
 // ---------- an overlay kept installed: install and uninstall (B7, the page) ----------
 test("install puts the ids in and uninstall takes them out, leaving the lookups exactly as they were", () => {
   const a = overlayOf([loaded(EMBER)]);
-  install(a);
-  assert.equal(installed(), a);
-  assert.equal(SPELLS[LASH].name, "Cinder Lash");
-  assert.ok(MONSTERS[CINDER] && CONTENT.spells[LASH]);
-  uninstall(a);
-  assert.equal(installed(), null);
-  assert.equal(SPELLS[LASH], undefined);
-  unchanged();
-  install(a); uninstall(a); unchanged();              // and again
+  try {
+    install(a);
+    assert.equal(installed(), a);
+    assert.equal(SPELLS[LASH].name, "Cinder Lash");
+    assert.ok(MONSTERS[CINDER] && CONTENT.spells[LASH]);
+    uninstall(a);
+    assert.equal(installed(), null);
+    assert.equal(SPELLS[LASH], undefined);
+    unchanged();
+    install(a); uninstall(a); unchanged();              // and again
+  } finally { if (installed() === a) uninstall(a); }
 });
 
 test("a second install is refused, the same overlay or another, and changes nothing", () => {

@@ -6,7 +6,10 @@ import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
 // nothing is sent, the player sees a homebrew spell on the sheet and in the spell list, casts it and it resolves. A second pack holds a monster:
 // the DM spawns it and the player's page (what it kept and every frame it was sent) holds nothing of its stats. Remove is refused while the monster
-// is on the table, with where it is, and works once it is gone. Run twice: the DM at desktop size with a phone player, then the other way round.
+// is on the table, with where it is, and works once it is gone. A page that loses a pack while the state still names its spell shows a placeholder, not an error.
+// The map: a hosted table's game takes the server's random seed, which this pass cannot set, so the DM loads the valley of a seed of the pass's own (SMOKE_SEED=<n>
+// replays one; the seed is in the label of each run). Every spot a creature is put at, and the foe the player casts at, is asked of the engine on this map: it must
+// take a spawn there, and for the foe, a cast from the player's character must be allowed (in range, in sight). Run twice: the DM at desktop size with a phone player, then the other way round.
 const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
 const DESKTOP = { viewport: { width: 1280, height: 800 } };
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
@@ -23,18 +26,37 @@ async function monsterPack() {
   return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'ember-folk', name: 'Ember Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for the smoke test.' }, monsters: [m] });
 }
 
-async function table(browser, url, label, hostOpts, playerOpts, tag) {
+async function table(browser, url, label0, hostOpts, playerOpts, tag) {
+  const seed = process.env.SMOKE_SEED ? Number(process.env.SMOKE_SEED) : Math.floor(Math.random() * 1e9);
+  const label = `${label0} (seed ${seed})`;
   await scenario(label, async (run) => {
     const hostCtx = await browser.newContext(hostOpts), playerCtx = await browser.newContext(playerOpts);
     try {
       const host = await hostCtx.newPage(), player = await playerCtx.newPage();
       run.watch(host, ' (DM)'); run.watch(player, ' (player)');
       const sent = [], got = [];
+      let inject = null;                                                  // sends a frame to the player's page as if the table had
+      await player.routeWebSocket(/\/ws$/, (ws) => { const up = ws.connectToServer(); ws.onMessage((m) => up.send(m)); up.onMessage((m) => ws.send(m)); inject = (text) => ws.send(text); });
       host.on('websocket', (ws) => ws.on('framesent', (f) => sent.push(String(f.payload))));
       player.on('websocket', (ws) => ws.on('framereceived', (f) => got.push(String(f.payload))));
       const packFrames = () => sent.filter((f) => /"t":"pack"/.test(f)).length;
       const tapHex = (hex, id) => player.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i ?? null }), [hex, id ?? null]);
       let ven;
+      // The hexes near Ven where the engine takes a spawn of `tpl` (and, with `cast`, lets Ven cast that spell at it), nearest first; the DM page's own engine and state.
+      const spots = (tpl, cast) => host.evaluate(async ([v, t, sp]) => {
+        const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+        const S = window.hextable.state, G = gridOf(S.map), c = S.entities[v], DM = { role: 'dm', userId: 'dm' }, out = [];
+        for (const h of G.range(c.pos, 6)) {
+          if (G.dist(c.pos, h) < 2) continue;
+          const clone = structuredClone({ ...S, timeline: [] });
+          const r = apply(clone, { type: 'spawn', monster: t, at: h }, DM);
+          if (!r.ok) continue;
+          if (sp && !apply(clone, { type: 'cast', actor: v, spell: sp, targets: [r.events.find((x) => x.type === 'spawned').id] }, DM).ok) continue;
+          out.push(h);
+        }
+        return out.sort((a, b) => G.dist(c.pos, a) - G.dist(c.pos, b));
+      }, [ven, tpl, cast ?? null]);
+      const toast = () => host.evaluate(() => document.getElementById('toast')?.textContent ?? '');
       const openManager = async () => {
         if (!(await shown(host, '#pm'))) { await openTab(host, 'dm'); await host.click('#pm-open'); await waitShown(host, '#pm'); }
       };
@@ -54,6 +76,8 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await waitShown(player, '#lobby', false);
         await wait(player, () => window.hextable.state?.entities?.fighter);
         await host.evaluate(() => { const h = window.hextable; h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' }); });
+        await host.evaluate(async (n) => { const { newGame } = await import('./shared/scenario.js'); window.hextable.act({ type: 'loadMap', map: newGame(n).map }); }, seed);
+        await sleep(600); await calm(host); await calm(player);
         await closeMenu(host);
       });
       await run.do('a bad file shows the checker\'s sentences and nothing is sent', async () => {
@@ -82,6 +106,10 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         const t = await host.textContent('#pm-review');
         if (!/16 auto, 0 assist, 1 manual/.test(t) || !/Licence: CC0, by the author/.test(t) || !/Attribution: Written for the Hextable tests/.test(t)) throw new Error(t.slice(0, 400));
         if (!/Add to this table/.test(await host.textContent('#pm-go'))) throw new Error('no Add');
+        const vh = await host.evaluate(() => innerHeight), gb = await (await host.$('#pm-go')).boundingBox();
+        if (gb.y + gb.height > vh) { await host.evaluate(() => document.querySelector('#pm-review').scrollIntoView()); }
+        const gb2 = await (await host.$('#pm-go')).boundingBox();
+        if (gb2.y < 0 || gb2.y + gb2.height > vh) throw new Error(`Add is not on the screen with the review's top (y ${gb2.y}, screen ${vh})`);
         await host.evaluate(() => document.querySelector('#pm-review .pm-entry[data-entry]').open = true);
         await shot(host, `homebrew-review-${tag}`);
       });
@@ -126,6 +154,8 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await waitShown(player, '#sheet-body');
         const row = await player.textContent('#sheet-body tr:has(.hb-read)');
         if (!/Ember Dart/.test(row) || !/homebrew: Sample Pack/.test(row)) throw new Error(row);
+        const bb = await (await player.$('#sheet-body .hb-read')).boundingBox();
+        if (bb.height < 43.5) throw new Error(`the Reading button is ${bb.height}px tall`);
         await player.click('#sheet-body .hb-read >> nth=0');
         await waitShown(player, '#pm');
         const t = await player.textContent('#pm');
@@ -136,6 +166,21 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await shot(player, `homebrew-sheet-${tag}`);
         await closeMenu(player);
       });
+      await run.do('a pack the page loses while the state names its spell: a placeholder on the sheet, no page error, and it comes back', async () => {
+        if (!inject) throw new Error('the player\'s socket is not routed');
+        const lastPacks = [...got].reverse().find((f) => /"t":"packs"/.test(f));
+        if (!lastPacks) throw new Error('the player was sent no packs message');
+        await player.evaluate(() => window.hextable.drawer.open('sheet'));
+        await waitShown(player, '#sheet-body');
+        inject(JSON.stringify({ t: 'packs', packs: [] }));
+        await wait(player, () => !!document.querySelector('#sheet-body .hb-missing'));
+        const t = await player.textContent('#sheet-body .hb-missing');
+        if (!/homebrew spell this page does not have yet/.test(t) || !/hb-sample-ember-dart/.test(t)) throw new Error(t);
+        await shot(player, `homebrew-missing-${tag}`);
+        inject(lastPacks);                                                   // the list is back: the page asks for the data again and redraws
+        await wait(player, () => !document.querySelector('#sheet-body .hb-missing') && !!document.querySelector('#sheet-body .hb-read'), null, 10000);
+        await closeMenu(player);
+      });
       await run.do('in the spell list the homebrew spells are rows', async () => {
         await panelTab(player, 'spells');
         await player.waitForSelector(rowOf('spells', 'Ember Dart'), { state: 'visible', timeout: 8000 });
@@ -144,12 +189,10 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       });
       let foe;
       await run.do('the player casts it at a foe and it resolves', async () => {
-        foe = await host.evaluate(([v]) => {
-          const h = window.hextable, S = h.state, c = S.entities[v];
-          h.act({ type: 'spawn', monster: 'goblin-warrior', at: { q: c.pos.q + 2, r: c.pos.r }, name: 'Target' });
-          return null;
-        }, [ven]);
-        await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Target'));
+        const at = (await spots('goblin-warrior', 'hb-sample-ember-dart'))[0];
+        if (!at) throw new Error('no hex on this map where a foe can stand and Ven can cast at it');
+        await host.evaluate((hex) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at: hex, name: 'Target' }), at);
+        await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Target')).catch(async () => { throw new Error(`the foe was not put at ${JSON.stringify(at)}: ${await toast()}`); });
         const target = await player.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Target'));
         foe = target.id;
         await calm(player);
@@ -175,7 +218,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
           throw new Error(`mode ${JSON.stringify(await player.evaluate(() => window.hextable.mode))}; log ${(await player.evaluate(() => document.querySelector('#log-list')?.textContent))?.slice(-300)}`);
         });
         const log = await player.evaluate(() => [...document.querySelectorAll('#log-list .lg-line')].map((l) => l.textContent).join('\n'));
-        if (!/Ember Dart/.test(log) || !/Ven attacks Target with Ember Dart: .*(Miss|Hit|damage)/i.test(log)) throw new Error(`the cast did nothing: ${log.slice(-300)}`);
+        if (!/Ember Dart/.test(log) || !/Ven attacks Target( behind [a-z ]+)? with Ember Dart: .*(Miss|Hit|damage)/i.test(log)) throw new Error(`the cast did nothing: ${log.slice(-300)}`);
         await closeMenu(player);
       });
       await run.do('a pack with a monster: the DM adds it and spawns the monster', async () => {
@@ -191,9 +234,10 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await wait(host, () => !!document.querySelector('#dm-spawn [data-monster="hb-ember-folk-cinderling"]'));
         await host.click('#dm-spawn [data-monster="hb-ember-folk-cinderling"]');
         await wait(host, () => window.hextable.mode.kind === 'spawn');
-        const at = await host.evaluate(([v]) => { const c = window.hextable.state.entities[v].pos; return { q: c.q, r: c.r + 2 }; }, [ven]);
+        const at = (await spots('hb-ember-folk-cinderling'))[0];
+        if (!at) throw new Error('no hex on this map where the monster can stand');
         await host.evaluate((hex) => window.hextable.R.onTap({ hex, id: null }), at);
-        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.tpl === 'hb-ember-folk-cinderling')).catch(async () => { throw new Error(`no spawn at ${JSON.stringify(at)}: ${await host.evaluate(() => `${document.getElementById('toast')?.textContent} ${JSON.stringify(window.hextable.mode)}`)}`); });
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.tpl === 'hb-ember-folk-cinderling')).catch(async () => { throw new Error(`no spawn at ${JSON.stringify(at)}: ${await toast()} ${JSON.stringify(await host.evaluate(() => window.hextable.mode))}`); });
       });
       await run.do('the player\'s page holds nothing of the monster: not in what it kept, not in a frame, not in the state', async () => {
         await sleep(500); await calm(player);

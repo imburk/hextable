@@ -12,6 +12,7 @@ cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const { createPackStore, documentOf, countWords } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
+const { answersPack } = await import(pathToFileURL(join(tmp, 'transport.js')));
 const { SPELLS, MONSTERS, CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 const { hashOf } = await import(pathToFileURL(join(tmp, 'shared/content/packs.js')));
 const { installed } = await import(pathToFileURL(join(tmp, 'shared/content/registry.js')));
@@ -34,6 +35,7 @@ function make(dm) {
 
 test('a player asks for a hash it lacks once, keeps the data by hash, installs one overlay, and lets it go when the pack goes', () => {
   const { store, asks } = make(false), data = forPlayer(SAMPLE), hash = hashOf(data);
+  try {
   assert.equal(SPELLS[SPELL], undefined);
   store.packs({ packs: [{ id: 'sample', name: 'Sample Pack', version: 1, hash }] });
   assert.deepEqual(asks, ['sample']);
@@ -52,20 +54,35 @@ test('a player asks for a hash it lacks once, keeps the data by hash, installs o
   assert.equal(SPELLS[SPELL], undefined);
   assert.equal(installed(), null);
   assert.equal(store.peek().data.length, 0, 'the data is let go with the pack');
+  } finally { store.clear(); }
 });
 
-test('data whose hash is not the hash it was sent under is not kept', () => {
-  const { store } = make(false), data = forPlayer(SAMPLE);
-  store.packs({ packs: [{ id: 'sample', name: 'Sample Pack', version: 1, hash: hashOf(data) }] });
-  assert.equal(store.packData({ id: 'sample', version: 1, hash: hashOf(data), data: { ...data, name: 'Other' } }), false);
-  assert.equal(SPELLS[SPELL], undefined);
-  store.clear();
+test('data nobody listed is dropped; data whose hash is not the listed one is dropped and asked for once more', () => {
+  const { store, asks } = make(false), data = forPlayer(SAMPLE), hash = hashOf(data);
+  try {
+    assert.equal(store.packData({ id: 'sample', version: 1, hash, data }), false, 'an unasked frame is not kept');
+    assert.equal(store.peek().data.length, 0);
+    store.packs({ packs: [{ id: 'sample', name: 'Sample Pack', version: 1, hash }] });
+    assert.deepEqual(asks, ['sample']);
+    // a frame that claims the listed hash over other data: the claim is not believed
+    assert.equal(store.packData({ id: 'sample', version: 1, hash, data: { ...data, name: 'Other' } }), false);
+    assert.equal(SPELLS[SPELL], undefined);
+    assert.deepEqual(asks, ['sample', 'sample'], 'asked again, once');
+    assert.equal(store.packData({ id: 'sample', version: 1, hash, data: { ...data, name: 'Other' } }), false);
+    assert.deepEqual(asks, ['sample', 'sample'], 'not a third time');
+    // a frame for an id the list does not name, or with another hash than the list's
+    assert.equal(store.packData({ id: 'other', version: 1, hash, data }), false);
+    assert.equal(store.packData({ id: 'sample', version: 1, hash: hashOf({ ...data, name: 'X' }), data: { ...data, name: 'X' } }), false);
+    assert.equal(store.peek().data.length, 0);
+    assert.equal(store.packData({ id: 'sample', version: 1, hash, data }), true, 'the right data is kept');
+    assert.ok(SPELLS[SPELL]);
+  } finally { store.clear(); }
 });
 
 test('a player page holds no monster, even if one arrives: only the lists a player is sent are kept and built', () => {
-  const { store } = make(false), d = withMonster(), data = { ...forPlayer(d), monsters: d.monsters }, hash = hashOf(data);
+  const { store } = make(false), d = withMonster(), hash = hashOf(forPlayer(d)), data = { ...forPlayer(d), monsters: d.monsters };
   store.packs({ packs: [{ id: 'sample', name: 'Sample Pack', version: 1, hash }] });
-  store.packData({ id: 'sample', version: 1, hash, data });
+  assert.equal(store.packData({ id: 'sample', version: 1, hash, data }), true);
   assert.ok(SPELLS[SPELL]);
   assert.equal(MONSTERS['hb-sample-ashling'], undefined);
   assert.doesNotMatch(JSON.stringify(store.peek()), /SECRETSTATS|Ashling|ashling/);
@@ -104,4 +121,13 @@ test('documentOf leaves a monster out of a player\'s document, and counts are in
   assert.equal(documentOf({ ...forPlayer(d), monsters: d.monsters }, false).monsters, undefined);
   assert.equal(documentOf(d, true), d);
   assert.deepEqual(countWords({ spells: [1], monsters: [1, 2] }), ['1 spell', '2 monsters']);
+});
+
+test('an error frame answers a pack message only when it is about packs', () => {
+  assert.equal(answersPack({ error: 'The homebrew was refused: x', problems: ['x'] }), true);
+  assert.equal(answersPack({ error: 'In use', blockers: ['a'] }), true);
+  assert.equal(answersPack({ error: "Only the DM can change the table's packs." }), true);
+  assert.equal(answersPack({ error: 'Too many requests. Wait a moment and try again.' }), true);
+  assert.equal(answersPack({ error: 'It is not your turn.' }), false);
+  assert.equal(answersPack({ error: 'Nobody is there.' }), false);
 });

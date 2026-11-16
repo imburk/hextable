@@ -101,6 +101,10 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
 // Online: a table server owns the state. `first` is {t:'host'|'join'|'resume', ...}.
 // `?link=fast` in the address shortens the link thresholds (linkquality.js, LINK_FAST) for tests and smoke passes.
 const linkConfig = () => { try { return new URLSearchParams(location.search).get('link') === 'fast' ? LINK_FAST : LINK; } catch { return LINK; } };
+// Whether a table's error frame answers a pack message: the table's refusals of one carry the checker's `problems` or the `blockers`, or say so in words
+// (the DM-only refusal, the four-pack limit, an unknown operation, the budget of pack messages). Any other error (a refused action, a packData rate limit)
+// is not the pack's answer and goes on to the page as it always did.
+export const answersPack = (msg) => Array.isArray(msg.problems) || Array.isArray(msg.blockers) || /pack|homebrew|Too many requests|add, update or remove|could.?n.t make sense/i.test(String(msg.error ?? ''));
 export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   const t = { solo: false, you: null, on: {}, lobby: { members: [], pending: [] }, undoInfo: { undo: [], redo: [] } };
   let ws, retry = 0, hello = first;
@@ -199,7 +203,7 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
       else if (msg.t === 'history') t.on.history?.(msg);
       else if (msg.t === 'undoable') { t.undoInfo = { undo: msg.undo, redo: msg.redo, ...(msg.pins && { pins: msg.pins }) }; t.on.undoable?.(t.undoInfo); }
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
-      else if (msg.t === 'error' && pendingPack && !msg.expired) { clearTimeout(pendingPack.timer); const p = pendingPack; pendingPack = null; p.reject(msg); }
+      else if (msg.t === 'error' && pendingPack && !msg.expired && answersPack(msg)) { clearTimeout(pendingPack.timer); const p = pendingPack; pendingPack = null; p.reject(msg); }
       else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
     };
     ws.onclose = () => { waitingPong = null; if (pinger) down(); if (hello?.t === 'resume') setTimeout(open, Math.min(8000, 500 * 2 ** retry++)); };
