@@ -28,14 +28,15 @@ function sameButHeader(was, now) {
   assert.equal(was.map.format, 1);
   assert.equal(was.map.hexFeet, 5);
   assert.equal(now.version, VERSION);
-  assert.equal(VERSION, 23);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311)
+  assert.equal(VERSION, 24);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311); 24, packs (#390)
   assert.deepEqual(Object.keys(now.map).slice(0, 5), HEADER);
   assert.equal(now.map.format, 2);
   assert.equal(now.map.grid, "hex");
   assert.equal(now.map.cellFeet, 5);
   assert.equal("hexFeet" in now.map, false);
   assert.deepEqual(lintMap(now.map), []);
-  const strip = (s) => { const c = structuredClone(s); delete c.version; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual(strip(now), strip(was));
 }
 

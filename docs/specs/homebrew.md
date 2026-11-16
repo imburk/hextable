@@ -1016,6 +1016,32 @@ What was settled while building it (`content/schema.js`, the end of the file; te
 - **Prices** are converted to gold pieces (CP 1/100, SP 1/10, EP 1/2, GP 1, PP 10) and capped at 3,000 GP, twice the
   SRD's dearest (plate armour, 1,500 GP); a price written with a thousands comma is now read (plate armour converts).
 
+## Build notes: B5 first half, `state.packs`, `setPacks` and the hash (#390)
+
+What was settled while building the rules side (`content/packs.js`, `migrate.js`, `engine/dm.js`; tests in
+`packages/rules/test/packs-state.test.js`):
+
+- **`state.packs`** is `[{ id, version, hash }]`, ids, versions and hashes only. State version 24; the migration gives a
+  state saved before `packs: []`, keeps a whole list (as a copy) and drops one that is not whole. A state that is already
+  at version 24 and has no `packs` at all is left alone: `newGame` (scenario.js, outside this job) does not set the field,
+  and migrating a current state must change nothing. Reading code must take an absent list as none until `newGame` gives
+  `packs: []` (DEBT T42).
+- **`setPacks { packs }`**: DM only; the whole list is checked by `packsProblem` before anything is written and the state
+  gets a clean copy. A pack is exactly `id` (the pack id pattern, at most 60 letters), `version` (whole, 1 or more) and
+  `hash` (64 lowercase hex); no other key, so no pack data can be stored; at most `HOMEBREW_LIMITS.packs`; no id twice. The
+  order given is kept. It leaves no event; it is one undo step like any DM action.
+- **`hashOf(pack)`** is SHA-256 of `canonical(pack)` (keys sorted by code unit at every depth, no whitespace, lists in order,
+  an undefined value left out as JSON leaves it; a function, NaN or a non-plain object is refused). The SHA-256 is pure
+  JavaScript (`sha256`), tested against the FIPS vectors, including the million "a", and against `node:crypto` in the test
+  file only. What the server hashes is the pack document as stored; `canonical` is recursive, for a document that passed the budget.
+- **`packsMatch(statePacks, installed)`**: both are lists of `{ id, version, hash }` (the installed ones with data left
+  out; `overlayOf` returns only ids, so the server builds this list from what it holds). True, or one sentence naming the first
+  difference (a pack missing, its version, its hash, then an installed pack the game does not name). Order does not matter.
+- **What a player is sent.** `playerView` builds its answer field by field and has no `packs`, so a player's view holds none
+  (a test pins it, with a pack id and a hash that must not appear anywhere in it); the DM's `view` is the whole state and has
+  them. The members' pack id, name and version of Decision 5 are the server's filtered `packs` message (second half of B5),
+  not part of the state view. `view.js` was not changed.
+
 ## Risks
 
 - **The scoped registry is a workaround, not a design.** It is the cheapest way
