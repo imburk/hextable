@@ -13,8 +13,10 @@ import {
 } from '../src/content/schema.js';
 import {
   ABILITY_WORDS, AREA_PLACE, AREA_WORDS, CAST_TIME_WORDS, CHOICE_WORDS, ENDS_ON, HOOK_WORDS, KIND_WORDS, OP_WORDS, READER_LIMITS, REACTION_WORDS, REMAINS_WORDS,
-  STEP_SENTENCES, SUMMON_END_WORDS, SUMMON_KIND_WORDS, SUMMON_ONE_WORDS, SUMMON_TURN_WORDS, TAG_WORDS, TIER_WORDS, ZONE_ON_WORDS, JUDGED_ADVANTAGE_IF, JUDGED_ON, JUDGED_SOMETIMES, JUDGED_STEP_AFTER_ATTACK, readEntry, sha256,
+  STEP_SENTENCES, SUMMON_END_WORDS, SUMMON_KIND_WORDS, SUMMON_ONE_WORDS, SUMMON_TURN_WORDS, TAG_WORDS, TIER_WORDS, ZONE_ON_WORDS, JUDGED_ADVANTAGE_IF, JUDGED_ON, JUDGED_SOMETIMES, JUDGED_STEP_AFTER_ATTACK, readEntry as readStrictly, sha256,
 } from '../src/content/reader.js';
+// The invented spells below have ids and sources of their own, not a pack's: this file tries the reader's sentences, not strict mode's (reader-refused.test.js).
+const readEntry = (kind, entry, ctx = {}) => readStrictly(kind, entry, { strict: false, ...ctx });
 
 const GOLDEN = new URL('./reader-golden.txt', import.meta.url);
 const spells = Object.values(CONTENT.spells);
@@ -206,7 +208,7 @@ test('a changed template changes the golden text', () => {
 // ---------- Decision 6's two examples ----------
 test('Ember Burst reads as Decision 6 says', () => {
   const r = readEntry('spell', EMBER_BURST);
-  const want = ['Ember Burst (level 3 evocation, 150 feet, action, instant).', 'Each creature in a 20-foot sphere makes a Dexterity saving throw.',
+  const want = ['"Ember Burst" (level 3 evocation, 150 feet, action, instant).', 'Each creature in a 20-foot sphere makes a Dexterity saving throw.',
     'On a failure it takes 8d6 fire damage; on a success, half.', 'Cast with a higher slot, +1d6 for each level above 3rd.',
     'Tier: auto. The engine rolls and applies all of this.', 'Not checked against any rulebook.'];
   let i = 0;
@@ -219,7 +221,7 @@ test('Ember Burst reads as Decision 6 says', () => {
 
 test('a manual spell quotes its manual text and says the DM does this', () => {
   const r = readEntry('spell', WOLFSONG);
-  assert.equal(r.lines[0], 'Wolfsong (level 2 conjuration, self, action, 1 hour, concentration).');
+  assert.equal(r.lines[0], '"Wolfsong" (level 2 conjuration, self, action, 1 hour, concentration).');
   assert.ok(r.lines.includes('The engine does not do this; the DM does this: "Summons three wolves that fight for you and obey spoken commands."'));
   assert.ok(r.lines.includes(TIER_WORDS.manual));
   assert.ok(r.doesNot.includes('"Summons three wolves that fight for you and obey spoken commands."'));

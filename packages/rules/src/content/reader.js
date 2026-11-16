@@ -21,7 +21,7 @@
 // rest of task B13.
 import { ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
-  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, isDuration } from './schema.js';
+  TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
 import { CONTENT } from './index.js';
 import { actionProfile, aimable, BENEFICIAL_CONDITIONS, spellKinds, WORK } from '../effects.js';
@@ -170,13 +170,17 @@ const cap = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
 // eslint-disable-next-line no-control-regex
 const clean = (s, n) => cap(String(s).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim(), n);
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+// An author's string inside the reading's own sentence: always between quotation marks, and with none of its own, so that nothing the author wrote can end
+// the quotation and carry on as the reading's voice (Decision 6: the author's words are quoted, never in the reading's own sentences; #430).
+const plain = (s, n) => clean(s, n).replace(/["\u201c\u201d\u201e\u00ab\u00bb]/g, "'");
+const qt = (s, n) => `"${plain(s, n)}"`;
 // An id or key shown in a sentence: as written if it is a plain id, otherwise not at all.
 const shown = (k) => (typeof k === 'string' && k.length <= 40 && /^[A-Za-z0-9_.-]+$/.test(k) ? `"${k}"` : 'an unreadable name');
 const list = (xs, and = 'and') => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${and} ${xs.at(-1)}`);
-const cond = (id) => CONTENT.conditions[id]?.name ?? (typeof id === 'string' ? id : '?');
+const cond = (id) => (typeof id === 'string' && Object.hasOwn(CONTENT.conditions, id) && typeof CONTENT.conditions[id].name === 'string' ? CONTENT.conditions[id].name : shown(id));
 const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const signed = (v) => (typeof v === 'number' ? (v >= 0 ? `+${v}` : `${v}`) : /^[+-]/.test(v) ? v : `+${v}`);
-const nameOf = (lookup, id) => (typeof id === 'string' && Object.hasOwn(CONTENT[lookup] ?? {}, id) && typeof CONTENT[lookup][id].name === 'string' ? CONTENT[lookup][id].name : shown(id));
+const nameOf = (lookup, id) => (typeof id === 'string' && Object.hasOwn(CONTENT[lookup] ?? {}, id) && typeof CONTENT[lookup][id].name === 'string' ? qt(CONTENT[lookup][id].name, 60) : shown(id));
 const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 const feetOf = (range) => (range === 'self' ? 0 : range === 'touch' ? 5 : range);
 
@@ -205,7 +209,8 @@ function tidy(input, problems) {
     for (const k of Object.keys(v)) {
       if (over) break;
       if (FORBIDDEN.includes(k)) { say(`${path || 'the entry'} has a key ${shown(k)}, which no entry may have.`); continue; }
-      const x = copy(v[k], depth + 1, path ? `${path}.${k}` : k);
+      const kk = /^[A-Za-z0-9_.-]{1,40}$/.test(k) ? k : '(odd key)';          // a key the author chose is never put into a sentence as it is
+      const x = copy(v[k], depth + 1, path ? `${path}.${kk}` : kk);
       if (x !== undefined) out[k] = x;
     }
     return out;
@@ -261,13 +266,35 @@ const STEP_KEYS = {
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
+//   ctx (all optional):
+//     pack     the id of the homebrew pack the entry belongs to. With it (or, without it, an id in the entry's own `source`, "homebrew:<pack>", or an id
+//              that begins "hb-") the reader asks strict mode (`lintEntry`) whether a table would load the entry, and an entry it would REFUSE is
+//              read as before, but its first line says so, `refused` is true and `refusals` holds the checker's sentences. An SRD entry is not asked.
+//     strict   false: do not ask (an entry made only to try the reader's sentences, whose id and source are not a pack's).
+//     spells, weapons, armour   ids an item may name (see `lintEntry`).
+//   Returns also `refused`: true or false when strict mode was asked, null when it was not; and `refusals`: strict mode's sentences, up to 20.
 export function readEntry(kind, entry, ctx = {}) {
-  void ctx;
   try {
-    return readOrThrow(kind, entry);
+    return refusal(kind, entry, ctx ?? {}, readOrThrow(kind, entry));
   } catch {
-    return { kind: (typeof kind === 'string' && Object.hasOwn(KIND_NAMES, kind) ? KIND_NAMES[kind] : typeof kind === 'string' ? kind.slice(0, 20) : ''), title: '(unreadable entry)', tier: null, lines: ['The reader could not read this entry. It cannot be approved.'], doesNot: [], numbers: [], text: null, problems: ['The entry could not be read.'], hash: null };
+    return { kind: (typeof kind === 'string' && Object.hasOwn(KIND_NAMES, kind) ? KIND_NAMES[kind] : typeof kind === 'string' ? kind.slice(0, 20) : ''), title: '(unreadable entry)', tier: null, lines: ['The reader could not read this entry. It cannot be approved.'], doesNot: [], numbers: [], text: null, problems: ['The entry could not be read.'], hash: null, refused: null, refusals: [] };
   }
+}
+const PLURAL = { spell: 'spells', monster: 'monsters', item: 'items', feat: 'feats' };
+// Would a table load this entry? Strict mode's answer (schema.js `lintEntry`), asked for homebrew only.
+function refusal(kind, entry, ctx, r) {
+  r.refused = null; r.refusals = [];
+  const k = typeof kind === 'string' && Object.hasOwn(KIND_NAMES, kind) ? KIND_NAMES[kind] : null;
+  if (!k || !READ_KINDS.includes(k) || ctx.strict === false || !isObj(entry)) return r;
+  let pack = typeof ctx.pack === 'string' ? ctx.pack : null;
+  if (!pack && typeof entry.source === 'string') pack = /^homebrew:([a-z0-9]+(-[a-z0-9]+)*)$/.exec(entry.source)?.[1] ?? null;
+  if (!pack && typeof entry.id === 'string' && entry.id.startsWith('hb-')) pack = /^hb-([a-z0-9]+)-/.exec(entry.id)?.[1] ?? 'unknown';
+  if (!pack) return r;
+  const problems = lintEntry(PLURAL[k], entry, { pack, srd: CONTENT, ...(ctx.spells ? { spells: ctx.spells } : {}), ...(ctx.weapons ? { weapons: ctx.weapons } : {}), ...(ctx.armour ? { armour: ctx.armour } : {}) });
+  r.refused = problems.length > 0;
+  r.refusals = problems.slice(0, READER_LIMITS.problems).map((x) => cap(String(x), 300));
+  if (r.refused) r.lines.unshift(`REFUSED: this entry breaks the rules a table checks (${problems.length} problem${problems.length === 1 ? '' : 's'}, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.`);
+  return r;
 }
 
 // The kinds of entry (the pack's list names, and the singular) and which of them are read so far.
@@ -281,12 +308,12 @@ function readOrThrow(kind, entry) {
   const k = typeof kind === 'string' && Object.hasOwn(KIND_NAMES, kind) ? KIND_NAMES[kind] : null;
   if (!k || !READ_KINDS.includes(k)) {
     const say = k ? `The reader does not read ${k === 'armour' ? 'armour' : `${k}s`} yet; this kind of entry is not read.` : 'The reader does not know this kind of entry.';
-    return { kind: k ?? clean(typeof kind === 'string' ? kind : '', 20), title: '(not read)', tier: null, lines: [say], doesNot: [], numbers: [], text: null, problems: [], hash: null };
+    return { kind: k ?? clean(typeof kind === 'string' ? kind : '', 20), title: '(not read)', tier: null, lines: [say], doesNot: [], numbers: [], text: null, problems: [], hash: null, refused: null, refusals: [] };
   }
   const { value: e, over } = tidy(entry, problems);
   if (over || !isObj(e)) {
     const why = over ? 'This entry is too large or too deeply nested to read. It cannot be approved.' : `This is not ${IS_THE[k]} entry (it is not an object). It cannot be approved.`;
-    return { kind: k, title: '(unreadable entry)', tier: null, lines: [why], doesNot: [], numbers: [], text: null, problems: [...problems, why], hash: null };
+    return { kind: k, title: '(unreadable entry)', tier: null, lines: [why], doesNot: [], numbers: [], text: null, problems: [...problems, why], hash: null, refused: null, refusals: [] };
   }
   const R = k === 'monster' ? new MonsterReading(e, problems) : k === 'item' ? new ItemReading(e, problems) : k === 'feat' ? new FeatReading(e, problems) : new Reading(e, problems);
   if (k === 'monster') R.monster(); else if (k === 'item') R.item(); else if (k === 'feat') R.feat(); else R.spell();
@@ -330,6 +357,8 @@ class Reading {
   odd(obj, known, where) {
     for (const k of Object.keys(obj)) if (!known.includes(k)) this.bad(`${where} has a key ${shown(k)} the engine does not use.`);
   }
+  // The name inside a sentence: quoted. (`title` is the name on its own, for the page to show beside the reading.)
+  titleQ() { const n = this.def.name; return typeof n === 'string' && n.trim() ? qt(n, READER_LIMITS.title) : '(no name)'; }
   title() { const n = this.def.name; return typeof n === 'string' && n.trim() ? clean(n, READER_LIMITS.title) : '(no name)'; }
   // The tier sentence, true to what the reading above says: an auto entry that hands parts to the DM, or has parts that never take effect, says so.
   tierSentence(tier, words) {
@@ -406,7 +435,7 @@ class Reading {
     if (CAST_TIMES.includes(d.time)) { bits.push(CAST_TIME_WORDS[d.time]); const m = /^(\d+) /.exec(d.time); if (m) this.num('time', d.time, 'casting time'); } else { bits.push('unreadable casting time'); this.bad('The spell\'s casting time is not one the engine knows.'); }
     if (isDuration(d.duration)) { bits.push(d.duration); if (/^\d/.test(d.duration)) this.num('duration', d.duration, 'duration'); } else { bits.push('unreadable duration'); this.bad('The spell\'s duration is not one the engine knows.'); }
     if (d.concentration === true) bits.push('concentration');
-    this.line(`${this.title()} (${bits.join(', ')}).`);
+    this.line(`${this.titleQ()} (${bits.join(', ')}).`);
     const comps = Array.isArray(d.components) ? d.components.filter((c) => ['v', 's', 'm'].includes(c)) : [];
     if (!Array.isArray(d.components) || comps.length !== d.components.length) this.bad('The spell\'s components are not a list of v, s and m.');
     const cw = { v: 'Verbal', s: 'Somatic', m: 'Material' };
@@ -431,13 +460,15 @@ class Reading {
       }
       this.odd(r, ['on', 'blocks'], 'The reaction');
       if (!REACTION_TRIGGERS.includes(r.on)) return this.bad('The reaction names no trigger the engine knows.');
-      this.line(`It is cast as a Reaction, by the caster's standing instruction for it, ${REACTION_WORDS[r.on]}.`);
+      this.line(`It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask${this.acGain() ? ', or only when it turns a hit into a miss' : ''}; the default is never, so nothing happens until the player sets it), ${REACTION_WORDS[r.on]}.`);
       if (Array.isArray(r.blocks) && r.blocks.length) this.line(`Being aimed at by ${list(r.blocks.slice(0, 10).map((x) => nameOf('spells', x)), 'or')} also sets it off, and while it lasts that spell does the caster no damage.`);
       return;
     }
     if (CAST_TIMES.includes(d.time)) this.line(`It takes ${CAST_TIME_WORDS[d.time]} to cast, so it cannot be cast during a fight.`);
   }
 
+  // Does the spell raise the caster's Armor Class (so that its Reaction offers "only when it turns a hit into a miss")? reactions.js `acGain`.
+  acGain() { let g = false; this.walk((st) => { if (isObj(st.modifier) && st.modifier.on === 'ac' && ['add', 'set', 'min'].includes(st.modifier.op)) g = true; }); return g; }
   structOk() {
     let ok = true, n = 0;
     const visit = (steps, depth) => {
@@ -659,7 +690,9 @@ class Reading {
         if (!f) { this.line(`The entry adds ${s[key]} ${word} per slot level, but it has no ${key} step: nothing grows.`); continue; }
         const sides = (x) => (/d(\d+)/.exec(x)?.[1] ?? null);
         const ok = !sides(f.st[key]) || !sides(s[key]) || sides(f.st[key]) === sides(s[key]);
-        if (ok) this.line(`Cast with a higher slot, ${signed(s[key])}${key === 'heal' ? ' healing' : key === 'tempHp' ? ' Temporary Hit Points' : ''} ${per}.`);
+        let steps = 0; this.walk((st) => { if (key in st) steps++; });
+        const only = steps > 1 ? ` It grows only the first ${key === 'damage' ? 'damage' : key === 'heal' ? 'healing' : 'Temporary Hit Points'} step (${f.st[key]}${key === 'damage' && DAMAGE_TYPES.includes(f.st.type) ? ` ${f.st.type}` : ''}); the other ${steps - 1} stay${steps === 2 ? 's' : ''} as written.` : '';
+        if (ok) this.line(`Cast with a higher slot, ${signed(s[key])}${key === 'heal' ? ' healing' : key === 'tempHp' ? ' Temporary Hit Points' : ''} ${per}.${only}`);
         else { this.line(`Cast with a higher slot, the entry adds ${s[key]} per slot level to ${f.st[key]}, but those are different dice: the engine does not add them, the DM does.`); this.dm(`The extra ${s[key]} per slot level: different dice from ${f.st[key]}.`); }
       }
       if (s.times !== undefined) { if (isInt(s.times)) { this.num('higher.slot.times', s.times, 'rolls'); this.line(`Cast with a higher slot, the first damage step is rolled ${s.times} more time${s.times > 1 ? 's' : ''} ${per}.`); } else this.bad('`higher.slot.times` is not a whole number.'); }
@@ -706,7 +739,7 @@ class Reading {
     steps.forEach((st, i) => {
       const at = `${path}.${i}`;
       const prev = i > 0 && isObj(steps[i - 1]) ? STEPS.find((k) => k in steps[i - 1]) : null;
-      this.step(st, at, depth, i === 0 ? who : this.again(who), { ...o, afterDamage: prev === 'damage' });
+      this.step(st, at, depth, i === 0 ? who : this.again(who), { ...o, afterDamage: prev === 'damage', afterKill: steps.slice(0, i).some((x) => isObj(x) && 'kill' in x) });
     });
   }
   // The subject of a step after the first in its list.
@@ -777,7 +810,7 @@ class Reading {
       if (this.itm) {
         // engine/rolls.js `endingDc`: the ending's own `dc`, else the step's own; an item's steps have no spell save DC to fall back on.
         const own = isInt(e.dc) ? e.dc : null, base = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}`, more = ends.orDamaged === true ? '; any damage it takes would also end it' : '';
-        if (own === null) { this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC, so only the DM can end it.`); return `${base}, and a success would end it${more}. But no DC is entered for that save, so the engine does not roll it: it tells the DM when the condition is put on, and the DM ends it.`; }
+        if (own === null) { this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC, so only the DM can end it.`); return `${base}, and a success would end it${more}. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition.`; }
         return `${base}, against DC ${own}; a success ends it${more}.`;
       }
       if (this.mon) {
@@ -787,7 +820,7 @@ class Reading {
         const base = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}`, more = ends.orDamaged === true ? '; any damage it takes would also end it' : '';
         if (dc === null) {
           this.dm(`Ending what step ${at} puts on a creature: its repeated save has no DC anywhere (neither \`ends.dc\` nor a save above it), so only the DM can end it.`);
-          return `${base}, and a success would end it${more}. But no DC is entered for that save, so the engine does not roll it: it tells the DM when the condition is put on, and the DM ends it.`;
+          return `${base}, and a success would end it${more}. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition.`;
         }
         return `${base}, against DC ${dc} (${own !== null ? 'the entry\'s own DC for it' : 'the DC of the save that put it on'}); a success ends it${more}.`;
       }
@@ -821,9 +854,10 @@ function saveSentence({ st, at, depth, Who, say }) {
     && Object.keys(x).every((k) => ['damage', 'type'].includes(k)));
   if (simple) {
     fail.forEach((x, i) => this.num(`${at}.onFail.${i}.damage`, x.damage, 'dice'));
-    this.line(`On a failure it takes ${list(fail.map((x) => `${x.damage} ${x.type === 'chosen' ? 'damage of the chosen type' : `${x.type} damage`}`))}; on a success, half.`, depth);
+    this.line(`On a failure it takes ${list(fail.map((x) => `${x.damage} ${x.type === 'chosen' ? 'damage of the chosen type' : `${x.type} damage`}`))}; on a success, half.${st.save === 'dex' ? ' A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.' : ''}`, depth);
     return;
   }
+  if (half && st.save === 'dex') this.line('A creature with Evasion (and not Incapacitated) takes none of that damage on a success and half of it on a failure; whatever else a failure does still happens.', depth);
   if (st.onFail !== undefined) { this.line('On a failure:', depth); this.steps(st.onFail, `${at}.onFail`, depth + 1, this.it()); }
   if (half) this.line('On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.', depth);
   else if (st.half === true) this.line('It says half on a success, but it has no failure steps to halve: a success runs the success steps.', depth);
@@ -887,7 +921,7 @@ export const STEP_SENTENCES = {
   },
   condition({ st, at, depth, Who, say }) {
     if (!CONDITIONS.includes(st.condition)) { this.bad(`Step ${at}: the condition is not one the engine knows.`); say(`${Who} gets a condition the engine does not know.`); return; }
-    say(`${Who} has the ${cond(st.condition)} condition.`);
+    say(`${Who} has the ${cond(st.condition)} condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)`);
     const prone = st.condition === 'prone' && !this.fx;
     const end = prone ? 'It ends when the creature stands up, as Prone always does.' : this.ending(st, at, 'condition');
     if (end) this.line(end, depth + 1);
@@ -956,15 +990,19 @@ export const STEP_SENTENCES = {
     say(`${Who} is rid of ${list(names.filter(Boolean)) || 'no condition the reader can read'}.`);
   },
   kill({ Who, say }) { say(`${Who} dies, even a character at 0 Hit Points.`); },
-  remains({ st, at, say }) {
+  remains({ st, at, say, o }) {
     if (!REMAINS.includes(st.remains)) this.bad(`Step ${at}: \`remains\` is not one the engine knows.`);
-    say(`What is left of its body is ${REMAINS_WORDS[st.remains] ?? 'something unreadable'}.`);
+    const left = REMAINS_WORDS[st.remains] ?? 'something unreadable';
+    // effects.js: a body that is not dead has no remains: the DM is told. Certainly dead under `onKill`, or after a `kill` step in the same list.
+    if (/\.onKill\.\d+$/.test(at) || o.afterKill) return say(`What is left of its body is ${left}.`);
+    say(`If it is dead, what is left of its body is ${left}. If it is not dead (a character at 0 Hit Points is not), the engine leaves it as it is and tells the DM, who applies the rest.`);
+    this.dm(`Step ${at}: what is left of a body that is not dead.`);
   },
   endConcentration({ Who, say }) { say(`${Who} loses Concentration on whatever it is concentrating on.`); },
   summon({ st, at, depth, say }) { summonLines.call(this, st, at, depth, say); },
   manual({ st, at, say }) {
     this.hasManual = true; this.manualSteps++;
-    const text = typeof st.manual === 'string' && st.manual.trim() ? clean(st.manual, READER_LIMITS.quote) : null;
+    const text = typeof st.manual === 'string' && st.manual.trim() ? plain(st.manual, READER_LIMITS.quote) : null;
     if (!text) this.bad(`Step ${at}: a manual step with no text.`);
     say(`The engine does not do this; the DM does this: "${text ?? '(no text)'}"`);
     this.dm(`"${text ?? '(no text)'}"`);
@@ -1058,7 +1096,7 @@ function modExtras(m, at, toCaster) {
 function summonLines(st, at, depth, say) {
   const what = st.forms !== undefined
     ? (Array.isArray(st.forms) ? `one form the caster picks from ${list(st.forms.slice(0, 40).map((x) => nameOf('monsters', x)), 'or')}`
-      : isObj(st.forms) ? `a ${cap1(String(st.forms.type))} of challenge rating exactly ${typeof st.forms.cr === 'number' ? st.forms.cr : '?'}, which the caster picks` : 'an unreadable form')
+      : isObj(st.forms) ? `a ${CREATURE_TYPES.includes(st.forms.type) ? cap1(st.forms.type) : 'creature of an unknown type'} of challenge rating exactly ${typeof st.forms.cr === 'number' ? st.forms.cr : '?'}, which the caster picks` : 'an unreadable form')
     : Object.hasOwn(CONTENT.summons, st.summon) ? nameOf('summons', st.summon) : nameOf('monsters', st.summon);
   if (isObj(st.forms) && typeof st.forms.cr === 'number') this.num(`${at}.forms.cr`, st.forms.cr, 'challenge rating');
   const amount = (c, field) => {
@@ -1179,7 +1217,7 @@ class MonsterReading extends Reading {
     const d = this.def;
     this.odd(d, Object.keys(MONSTER_FIELDS), 'The monster');
     const bits = HEADER.map((f) => this[{ size: 'fSize', type: 'fType', cr: 'fCr', xp: 'fXp' }[f]]()).filter(Boolean);
-    this.line(`${this.title()} (${bits.join(', ')}).`);
+    this.line(`${this.titleQ()} (${bits.join(', ')}).`);
     for (const l of this.later) this.line(l);
     for (const [f, how] of Object.entries(MONSTER_FIELDS)) if (how !== 'skip' && how !== 'header') this[how]();
   }
@@ -1195,7 +1233,7 @@ class MonsterReading extends Reading {
     if (typeof t !== 'string' || !t.trim()) { this.bad('The monster has no creature type.'); return 'of no type'; }
     const lower = t.trim().toLowerCase();
     if (!CREATURE_TYPES.includes(lower)) this.later.push(`Its creature type is not one the engine knows (${shown(t)}): a limit to a creature type (an area, a summoning spell) never matches it.`);
-    return clean(t, 40).toLowerCase();
+    return CREATURE_TYPES.includes(lower) ? lower : qt(t, 40).toLowerCase();
   }
   fCr() {
     const c = this.def.cr;
@@ -1289,7 +1327,24 @@ class MonsterReading extends Reading {
     if (ok.length !== names.length) this.bad('A skill is not a whole-number bonus for one of the eighteen skills.');
     for (const k of ok) this.num(`skills.${k}`, s[k], 'skill bonus');
     this.line(ok.length ? `Skills: ${list(ok.map((k) => `${cap1(k.replace(/-/g, ' '))} ${signed(s[k])}`))}. The engine uses each as the whole bonus for that skill's checks, in place of the ability modifier; any other skill is the plain modifier.` : 'Skills: none listed; each check is the plain ability modifier.');
-    this.perception = 10 + (isInt(s?.perception) ? s.perception : this.mod('wis'));
+  }
+  // The passive Perception the engine works out (engine/rolls.js `passive`): 10, plus the skill bonus (else the Wisdom modifier), plus what its traits add to
+  // Perception checks, 5 more with Advantage and 5 less with Disadvantage (dice are not rolled for a passive score). A modifier with a `when` holds only
+  // sometimes, so it is left out of the number and said.
+  passivePerception() {
+    const sk = this.def.skills;
+    let score = 10 + (isObj(sk) && isInt(sk.perception) ? sk.perception : this.mod('wis')), adv = false, dis = false, maybe = false;
+    for (const t of Array.isArray(this.def.traits) ? this.def.traits : []) for (const m of isObj(t) && Array.isArray(t.modifiers) ? t.modifiers : []) {
+      if (!isObj(m) || m.on !== 'check' || m.onFail === true || m.spell !== undefined) continue;
+      const sc = isObj(m.scope) ? m.scope : {};
+      if ((sc.skill !== undefined && sc.skill !== 'perception') || (sc.ability !== undefined && sc.ability !== 'wis') || sc.condition !== undefined) continue;
+      if (Array.isArray(m.when) && m.when.length) { maybe = true; continue; }
+      if (m.op === 'add') { const v = typeof m.value === 'number' ? m.value : isObj(m.value) && typeof m.value.perLevel === 'number' ? m.value.perLevel : 0; score += v; }
+      else if (m.op === 'advantage') adv = true;
+      else if (m.op === 'disadvantage') dis = true;
+    }
+    if (adv && !dis) score += 5; else if (dis && !adv) score -= 5;
+    return { score, adv, dis, maybe };
   }
   fSenses() {
     const s = this.def.senses;
@@ -1299,7 +1354,10 @@ class MonsterReading extends Reading {
     const ok = names.filter((k) => Object.hasOwn(SENSE_WORDS, k) && isInt(s[k]) && s[k] >= 0);
     if (ok.length !== names.length) this.bad('A sense is not a range in feet for darkvision, blindsight, tremorsense or truesight.');
     for (const k of ok) this.num(`senses.${k}`, s[k], 'feet');
-    this.line(`Senses: ${list([...ok.map((k) => `${k} ${s[k]} feet`), `passive Perception ${this.perception ?? 10 + this.mod('wis')}`])}.`);
+    const pp = this.passivePerception();
+    this.line(`Senses: ${list([...ok.map((k) => `${k} ${s[k]} feet`), `passive Perception ${pp.score}`])}.`);
+    if (pp.adv || pp.dis) this.line(`The passive Perception counts ${pp.adv && !pp.dis ? 'the Advantage a trait gives on Perception checks as 5 more' : pp.dis && !pp.adv ? 'the Disadvantage a trait gives on Perception checks as 5 less' : 'Advantage and Disadvantage on Perception checks from its traits as cancelling out'}, as the engine does.`);
+    if (pp.maybe) this.line('A trait that changes its Perception checks only in some situations is not counted in that number; it changes the number only while the situation holds.');
     for (const k of ok) if (s[k] > 0) this.line(`Its ${k}: ${SENSE_WORDS[k]}.`);
   }
   types(key, label, what) {
@@ -1325,7 +1383,7 @@ class MonsterReading extends Reading {
     const v = this.def.languages;
     if (v === undefined) return;
     if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) return this.bad('`languages` is not a list of text.');
-    this.line(v.length ? `Languages (shown to the DM only; the engine does nothing with them): ${v.slice(0, 12).map((x) => `"${clean(x, 120)}"`).join(', ')}.` : 'Languages: none.');
+    this.line(v.length ? `Languages (shown to the DM only; the engine does nothing with them): ${v.slice(0, 12).map((x) => qt(x, 120)).join(', ')}.` : 'Languages: none.');
   }
   fMount() {
     const v = this.def.mount;
@@ -1345,7 +1403,7 @@ class MonsterReading extends Reading {
     const at = `traits.${i}`;
     if (!isObj(t)) { this.bad(`${at} is not a trait.`); return this.line('(A trait the reader cannot read.)'); }
     this.odd(t, Object.keys(TRAIT_FIELDS), `Trait ${i + 1}`);
-    const name = typeof t.name === 'string' && t.name.trim() ? `"${clean(t.name, 60)}"` : '(no name)';
+    const name = typeof t.name === 'string' && t.name.trim() ? qt(t.name, 60) : '(no name)';
     const mods = Array.isArray(t.modifiers) ? t.modifiers : null;
     if (!mods) this.bad(`${at} has no list of modifiers (it may be empty).`);
     const runs = (mods?.length ?? 0) > 0 || t.reaction !== undefined || Object.hasOwn(TRAIT_ID_WORDS, t.id);
@@ -1383,7 +1441,7 @@ class MonsterReading extends Reading {
     const kind = r.attack === 'melee' || r.attack === 'ranged' ? ` ${r.attack}` : '';
     this.line(`Reaction, taken by a standing instruction (never, only when it turns a hit into a miss, always, or ask; the default is "only when it turns a hit into a miss"): when a${kind} attack roll hits it, it adds ${isInt(r.ac) ? r.ac : '(unreadable)'} to its Armor Class against that attack. It spends the creature's Reaction.`, 1);
     if (r.manual !== undefined) {
-      const m = typeof r.manual === 'string' && r.manual.trim() ? clean(r.manual, READER_LIMITS.quote) : null;
+      const m = typeof r.manual === 'string' && r.manual.trim() ? plain(r.manual, READER_LIMITS.quote) : null;
       if (!m) this.bad(`${at}: \`manual\` is not text.`);
       this.line(`The rest of it is the DM's: "${m ?? '(no text)'}"`, 1);
       this.dm(`"${m ?? '(no text)'}"`);
@@ -1400,13 +1458,13 @@ class MonsterReading extends Reading {
   }
   nameOfAction(id) {
     const a = typeof id === 'string' ? this.byId.get(id) : null;
-    return a && typeof a.name === 'string' && a.name.trim() ? `"${clean(a.name, 60)}"` : shown(id);
+    return a && typeof a.name === 'string' && a.name.trim() ? qt(a.name, 60) : shown(id);
   }
   action(a, i) {
     const at = `actions.${i}`;
     if (!isObj(a)) { this.bad(`${at} is not an action.`); return this.line('(An action the reader cannot read.)'); }
     this.odd(a, Object.keys(ACTION_FIELDS), `Action ${i + 1}`);
-    const name = typeof a.name === 'string' && a.name.trim() ? `"${clean(a.name, 60)}"` : '(no name)';
+    const name = typeof a.name === 'string' && a.name.trim() ? qt(a.name, 60) : '(no name)';
     const time = a.time === undefined || a.time === 'action' ? 'an action' : a.time === 'bonus' ? 'a Bonus Action' : null;
     if (!time) this.bad(`${at}: \`time\` is "action" or "bonus".`);
     this.line(`Action ${name}: ${time ?? 'of an unreadable kind'}. In a fight it spends the creature's ${a.time === 'bonus' ? 'Bonus Action' : 'action'}.`);
@@ -1529,7 +1587,7 @@ class MonsterReading extends Reading {
         let best = 0;
         for (const id of ids) {
           const o = this.byId.get(id);
-          if (!o) this.bad(`${p}: names "${typeof id === 'string' ? id.slice(0, 40) : '?'}", which is not one of this creature's actions.`);
+          if (!o) this.bad(`${p}: names ${typeof id === 'string' ? qt(id, 40) : '?'}, which is not one of this creature's actions.`);
           else if (o === a || o.multiattack !== undefined) this.bad(`${p}: a Multiattack cannot name another Multiattack.`);
           else if (o.time === 'bonus' || o.recharge !== undefined || o.uses !== undefined) this.bad(`${p}: names ${this.nameOfAction(id)}, which is a Bonus Action or has a recharge or uses.`);
           const v = o ? averageOf(o)?.avg ?? 0 : 0;
@@ -1543,12 +1601,27 @@ class MonsterReading extends Reading {
     });
     if (avg > 0) this.line(`Worked out from the dice, not a promise: if every attack hits, the damage averages ${fmt(avg)}${lists.length > 1 ? ' for the biggest alternative' : ''}.`);
   }
-  // Will the monster AI use it? (ai.js picks a harmful action of aim creature, area or multi that is not spent.)
+  // Will the monster AI use it, and when? (ai.js `withActions`: it considers only harmful actions that are not spent, and picks in this order: a Bonus Action
+  // area that would catch two or more foes; an action area that would catch two or more; a Multiattack whose attacks reach a foe; a weapon attack, the nearest foe
+  // it can reach, melee before ranged; an area that would catch one; any other action aimed at one creature. A Bonus Action aimed at creatures is never picked.
+  // An area without `choose` is not aimed where an ally would be caught. A test plays each of these.)
   aiLine(a) {
     let p = null;
     try { p = actionProfile(structuredClone(a)); } catch { p = null; }
-    if (p && p.harmful && ['creature', 'area', 'multi'].includes(p.aim)) this.line('The monster AI uses this action on its own turns.');
-    else this.line('The monster AI never picks this action by itself: the DM sends it.');
+    if (!p || !p.harmful || !['creature', 'area', 'multi'].includes(p.aim)) return this.line('The monster AI never picks this action by itself: the DM sends it.');
+    const bonus = p.time === 'bonus';
+    if (p.aim === 'multi') return this.line('The monster AI uses this Multiattack on its own turn when one of its attacks can reach a foe (it walks up first if none can).');
+    if (p.aim === 'creature') {
+      if (bonus) return this.line('The monster AI never uses a Bonus Action that is aimed at creatures: it uses a Bonus Action only for an area that would catch two or more foes. The DM sends this one.');
+      return this.line(p.roll === 'melee' || p.roll === 'ranged'
+        ? 'The monster AI uses this action on its own turns: it makes the attack at the nearest foe it can reach (a melee attack before a ranged one).'
+        : 'The monster AI uses this action on its own turns, but only when it has no weapon attack that reaches a foe: then it aims it at the nearest foe it can reach.');
+    }
+    const choose = isObj(a.target?.area) && isInt(a.target.area.choose);
+    const side = choose ? 'it picks the foes (up to that many) and never an ally' : 'it never aims it where one of its own side would be caught';
+    return this.line(bonus
+      ? `The monster AI uses this Bonus Action on its own turn only when the area would catch two or more foes; ${side}. Otherwise it does not use it, and the DM sends it.`
+      : `The monster AI uses this action on its own turn when the area would catch two or more foes (or, when nothing else reaches a foe, one); ${side}.`);
   }
 
   // ----- the end -----
@@ -1836,7 +1909,7 @@ export const GRANT_WORDS = {
     if (!isObj(v) || !Array.isArray(v.options)) return this.bad(`${at} is not { after, dice, options }.`);
     if (v.dice !== undefined) { if (isDice(v.dice)) this.num(`${at}.dice`, v.dice, 'dice'); else this.bad(`${at}.dice is not dice.`); }
     deepNums(this, v.options, `${at}.options`, 'amount');
-    const names = v.options.filter(isObj).map((o) => (typeof o.name === 'string' && o.name.trim() ? `"${clean(o.name, 40)}"` : 'an unnamed option'));
+    const names = v.options.filter(isObj).map((o) => (typeof o.name === 'string' && o.name.trim() ? qt(o.name, 40) : 'an unnamed option'));
     this.line(`Gives a hit one more effect: ${v.after !== undefined ? `once a turn, after the feature ${shown(v.after)} was used that turn, the holder may give up Advantage on one Strength attack roll; on a hit it deals ${isDice(v.dice) ? v.dice : '(unreadable dice)'} more damage of the attack's type and` : 'the holder may add to the options of its Brutal Strike:'} one of ${list(names, 'or')} happens to the target. The engine runs it only for a holder who has that feature.`, 1);
   },
   relentless(v, at) {
@@ -2020,7 +2093,7 @@ class ItemReading extends GrantReading {
     const cat = ITEM_CATEGORY_WORDS[d.category], rar = RARITY_WORDS[d.rarity];
     if (!cat) this.bad('The item\'s category is not one the engine knows.');
     if (!rar) this.bad('The item\'s rarity is not one the engine knows.');
-    this.line(`${this.title()} (${rar ?? 'unreadable rarity'} ${cat ?? 'item of an unreadable category'}).`);
+    this.line(`${this.titleQ()} (${rar ?? 'unreadable rarity'} ${cat ?? 'item of an unreadable category'}).`);
     this.run();
     this.dawnText();
   }
@@ -2117,7 +2190,7 @@ class ItemReading extends GrantReading {
     const at = `activate.${i}`, d = this.def;
     if (!isObj(u)) { this.bad(`${at} is not a use.`); return this.line('(A use the reader cannot read.)'); }
     this.odd(u, Object.keys(ACTIVATE_FIELDS), `Use ${i + 1}`);
-    const label = typeof u.name === 'string' && u.name.trim() ? `"${clean(u.name, 60)}"` : d.variant === 'spell' ? '"Read"' : u.spell ? '"Cast"' : d.category === 'potion' ? '"Drink"' : '"Use"';
+    const label = typeof u.name === 'string' && u.name.trim() ? qt(u.name, 60) : d.variant === 'spell' ? '"Read"' : u.spell ? '"Cast"' : d.category === 'potion' ? '"Drink"' : '"Use"';
     if (!ACTION_TIMES.includes(u.time)) this.bad(`${at}.time is not one the engine knows.`);
     const sp = typeof u.spell === 'string' ? CONTENT.spells[u.spell] : null;
     const scroll = d.variant === 'spell';
@@ -2186,7 +2259,7 @@ class FeatReading extends GrantReading {
     this.odd(d, Object.keys(FEAT_FIELDS), 'The feat');
     const cat = FEAT_CATEGORY_WORDS[d.category];
     if (!cat) this.bad('The feat\'s category is not one the engine knows.');
-    this.line(`${this.title()} (${cat ?? 'a feat of an unreadable category'}).`);
+    this.line(`${this.titleQ()} (${cat ?? 'a feat of an unreadable category'}).`);
     this.line('A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.');
     this.run();
   }

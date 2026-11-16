@@ -421,7 +421,7 @@ test('hostile items and feats get a bounded plain answer and never a throw', () 
   }
   assert.equal(({}).polluted, undefined);
   assert.equal(readEntry('item', deepI).hash, null);
-  assert.ok(readEntry('item', deepI).lines[0].includes('too large or too deeply nested'));
+  assert.ok(readEntry('item', deepI).lines.some((l) => l.includes('too large or too deeply nested')));
   assert.ok(readEntry('feat', { ...F, grants: 'x' }).problems.length > 0);
   assert.equal(readEntry('item', null).lines[0], 'This is not an item entry (it is not an object). It cannot be approved.');
   assert.equal(readEntry('feat', null).lines[0], 'This is not a feat entry (it is not an object). It cannot be approved.');

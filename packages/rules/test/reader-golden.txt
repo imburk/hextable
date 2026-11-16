@@ -1,10 +1,10 @@
 == hb-test-ember-burst
-Ember Burst (level 3 evocation, 150 feet, action, instant).
+"Ember Burst" (level 3 evocation, 150 feet, action, instant).
 Components: Verbal, Somatic and Material (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
 Each creature in a 20-foot sphere makes a Dexterity saving throw.
-On a failure it takes 8d6 fire damage; on a success, half.
+On a failure it takes 8d6 fire damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 The sphere is centred on a point the caster picks within 150 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
 Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
 Saving throws are against the caster's spell save DC.
@@ -14,7 +14,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-wolfsong
-Wolfsong (level 2 conjuration, self, action, 1 hour, concentration).
+"Wolfsong" (level 2 conjuration, self, action, 1 hour, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under no kind: the engine cannot tell what it is for, so the list shows it under every kind.
@@ -29,14 +29,14 @@ DM: "Summons three wolves that fight for you and obey spoken commands."
 DM: Whatever the description says beyond the steps above.
 
 == hb-test-frost-lance
-Frost Lance (evocation cantrip, 120 feet, action, instant).
+"Frost Lance" (evocation cantrip, 120 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
 The caster makes a ranged spell attack roll against one creature within 120 feet.
 On a hit:
   It takes 1d10 cold damage.
-  It has the Prone condition.
+  It has the Prone condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It ends when the creature stands up, as Prone always does.
   It is pushed 10 feet straight away from the caster; it stops at a wall, a drop or anything in the way.
 On a miss:
@@ -52,7 +52,7 @@ DM: "Frost coats the ground where it struck."
 DM: Whatever the description says beyond the steps above.
 
 == hb-test-grave-snap
-Grave Snap (level 1 evocation, touch, action, instant).
+"Grave Snap" (level 1 evocation, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
@@ -70,22 +70,22 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-binding-chant
-Binding Chant (level 2 enchantment, 60 feet, action, 1 minute, concentration).
+"Binding Chant" (level 2 enchantment, 60 feet, action, 1 minute, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
 Each of up to 2 creatures within 60 feet makes a Wisdom saving throw against DC 14.
 It has Advantage on this save if the caster's side is fighting the target.
 On a failure:
-  It has the Frightened condition.
+  It has the Frightened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It makes a Wisdom saving throw each time it takes damage, against the caster's spell save DC; a success ends it. Any damage it takes also ends it. It also ends with the spell.
     The engine applies part of what Frightened does; the DM applies the rest.
-  It has the Charmed condition.
+  It has the Charmed condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It ends when it takes damage from the caster or the caster's side, or with the spell.
     The engine applies part of what Charmed does; the DM applies the rest.
-  It has the Restrained condition.
+  It has the Restrained condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It makes a Strength saving throw at the start of each of its turns, against the caster's spell save DC; a success ends it. It also ends with the spell.
-  It has the Blinded condition.
+  It has the Blinded condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It makes a Constitution saving throw at the end of each of its turns, against the caster's spell save DC; a success ends it. It also ends with the spell.
     The engine applies part of what Blinded does; the DM applies the rest.
 On a success:
@@ -100,15 +100,15 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-quick-curse
-Quick Curse (level 1 evocation, 60 feet, action, instant).
+"Quick Curse" (level 1 evocation, 60 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
-One creature within 60 feet has the Poisoned condition.
+One creature within 60 feet has the Poisoned condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   Nothing in the engine ends it: the DM removes it.
 It gets -2 to its Armor Class.
   Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
-It has the Deafened condition.
+It has the Deafened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   It ends when it takes damage. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
   The engine applies part of what Deafened does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
@@ -119,13 +119,13 @@ DM: Ending what step effects.0 puts on a creature: nothing ends it on its own.
 DM: The modifier of step effects.1: nothing in the spell ends it.
 
 == hb-test-dull-curse
-Dull Curse (level 1 evocation, 60 feet, action, instant).
+"Dull Curse" (level 1 evocation, 60 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
 One creature within 60 feet gets -1 to its Armor Class.
   The spell does not last, so the engine has nothing to hang this on: the DM applies it.
-It has the Deafened condition.
+It has the Deafened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   Nothing in the engine ends it: the DM removes it.
   The engine applies part of what Deafened does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
@@ -136,14 +136,14 @@ DM: The modifier of step effects.0: the spell does not last.
 DM: Removing the Deafened condition that step effects.1 puts on.
 
 == hb-test-stinging-mark
-Stinging Mark (level 1 evocation, 60 feet, action, instant).
+"Stinging Mark" (level 1 evocation, 60 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
-One creature within 60 feet has the Grappled condition.
+One creature within 60 feet has the Grappled condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   It ends at the end of its next turn, or when the fight ends.
   The engine applies part of what Grappled does; the DM applies the rest.
-It has the Stunned condition.
+It has the Stunned condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   Nothing in the engine ends it: the DM removes it.
 It gets its Speed set to 0 feet.
   Nothing in the spell ends it, so the engine does not keep it: the DM applies it and ends it.
@@ -155,7 +155,7 @@ DM: Ending what step effects.1 puts on a creature: nothing ends it on its own.
 DM: The modifier of step effects.2: nothing in the spell ends it.
 
 == hb-test-many-blessings
-Many Blessings (level 4 abjuration, 60 feet, action, 10 minutes, concentration).
+"Many Blessings" (level 4 abjuration, 60 feet, action, 10 minutes, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage, control and utility.
@@ -184,7 +184,7 @@ The caster gets +1d6 radiant damage added to the damage it deals.
   It applies at most once a turn. It holds only when the damage comes from an attack roll that hit, the damage is a cantrip's and it is a spell's attack roll. The engine never applies this: at the damage it deals it cannot tell whether it is a spell's attack roll, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 The caster gets +2 to the damage it deals.
-  It holds only for the damage of Fire Bolt.
+  It holds only for the damage of "Fire Bolt".
   It lasts as long as the spell.
 The caster gets Resistance to fire or cold damage.
   It lasts as long as the spell.
@@ -249,7 +249,7 @@ Tier: auto, but the engine never applies the parts said above never to take effe
 Not checked against any rulebook.
 
 == hb-test-hunters-sting
-Hunter's Sting (level 1 divination, 90 feet, Bonus Action, 1 hour, concentration).
+"Hunter's Sting" (level 1 divination, 90 feet, Bonus Action, 1 hour, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and utility.
@@ -267,7 +267,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-shifting-step
-Shifting Step (level 4 conjuration, 500 feet, action, instant).
+"Shifting Step" (level 4 conjuration, 500 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
@@ -281,7 +281,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-mending-light
-Mending Light (level 1 abjuration, touch, action, instant).
+"Mending Light" (level 1 abjuration, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
@@ -298,7 +298,7 @@ Not checked against any rulebook.
 DM: The extra 1d6 per slot level: different dice from 2d8.
 
 == hb-test-gravity-well
-Gravity Well (level 5 transmutation, 60 feet, action, 1 minute).
+"Gravity Well" (level 5 transmutation, 60 feet, action, 1 minute).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage, control and utility.
@@ -323,23 +323,23 @@ DM: Step effects.7: stopping a spell.
 DM: Whatever the description says beyond the steps above.
 
 == hb-test-hail-burst
-Hail Burst (level 4 evocation, 300 feet, action, instant).
+"Hail Burst" (level 4 evocation, 300 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
 Each creature in a cylinder 20 feet in radius and 40 feet high makes a Dexterity saving throw.
-On a failure it takes 2d10 bludgeoning damage and 4d6 cold damage; on a success, half.
+On a failure it takes 2d10 bludgeoning damage and 4d6 cold damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 The cylinder is centred on a point the caster picks within 300 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
 Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
 Saving throws are against the caster's spell save DC.
 The area is Difficult Terrain until the end of the caster's next turn.
-Cast with a higher slot, +1d10 for each level above 4th.
+Cast with a higher slot, +1d10 for each level above 4th. It grows only the first damage step (2d10 bludgeoning); the other 1 stays as written.
 It is instant: nothing it does is kept as a lasting effect.
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-wide-shapes
-Wide Shapes (level 1 evocation, self, action, instant).
+"Wide Shapes" (level 1 evocation, self, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
@@ -351,7 +351,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-long-shapes
-Long Shapes (level 1 evocation, self, action, instant).
+"Long Shapes" (level 1 evocation, self, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
@@ -367,7 +367,7 @@ Not checked against any rulebook.
 DM: The extra 1d8 per slot level: different dice from 6d6.
 
 == hb-test-far-line
-Far Line (level 1 evocation, 90 feet, action, instant).
+"Far Line" (level 1 evocation, 90 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
@@ -380,13 +380,13 @@ Not checked against any rulebook.
 DM: Every step of this spell: the engine cannot lay out its area.
 
 == hb-test-ten-cubes
-Ten Cubes (level 7 evocation, 150 feet, action, instant).
+"Ten Cubes" (level 7 evocation, 150 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
 The engine cannot lay out this area (the caster arranges 10 of these shapes), so it has nobody to apply the steps to: it hands each step below to the DM.
 Each creature affected makes a Dexterity saving throw.
-On a failure it takes 7d10 fire damage; on a success, half.
+On a failure it takes 7d10 fire damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
 The area is 10 of a 10-foot cube, arranged by the caster; the DM decides who is caught.
 Saving throws are against the caster's spell save DC.
 It is instant: nothing it does is kept as a lasting effect.
@@ -395,7 +395,7 @@ Not checked against any rulebook.
 DM: Every step of this spell: the engine cannot lay out its area.
 
 == hb-test-self-cube
-Self Cube (level 1 evocation, self, action, instant).
+"Self Cube" (level 1 evocation, self, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
@@ -408,7 +408,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-guarding-ring
-Guarding Ring (level 3 evocation, self, action, 10 minutes, concentration).
+"Guarding Ring" (level 3 evocation, self, action, 10 minutes, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
@@ -420,7 +420,7 @@ That creature makes a Constitution saving throw.
 On a failure:
   It takes 2d8 psychic damage.
 On a success:
-  It has the Incapacitated condition.
+  It has the Incapacitated condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It ends at the end of its next turn, or when the fight ends, even if the spell's time runs out first; ending the spell early ends it too.
     The engine applies part of what Incapacitated does; the DM applies the rest.
 The emanation reaches out from the caster all round; it catches every creature in it except the caster; a wall between the area's origin and a creature keeps that creature out.
@@ -431,7 +431,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-turning-ring
-Turning Ring (level 3 evocation, self, action, 10 minutes, concentration).
+"Turning Ring" (level 3 evocation, self, action, 10 minutes, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
@@ -451,7 +451,7 @@ Not checked against any rulebook.
 DM: Undoing what a zone does to a creature of another type than its `types`, when the engine tells the DM it went off on one.
 
 == hb-test-mire
-Mire (level 2 evocation, 120 feet, action, 1 hour).
+"Mire" (level 2 evocation, 120 feet, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
@@ -461,7 +461,7 @@ From then on, the steps below run on a creature each time it ends its turn there
 That creature makes a Strength saving throw.
 On a failure:
   It takes 1d6 acid damage.
-  It has the Restrained condition.
+  It has the Restrained condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
     It lasts as long as the spell.
 On a success, the failure steps run at half: their damage is halved, a roll among them is still made, and nothing else in them happens.
 The entry also lists steps for a success, but the engine never runs them: a success already runs the failure steps at half.
@@ -474,12 +474,12 @@ Not checked against any rulebook.
 PROBLEM: Step effects.0: success steps beside half are never run.
 
 == hb-test-hardy-shield
-Hardy Shield (level 1 evocation, self, Reaction, 1 round).
+"Hardy Shield" (level 1 evocation, self, Reaction, 1 round).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
-It is cast as a Reaction, by the caster's standing instruction for it, when an attack roll hits the caster.
-Being aimed at by Magic Missile or "hb-test-unknown" also sets it off, and while it lasts that spell does the caster no damage.
+It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask, or only when it turns a hit into a miss; the default is never, so nothing happens until the player sets it), when an attack roll hits the caster.
+Being aimed at by "Magic Missile" or "hb-test-unknown" also sets it off, and while it lasts that spell does the caster no damage.
 The caster gets +5 to its Armor Class.
   It ends at the start of its next turn, or when the fight ends, even if the spell's time runs out first; ending the spell early ends it too.
 It is aimed at the caster alone.
@@ -488,14 +488,14 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-rebuke
-Rebuke (level 1 evocation, 60 feet, Reaction, instant).
+"Rebuke" (level 1 evocation, 60 feet, Reaction, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and utility.
-It is cast as a Reaction, by the caster's standing instruction for it, when a hostile creature the caster can see within the spell's range damages the caster; it is aimed at that creature.
+It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask; the default is never, so nothing happens until the player sets it), when a hostile creature the caster can see within the spell's range damages the caster; it is aimed at that creature.
 One creature within 60 feet makes a Dexterity saving throw.
-On a failure it takes 2d10 fire damage; on a success, half.
-It has the Invisible condition.
+On a failure it takes 2d10 fire damage; on a success, half. A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+It has the Invisible condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   Nothing in the engine ends it: the DM removes it.
   The engine applies part of what Invisible does; the DM applies the rest.
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
@@ -506,11 +506,11 @@ Not checked against any rulebook.
 DM: Removing the Invisible condition that step effects.1 puts on.
 
 == hb-test-unmake
-Unmake (level 3 abjuration, 60 feet, Reaction, instant).
+"Unmake" (level 3 abjuration, 60 feet, Reaction, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
-It is cast as a Reaction, by the caster's standing instruction for it, when the caster sees a hostile creature within the spell's range casting a spell; it is aimed at that creature.
+It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask; the default is never, so nothing happens until the player sets it), when the caster sees a hostile creature within the spell's range casting a spell; it is aimed at that creature.
 It is aimed at one creature within 60 feet.
 The spell whose casting set off this reaction fails.
 The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
@@ -519,7 +519,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-loose-reaction
-Loose Reaction (level 1 evocation, 60 feet, Reaction, instant).
+"Loose Reaction" (level 1 evocation, 60 feet, Reaction, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
@@ -532,11 +532,11 @@ Not checked against any rulebook.
 DM: Casting it: a Reaction with nothing named to set it off.
 
 == hb-test-call-beast
-Call Beast (level 2 conjuration, 30 feet, action, 1 hour, concentration).
+"Call Beast" (level 2 conjuration, 30 feet, action, 1 hour, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
-The caster makes a creature in unoccupied space it names within the spell's range: one form the caster picks from Wolf or "hb-test-hound".
+The caster makes a creature in unoccupied space it names within the spell's range: one form the caster picks from "Wolf" or "hb-test-hound".
   The caster picks its creature type from Beast or Fey.
   If the caster already has one from this spell, casting it again gives that one the new form instead of making another.
   Its Speed is replaced: walk 60 feet and fly 30 feet.
@@ -547,12 +547,12 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-raise-bones
-Raise Bones (level 3 necromancy, 10 feet, 1 minute, instant).
+"Raise Bones" (level 3 necromancy, 10 feet, 1 minute, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
 It takes 1 minute to cast, so it cannot be cast during a fight.
-The caster raises corpses it names (dead Small or Medium Humanoids), as many as 1 plus 2 for each slot level above 3, each as Zombie, under the caster's control.
+The caster raises corpses it names (dead Small or Medium Humanoids), as many as 1 plus 2 for each slot level above 3, each as "Zombie", under the caster's control.
   Instead, the caster may take back control of 4 of its own creatures from this spell.
   It is the caster's undead servant. It acts on the caster's count, right after (or before) the caster's turn. It acts on commands the caster gives within 60 feet; when not commanded, it follows its standing order. At 0 Hit Points it dies.
 It is instant: nothing it does is kept as a lasting effect.
@@ -560,7 +560,7 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
 == hb-test-steed-call
-Steed Call (level 2 conjuration, 30 feet, 10 minutes, until dispelled).
+"Steed Call" (level 2 conjuration, 30 feet, 10 minutes, until dispelled).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 It is marked as a ritual. The engine has no ritual casting: casting it as a ritual is the DM's.
 On the spell lists of: wizard.
@@ -576,7 +576,7 @@ Not checked against any rulebook.
 DM: Ending the spell: it lasts until dispelled.
 
 == hb-test-strange-hours
-Strange Hours (level 1 illusion, self, 8 hours, special, concentration).
+"Strange Hours" (level 1 illusion, self, 8 hours, special, concentration).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
@@ -600,7 +600,7 @@ DM: Ending the spell: it lasts for a special time.
 DM: Whatever the description says beyond the steps above.
 
 == hb-test-mixed-dice
-Mixed Dice (level 1 evocation, 60 feet, action, instant).
+"Mixed Dice" (level 1 evocation, 60 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and healing.
@@ -617,24 +617,25 @@ Not checked against any rulebook.
 DM: The extra 1d8 per slot level: different dice from 2d6.
 
 == hb-test-dawn-roar
-Dawn Roar (level 9 evocation, 60 feet, 24 hours, 30 days).
+"Dawn Roar" (level 9 evocation, 60 feet, 24 hours, 30 days).
 Components: Verbal, Somatic and Material (speaking it gives away a hidden caster); the Material component has a cost or is used up, so Subtle Spell cannot hide the casting.
 On the spell lists of: wizard.
 Sorted under: damage.
 It takes 24 hours to cast, so it cannot be cast during a fight.
 Each of up to 3 targets (rays, darts or beams) within 60 feet takes 4d4 slashing damage.
 If this damage drops it to 0 Hit Points:
-  What is left of its body is a frozen statue.
+  If it is dead, what is left of its body is a frozen statue. If it is not dead (a character at 0 Hit Points is not), the engine leaves it as it is and tells the DM, who applies the rest.
 Each of them takes +2 piercing damage. It lands together with the damage before it, as one instance of damage.
 The caster picks a creature for each one, and may pick one creature more than once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
 Each ray, dart or beam rolls its own damage.
 As the caster gains levels, the number of targets becomes 4 at character level 5 and 5 at character level 11.
 It lasts up to 30 days. The engine times it, and when it ends, so does everything it put on creatures.
-Tier: auto. The engine rolls and applies all of this.
+Tier: auto, but the engine hands the parts listed for the DM to the DM.
 Not checked against any rulebook.
+DM: Step effects.0.onZero.0: what is left of a body that is not dead.
 
 == hb-test-stray-hour
-Stray Hour (level 1 evocation, 60 feet, 1 hour, 12 hours).
+"Stray Hour" (level 1 evocation, 60 feet, 1 hour, 12 hours).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
@@ -647,7 +648,7 @@ Not checked against any rulebook.
 PROBLEM: Step effects.0: the Temporary Hit Points are not dice.
 
 == hb-test-long-casts
-Long Casts (level 1 evocation, 60 feet, 12 hours, 7 days).
+"Long Casts" (level 1 evocation, 60 feet, 12 hours, 7 days).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.

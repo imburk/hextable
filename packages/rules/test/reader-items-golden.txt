@@ -1,5 +1,5 @@
 == item hb-rk-emberglass-lens
-Emberglass Lens (rare wondrous item).
+"Emberglass Lens" (rare wondrous item).
 It is worn over the eyes. It works only while the holder's sheet marks it as equipped, and gives nothing before.
 It needs attunement: only a spellcaster can attune to it. The holder asks for it, never in a fight, and it is done on its next Short Rest; ending it works the same way. A creature is attuned to three items at most, and to one copy of an item. Until the holder is attuned it works as the plain base item at most: no bonus and nothing from its grants.
 While it is active, the holder gets what follows (the engine makes these a feature of the holder, as for a feat).
@@ -28,7 +28,7 @@ Use 1, "Ward": takes a Bonus Action. In a fight it is done on the user's own tur
   It gains 1d6 Temporary Hit Points, plus 0: an item's own steps have no spellcasting modifier to add; they replace what it has only if they are more, and they vanish when the use ends.
 Use 2, "Scorch": takes the spell's own casting time (action), not the time the entry names. In a fight it is done on the user's own turn and spends an action (a Magic action). The item must be active, and the user up.
   It spends 1 charge, and is refused when fewer are left.
-  It casts Scorching Ray at level 2: no slot and no components. The save DC is 14. The attack bonus is the user's own (the Proficiency Bonus with no spellcasting). It is cast as at the lowest caster level, through the usual casting rules, so it can be countered.
+  It casts "Scorching Ray" at level 2: no slot and no components. The save DC is 14. The attack bonus is the user's own (the Proficiency Bonus with no spellcasting). It is cast as at the lowest caster level, through the usual casting rules, so it can be countered.
   Each charge more than the use's own raises the level by one, up to level 4.
 Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.
 Parts of this entry never take effect, as said above: the engine does not apply them and tells nobody.
@@ -39,7 +39,7 @@ DM: What happens when its last charge is spent.
 DM: Whatever the description says beyond the lines above.
 
 == item hb-rk-hearthguard-mail
-Hearthguard Mail (rare armor).
+"Hearthguard Mail" (rare armor).
 It is worn as armor. It works only while the holder's sheet marks it as equipped, and gives nothing before. A sheet that wears two for that place is refused.
 It needs attunement: only a Fighter or Paladin can attune to it. The holder asks for it, never in a fight, and it is done on its next Short Rest; ending it works the same way. A creature is attuned to three items at most, and to one copy of an item. Until the holder is attuned it works as the plain base item at most: no bonus and nothing from its grants.
 It is armor made from any one the sheet picks, and the sheet says which. The holder must be trained in that kind of armor to wear it, or the sheet is refused (this item says it is worn as if trained).
@@ -54,7 +54,7 @@ Tier: auto. The engine applies everything above.
 Not checked against any rulebook.
 
 == item hb-rk-wardens-brand
-Warden's Brand (uncommon weapon).
+"Warden's Brand" (uncommon weapon).
 It is held as a weapon. It works only while the holder's sheet marks it as equipped, and gives nothing before.
 It needs attunement: any creature can attune to it. The holder asks for it, never in a fight, and it is done on its next Short Rest; ending it works the same way. A creature is attuned to three items at most, and to one copy of an item. Until the holder is attuned it works as the plain base item at most: no bonus and nothing from its grants.
 It is a weapon made from any melee weapon the sheet picks, and the sheet says which. It attacks as that weapon does; a holder not proficient with it attacks without the Proficiency Bonus.
@@ -76,7 +76,7 @@ Not checked against any rulebook.
 DM: Moving the holder by its swim speed.
 
 == item hb-rk-tideglass-vial
-Tideglass Vial (common potion).
+"Tideglass Vial" (common potion).
 It works from the holder's person: it need not be put on or held.
 It needs no attunement: it works as soon as it is worn, held or carried as above.
 Use 1, "Quaff": takes a Bonus Action. In a fight it is done on the user's own turn and spends a Bonus Action. The item must be active, and the user up.
@@ -89,7 +89,7 @@ Tier: auto. The engine applies everything above.
 Not checked against any rulebook.
 
 == item hb-rk-hollow-spore-flask
-Hollow Spore Flask (uncommon potion).
+"Hollow Spore Flask" (uncommon potion).
 It works from the holder's person: it need not be put on or held.
 It needs no attunement: it works as soon as it is worn, held or carried as above.
 Use 1, "Throw": takes an action. In a fight it is done on the user's own turn and spends an action (a Magic action). The item must be active, and the user up.
@@ -102,8 +102,8 @@ Use 1, "Throw": takes an action. In a fight it is done on the user's own turn an
   It makes a Constitution saving throw.
   No DC is written in for this save, and an item's own steps have no spell save DC: the engine does not roll it, it tells the DM, who applies it.
   On a failure:
-    It has the Poisoned condition.
-      It makes a Constitution saving throw at the end of each of its turns, and a success would end it. But no DC is entered for that save, so the engine does not roll it: it tells the DM when the condition is put on, and the DM ends it.
+    It has the Poisoned condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
+      It makes a Constitution saving throw at the end of each of its turns, and a success would end it. But no DC is entered for that save: the engine tells the DM when the condition is put on, and the DM ends it. The engine still rolls the save at the time named, but with no DC to meet it shows a failure every time and never ends the condition.
   The engine does not do this; the DM does this: "The spores drift on; the DM places the cloud."
 Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM applies.
@@ -115,7 +115,7 @@ DM: "The spores drift on; the DM places the cloud."
 DM: Whatever the description says beyond the lines above.
 
 == item hb-rk-tidewarden-ring
-Tidewarden Ring (rare ring).
+"Tidewarden Ring" (rare ring).
 It is worn on a finger. It works only while the holder's sheet marks it as equipped, and gives nothing before.
 It needs no attunement: it works as soon as it is worn, held or carried as above.
 The sheet that holds it picks a damage type; each "chosen" damage type in its changes below is that type.
@@ -127,7 +127,7 @@ Tier: auto. The engine applies everything above.
 Not checked against any rulebook.
 
 == item hb-rk-whisper-scroll
-Whisper Scroll (of varying rarity, scroll).
+"Whisper Scroll" (of varying rarity, scroll).
 It works from the holder's person: it need not be put on or held.
 It needs no attunement: it works as soon as it is worn, held or carried as above.
 It is a scroll of one spell, which the sheet that holds it names. Only a creature whose class spell list has that spell can read it; a spell above the level it can cast takes an ability check against DC 10 plus the spell's level, and on a failure the spell is lost with the scroll. Reading it needs a use below.
@@ -141,7 +141,7 @@ Not checked against any rulebook.
 DM: Whatever the description says beyond the lines above.
 
 == item hb-rk-mourning-bell
-Mourning Bell (legendary wondrous item).
+"Mourning Bell" (legendary wondrous item).
 It works from the holder's person: it need not be put on or held.
 It needs attunement: any creature can attune to it. The holder asks for it, never in a fight, and it is done on its next Short Rest; ending it works the same way. A creature is attuned to three items at most, and to one copy of an item. Until the holder is attuned it works as the plain base item at most: no bonus and nothing from its grants.
 Use 1, "Toll": takes a Reaction. The item must be active, and the user up.
@@ -156,7 +156,7 @@ DM: "Every creature within 30 feet that can hear it feels dread; the DM says who
 DM: Whatever the description says beyond the lines above.
 
 == item hb-rk-spite-coal
-Spite Coal (common wondrous item).
+"Spite Coal" (common wondrous item).
 It works from the holder's person: it need not be put on or held.
 It needs no attunement: it works as soon as it is worn, held or carried as above.
 It holds up to 2 charges, and starts full.
@@ -165,7 +165,7 @@ When a use spends its last charge the engine tells the DM; what that does (an it
 Use 1, "Shelter": takes the spell's own casting time (Reaction), not the time the entry names. The item must be active, and the user up.
   That spell is cast as a Reaction, which the engine does not do from an item: using it is refused, and the DM applies it.
   It spends no charge.
-  It casts Shield at level 1: no slot and no components, on the user alone. The save DC is the user's own spell save DC (a user with no spellcasting: 8 plus the Proficiency Bonus). The attack bonus is the user's own (the Proficiency Bonus with no spellcasting). It is cast as at the lowest caster level, through the usual casting rules, so it can be countered.
+  It casts "Shield" at level 1: no slot and no components, on the user alone. The save DC is the user's own spell save DC (a user with no spellcasting: 8 plus the Proficiency Bonus). The attack bonus is the user's own (the Proficiency Bonus with no spellcasting). It is cast as at the lowest caster level, through the usual casting rules, so it can be countered.
 Use 2, "Stoke": takes an action. In a fight it is done on the user's own turn and spends an action (a Magic action). The item must be active, and the user up.
   It spends 1 charge, and is refused when fewer are left.
   Its steps run on the user alone: the engine has no way to aim an item's steps at anyone else.
@@ -173,7 +173,7 @@ Use 2, "Stoke": takes an action. In a fight it is done on the user's own turn an
   The user takes 1d6 fire damage.
   It makes a Dexterity saving throw against DC 12.
   On a failure:
-    It has the Prone condition.
+    It has the Prone condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
       It ends when the creature stands up, as Prone always does.
 Use 3, "Overstoke": takes an action. In a fight it is done on the user's own turn and spends an action (a Magic action). The item must be active, and the user up.
   It spends 3 charges, and is refused when fewer are left.
@@ -190,7 +190,7 @@ PROBLEM: activate.1: harmful steps run on the user of the item.
 PROBLEM: activate.2: it costs 3 charges, but the item holds 2, so it can never be used.
 
 == feat hb-rk-keen-eye
-Keen Eye (an Origin feat).
+"Keen Eye" (an Origin feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 It has no prerequisite.
 It can be taken only once.
@@ -205,7 +205,7 @@ Tier: auto. The engine applies everything above.
 Not checked against any rulebook.
 
 == feat hb-rk-ember-heir
-Ember Heir (a General feat).
+"Ember Heir" (a General feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 Prerequisite: a place that comes at level 4 or later; Intelligence, Wisdom or Charisma of 13 or more, counted before this feat adds anything; a Spellcasting feature the character already has. A sheet that does not meet it is refused.
 It can be taken again, as often as the character has places for it.
@@ -214,7 +214,7 @@ The feat gives its holder what follows (the engine makes these a feature of the 
   An aura 10 feet out from the holder. The holder, and every creature on the holder's side in range with no Total Cover between, get what is listed below, for as long as the holder is up and not Incapacitated. Two of the same aura do not add up.
     Immunity to the Charmed condition: a creature in the aura is not given it.
   Lets the holder cast spells without a slot, through this feat, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.
-    Only Burning Hands or Shield, each at its own level and its own casting time, with no slot.
+    Only "Burning Hands" or "Shield", each at its own level and its own casting time, with no slot.
     Nothing is spent: it can be cast as often as the holder likes.
     It can be cast on the holder alone.
     It works only while the holder stands in Dim Light or Darkness.
@@ -222,13 +222,13 @@ The feat gives its holder what follows (the engine makes these a feature of the 
     Temporary Hit Point dice the spell rolls count at their highest.
     It is cast as a Magic action, whatever its own casting time.
     The spell's Material component is left out: a costly one hides nothing and gives nothing to see.
-  Names Burning Hands among the spells a class always has prepared. A feat or an item belongs to no class, so the engine adds nothing from it.
+  Names "Burning Hands" among the spells a class always has prepared. A feat or an item belongs to no class, so the engine adds nothing from it.
 Tier: auto, but the engine hands the parts listed for the DM to the DM.
 Not checked against any rulebook.
-DM: Letting the holder cast Burning Hands: the engine does not add them.
+DM: Letting the holder cast "Burning Hands": the engine does not add them.
 
 == feat hb-rk-drill-master
-Drill Master (a Fighting Style feat).
+"Drill Master" (a Fighting Style feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 It has no prerequisite.
 It can be taken only once.
@@ -248,7 +248,7 @@ Tier: auto. The engine applies everything above.
 Not checked against any rulebook.
 
 == feat hb-rk-wanderers-luck
-Wanderer's Luck (a General feat).
+"Wanderer's Luck" (a General feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 It has no prerequisite.
 It can be taken again, as often as the character has places for it.
@@ -258,7 +258,7 @@ Not checked against any rulebook.
 DM: Whatever the description says beyond the lines above.
 
 == feat hb-rk-borrowed-fire
-Borrowed Fire (an Epic Boon feat).
+"Borrowed Fire" (an Epic Boon feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 Prerequisite: a place that comes at level 19 or later. A sheet that does not meet it is refused.
 It can be taken only once.
@@ -274,13 +274,13 @@ DM: Whatever the description says beyond the lines above.
 PROBLEM: grants.freeCast: with neither atWill nor a cost, a feat's freeCast can never be cast.
 
 == feat hb-rk-hedge-druid
-Hedge Druid (a General feat).
+"Hedge Druid" (a General feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 Prerequisite: a Fighting Style feature the character already has. A sheet that does not meet it is refused.
 It can be taken only once.
 The feat gives its holder what follows (the engine makes these a feature of the holder).
   Lets the holder cast spells without a slot, through this feat, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.
-    Only Find Familiar, each at its own level and its own casting time, with no slot.
+    Only "Find Familiar", each at its own level and its own casting time, with no slot.
     Each cast spends either a spell slot, as an ordinary cast would (the caster says which), or one use of the holder's feature "wild-shape". With none of those uses left, only the slot is left.
     It is cast as a Magic action, whatever its own casting time.
     A creature the spell makes may be only of the type Fey.
@@ -292,23 +292,24 @@ Not checked against any rulebook.
 DM: Whatever the description says beyond the lines above.
 
 == feat hb-rk-chain-pact
-Chain Pact (a General feat).
+REFUSED: this entry breaks the rules a table checks (1 problem, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
+"Chain Pact" (a General feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 It has no prerequisite.
 It can be taken only once.
 The feat gives its holder what follows (the engine makes these a feature of the holder).
   Lets the holder cast spells without a slot, through this feat, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.
-    Only Find Familiar, each at its own level and its own casting time, with no slot.
+    Only "Find Familiar", each at its own level and its own casting time, with no slot.
     Nothing is spent: it can be cast as often as the holder likes.
     It is cast as a Magic action, whatever its own casting time.
-    The holder may also choose Imp or Quasit as a form for a creature the spell makes.
+    The holder may also choose "Imp" or "Quasit" as a form for a creature the spell makes.
 Tier: assist. The engine applies what is listed above as applied by the engine; the DM applies the rest of the description.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM applies.
 Not checked against any rulebook.
 DM: Whatever the description says beyond the lines above.
 
 == feat magic-initiate
-Magic Initiate (an Origin feat).
+"Magic Initiate" (an Origin feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 It has no prerequisite.
 It can be taken again, but only with another spell list each time.
@@ -317,7 +318,7 @@ Tier: auto. The engine applies everything above.
 Marked as checked against the rules text.
 
 == feat skilled
-Skilled (an Origin feat).
+"Skilled" (an Origin feat).
 A character takes it in a place for a feat of its kind (an Origin place takes only an Origin feat), and the engine checks that when the sheet is checked.
 It has no prerequisite.
 It can be taken again, as often as the character has places for it.
