@@ -12,7 +12,7 @@
 // promise, and refuses a second, different overlay while one is installed (the same overlay again is a no-op).
 //
 // Pure: no I/O, no clock, no randomness. What `using` changes is a registry of derived lookups, never game state.
-import { budget, HOMEBREW_LIMITS, lintPack, useSrdReference } from './schema.js';
+import { budget, budgetTable, HOMEBREW_LIMITS, lintPack, useSrdReference } from './schema.js';
 import { HOMEBREW_LOOKUPS, SRD_PACK_ID } from './index.js';
 
 export const HOMEBREW_KINDS = Object.keys(HOMEBREW_LOOKUPS);
@@ -107,12 +107,18 @@ export function overlayOf(packs = []) {
     if (!r.ok) throw new PackError(r.problems);
     return r.pack;
   }).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const problems = [], ids = new Set(), ops = [];
+  const problems = [...budgetTable(loaded)], ids = new Set(), ops = [], owner = new Map();
   const mine = active ? OVERLAYS.get(active).ids : null;
   for (let i = 0; i < loaded.length; i++) if (i && loaded[i].id === loaded[i - 1].id) problems.push(`pack: "${loaded[i].id}" is on the table twice`);
+  // An id names one entry. Ids carry their pack's id as a prefix, and one pack's id may begin with another's ("a" and "a-b"
+  // can both own "hb-a-b-x"), so a pack id that starts with another's followed by a hyphen is refused, and so is any
+  // entry id that two packs hold, whatever their ids: the later pack must never replace an entry of the earlier.
+  for (const a of loaded) for (const b of loaded) if (a !== b && b.id.startsWith(`${a.id}-`)) problems.push(`pack: "${a.id}" and "${b.id}" cannot be on one table: the second's id begins with the first's, and their entries' ids could be the same`);
   for (const p of loaded) for (const op of LOADED.get(p)) {
     const [target, id] = op;
     if (Object.hasOwn(target, id) && !mine?.has(id)) problems.push(`${id}: is already in the rules`);
+    if (owner.has(id) && owner.get(id) !== p.id) problems.push(`${id}: is an entry of both "${owner.get(id)}" and "${p.id}"; an id must name one entry`);
+    owner.set(id, p.id);
     ops.push(op); ids.add(id);
   }
   if (problems.length) throw new PackError([...new Set(problems)]);
@@ -138,17 +144,25 @@ export function using(overlay, fn) {
   if (active === overlay) return settle(fn());                                     // re-entered: already installed
   if (active) throw new Error("using: another table's homebrew is installed; overlays do not nest");
   for (const [target, id] of o.ops) if (Object.hasOwn(target, id)) throw new Error(`using: "${id}" is already in the rules`);
-  const targets = [...new Set(o.ops.map(([t]) => t))], sizes = targets.map((t) => Object.keys(t).length);
-  let result, i = 0;
+  const targets = [...new Set(o.ops.map(([t]) => t))], before = targets.map((t) => Object.keys(t));
+  let result, i = 0, strayed = false;
   active = overlay;
   try {
     for (; i < o.ops.length; i++) { const [target, id, value] = o.ops[i]; target[id] = value; }
     result = fn();
   } finally {
+    // Every id of the overlay goes (one `fn` deleted is simply not there), then any key `fn` added to a lookup, whether
+    // `fn` returned or threw: the lookups come back with the keys they had.
     for (let j = i - 1; j >= 0; j--) delete o.ops[j][0][o.ops[j][1]];
     active = null;
+    targets.forEach((t, k) => {
+      if (Object.keys(t).length === before[k].length) return;
+      strayed = true;
+      const had = new Set(before[k]);
+      for (const key of Object.keys(t)) if (!had.has(key)) delete t[key];
+    });
   }
-  if (targets.some((t, k) => Object.keys(t).length !== sizes[k])) throw new Error('using: the content lookups were changed during the call');
+  if (strayed) throw new Error('using: the content lookups were changed during the call; what was added has been taken out');
   return settle(result);
 }
 function settle(result) {
