@@ -84,20 +84,6 @@ export function remake(s, e, record, sheet, ev) {
   fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
   // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13).
   for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
-  // What the DM's `setSpeed` put on the creature stays, on top of what the new sheet gives: a Speed is carried as its difference from what
-  // the old sheet gave (so a Speed the sheet itself changes still follows the sheet), a way of moving the DM gave or took away as it was set.
-  if (e.sheet) {
-    const was = derive(e.sheet).record;
-    if (Number.isFinite(e.speed) && Number.isFinite(was.speed) && e.speed !== was.speed) fresh.speed = Math.max(0, fresh.speed + e.speed - was.speed);
-    for (const m of new Set([...Object.keys(e.speeds ?? {}), ...Object.keys(was.speeds ?? {})])) {
-      const have = e.speeds?.[m], gave = was.speeds?.[m];
-      if (have === gave) continue;
-      fresh.speeds = { ...fresh.speeds };
-      if (have === undefined) delete fresh.speeds[m]; else fresh.speeds[m] = have;
-    }
-    if (e.hover !== undefined && e.hover !== was.hover) fresh.hover = e.hover;
-    else if (e.hover === undefined && was.hover !== undefined) delete fresh.hover;
-  }
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);
