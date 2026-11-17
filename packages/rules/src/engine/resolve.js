@@ -21,6 +21,7 @@ import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters,
 import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
+import { handsFull } from '../weapons.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -899,6 +900,17 @@ function studied(s, e, t, ev) {
   }
 }
 
+// Heavy (SRD "Weapons", Properties): "You have Disadvantage on attack rolls with a Heavy weapon if it's a Melee weapon and your
+// Strength score isn't at least 13 or if it's a Ranged weapon and your Dexterity score isn't at least 13." It goes by the weapon's
+// own kind, not by how it is used (a thrown Melee weapon is still a Melee weapon). Only an attack that names its weapon (`atk.weapon`,
+// a built character's) has one: a monster's stat-block attack is the creature's own and names none. Returns the reason, or ''.
+export function heavyWeak(e, atk) {
+  const w = typeof atk?.weapon === 'string' ? CONTENT.weapons[atk.weapon] : null;
+  if (!w?.properties?.includes('heavy')) return '';
+  const abil = w.kind === 'ranged' ? 'dex' : 'str', score = e.abil?.[abil];
+  return Number.isFinite(score) && score < 13 ? `Heavy weapon, ${abil === 'str' ? 'Strength' : 'Dexterity'} ${score}` : '';
+}
+
 // The d20 part of an attack: roll, compare with Armor Class, record it. Returns { hit, crit, mode }.
 // `forgo`: the attacker gives up any Advantage on this roll (Brutal Strike).
 // `keepHidden`: the attack does not end its hiding yet (Stealth Attack; resolveAttack decides).
@@ -915,6 +927,8 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
   const from = v ? { ...e, pos: v.pos, size: v.size } : e;
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
+  const heavy = heavyWeak(from, atk);
+  if (heavy) { dis = [...dis, heavy]; mode = adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal'; }
   if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
   if (!keepHidden) unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
@@ -1144,7 +1158,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
 // player when it says `ask`. It attacks with its first melee attack, as an Opportunity Attack is made.
 // Returns true if it was taken.
 function strikeBack(s, t, e, r, ev, why) {
-  const x = r.reaction, atk = (t.attacks ?? []).find((a) => a.type === 'melee');
+  const x = r.reaction, atk = (t.attacks ?? []).find((a) => a.type === 'melee' && !handsFull(s, t, a));       // one it may make (weapons.js)
   if (!atk || t.actions || apart(s, t, e) * FT > x.within) return false;
   if (atk.reach !== undefined && apart(s, t, e) * FT > atk.reach) return false;
   const w = instruction(t, r);

@@ -6,6 +6,7 @@
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
 import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
+import { attackRefusal } from './weapons.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
@@ -149,9 +150,13 @@ function withAttacks(s, e, foes) {
   const id = e.id, end = { type: 'endTurn', actor: id }, b = s.encounter.budget;
   const open = (t) => unblocked(s, e, t);                    // no wall or shut door in the way
   const target = foes.reduce((a, f) => (apart(s, e, f) < apart(s, e, a) || (apart(s, e, f) === apart(s, e, a) && f.hp < a.hp) ? f : a));
-  const melee = e.attacks.find((a) => a.type === 'melee'), ranged = e.attacks.find((a) => a.type === 'ranged');
+  // Only an attack the engine would allow now (weapons.js: Two-Handed beside a Shield, a Loading weapon already fired this action).
+  const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id));
+  const melee = e.attacks.find((a) => a.type === 'melee' && allowed(a)), ranged = e.attacks.find((a) => a.type === 'ranged' && allowed(a));
   const d = apart(s, e, target);
   const can = b.action > 0 || !!b.attacks;
+  // Attacks it has but may not make now (a Shield and nothing but a Two-Handed weapon): it takes the Dodge action rather than lose the turn.
+  if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.length && !e.cond?.dodging) return { type: 'dodge', actor: id };
   if (can && melee && d <= 1 && open(target)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
   if (melee && d > 1 && b.move >= FT) { const mv = approach(s, e, foes); if (mv) return mv; }
   if (can && ranged && d * FT <= ranged.range[1] && open(target)) return { type: 'attack', actor: id, target: target.id, attack: ranged.id };
@@ -283,7 +288,7 @@ function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
   if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
-  const threats = foes.filter((f) => opportunityAttack(f) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
+  const threats = foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
   const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
   if (!safe(e.pos)) return end;                                     // any step away from it would provoke
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));
@@ -311,7 +316,7 @@ function protect(s, e, m, foes) {
     for (const t of close) {
       const x = moves.find((x) => x.p.roll === 'melee' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t)) ?? moves.find((x) => apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t));
       if (x) return { type: 'act', actor: id, action: x.def.id, target: t.id };
-      const w = !e.actions && (e.attacks ?? []).find((a) => (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t));
+      const w = !e.actions && (e.attacks ?? []).find((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t));
       if (w) return { type: 'attack', actor: id, target: t.id, attack: w.id };
     }
   }

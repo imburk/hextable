@@ -1131,6 +1131,7 @@
       },
       "bonus": 2,
       "trained": true,
+      "mithral": true,
       "grants": {
         "armouredAc": 1,
         "resist": [

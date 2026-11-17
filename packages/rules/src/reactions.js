@@ -27,6 +27,7 @@
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
+import { handsFull } from './weapons.js';
 import { incapacitated } from './modifiers.js';
 import { ownerOf } from './engine/shared.js';
 
@@ -45,10 +46,12 @@ export const WHILE_WAITING = new Set(['react', 'say', 'note', 'claim', 'release'
 // What a creature makes an Opportunity Attack with: its first melee attack action, or for a
 // creature with flat attack records, its first melee attack.
 // A companion that can't attack (`bond.noAttack`, a familiar) has none, so nobody walking away from it is threatened.
-export function opportunityAttack(o) {
+// With the game state `s`, a melee attack the creature may make (weapons.js: a Two-Handed weapon beside a Shield is not one); without it,
+// the list of reactions says what the creature has.
+export function opportunityAttack(o, s = null) {
   if (o.bond?.noAttack) return null;
   if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
-  return (o.attacks ?? []).find((a) => a.type === 'melee') ?? null;
+  return (o.attacks ?? []).find((a) => a.type === 'melee' && !handsFull(s, o, a)) ?? null;
 }
 
 // How much a spell's own steps add to Armor Class (Shield: 5), or 0.

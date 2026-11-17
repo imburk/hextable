@@ -42,7 +42,7 @@ function field(sheet) {
 }
 
 test("the pack's magic items: linted, checked, numbers as the SRD gives them", () => {
-  assert.equal(srd.items.length, 75);
+  assert.equal(srd.items.length, 76);
   assert.ok(srd.items.every((i) => i.checked));
   assert.deepEqual(lintPack(srd), []);
   const I = CONTENT.items;

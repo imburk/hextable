@@ -20,19 +20,18 @@ DM: Applying its mastery property, Topple.
 A hit deals 2d6 bludgeoning damage, plus the holder's Strength modifier. A critical hit doubles the dice.
 The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
-Heavy: the engine does nothing with this property.
-Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.
+Heavy: a built character has Disadvantage on attack rolls with it while its Strength is under 13 (it is a Melee weapon). A monster's own stat-block attack is not held to it.
+Two-handed: a built character whose sheet carries a Shield is refused the attack, as it needs both hands. The sheet does not say what each hand holds, so another weapon in hand is not checked.
 Its mastery property is Push: a hit pushes a Large or smaller target 10 feet away. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
-It is two-handed unless the wielder is mounted. The engine reads neither hands nor mounts for it.
+It is two-handed unless the wielder is mounted: a wielder who rides a mount may use it with a Shield, and any other wielder with a Shield is refused.
 It weighs 9 pounds. The engine uses no weight for anything: carrying capacity is not counted.
 Its price is 40 GP. The engine sells nothing and uses no price for anything.
 Not checked against any rulebook.
 A character's sheet names it among its weapons, and a magic item can be made from it.
 Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
-DM: Any penalty a Heavy weapon puts on a small wielder.
-DM: Whether the wielder has both hands free for a Two-handed weapon.
+DM: Heavy for a creature whose attacks come from a stat block, and for a property a magic item adds.
+DM: Whether the wielder's other hand holds another weapon, which the sheet does not say.
 DM: Applying its mastery property, Push.
-DM: Whether a mounted wielder uses it in one hand.
 
 == weapon hb-rk-marsh-crossbow
 "Marsh Crossbow" (a simple ranged weapon).
@@ -41,9 +40,9 @@ The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if t
 As a ranged weapon: an attack up to 60 feet away is rolled normally, one from 61 to 240 feet has Disadvantage (long range), and the engine refuses a target beyond 240 feet. An enemy within 5 feet who can see the attacker also gives Disadvantage.
 A holder who gets a bonus to ranged weapon attacks (a fighting style) adds it.
 Ammunition ("dart"): the engine neither requires nor spends ammunition: every attack is allowed, however many it makes.
-Loading: the engine does not limit how many times it attacks in one action.
+Loading: it fires once each time an action or Bonus Action is used for it, however many attacks Extra Attack gives; a second shot in the same action is refused with a sentence and nothing is spent, and it fires again in a new action or on the next turn. A monster's own stat-block attack is not held to it.
 Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.
-Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.
+Two-handed: a built character whose sheet carries a Shield is refused the attack, as it needs both hands. The sheet does not say what each hand holds, so another weapon in hand is not checked.
 Its mastery property is Slow: a hit takes 10 feet off the target's Speed. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
 It weighs 3 pounds. The engine uses no weight for anything: carrying capacity is not counted.
 Its price is 20 GP. The engine sells nothing and uses no price for anything.
@@ -51,8 +50,8 @@ Not checked against any rulebook.
 A character's sheet names it among its weapons, and a magic item can be made from it.
 Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
 DM: Counting and spending its ammunition.
-DM: Holding a Loading weapon to one attack per action.
-DM: Whether the wielder has both hands free for a Two-handed weapon.
+DM: Loading for a creature whose attacks come from a stat block (its Multiattack is as printed).
+DM: Whether the wielder's other hand holds another weapon, which the sheet does not say.
 DM: Applying its mastery property, Slow.
 
 == weapon hb-rk-needle-fang
@@ -105,16 +104,16 @@ DM: Applying its mastery property, Sap.
 A hit deals 1d10 slashing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
 The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
-Heavy: the engine does nothing with this property.
-Two-handed: the engine does not check hands: it does not stop the wielder from also carrying a Shield or another weapon.
+Heavy: a built character has Disadvantage on attack rolls with it while its Strength is under 13 (it is a Melee weapon). A monster's own stat-block attack is not held to it.
+Two-handed: a built character whose sheet carries a Shield is refused the attack, as it needs both hands. The sheet does not say what each hand holds, so another weapon in hand is not checked.
 Its mastery property is Cleave: a hit lets the wielder strike a second creature next to the first. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
 It weighs 7 pounds. The engine uses no weight for anything: carrying capacity is not counted.
 Its price is 30 GP. The engine sells nothing and uses no price for anything.
 Not checked against any rulebook.
 A character's sheet names it among its weapons, and a magic item can be made from it.
 Tier: none. A weapon has no tier: the engine rolls the attack, the damage, the reach and the range as said above, and the DM does what is listed as the DM's.
-DM: Any penalty a Heavy weapon puts on a small wielder.
-DM: Whether the wielder has both hands free for a Two-handed weapon.
+DM: Heavy for a creature whose attacks come from a stat block, and for a property a magic item adds.
+DM: Whether the wielder's other hand holds another weapon, which the sheet does not say.
 DM: Applying its mastery property, Cleave.
 
 == weapon hb-rk-quill-lance

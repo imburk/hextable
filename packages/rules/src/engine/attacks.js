@@ -8,9 +8,10 @@ import { able, control, current, ent, fail, featOf, ft, inFight, need, steering,
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
+import { attackRefusal, freshAction, isLoading } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, finishTurn, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -89,7 +90,8 @@ function brutalFor(s, e, t, atk, id) {
   flags[`${base.brutal.after}:${e.id}`] || fail(`${base.name} needs ${featOf(e, base.brutal.after)?.name ?? base.brutal.after} this turn.`);
   !flags[`brutal:${e.id}`] || fail(`${e.name} has already used ${base.name} this turn.`);
   atk.abil === 'str' || fail(`${base.name} is for an attack using Strength.`);
-  const m = rollMode(s, e, t, atk);
+  const m = rollMode(s, e, t, atk), heavy = heavyWeak(e, atk);
+  if (heavy) m.dis.push(heavy);
   !m.dis.length || fail(`That attack roll has Disadvantage (${m.dis.join(', ')}), so ${base.name} can't be used on it.`);
   return { ...structuredClone(o), dice: base.brutal.dice };
 }
@@ -163,6 +165,8 @@ export const handlers = {
     const atk = e.attacks.find((x) => x.id === a.attack) || fail('Unknown attack.');
     up(e) || fail(`${e.name} is down.`);
     able(e);
+    const early = attackRefusal(s, e, atk);                          // hands, before a fight is started by it
+    if (early) fail(early);
     !t.dead || fail(`${t.name} is already dead.`);
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
@@ -173,7 +177,14 @@ export const handlers = {
     // Attacks a feature gave this turn (Flurry of Blows) come first; then a Bonus Action attack
     // (the Monk's Unarmed Strike); then those Extra Attack left; then the Attack action.
     const flurry = b.bonusAttacks?.with === atk.id && b.bonusAttacks.left > 0, bonusTime = !flurry && atk.time === 'bonus';
-    const pooled = !flurry && !bonusTime && fromPool(b, atk.id);
+    let pooled = !flurry && !bonusTime && fromPool(b, atk.id);
+    const refusal = attackRefusal(s, e, atk, pooled);
+    if (refusal) fail(refusal);
+    // A Loading weapon already fired this action, with the Attack action's other attacks left and another action to use (Action Surge):
+    // the shot is the new action's, and what is left of the old action's attacks goes on beside the new one's.
+    const surged = pooled && isLoading(atk) && b.loaded?.includes(`action:${atk.id}`) && freshAction(b);
+    if (surged) pooled = false;
+    const slot = flurry || bonusTime ? 'bonus' : 'action';
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
@@ -184,9 +195,11 @@ export const handlers = {
     else if (pooled) fromPool(b, atk.id, true);
     else {
       b.action--;
+      if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
-      if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack }]];
+      if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack + (surged ? b.attacks[0][0].left : 0) }]];
     }
+    if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
     const from = ev.length;
     resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });

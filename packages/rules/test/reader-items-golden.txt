@@ -45,6 +45,7 @@ It needs attunement: only a Fighter or Paladin can attune to it. The holder asks
 It is armor made from any one the sheet picks, and the sheet says which. The holder must be trained in that kind of armor to wear it, or the sheet is refused (this item says it is worn as if trained).
 +2 Armor Class, while it is active, on top of what the armor or Shield gives.
 Its wearer counts as trained in the category of its armor while it is worn.
+It is mithral: while the suit is worn, it has no Disadvantage on Dexterity (Stealth) checks and no Strength requirement, whatever its base armor has.
 While it is active, the holder gets what follows (the engine makes these a feature of the holder, as for a feat).
   Immune to the Frightened condition: the engine never gives the holder that condition.
   +1 Armor Class while the holder wears armor.
