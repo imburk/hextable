@@ -141,7 +141,8 @@ thing. Today each is an `if` in the engine. They become data:
 - `op` is one of `add`, `set`, `min`, `max`, `advantage`, `disadvantage`,
   `autoFail`, `autoSucceed`, `resist`, `vulnerable`, `immune`, `crit`.
 - `when` is a list of named situation tags the engine knows how to test
-  (`within5`, `target.prone`, `attacker.unseen`, `ranged`, `ally.adjacent`).
+  (`within5`, `target.prone`, `attacker.unseen`, `ranged`, `ally.adjacent`; `attack.weapon`, made with a weapon and not an Unarmed Strike,
+  and `attack.weaponOrUnarmed`, made with a weapon or an Unarmed Strike, since #445).
   All must hold. `beyond5` was added to the list with R3, for Prone.
 
 One engine function, `modifiers(state, creature, hook, situation)`, collects
