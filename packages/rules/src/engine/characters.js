@@ -187,6 +187,42 @@ export const handlers = {
     resheet(s, e, sheet, ev);
     ev.push({ type: 'equip', id: e.id, key: x.id, item: itemName(def, x), on });
   },
+  // Put a Shield away or take it up (SRD "Armor": "Shield (Utilize Action to Don or Doff)"). { type: 'shield', actor, on: true | false,
+  // item? } By its controller or the DM, for a built character. In a fight it takes the creature's action (Utilize) on its own turn;
+  // outside one it is free. A Shield of the sheet (`shield: true`) put away is `shieldStowed: true` beside it: carried, not held,
+  // no Armor Class from it and a hand free; a magic Shield item toggles its `equipped` (an Attunement stays). `item` names which
+  // magic Shield to take up when the character carries more than one. The creature is made again from the sheet, as `equip` does.
+  shield(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
+    typeof a.on === 'boolean' || fail('On is true or false.');
+    (a.item === undefined || typeof a.item === 'string') || fail('Item is the key of a magic Shield on the sheet.');
+    const fight = !!s.encounter && inFight(s, e.id);
+    if (fight) need(s, e, 'action');
+    else { up(e) || fail(`${e.name} is down.`); able(e); }
+    const sheet = structuredClone(e.sheet), on = a.on;
+    const items = (sheet.items ?? []).filter((y) => CONTENT.items[y?.item]?.wear === 'shield');
+    const plain = sheet.shield === true, held = items.find((y) => y.equipped === true) ?? (plain && sheet.shieldStowed !== true ? 'plain' : null);
+    let name = 'Shield', key;
+    if (!on) {
+      held || fail(plain || items.length ? `${e.name} has no Shield in hand.` : `${e.name} has no Shield.`);
+      if (held === 'plain') sheet.shieldStowed = true;
+      else { delete held.equipped; name = itemName(CONTENT.items[held.item], held); key = held.id; }
+    } else {
+      !held || fail(`${e.name} already holds a Shield.`);
+      plain || items.length || fail(`${e.name} has no Shield.`);
+      if (a.item !== undefined) items.some((y) => y.id === a.item) || fail(`${e.name} has no such Shield.`);
+      if (plain && sheet.shieldStowed === true && a.item === undefined) delete sheet.shieldStowed;
+      else {
+        const y = a.item !== undefined ? items.find((z) => z.id === a.item) : items[0];
+        y || fail(`${e.name} has no Shield to take up.`);
+        y.equipped = true; name = itemName(CONTENT.items[y.item], y); key = y.id;
+      }
+    }
+    resheet(s, e, sheet, ev);
+    if (fight) s.encounter.budget.action--;
+    ev.push({ type: 'shield', id: e.id, on, ...(key !== undefined ? { key, item: name } : {}) });
+  },
   // Attune to a magic item, or end an Attunement, during the next Short Rest (SRD "Attunement": a Short Rest
   // focused on only that item). { type: 'attune', actor, item: key | null, end?: true } By its controller or the DM,
   // outside a fight; `item: null` changes its mind. It happens at the end of the next shortRest it takes.

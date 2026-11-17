@@ -7,7 +7,7 @@
 // A sheet records choices only (docs/specs/rules-expansion.md, decision 1 and "Built characters"):
 //   { name, class, subclass?, level, abilities: { str, dex, con, int, wis, cha },
 //     skills: [class skill picks and skills from features], extraSkills?: [from background or species],
-//     expertise?: [skills], choices?: { featureId: optionId }, armour?: id, shield?: true,
+//     expertise?: [skills], choices?: { featureId: optionId }, armour?: id, shield?: true, shieldStowed?: true (the Shield is carried, not held),
 //     weapons?: [ids, "unarmed-strike"], spells?: [cantrips and prepared spells],
 //     size?, speed?, senses?, tools?, gear?, look? }
 // Ability scores are entered as they stand after background and feats; class features that raise
@@ -280,7 +280,7 @@ export function derive(sheet) {
   const multi = ks.length > 1;
   const why = {};
   // Magic armour or a magic Shield worn is the armour or Shield (validate refuses a second); its bonus only with the Attunement it needs.
-  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, shield = !!sheet.shield || !!shieldItem;
+  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, shield = (!!sheet.shield && !sheet.shieldStowed) || !!shieldItem;
   const shieldOk = shield && armourWords.has('shield');
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
@@ -569,7 +569,7 @@ export function derive(sheet) {
 
 // ---------- what is wrong with a sheet ----------
 
-const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'weapons', 'spells',
+const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'shieldStowed', 'weapons', 'spells',
   'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
@@ -669,7 +669,7 @@ export function validate(sheet) {
     if (!a || a.category === 'shield') say(`"${sheet.armour}" is not armour in the equipment tables.`);
     else if (!armourWords.has(a.category) && trainedSuit !== a.category) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
   }
-  if (sheet.shield && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, so a Shield adds nothing. Take it off the sheet.`);
+  if (sheet.shield && !sheet.shieldStowed && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, and the engine does not yet apply the rules for holding one untrained, so it is refused.`);
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
     if (!CONTENT.weapons[id]) say(`"${id}" is not a weapon in the equipment tables.`);
@@ -704,6 +704,7 @@ export function validate(sheet) {
   const picked = feats.filter((x) => x.f.pick).flatMap((x) => [sheet.choices?.[x.f.id] ?? []].flat().map((o) => `${x.f.name}:${o}`));
   if (new Set(picked).size !== picked.length) say('An option is chosen twice.');
   if (sheet.shield !== undefined && typeof sheet.shield !== 'boolean') say('Shield is true or false.');
+  if (sheet.shieldStowed !== undefined && (sheet.shieldStowed !== true || sheet.shield !== true)) say('A Shield put away (shieldStowed) is true, and only for a sheet that has a Shield.');
   void abil;
   return bad;
 }
@@ -854,7 +855,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
     }
   }
   if (sheet.armour && worn.armour) say(`It wears ${CONTENT.armour[sheet.armour]?.name ?? 'armour'} and ${worn.armour[0]}: one suit of armour at a time.`);
-  if (sheet.shield && worn.shield) say(`It holds a Shield and ${worn.shield[0]}: one Shield at a time.`);
+  if (sheet.shield && !sheet.shieldStowed && worn.shield) say(`It holds a Shield and ${worn.shield[0]}: one Shield at a time.`);
   const WORDS = { feet: 'pair of footwear', hands: 'pair of gloves or gauntlets', wrists: 'pair of bracers', armour: 'suit of armour', head: 'item of headwear', cloak: 'cloak', shield: 'Shield' };
   for (const [k, list] of Object.entries(worn)) if (WEAR_ONE.includes(k) && list.length > 1) say(`One ${WORDS[k]} at a time: ${list.join(' and ')}.`);
   if ((worn.orbit ?? []).length > ORBIT_MAX) say(`Up to ${ORBIT_MAX} Ioun Stones orbit a head at once.`);

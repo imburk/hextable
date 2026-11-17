@@ -1086,6 +1086,15 @@ Settled when the twelve classes were entered (`content/srd52/classes/`, one file
     `failed`). `give` takes a pack item id (with `base`, `damageType`, `spell`) and takes one back by its key; a loot
     line may name `item` (with `base`, `type`, `spell`) and lands as that item on a built character, as a name
     otherwise. Gear handed over in play is kept when a character is made again from a sheet whose gear list is unchanged.
+  - *Shield (issue #449)*: `shield { actor, on, item? }` puts a Shield away or takes it up (SRD "Armor": "Shield (Utilize
+    Action to Don or Doff)"), by the controller or the DM, for a built character. In a fight it costs the creature's
+    action on its own turn, and is refused when it has none, when it is not its turn, or when the Shield is already so;
+    outside a fight it is free. A sheet's Shield put away is `shieldStowed: true` beside `shield: true` (carried, not held:
+    no Armor Class from it, a hand free for a Two-Handed weapon, `e.shield` unset); a magic Shield item toggles its
+    `equipped` (`item` picks one of several) and stays attuned. No Shield, or none the character is trained with, is
+    refused. The creature is made again from the sheet as `equip` does. The `shield` event (`id`, `on`, and `key` and `item`
+    for a magic one) goes to players for a creature they see, with the item only for their own, never for a hidden one.
+    No state version change: a sheet without the field plays as before. The monster AI does not use it.
   - *View*: the party's sheets are open to the party as before, so a player sees their own items and the party's;
     `equip`, `attuning`, `attuned` and `gear` events only for open creatures; nothing about a foe's items.
   - *Migration to 20*: nothing to convert (a sheet without items plays as before); an `attuning` that names no item is
