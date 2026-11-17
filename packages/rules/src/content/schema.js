@@ -1698,7 +1698,7 @@ export function lintRecord(r, { spells = {} } = {}) {
     if (a.weapon !== undefined && !ID.test(a.weapon)) sub('its weapon is an id.');
     if (a.time !== undefined && a.time !== 'bonus') sub('its time is "bonus" or left out.');
   }
-  if ((r.attacks?.length ?? 0) > 12) say('Twelve attacks at most.');
+  if ((r.attacks?.length ?? 0) - (r.attacks?.some((a) => a?.id === 'unarmed-strike') ? 1 : 0) > 12) say('Twelve attacks at most.');   // the Unarmed Strike every built character has (#440) is not counted
   if (r.castAbil !== undefined && !ABILITIES.includes(r.castAbil)) say('Its spellcasting ability is an ability.');
   if (r.spells !== undefined && !list(r.spells, (x) => typeof x === 'string' && Object.hasOwn(spells, x), 400)) say('It knows a spell that is not in the game.');
   if (r.spells?.length && !r.castAbil) say('A character with spells needs a spellcasting ability.');

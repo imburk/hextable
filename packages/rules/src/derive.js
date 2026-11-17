@@ -392,8 +392,11 @@ export function derive(sheet) {
     weaponAttacks(w, { id: `item-${y.x.id}`, name: itemName(y.def, y.x).slice(0, 28), plus: on ? y.def.bonus ?? 0 : 0, ...(on && y.def.damageType ? { dtype: y.def.damageType } : {}), ...(on && y.def.properties ? { props: y.def.properties } : {}) });
   }
   // Unarmed Strike: 1 + Strength modifier Bludgeoning; Martial Arts makes it its die with the
-  // better of Strength and Dexterity, and adds one as a Bonus Action.
-  if (maDie || sheet.weapons?.includes('unarmed-strike')) {
+  // better of Strength and Dexterity, and adds one as a Bonus Action. Every character can make one (SRD "Unarmed
+  // Strike", Damage: "Your bonus to the roll equals your Strength modifier plus your Proficiency Bonus. On a hit, the
+  // target takes Bludgeoning damage equal to 1 plus your Strength modifier"), so it is always the last attack; it names
+  // no weapon, so weapons.js never refuses it. A sheet that lists it or has Martial Arts gets what it always did.
+  {
     const ab = maDie && abil.dex > abil.str ? 'dex' : 'str', m = mod(abil[ab]);
     const u = { name: 'Unarmed Strike', type: 'melee', bonus: m + pb, damage: maDie ? dice(maDie, m) : signed(1 + m), dtype: 'bludgeoning', reach: 5, abil: ab };
     add({ id: 'unarmed-strike', ...u });
