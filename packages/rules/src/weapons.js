@@ -41,3 +41,23 @@ export function attackRefusal(s, e, atk, pooled = false) {
   if (loadedAgain(s.encounter?.budget, atk, pooled)) return `${atk.name} is a Loading weapon: it fires one piece of ammunition each time ${e.name} uses ${atk.time === 'bonus' ? 'a Bonus Action' : 'an action'}, however many attacks ${e.name} can make. Attack with something else, or end the turn.`;
   return '';
 }
+
+// Heavy (SRD "Weapons", Properties): "You have Disadvantage on attack rolls with a Heavy weapon if it's a Melee weapon and your
+// Strength score isn't at least 13 or if it's a Ranged weapon and your Dexterity score isn't at least 13." It goes by the weapon's
+// own kind, not by how it is used (a thrown Melee weapon is still a Melee weapon). Only an attack that names its weapon (`atk.weapon`,
+// a built character's) has one: a monster's stat-block attack is the creature's own and names none. Returns the reason, or ''.
+export function heavyWeak(e, atk) {
+  const w = weaponOf(atk);
+  if (!w?.properties?.includes('heavy')) return '';
+  const abil = w.kind === 'ranged' ? 'dex' : 'str', score = e.abil?.[abil];
+  return Number.isFinite(score) && score < 13 ? `Heavy weapon, ${abil === 'str' ? 'Strength' : 'Dexterity'} ${score}` : '';
+}
+
+// The Unarmed Strike every built character has (derive.js) is only a last resort: with any allowed weapon attack the choice is
+// exactly what it was without it. A Monk, or a sheet that lists it, had it before: that one is a weapon attack.
+export const spareStrike = (e, a) => a.id === 'unarmed-strike' && !e.sheet?.weapons?.includes('unarmed-strike') && !e.attacks?.some((x) => x.id === 'unarmed-strike-bonus');
+
+// Among attacks a creature may make (in its own order), the one it takes: the first, unless that swings a Heavy weapon with
+// Disadvantage and another allowed weapon attack does not, then the first of those. The spare Unarmed Strike is not another weapon
+// to prefer: a character with only a Heavy weapon still swings it. Returns the first when none is better, undefined for none.
+export const steadiest = (e, list) => list.find((a) => !heavyWeak(e, a) && !spareStrike(e, a)) ?? list[0];

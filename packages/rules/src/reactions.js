@@ -27,7 +27,7 @@
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
-import { handsFull } from './weapons.js';
+import { handsFull, steadiest } from './weapons.js';
 import { incapacitated } from './modifiers.js';
 import { ownerOf } from './engine/shared.js';
 
@@ -51,7 +51,7 @@ export const WHILE_WAITING = new Set(['react', 'say', 'note', 'claim', 'release'
 export function opportunityAttack(o, s = null) {
   if (o.bond?.noAttack) return null;
   if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
-  return (o.attacks ?? []).find((a) => a.type === 'melee' && !handsFull(s, o, a)) ?? null;
+  return steadiest(o, (o.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, o, a))) ?? null;
 }
 
 // How much a spell's own steps add to Armor Class (Shield: 5), or 0.
