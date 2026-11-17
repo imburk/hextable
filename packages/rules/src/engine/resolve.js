@@ -21,7 +21,7 @@ import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters,
 import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
-import { handsFull, heavyWeak, steadiest } from '../weapons.js';
+import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -1199,7 +1199,10 @@ export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cun
   if (keepHidden) { if (paid && s.encounter) s.encounter.flags[`stealth:${e.id}`] = true; else unhide(s, e, ev, 'attack'); }
   if (notes.length) ev.push({ type: 'note', id: e.id, text: notes.join(', ') });
   const r = together(...rs);
-  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
+  // An Unarmed Strike is a melee attack made with the body, not "an attack with a weapon" (SRD, Unarmed Strike): `weapon` is false for it, and
+  // `unarmed` says so, so a rider the SRD gives to "a weapon or an Unarmed Strike" can still tell it from a spell (`attack.weaponOrUnarmed`).
+  const unarmed = isUnarmed(atk);
+  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell && !unarmed, unarmed, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
   if (brutal && !t.dead) strikeEffect(s, e, t, brutal, ev);
   for (const o of paid ?? []) if (o.effects && !t.dead) strikeEffect(s, e, t, o, ev);

@@ -56,7 +56,8 @@ export function judge(tag, sit, s) {
     case 'attack.disadvantage': return sit.mode === undefined ? null : sit.mode === 'dis';
     case 'target.prone': return t ? has(t, 'prone') : null;
     case 'attack.hit': return sit.hit === undefined ? null : sit.hit;              // the damage comes from an attack roll that hit
-    case 'attack.weapon': return sit.weapon === undefined ? null : sit.weapon;     // ... made with a weapon
+    case 'attack.weapon': return sit.weapon === undefined ? null : sit.weapon;     // ... made with a weapon (not an Unarmed Strike)
+    case 'attack.weaponOrUnarmed': return sit.weapon === undefined ? null : sit.weapon || sit.unarmed === true;   // ... made with a weapon or an Unarmed Strike (Radiant Strikes)
     case 'attack.str': return sit.str === undefined ? null : sit.str;              // an attack using Strength (Rage, Reckless Attack)
     case 'attack.spell': return sit.spell === undefined ? null : sit.spell;        // the attack roll of a spell (Innate Sorcery)
     case 'spell.cantrip': return sit.cantrip === undefined ? null : sit.cantrip;   // damage from a cantrip (Potent Spellcasting)

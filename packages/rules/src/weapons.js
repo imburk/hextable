@@ -57,6 +57,8 @@ export function heavyWeak(e, atk) {
 
 // The Unarmed Strike every built character has (derive.js) is only a last resort: with any allowed weapon attack the choice is
 // exactly what it was without it. A Monk, or a sheet that lists it, had it before: that one is a weapon attack.
+// Is this attack an Unarmed Strike (derive.js builds `unarmed-strike`, and a Monk's Bonus Action one)?
+export const isUnarmed = (a) => a?.id === 'unarmed-strike' || a?.id === 'unarmed-strike-bonus';
 export const spareStrike = (e, a) => a.id === 'unarmed-strike' && !e.sheet?.weapons?.includes('unarmed-strike') && !e.attacks?.some((x) => x.id === 'unarmed-strike-bonus');
 
 // Among attacks a creature may make (in its own order), the one it takes: the first, unless that swings a Heavy weapon with
