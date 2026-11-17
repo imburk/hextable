@@ -6,7 +6,7 @@
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
 import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
-import { attackRefusal } from './weapons.js';
+import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
@@ -152,10 +152,10 @@ function withAttacks(s, e, foes) {
   const target = foes.reduce((a, f) => (apart(s, e, f) < apart(s, e, a) || (apart(s, e, f) === apart(s, e, a) && f.hp < a.hp) ? f : a));
   // Only an attack the engine would allow now (weapons.js: Two-Handed beside a Shield, a Loading weapon already fired this action).
   const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id));
-  // The Unarmed Strike every built character has (derive.js) is only a last resort: with any allowed weapon attack the
-  // choice is exactly what it was without it. A Monk, or a sheet that lists it, had it before: that one is a weapon attack.
-  const spare = (a) => a.id === 'unarmed-strike' && !e.sheet?.weapons?.includes('unarmed-strike') && !e.attacks.some((x) => x.id === 'unarmed-strike-bonus');
-  let melee = e.attacks.find((a) => a.type === 'melee' && !spare(a) && allowed(a)), ranged = e.attacks.find((a) => a.type === 'ranged' && allowed(a));
+  // The Unarmed Strike every built character has (derive.js) is only a last resort (weapons.js, spareStrike).
+  const spare = (a) => spareStrike(e, a);
+  // Among its allowed attacks of a kind, not a Heavy weapon it swings with Disadvantage if another will do (weapons.js, steadiest).
+  let melee = steadiest(e, e.attacks.filter((a) => a.type === 'melee' && !spare(a) && allowed(a))), ranged = steadiest(e, e.attacks.filter((a) => a.type === 'ranged' && allowed(a)));
   const d = apart(s, e, target);
   // With none, it punches a foe beside it (and does not walk in to punch: that is the Dodge it took before).
   if (!melee && !ranged && d <= 1 && open(target)) melee = e.attacks.find((a) => spare(a) && allowed(a));
@@ -321,7 +321,7 @@ function protect(s, e, m, foes) {
     for (const t of close) {
       const x = moves.find((x) => x.p.roll === 'melee' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t)) ?? moves.find((x) => apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t));
       if (x) return { type: 'act', actor: id, action: x.def.id, target: t.id };
-      const w = !e.actions && (e.attacks ?? []).find((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t));
+      const w = !e.actions && steadiest(e, (e.attacks ?? []).filter((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t)));
       if (w) return { type: 'attack', actor: id, target: t.id, attack: w.id };
     }
   }
