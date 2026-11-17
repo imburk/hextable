@@ -484,7 +484,7 @@ function martial(sheet) {
 test('Brutal Strike: a row after each Strength attack that can take it, greyed with the engine\'s words until Reckless Attack, and the options are the record\'s', () => {
   const s = martial(BARB), e = s.entities.hero;
   const rows = attackRows(s, e);
-  assert.deepEqual(ids(rows), ['atk:greataxe', 'strike:greataxe', 'atk:shortbow'], 'the shortbow is a Dexterity attack: no row');
+  assert.deepEqual(ids(rows), ['atk:greataxe', 'strike:greataxe', 'atk:shortbow', 'atk:unarmed-strike', 'strike:unarmed-strike'], 'the shortbow is a Dexterity attack: no row; the Unarmed Strike (Strength) has one');
   assert.match(rows[1].why, /Brutal Strike needs Reckless Attack this turn/);
   assert.match(rows[1].label, /Greataxe with Brutal Strike/);
   const ch = strikeChoices(s, e, e.attacks[0]);
