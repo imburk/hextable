@@ -79,22 +79,30 @@ export function putSpeed(e, mode, feet, hover) {
 // Record what the DM set in `e.speedSet` ({ walk?, climb?, swim?, fly?, burrow?: feet (0: taken away), hover?: true }), one
 // key per way of moving. Set back to exactly what its sheet gives, the key goes; an empty record is deleted. A creature with
 // no sheet keeps the record as set. Called after `putSpeed`; nothing is inferred from anything but the sheet's own numbers.
+// A stored record kept to what a record may hold: the five ways with feet a multiple of 5 from 0 to 300, and `hover: true`.
+// Anything else (not a plain object, bad entries) is dropped.
+const cleanSpeedSet = (rec) => {
+  const out = {};
+  if (rec && typeof rec === 'object' && !Array.isArray(rec)) {
+    for (const m of WAYS) if (Number.isInteger(rec[m]) && rec[m] >= 0 && rec[m] <= 300 && rec[m] % 5 === 0) out[m] = rec[m];
+    if (rec.hover === true) out.hover = true;
+  }
+  return out;
+};
 export function noteSpeed(e, mode, feet, hover) {
   let base = null;
   if (e.sheet) { try { base = derive(e.sheet).record; } catch { base = null; } }      // no baseline (a sheet that will not derive): the grant is kept
-  const rec = { ...e.speedSet };
+  const rec = cleanSpeedSet(e.speedSet);
   const sheetFeet = base ? (mode === 'walk' ? base.speed : base.speeds?.[mode] ?? 0) : null;
   if (feet === sheetFeet) delete rec[mode]; else rec[mode] = feet;
-  if (mode === 'fly') { if (hover && feet && !(base && base.hover === true)) rec.hover = true; else delete rec.hover; }
+  if (mode === 'fly') { if (hover && feet) rec.hover = true; else delete rec.hover; }
   if (Object.keys(rec).length) e.speedSet = rec; else delete e.speedSet;
 }
 // The record laid again over a creature just made from its sheet. Only well-formed entries are applied and kept.
 function regrant(fresh, rec) {
-  const out = {};
-  if (rec && typeof rec === 'object' && !Array.isArray(rec)) {
-    for (const m of WAYS) if (Number.isInteger(rec[m]) && rec[m] >= 0 && rec[m] <= 300 && rec[m] % 5 === 0) { putSpeed(fresh, m, rec[m], rec.hover === true); out[m] = rec[m]; }
-    if (rec.hover === true) { out.hover = true; if (fresh.speeds.fly) fresh.hover = true; }
-  }
+  const out = cleanSpeedSet(rec);
+  for (const m of WAYS) if (out[m] !== undefined) putSpeed(fresh, m, out[m], out.hover === true);
+  if (out.hover && fresh.speeds.fly) fresh.hover = true;
   if (Object.keys(out).length) fresh.speedSet = out;
 }
 export function remake(s, e, record, sheet, ev) {

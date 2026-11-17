@@ -132,3 +132,33 @@ test("a grant made while in a form is not recorded (it ends with the form, as on
   ok(apply(s, { type: "setSpeed", actor: "hero", mode: "swim", feet: 30 }, DM));
   assert.deepEqual(s.entities.hero.speedSet, GRANT.speedSet);
 });
+
+test("speedSet does not reach players through a master's pocket dimension; the DM's view has it", () => {
+  const s = granted(fighter());
+  const id = Object.keys(s.entities).length && ok(apply(s, { type: "spawn", monster: "wolf", at: { q: 2, r: 0 } }, DM)).events.find((e) => e.type === "spawned").id;
+  ok(apply(s, { type: "setSpeed", actor: id, mode: "fly", feet: 60 }, DM));
+  assert.deepEqual(s.entities[id].speedSet, { fly: 60 });
+  s.entities.hero.pocket = { [id]: s.entities[id] };            // as the pocket dimension holds a familiar
+  delete s.entities[id];
+  ok(apply(s, { type: "claim", entity: "hero", user: "pat", userName: "Pat" }, { role: "player", userId: "pat" }));
+  for (const who of [{ role: "player", userId: "pat" }, { role: "player", userId: "kim" }, { role: "spectator", userId: "sp" }, { role: "player" }]) {
+    const v = view(s, who);
+    assert.equal(JSON.stringify(v).includes("speedSet"), false, JSON.stringify(who));
+  }
+  assert.equal(view(s, { role: "player", userId: "pat" }).entities.hero.pocket[id].speeds.fly, 60, "the party's own pocket is still sent");
+  assert.ok(JSON.stringify(view(s, DM)).includes("speedSet"));
+});
+
+test("a malformed stored speedSet is discarded when setSpeed records, and when a remake lays it over", () => {
+  for (const bad of ["abc", [1, 2], { fly: -5, walk: 40, swim: 7, jump: 30, hover: 1 }]) {
+    const s = field(fighter());
+    s.entities.hero.speedSet = structuredClone(bad);
+    set(s, "climb", 20);
+    assert.deepEqual(s.entities.hero.speedSet, bad && bad.walk === 40 ? { walk: 40, climb: 20 } : { climb: 20 }, JSON.stringify(bad));
+    const t = field(fighter());
+    t.entities.hero.speedSet = structuredClone(bad);
+    ok(apply(t, { type: "shield", actor: "hero", on: false }, DM));
+    assert.equal(t.entities.hero.speed, bad.walk === 40 ? 40 : 30);
+    assert.equal(JSON.stringify(t.entities.hero.speedSet ?? null).includes("-5"), false);
+  }
+});

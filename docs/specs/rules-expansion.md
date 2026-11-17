@@ -392,7 +392,7 @@ A creature's position becomes `{ q, r, z }` and its body has a footprint.
   The DM's `setSpeed` writes a speed (or `hover`) onto the creature and also records it in
   `speedSet` (`{ walk?, climb?, swim?, fly?, burrow?: feet, hover?: true }`; `0` is a way taken
   away; a way set back to exactly what its sheet gives loses its key; an empty record is
-  deleted). A creature remade from its sheet (`remake()`: equip, shield, attunement at a Short
+  deleted; so for a built character a value equal to what the sheet gives is not recorded, and a later sheet change shows through, while a creature with no sheet keeps every value set). A creature remade from its sheet (`remake()`: equip, shield, attunement at a Short
   Rest, `setSheet`, level-up) is laid over with the record by the same code, so the DM's grant
   wins over the sheet. Nothing is inferred from the creature differing from its sheet. A form
   (`forms.js`) keeps the live numbers and puts them back as they were, DM grants included; a
