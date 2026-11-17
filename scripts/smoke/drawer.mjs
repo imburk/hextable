@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, spawnNear, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, closeMenu, openTab } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, closeMenu, openTab } from './lib.mjs';
 
 // ---------- the drawer (docs/specs/table-ui.md, Decisions 2 and 3) ----------
 // The drawer opens and closes every way the spec lists, at both sizes; the side is a preference; About holds the SRD attribution
@@ -201,12 +201,14 @@ async function drawerTable(browser, url) {
         // The goblin goes on a hex the engine takes it on, next to a foe (the map is random per game, and the hex at a fixed offset was refused on about 2 maps in 100, #418).
         const foe = await host.evaluate(() => { document.getElementById('dm-auto').checked = false; window.hextable.act({ type: 'setting', key: 'sight', value: 'light' }); const S = window.hextable.state; const f = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden); return { id: f.id, pos: f.pos }; });
         const id = await spawnNear(host, 'goblin-warrior', { near: foe.id, min: 1, radius: 2 });
-        await host.evaluate(([i, f]) => {
-          const h = window.hextable;
-          h.act({ type: 'condition', actor: i, condition: 'invisible' });
-          h.act({ type: 'place', actor: 'fighter', to: { q: f.pos.q - 1, r: f.pos.r } });       // a party member in the fight, or it ends at once
-        }, [id, foe]);
-        await wait(host, (f) => { const p = window.hextable.state.entities.fighter.pos; return p.q === f.pos.q - 1 && p.r === f.pos.r; }, foe, 5000)
+        await host.evaluate((i) => window.hextable.act({ type: 'condition', actor: i, condition: 'invisible' }), id);
+        // The fighter joins the fight beside the foe, on a hex the engine takes a creature of its size on now that the goblin stands there (a fixed hex was occupied on about 2 maps in 100). A hosted table takes the server's seed, so this cannot be replayed with SMOKE_SEED.
+        let found = await spotsFor(host, 'goblin-warrior', { near: foe.id, min: 1, radius: 1 });
+        if (!found.spots.length) found = await spotsFor(host, 'goblin-warrior', { near: foe.id, min: 1, radius: 2 });
+        if (!found.spots.length) throw new Error(`no hex beside the foe takes the fighter: ${found.error}`);
+        const spot = found.spots[0];                                                           // a party member in the fight, or it ends at once
+        await host.evaluate((at) => window.hextable.act({ type: 'place', actor: 'fighter', to: at }), spot);
+        await wait(host, (p) => { const q = window.hextable.state.entities.fighter.pos; return q.q === p.q && q.r === p.r; }, spot, 5000)
           .catch(async () => { throw new Error(`the fighter was not placed beside the foe: toast "${await host.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); });
         await host.evaluate((f) => window.hextable.act({ type: 'startEncounter', center: f.pos }), foe);
         secret = { id, name: await state(host, (S, i) => S.entities[i].name, id) };
