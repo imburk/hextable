@@ -446,7 +446,7 @@ function build(root, ch, options) {
     const t = tryAdd({ weapons: [...weapons, w.id] });
     let ok = t.ok, why = t.why;
     if (ok) {
-      try { ok = derive({ ...t.trial }).record.attacks.length <= 12; } catch { ok = false; }
+      try { { const at = derive({ ...t.trial }).record.attacks; ok = at.length - (at.some((a) => a.id === 'unarmed-strike') ? 1 : 0) <= 12; } } catch { ok = false; }
       if (!ok) why = 'A character holds twelve attacks at most.';
     }
     if (ok) weapons.push(w.id); else { dropped++; note('gear', w.name, `Carried on the sheet, not imported: ${why}`); }

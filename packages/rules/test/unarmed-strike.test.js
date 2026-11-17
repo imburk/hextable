@@ -9,6 +9,7 @@ import { aiStep } from "../src/ai.js";
 import { opportunityAttack } from "../src/reactions.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
+import { lintRecord } from "../src/content/schema.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -101,4 +102,41 @@ test("AI: with any allowed weapon attack it does what it did; with none it punch
   // Not beside a foe it does as it did: the Dodge action (nothing allowed), or the end of the turn (no weapon at all); it does not walk in.
   assert.equal(aiStep(field(fighter(STR16, ["greatsword"], { shield: true }), 3), "hero").type, "dodge");
   assert.equal(aiStep(field(fighter(STR16, []), 3), "hero").type, "endTurn");
+});
+
+test("the cap of twelve attacks does not count the automatic punch: 12 real attacks still build, set, level; 13 are refused", () => {
+  const twelve = fighter(STR16, ["longsword", "handaxe", "javelin", "spear", "dagger", "mace"]);
+  const at = derive(twelve).record.attacks;
+  assert.equal(at.length, 13);
+  assert.equal(at.filter((a) => a.id !== "unarmed-strike").length, 12);
+  assert.deepEqual(lintRecord(derive(twelve).record, {}), []);
+  const s = newGame(7);
+  const added = ok(apply(s, { type: "setSheet", sheet: twelve }, DM));
+  const id = added.events.find((e) => e.id)?.id ?? Object.keys(s.entities).find((k) => s.entities[k].sheet?.name === "Fi");
+  ok(apply(s, { type: "setSheet", actor: id, sheet: { ...twelve, level: 6 } }, DM));
+  assert.equal(s.entities[id].attacks.filter((a) => a.id === "unarmed-strike").length, 1, "the punch is kept");
+  const many = fighter(STR16, ["longsword", "handaxe", "javelin", "spear", "dagger", "mace", "light-hammer", "dart"]);
+  const bad = derive(many).record;
+  assert.ok(bad.attacks.filter((a) => a.id !== "unarmed-strike").length > 12);
+  assert.match(lintRecord(bad, {})[0], /Twelve attacks at most/);
+  const before = JSON.stringify(s), r = apply(s, { type: "setSheet", actor: id, sheet: many }, DM);
+  assert.equal(r.ok, false);
+  assert.equal(JSON.stringify(s), before, "nothing changed");
+});
+
+test("Strength 6: the bonus is +1 and the damage 1 - 2 = -1, which does no harm: the event shows the amount 0 and the bonus -1", () => {
+  const sh = fighter({ str: 6, dex: 14, con: 14, int: 10, wis: 8, cha: 8 }, ["greatsword"], { shield: true });
+  const a = punch(sh)[0];
+  assert.equal(a.damage, "-1");
+  assert.equal(a.bonus, 1);
+  const s = field(sh);
+  const r = ok(apply(s, { type: "attack", actor: "hero", target: s.foe, attack: "unarmed-strike" }, DM));
+  const roll = r.events.find((e) => e.type === "attack");
+  assert.ok(roll.hit, "against Armor Class 1");
+  {
+    const d = r.events.find((e) => e.type === "damage");
+    assert.equal(d.amount, 0, "never negative");
+    assert.equal(d.bonus, -1);
+    assert.equal(s.entities[s.foe].hp, 500);
+  }
 });

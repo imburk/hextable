@@ -14,7 +14,15 @@ import { squareRoom } from "./fixtures/square-room.js";
 import { kit } from "./e23-kit.js";
 import { scenarios, run } from "./e23-scenarios.js";
 
-const M = { apply: E.apply, current: E.current, makeEntity: E.makeEntity, derive, newGame, squareRoom };
+// #440: a built character now also has an Unarmed Strike, last of its attacks; main's recording has none. `derive` here takes exactly
+// that one entry off a record that did not have it on main (no Martial Arts, not listed on the sheet), so the recorded hashes are
+// compared as they were, byte for byte: a punch given to anything else (a monster, a starter, a second or wrong one) still fails.
+const derive1 = (sheet) => {
+  const d = derive(sheet), at = d.record.attacks, last = at.at(-1);
+  if (last?.id === "unarmed-strike" && !sheet.weapons?.includes("unarmed-strike") && !at.some((a) => a.id === "unarmed-strike-bonus")) at.pop();
+  return d;
+};
+const M = { apply: E.apply, current: E.current, makeEntity: E.makeEntity, derive: derive1, newGame, squareRoom };
 const REC = JSON.parse(readFileSync(new URL("./fixtures/e23-main-replay.json", import.meta.url), "utf8")).scenarios;
 const sha = (x) => createHash("sha256").update(x).digest("hex");
 
@@ -24,9 +32,7 @@ test("the recorded scenarios are all there", () => {
 for (const sc of scenarios(kit(M))) {
   test(`as on main: ${sc.name}`, () => {
     // Recorded at state version 23; the version has moved since (24, #390) and nothing else in the state: the version is read back as it was and `packs: []` (also new) is left out.
-    // #440: a built character now also has an Unarmed Strike (the last of its attacks); main did not, so it is left out too.
-    const punch = '\\{"id":"unarmed-strike","name":"Unarmed Strike","type":"melee","bonus":-?\\d+,"damage":"[^"]*","dtype":"bludgeoning","reach":5,"abil":"str"\\}';
-    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":24,/, '{"version":23,').replace(',"packs":[]', '').replace(new RegExp(`"attacks":\\[${punch}\\]`, "g"), '"attacks":[]').replace(new RegExp(`,${punch}`, "g"), "")));
+    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":24,/, '{"version":23,').replace(',"packs":[]', '')));
     assert.equal(got.length, REC[sc.name].length, "as many results");
     got.forEach((h, i) => assert.equal(h, REC[sc.name][i], `result ${i} of ${got.length} (the last is the state)`));
   });
