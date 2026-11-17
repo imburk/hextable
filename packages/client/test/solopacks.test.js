@@ -33,7 +33,7 @@ const rejected = (p) => p.then(() => assert.fail('it was accepted'), (e) => e);
 
 test('storage is read with a size check first and every record checked again; what fails is dropped with its reason', () => {
   fresh();
-  assert.deepEqual(T.readSoloPacks(), { packs: [], dropped: [] });
+  assert.deepEqual(T.readSoloPacks(), { packs: [], dropped: [], held: [] });
   mem.set(KEY, 'not json {{');
   assert.match(T.readSoloPacks().dropped[0].reason, /not readable/);
   mem.set(KEY, '{"a":1}');
@@ -173,4 +173,48 @@ test('an update needs a higher version and drops nothing', async () => {
   const dropOne = structuredClone(v2); dropOne.pack.version = 3; dropOne.spells.pop();
   assert.match((await rejected(t.packOp({ op: 'update', pack: JSON.stringify(dropOne) }))).error, /drops 1 entr/);
   assert.equal(JSON.parse(mem.get(KEY))[0].version, 2);
+});
+
+test('a pack dropped at load is kept untouched through later writes, until the player removes it or adds the same pack again', async () => {
+  fresh();
+  const forged = { ...record(), id: 'sample', hash: '0'.repeat(64) };
+  const other = (() => { const d = JSON.parse(SAMPLE); d.pack.id = 'second'; d.pack.name = 'Second'; for (const k of ['spells']) for (const e of d[k]) { e.id = e.id.replace('hb-sample-', 'hb-second-'); e.source = 'homebrew:second'; } return JSON.stringify(d); })();
+  mem.set(KEY, JSON.stringify([forged, 'nonsense']));
+  const { t, seen } = open();
+  const msg = seen.packs[0];
+  assert.deepEqual(msg.packs, []);
+  assert.equal(msg.dropped.filter((d) => d.held).length, 1);
+  assert.equal(msg.dropped.find((d) => d.held).id, 'sample');
+  assert.ok(msg.dropped.some((d) => !d.held), 'what is not a record is only told');
+  await t.packOp({ op: 'add', pack: other });
+  let kept = JSON.parse(mem.get(KEY));
+  assert.deepEqual(kept.map((p) => p.id).sort(), ['sample', 'second'], 'the dropped record is still stored');
+  assert.deepEqual(kept.find((p) => p.id === 'sample'), forged, 'untouched');
+  assert.deepEqual(seen.packs.at(-1).dropped.map((d) => d.id), ['sample'], 'still listed with its reason, the other notices gone');
+  await t.packOp({ op: 'remove', id: 'second' });
+  assert.deepEqual(JSON.parse(mem.get(KEY)).map((p) => p.id), ['sample'], 'a removal keeps it too');
+  assert.match((await rejected(t.packOp({ op: 'discard', id: 'nope' }))).error, /not kept/);
+  await t.packOp({ op: 'discard', id: 'sample' });
+  assert.deepEqual(JSON.parse(mem.get(KEY)), []);
+  assert.equal(seen.packs.at(-1).dropped, undefined);
+  // adding the same pack again replaces the dropped record
+  mem.set(KEY, JSON.stringify([forged]));
+  const again = open();
+  await again.t.packOp({ op: 'add', pack: SAMPLE });
+  kept = JSON.parse(mem.get(KEY));
+  assert.equal(kept.length, 1); assert.equal(kept[0].hash, record().hash);
+  assert.equal(again.seen.packs.at(-1).dropped, undefined);
+});
+
+test('when the dropped records would take the room, a new add is refused with a sentence rather than erasing them', async () => {
+  fresh();
+  const fat = { ...record(), id: 'fat', hash: '0'.repeat(64), data: { filler: 'x'.repeat(Math.floor(T.SOLO_PACKS_MAX * 0.999)) } };
+  mem.set(KEY, JSON.stringify([fat]));
+  const { t } = open();
+  const before = mem.get(KEY);
+  const e = await rejected(t.packOp({ op: 'add', pack: SAMPLE }));
+  assert.match(e.error, /more room than the packs may/);
+  assert.match(e.error, /“fat”/);
+  assert.equal(mem.get(KEY), before, 'nothing was written');
+  assert.deepEqual((await t.export()).state.packs, []);
 });

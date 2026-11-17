@@ -46,28 +46,42 @@ const PACK_TEXT_MAX = 2 * HOMEBREW_LIMITS.packBytes;           // a pack sent as
 const PACK_PROBLEMS_SHOWN = 20;
 const SHOWN_DROPS = 8;
 
-// What storage holds of the packs: `{ packs: [records that pass], dropped: [{ id, reason }] }`. Never throws, whatever the key holds.
+// What storage holds of the packs: `{ packs: [records that pass], dropped: [{ id, reason, held? }], held: [{ id, record }] }`. Never throws, whatever the key holds.
+// A record that is shaped like a stored pack (an id, a version, a hash and the pack) but does not pass is DROPPED (never installed, never parsed beyond what the check does)
+// and also HELD: the browser goes on keeping it, untouched, through later writes, until the player removes it or adds the same pack again from a file. What is not even a
+// record (nonsense, not a list, a value that is not an object) is dropped with its message and not kept.
 export function readSoloPacks(storage = globalThis.localStorage) {
   let raw;
-  try { raw = storage.getItem(SOLO_PACKS_KEY); } catch { return { packs: [], dropped: [] }; }       // storage is off: there is nothing to read
-  if (raw === null || raw === undefined) return { packs: [], dropped: [] };
-  const lost = (reason) => ({ packs: [], dropped: [{ id: null, reason }] });
+  try { raw = storage.getItem(SOLO_PACKS_KEY); } catch { return { packs: [], dropped: [], held: [] }; }       // storage is off: there is nothing to read
+  if (raw === null || raw === undefined) return { packs: [], dropped: [], held: [] };
+  const lost = (reason) => ({ packs: [], dropped: [{ id: null, reason }], held: [] });
   if (typeof raw !== 'string') return lost('what this browser kept was not text');
   if (raw.length > SOLO_PACKS_MAX) return lost(`what this browser kept is ${Math.round(raw.length / 1024)} KB, more than four packs can be; it was not read`);
   let list;
   try { list = JSON.parse(raw); } catch { return lost('what this browser kept was not readable (it is not JSON)'); }
   const r = cleanPacks(list);
-  const dropped = r.dropped.slice(0, SHOWN_DROPS);
-  if (r.dropped.length > SHOWN_DROPS) dropped.push({ id: null, reason: `and ${r.dropped.length - SHOWN_DROPS} more records that were not packs` });
-  return { packs: r.packs, dropped };
+  const shaped = (Array.isArray(list) ? list : []).filter((p) => p && typeof p === 'object' && !Array.isArray(p) && typeof p.id === 'string' && Object.keys(p).sort().join() === 'data,hash,id,version'
+    && !r.packs.some((g) => g.id === p.id && g.version === p.version && g.hash === p.hash));
+  const held = [], dropped = [];
+  for (const d of r.dropped.slice(0, SHOWN_DROPS)) {
+    const at = d.id === null ? -1 : shaped.findIndex((p) => p.id.slice(0, 60) === d.id);
+    if (at < 0) { dropped.push(d); continue; }
+    held.push({ id: d.id, record: shaped.splice(at, 1)[0] });
+    dropped.push({ ...d, held: true });
+  }
+  if (r.dropped.length > SHOWN_DROPS) dropped.push({ id: null, reason: `and ${r.dropped.length - SHOWN_DROPS} more records that were not packs; they are not kept` });
+  return { packs: r.packs, dropped, held };
 }
-// Keeps the packs, and says whether the browser really did (a full or switched-off storage throws, and a store that took it quietly is read back).
-export function writeSoloPacks(records, storage = globalThis.localStorage) {
+// Keeps the packs (and, untouched, the records that could not be loaded: `held`), and says how it went: null when the browser has them, 'room' when together they would
+// pass the limit of what the key may hold (nothing is written), 'storage' when the browser would not keep them (a full or switched-off storage throws, and a store that took
+// it quietly is read back).
+export function writeSoloPacks(records, held = [], storage = globalThis.localStorage) {
   try {
-    const text = JSON.stringify(records.map(({ id, version, hash, data }) => ({ id, version, hash, data })));
+    const text = JSON.stringify([...records.map(({ id, version, hash, data }) => ({ id, version, hash, data })), ...held.map((h) => h.record)]);
+    if (text.length > SOLO_PACKS_MAX) return 'room';
     storage.setItem(SOLO_PACKS_KEY, text);
-    return storage.getItem(SOLO_PACKS_KEY) === text;
-  } catch { return false; }
+    return storage.getItem(SOLO_PACKS_KEY) === text ? null : 'storage';
+  } catch { return 'storage'; }
 }
 // A saved game's packs against the packs this browser holds: the sentences the player is told when the game was played with packs that are not here
 // (or are another version), with a word on what in the game still names a pack that is gone. Pure.
@@ -96,10 +110,10 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
   // The browser's packs, checked again now (storage is not trusted): `records` are the packs that passed, `dropped` what did not and what the saved game
   // lost, told to the DM (the player) until the next change to the packs. The page's pack store installs them in the content lookups (start() hands them over).
   const got = readSoloPacks();
-  let records = got.packs, dropped = got.dropped, loaded;
+  let records = got.packs, dropped = got.dropped, held = got.held, loaded;
   const vet = (list) => { try { return vetPacks(list); } catch (err) { return { ok: false, problems: [`the packs could not be checked (${String(err?.message).slice(0, 100)})`] }; } };
   { const v = vet(records);
-    if (!v.ok) { dropped = [...dropped, ...records.map((p) => ({ id: p.id, reason: `the packs cannot be used together: ${v.problems.slice(0, 2).join('; ')}` }))]; records = []; loaded = []; } else loaded = v.loaded; }
+    if (!v.ok) { dropped = [...dropped, ...records.map((p) => ({ id: p.id, reason: `the packs cannot be used together: ${v.problems.slice(0, 2).join('; ')}`, held: true }))]; held = [...held, ...records.map((p) => ({ id: p.id, record: p }))]; records = []; loaded = []; } else loaded = v.loaded; }
   dropped = [...dropped, ...soloPackNotes(state, records)];
   const names = (list) => list.map(({ id, version, hash }) => ({ id, version, hash }));
   // `state.packs` says what is installed. After a load, a new game, an undo or a rewind (which put whole trees back) it is made to say so again, through the
@@ -135,7 +149,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
   };
   const packsMsg = (changed) => ({ t: 'packs', packs: records.map((p) => ({ id: p.id, name: p.data.pack.name, version: p.version, hash: p.hash })), ...(dropped.length && { dropped }), ...(changed && { changed }) });
   const dataMsg = (p) => ({ t: 'packData', id: p.id, version: p.version, hash: p.hash, data: p.data });
-  const announce = (msg = packsMsg(), only = null) => { t.on.packs?.(msg); for (const p of only ? [only] : records) t.on.packData?.(dataMsg(p)); };
+  const announce = (msg = packsMsg(), only = null, data = true) => { t.on.packs?.(msg); if (data) for (const p of only ? [only] : records) t.on.packData?.(dataMsg(p)); };
   const t = {
     solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {}, undoInfo: { undo: [], redo: [] }, assets: localAssets(),
     start() { announce(); told(); t.on.update(state, []); },
@@ -150,8 +164,18 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
         const refuse = (problems, extra = {}) => { const list = problems.slice(0, PACK_PROBLEMS_SHOWN).map((x) => String(x).slice(0, 300)); return reject({ error: new PackError(list).message, problems: list, ...extra }); };
         try {
           const op = msg?.op;
-          if (op !== 'add' && op !== 'update' && op !== 'remove') return reject({ error: 'Say what to do with the pack: add, update or remove.' });
+          if (op !== 'add' && op !== 'update' && op !== 'remove' && op !== 'discard') return reject({ error: 'Say what to do with the pack: add, update or remove.' });
           let id, record = null;
+          if (op === 'discard') {                          // the player removes a pack this browser kept but could not load (nothing of it was ever in the game)
+            id = msg.id;
+            if (typeof id !== 'string' || !held.some((h) => h.id === id)) return reject({ error: 'That pack is not kept in this browser.' });
+            const rest = held.filter((h) => h.id !== id), bad = writeSoloPacks(records, rest);
+            if (bad) return reject({ error: 'This browser could not keep the change (its storage is full or turned off), so nothing was removed.' });
+            held = rest; dropped = dropped.filter((d) => !(d.held && d.id === id));
+            const answer = packsMsg({ op: 'remove', id });
+            announce(answer, null, false);
+            return resolve(answer);
+          }
           if (op === 'remove') {
             id = msg.id;
             if (typeof id !== 'string' || !records.some((p) => p.id === id)) return reject({ error: 'That pack is not in this game.' });
@@ -168,14 +192,18 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
             id = v.pack.id; record = v.record;
           }
           const next = op === 'remove' ? records.filter((p) => p.id !== id) : op === 'update' ? records.map((p) => (p.id === id ? record : p)) : [...records, record];
+          // A pack added again from a file replaces the record of the same id this browser kept unloaded; the others stay as they are.
+          const keptHeld = op === 'remove' ? held : held.filter((h) => h.id !== id);
           const was = names(records);
           const res = apply(state, { type: 'setPacks', packs: names(next) }, { role: 'dm', userId: 'local' });
           if (!res.ok) return reject({ error: res.error });
-          if (!writeSoloPacks(next)) {                    // the browser would not keep it: the game is put back as it was, and the player is told
+          const bad = writeSoloPacks(next, keptHeld), done = op === 'remove' ? 'removed' : op === 'update' ? 'updated' : 'added';
+          if (bad) {                                      // the browser would not keep it: the game is put back as it was, and the player is told
             apply(state, { type: 'setPacks', packs: was }, { role: 'dm', userId: 'local' });
-            return reject({ error: `This browser could not keep the packs (its storage is full or turned off), so nothing was ${op === 'remove' ? 'removed' : op === 'update' ? 'updated' : 'added'}.` });
+            const room = `This browser also keeps ${keptHeld.length} pack${keptHeld.length === 1 ? '' : 's'} it could not load (${keptHeld.map((h) => `“${h.id}”`).join(', ')}), and with them this change would take more room than the packs may. Nothing was ${done}. Remove those packs from the list of packs that could not be loaded first.`;
+            return reject({ error: bad === 'room' ? room : `This browser could not keep the packs (its storage is full or turned off), so nothing was ${done}.` });
           }
-          records = next; dropped = [];
+          records = next; held = keptHeld; dropped = dropped.filter((d) => d.held && held.some((h) => h.id === d.id));
           const v2 = vet(records); loaded = v2.ok ? v2.loaded : undefined;
           // A removed pack's creatures are gone, but an undo step (or a copy kept to go back to) could bring one back: the history is cleared.
           if (op === 'remove') { history.clear(); store.del(PINS); pinsError = null; told(); }

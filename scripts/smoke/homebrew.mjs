@@ -591,6 +591,34 @@ async function solo(browser, url, label0, opts, tag) {
         if (!/sample.*no longer has it, so the game opens without it/.test(t.replace(/\s+/g, ' '))) throw new Error(t.slice(0, 300));
         if (await page.evaluate(() => window.hextable.state.packs.length)) throw new Error('the game still names the pack');
       });
+      await run.do('a pack dropped at load stays in the browser through a later add; its Remove deletes it; reload: gone', async () => {
+        const rec = await page.evaluate(async (text) => { const data = JSON.parse(text); return { id: data.pack.id, version: data.pack.version, hash: '0'.repeat(64), data }; }, SAMPLE);
+        const ids = async () => JSON.parse((await stored()) ?? '[]').map((p) => p.id).sort().join();
+        await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, JSON.stringify([rec])]);
+        await reload();
+        await openManager();
+        const node = '#pm .pm-dropped[data-dropped="sample"]';
+        if (!(await shown(page, node)) || !/hash/i.test(await page.textContent(node))) throw new Error(`the dropped pack is not listed with its reason: ${(await page.textContent('#pm')).slice(0, 300)}`);
+        const bb = await (await page.$(`${node} .pm-discard`)).boundingBox();
+        if (bb.height < 43.5) throw new Error(`Remove is ${bb.height}px tall`);
+        await shot(page, `homebrew-solo-dropped-${tag}`);
+        await choose('hoard.json', (await hoardPack()).text);
+        await page.click('#pm-go');
+        await waitShown(page, '.pm-pack[data-pack="hoard"]');
+        if (await ids() !== 'hoard,sample') throw new Error(`after the add the browser holds: ${await ids()}`);
+        if (!(await shown(page, node))) throw new Error('the dropped pack went from the list after an add');
+        await closeManager(); await closeMenu(page);
+        await reload();
+        await openManager();
+        if (!(await shown(page, node)) || !(await shown(page, '.pm-pack[data-pack="hoard"]'))) throw new Error('after the reload the dropped pack or the new one is not listed');
+        await page.click(`${node} .pm-discard`); await page.click(`${node} .pm-discard`);
+        await wait(page, () => !document.querySelector('#pm .pm-dropped'));
+        if (await ids() !== 'hoard') throw new Error(`after Remove the browser holds: ${await ids()}`);
+        await shot(page, `homebrew-solo-dropped-removed-${tag}`);
+        await closeManager(); await closeMenu(page);
+        await reload();
+        if (/could not be loaded/.test(await summary()) || await ids() !== 'hoard') throw new Error(`after the reload: ${await summary()}, ${await ids()}`);
+      });
     } finally { await ctx.close(); }
   });
 }

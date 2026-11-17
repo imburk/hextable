@@ -1445,4 +1445,4 @@ re-exports the old names, so no import moved.
 - **The player is the DM:** monster readings show; the words say "game" where the hosted page says "table". A storage that is full or switched off refuses the add with a sentence.
 - Found in passing: the manager's summary did not redraw when only the list of dropped packs changed (no overlay change); it does now, at tables too.
 - Checked by `packages/client/test/solopacks.test.js` and the `homebrew` smoke pass (solo at 390x844 with touch and at 1280x800, then the hosted pair).
-
+- **A pack dropped at load is not erased** (review of #443): a record shaped like a stored pack that fails the checks is dropped (never installed) and also held: later adds, updates and removals write it back untouched, inside the same size limit (a change that would pass the limit with them is refused in words, nothing written). The manager lists it with its reason and one control, Remove (`{ op: 'discard', id }`, solo only), which deletes it from the browser; adding the same pack again from a file replaces it. Nonsense, a value that is not a list, and records beyond the first eight are only told, and not kept.

@@ -84,7 +84,7 @@ export function createPackStore({ ask, changed = () => {}, isDM = () => false, n
     // The table's list: it replaces what was known. Data for a pack that is no longer listed is let go.
     packs(msg) {
       list = (Array.isArray(msg.packs) ? msg.packs : []).filter((p) => plain(p) && typeof p.id === 'string' && typeof p.hash === 'string').map((p) => ({ id: p.id, name: String(p.name ?? p.id), version: p.version, hash: p.hash }));
-      info = { dropped: Array.isArray(msg.dropped) ? msg.dropped.filter(plain).map((d) => ({ id: d.id === null || d.id === undefined ? '' : String(d.id).slice(0, 60), reason: String(d.reason).slice(0, 400) })) : [], changed: plain(msg.changed) ? msg.changed : null };
+      info = { dropped: Array.isArray(msg.dropped) ? msg.dropped.filter(plain).map((d) => ({ id: d.id === null || d.id === undefined ? '' : String(d.id).slice(0, 60), reason: String(d.reason).slice(0, 400), held: d.held === true })) : [], changed: plain(msg.changed) ? msg.changed : null };
       const keep = new Set(list.map((p) => p.hash));
       for (const h of [...data.keys(), ...built.keys(), ...asked.keys(), ...trouble.keys()]) if (!keep.has(h)) forget(h);
       for (const [h] of [...data].slice(0, Math.max(0, data.size - KEEP_DATA))) if (!keep.has(h)) forget(h);
@@ -261,7 +261,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   function managerView() {
     const kids = [];
     const st = store.info();
-    for (const d of st.dropped) kids.push(refusalNode({ error: d.id ? `The pack “${d.id}” could not be loaded when the ${solo() ? 'game opened' : 'table started'}, so the ${where()} plays without it: ${d.reason}` : `The packs this browser kept could not be loaded, so the game plays without them: ${d.reason}` }));
+    for (const d of st.dropped) kids.push(droppedNode(d));
     for (const p of store.list()) if (p.trouble) kids.push(refusalNode({ error: `This page could not use the pack “${p.name}”: ${p.trouble}` }));
     if (message) kids.push(message.ok ? Object.assign(el('p', 'pm-done', message.ok), { role: 'status' }) : refusalNode(message));
     // the list
@@ -278,6 +278,23 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
     if (review) add.append(reviewNode());
     kids.push(add);
     return frame('Homebrew packs', ...kids);
+  }
+  // A pack that could not be loaded: why, and (when this browser still keeps its record, solo only) the one thing that can be done with it, Remove.
+  function droppedNode(d) {
+    const box = refusalNode({ error: d.id ? `The pack “${d.id}” could not be loaded when the ${solo() ? 'game opened' : 'table started'}, so the ${where()} plays without it: ${d.reason}` : `The packs this browser kept could not be loaded, so the game plays without them: ${d.reason}` });
+    if (!d.held) return box;
+    box.classList.add('pm-dropped'); box.dataset.dropped = d.id;
+    box.append(el('p', 'pm-sub', 'This browser still keeps it, untouched and not used. Remove deletes it from the browser; adding the same pack again from a file replaces it.'));
+    const row = el('div', 'row');
+    row.append(button(armed === `drop:${d.id}` ? 'Tap again to remove' : 'Remove', () => discard(d), `pm-discard${armed === `drop:${d.id}` ? ' sure' : ''}`));
+    box.append(row);
+    return box;
+  }
+  async function discard(d) {
+    const key = `drop:${d.id}`;
+    if (armed !== key) { armed = key; clearTimeout(armTimer); armTimer = setTimeout(() => { armed = null; render(); }, 5000); message = null; return render(); }
+    armed = null; clearTimeout(armTimer);
+    await send({ op: 'discard', id: d.id }, `Removed the pack “${d.id}” that could not be loaded from this browser.`);
   }
   const counts = (doc) => countWords(doc).join(', ') || 'nothing';
 
