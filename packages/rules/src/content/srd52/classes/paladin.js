@@ -552,7 +552,7 @@ export const paladin = {
             ],
             "when": [
               "attack.hit",
-              "attack.weapon",
+              "attack.weaponOrUnarmed",
               "melee"
             ]
           }

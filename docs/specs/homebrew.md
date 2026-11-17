@@ -1434,5 +1434,6 @@ re-exports the old names, so no import moved.
 - Every string from the entry (names, ids, tags) is shown inside double quotes it cannot break out of (the reader turns `"` into `'`), so an author cannot write the reader's own sentences.
 - `readEntry` flags an entry the strict linter refuses: `refused` and `refusals`, with a first line starting `REFUSED:`. The refusal is derived from `source` and `id`; `ctx.pack` can be passed to say it outright. The pack manager still shows `lines` as text.
 - An area's creature types are a list with a ceiling (`area.types` 14 in `HOMEBREW_LENGTHS`).
+- `attack.weapon` is true of an attack made with a weapon and false of an Unarmed Strike (a punch is "instead of using a weapon", SRD); `attack.weaponOrUnarmed` is true of both, for a rider the SRD gives to "a weapon or an Unarmed Strike" (Radiant Strikes). A creature's own stat-block attack, which names no weapon and is not an Unarmed Strike, counts as a weapon for both, as it always did (#445).
 - Monster readings add the AI's choice for each action and the passive Perception worked out as the engine does. Engine faults found are in DEBT T57.
 
