@@ -173,7 +173,7 @@ The caster gets +1 to Wisdom saving throws.
 The caster gets Advantage on saving throws to avoid or end the Poisoned condition.
   It lasts as long as the spell.
 The caster gets +2 to its attack rolls.
-  It holds only when it is a melee attack, the two are within 5 feet of each other, the attack is made with a weapon and the attack uses Strength. The engine never applies this: at its attack rolls it cannot tell whether the attack is made with a weapon, and it skips a modifier it cannot be sure of, without telling anyone.
+  It holds only when it is a melee attack, the two are within 5 feet of each other, the attack is made with a weapon (an Unarmed Strike is not), the attack is made with a weapon or is an Unarmed Strike and the attack uses Strength. The engine never applies this: at its attack rolls it cannot tell whether the attack is made with a weapon (an Unarmed Strike is not) and the attack is made with a weapon or is an Unarmed Strike, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 The caster gets Disadvantage on attack rolls made against it.
   It holds only when it is a ranged attack, the two are more than 5 feet apart and the attack is at long range. The engine never applies this: at attack rolls made against it it cannot tell whether the attack is at long range, and it skips a modifier it cannot be sure of, without telling anyone.

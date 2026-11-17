@@ -50,7 +50,7 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
-  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
+  'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
   // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
   'target.fought',
   // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).

@@ -108,7 +108,7 @@ export const TAG_WORDS = {
   'target.unconscious': 'the target is Unconscious', 'attacker.unseen': 'the target cannot see the attacker', 'target.unseen': 'the attacker cannot see the target',
   'ally.adjacentToTarget': 'an ally of the attacker is within 5 feet of the target', 'enemy.adjacent': 'an enemy is within 5 feet of the attacker',
   'long.range': 'the attack is at long range', 'target.halfCover': 'the target has Half Cover', 'target.threeQuartersCover': 'the target has Three-Quarters Cover',
-  'target.seesSource': 'the target can see the caster', 'attack.hit': 'the damage comes from an attack roll that hit', 'attack.weapon': 'the attack is made with a weapon',
+  'target.seesSource': 'the target can see the caster', 'attack.hit': 'the damage comes from an attack roll that hit', 'attack.weapon': 'the attack is made with a weapon (an Unarmed Strike is not)', 'attack.weaponOrUnarmed': 'the attack is made with a weapon or is an Unarmed Strike',
   'attack.str': 'the attack uses Strength', 'attack.spell': 'it is a spell\'s attack roll', 'self.notIncapacitated': 'it is not Incapacitated',
   'spell.cantrip': 'the damage is a cantrip\'s', 'target.fought': 'the caster\'s side is fighting the target', 'check.proficient': 'the check uses one of its proficiencies',
   'attack.opportunity': 'it is an Opportunity Attack', 'target.notFiend': 'the target is not a Fiend',
@@ -140,7 +140,7 @@ export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spel
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
 export const JUDGED_ON = {
   ...Object.fromEntries(ATTACK_HOOKS.map((h) => [h, [...SEES, 'ranged', 'melee', 'attack.spell', 'attack.opportunity', 'attack.str']])),
-  ...Object.fromEntries(DAMAGE_HOOKS.map((h) => [h, [...SEES, 'attack.hit', 'attack.weapon', 'spell.cantrip']])),
+  ...Object.fromEntries(DAMAGE_HOOKS.map((h) => [h, [...SEES, 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'spell.cantrip']])),
   ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient'] : [])]])),
   ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
   ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),

@@ -58,7 +58,7 @@ const FIXTURES = [
       { modifier: { on: 'check', op: 'floor', value: 10, when: ['check.proficient'] } },
       { modifier: { on: 'save', op: 'add', value: 1, scope: { ability: 'wis' } } },
       { modifier: { on: 'save', op: 'advantage', scope: { condition: 'poisoned' } } },
-      { modifier: { on: 'attack.roll', op: 'add', value: 2, when: ['melee', 'within5', 'attack.weapon', 'attack.str'] } },
+      { modifier: { on: 'attack.roll', op: 'add', value: 2, when: ['melee', 'within5', 'attack.weapon', 'attack.weaponOrUnarmed', 'attack.str'] } },
       { modifier: { on: 'attack.received', op: 'disadvantage', when: ['ranged', 'beyond5', 'long.range'] } },
       { modifier: { on: 'attack.received', op: 'crit', when: ['target.prone', 'target.unconscious'] } },
       { modifier: { on: 'damage.dealt', op: 'add', value: '1d6', types: ['radiant'], once: 'turn', when: ['attack.hit', 'spell.cantrip', 'attack.spell'] } },
@@ -301,7 +301,7 @@ test('the reading says what the engine hands to the DM', () => {
   // A Reaction with nothing to set it off; a duration the engine cannot time; a tag it cannot judge.
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-loose-reaction')), /names nothing that sets it off/);
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-steed-call')), /cannot time that; the DM ends it/);
-  has(dm(FIXTURES.find((f) => f.id === 'hb-test-many-blessings')), /The engine never applies this: at its attack rolls it cannot tell whether the attack is made with a weapon, and/);
+  has(dm(FIXTURES.find((f) => f.id === 'hb-test-many-blessings')), /The engine never applies this: at its attack rolls it cannot tell whether the attack is made with a weapon \(an Unarmed Strike is not\)/);
   has(dm(FIXTURES.find((f) => f.id === 'hb-test-mixed-dice')), /different dice: the engine does not add them, the DM does/);
   // Half with success steps: those never run.
   const r4 = dm(FIXTURES.find((f) => f.id === 'hb-test-mire'));
