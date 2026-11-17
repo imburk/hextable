@@ -211,12 +211,18 @@ function scrub(x, hidden) {
 }
 const hiddenIds = (state) => new Set(Object.keys(state.entities).filter((id) => classify(state, id) === 'hidden'));
 
+// `speedSet` (engine/sheets.js) is the DM's bookkeeping, on a creature and on a familiar in its master's pocket dimension.
+function noSpeedSet(e) {
+  delete e.speedSet;
+  if (e.pocket && typeof e.pocket === 'object') for (const c of Object.values(e.pocket)) if (c && typeof c === 'object') delete c.speedSet;
+}
 export function playerView(state) {
   const entities = {}, hidden = hiddenIds(state);
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
     if (c === 'open') {
       entities[id] = structuredClone(e);
+      noSpeedSet(entities[id]);                          // bookkeeping of the DM's `setSpeed`: the speeds themselves are already sent
       delete entities[id].reactions;                     // standing instructions are their controller's and the DM's (viewReactions)
       if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
       // A formation's places are party members' (#303); one for anyone else (a creature since gone, or no longer of the party) is not sent.

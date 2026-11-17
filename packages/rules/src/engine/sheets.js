@@ -69,6 +69,42 @@ export function tryLand(s, e, specs, ev) {
   if (!e.sheet) return null;
   try { return landItem(s, e, specs, ev); } catch (err) { if (err instanceof RuleError) return null; throw err; }
 }
+// A Speed the DM sets (`setSpeed`), written onto a creature: the one rule, used when the DM sets it and again when a
+// creature is remade from its sheet (docs/specs/rules-expansion.md; DEBT T65). A way of moving at 0 is taken away.
+export const WAYS = ['walk', 'climb', 'swim', 'fly', 'burrow'];
+export function putSpeed(e, mode, feet, hover) {
+  if (mode === 'walk') e.speed = feet; else if (feet) e.speeds[mode] = feet; else delete e.speeds[mode];
+  if (mode === 'fly') { if (hover && feet) e.hover = true; else delete e.hover; }
+}
+// Record what the DM set in `e.speedSet` ({ walk?, climb?, swim?, fly?, burrow?: feet (0: taken away), hover?: true }), one
+// key per way of moving. Set back to exactly what its sheet gives, the key goes; an empty record is deleted. A creature with
+// no sheet keeps the record as set. Called after `putSpeed`; nothing is inferred from anything but the sheet's own numbers.
+// A stored record kept to what a record may hold: the five ways with feet a multiple of 5 from 0 to 300, and `hover: true`.
+// Anything else (not a plain object, bad entries) is dropped.
+const cleanSpeedSet = (rec) => {
+  const out = {};
+  if (rec && typeof rec === 'object' && !Array.isArray(rec)) {
+    for (const m of WAYS) if (Number.isInteger(rec[m]) && rec[m] >= 0 && rec[m] <= 300 && rec[m] % 5 === 0) out[m] = rec[m];
+    if (rec.hover === true) out.hover = true;
+  }
+  return out;
+};
+export function noteSpeed(e, mode, feet, hover) {
+  let base = null;
+  if (e.sheet) { try { base = derive(e.sheet).record; } catch { base = null; } }      // no baseline (a sheet that will not derive): the grant is kept
+  const rec = cleanSpeedSet(e.speedSet);
+  const sheetFeet = base ? (mode === 'walk' ? base.speed : base.speeds?.[mode] ?? 0) : null;
+  if (feet === sheetFeet) delete rec[mode]; else rec[mode] = feet;
+  if (mode === 'fly') { if (hover && feet) rec.hover = true; else delete rec.hover; }
+  if (Object.keys(rec).length) e.speedSet = rec; else delete e.speedSet;
+}
+// The record laid again over a creature just made from its sheet. Only well-formed entries are applied and kept.
+function regrant(fresh, rec) {
+  const out = cleanSpeedSet(rec);
+  for (const m of WAYS) if (out[m] !== undefined) putSpeed(fresh, m, out[m], out.hover === true);
+  if (out.hover && fresh.speeds.fly) fresh.hover = true;
+  if (Object.keys(out).length) fresh.speedSet = out;
+}
 export function remake(s, e, record, sheet, ev) {
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
@@ -102,6 +138,8 @@ export function remake(s, e, record, sheet, ev) {
   // Gear handed over in play (give, loot) is kept, unless the new sheet changes the gear list itself.
   if (Array.isArray(e.gear) && JSON.stringify(sheet.gear ?? []) === JSON.stringify(e.sheet?.gear ?? [])) fresh.gear = [...e.gear];
   fresh.sheet = sheet;
+  // What the DM set with `setSpeed` is laid over what the sheet gives (a creature with no record is made exactly as before).
+  if (e.speedSet !== undefined) regrant(fresh, e.speedSet);
   // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's: it comes with it, and only that.
   delete fresh.pocket;
   if (e.pocket !== undefined) fresh.pocket = e.pocket;
