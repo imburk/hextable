@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas } from './lib.mjs';
 
 // ---------- the action panel's Attacks, Bonus, Move and Features tabs (docs/specs/table-ui.md, Decision 6, task T4a) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Exploring: a healing shortcut goes to the Features row. In a fight: the fighter's
@@ -266,20 +266,31 @@ export async function martial(browser, url, label, opts) {
         } finally { await ev(() => { window.hextable.R.onTap = window.__tap; delete window.__yaw0; }); }
       };
       // A goblin next to `who`, in the fight, on the free hex around it that shows furthest from it on the screen (one behind its pawn cannot be tapped); returns its id.
+      const goblins = [];                                   // the goblins foeBeside made, so a full ring can be cleared of them
       const foeBeside = async (who) => {
         await settle(page, who);
-        const before = await state(page, (S) => Object.keys(S.entities));
-        const around = await ev((i) => {
-          const h = window.hextable, e = h.state.entities[i], me = h.R.screenOf(e.pos);
-          return [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]].map(([dq, dr]) => { const at = { q: e.pos.q + dq, r: e.pos.r + dr }, p = h.R.screenOf({ ...at, z: e.pos.z }); return { at, d: p ? Math.hypot(p.x - me.x, p.y - me.y) - (p.y > innerHeight * 0.55 ? 1000 : 0) - (p.y < 120 ? 1000 : 0) : -9999 }; }).sort((a, b) => b.d - a.d).map((x) => x.at);
-        }, who);
-        for (const at of around) {
-          await ev((a) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at: a }), at);
+        // The hexes round `who` that take a goblin, asked of the engine: the party stands side by side on a random map, so a fixed ring can have no free hex.
+        // If none, the goblins made earlier are cleared and it asks again.
+        let { spots, error } = await spotsFor(page, 'goblin-warrior', { near: who, min: 1, radius: 1 });
+        if (!spots.length && goblins.length) {
+          for (const g of goblins.splice(0)) if (await state(page, (S, i) => !!S.entities[i], g)) await ev((i) => window.hextable.act({ type: 'remove', actor: i }), g);
           await idle(page);
-          const made = await state(page, (S, b) => Object.keys(S.entities).filter((k) => !b.includes(k)), before);
-          if (made.length) { await ev((i) => window.hextable.act({ type: 'setHp', actor: i, hp: window.hextable.state.entities[i].maxHp }), made[0]); return made[0]; }
+          ({ spots, error } = await spotsFor(page, 'goblin-warrior', { near: who, min: 1, radius: 1 }));
         }
-        throw new Error('no free hex beside the character');
+        if (!spots.length) throw new Error(`no free hex beside the character: ${error}`);
+        // The one that shows furthest from it on the screen (one behind its pawn cannot be tapped) goes first.
+        const around = await ev(([i, at]) => {
+          const h = window.hextable, e = h.state.entities[i], me = h.R.screenOf(e.pos);
+          return at.map((a) => { const p = h.R.screenOf({ ...a, z: e.pos.z }); return { a, d: p ? Math.hypot(p.x - me.x, p.y - me.y) - (p.y > innerHeight * 0.55 ? 1000 : 0) - (p.y < 120 ? 1000 : 0) : -9999 }; }).sort((x, y) => y.d - x.d).map((x) => x.a);
+        }, [who, spots]);
+        const before = await state(page, (S) => Object.keys(S.entities));
+        await ev((a) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at: a }), around[0]);
+        await idle(page);
+        const made = await state(page, (S, b) => Object.keys(S.entities).filter((k) => !b.includes(k)), before);
+        if (!made.length) throw new Error(`the goblin was not made at ${JSON.stringify(around[0])}: toast "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`);
+        goblins.push(made[0]);
+        await ev((i) => window.hextable.act({ type: 'setHp', actor: i, hp: window.hextable.state.entities[i].maxHp }), made[0]);
+        return made[0];
       };
       const isIn = async (fighter) => state(page, (S, i) => !!S.encounter && S.encounter.order.some((o) => o.id === i), fighter);
 
