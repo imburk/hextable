@@ -12,7 +12,7 @@ import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
-import { donned, landItem, makeEntity, newProblems, remake, resheet } from './sheets.js';
+import { donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, remake, resheet } from './sheets.js';
 
 export const handlers = {
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
@@ -21,8 +21,8 @@ export const handlers = {
     const e = ent(s, a.actor);
     ['walk', 'climb', 'swim', 'fly', 'burrow'].includes(a.mode) || fail('Unknown way of moving.');
     (Number.isInteger(a.feet) && a.feet >= 0 && a.feet <= 300 && a.feet % FT === 0) || fail('A Speed is a multiple of 5 feet.');
-    if (a.mode === 'walk') e.speed = a.feet; else if (a.feet) e.speeds[a.mode] = a.feet; else delete e.speeds[a.mode];
-    if (a.mode === 'fly') { if (a.hover && a.feet) e.hover = true; else delete e.hover; }
+    putSpeed(e, a.mode, a.feet, a.hover);
+    if (!e.form) noteSpeed(e, a.mode, a.feet, a.hover);          // (in a form the new numbers end with the form, as the old ones do) what the DM set is recorded (`speedSet`), so a remake from the sheet keeps it
     ev.push({ type: 'speed', id: e.id, mode: a.mode, feet: a.feet });
   },
   // Add a character typed in by hand. { type: 'addCharacter', record, at? }
