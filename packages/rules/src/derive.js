@@ -669,7 +669,7 @@ export function validate(sheet) {
     if (!a || a.category === 'shield') say(`"${sheet.armour}" is not armour in the equipment tables.`);
     else if (!armourWords.has(a.category) && trainedSuit !== a.category) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
   }
-  if (sheet.shield && !sheet.shieldStowed && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, so a Shield adds nothing. Take it off the sheet.`);
+  if (sheet.shield && !sheet.shieldStowed && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, and the engine does not yet apply the rules for holding one untrained, so it is refused.`);
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
     if (!CONTENT.weapons[id]) say(`"${id}" is not a weapon in the equipment tables.`);

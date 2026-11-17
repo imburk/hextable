@@ -174,3 +174,31 @@ test("validate: shieldStowed is true and only with a Shield; a stowed Shield nee
   assert.match(problems(fighter({ shield: undefined, shieldStowed: true })).join(" "), /shieldStowed/);
   assert.equal(derive(fighter({ shieldStowed: true })).record.ac, derive(fighter({ shield: undefined })).record.ac);
 });
+
+test("remaking from the sheet keeps what the DM or the game put on the entity: speed grants, stealthNoted, away, vanished; the entity differs only by the Shield", () => {
+  const diff = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort();
+  const s = field(fighter(), { fight: false });
+  ok(apply(s, { type: "setSpeed", actor: "hero", mode: "fly", feet: 60, hover: true }, DM));
+  ok(apply(s, { type: "setSpeed", actor: "hero", mode: "walk", feet: 40 }, DM));
+  Object.assign(s.entities.hero, { stealthNoted: true, away: { how: "skip", by: "dm" }, vanished: true });
+  const keep = (e) => ({ speed: e.speed, fly: e.speeds.fly, hover: e.hover, stealthNoted: e.stealthNoted, away: e.away, vanished: e.vanished });
+  const want = keep(s.entities.hero);
+  assert.equal(want.speed, 40);
+  const before = structuredClone(s.entities.hero);
+  ok(apply(s, { type: "shield", actor: "hero", on: false }, DM));
+  assert.deepEqual(diff(before, s.entities.hero), ["ac", "sheet", "shield"]);
+  assert.deepEqual(keep(s.entities.hero), want);
+  ok(apply(s, { type: "shield", actor: "hero", on: true }, DM));
+  ok(apply(s, { type: "shortRest", actor: "hero" }, DM));
+  assert.deepEqual(keep(s.entities.hero), want);
+  // equip keeps them too
+  const m = field(fighter({ shield: undefined, items: [{ id: "i1", item: "shield-plus-1" }] }), { fight: false });
+  ok(apply(m, { type: "setSpeed", actor: "hero", mode: "fly", feet: 60, hover: true }, DM));
+  ok(apply(m, { type: "setSpeed", actor: "hero", mode: "walk", feet: 40 }, DM));
+  ok(apply(m, { type: "equip", actor: "hero", item: "i1" }, DM));
+  assert.equal(m.entities.hero.speed, 40); assert.equal(m.entities.hero.speeds.fly, 60); assert.equal(m.entities.hero.hover, true);
+  // a derived speed still follows the sheet: no grant, a sheet speed change is taken whole
+  const p = field(fighter(), { fight: false });
+  ok(apply(p, { type: "setSheet", actor: "hero", sheet: fighter({ speed: 35 }) }, DM));
+  assert.equal(p.entities.hero.speed, derive(fighter({ speed: 35 })).record.speed);
+});
