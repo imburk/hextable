@@ -17,13 +17,15 @@ const riding = (s, e) => {
 };
 
 // Two-Handed (SRD "Weapons", Properties): "A Two-Handed weapon requires two hands when you attack with it." The sheet records a
-// Shield (`shield`) and not what each hand holds, so only a Shield is checked; another weapon in hand is the DM's. A Lance
+// Shield (`shield`, or put away `shieldStowed`: then `e.shield` is not set) and not what each hand holds, so only a Shield is checked; another weapon in hand is the DM's. A Lance
 // (`twoHandedUnlessMounted`) is one-handed while its wielder rides. Returns the reason, or ''.
 export function handsFull(s, e, atk) {
   const w = weaponOf(atk);
   if (!w?.properties?.includes('two-handed') || !e.shield) return '';
   if (w.twoHandedUnlessMounted && riding(s, e)) return '';
-  return `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield, which only the DM can change in a fight (out of a fight ${e.name} can unequip it).`;
+  return e.sheet
+    ? `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. ${e.name} can put the Shield away with the shield action (in a fight it takes the Utilize action).`
+    : `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield, which only the DM can change.`;
 }
 
 // Loading (SRD "Weapons", Properties): "You can fire only one piece of ammunition from a Loading weapon when you use an action,
