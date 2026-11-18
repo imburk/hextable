@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT } from "../src/content/index.js";
 import { loadPack, overlayOf, using } from "../src/content/registry.js";
-import { apply, makeEntity, recall } from "../src/engine.js";
+import { apply, current, makeEntity, recall } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { describeStep } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
@@ -17,8 +17,16 @@ const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 
 const hb = (name, base, over = {}) => ({ ...structuredClone(CONTENT.monsters[base]), id: `hb-ember-folk-${name}`, name: `Ember ${name}`, source: "homebrew:ember-folk", checked: false, text: "An ember beast.", ...over });
 const OWLET = "hb-ember-folk-owlet", WOLFLING = "hb-ember-folk-wolfling", ASH = "hb-ember-folk-ash-sprite";
+// A dragon wyrmling whose breath has a Difficulty Class (19) found nowhere else in a game.
+const WYRM = "hb-ember-folk-wyrmling";
+function wyrmling() {
+  const m = hb("wyrmling", "black-dragon-wyrmling");
+  m.actions = structuredClone(m.actions);
+  m.actions.find((a) => a.id === "acid-breath").effects[0].dc = 19;
+  return m;
+}
 const PACK = { format: "hextable-pack", v: 1, pack: { id: "ember-folk", name: "ember-folk", version: 1, license: "CC0, by the author", attribution: "Written for a test." },
-  monsters: [hb("owlet", "owl"), hb("wolfling", "wolf"), hb("ash-sprite", "owl", { type: "fey" })] };
+  monsters: [hb("owlet", "owl"), hb("wolfling", "wolf"), hb("ash-sprite", "owl", { type: "fey" }), wyrmling()] };
 const loaded = () => { const r = loadPack(PACK); assert.ok(r.ok, r.problems?.join("; ")); return r.pack; };
 const OV = () => overlayOf([loaded()]);
 
@@ -191,6 +199,83 @@ test("history: a druid's events in a homebrew form stay hidden from others after
     assert.equal(start.hb.hero, "pat");
     assert.equal(viewEvents([start], s, BO)[0].order.find((o) => o.id === "hero").dex, undefined);
     assert.ok(viewEvents([start], s, PAT)[0].order.find((o) => o.id === "hero").dex !== undefined);
+  });
+});
+
+// ---------- a save's DC, and a creature that changes sides (re-review of #461) ----------
+const sees = (evs, text) => JSON.stringify(evs).includes(text);
+// The valley, with the homebrew wyrmling spawned by the DM next to a foe. `bondIt`: the DM binds it to Pat's wizard first.
+function wyrmField(bondIt) {
+  const s = newGame(5);
+  s.settings.autoEngage = false;
+  ok(apply(s, { type: "claim", entity: "wizard", user: "pat", userName: "Pat" }, PAT));
+  const w = ok(apply(s, { type: "spawn", monster: WYRM, at: { q: 3, r: -1 } }, DM)).events[0].id;
+  if (bondIt) ok(apply(s, { type: "bond", actor: w, to: "wizard" }, DM));
+  return { s, w };
+}
+const breathe = (s, w) => {
+  ok(apply(s, { type: "startEncounter", center: s.entities[w].pos }, DM));
+  s.encounter.turn = s.encounter.order.findIndex((o) => o.id === w);      // its turn, as the earlier tests set it
+  assert.equal(current(s), w);
+  return ok(apply(s, { type: "act", actor: w, action: "acid-breath", hex: { q: 4, r: -1 } }, DM));
+};
+
+test("a homebrew party creature's breath: the save DC goes to its runner and to no other player, live and in the record after it is gone", () => {
+  const ov = OV();
+  using(ov, () => {
+    const { s, w } = wyrmField(true);
+    const r = breathe(s, w);
+    const saves = r.events.filter((e) => e.type === "save");
+    assert.ok(saves.length > 0 && saves.every((e) => e.dc === 19), "the DM's events hold the DC");
+    assert.ok(sees(viewEvents(r.events, s, PAT), '"dc":19'), "its runner is told the DC");
+    assert.equal(sees(viewEvents(r.events, s, BO), '"dc":19'), false, "another player, live, is not");
+    assert.ok(viewEvents(r.events, s, BO).some((e) => e.type === "save"), "but is told of the saves");
+    ok(apply(s, { type: "endEncounter" }, DM));
+    ok(apply(s, { type: "remove", actor: w }, DM));
+    assert.equal(s.entities[w], undefined);
+    const tl = record(s);
+    assert.ok(sees(viewEvents(tl, s, PAT), '"dc":19'));
+    assert.equal(sees(viewEvents(tl, s, BO), '"dc":19'), false, "nor in the record");
+    // The save of an SRD creature's action is told its DC to the party, as before.
+    const { s: t2, w: v } = (() => { const t = newGame(5); ok(apply(t, { type: "claim", entity: "wizard", user: "pat", userName: "Pat" }, PAT)); const x = ok(apply(t, { type: "spawn", monster: "black-dragon-wyrmling", at: { q: 3, r: -1 } }, DM)).events[0].id; ok(apply(t, { type: "bond", actor: x, to: "wizard" }, DM)); return { s: t, w: x }; })();
+    const r2 = breathe(t2, v);
+    assert.ok(sees(viewEvents(r2.events, t2, BO), '"dc":11'), "an SRD creature's DC is the party's to know");
+  });
+});
+
+test("a homebrew foe that the DM later bonds to a party master: what it did as a foe stays a foe's to every player, its master's too", () => {
+  const ov = OV();
+  using(ov, () => {
+    const { s, w } = wyrmField(false);
+    const r = breathe(s, w);
+    assert.ok(r.events.some((e) => e.hb && Object.hasOwn(e.hb, w) && e.hb[w] === null), "stamped as the DM's, though it was a foe");
+    if (s.encounter) ok(apply(s, { type: "endEncounter" }, DM));
+    ok(apply(s, { type: "bond", actor: w, to: "wizard" }, DM));
+    assert.equal(s.entities[w].side, "party");
+    const tl = record(s);
+    for (const v of [PAT, BO]) {
+      const told = viewEvents(tl, s, v);
+      assert.equal(sees(told, '"dc":19'), false, `${v.userId}: no DC of its foe-time breath`);
+      assert.equal(told.some((e) => e.rolls !== undefined && e.actor === w), false, `${v.userId}: no attack rolls of it`);
+      assert.equal(told.some((e) => e.bonus !== undefined && e.actor === w), false);
+    }
+  });
+});
+
+test("a start of fight too large to be read through is stamped with every homebrew creature there is", () => {
+  const ov = OV();
+  using(ov, () => {
+    const { s, w } = wyrmField(true);
+    const taken = new Set(Object.values(s.entities).map((e) => `${e.pos.q},${e.pos.r}`));
+    const free = Object.keys(s.map.levels[0].tiles).filter((k) => !taken.has(k)).slice(0, 450);
+    const goblin = { ...structuredClone(CONTENT.monsters["goblin-warrior"]), abil: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 } };
+    free.forEach((k, i) => { const [q, r] = k.split(",").map(Number); s.entities[`z${i}`] = makeEntity(goblin, { id: `z${i}`, name: `Z ${i}`, side: "foe", pos: { q, r, z: 0 } }); });
+    const r = ok(apply(s, { type: "startEncounter", center: s.entities[w].pos, radius: 80 }, DM));
+    const start = r.events.find((e) => e.type === "encounterStart");
+    assert.ok(start.order.length > 300, `${start.order.length} in the order`);
+    assert.equal(start.hb?.[w], "pat", "stamped though the scan could not read it all");
+    assert.deepEqual(viewEvents([start], s, BO)[0].order.find((o) => o.id === w), { id: w });
+    assert.ok(viewEvents([start], s, PAT)[0].order.find((o) => o.id === w).dex !== undefined);
   });
 });
 

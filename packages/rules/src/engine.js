@@ -10,7 +10,7 @@ import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
-import { control, controllerOf, current, fail, homebrewBlock, homebrewParty, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
+import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, settleBonds } from './engine/resolve.js';
@@ -184,12 +184,12 @@ function thaw(s, snap) {
 // something that is not a rule refusal, or stops to ask, or meets the work ceiling, the game is put back by replacing the top-level
 // values of `s` with the copy, so those are new objects afterwards (as they already were for `act`, `cast` and the actions that might ask).
 // Hold `s` itself and read through it each time. (The solo transport keeps only `state`; the server only `table.state`: neither holds more.)
-// The homebrew creatures of the party as the action found them, for `record`: one that leaves the state during the action (a summon that
+// The homebrew creatures as the action found them, for `record`: one that leaves the state during the action (a summon that
 // goes down, a form that ends) is named by events of the same action, and is no longer there to be asked afterwards.
 let BEFORE = null;
 export function apply(s, action, ctx = { role: 'dm' }) {
   const outer = BEFORE;
-  BEFORE = homebrewParty(s);
+  BEFORE = homebrewCreatures(s);
   try { return applyInner(s, action, ctx); } finally { BEFORE = outer; stopWork(); }
 }
 function applyInner(s, action, ctx) {
@@ -291,22 +291,26 @@ function overWork(s, snap, err, ev, action, was) {
   return record(s, first || type !== 'endTurn' ? [...ev, note] : [...ev]);
 }
 
-// An event that names a homebrew creature of the party (in any field, at any depth) is stamped `hb: { [id]: the user who ran it | null }`,
+// An event that names a creature that carries a homebrew block (in any field, at any depth) is stamped `hb: { [id]: the user who ran it | null }`,
 // as the action left the game (as it found it, for one that is gone by then). What a player is told of that event is settled by the stamp,
 // never by the creature as it is later, when it may be gone or out of its form (view.js, viewEvents; #457). An event with no stamp names
 // no such creature: a game could not have one before #457. The stamp is never sent to a player.
 function stampHomebrew(s, ev) {
-  const now = homebrewParty(s);
+  const now = homebrewCreatures(s);
   if (!now && !BEFORE) return;
   const who = new Map([...(BEFORE ?? []), ...(now ?? [])]);
   for (const e of ev) {
     const hb = {}, stack = [e];
-    for (let n = 0; stack.length && n < 2000; n++) {
+    let n = 0;
+    for (; stack.length && n < 2000; n++) {
       const x = stack.pop();
       if (typeof x === 'string') { if (who.has(x)) hb[x] = who.get(x); continue; }
       if (x === null || typeof x !== 'object') continue;
       for (const [k, v] of Object.entries(x)) if (k !== 'hb') { if (who.has(k)) hb[k] = who.get(k); stack.push(v); }
     }
+    // An event too large to be read through (a start of fight with hundreds in the order) is stamped with every such creature there is:
+    // the safe side, since a stamp only ever makes an event less told.
+    if (stack.length) for (const [id, who1] of who) hb[id] = who1;
     if (Object.keys(hb).length) e.hb = hb;
   }
 }

@@ -63,12 +63,13 @@ export function controllerOf(s, e, depth = 0) {
   const to = e.bond?.to;
   return depth < 4 && typeof to === 'string' && Object.hasOwn(s?.entities ?? {}, to) ? controllerOf(s, s.entities[to], depth + 1) : null;
 }
-// The creatures of the party that carry a homebrew block, on the map or in a master's pocket dimension, with who runs each:
-// Map { id -> user id | null }, or null when there is none (nearly always: this is read by every action).
-export function homebrewParty(s) {
+// The creatures that carry a homebrew block, of either side, on the map or in a master's pocket dimension, with who runs each:
+// Map { id -> user id | null } (null: the DM's, which every foe is), or null when there is none (nearly always: this is read by every
+// action). A foe is included because the DM may bond it to a party master later, and the record must not turn what it did as a foe into
+// the party's own.
+export function homebrewCreatures(s) {
   let out = null;
   for (const e of Object.values(s.entities)) {
-    if (e.side !== 'party') continue;
     if (homebrewBlock(e)) (out ??= new Map()).set(e.id, controllerOf(s, e));
     if (e.pocket && typeof e.pocket === 'object') for (const [k, c] of Object.entries(e.pocket)) if (homebrewBlock(c)) (out ??= new Map()).set(k, controllerOf(s, c));
   }

@@ -509,8 +509,8 @@ export function viewEvents(events, state, viewer) {
   const theirs = (id) => { const hb = out.ev?.hb; return !!hb && Object.hasOwn(hb, id) && !(typeof viewer?.userId === 'string' && hb[id] === viewer.userId); };
   const cls = (id) => {
     if (was?.includes(id)) return 'hidden';
-    if (theirs(id)) return 'seen';
-    return gone.get(id) ?? classify(state, id);
+    const c = gone.get(id) ?? classify(state, id);
+    return theirs(id) && c !== 'hidden' ? 'seen' : c;      // no more told than a foe they can see; one they could not see stays unseen
   };
   // A copy of an order entry or a `joined` of one of theirs, with `after` only where its master is theirs too.
   const afterOpen = (o) => { const { after, before, ...rest } = o; return { ...rest, ...tiedOpen({ after, before }, (id) => cls(id) === 'open') }; };
@@ -522,11 +522,11 @@ export function viewEvents(events, state, viewer) {
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
   const out = { push(e) { delete e.unseen; delete e.hb; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
   let lastTurnHidden = null;               // whether the last turn in this list was unseen (null: none yet)
-  let caster = null;                       // who cast the spell (or used the action) that the following saves answer
+  let casterOpen = false;                  // whether the one who cast the spell (or used the action) that the following saves answer is theirs
   for (const ev of events) {
     out.ev = ev;
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
-    if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack') caster = ev.actor;      // a save on a hit answers the attacker
+    if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack') casterOpen = cls(ev.actor) === 'open';      // a save on a hit answers the attacker: told the DC if the attacker is theirs, as said at the event that began it (a stamp is read there)
     if (ev.type === 'turn') {
       const hidden = cls(ev.id) === 'hidden', before = lastTurnHidden ?? turnBeforeUnseen(state, ev);
       lastTurnHidden = hidden;
@@ -583,7 +583,7 @@ export function viewEvents(events, state, viewer) {
       }
       case 'save':
         if (cls(ev.id) === 'open') out.push(structuredClone(ev));
-        else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(caster !== null && cls(caster) === 'open' ? ['dc'] : [])]));
+        else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(casterOpen ? ['dc'] : [])]));
         break;
       case 'reaction':                                 // a creature took a Reaction: who, what, and against whom, as anyone watching would see
         out.push({ ...pick(ev, ['type', 'id', 'reaction', 'name', 'trigger']),

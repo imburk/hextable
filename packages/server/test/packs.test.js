@@ -719,6 +719,8 @@ const own = (id, base, name, over) => ({ ...structuredClone(CONTENT.monsters[bas
 const abilities = (base, dex) => ({ ...CONTENT.monsters[base].abilities, dex });
 const BLOCKS = [monster("ember-folk", "quillwraith", { ac: 23, hp: 77, abilities: abilities("goblin-warrior", 23) }),
   own(OWLET, "owl", "Ember owlet", { ac: 21, abilities: abilities("owl", 25) }), own(WOLFLING, "wolf", "Ember wolfling", { ac: 22, hp: 66, abilities: abilities("wolf", 27) })];
+const WYRM = "hb-ember-folk-wyrmling";
+BLOCKS.push((() => { const m = own(WYRM, "black-dragon-wyrmling", "Ember wyrmling", {}); m.actions = structuredClone(m.actions); m.actions.find((a) => a.id === "acid-breath").effects[0].dc = 19; return m; })());
 const NUMBERS = ['"ac":23', '"maxHp":77', '"dex":23', '"ac":21', '"dex":25', '"ac":22', '"maxHp":66', '"dex":27'];
 const callPack = () => doc("ember-folk", { spells: [spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon: WRAITH, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" } }] })], monsters: BLOCKS });
 const second = (tables, dm, code, name) => {
@@ -851,6 +853,30 @@ test("the record and a return: a summon removed, in a fight and out of it, tells
   const patWire = pat.raw.join("\n");
   assert.ok(patWire.includes('"skill":"stealth"') && patWire.includes('"ac":23'));
   assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "check" && e.id === id));
+  clean();
+});
+
+test("a homebrew party creature's breath: the save DC is sent to its runner and to no other player, live and by history after it is removed", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  dm.say({ t: "act", action: { type: "spawn", monster: WYRM, at: { q: 3, r: -1 } } });
+  const w = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WYRM);
+  assert.ok(w, dm.last("error")?.error);
+  dm.say({ t: "act", action: { type: "bond", actor: w, to: "wizard" } });
+  assert.equal(t.state.entities[w].side, "party", dm.last("error")?.error);
+  dm.say({ t: "act", action: { type: "startEncounter", center: t.state.entities[w].pos } });
+  t.state.encounter.turn = t.state.encounter.order.findIndex((o) => o.id === w);
+  const before = dm.count("error");
+  dm.say({ t: "act", action: { type: "act", actor: w, action: "acid-breath", hex: { q: 4, r: -1 } } });
+  assert.equal(dm.count("error"), before, dm.last("error")?.error);
+  assert.ok(dm.raw.join("\n").includes('"dc":19'), "the DM is sent the DC");
+  assert.ok(pat.raw.join("\n").includes('"dc":19'), "its runner is sent the DC");
+  assert.equal(bo.raw.join("\n").includes('"dc":19'), false, "another player, live, is not");
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  dm.say({ t: "act", action: { type: "remove", actor: w } });
+  assert.equal(t.state.entities[w], undefined, dm.last("error")?.error);
+  asks(bo); asks(pat);
+  assert.equal(bo.raw.join("\n").includes('"dc":19'), false, "nor in the record, after it is gone");
+  assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "save" && e.dc === 19), "its runner has it in the record");
   clean();
 });
 
