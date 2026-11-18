@@ -1,7 +1,5 @@
 // Helpers shared by the casting AI's tests (stage AC1, #487; docs/specs/ai-casting.md, Testing).
-// The replays play a fight with the casters' spells put away, to show that every creature with no spells chooses
-// exactly as it did before the casting AI: `putAwaySpells` takes every creature's `spells` list and returns what it took,
-// `bringBackSpells` puts it back (so the end state is the recorded one).
+// The replays: `playAll` plays a fight with every creature by aiStep, `playMonsters` with the party passive (monsters byte-identical to main).
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { aiStep } from "../src/ai.js";
@@ -11,15 +9,6 @@ import { newGame } from "../src/scenario.js";
 import { apart } from "../src/space.js";
 import { DM, GRIDS, U1, U2, U3, ok, table, spawn } from "./c7-brain-kit.js";
 import { squareRoom } from "./fixtures/square-room.js";
-
-export function putAwaySpells(s) {
-  const kept = {};
-  for (const e of Object.values(s.entities)) if (e.spells?.length) { kept[e.id] = e.spells; e.spells = []; }
-  return kept;
-}
-export function bringBackSpells(s, kept) {
-  for (const [id, spells] of Object.entries(kept)) s.entities[id].spells = spells;
-}
 
 // ---------- scenes ----------
 export { GRIDS, DM, U1, U2, U3, ok, spawn, table };
@@ -99,3 +88,21 @@ export function playAll(s, max = 3000) {
   }
   return actions;
 }
+
+// The same fights with every party creature passive (it ends its turn) and every other creature played by aiStep: what the monster
+// AI chooses. A party creature is not played because a party creature reads the party's copy of the state and breaks ties between foes by
+// id (ai-casting.md, Decision 2 and amendment 4), so its choices differ from main's by design; a monster's must not (fixtures/ai-casting-monsters.json,
+// recorded on main before AC1).
+export function playMonsters(s, max = 3000) {
+  const actions = [];
+  for (let i = 0; i < max && s.encounter; i++) {
+    const id = current(s), e = s.entities[id];
+    const step = (e.side === "party" ? null : aiStep(s, id)) ?? { type: "endTurn", actor: id };
+    actions.push(step);
+    const r = apply(s, step, DM);
+    if (!r.ok) { actions.push({ refused: r.error }); apply(s, { type: "endTurn", actor: id }, DM); }
+  }
+  return actions;
+}
+// What a fight came to, in a form that does not move with the state's version: every creature's Hit Points, and whether it is dead.
+export const endOf = (s) => Object.fromEntries(Object.values(s.entities).map((e) => [e.id, [e.hp, e.dead ? 1 : 0]]));

@@ -64,6 +64,10 @@ function escaping(s, e, canHit) {
   return { type: 'escape', actor: e.id, from: easiest.by };
 }
 
+// Ties between foes at one distance break by the lower Hit Points for a monster, as ever. A party creature never reads a foe's
+// Hit Points (players are not sent them: ai-casting.md, Decision 2): it breaks them by id.
+const byHp = (e, x, y) => (e.side === 'party' ? 0 : x.hp - y.hp);
+
 // Move to the spot that brings it nearest to any foe, if that is nearer than where it stands.
 function approach(s, e, foes) {
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));       // between the nearest parts of the two, whatever their size
@@ -89,7 +93,7 @@ function profiled(actions) {
 function withActions(s, e, foes, lim = {}) {
   const id = e.id, end = { type: 'endTurn', actor: id }, b = s.encounter.budget;
   // Nearest first, then the most hurt, then by id, so the order never depends on anything else.
-  const order = [...foes].sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
+  const order = [...foes].sort((x, y) => apart(s, e, x) - apart(s, e, y) || byHp(e, x, y) || (x.id < y.id ? -1 : 1));
   const all = profiled(e.actions).filter((x) => x.p.harmful && !actionSpent(e, x.def) && (x.p.time === 'action' || b.bonus > 0) && !(lim.noAttack && rolled(x.p)));
   const reaches = (x, t) => x.p.aim === 'creature' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t) && !partRefusal(s, e, x.def, [t]);
   const act = (x, extra) => ({ type: 'act', actor: id, action: x.def.id, ...extra });
@@ -176,7 +180,7 @@ function withAttacks(s, e, foes, lim = {}) {
   if (cast) return cast;
   if (lim.noAttack) return end;
   const open = (t) => unblocked(s, e, t);                    // no wall or shut door in the way
-  const target = foes.reduce((a, f) => (apart(s, e, f) < apart(s, e, a) || (apart(s, e, f) === apart(s, e, a) && f.hp < a.hp) ? f : a));
+  const target = foes.reduce((a, f) => (apart(s, e, f) < apart(s, e, a) || (apart(s, e, f) === apart(s, e, a) && (e.side === 'party' ? f.id < a.id : f.hp < a.hp)) ? f : a));
   // Only an attack the engine would allow now (weapons.js: Two-Handed beside a Shield, a Loading weapon already fired this action).
   const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id));
   // The Unarmed Strike every built character has (derive.js) is only a last resort (weapons.js, spareStrike).
@@ -187,6 +191,8 @@ function withAttacks(s, e, foes, lim = {}) {
   // With none, it punches a foe beside it (and does not walk in to punch: that is the Dodge it took before).
   if (!melee && !ranged && d <= 1 && open(target)) melee = e.attacks.find((a) => spare(a) && allowed(a));
   const can = b.action > 0 || !!b.attacks;
+  // A party spellcaster that has cast this turn does not walk toward foes afterwards: it keeps the range it cast from (ai-casting.md, amendment 2).
+  const flags = s.encounter.flags ?? {}, cast1 = e.side === 'party' && !!e.spells?.length && !!(flags.slot || flags[`magic:${id}`]);
   // Held, with nothing to hit from here: it gets out (escaping).
   if (b.action > 0 && !b.attacks) {
     const freed = escaping(s, e, !!(melee && d <= 1 && open(target)) || !!(ranged && d * FT <= ranged.range[1] && open(target)));
@@ -195,9 +201,9 @@ function withAttacks(s, e, foes, lim = {}) {
   // Attacks it has but may not make now (a Shield and nothing but a Two-Handed weapon): it takes the Dodge action rather than lose the turn.
   if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.some((a) => !spare(a)) && !e.cond?.dodging) return { type: 'dodge', actor: id };
   if (can && melee && d <= 1 && open(target)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
-  if (melee && d > 1 && b.move >= FT) { const mv = approach(s, e, foes); if (mv) return mv; }
+  if (melee && d > 1 && b.move >= FT && !cast1) { const mv = approach(s, e, foes); if (mv) return mv; }
   if (can && ranged && d * FT <= ranged.range[1] && open(target)) return { type: 'attack', actor: id, target: target.id, attack: ranged.id };
-  if (b.action > 0 && melee && d > 1 && b.move < FT) return { type: 'dash', actor: id };
+  if (b.action > 0 && melee && d > 1 && b.move < FT && !cast1) return { type: 'dash', actor: id };
   return end;
 }
 
@@ -276,12 +282,18 @@ export function casterStep(s, e, foes, lim = {}) {
   const mine = Object.values(s.entities).filter((o) => !o.dead && !hostile(o, e) && inFight(s, o.id));
   const upMine = mine.filter(up), downMine = mine.filter((o) => !up(o) && o.id !== id);
   const missing = (o) => o.maxHp - o.hp, badly = (o) => up(o) && o.hp * 4 <= o.maxHp;
-  const hard = foes.length >= upMine.length || downMine.length > 0 || upMine.some(badly);
+  // A hard fight (amendment 1 to Decision 5): the foes able to act outnumber the creatures of its side able to act, or one of its side is
+  // at 0 Hit Points or at a quarter or less.
+  const able = (o) => !incapacitatedBy(o);
+  const hard = foes.filter(able).length > upMine.filter(able).length || downMine.length > 0 || upMine.some(badly);
   const near = (x, y) => apart(s, e, x) - apart(s, e, y) || idOrder(x, y);
   const order = [...foes].sort(near);
   const rank = new Map(order.map((t, i) => [t.id, i]));
   // A ranged spell attack made while an enemy that sees the caster and is not Incapacitated is within 5 feet has Disadvantage (SRD, 2059-2066).
-  const close = Object.values(s.entities).some((o) => up(o) && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && canSee(s, o, e) !== 'no');
+  // For a party creature, what the party can know: the foe's senses are a stat block it is not sent, so it assumes a foe beside it sees
+  // (unless it is Blinded, which the party sees). A foe's creature reads the engine's own test.
+  const sees = (o) => (e.side === 'party' ? !o.cond?.blinded : canSee(s, o, e) !== 'no');
+  const close = Object.values(s.entities).some((o) => up(o) && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && sees(o));
   const hit = (kind) => (kind === 'ranged' && close ? DISADV : HIT);
 
   // Slots. One slot a turn (the engine's rule), the lowest that can cast the spell, and one kept back for a downed ally by a caster that
@@ -306,11 +318,11 @@ export function casterStep(s, e, foes, lim = {}) {
   const targeting = (ids) => (ids.length === 1 ? { target: ids[0] } : { targets: ids });
 
   // A damage spell as the caster would cast it at `slot`: its best aim and what that is worth, or null if nothing can be aimed at.
-  const damaging = (x, slot) => {
+  const damaging = (x, slot, from = e) => {
     const sp = x.sp, most = targetCount(sp.def, e.level, Math.max(slot, sp.level)), p = perTarget(sp, slot);
     const pick = (hits, first, fields, several) => ({ x, slot, score: hits * p, hits, several, first, action: cast(x, slot, fields) });
     if (sp.aim === 'creature') {
-      const ins = order.filter((t) => reaches(sp, t));
+      const ins = order.filter((t) => reaches(sp, t, from));
       if (!ins.length) return null;
       // Rays, darts and beams all go at the first foe in order (Decision 4).
       if (sp.repeat) return { ...pick(1, rank.get(ins[0].id), targeting(Array(most).fill(ins[0].id)), false), score: most * p };
@@ -392,26 +404,42 @@ export function casterStep(s, e, foes, lim = {}) {
     }
   }
 
-  // The best damage for the action, as step 3 would choose it: { pick (a cast, or null for the weapon or nothing), score, unreached }.
-  let chosen = null;
+  // The best damage for the action, as step 3 would choose it: { pick (a cast or a move, or null for the weapon or nothing), score, unreached }.
+  // `unreached`: a cantrip it could cast but with no foe in its reach from where it stands.
+  let chosen = null, stops = null;
   const plan = () => {
     if (chosen) return chosen;
-    const free = [], paid = [];
-    let unreached = false;
+    const free = [], paid = [], unreached = [];
     for (const x of known) {
       if (x.kind !== 'damage' || !usable(x)) continue;
       const slot = slotFor(x.sp, true);
       if (slot === null) continue;
       const o = damaging(x, slot);
-      if (!o) { if (slot === 0) unreached = true; continue; }
+      if (!o) { if (slot === 0 && x.sp.aim === 'creature') unreached.push(x); continue; }
       (slot === 0 ? free : paid).push(o);
     }
     const weapon = weaponScore();
+    // A cantrip out of reach of every foe is cast from the nearest place it reaches from, not by walking up to them (amendment 2): the
+    // place in reach this turn that keeps the most distance from the foes, then the cheapest. No such place, and it does not walk in.
+    if (unreached.length && b.move >= FT) {
+      stops ??= [...moveOptions(s, e)].filter(([, v]) => v.canStop && !(v.h.q === e.pos.q && v.h.r === e.pos.r && (v.h.z ?? 0) === (e.pos.z ?? 0)));
+      for (const x of unreached) {
+        let go = null;
+        for (const [, v] of stops) {
+          const o = damaging(x, 0, { ...e, pos: v.h });
+          if (!o) continue;
+          const far = Math.min(...order.map((f) => apartAt(s, e, v.h, f, f.pos)));
+          if (!go || far > go.far || (far === go.far && v.cost < go.cost)) go = { o, far, cost: v.cost, h: v.h };
+        }
+        if (go) free.push({ ...go.o, action: { type: 'move', actor: id, to: go.h } });
+      }
+    }
     const bestFree = Math.max(weapon, ...free.map((o) => o.score));
-    // A slot is spent in a hard fight on what beats the best free option, else on an area or several targets that catch two foes or
-    // more and are worth twice the best free option (Decision 5).
-    const worthy = paid.filter((o) => (hard ? o.score > bestFree : o.several && o.hits >= 2 && o.score >= 2 * bestFree));
-    const top = [...free, ...worthy].sort((a, c) => c.score - a.score || a.slot - c.slot || (a.x.sp.time === 'bonus' ? 0 : 1) - (c.x.sp.time === 'bonus' ? 0 : 1) || a.x.i - c.x.i || a.first - c.first)[0];
+    const order3 = (a, c) => c.score - a.score || a.slot - c.slot || (a.x.sp.time === 'bonus' ? 0 : 1) - (c.x.sp.time === 'bonus' ? 0 : 1) || a.x.i - c.x.i || a.first - c.first;
+    // A slot is spent only on what is worth twice the best free option, and in a fight that is not hard only on an area or several targets
+    // that catch two foes or more (Decision 5 as amended): of those, the lowest slot level whose score is within a quarter of the best.
+    const worthy = paid.filter((o) => o.score >= 2 * bestFree && (hard || (o.several && o.hits >= 2))).sort(order3);
+    const top = worthy.length ? worthy.filter((o) => o.score >= 0.75 * worthy[0].score).sort((a, c) => a.slot - c.slot || order3(a, c))[0] : [...free].sort(order3)[0];
     chosen = top && top.score > weapon ? { pick: top, score: top.score, unreached } : { pick: null, score: weapon, unreached };
     return chosen;
   };
@@ -446,8 +474,8 @@ export function casterStep(s, e, foes, lim = {}) {
   const p = plan();
   if (p.pick) return p.pick.action;
   if (p.score > 0) return null;                                     // the weapon is the best: withAttacks makes it
-  // A spell it could cast with nobody in its range: it moves nearer first, as it would for a weapon.
-  if (p.unreached && b.action > 0 && b.move >= FT) return approach(s, e, foes);
+  // A cantrip it could cast with no foe in its reach, and no place in reach this turn to cast it from: it ends its turn rather than walk into melee.
+  if (p.unreached.length && b.action > 0) return { type: 'endTurn', actor: id };
   return null;
 }
 
@@ -601,7 +629,7 @@ function guard(s, e, foes, leash) {
 // them about.
 function protect(s, e, m, foes) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
-  const close = foes.filter((f) => apart(s, m, f) <= 1).sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
+  const close = foes.filter((f) => apart(s, m, f) <= 1).sort((x, y) => apart(s, e, x) - apart(s, e, y) || byHp(e, x, y) || (x.id < y.id ? -1 : 1));
   const moves = profiled(e.actions ?? []).filter((x) => x.p.harmful && x.p.time === 'action' && x.p.aim === 'creature' && !actionSpent(e, x.def));
   const reach = Math.max(FT, ...moves.filter((x) => x.p.roll === 'melee').map((x) => x.p.far));
   if (b.action > 0) {

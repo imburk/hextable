@@ -134,8 +134,8 @@ for (const grid of GRIDS) {
 
   test(`${grid}: the kept slot: one level 1 slot and a healing spell in a hard fight is not spent on Guiding Bolt, but is on Healing Word for a downed ally; one slot a turn`, () => {
     const sheet = (slots, spells) => (s) => { s.entities[CLERIC].spells = spells; s.entities[CLERIC].slots = { 1: slots }; };
-    // A hard fight by count: four goblins against four.
-    const hard = (s) => { for (const nth of [0, 6, 12, 18]) goblinAt(s, CLERIC, 8, nth); };
+    // A hard fight by count: five goblins against four.
+    const hard = (s) => { for (const nth of [0, 5, 10, 15, 20]) goblinAt(s, CLERIC, 8, nth); };
     const lone = scene(grid, (s) => { sheet(1, ["guiding-bolt", "healing-word"])(s); hard(s); }, CLERIC);
     const none = aiStep(lone, CLERIC);
     assert.ok(!none || !(none.type === "cast"), `the last slot is kept: ${json(none)}`);
@@ -289,3 +289,75 @@ for (const grid of GRIDS) {
     assert.deepEqual(skipped, grid === "square" ? ["circle-of-death", "freezing-sphere", "sunburst"] : [], "only what does not fit the room is left out");
   });
 }
+
+// ---------- fix round 1 (review of #488) ----------
+for (const grid of GRIDS) {
+  test(`${grid}: after it has cast, a caster does not walk toward the foes (amendment 2.1)`, () => {
+    const s = scene(grid, (s) => goblinAt(s, WIZARD, 12), WIZARD);
+    assert.equal(step(s, WIZARD).a.spell, "fire-bolt");
+    assert.deepEqual(aiStep(s, WIZARD), { type: "endTurn", actor: WIZARD }, "no move toward the goblin with the dagger");
+    const t = scene(grid, (s) => { for (const n of [0, 1, 2]) goblinAt(s, WIZARD, 2, n); }, WIZARD);
+    assert.equal(step(t, WIZARD).a.spell, "burning-hands");
+    assert.deepEqual(aiStep(t, WIZARD), { type: "endTurn", actor: WIZARD });
+  });
+
+  test(`${grid}: a cantrip out of range is cast from the farthest place that reaches, not from beside the foe (amendment 2.2)`, () => {
+    const s = scene(grid, (s) => { s.entities[WIZARD].spells = ["poison-spray"]; goblinAt(s, WIZARD, 7); }, WIZARD);
+    const g = Object.keys(s.entities).find((id) => s.entities[id].side === "foe");
+    const m = step(s, WIZARD).a;
+    assert.equal(m.type, "move");
+    assert.equal(apartFor(s, s.entities[WIZARD], s.entities[g]), 6, "30 ft, the cantrip's range, and no nearer");
+    assert.equal(step(s, WIZARD).a.spell, "poison-spray");
+  });
+}
+test("hex: no place in reach this turn from which Sacred Flame reaches: the cleric ends her turn, she does not Dash into melee", () => {
+  const s = scene("hex", (s) => { for (const id of [FIGHTER, "rogue", "wizard"]) ok(apply(s, { type: "remove", actor: id }, DM)); s.entities[CLERIC].speed = 10; goblinAt(s, CLERIC, 16); }, CLERIC);
+  assert.deepEqual(aiStep(s, CLERIC), { type: "endTurn", actor: CLERIC });
+});
+
+for (const grid of GRIDS) {
+  test(`${grid}: slots (amendment 1): a level 17 wizard alone against one goblin casts a cantrip; against three, of the slot spells within a quarter of the best it casts the lowest`, () => {
+    const big = (spells) => (s) => {
+      Object.assign(s.entities[WIZARD], { level: 17, spells, slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1, 7: 1, 8: 1, 9: 1 } });
+      for (const id of [FIGHTER, "rogue", CLERIC]) ok(apply(s, { type: "remove", actor: id }, DM));
+    };
+    const one = scene(grid, (s) => { big(["finger-of-death", "fire-bolt", "fireball"])(s); goblinAt(s, WIZARD, 5); }, WIZARD);
+    assert.equal(aiStep(one, WIZARD).spell, "fire-bolt");
+    const three = scene(grid, (s) => { big(["scorching-ray", "magic-missile"])(s); s.entities[WIZARD].attacks = []; for (const n of [0, 2, 4]) goblinAt(s, WIZARD, 6, n); }, WIZARD);
+    const a = aiStep(three, WIZARD);
+    assert.equal(a.spell, "magic-missile", "Scorching Ray scores more (13.7 against 10.5) but Magic Missile is within a quarter of it and a lower slot");
+    assert.equal(a.slot, undefined);
+    // Three foes able to act against one outnumber it; one foe Incapacitated does not count.
+    const stunned = structuredClone(three);
+    for (const id of Object.keys(stunned.entities)) if (stunned.entities[id].side === "foe") stunned.entities[id].cond.stunned = true;
+    assert.equal(aiStep(stunned, WIZARD)?.type === "cast" && aiStep(stunned, WIZARD).spell, false, "foes that cannot act do not make a hard fight");
+  });
+
+  test(`${grid}: a party creature breaks a tie between foes by id, never by their Hit Points; a monster's rule is as ever`, () => {
+    const hp = (a, b) => scene(grid, (s) => { goblinAt(s, FIGHTER, 1); goblinAt(s, FIGHTER, 1); const ids = Object.keys(s.entities).filter((id) => s.entities[id].side === "foe"); s.entities[ids[0]].hp = a; s.entities[ids[1]].hp = b; }, FIGHTER);
+    const x = aiStep(hp(7, 3), FIGHTER), y = aiStep(hp(3, 7), FIGHTER);
+    assert.equal(x.type, "attack");
+    assert.equal(x.target, y.target, "the same foe whichever has fewer Hit Points");
+    assert.equal(x.target, Object.keys(hp(7, 3).entities).filter((id) => hp(7, 3).entities[id].side === "foe")[0]);
+  });
+
+  test(`${grid}: close combat is read from what the party knows: an unseen caster is assumed seen by the foe beside it`, () => {
+    const s = scene(grid, (s) => goblinAt(s, WIZARD, 1), WIZARD);
+    ok(apply(s, { type: "condition", actor: WIZARD, condition: "invisible" }, DM));
+    assert.equal(aiStep(s, WIZARD).attack, "dagger", "the party cannot know whether the goblin sees an Invisible wizard: it assumes it does");
+  });
+}
+
+test("sight los: a stand-in fighter does not walk toward a foe behind a shut door it cannot know of; the same fight under rooms does", () => {
+  const make = (sight) => {
+    const s = table("square");
+    ok(apply(s, { type: "setting", key: "sight", value: sight }, DM));
+    put(s, FIGHTER, { q: 12, r: 10 });
+    spawn(s, "goblin-warrior", { q: 20, r: 10 }, { name: "Goblin" });
+    ok(apply(s, { type: "startEncounter", center: { q: 14, r: 10 }, radius: 12 }, DM));
+    for (let i = 0; i < 80 && current(s) !== FIGHTER; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    return s;
+  };
+  assert.deepEqual(aiStep(make("los"), FIGHTER), { type: "endTurn", actor: FIGHTER });
+  assert.equal(aiStep(make("rooms"), FIGHTER).type, "move");
+});

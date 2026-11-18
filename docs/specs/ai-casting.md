@@ -217,6 +217,34 @@ it for step 1: steps 2 and 3 do not spend it. A caster with no healing spell kee
 **One slot a turn** is the engine's rule (`flags.slot`, lines 23658-23664): after a Bonus Action Healing Word, a
 levelled action spell is not a candidate that turn, and a cantrip or the weapon is.
 
+**Amendment to Decision 5 (fix round 1 of #488, decided by the owner).** The rules above stand except where this says otherwise.
+
+- **A hard fight** is one where foes able to act outnumber the creatures of its side able to act (a creature that is
+  Incapacitated, dead or at 0 Hit Points does not count on either side), or a creature of its side is at 0 Hit Points,
+  or one has a quarter of its maximum or less. "At least as many" is no longer enough: a fight of even numbers is not hard.
+- **A slot spell is cast only if** its score is at least twice the best free option (a cantrip or the weapon), and either
+  the fight is hard, or it is an area or several targets that catches two foes or more. Of the slot spells that qualify,
+  the one cast is the lowest slot level whose score is within 25% of the best qualifying score (the best at an equal
+  score by the order of step 3). A level 17 wizard against one goblin casts a cantrip.
+- **A creature that has cast this turn does not close in.** `withAttacks` does not `approach` or Dash toward a foe after
+  a cast (the flag `flags.slot` or `flags["magic:<id>"]` says it cast); it may still step away, or end its turn. Step 4
+  of the turn is changed to that.
+- **A ranged option that has nothing in range moves only as far as it must.** The caster's `approach` goes to the stoppable
+  cell, within its Speed, from which the spell it means to cast (else its best ranged weapon) reaches a foe with a clear
+  line, and of those cells the one that keeps the most distance from the foes (then the cheapest). If no cell it can
+  reach gives a line, it does not Dash into melee: it ends its turn (or uses its weapon, if a foe is already beside it).
+- **Ties between foes break by distance, then id, for a party creature** here and wherever the AI ranks foes (the weapon
+  fall-through, `withActions`' order, `protect`'s `close` list), never by the foe's Hit Points, which a party creature must
+  not use (Decision 2). A monster's tie by Hit Points is unchanged.
+- **`close` reads what the party knows.** Whether a foe next to the caster can see it (it takes Disadvantage on a ranged spell
+  attack) is judged from what the party can know: a party creature does not read a foe's senses; it assumes the foe sees it,
+  unless it is Blinded (an open condition).
+- **Healing Word and Cure Wounds have no Undead or Construct exception** in SRD 5.2, and so the AI may cast them on any
+  creature of its side, a skeleton or a construct among them. Left as the SRD has it.
+- **For AC2.** `aiStep` reads the spell list of the table's pack (`SPELLS` and the homebrew overlay of a table's packs).
+  The caller of AC2 (the DM's screen, the server) must install the table's overlay around the call (`using`, `registry.js`),
+  as it does around `apply`; `aiStep` does not install it.
+
 ### Decision 6: Concentration
 
 - **Stage AC1 starts none.** A Concentration spell is not a candidate (Decision 3). So the AI can never end a spell
@@ -368,7 +396,7 @@ was silent or a choice had to be made; none of it changes a decision.
   `aimArea` throws the engine's `RuleError`, which engine.js does not export, so the AI recognises it by its class name and rethrows
   anything else.
 - **`aiStep` reads the party's copy for every unbonded party creature**, not only for casters (`knownTo`, as the brain does). A foe still
-  reads the true state, so the monster AI's choices are unchanged (`ai-casting-replay.test.js`).
+  reads the true state, so the monster AI's choices are unchanged (`companions-brain-replay.test.js`).
 - **The candidate list** is `aiCastable(sp)`: 30 damage spells and 4 healing spells on the pack as it is, pinned in
   `ai-casting.test.js`. `Number.isFinite` of the spell's worth is part of the test, so a spell whose dice the AI cannot read is not cast.
 - **Score.** The score of a step is worked out by walking its steps: `damage` (times `times`), `heal` (plus the modifier for `addMod`),
@@ -390,11 +418,16 @@ was silent or a choice had to be made; none of it changes a decision.
 - **Rays** (`repeat`) are sent as `targets` listing the one foe once per ray (`target` when there is one ray).
 - **The slot kept back** is counted over all slots of a level that can cast the lowest-level healing spell the caster knows: a damage
   spell may spend a slot of that kind only while another is left.
-- **Found in building, left as the spec has it:** after a cast, `withAttacks` plays on (Decision 5, step 4), so a caster with a melee
-  weapon and a move left walks toward the nearest foe, since `approach` is how a melee creature closes in. DEBT T75 (4).
+- **Fix round 1 (see the amendment to Decision 5).** Built as amended: no walk after a cast; the approach goes only as far as the
+  chosen option needs (`plan` in `casterStep` tries each stoppable cell with the spell's own reach, keeps the one farthest from the
+  foes); the slot rule is twice the best free option with the lowest slot within 25% of the best; a party creature breaks ties by
+  distance then id (`byHp` in `ai.js` gives 0 for a party creature, so a monster is unchanged); `close` assumes a foe sees a caster
+  unless it is Blinded. A test of the `sight: los` stand-in pins that a fighter does not walk to a foe behind a shut door it cannot
+  know of (`ai-casting.test.js`).
 - **Tests.** `ai-casting.test.js` (the spec's list, on both grids, plus the gates, a badly hurt ally, and every spell of the list sent to
   the engine); `ai-casting-replay.test.js` with `fixtures/ai-casting-replay.json` (re-record with `HEXTABLE_RECORD=1`);
   `ai-casting-stress.test.js` (200 rounds a grid, 2,400 with `HEXTABLE_STRESS=full`); `ai-casting-kit.js`. `companions-brain-replay.test.js`
-  puts the casters' spells away while it plays (and back for the end state): the casters now cast, so the recorded fights would
-  otherwise go another way; every other creature chooses as recorded.
+  is the monsters-byte-identical replay: the recorded fights are played with the party passive and every other creature by `aiStep`,
+  against `fixtures/ai-casting-monsters.json`, recorded on main's `ai.js` before AC1. It replaces the whole-fight recording
+  (`fixtures/c7-ai-replay.json`, the party played by `aiStep` too), which a party fighter's tie rule changes on purpose.
 - **Not done here:** AC2 (the DM's screen calls `aiStep` for a stand-in; `autoPlays` is unchanged), buffs and control (AC3).
