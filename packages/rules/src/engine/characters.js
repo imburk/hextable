@@ -98,7 +98,7 @@ export const handlers = {
   // gained (Wild Companion, Unarmed Strike, the pact forms...). Play state stays, as `setSheet` keeps it (`remake`).
   // { type: 'refresh', actor? }. With `actor`, that character; refused, nothing changes, when it has no sheet (typed in
   // by hand), is in a form, or its sheet no longer validates. Without, every party character with a sheet; one that
-  // can't be is skipped with a `note` for the DM, and each remake is all or nothing. In a fight or out of one.
+  // can't be is skipped with a DM-only `manual` event, and each remake is all or nothing. In a fight or out of one.
   refresh(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can refresh a character.');
     if (a.actor !== undefined) { refreshOne(s, ent(s, a.actor), ev); return; }
@@ -108,7 +108,7 @@ export const handlers = {
       try { refreshOne(s, e, ev); } catch (err) {
         if (!(err instanceof RuleError)) throw err;
         ev.length = mark;
-        ev.push({ type: 'note', id: e.id, text: `Not refreshed from its sheet. ${err.message.replace(/\.$/, '')}` });
+        ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `Not refreshed from its sheet. ${err.message}` });      // `partial`: for the DM alone (view.js), a sheet's problem is not the table's
       }
     }
   },

@@ -6,6 +6,7 @@ import { apply, ACTION_TYPES } from "../src/engine.js";
 import { PREGENS } from "../src/content/index.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
+import { viewEvents } from "../src/view.js";
 import { describeStep, mark } from "../src/history.js";
 import { SHEETS } from "./fixtures/sheets.js";
 
@@ -84,8 +85,8 @@ test("a character in a form is refused, and so is a monster or a missing creatur
   assert.equal(json(s), before);
   // Refresh-all skips it with a note and goes on to the others.
   const r = ok(apply(s, { type: "refresh" }, DM));
-  assert.equal(r.events.filter((x) => x.type === "note").length, 1);
-  assert.match(r.events.find((x) => x.type === "note").text, /form of a Cat/);
+  assert.equal(r.events.filter((x) => x.type === "manual").length, 1);
+  assert.match(r.events.find((x) => x.type === "manual").text, /form of a Cat/);
 });
 
 test("a sheet that no longer validates is refused with the problem named", () => {
@@ -108,10 +109,14 @@ test("refresh-all: a bad sheet is skipped with one note, none of it changes, the
   assert.equal(json(s.entities.pc2), bad, "the bad one is exactly as it was");
   assert.equal(json(s.entities.rogue), rogue, "a hand-typed one is left alone");
   assert.deepEqual(r.events.filter((x) => x.type === "edited"), [{ type: "edited", id: "pc1" }]);
-  const notes = r.events.filter((x) => x.type === "note");
+  const notes = r.events.filter((x) => x.type === "manual");
   assert.equal(notes.length, 1);
-  assert.equal(notes[0].id, "pc2");
+  assert.deepEqual([notes[0].actor, notes[0].partial], ["pc2", true]);
   assert.match(notes[0].text, /^Not refreshed from its sheet\. /);
+  // For the DM alone: a player's view of the same events has no such note, nor anything of the skip.
+  assert.deepEqual(viewEvents(r.events, s, DM).filter((x) => x.type === "manual").length, 1);
+  assert.deepEqual(viewEvents(r.events, s, PAT), [{ type: "edited", id: "pc1" }], "a player is told of the refreshed character only");
+  assert.ok(!json(viewEvents(r.events, s, PAT)).includes("Not refreshed"));
 });
 
 test("refresh-all with nothing to refresh still succeeds", () => {
