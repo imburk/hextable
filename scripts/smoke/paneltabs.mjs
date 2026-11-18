@@ -324,6 +324,16 @@ export async function martial(browser, url, label, opts) {
           await idle(page);
           ({ spots, error } = await spotsFor(page, 'goblin-warrior', { near: who, min: 1, radius: 1 }));
         }
+        // Still none (a tree, water and the party round it): the character is placed on a free hex of the map that has a free neighbour, asked of the engine.
+        if (!spots.length) {
+          const { spots: far } = await spotsFor(page, 'goblin-warrior', { near: who, min: 2, radius: 8 });
+          for (const h of far) {
+            await ev(([i, to]) => window.hextable.act({ type: 'place', actor: i, to }), [who, h]);
+            await idle(page);
+            ({ spots, error } = await spotsFor(page, 'goblin-warrior', { near: who, min: 1, radius: 1 }));
+            if (spots.length) break;
+          }
+        }
         if (!spots.length) throw new Error(`no free hex beside the character: ${error}`);
         // The one that shows furthest from it on the screen (one behind its pawn cannot be tapped) goes first.
         const around = await ev(([i, at]) => {
