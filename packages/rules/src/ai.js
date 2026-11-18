@@ -5,9 +5,10 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
+import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
-import { actionProfile } from './effects.js';
+import { SPELLS } from './content/index.js';
+import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
@@ -36,13 +37,16 @@ export function aiStep(s, id, opts) {
   // control): on a turn of its own (its rider got back on after its place) it is offered nothing it would be refused,
   // and its turn ends (DEBT W24).
   if (steering(s, e)) return end;
+  // A party creature acts only on what the party knows (ai-casting.md, Decision 2): it reads the copy the companion brain reads,
+  // with the creatures the party is not told of left out. A foe reads the true state, as it always has (`knownTo` returns `s`).
+  const k = knownTo(s, e);
   // It does not act on creatures it has not found.
-  const foes = Object.values(s.entities).filter((o) => up(o) && hostile(o, e) && inFight(s, o.id) && aware(s, e, o));
+  const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
-  const b = s.encounter.budget;
-  if (s.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(s, e)) return { type: 'hide', actor: id };
+  const b = k.encounter.budget;
+  if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
-  return e.actions ? withActions(s, e, foes) : withAttacks(s, e, foes);
+  return e.actions ? withActions(k, e, foes) : withAttacks(k, e, foes);
 }
 
 // Move to the spot that brings it nearest to any foe, if that is nearer than where it stands.
@@ -145,9 +149,14 @@ function withActions(s, e, foes, lim = {}) {
   return end;
 }
 
-// A creature with flat attack records only (a monster from a game saved without its template).
-function withAttacks(s, e, foes) {
+// A creature with flat attack records only (a monster from a game saved without its template, a built character).
+// A built spellcaster casts first (casterStep, below); what it does not cast, it plays as any creature with attacks does.
+// `lim.noAttack`: a companion that can't attack casts only spells with no attack roll and otherwise ends its turn.
+function withAttacks(s, e, foes, lim = {}) {
   const id = e.id, end = { type: 'endTurn', actor: id }, b = s.encounter.budget;
+  const cast = casterStep(s, e, foes, lim);
+  if (cast) return cast;
+  if (lim.noAttack) return end;
   const open = (t) => unblocked(s, e, t);                    // no wall or shut door in the way
   const target = foes.reduce((a, f) => (apart(s, e, f) < apart(s, e, a) || (apart(s, e, f) === apart(s, e, a) && f.hp < a.hp) ? f : a));
   // Only an attack the engine would allow now (weapons.js: Two-Handed beside a Shield, a Loading weapon already fired this action).
@@ -167,6 +176,256 @@ function withAttacks(s, e, foes) {
   if (can && ranged && d * FT <= ranged.range[1] && open(target)) return { type: 'attack', actor: id, target: target.id, attack: ranged.id };
   if (b.action > 0 && melee && d > 1 && b.move < FT) return { type: 'dash', actor: id };
   return end;
+}
+
+// ---------- a built spellcaster's spells (docs/specs/ai-casting.md, stage AC1) ----------
+// A built character the AI plays (a creature with `spells` and no `actions`) casts its damage and healing spells before it
+// attacks with a weapon. Everything here is the AI's choice, not an SRD rule, so it is a rule of the spec: see the spec's
+// Decisions 3 to 7. It reads the state it is given (for a party creature, the copy of `knownTo`) and never writes to it. It
+// uses no die, no clock and no number the players are not sent (no monster Armor Class, save bonus or Hit Points): every
+// attack roll lands 0.65 of the time, a save fails 0.5 of the time, whoever the target is, so the same state gives the same
+// answer and a choice says nothing a player could not have known.
+const SHAPE = new WeakMap();
+const HIT = 0.65, DISADV = HIT * HIT;                           // an attack roll lands; the same with Disadvantage (ai-casting.md, Decision 4)
+const FAIL = 0.5, FAIL_HALF = 0.75;                             // a save that does nothing on a success; one that still halves the damage
+const refusal = (err) => err?.constructor?.name === 'RuleError';  // what aimArea throws for an area it cannot lay out
+const idOrder = (x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
+// The average of "NdM+k" (or "k"): NaN for anything else.
+function avgOf(dice) {
+  if (typeof dice !== 'string') return NaN;
+  const m = /^(?:(\d+)d(\d+))?([+-]?\d+)?$/.exec(dice);
+  if (!m || (m[1] === undefined && m[3] === undefined)) return NaN;
+  return (m[1] ? (+m[1] * (+m[2] + 1)) / 2 : 0) + (m[3] ? +m[3] : 0);
+}
+// What one creature is worth to a spell's steps: the expected damage, or for healing the expected Hit Points regained
+// (before they are capped at what the target is missing). `hit` is the chance of an attack roll landing (it depends on
+// the attack's kind), `heal` what the caster's spellcasting modifier adds to a healing roll.
+function worth(steps, hit, heal) {
+  let t = 0;
+  for (const st of steps ?? []) {
+    if ('damage' in st) t += avgOf(st.damage) * (st.times ?? 1);
+    else if ('heal' in st) t += avgOf(st.heal) + (st.addMod ? heal : 0);
+    else if ('attack' in st) { const p = hit(st.attack); t += p * worth(st.onHit, hit, heal) + (1 - p) * worth(st.onMiss, hit, heal); }
+    else if ('save' in st) { const f = st.half ? FAIL_HALF : FAIL; t += f * worth(st.onFail, hit, heal) + (1 - FAIL) * worth(st.onSuccess, hit, heal); }
+  }
+  return t;
+}
+// What a spell is to the casting AI: { kind: 'damage' | 'heal', attack } or null if the AI does not cast it
+// (Decision 3). Worked out from the spell's data, so a homebrew spell of the same shape joins.
+function shapeOf(sp) {
+  if (SHAPE.has(sp)) return SHAPE.get(sp);
+  let out = null;
+  const d = sp.def;
+  if (d && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
+    let plain = true, dmg = false, heal = false, attack = false;
+    walk(d.effects, (st) => {
+      const kind = stepKind(st);
+      if (!['attack', 'save', 'damage', 'heal', 'modifier', 'condition', 'move'].includes(kind)) plain = false;
+      if (kind === 'damage') dmg = true;
+      if (kind === 'heal') heal = true;
+      if (kind === 'attack') attack = true;
+    });
+    if (plain && dmg !== heal && (dmg ? sp.harmful : !sp.harmful) && Number.isFinite(worth(d.effects, () => HIT, 0))) out = { kind: dmg ? 'damage' : 'heal', attack };
+  }
+  SHAPE.set(sp, out);
+  return out;
+}
+// Does the casting AI cast this spell, and as damage or healing? ('damage', 'heal' or null; the tests print the list from the pack.)
+export const aiCastable = (sp) => shapeOf(sp)?.kind ?? null;
+
+// One action of a built spellcaster's turn, or null if it has none to cast (then `withAttacks` plays on: a weapon, a move, the end
+// of its turn). The order is Decision 5: (1) a creature of its side at 0 Hit Points; (2) one badly hurt, in a hard fight; (3) the best
+// damage, paying for a slot only where the spec says.
+export function casterStep(s, e, foes, lim = {}) {
+  const enc = s.encounter, b = enc?.budget, id = e.id;
+  // Not in a fight, in the middle of an Attack action, or nothing left to cast with.
+  if (!enc || !b || b.attacks || (b.action < 1 && b.bonus < 1)) return null;
+  if (!e.spells?.length || e.actions || e.form || incapacitatedBy(e) || (s.effects ?? []).some((fx) => fx.source === id && fx.noSpells)) return null;
+  const flags = enc.flags ?? {};
+  const known = [];
+  e.spells.forEach((sid, i) => {
+    const sp = Object.hasOwn(SPELLS, sid) ? SPELLS[sid] : null, sh = sp && shapeOf(sp);
+    if (sh && !(lim.noAttack && sh.attack)) known.push({ sp, i, kind: sh.kind });
+  });
+  if (!known.length) return null;
+
+  // What it reads of its own side: Hit Points are in every party creature's open record.
+  const mine = Object.values(s.entities).filter((o) => !o.dead && !hostile(o, e) && inFight(s, o.id));
+  const upMine = mine.filter(up), downMine = mine.filter((o) => !up(o) && o.id !== id);
+  const missing = (o) => o.maxHp - o.hp, badly = (o) => up(o) && o.hp * 4 <= o.maxHp;
+  const hard = foes.length >= upMine.length || downMine.length > 0 || upMine.some(badly);
+  const near = (x, y) => apart(s, e, x) - apart(s, e, y) || idOrder(x, y);
+  const order = [...foes].sort(near);
+  const rank = new Map(order.map((t, i) => [t.id, i]));
+  // A ranged spell attack made while an enemy that sees the caster and is not Incapacitated is within 5 feet has Disadvantage (SRD, 2059-2066).
+  const close = Object.values(s.entities).some((o) => up(o) && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && canSee(s, o, e) !== 'no');
+  const hit = (kind) => (kind === 'ranged' && close ? DISADV : HIT);
+
+  // Slots. One slot a turn (the engine's rule), the lowest that can cast the spell, and one kept back for a downed ally by a caster that
+  // knows a healing spell: `keep` is true for every cast but the first step's.
+  const left = (l) => e.slots?.[l] ?? 0;
+  const mends = known.filter((x) => x.kind === 'heal' && x.sp.level > 0).map((x) => x.sp.level);
+  const keepFrom = mends.length ? Math.min(...mends) : null;
+  const pool = () => { let n = 0; for (let l = keepFrom; l <= 9; l++) n += left(l); return n; };
+  const slotFor = (sp, keep) => {
+    if (sp.level === 0) return 0;
+    if (flags.slot) return null;
+    for (let l = sp.level; l <= 9; l++) if (left(l) > 0) return keep && keepFrom !== null && l >= keepFrom && pool() < 2 ? null : l;
+    return null;
+  };
+  const usable = (x) => (x.sp.time === 'action' ? b.action > 0 && !(flags[`surge:${id}`] && flags[`magic:${id}`]) : b.bonus > 0);
+  const cast = (x, slot, fields) => ({ type: 'cast', actor: id, spell: x.sp.id, ...(slot > x.sp.level ? { slot } : {}), ...fields });
+  // Can the spell, cast from `from`, reach this creature: in range, nothing solid between, and seen.
+  const reaches = (sp, t, from = e, harmful = true) => !t.dead && inFight(s, t.id) && (t.id === from.id ? !harmful : apart(s, from, t) * FT <= sp.range && unblocked(s, from, t) && canSee(s, from, t) !== 'no');
+  const caught = (sp, hex) => { try { return aimArea(s, e, sp.name, sp.area, sp.range, hex).targets; } catch (err) { if (refusal(err)) return null; throw err; } };
+  const perTarget = (sp, slot) => worth(scaleSteps(sp.def, e.level, sp.level > 0 ? slot : 0).steps, hit, mod(e.abil[castAbilOf(e, sp.id)] ?? 10));
+  const hex = (t) => ({ q: t.pos.q, r: t.pos.r, z: t.pos.z });
+  const targeting = (ids) => (ids.length === 1 ? { target: ids[0] } : { targets: ids });
+
+  // A damage spell as the caster would cast it at `slot`: its best aim and what that is worth, or null if nothing can be aimed at.
+  const damaging = (x, slot) => {
+    const sp = x.sp, most = targetCount(sp.def, e.level, Math.max(slot, sp.level)), p = perTarget(sp, slot);
+    const pick = (hits, first, fields, several) => ({ x, slot, score: hits * p, hits, several, first, action: cast(x, slot, fields) });
+    if (sp.aim === 'creature') {
+      const ins = order.filter((t) => reaches(sp, t));
+      if (!ins.length) return null;
+      // Rays, darts and beams all go at the first foe in order (Decision 4).
+      if (sp.repeat) return { ...pick(1, rank.get(ins[0].id), targeting(Array(most).fill(ins[0].id)), false), score: most * p };
+      if (most === 1) return pick(1, rank.get(ins[0].id), { target: ins[0].id }, false);
+      let best = null;
+      for (const first of ins) {
+        const list = [first, ...ins.filter((t) => t !== first && (!sp.within || apart(s, first, t) * FT <= sp.within))].slice(0, most);
+        if (!best || list.length > best.length) best = list;
+      }
+      return pick(best.length, rank.get(best[0].id), targeting(best.map((t) => t.id)), true);
+    }
+    // An area: the spot that catches the most foes and none of its own side, a spell with `choose` picking foes only.
+    let best = null;
+    for (const t0 of sp.area.shape === 'emanation' ? [null] : order) {
+      const at = t0 ? hex(t0) : undefined, got = caught(sp, at);
+      if (!got) continue;
+      if (!sp.area.choose && got.some((t) => !hostile(t, e))) continue;
+      const foesIn = (sp.area.choose ? order.filter((t) => got.includes(t)) : got).filter((t) => up(t) && inFight(s, t.id));
+      const picked = sp.area.choose ? foesIn.slice(0, most) : foesIn;
+      if (picked.length && (!best || picked.length > best.hits)) best = { hits: picked.length, first: t0 ? rank.get(t0.id) : 0, fields: { ...(at ? { hex: at } : {}), ...(sp.area.choose ? { targets: picked.map((t) => t.id) } : {}) } };
+    }
+    return best && pick(best.hits, best.first, best.fields, true);
+  };
+
+  // A healing spell cast at `slot`, one that includes `anchor` (a creature that must be healed) if given: what it is worth, capped
+  // at what each creature is missing.
+  const healing = (x, slot, anchor = null) => {
+    const sp = x.sp, most = targetCount(sp.def, e.level, Math.max(slot, sp.level)), p = perTarget(sp, slot);
+    const value = (t) => Math.min(p, missing(t));
+    const best = (list) => [...list].sort((a, c) => value(c) - value(a) || idOrder(a, c));
+    const done = (list, fields) => ({ x, slot, score: list.reduce((n, t) => n + value(t), 0), first: 0, action: cast(x, slot, fields) });
+    if (sp.aim === 'creature') {
+      const able = mine.filter((t) => missing(t) > 0 && reaches(sp, t, e, false));
+      if (anchor && !able.includes(anchor)) return null;
+      const first = anchor ?? best(able)[0];
+      if (!first) return null;
+      const list = [first, ...best(able.filter((t) => t !== first && (!sp.within || apart(s, first, t) * FT <= sp.within)))].slice(0, most);
+      return done(list, targeting(list.map((t) => t.id)));
+    }
+    let top = null;
+    for (const t of [...mine].filter((o) => missing(o) > 0).sort(near)) {
+      if (anchor && t !== anchor) continue;
+      const got = caught(sp, sp.area.shape === 'emanation' ? undefined : hex(t));
+      if (!got || !got.includes(t) || (!sp.area.choose && got.some((o) => hostile(o, e)))) continue;
+      const list = best(got.filter((o) => !hostile(o, e) && missing(o) > 0 && inFight(s, o.id)));
+      const chosen = sp.area.choose ? [t, ...list.filter((o) => o !== t)].slice(0, most) : list;
+      const o = done(chosen, { ...(sp.area.shape === 'emanation' ? {} : { hex: hex(t) }), ...(sp.area.choose ? { targets: chosen.map((c) => c.id) } : {}) });
+      if (!top || o.score > top.score) top = o;
+    }
+    return top;
+  };
+  // The cheapest way: the lowest slot, then the spell's place in `spells`.
+  const cheaper = (a, c) => a.slot - c.slot || a.x.i - c.x.i;
+  const heal = (time, keep, anchor) => {
+    const out = [];
+    for (const x of known) {
+      if (x.kind !== 'heal' || x.sp.time !== time || !usable(x)) continue;
+      const slot = slotFor(x.sp, keep), o = slot === null ? null : healing(x, slot, anchor);
+      if (o) out.push(o);
+    }
+    return out.sort(cheaper)[0] ?? null;
+  };
+
+  // 1. A creature of its side at 0 Hit Points, dying first, then Stable, the nearest first: a Bonus Action spell that reaches it, else an
+  // action spell that reaches it, else a step to within Touch for an action spell that needs it. This may spend the slot kept back.
+  const downed = downMine.sort((x, y) => (dying(x) ? 0 : 1) - (dying(y) ? 0 : 1) || near(x, y));
+  for (const t of downed) { const o = heal('bonus', false, t) ?? heal('action', false, t); if (o) return o.action; }
+  if (b.action > 0 && b.move >= FT && downed.length) {
+    for (const t of downed) {
+      const touch = known.filter((x) => x.kind === 'heal' && x.sp.time === 'action' && x.sp.aim === 'creature' && usable(x) && x.sp.range <= FT && slotFor(x.sp, false) !== null).sort((a, c) => a.sp.level - c.sp.level || a.i - c.i)[0];
+      if (!touch) break;
+      let go = null;
+      for (const [, v] of moveOptions(s, e)) {
+        if (!v.canStop || (v.h.q === e.pos.q && v.h.r === e.pos.r && (v.h.z ?? 0) === (e.pos.z ?? 0))) continue;
+        const there = { ...e, pos: v.h };
+        if (apartAt(s, e, v.h, t, t.pos) * FT <= touch.sp.range && unblocked(s, there, t) && canSee(s, there, t) !== 'no' && (!go || v.cost < go.cost)) go = { cost: v.cost, h: v.h };
+      }
+      if (go) return { type: 'move', actor: id, to: go.h };
+    }
+  }
+
+  // The best damage for the action, as step 3 would choose it: { pick (a cast, or null for the weapon or nothing), score, unreached }.
+  let chosen = null;
+  const plan = () => {
+    if (chosen) return chosen;
+    const free = [], paid = [];
+    let unreached = false;
+    for (const x of known) {
+      if (x.kind !== 'damage' || !usable(x)) continue;
+      const slot = slotFor(x.sp, true);
+      if (slot === null) continue;
+      const o = damaging(x, slot);
+      if (!o) { if (slot === 0) unreached = true; continue; }
+      (slot === 0 ? free : paid).push(o);
+    }
+    const weapon = weaponScore();
+    const bestFree = Math.max(weapon, ...free.map((o) => o.score));
+    // A slot is spent in a hard fight on what beats the best free option, else on an area or several targets that catch two foes or
+    // more and are worth twice the best free option (Decision 5).
+    const worthy = paid.filter((o) => (hard ? o.score > bestFree : o.several && o.hits >= 2 && o.score >= 2 * bestFree));
+    const top = [...free, ...worthy].sort((a, c) => c.score - a.score || a.slot - c.slot || (a.x.sp.time === 'bonus' ? 0 : 1) - (c.x.sp.time === 'bonus' ? 0 : 1) || a.x.i - c.x.i || a.first - c.first)[0];
+    chosen = top && top.score > weapon ? { pick: top, score: top.score, unreached } : { pick: null, score: weapon, unreached };
+    return chosen;
+  };
+  // What the best weapon attack `withAttacks` would make now is worth: 0.65 of its average damage, for each attack the Attack action
+  // gives (the same with Disadvantage for a ranged one with an enemy within 5 feet). A melee one counts if a foe is beside it or a
+  // step would put it there. Spare Unarmed Strike is only a last resort, so it counts for nothing.
+  function weaponScore() {
+    if (b.action < 1) return 0;
+    const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id)), atks = e.attacks ?? [], times = 1 + (e.features?.extraAttack ?? 0);
+    const melee = steadiest(e, atks.filter((a) => a.type === 'melee' && !spareStrike(e, a) && allowed(a)));
+    const ranged = steadiest(e, atks.filter((a) => a.type === 'ranged' && allowed(a)));
+    let w = 0;
+    const value = (a, p) => { const v = p * avgOf(a.damage) * times; return Number.isFinite(v) ? v : 0; };
+    if (melee && (order.some((t) => apart(s, e, t) <= 1 && unblocked(s, e, t)) || closeIn())) w = value(melee, HIT);
+    if (ranged && order.some((t) => apart(s, e, t) * FT <= (ranged.range?.[1] ?? 0) && unblocked(s, e, t))) w = Math.max(w, value(ranged, hit('ranged')));
+    return w;
+  }
+  const closeIn = () => {
+    if (b.move < FT) return false;
+    for (const [, v] of moveOptions(s, e)) if (v.canStop && order.some((t) => apartAt(s, e, v.h, t, t.pos) <= 1)) return true;
+    return false;
+  };
+
+  // 2. A creature of its side badly hurt, in a hard fight: a Bonus Action spell, else an action spell if it heals more than the best damage is worth.
+  if (hard) {
+    const sick = upMine.filter(badly).sort((x, y) => x.hp * y.maxHp - y.hp * x.maxHp || near(x, y));
+    for (const t of sick) { const o = heal('bonus', true, t); if (o) return o.action; }
+    for (const t of sick) { const o = heal('action', true, t); if (o && o.score > plan().score) return o.action; }
+  }
+
+  // 3. The action.
+  const p = plan();
+  if (p.pick) return p.pick.action;
+  if (p.score > 0) return null;                                     // the weapon is the best: withAttacks makes it
+  // A spell it could cast with nobody in its range: it moves nearer first, as it would for a weapon.
+  if (p.unreached && b.action > 0 && b.move >= FT) return approach(s, e, foes);
+  return null;
 }
 
 // ---------- the companion brain (docs/specs/companions.md, Decision 9; stage C7) ----------
@@ -278,7 +537,7 @@ export function companionStep(s, id, opts = {}) {
   const end = { type: 'endTurn', actor: id }, b = k.encounter.budget, noAttack = e.bond.noAttack === true;
   if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
-  const a = e.actions ? withActions(k, e, foes, { noAttack }) : noAttack ? end : withAttacks(k, e, foes);
+  const a = e.actions ? withActions(k, e, foes, { noAttack }) : withAttacks(k, e, foes, { noAttack });
   return noAttack && a.type === 'endTurn' ? guard(k, e, others, leash) : a;
 }
 const rolled = (p) => p.roll === 'melee' || p.roll === 'ranged' || p.aim === 'multi';
