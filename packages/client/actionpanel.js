@@ -22,6 +22,7 @@ import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices } from './classes.js';
 import { shownName } from './tracker.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
+import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
@@ -117,6 +118,8 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const uses = usesFor(S, e).map((u) => row({ id: `use:${u.object}:${u.verb}`, kind: 'use', label: u.label,
     sub: `${u.name}${enc ? (u.time === 'free' ? ' · free once a turn' : ' · Action') : ''}`, why: u.why, send: { type: 'use', actor: e.id, object: u.object, verb: u.verb } }));
   const objects = [...uses.filter((u) => !u.why), ...uses.filter((u) => u.why)];
+  // 1b. A hold: breaking free (nothing is spent outside a fight) and letting go come first, since a held creature can't walk.
+  const holds = holdRows(S, e), hold = [...holds.escape, ...holds.letGo].map((r) => row(r));
   // 2. Following. "Lead the party" is for whoever controls `e` (a player for their own creature, the DM for anyone; this panel is only ever
   // drawn for a creature the viewer controls), and "Formation..." while someone follows `e` (formation.js).
   const follows = [];
@@ -172,7 +175,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   // 9. A check, from the sheet's skills.
   const check = row({ id: 'check', kind: 'check', label: 'Check…', sub: 'Skills, on the sheet' });
 
-  const head = [...objects], tail = [...dark, hide, ...rituals, check];
+  const head = [...hold, ...objects], tail = [...dark, hide, ...rituals, check];
   const base = [...follows, ...aid, ...(weary ? rests : [])];
   let list;
   if (found) list = [...head, search, ...base, ...tail];                                  // something was just found or sprung: Search moves up
@@ -255,6 +258,7 @@ export function attackRows(S, e, { mode = null } = {}) {
     rows.push(row);
     const strike = strikeRow(S, e, a, row, mode);
     if (strike) rows.push(strike);
+    rows.push(...strikeRows(S, e, a, row, mode));                  // Grapple, Shove and Punch and Grab: the Unarmed Strike's other options (grapple.js)
   }
   return rows;
 }
@@ -487,10 +491,10 @@ export function handRows(S, e, { dm = false } = {}) {
 
 // The rows of the tab `id` for `e` ('' for a tab with none). One place for the shell and the tests.
 export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
-  if (id === 'attacks') return attackRows(S, e, { mode });
+  if (id === 'attacks') { const h = holdRows(S, e); return [...h.escape, ...attackRows(S, e, { mode }), ...h.letGo]; }       // breaking free comes first for a held creature: nothing else is likely worth its action
   if (id === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
   if (id === 'move') return moveRows(S, e, { fly });
-  if (id === 'features') return featureRows(S, e, { mode });
+  if (id === 'features') return [...featureRows(S, e, { mode }), ...holdRows(S, e).letGo];
   if (id === 'spells') return spellRows(S, e, { mode });
   return [];
 }
@@ -520,7 +524,9 @@ export function howItEnds(S, e, key, { mine = false } = {}) {
     const def = conditionDef(id), by = effectsOn(S, e).filter((fx) => fx.parts.some((p) => p.target === e.id && p.cond === id && !p.ended));
     const lines = [def?.text ?? ''];
     if (id === 'prone') lines.push('You stand at the start of your turn, for half your Speed.');
+    const held = id === 'grappled' ? howHeldEnds(S, e) : [];
     if (by.length) for (const fx of by) lines.push(`From ${fx.name}${untilText(S, fx) ? `: ${untilText(S, fx)}` : ''}.`);
+    else if (held.length) lines.push(...held);
     else lines.push('Until the DM removes it.');
     return { title: conditionName(id) + (e.cond?.[id]?.level ? ` ${e.cond[id].level}` : ''), lines: lines.filter(Boolean), end: null };
   }
@@ -543,7 +549,7 @@ export function statusHtml(S, e, { mine = false, full = false, formLabel = '', b
     (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
     Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
     plain + (formLabel ? `<b class="form">${esc(formLabel)} form</b>` : '') + (dying ? pill('dying', esc(dying)) : '') + (e.hidden ? '<span>Hidden from players</span>' : '') +
-    conds.map((c) => pill(`cond:${c}`, esc(conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : '')))).join('') + lasting;
+    conds.map((c) => pill(`cond:${c}`, esc(c === 'grappled' ? heldText(S, e) : conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : '')))).join('') + lasting;
 }
 
 // ---------- the page ----------
@@ -867,7 +873,7 @@ export function initActionPanel(ctx) {
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
       const fly = ctx.flyInfo(e);
-      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: attackRows(S, e).length > 0, features: featureRows(S, e).length > 0 || (ctx.comp?.rows(e).features.length ?? 0) + (ctx.comp?.rows(e).move.length ?? 0) > 0, items: itemRows(S, e, { dm }).any };
+      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: tabRows(S, e, 'attacks').length > 0 || (ctx.comp?.rows(e).attacks.length ?? 0) > 0, features: featureRows(S, e).length > 0 || holdRows(S, e).letGo.length > 0 || (ctx.comp?.rows(e).features.length ?? 0) + (ctx.comp?.rows(e).move.length ?? 0) > 0, items: itemRows(S, e, { dm }).any };
       tabsNow = visibleTabs(ctxNow, has);
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
@@ -893,8 +899,9 @@ export function initActionPanel(ctx) {
         // Companions (companions.js): rows beside the others, and the picker one of them opened.
         const cr = ctx.comp?.rows(e);
         if (cr) {
+          if (tab === 'attacks') list = [...list, ...cr.attacks];
           if (tab === 'features') list = [...list, ...cr.features, ...cr.move];       // riding is also a Move-tab row, but the Move tab is there only on a turn
-          if (tab === 'bonus') { const have = new Set(list.map((r) => r.id)); list = [...list, ...cr.features.filter((r) => r.time === 'bonus' && !have.has(r.id))]; if (list.length && !/ap-why-line/.test(head)) head = head.replace('Nothing this creature has costs a Bonus Action.', ''); }
+          if (tab === 'bonus') { const have = new Set(list.map((r) => r.id)); list = [...list, ...[...cr.features, ...cr.attacks].filter((r) => r.time === 'bonus' && !have.has(r.id))]; if (list.length && !/ap-why-line/.test(head)) head = head.replace('Nothing this creature has costs a Bonus Action.', ''); }
           if (tab === 'move') list = [...list, ...cr.move];
           head += ctx.comp.picker(e);
         }

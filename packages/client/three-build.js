@@ -404,6 +404,18 @@ export function buildEdge({ map, enc, theme: th, ceiling, only = null, tall = 2.
   return { b: only || edgeLook(th) ? eb : new Builder(G), base };
 }
 
+// Who holds whom, for the line on the map (docs/specs/grapple-shove.md, "Client controls"): [{ by, t }] with both creatures in the state, standing on
+// the map and not dead. A record with `holds` (the DM's screen, a party member's own) names them; one a player was sent as seen has only `heldBy`.
+export function grapplePairs(s) {
+  const out = [];
+  for (const t of Object.values(s?.entities ?? {})) {
+    if (t.dead || !t.pos) continue;
+    const holds = t.cond?.grappled?.holds, by = Array.isArray(holds) ? holds.map((h) => h.by) : Array.isArray(t.heldBy) ? t.heldBy : [];
+    for (const id of by) { const g = s.entities[id]; if (g && g.pos && !g.dead && id !== t.id) out.push({ by: id, t: t.id }); }
+  }
+  return out;
+}
+
 // Highlights, lasting zones, the marks under fliers, rings, the editor's pins and the bars across steps a wall stops.
 export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bars = [], barZ = 0 }) {
   const G = gridOf(s.map), b = new Builder(G), c = th.hl;
@@ -429,6 +441,15 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
   for (const id of hl.allies) ringOn(id, c.ally);
   if (hl.turn) ringOn(hl.turn, [...th.arenaRim, 0.95], 0.72, 0.98);
   if (hl.selected) ringOn(hl.selected, c.select, 0.56, 0.68);
+  // A hold: a band from the grappler to the creature it holds, and an amber ring on the one held (it is Grappled, Speed 0).
+  const hold = [0.95, 0.62, 0.12, 0.9];
+  for (const { by, t } of grapplePairs(s)) {
+    const A = s.entities[by], B = s.entities[t], pa = G.toWorld(A.pos), pb = G.toWorld(B.pos);
+    const ya = stand(s.map, A.pos).y + 0.12, yb = stand(s.map, B.pos).y + 0.12, len = Math.hypot(pb.x - pa.x, pb.z - pa.z) || 1, nx = (-(pb.z - pa.z) / len) * 0.07, nz = ((pb.x - pa.x) / len) * 0.07;
+    b.quad([pa.x + nx, ya, pa.z + nz], [pa.x - nx, ya, pa.z - nz], [pb.x - nx, yb, pb.z - nz], [pb.x + nx, yb, pb.z + nz], hold);
+    b.quad([pa.x - nx, ya, pa.z - nz], [pa.x + nx, ya, pa.z + nz], [pb.x + nx, yb, pb.z + nz], [pb.x - nx, yb, pb.z - nz], hold);
+    ringOn(t, hold, 0.46, 0.56);
+  }
   if (pins.length) {
     const y = surfY(pinZ ?? 0) + 0.06, red = [0.95, 0.15, 0.15, 0.95];
     for (const [x, z] of pins) b.flatHex(x * UNIT, z * UNIT, y, 0, 0.32, red);
