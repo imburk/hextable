@@ -156,7 +156,7 @@ test("no action type outside TERRAIN_ACTIONS changes the terrain: every type pla
   // The types the scripted payloads never got accepted (they need a built sheet, a waiting question, a reward, a scene, a spell's lasting effect or a
   // companion of a spell): only their refusals were played with the terrain frozen; the static scan below covers what they could do.
   const never = ACTION_TYPES.filter((x) => !accepted.has(x) && !TERRAIN_ACTIONS.has(x));
-  const KNOWN = ["attack", "reactions", "endEffect", "feature", "hide", "addCharacter", "editCharacter", "setSheet", "levelUp", "equip", "shield", "attune", "conclusion", "scene", "sceneNpc", "sceneChronicle", "companionOrder", "command", "dismiss", "recall", "react"];
+  const KNOWN = ["attack", "reactions", "endEffect", "feature", "hide", "addCharacter", "editCharacter", "setSheet", "refresh", "levelUp", "equip", "shield", "attune", "conclusion", "scene", "sceneNpc", "sceneChronicle", "companionOrder", "command", "dismiss", "recall", "react"];
   assert.deepEqual(never.filter((x) => !KNOWN.includes(x)), [], "an action type that used to be reached is no longer: extend the payloads");
   assert.ok(accepted.size >= 25, `the payloads were accepted for ${accepted.size} action types`);
 });
