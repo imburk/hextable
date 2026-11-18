@@ -158,14 +158,10 @@ export async function diceDuel(dm, watch, want = null) {
     const pc = w ? S.entities[w] : Object.values(S.entities).find((e) => e.kind === 'pc' && alive(e) && e.attacks?.some((a) => a.type === 'melee'));
     const foe = Object.values(S.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden);
     if (pc.hp <= 0) h.act({ type: 'setHp', actor: pc.id, hp: pc.maxHp });
-    for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-      h.act({ type: 'place', actor: pc.id, to: { q: foe.pos.q + dq, r: foe.pos.r + dr } });
-      const p = h.state.entities[pc.id].pos;
-      if (Math.max(Math.abs(p.q - foe.pos.q), Math.abs(p.r - foe.pos.r), Math.abs(p.q + p.r - foe.pos.q - foe.pos.r)) === 1) break;
-    }
-    h.act({ type: 'startEncounter', center: foe.pos });
     return { pc: pc.id, foe: foe.id };
   }, want);
+  await placeBeside(dm, setup.pc, setup.foe);
+  await dm.evaluate((f) => window.hextable.act({ type: 'startEncounter', center: window.hextable.state.entities[f].pos }), setup.foe);
   await idle(dm);
   for (let i = 0; i < 30; i++) {
     await idle(watch);
@@ -217,6 +213,36 @@ export const spotsFor = (page, tpl, opts = {}) => page.evaluate(async ([t, o]) =
   out.sort((a, b) => G.dist(c, a) - G.dist(c, b) || a.r - b.r || a.q - b.q);
   return { spots: out, error };
 }, [tpl, opts]);
+
+// Puts the existing creature `actor` on a hex beside `near` (a creature id), asked of the engine: each of the six neighbours is tried on a copy of the
+// state (a tree, water or somebody standing there refuses the placing, and the engine may land the creature on another hex than the one asked), and the
+// first that leaves `actor` one hex from `near` is taken. Requires the creature to stand beside `near` afterwards; fails with the engine's own last refusal.
+// Runs on the page that holds the game (the DM's); returns the hex.
+export async function placeBeside(page, actor, near) {
+  const r = await page.evaluate(async ([a, n]) => {
+    const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+    const h = window.hextable, S = h.state, G = gridOf(S.map), DM = { role: 'dm', userId: 'dm' }, c = S.entities[n].pos;
+    let error = null, pick = null;
+    for (const t of G.range(c, 1)) {
+      if (G.dist(c, t) !== 1) continue;
+      const clone = structuredClone({ ...S, timeline: [] }), res = apply(clone, { type: 'place', actor: a, to: { q: t.q, r: t.r } }, DM);
+      if (!res.ok) { error = res.error; continue; }
+      if (G.dist(c, clone.entities[a].pos) !== 1) { error = 'the engine landed it on a hex that is not beside'; continue; }
+      pick = t; break;
+    }
+    if (!pick) return { error: error ?? 'no neighbouring hex' };
+    h.act({ type: 'place', actor: a, to: { q: pick.q, r: pick.r } });
+    const t0 = Date.now();
+    while (Date.now() - t0 < 5000) {
+      const p = h.state.entities[a].pos;
+      if (G.dist(c, p) === 1) return { pos: p };
+      await new Promise((x) => setTimeout(x, 50));
+    }
+    return { error: `placed at ${JSON.stringify(pick)} and it did not stand beside: toast "${document.getElementById('toast')?.textContent ?? ''}"` };
+  }, [actor, near]);
+  if (r.error) throw new Error(`${actor} could not be placed beside ${near} on this map: ${r.error}`);
+  return r.pos;
+}
 
 // Spawns `tpl` on the first hex spotsFor finds and requires the creature to exist afterwards; returns its id. Fails with the game's own words:
 // the engine's last refusal when there is no hex, or the table's toast when the spawn was sent and nothing appeared.

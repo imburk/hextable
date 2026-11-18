@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, diceDuel } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, diceDuel, placeBeside } from './lib.mjs';
 
 // ---------- dice on the screen (PR #117) ----------
 // A DM (desktop) and a player (`opts`: desktop or phone). The player's dice are thrown in the table's default
@@ -97,15 +97,7 @@ async function dice(browser, url, label, opts) {
         // Odessa joins the fight beside a goblin still on its feet (the player's blow may have killed the first); on her turn the DM has her cast Sacred Flame at it.
         const target = await host.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.dead && !e.hidden)?.id);
         if (!target) throw new Error('no goblin left standing to cast at');
-        await host.evaluate(async (f) => {
-          const h = window.hextable, at = h.state.entities[f].pos;
-          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-            h.act({ type: 'place', actor: 'cleric', to: { q: at.q + dq, r: at.r + dr } });
-            await new Promise((r) => setTimeout(r, 300));
-            const c = h.state.entities.cleric.pos;
-            if (Math.max(Math.abs(c.q - at.q), Math.abs(c.r - at.r), Math.abs(c.q + c.r - at.q - at.r)) === 1) break;
-          }
-        }, target);
+        await placeBeside(host, 'cleric', target);
         await idle();
         for (let i = 0; i < 30; i++) {
           const cur = await host.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
