@@ -13,7 +13,7 @@ import { hashOf } from "../../rules/src/content/packs.js";
 import { installed } from "../../rules/src/content/registry.js";
 import { current } from "../../rules/src/engine.js";
 import { createReceiver } from "../../rules/src/patch.js";
-import { createTables, HOMEBREW_SUMMON_SENTENCE, MAX_PACK_BYTES, MAX_PACK_TEXT_BYTES, packForPlayer, PLAYER_PACK_KINDS, sanitizePacks, summonsHomebrew, usesIn, vetPacks } from "../src/tables.js";
+import { createTables, MAX_PACK_BYTES, MAX_PACK_TEXT_BYTES, packForPlayer, PLAYER_PACK_KINDS, sanitizePacks, usesIn, vetPacks } from "../src/tables.js";
 import { startServer, stopAll } from "./helpers.js";
 
 after(stopAll);
@@ -710,26 +710,78 @@ test("M1: a table file with a bad `packs` value does not stop the server or anot
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
 });
 
-test("M2: a pack with a spell that summons a homebrew creature is refused with the plain sentence, whatever the depth", () => {
+// A homebrew spell that summons a homebrew creature of the same pack (allowed, #457; the server refused it under #400).
+const CALL = "hb-ember-folk-call-wraith";
+const callPack = () => doc("ember-folk", { spells: [spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon: WRAITH, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" } }] })], monsters: [monster("ember-folk", "quillwraith")] });
+const second = (tables, dm, code, name) => {
+  const p = client(tables);
+  p.say({ t: "join", code, name });
+  dm.say({ t: "approve", userId: p.last("welcome").userId, ok: true });
+  return p;
+};
+
+test("M2: a pack with a spell that summons a homebrew creature is accepted; a player is sent the spell and no monster, the DM all of it", () => {
   const tables = createTables({ seed: () => 5 });
   const { dm, player, code } = seated(tables);
-  const call = (summon, extra = {}) => spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" }, ...extra }] });
-  const bad = doc("ember-folk", { spells: [call(WRAITH)], monsters: [monster("ember-folk", "quillwraith")] });
-  const before = snapshotOf(tables, code), seen = player.raw.length;
-  add(dm, bad);
-  assert.equal(dm.last("error").error, HOMEBREW_SUMMON_SENTENCE, dm.last("error").error);
-  assert.equal(snapshotOf(tables, code), before);
-  assert.equal(player.raw.length, seen);
-  // The walk itself: any depth, a `forms` list, another pack's monster; not an SRD summon or an ordinary spell.
-  const wrap = (x, n) => { let y = x; for (let i = 0; i < n; i++) y = { onFail: [y] }; return y; };
-  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "hb-other-imp" }, 5)] }] }), true);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [{ onHit: [{ summon: "form", forms: ["hb-x-a", "hb-x-b"] }] }] }] }), true);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "celestial" }, 3), { summon: "form", forms: ["wolf"] }, { damage: "1d4" }] }] }), false);
-  assert.equal(summonsHomebrew({ spells: [spell("a", "b")], monsters: [{ summon: "hb-x-y" }] }), false, "only spells are walked");
-  assert.equal(summonsHomebrew({}), false);
-  // A stored pack that does so is dropped at load as well.
-  const d = bad;
-  assert.equal(vetPacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).ok, false);
+  add(dm, callPack());
+  assert.equal(dm.last("error"), undefined, dm.last("error")?.error);
+  assert.equal(tables.get(code).packs.length, 1);
+  assert.ok(dm.last("packData").data.monsters.some((m) => m.id === WRAITH), "the DM is sent the creature's block");
+  const pd = player.last("packData");
+  assert.ok(pd.data.spells.some((x) => x.id === CALL), "a player is sent the spell");
+  assert.equal("monsters" in pd.data, false, "and no monster");
+  assert.equal(player.raw.some((x) => x.includes(NAME) || x.includes(TEXT) || x.includes(ATTACK)), false);
+  // A stored pack that does so is kept at load as well.
+  const d = callPack();
+  assert.equal(vetPacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).ok, true);
+  assert.deepEqual(sanitizePacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).dropped, []);
+  clean();
+});
+
+test("a player's homebrew summon: its block goes to its controller alone, in the state and in every patch after; another player and the DM as they should", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player: pat, code } = seated(tables);
+  const bo = second(tables, dm, code, "Bo");
+  add(dm, callPack());
+  const t = tables.get(code);
+  t.state.entities.wizard.spells.push(CALL);
+  pat.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  bo.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  assert.ok(t.state.entities.wizard.owner && t.state.entities.rogue.owner && t.state.entities.wizard.owner !== t.state.entities.rogue.owner);
+  const p = t.state.entities.wizard.pos;
+  let id = null;
+  for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1]]) {
+    pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: CALL, slot: 1, summon: { at: [{ q: p.q + dq, r: p.r + dr }] } } });
+    id = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WRAITH);
+    if (id) break;
+  }
+  assert.ok(id, pat.last("error")?.error);
+  const OPEN = ["ac", "maxHp", "abil", "actions", "speeds"];
+  const open = (rec) => OPEN.every((k) => rec?.[k] !== undefined), seenOnly = (rec) => !!rec && OPEN.every((k) => rec[k] === undefined) && rec.tpl === WRAITH && rec.side === "party";
+  assert.ok(open(pat.last("update").state.entities[id]), "its controller is sent it whole");
+  assert.ok(seenOnly(bo.last("update").state.entities[id]), JSON.stringify(Object.keys(bo.last("update").state.entities[id] ?? {})));
+  assert.ok(open(dm.last("update").state.entities[id]));
+  // What changes about it afterwards reaches the other player as a patch of its seen record, never the open one.
+  const frames = bo.raw.length;
+  dm.say({ t: "act", action: { type: "setHp", actor: id, hp: 1 } });
+  assert.equal(dm.last("error"), undefined);
+  assert.ok(bo.raw.length > frames, "the other player was told something changed");
+  const patch = JSON.parse(bo.raw.at(-1)).patch;
+  assert.ok(patch?.entities?.[id], "it was a patch of that creature");
+  assert.ok(seenOnly(patch.entities[id]), "the patch holds the seen record");
+  assert.ok(seenOnly(bo.last("update").state.entities[id]), "applied, it leaves the seen record");
+  assert.equal(bo.last("update").state.entities[id].health, "bloodied");
+  assert.ok(open(pat.last("update").state.entities[id]));
+  assert.equal(pat.last("update").state.entities[id].hp, 1);
+  // A resync gives each the same split.
+  bo.say({ t: "sync" }); pat.say({ t: "sync" });
+  assert.ok(seenOnly(bo.last("update").state.entities[id]) && open(pat.last("update").state.entities[id]));
+  // Nothing the other player was sent holds the block's own text, on the wire.
+  const wire = bo.raw.join("\n");
+  for (const secret of [TEXT, ATTACK]) assert.equal(wire.includes(secret), false, secret);
+  assert.ok(pat.raw.join("\n").includes(ATTACK), "the controller was sent its attacks, so the search is not passing by accident");
+  assert.equal(dm.raw.join("\n").includes(ATTACK), true);
+  clean();
 });
 
 test("M3: the pack budget is the table's and is spent only by its seated DM", () => {
