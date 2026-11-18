@@ -559,3 +559,37 @@ What the build settled:
   actions no longer says the escape DC or the size limit, since the data does.
 - **Not built here.** Swallow, Fling, Reel, Swoop, Pummel, the Vortex's and the Engulf's damage over time and the Mimic Bite's extra
   damage stay `manual` or text; the AI's use of any of it is G5.
+
+**G7 (the client), #489.** Built to the "Client controls" section above. What the build settled:
+
+- **Pure code.** `packages/client/grapple.js` holds what the screen reads of a hold, so it is tested without a browser (`test/grapple.test.js`):
+  `holdsOn`, `holdingOf`, `heldText` and `howHeldEnds` (the pill and its card), `holdRows` (Escape and Let go), `strikeRows` (the Unarmed Strike's
+  options), `targetRefusals`, `previewState` and the log's words (`holdWords`, `noteText`). `refresh.js` is the same for Refresh from sheet.
+- **Rows.** The Unarmed Strike's Damage row stays as it was. Under it, on the Attacks tab, come `strike:<attack>:grapple`, `:push`, `:prone` and,
+  with the Grappler feat and Punch and Grab unused, `:grab`; a tap arms the attack with `{ option, shove | grab }` and a tap on a target sends it.
+  They are rows beside the Damage row and not a picker inside it, because the panel is rows. Escape rows (`escape:<by>:<skill>`, one per hold and
+  skill, each with its bonus) head the Attacks tab and the Explore ranking of a held creature, so a held creature finds them first. Let go rows
+  (`letgo:<id>`) are on the Attacks and Features tabs of the grapplers and cost nothing, as the engine has it. The client sends `escape` and
+  `letGo` and shows the engine's refusal as a toast.
+- **Refusals before the tap.** An armed Grapple or Shove asks `dry()` (the engine on a copy of the state) about each foe in reach, and a foe it
+  would refuse (too big, no hand free, Punch and Grab already used) is not offered; the hint says why in the engine's words. Nothing is worked
+  out in the client. `dry` gives no answer for a copy it cannot run (a player's view has no dice), and then the engine decides at the tap.
+- **Log and dice.** `strikeOption`, `hold`, `holdEnd` and the drag notes have lines (a drag note that starts with the creature's name is not
+  given the name twice). The `check` of an escape reads "tries to break free of X (skill)". The save's dice title reads "vs Shove" or "vs Grapple".
+- **The map.** `grapplePairs(state)` in `three-build.js` lists holder and held; `buildOverlay` draws an amber band between them and a ring on the
+  held one. It is part of the overlay, so the renderer's interface (locked by a test) is unchanged.
+- **The drag preview (T73).** `previewState` puts the held creature, as the player is shown it (`heldBy` in `view()`), back into the state the
+  move preview reads, so the doubled cost and the ground-only limit show where the player knows who is held. A held creature the player cannot see
+  is still left out, and a hold on a seen foe is read as reaching 5 ft (DEBT T76).
+- **Familiar attacks (C18).** `companions.js` lists a familiar's attacks as `comp:fatk:<familiar>:<via>:<attack>` rows: the Pact of the Chain's
+  forgone attack on the Attacks tab, Quick Attack on the Bonus tab. A tap arms `famAttack`, the targets are filtered with `dry` as above, and a tap
+  on a target sends `attack` with `familiar` and `via`. The Find Familiar chooser adds the Investment's Speed (required) and the damage type
+  (optional) and sends them as `summon.invest { move, damage }`; a Pact of the Chain free cast goes through the same chooser.
+- **Refresh (C19).** The sheet has "Refresh from sheet" for the DM on a party character, with the engine's refusal (from `dry`) as the note under
+  it, and the DM panel has "Refresh the party". The toast says who was made again and who was skipped; the skipped ones' reasons are the DM-only
+  `manual` lines of the log.
+- **Existing tests changed.** `actionpanel.test.js`'s Brutal Strike test lists the rows of a built fighter's Attacks tab, which now include the
+  three Unarmed Strike options.
+- **Checked.** `scripts/smoke/grapple.mjs` (a new pass, in the matrix) at 1280x800 and at 390x844 with touch: the rows, a Grapple on a Paralyzed
+  goblin, the pill and card, the band on the map, Let go, Shove Prone, the too-big hint, Escape, a warlock's Find Familiar with Investment and its two
+  attacks, and both Refresh buttons. Left over is DEBT T76.
