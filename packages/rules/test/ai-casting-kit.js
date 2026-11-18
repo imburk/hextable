@@ -1,5 +1,7 @@
 // Helpers shared by the casting AI's tests (stage AC1, #487; docs/specs/ai-casting.md, Testing).
-// The replays: `playAll` plays a fight with every creature by aiStep, `playMonsters` with the party passive (monsters byte-identical to main).
+// The replays play a fight with the casters' spells put away, to show that every creature with no spells chooses as the recorded fights
+// have it: `putAwaySpells` takes every creature's `spells` list and returns what it took, `bringBackSpells` puts it back (so the end state
+// is the recorded one). `playAll` plays every creature by aiStep; `playMonsters` leaves the party passive (monsters byte-identical to main).
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { aiStep } from "../src/ai.js";
@@ -9,6 +11,15 @@ import { newGame } from "../src/scenario.js";
 import { apart } from "../src/space.js";
 import { DM, GRIDS, U1, U2, U3, ok, table, spawn } from "./c7-brain-kit.js";
 import { squareRoom } from "./fixtures/square-room.js";
+
+export function putAwaySpells(s) {
+  const kept = {};
+  for (const e of Object.values(s.entities)) if (e.spells?.length) { kept[e.id] = e.spells; e.spells = []; }
+  return kept;
+}
+export function bringBackSpells(s, kept) {
+  for (const [id, spells] of Object.entries(kept)) s.entities[id].spells = spells;
+}
 
 // ---------- scenes ----------
 export { GRIDS, DM, U1, U2, U3, ok, spawn, table };

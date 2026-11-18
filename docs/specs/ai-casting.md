@@ -396,7 +396,7 @@ was silent or a choice had to be made; none of it changes a decision.
   `aimArea` throws the engine's `RuleError`, which engine.js does not export, so the AI recognises it by its class name and rethrows
   anything else.
 - **`aiStep` reads the party's copy for every unbonded party creature**, not only for casters (`knownTo`, as the brain does). A foe still
-  reads the true state, so the monster AI's choices are unchanged (`companions-brain-replay.test.js`).
+  reads the true state, so the monster AI's choices are unchanged (`ai-casting-replay.test.js`).
 - **The candidate list** is `aiCastable(sp)`: 30 damage spells and 4 healing spells on the pack as it is, pinned in
   `ai-casting.test.js`. `Number.isFinite` of the spell's worth is part of the test, so a spell whose dice the AI cannot read is not cast.
 - **Score.** The score of a step is worked out by walking its steps: `damage` (times `times`), `heal` (plus the modifier for `addMod`),
@@ -427,7 +427,8 @@ was silent or a choice had to be made; none of it changes a decision.
 - **Tests.** `ai-casting.test.js` (the spec's list, on both grids, plus the gates, a badly hurt ally, and every spell of the list sent to
   the engine); `ai-casting-replay.test.js` with `fixtures/ai-casting-replay.json` (re-record with `HEXTABLE_RECORD=1`);
   `ai-casting-stress.test.js` (200 rounds a grid, 2,400 with `HEXTABLE_STRESS=full`); `ai-casting-kit.js`. `companions-brain-replay.test.js`
-  is the monsters-byte-identical replay: the recorded fights are played with the party passive and every other creature by `aiStep`,
-  against `fixtures/ai-casting-monsters.json`, recorded on main's `ai.js` before AC1. It replaces the whole-fight recording
-  (`fixtures/c7-ai-replay.json`, the party played by `aiStep` too), which a party fighter's tie rule changes on purpose.
+  plays the recorded fights whole (the party by `aiStep` too, the casters' spells put away, a whole-state digest) against
+  `fixtures/c7-ai-replay.json`, re-recorded on the AC1 head because a party creature's tie rule changed on purpose (steps differ on
+  4 of 7 fights); and `ai-casting-replay.test.js` plays them with the party passive against `fixtures/ai-casting-monsters.json`,
+  recorded on main's `ai.js` before AC1: the monsters-byte-identical check.
 - **Not done here:** AC2 (the DM's screen calls `aiStep` for a stand-in; `autoPlays` is unchanged), buffs and control (AC3).
