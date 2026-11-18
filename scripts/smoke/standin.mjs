@@ -13,6 +13,13 @@ const DESKTOP = { viewport: { width: 1280, height: 800 } };
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
 const logText = (page) => page.evaluate(() => [...document.querySelectorAll('#log-list .lg-line')].map((l) => l.textContent).join('\n'));
 const turnOf = (page) => page.evaluate(() => { const S = window.hextable.state; return S.encounter ? S.encounter.order[S.encounter.turn].id : null; });
+// The Log tab, opened (again, if the drawer closed itself under a turn that was playing), and read.
+async function readLog(page) {
+  for (let i = 0; ; i++) {
+    try { await openTab(page, 'log'); return await logText(page); }
+    catch (err) { if (i >= 3) throw err; await sleep(700); await closeMenu(page).catch(() => {}); }
+  }
+}
 const STAND = /Tavin is played by the stand-in\./, ASIDE = /Tavin steps away: the stand-in plays Tavin's turns\./;
 
 // Ends the turn of every character that is not the one we wait for (the DM's Skip turn), until it is `id`'s turn; monsters play themselves. Returns when it is.
@@ -72,15 +79,14 @@ async function solo(browser, url, label, opts, tag) {
         await wait(page, () => window.hextable.state.entities.wizard.away?.how === 'standIn');
         await wait(page, () => window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id !== 'wizard', null, 30000);
         await calm(page);
-        await openTab(page, 'log');
-        const t = await logText(page);
+        const t = await readLog(page);
         if (!ASIDE.test(t)) throw new Error(`no "steps away" line in the log: ${t.slice(-400)}`);
         const after = t.slice(t.search(ASIDE) + 20);
         if (!/Tavin (casts|attacks|moves|uses|dashes)/.test(after)) throw new Error(`the log shows nothing Tavin did after being set aside: ${after.slice(0, 400)}`);
         await shot(page, `standin-solo-${tag}-log`);
         await closeMenu(page);
       });
-      const count = async () => (await logText(page)).split('Tavin is played by the stand-in.').length - 1;
+      const count = async () => { const n = (await readLog(page)).split('Tavin is played by the stand-in.').length - 1; await closeMenu(page); return n; };
       await run.do('set aside under another how, a turn is the engine\'s and the screen plays nothing for it', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'stepAway', actor: 'wizard', how: 'dodge' }));
         await wait(page, () => window.hextable.state.entities.wizard.away?.how === 'dodge');
@@ -99,8 +105,7 @@ async function solo(browser, url, label, opts, tag) {
         await sleep(2600);
         if ((await turnOf(page)) !== 'wizard') throw new Error('the stand-in played with auto-play off');
         if ((await state(page, (S) => S.encounter.budget.action)) !== 1) throw new Error('the stand-in spent its action with auto-play off');
-        await openTab(page, 'log');
-        if (!STAND.test(await logText(page))) throw new Error('no "is played by the stand-in" line when its turn began');
+        if (!STAND.test(await readLog(page))) throw new Error('no "is played by the stand-in" line when its turn began');
         await shot(page, `standin-solo-${tag}-waiting`);
         await closeMenu(page);
         await page.evaluate(() => { const c = document.getElementById('dm-auto'); c.checked = true; c.dispatchEvent(new Event('change')); });
@@ -157,12 +162,10 @@ async function hosted(browser, url) {
         await calm(host); await calm(phone);
         if (!forTavin('host').length) throw new Error('the DM\'s page sent nothing for Tavin');
         if (forTavin('phone').length) throw new Error(`the player's page sent a step for Tavin: ${JSON.stringify(forTavin('phone'))}`);
-        await openTab(host, 'log');
-        const dmLog = await logText(host);
+        const dmLog = await readLog(host);
         await closeMenu(host);
         if (!ASIDE.test(dmLog)) throw new Error(`the DM's log has no "steps away" line: ${dmLog.slice(-300)}`);
-        await openTab(phone, 'log');
-        const pl = await logText(phone);
+        const pl = await readLog(phone);
         if (!ASIDE.test(pl) || !/Tavin (casts|attacks|moves|uses|dashes)/.test(pl.slice(pl.search(ASIDE)))) throw new Error(`the player's log does not show the stand-in at work: ${pl.slice(-300)}`);
         await shot(phone, 'standin-hosted-phone-log');
         await shot(host, 'standin-hosted-dm');
