@@ -433,3 +433,31 @@ test("a creature dragged onto a thing that goes off when stepped on is handed to
   const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
   assert.ok(r.events.some((e) => e.type === "manual" && e.actor === s.foe && /was dragged onto/.test(e.text)), r.events.map((e) => e.type + (e.text ? ":" + e.text : "")).join("\n"));
 });
+
+// ---------- fix round 2 of #474 (re-review) ----------
+test("a hidden creature standing where a held creature would be pulled is found by the move, not named by a refusal about the drag", () => {
+  const U1 = { role: "player", userId: "u1" };
+  const build = (hidden) => {
+    const s = field(fighter(STR16), { foes: 0, fight: false });
+    const spawn = (at) => { const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM)).events.find((e) => e.type === "spawned").id; Object.assign(s.entities[id], { hp: 500, maxHp: 500, ac: 1 }); return id; };
+    const a = spawn({ q: 1, r: 0 }), b = spawn({ q: 1, r: -1 });
+    const l = hidden ? spawn({ q: 0, r: -1 }) : null;
+    if (l) s.entities[l].hiding = { dc: 30 };
+    s.entities.hero.owner = "u1";
+    hold(s, a); hold(s, b);
+    return { s, a, b, l };
+  };
+  // Without the hidden creature the move works: both are pulled.
+  const open = build(false);
+  ok(apply(open.s, { type: "move", actor: "hero", to: { q: -1, r: 0 } }, U1));
+  assert.equal(pos(open.s, "hero"), "-1,0");
+  // With it, the player is not told of any drag refusal: the creature is found, and the move does not go.
+  const { s, a, b, l } = build(true);
+  const r = apply(s, { type: "move", actor: "hero", to: { q: -1, r: 0 } }, U1);
+  assert.ok(r.ok, r.error);
+  assert.equal(pos(s, "hero"), "0,0", "the step was not taken");
+  assert.equal(pos(s, a), "1,0"); assert.equal(pos(s, b), "1,-1");
+  assert.ok(!s.entities[l].hiding && !s.entities[l].hidden, "the creature in the way is found");
+  assert.ok(!r.events.some((e) => /can't drag/.test(e.text ?? "")));
+  assert.ok(s.entities[a].cond.grappled && s.entities[b].cond.grappled);
+});
