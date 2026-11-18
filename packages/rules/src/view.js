@@ -65,7 +65,10 @@ function heldBy(state, e) {
 // A hold's escape DC is the party's own number only when its grappler is the party's: a monster's is a monster number, kept from
 // players (hidden-information.md), as is its Disadvantage on escaping.
 function holdsShown(state, rec) {
-  for (const h of rec.cond?.grappled?.holds ?? []) if (state.entities[h.by]?.side !== 'party') { delete h.escape; delete h.escapeDis; }
+  for (const h of rec.cond?.grappled?.holds ?? []) {
+    if (state.entities[h.by]?.side !== 'party') { delete h.escape; delete h.escapeDis; }
+    if (classify(state, h.by) === 'hidden') { delete h.with; delete h.range; }       // a grappler the party does not know of is only "someone" (scrub renames `by`)
+  }
 }
 function seenRecord(e, state) {
   const cond = {};

@@ -107,12 +107,15 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                largest: "large",
+                holds: 4
               }
             ]
           }
         ],
-        text: "A melee attack that grapples a Large or smaller target (escape DC 14)."
+        text: "A reach attack. It holds the target with one of four tentacles."
       },
       {
         id: "consume-memories",
@@ -569,6 +572,7 @@ export const monsters = [
             attack: "melee",
             kind: "weapon",
             bonus: 5,
+            advantageIf: ["target.grappledBySelf"],
             onHit: [
               {
                 damage: "2d6+3",
@@ -579,12 +583,14 @@ export const monsters = [
                 type: "acid"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 13,
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A melee attack with extra acid damage that grapples a Large or smaller target (escape DC 13). It has Advantage against a creature it already grapples."
+        text: "A bite with extra acid damage that grabs the target. It has Advantage against a creature it already grapples."
       },
       {
         id: "acid-spray",
@@ -1249,12 +1255,14 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 13,
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A melee attack that grapples a Large or smaller target (escape DC 13)."
+        text: "A melee attack that grabs the target with both claws."
       },
       {
         id: "tail",
@@ -1526,15 +1534,18 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 16,
+                largest: "large"
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "Squeezes a Large or smaller creature within 5 feet; the grapple escape DC is 16."
+        text: "Squeezes a creature within 5 feet, hurting it and holding it Restrained."
       },
       {
         id: "lightning-breath",
@@ -2830,6 +2841,7 @@ export const monsters = [
         id: "abduct",
         name: "Abduct",
         modifiers: [],
+        dragFree: true,
         text: "Moving a creature it is grappling costs it no extra movement."
       }
     ],
@@ -2853,12 +2865,14 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 12,
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A reach attack that grapples a Medium or smaller target (escape DC 12)."
+        text: "A reach attack that grabs the target."
       },
       {
         id: "light-hammer",
@@ -2873,6 +2887,7 @@ export const monsters = [
             attack: "melee",
             kind: "weapon",
             bonus: 4,
+            advantageIf: ["target.grappledBySelf"],
             onHit: [
               {
                 damage: "3d4+2",
@@ -2881,7 +2896,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A reach melee attack, with Advantage if the target is Grappled."
+        text: "A reach melee attack, with Advantage against a creature the bugbear is grappling."
       },
       {
         id: "light-hammer-thrown",
@@ -2899,6 +2914,7 @@ export const monsters = [
             attack: "ranged",
             kind: "weapon",
             bonus: 4,
+            advantageIf: ["target.grappledBySelf"],
             onHit: [
               {
                 damage: "3d4+2",
@@ -2907,7 +2923,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "The same hammer thrown."
+        text: "The same hammer thrown, with the same Advantage."
       }
     ],
     tier: "assist",
@@ -3231,15 +3247,19 @@ export const monsters = [
                 type: "slashing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                largest: "large",
+                holds: 2
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "A reach attack that grapples a Large or smaller target (escape DC 14)."
+        text: "A reach attack. It holds the target with one of two chains and Restrains it."
       },
       {
         id: "conjure-infernal-chain",
@@ -3509,12 +3529,15 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                largest: "large",
+                holds: 2
               }
             ]
           }
         ],
-        text: "A reach attack that grapples a Large or smaller target (escape DC 14)."
+        text: "A reach attack that holds the target in one of two pincers."
       },
       {
         id: "paralyzing-tentacles",
@@ -4159,15 +4182,18 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 13,
+                largest: "medium"
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "Squeezes a Medium or smaller creature within 5 feet (escape DC 13)."
+        text: "Squeezes a creature within 5 feet, holding it Restrained."
       }
     ],
     tier: "assist",
@@ -5349,12 +5375,14 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 12,
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "Squeezes a Medium or smaller creature within 5 feet (escape DC 12)."
+        text: "Squeezes a creature within 5 feet and holds it."
       }
     ],
     tier: "assist",
@@ -5490,15 +5518,18 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 12,
+                largest: "medium"
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "A melee attack that grapples a Medium or smaller target (escape DC 12) and Restrains it while grappled."
+        text: "A bite that holds the target and Restrains it while it is held."
       }
     ],
     tier: "assist",
@@ -8473,6 +8504,7 @@ export const monsters = [
         id: "abduct",
         name: "Abduct",
         modifiers: [],
+        dragFree: true,
         text: "Moving a creature it is grappling costs it no extra movement."
       },
     ],
@@ -8545,6 +8577,7 @@ export const monsters = [
             attack: "melee",
             kind: "weapon",
             bonus: 5,
+            advantageIf: ["target.grappledBySelf"],
             onHit: [
               {
                 damage: "2d8+3",
@@ -8553,7 +8586,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A reach melee attack, with Advantage if the target is Grappled by the bugbear."
+        text: "A reach melee attack, with Advantage against a creature the bugbear is grappling."
       },
       {
         id: "quick-grapple",
@@ -8574,12 +8607,14 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 13,
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "Bonus Action. Grapples a Medium or smaller creature within 10 feet it can see (escape DC 13)."
+        text: "Bonus Action. Grabs a creature within 10 feet that it can see."
       }
     ],
     tier: "assist",

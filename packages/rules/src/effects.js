@@ -369,6 +369,8 @@ function exec(s, ev, kit, f, step, at) {
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
     // The damage types under the hit, for a reaction that cares (Deflect Attacks).
     atk.dtypes = (step.onHit ?? []).filter((x) => 'damage' in x).map((x) => x.type);
+    // `advantageIf`: Advantage on this roll when every tag holds (a creature's "with Advantage if the target is Grappled by it"); rollToHit judges it.
+    if (step.advantageIf) atk.advantageIf = step.advantageIf;
     // A touch spell the caster's familiar delivers (`src.via`, engine/casting.js; stage C5c): the roll is made from its space.
     if (step.kind === 'spell' && typeof f.src.via === 'string') atk.via = f.src.via;
     const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
@@ -479,7 +481,13 @@ function exec(s, ev, kit, f, step, at) {
     const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"
     return kind === 'heal' ? kit.heal(s, t, n, ev, rolled, f) : kit.tempHp(s, t, n, ev, f, rolled);
   }
-  if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
+  if (kind === 'condition') {
+    // A creature's hold (docs/specs/grapple-shove.md, Decision 7): Grappled with an escape DC is a hold the engine keeps (`grip`);
+    // another condition of the same action with `whileHeld` goes on only if the grappler holds the target, and ends with that hold.
+    if (step.escape !== undefined && step.condition === 'grappled') return kit.hold(s, e, t, f.src, step, ev);
+    if (step.whileHeld) return kit.heldCondition(s, e, t, step, f, ev);
+    return kit.condition(s, t, step.condition, ev, f, step);
+  }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'kill') return kit.kill(s, t, ev);
   if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);
