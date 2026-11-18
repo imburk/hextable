@@ -90,10 +90,10 @@ function stress(grid, rounds) {
   };
   const start = () => {
     for (const id of Object.keys(s.entities)) if (s.entities[id].side === "foe") apply(s, { type: "remove", actor: id }, DM);
+    // Everyone to their own place first (a body must not lie where another stands), then back on their feet.
+    for (const id of PARTY) { if (s.entities[id].away) apply(s, { type: "stepBack", actor: id }, DM); s.entities[id].pos = { ...SPOTS[grid][id], z: 0 }; }
     for (const id of PARTY) {
       const e = s.entities[id];
-      if (e.away) apply(s, { type: "stepBack", actor: id }, DM);
-      e.pos = { ...SPOTS[grid][id], z: 0 };
       if (e.dead) ok(apply(s, { type: "setHp", actor: id, hp: 10 }, DM));
       if (e.hp <= 0) ok(apply(s, { type: "mend", actor: id, amount: 30 }, DM));
       ok(apply(s, { type: "mend", actor: id, amount: e.maxHp }, DM));
