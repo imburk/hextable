@@ -12,7 +12,8 @@ import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
-import { donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, remake, resheet } from './sheets.js';
+import { cure } from './rolls.js';
+import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet } from './sheets.js';
 import { handHolds } from '../weapons.js';
 
 // A Shield needs a hand: one holding a creature in each (docs/specs/grapple-shove.md, Decision 4) has none.
@@ -71,17 +72,12 @@ export const handlers = {
     (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
     !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
     const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
-    const lost = e.maxHp - e.hp;
-    Object.assign(fresh, { hp: Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost), cond: e.cond, death: e.death, dead: e.dead, reactionUsed: e.reactionUsed, ...(e.reactions ? { reactions: e.reactions } : {}) });
-    for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots already spent stay spent
-    if (e.look && !a.record.look) fresh.look = e.look;
-    // A rider remade on its mount (or a mount under its rider) rides on (companions.md, Decision 8; DEBT W13).
-    if (e.riding !== undefined) fresh.riding = e.riding;
-    if (e.rider !== undefined) fresh.rider = e.rider;
-    // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's; a record typed in brings none.
-    delete fresh.pocket;
-    if (e.pocket !== undefined) fresh.pocket = e.pocket;
+    // What play has done to it stays, by the one list `remake` keeps too (sheets.js, `carryPlay`; DEBT C17). A record typed in has no sheet.
+    carryPlay(e, fresh, a.record);
     s.entities[e.id] = fresh;
+    // The record the DM typed wins over old play state: a condition it is now immune to ends as a cure ends it (`condEnd`; the part
+    // of a lasting effect that held it is ended too).
+    cure(s, fresh, a.record.conditionImmune ?? [], ev);
     ev.push({ type: 'edited', id: e.id });
     donned(s, fresh, ev);
   },
@@ -101,6 +97,28 @@ export const handlers = {
       return;
     }
     remake(s, ent(s, a.actor), record, sheet, ev);
+  },
+  // Make a character again from its own stored sheet, so one saved before a content change picks up what the content
+  // gained (Wild Companion, Unarmed Strike, the pact forms...). Play state stays, as `setSheet` keeps it (`remake`).
+  // { type: 'refresh', actor? }. With `actor`, that character; refused, nothing changes, when it has no sheet (typed in
+  // by hand), is in a form, or its sheet no longer validates. Without, every party character with a sheet; one that
+  // can't be is skipped with a DM-only `manual` event, and each remake is all or nothing. In a fight or out of one.
+  refresh(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can refresh a character.');
+    if (a.actor !== undefined) {
+      typeof a.actor === 'string' || fail('Name the character to refresh.');
+      refreshOne(s, ent(s, a.actor), ev); return;
+    }
+    Object.values(s.entities).some((e) => e.kind === 'pc' && e.side === 'party' && e.sheet) || fail('No party character has a sheet to refresh from.');
+    for (const e of Object.values(s.entities)) {
+      if (e.kind !== 'pc' || e.side !== 'party' || !e.sheet) continue;
+      const mark = ev.length;
+      try { refreshOne(s, e, ev); } catch (err) {
+        if (!(err instanceof RuleError)) throw err;
+        ev.length = mark;
+        ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `Not refreshed from its sheet. ${err.message}` });      // `partial`: for the DM alone (view.js), a sheet's problem is not the table's
+      }
+    }
   },
   // Up one level, outside a fight: one more level in a class it has, or level 1 in a new class
   // (Multiclassing), whose prerequisites validate() checks. { type: 'levelUp', actor, sheet }
