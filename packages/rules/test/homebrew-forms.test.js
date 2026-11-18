@@ -236,6 +236,15 @@ test("a druid in a homebrew form: the form's block goes to the druid's player al
     assert.equal(theirs.size, s.entities.hero.size);
     const sent = JSON.stringify(view(s, BO));
     assert.equal(sent.includes(WOLFLING), false);
+    assert.equal(sent.includes("Ember wolfling"), false, "nor the form's name, in the effect that keeps it");
+    assert.ok(view(s, PAT).effects.some((fx) => fx.name.includes("Ember wolfling")), "its controller is told of the effect");
+    // The events of taking it and of its ending: the same split.
+    const evs = [{ type: "form", id: "hero", form: WOLFLING, name: "Ember wolfling" },
+      { type: "effectStart", fx: "x1", name: "Wild Shape (Ember wolfling)", source: "hero", conc: false, lasts: "1 hour", targets: ["hero"] },
+      { type: "effectEnd", fx: "x1", name: "Wild Shape (Ember wolfling)", source: "hero", why: "Ven left the form", targets: ["hero"] }];
+    assert.deepEqual(viewEvents(structuredClone(evs), s, PAT).map((e) => e.type), ["form", "effectStart", "effectEnd"]);
+    assert.deepEqual(viewEvents(structuredClone(evs), s, BO), []);
+    assert.equal(viewEvents(structuredClone(evs), s, DM).length, 3);
     // Leaving the form gives the other player the whole record again.
     ok(apply(s, { type: "feature", actor: "hero", feature: "wild-shape" }, PAT));
     assert.equal(s.entities.hero.form, undefined);
@@ -250,6 +259,9 @@ test("a druid in an SRD form is sent whole to every player, as before", () => {
   for (const v of [PAT, BO, DM]) assert.equal(view(s, v).entities.hero.form.block, "wolf");
   const base = playerView(s);
   assert.equal(forViewer(base, s, BO), base);
+  const evs = [{ type: "form", id: "hero", form: "wolf", name: "Wolf" }, { type: "effectStart", fx: "x1", name: "Wild Shape (Wolf)", source: "hero", conc: false, lasts: "1 hour", targets: ["hero"] }];
+  assert.deepEqual(viewEvents(structuredClone(evs), s, BO).map((e) => e.type), ["form", "effectStart"]);
+  assert.ok(view(s, BO).effects.some((fx) => fx.name.includes("Wolf")));
 });
 
 test("a DM-run homebrew foe is still seen-only, to every player; the DM's `spawn` has no side to give it", () => {

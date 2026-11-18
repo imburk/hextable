@@ -507,6 +507,12 @@ what their character needs to play, never what it does not.**
   bundle are public SRD content; a homebrew monster's stats are a surprise and
   stay on the server. A creature that has been met is shown as the view shows any
   creature.
+- **The one exception, a creature a player runs (the owner's ruling of 18 November, #457, answering #193).** A homebrew spell may
+  summon a homebrew creature of the table's packs, a homebrew creature may be the form of a familiar or of Wild Shape, and a player
+  who runs such a creature is sent its block, as for any familiar or steed: a creature a player controls is that player's to see.
+  *No other player is*: they are sent what they would be of a foe they can see (`seenRecord`: name, `tpl`, size, place, a word for
+  its health), with its `side` kept. A homebrew creature the DM runs, on either side, is sent to no player. The monster entries
+  themselves are still not in a player's copy of the pack. See the build notes on #457.
 - **The DM's notes** on a pack (a field `dmNotes`, at most 500 letters, in the
   key list) are stripped before sending.
 - **Where a client reads** `MONSTERS[e.tpl]?.name` (`app.js`, `actionpanel.js`)
@@ -1174,7 +1180,7 @@ What was settled while building the server side (`tables.js`, `index.js`, `limit
 - **Saved tables** are vetted at start-up with `vetPacks` (the registry's `loadPack`, the claimed id, version and hash, then `overlayOf`); a table that fails is played without its packs and the DM's `packs` message carries `problems`.
 - **Fix round 1 (review of #400).** Saved packs are sanitised at load (`sanitizePacks`): any bad record or set is dropped with a reason, never
   sent, told to the DM (`dropped`) and `state.packs` is reconciled; a throwing handler is caught per message in `index.js`. A pack whose
-  spell summons a homebrew creature is refused until the owner rules (DEBT T47). The pack budget is the table's and only its seated DM spends it.
+  spell summons a homebrew creature was refused until the owner ruled (DEBT T47; allowed by #457, see its build notes). The pack budget is the table's and only its seated DM spends it.
   `packs` is only a list; the data is `packData`, once on add or update and on request. The raw frame is bounded by the DM's frame limit (1 MiB + 4 KB), the
   text of a pack at 512 KB, the pack at 256 KB by the rules' budget. An update may not drop entries (undo could bring back a creature of a dropped template).
 - **Ruled by the lead (L3):** the action names of a creature a player has seen appear in events as any creature's do; this is accepted.
@@ -1231,7 +1237,7 @@ answered on 15 November (the comment "Beej (lead 4), 15 November, 09:45 ET").
    proposal**, for the owner to confirm. The security review points are
    Decision 4 and review points 14 and 15; `portable-characters.md` is amended
    to match.
-2. *Homebrew monsters hidden from players.* **Yes, never sent.** (Decision 5.)
+2. *Homebrew monsters hidden from players.* **Yes, never sent**, but to the player who runs a creature made from one (#457). (Decision 5.)
 3. *An in-app model call.* **No. AI help stays outside the game for now:** the
    app gives instructions to copy into any AI the user already has, the result is
    pasted back, the app lints it and shows the plain-language reading. A built-in
@@ -1282,18 +1288,18 @@ answered on 15 November (the comment "Beej (lead 4), 15 November, 09:45 ET").
 
 A DM may also add their own pack inside their adventure module, through the same gate and limits: see [adventure-module.md](adventure-module.md) (Decision 3).
 
-## Build notes: a homebrew monster cannot be a form (#402)
+## Build notes: a homebrew monster as a form and a summon, and who is sent its block (#402, then #457)
 
-Until the owner rules on #193, a homebrew monster (an entry whose `source` starts `homebrew:`) cannot be chosen as a form, so a player is never sent its stat block. One helper, `isHomebrew(entry)` in `summons.js`, with the sentence `HOMEBREW_FORM` ("A homebrew creature cannot be chosen as a form yet."). Places where an action's own field or a spell's filter names a creature by id, and what was done:
+**#402 (interim).** Until the owner ruled on #193, a homebrew monster could not be chosen as a form (`isHomebrew(entry)` in `summons.js` and the sentence `HOMEBREW_FORM`), and, under #400, a pack whose homebrew spell summoned a homebrew creature was refused by the server (`summonsHomebrew`, `HOMEBREW_SUMMON_SENTENCE`; DEBT T47 and T48).
 
-- `cast` with a `summon` step that has `forms` (Find Familiar, a list or a type-and-rating filter): `summonFor` in `engine/casting.js` refuses a homebrew `summon.form` first, before the filter, for a player and for the DM casting for a character. A reforming casting uses the same check. Done.
-- Wild Shape, the `feature` handler (`shapeShift`, `engine/features.js`): refused before the type and rating checks, whose messages would name the monster. Done.
-- `summonMade` and the hand-over text (`engine/resolve.js`): they run after the cast check, or name only ids a spell lists (a pack spell naming a homebrew creature is already refused by the linter). Nothing needed.
-- Find Steed, Phantom Steed, the summon blocks, Animate Dead: the spell fixes the creature; the caster picks no id. Nothing needed.
-- The DM's `spawn`, `bond`: the DM names a creature; unaffected by design.
-- The choices a player is offered: the server sends the filter only (`spellProfile` in `effects.js`) and the client lists its own SRD lookup, which holds no overlay. Nothing sends a list of ids, so nothing offers one.
+**#457 (the owner's ruling: allow).** What was done:
 
-The refusal says the creature is homebrew, so a player who guesses an id learns that it exists; its stat block stays unsent.
+- **The refusals are gone.** `summonsHomebrew`, `HOMEBREW_SUMMON_SENTENCE` and the `'summon'` form of `vetAdd` / `vetUpdate` are removed from `content/packs.js`, `tables.js` and the pack-manager transport (nothing else needed them). `HOMEBREW_FORM` and the two refusals in `engine/casting.js` (`summonFor`, a summon with `forms`) and `engine/features.js` (`shapeShift`, Wild Shape) are removed. `isHomebrew` stays: the view uses it. A table file whose pack a summoning spell had made drop at load is no longer dropped. A type-and-rating filter (`forms: { type, cr }`) and a feature's `freeCast.forms` may now pick a homebrew monster of the table's packs, under the same limits as an SRD one.
+- **What a player is sent (`view.js`).** The party sees as one, so `playerView` sends every creature of the party whole to every player: right for the SRD, wrong for a homebrew block. A new step, `forViewer(base, state, viewer)`, is applied after the shared `playerView` (and inside `view` for a player): every party creature that `homebrewBlock(e)` (its `tpl`, or its form's `block`, is a homebrew monster, told by the `hb-` id or the entry's `source`) and is not `controlledBy(state, e, userId)` (the viewer's own by `ownerOf`, or a companion of a creature that is, up the bond) is replaced by its `seenRecord`, with `side` kept. The DM's view is the state; with no such creature `forViewer` returns the shared base itself. In the same step: the creature's entry in its master's `pocket` is dropped for a player who does not control it; its place in the order of a fight loses `init`, `dex` and `after`/`before`; and when it is the active creature the budget is zero (`budget.move` is its Speed). A character in a homebrew Wild Shape form is replaced the same way for the other players (name, size, place and a word for health), and the effect that keeps the form (named for it, "Wild Shape (Ember wolf)") is left out of the effects they are sent.
+- **Events.** `viewEvents` tells a homebrew party creature to a player who does not control it as a foe it can see: `cls()` there returns `seen` instead of `open`, so no dice, DC, check, or hand-applied action text of it is sent; a `form` event into a homebrew form, and the `effectStart` / `effectEnd` of the effect that keeps it (told by the homebrew monster's name in its title), are not sent to them either. The `form` event that ends a form (`form: null`) still is, since the creature no longer carries the block. Limit: a creature that has vanished from the state (a dismissed summon) is told as the party's own, as before, because the state no longer says what it was; those events carry no block.
+- **The server (`tables.js`).** The shared player view is still built once per change; `stateFor` applies `forViewer` per player, and `snapFor` takes a snapshot of what that player was actually sent when `forViewer` changed anything (otherwise the shared one), so a patch is computed against what the player holds and never carries the open record. A creature that becomes someone's (claimed, bonded) or stops being goes to them as a whole record in the patch.
+- **The client** needed no change: the tracker, sheet and action panel already draw a party record with no `abil` (a test in `tracker.test.js` pins the tracker and the turn line). The client's form list for Wild Shape and `classes.js` offers SRD monsters only (it holds no homebrew monsters), so a player cannot pick a homebrew form from the list; a raw `feature` or `cast` action naming one works, and the DM's client lists its own packs.
+- **Not changed.** The monster entries are still not in a player's copy of a pack (`PLAYER_PACK_KINDS`). A homebrew creature's `name` and `tpl` id are sent to the players who see it, as any creature's are. 
 
 ## Build notes: B7, the pack manager and members receiving packs (#404)
 
@@ -1401,7 +1407,7 @@ The pure checks that decide whether a pack may join, change or leave a table mov
 re-exports the old names, so no import moved.
 
 - **Moved:** `forPlayers(pack)` (`{ data, hash }`, with `packForPlayer` and `PLAYER_PACK_KINDS`), `summonsHomebrew` and
-  `HOMEBREW_SUMMON_SENTENCE`, `vetPacks(records)`, `vetAdd(tablePacks, pack, opts?)` and `vetUpdate(...)`, `usesIn` and
+  `HOMEBREW_SUMMON_SENTENCE` (both removed again by #457), `vetPacks(records)`, `vetAdd(tablePacks, pack, opts?)` and `vetUpdate(...)`, `usesIn` and
   `inUse(state, packId)` (the reasons the server sends as `blockers`), and `cleanPacks(records)` (was `sanitizePacks`).
 - **`vetAdd` / `vetUpdate`** run the server's checks in its order: `loadPack`; a homebrew summon; the id (add: new; update: held) and the
   version (update: higher); no dropped entries on an update; `overlayOf` on the set the table would then have; the hash. They return

@@ -115,6 +115,8 @@ export function forViewer(base, state, viewer) {
   }
   if (!replaced) return base;
   const out = { ...base, entities: replaced }, enc = base.encounter;
+  // The lasting effect that keeps a form is named for it ("Wild Shape (Ember wolf)"): not told for a creature that is sent as a seen record.
+  if (hide.size && base.effects?.some((fx) => fx.parts.some((q) => q.form && hide.has(q.target)))) out.effects = base.effects.filter((fx) => !fx.parts.some((q) => q.form && hide.has(q.target)));
   if (enc && hide.size) {
     const active = state.encounter?.order[state.encounter.turn]?.id;
     out.encounter = { ...enc, order: enc.order.map((o) => (hide.has(o.id) ? { id: o.id } : o)), ...(hide.has(active) ? { budget: { move: 0, action: 0, bonus: 0 } } : {}) };
@@ -499,12 +501,15 @@ export function viewEvents(events, state, viewer) {
   };
   // A creature of the party that carries a homebrew block and is not this viewer's is told as a foe they can see (forViewer): none of the
   // numbers an event gives about "one of ours" (a roll's dice, a save's DC, a check, what a hand-applied action says) go to them.
+  const masked = (id) => { const e = Object.hasOwn(state.entities, id) ? state.entities[id] : null; return !!e && e.side === 'party' && homebrewBlock(e) && !controlledBy(state, e, viewer?.userId); };
   const cls = (id) => {
     if (was?.includes(id)) return 'hidden';
     if (gone.has(id)) return gone.get(id);
-    const c = classify(state, id), e = state.entities[id];
-    return c === 'open' && e && e.side === 'party' && homebrewBlock(e) && !controlledBy(state, e, viewer?.userId) ? 'seen' : c;
+    const c = classify(state, id);
+    return c === 'open' && masked(id) ? 'seen' : c;
   };
+  // Of a form: a creature sent as a seen record is not told to be in one, nor which (its effect is named for the form).
+  const formName = (name) => { const m = /\((.+)\)$/.exec(String(name ?? '')); return !!m && Object.values(CONTENT.monsters).some((x) => isHomebrew(x) && x.name === m[1]); };
   // A copy of an order entry or a `joined` of one of theirs, with `after` only where its master is theirs too.
   const afterOpen = (o) => { const { after, before, ...rest } = o; return { ...rest, ...tiedOpen({ after, before }, (id) => cls(id) === 'open') }; };
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
@@ -643,6 +648,7 @@ export function viewEvents(events, state, viewer) {
         // The same for a creature it was on that they do not know of ("Zorblax left"; review of #313, round 4, L1).
         const unknownCaster = typeof ev.source === 'string' && cls(ev.source) === 'hidden';
         const unknownIds = [...(unknownCaster ? [ev.source] : []), ...(ev.targets || []).filter((id) => typeof id === 'string' && cls(id) === 'hidden')];
+        if (formName(ev.name) && typeof ev.source === 'string' && Object.hasOwn(state.entities, ev.source) && !controlledBy(state, state.entities[ev.source], viewer?.userId)) break;   // the form's own effect, a creature's not theirs
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
           const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
           if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
@@ -651,7 +657,7 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known
-        if (cls(ev.id) !== 'hidden') out.push(pick(ev, ['type', 'id', 'form', 'name']));
+        if (cls(ev.id) !== 'hidden' && !(masked(ev.id) && hbId(ev.form))) out.push(pick(ev, ['type', 'id', 'form', 'name']));
         break;
       // Bonds (docs/specs/companions.md, Decision 10): the party's own only, so players never learn that a
       // creature not of theirs belongs to another.
