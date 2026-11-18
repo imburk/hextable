@@ -6,7 +6,7 @@
 import { inFight, clockText, FT } from './shared/engine.js';
 import { under } from './shared/space.js';
 import { conditionName } from './shared/modifiers.js';
-import { hpFraction } from './render.js';
+import { hpFraction } from './three-build.js';
 import { MONSTERS } from './shared/content/index.js';
 import { rowDotHTML } from './linkdot.js';
 

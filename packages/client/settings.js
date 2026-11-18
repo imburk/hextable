@@ -49,22 +49,7 @@ export function initSettings(ctx) {
   $('set-cutaway').onchange = (ev) => { prefs.set('hextable.cutaway', ev.target.checked); ctx.look('cutaway', ev.target.checked); };
   $('set-caves').onchange = (ev) => { prefs.set('hextable.caves', ev.target.checked); ctx.look('caves', ev.target.checked); };
 
-  // Which renderer (docs/specs/renderer.md, R14 step 1): the 3D (Three.js) view is the default; the classic one stays until R14 step 2
-  // removes it. Stored for this device, read when the page starts, so a change takes a reload; an address parameter wins for one visit.
-  const rendSet = (() => { try { return new URLSearchParams(location.search).get('renderer'); } catch { return null; } })();
-  const rd = document.createElement('div');
-  rd.innerHTML = '<label class="assign">Renderer <select id="set-renderer"><option value="three">3D view (Three.js)</option><option value="gl">Classic</option></select></label>'
-    + '<p class="note" id="set-renderer-note"></p>';
-  $('set-look-note').before(...rd.children);
-  const rsel = $('set-renderer'), rsaved = prefs.get('hextable.renderer');
-  rsel.value = rsaved === 'gl' ? 'gl' : 'three';
-  rsel.disabled = !!rendSet;
-  $('set-renderer-note').textContent = rsel.disabled
-    ? 'The address of this page sets the renderer for this visit, so that control is off.'
-    : 'The 3D view is the default and has the fuller picture. The classic renderer is older and will be removed. A change applies when the page is next loaded.';
-  rsel.onchange = (ev) => prefs.set('hextable.renderer', ev.target.value);
-
-  // Shadows (docs/specs/renderer.md, R15), for the Three.js renderer: it has no place in index.html, so the control is made here. The
+  // Shadows (docs/specs/renderer.md, R15): it has no place in index.html, so the control is made here. The
   // renderer hears of a change by the page event `hextable-shadows`; it reads the stored preference itself when it starts.
   const shadowSet = (() => { try { return new URLSearchParams(location.search).get('shadows'); } catch { return null; } })();
   const sw = document.createElement('div');
@@ -76,10 +61,10 @@ export function initSettings(ctx) {
   shadows.disabled = ['auto', 'on', 'off'].includes(shadowSet);
   $('set-shadows-note').textContent = shadows.disabled
     ? 'The address of this page sets the shadows for this visit, so that control is off.'
-    : 'Real shadows are drawn by the 3D (Three.js) view, the default; the classic renderer (?renderer=gl) has blob shadows only. Automatic draws them on a computer or tablet and, on a phone, only once the screen shows it has room; it drops them first if the screen falls behind. On keeps them whatever happens.';
+    : 'Real shadows are drawn by the 3D view. Automatic draws them on a computer or tablet and, on a phone, only once the screen shows it has room; it drops them first if the screen falls behind. On keeps them whatever happens.';
   shadows.onchange = (ev) => { prefs.set('hextable.shadows', ev.target.value); window.dispatchEvent(new CustomEvent('hextable-shadows', { detail: ev.target.value })); };
 
-  // The edge of a fight (docs/specs/renderer.md, arena-edge notes): both renderers, hexes and squares. 'dim' is the lighting change alone.
+  // The edge of a fight (docs/specs/renderer.md, arena-edge notes): hexes and squares. 'dim' is the lighting change alone.
   const ae = document.createElement('div');
   ae.innerHTML = '<label class="assign">Edge of a fight <select id="set-arena-edge"><option value="dim">Dimmed surroundings only</option><option value="edge">Dimmed, with a glowing edge</option></select></label>'
     + '<p class="note">While a fight runs, everything outside its arena is dimmed. The edge can also glow. Either way the arena flashes where a move out of it was refused.</p>';

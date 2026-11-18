@@ -115,8 +115,8 @@ from forward, clockwise positive. The candidate whose angle is nearest the wish'
   tilt it (between the renderer's limits). Releasing Shift with a walk key still held starts a new walk from the new view.
 - **Space**: centre on the selected character and face its last direction of travel (its last step with forward held;
   the view's turn stays as it is if it has not walked forward with the keys). Following resumes.
-- Both renderers: the classic renderer (`?renderer=gl`, to be removed in R14 step 2) has the same `face` and `tilt`, so
-  its keys and follow camera work too. The empty renderer accepts both and does nothing.
+- Both renderers: the Three.js renderer and the empty one (`?renderer=none`) have `face` and `tilt`; the empty one accepts both and does
+  nothing. (The classic renderer, `render.js`, had them too until R14 step 2 deleted it, #355.)
 
 ## When the keys do nothing
 
