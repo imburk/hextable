@@ -6,7 +6,8 @@
 // of the state the screen holds and returns the engine's refusal in its words ('' when it would be accepted). The only thing read is what the
 // view sent: a creature the view did not send is not here, and nothing is guessed from ids or gaps. Every word that came from a person (an order,
 // a name) is escaped where it is drawn.
-import { inFight, current } from './shared/engine.js';
+import { inFight, current, hostile, targetsFor, up } from './shared/engine.js';
+import { actionProfile } from './shared/effects.js';
 import { SPELLS, MONSTERS, CONTENT } from './shared/content/index.js';
 import { CHOICES } from './shared/content/schema.js';
 
@@ -55,6 +56,11 @@ export function summonPlan(S, e, spellId, slot) {
   }
   const pickDef = sp.def.choice, list = pickDef ? pickDef.from ?? CHOICES[pickDef.of] ?? null : null;
   if (list) choices.push({ key: 'choice', title: pickDef.of === 'damageType' ? 'Damage type' : human(pickDef.of ?? 'choice'), options: list.map((v) => ({ v, label: human(v) })), extra: true });
+  // Investment of the Chain Master (`invest` on a feature of the caster's for this spell): how the familiar moves, and the damage it may deal instead,
+  // chosen now and baked in (`summon.invest: { move, damage? }`). The engine takes the Speed as required when the feature gives one, the damage type as optional.
+  const inv = (e.feats ?? []).find((f) => f.invest?.spell === spellId), I = inv?.invest ?? null;
+  if (I?.speed) choices.push({ key: 'move', invest: true, title: `${inv.name}: Speed`, options: I.speed.of.map((v) => ({ v, label: `${human(v)} ${I.speed.feet} ft` })) });
+  if (I?.damage) choices.push({ key: 'damage', invest: true, optional: true, title: `${inv.name}: damage instead of ${I.damage.from.map(human).join(', ').toLowerCase()}`, options: I.damage.to.map((v) => ({ v, label: human(v) })) });
   const lvl = slot ?? sp.level;
   // One per master (Find Familiar, Find Steed): a casting while the master has one. A reform names no space; a replace does.
   const had = step.one ? [...companionsOf(S, e), ...pocketOf(e)].some((c) => c.bond?.source === spellId && c.bond.kind === (step.bond?.kind ?? c.bond.kind)) : false;
@@ -62,11 +68,11 @@ export function summonPlan(S, e, spellId, slot) {
   if (sm.on === 'corpse') taps = { kind: 'corpses', max: summonCount(sm.count, lvl), again: summonCount(sm.reassert ?? sm.count, lvl) };
   else if (step.one === 'reform' && had) taps = { kind: 'none', note: `${e.name} has a ${sm.kind ?? 'companion'} already: ${sp.name} gives it the new form where it is.` };
   else taps = { kind: 'points', count: summonCount(sm.count, lvl), note: step.one === 'replace' && had ? 'The one you have now goes when the new one comes.' : '' };
-  return { id: spellId, name: sp.name, level: sp.level, choices, taps };
+  return { id: spellId, name: sp.name, level: sp.level, choices, taps, ...(I ? { invest: inv.name } : {}) };
 }
 // What is still to pick, in words ('' when the chooser can send the cast with its picks).
 export function summonMissing(plan, m) {
-  for (const c of plan.choices) if (!c.extra && !m.pick[c.key]) return `Choose: ${c.title.toLowerCase()}.`;
+  for (const c of plan.choices) if (!c.extra && !c.optional && !m.pick[c.key]) return `Choose: ${c.title.toLowerCase()}.`;
   if (plan.taps.kind === 'points' && m.at.length < plan.taps.count) return `Tap ${plan.taps.count === 1 ? 'a space' : `${plan.taps.count} spaces`} on the map (${m.at.length} of ${plan.taps.count}).`;
   if (plan.taps.kind === 'corpses' && !m.ids.length) return `Tap up to ${plan.taps.max} corpse${plan.taps.max === 1 ? '' : 's'} on the map, or the creatures you made with it to keep (up to ${plan.taps.again}).`;
   return '';
@@ -80,6 +86,7 @@ export function summonAction(plan, m, { bare = false } = {}) {
   if (bare) return out;
   const s = {};
   for (const k of ['variant', 'type', 'form']) if (m.pick[k]) s[k] = m.pick[k];
+  if (plan.invest) { const inv = {}; for (const k of ['move', 'damage']) if (m.pick[k]) inv[k] = m.pick[k]; s.invest = inv; }       // the engine answers a casting with no choices of its own: it tells the DM what was left out
   if (plan.taps.kind === 'corpses') out.summon = { ids: [...m.ids] };
   else if (plan.taps.kind === 'points') out.summon = { ...s, at: m.at.map((h) => ({ q: h.q, r: h.r, ...(h.z !== undefined ? { z: h.z } : {}) })) };
   else out.summon = s;
@@ -87,11 +94,29 @@ export function summonAction(plan, m, { bare = false } = {}) {
 }
 
 // ---------- the rows (pure) ----------
-// The companion rows of one creature's Features tab and Move tab: { features: [], move: [] }, in the shape actionpanel.js draws (`kind: 'comp'`).
-// `dry(action)` is the engine's answer to the action ('' = it would be accepted). `fight`: whether `e` is in a fight now.
 const row = (r) => ({ kind: 'comp', sub: '', why: '', armed: false, time: null, chip: '', ...r });
-export function companionRows(S, e, dry, { open = null } = {}) {
-  const out = { features: [], move: [] };
+// A familiar's attacks through its master's feature (docs/specs/companions.md, amendment C9c): `attack` with `familiar` and `via`. Pact of the Chain
+// (`forgoAttack`): the master gives up one of its attacks and the familiar attacks with its Reaction. Investment of the Chain Master (`invest.bonusAttack`):
+// the master's Bonus Action, and the familiar attacks at once. Each is a row for each of the familiar's own attacks that makes an attack roll (a
+// Multiattack and a save action are not attacks of this kind). Only in a fight, on the master's turn: the engine says so when it is not.
+export const familiarAttacks = (def) => !def.multiattack && ['melee', 'ranged'].includes(actionProfile(def).roll);
+const NOT_THE_ROW = /\b(reach|range|away|far|sight|see|behind|wall|cover|feet|ft|target|itself|yourself|Pick)\b/i;
+// The engine's reason a familiar's attack can't be made now ('' when it can). The engine wants a target before it judges anything else, so the creatures
+// `foes` are tried in turn (the master itself when there are none: a fight not begun, or a Reaction spent, is said before any target is looked at); a refusal about
+// where a creature stands, or about the target, says nothing of the row and is left to the tap.
+export function familiarWhy(dry, action, foes) {
+  let first = '';
+  for (const id of foes.length ? foes : [action.actor]) {
+    const w = dry({ ...action, target: id });
+    if (!w) return '';
+    if (!first && !NOT_THE_ROW.test(w)) first = w;
+  }
+  return first;
+}
+// The companion rows of one creature's Features tab, Move tab and Attacks tab: { features: [], move: [], attacks: [] }, in the shape actionpanel.js draws (`kind: 'comp'`).
+// `dry(action)` is the engine's answer to the action ('' = it would be accepted). `fight`: whether `e` is in a fight now.
+export function companionRows(S, e, dry, { open = null, mode = null } = {}) {
+  const out = { features: [], move: [], attacks: [] };
   if (!e || e.dead) return out;
   const fight = !!S.encounter && inFight(S, e.id), mine = companionsOf(S, e), pocket = pocketOf(e);
   const first = (list) => (list.length && list.every((x) => x.why) ? list[0].why : '');
@@ -132,6 +157,21 @@ export function companionRows(S, e, dry, { open = null } = {}) {
     const r = target ? dry({ type: 'cast', actor: e.id, spell: id, target: target.id, deliver: f.id }) : '';
     out.features.push(row({ id: `comp:deliver:${f.id}:${id}`, op: 'deliver', spell: id, familiar: f.id, label: `${sp.name} through ${nameOf(S, f)}`, sub: 'Its Reaction delivers the touch', chip: 'Familiar',
       why: /familiar|Reaction|\b100 ft\b|Touch|is down/.test(r) && !/^Pick /.test(r) ? r : (sp.level > 0 && !(e.slots?.[sp.level] > 0) ? `${e.name} has no level ${sp.level} spell slots left.` : '') }));
+  }
+  // The familiar's own attacks, through a feature of the master's. Both work in a fight on the master's turn only: the row says what the engine says.
+  if (fams.length) {
+    const foes = Object.values(S.entities).filter((x) => x.id !== e.id && !x.dead && x.pos && hostile(x, e) && (!S.encounter || inFight(S, x.id))).map((x) => x.id);
+    for (const f of fams) for (const via of e.feats ?? []) {
+      const quick = via.invest?.bonusAttack && via.invest.spell === f.bond.source, forgo = via.forgoAttack?.spell === f.bond.source;
+      if (!quick && !forgo) continue;
+      for (const def of (f.actions ?? []).filter(familiarAttacks)) {
+        const p = actionProfile(def), action = { type: 'attack', actor: e.id, familiar: f.id, via: via.id, attack: def.id };
+        const aim = { kind: 'famAttack', actor: e.id, familiar: f.id, via: via.id, attack: def.id, label: `${nameOf(S, f)}: ${def.name}` };
+        out.attacks.push(row({ id: `comp:fatk:${f.id}:${via.id}:${def.id}`, op: 'fatk', mode: aim, label: `${nameOf(S, f)} attacks: ${def.name}`,
+          sub: [quick ? `${via.name}: its attack at once` : `${via.name}: give up one of your attacks; it attacks with its Reaction`, p.bonus !== undefined ? `${p.bonus >= 0 ? '+' : ''}${p.bonus} to hit` : '', p.reach ? `reach ${p.reach} ft` : p.range ? `range ${p.range[0]}/${p.range[1]} ft` : ''].filter(Boolean).join(' · '),
+          chip: quick ? 'Bonus' : 'Familiar', time: quick ? 'bonus' : null, why: familiarWhy(dry, action, foes), armed: mode?.kind === 'famAttack' && mode.familiar === f.id && mode.via === via.id && mode.attack === def.id }));
+      }
+    }
   }
   // Riding. Mount: whom; Dismount: at once (half its Speed). A creature carrying a rider says so.
   if (e.riding) {
@@ -244,7 +284,9 @@ export function initCompanions(ctx) {
   }
   // Draw the chooser for the current mode (or hide it). Returns the highlights the map should show: { area, targets, allies }.
   function render() {
+    const fm = ctx.mode(), famArmed = fm?.kind === 'famAttack' && S0().entities[fm.familiar];
     const m = modeNow(), p = panel(), S = S0(), e = m && S.entities[m.actor];
+    if (famArmed && !m) { p.hidden = true; return { area: [], targets: famTargets(fm), allies: [] }; }
     if (!m || !e) { p.hidden = true; if (p.dataset.sig) { p.dataset.sig = ''; p.textContent = ''; } return null; }
     const plan = summonPlan(S, e, m.id, m.slot), sp = SPELLS[m.id], slots = slotsFor(e, sp), miss = summonMissing(plan, m);
     // A long list (thirty forms) is a menu, a short one buttons: both are plain controls a keyboard and a thumb reach.
@@ -273,6 +315,12 @@ export function initCompanions(ctx) {
   // A tap on the map while a summon or a recall is armed. Returns true when it was ours.
   function tap(mode, hex, id) {
     const S = S0();
+    if (mode.kind === 'famAttack') {
+      if (!id || !S.entities[id] || id === mode.actor) { ctx.setMode(ctx.move); return true; }
+      const action = { type: 'attack', actor: mode.actor, familiar: mode.familiar, via: mode.via, attack: mode.attack, target: id }, why = dryNow(action);
+      if (why) { ctx.toast(why); return true; }                       // the engine's words; it stays armed for another target
+      ctx.act(action); ctx.setMode(ctx.move); return true;
+    }
     if (mode.kind === 'recall') {
       if (!hex) return true;
       const action = { type: 'recall', actor: mode.actor, id: mode.id, at: { q: hex.q, r: hex.r } }, why = dryNow(action);
@@ -298,8 +346,11 @@ export function initCompanions(ctx) {
     } else ctx.toast('Nothing to tap: it changes the form where it stands.');
     ctx.render(); return true;
   }
+  // A familiar's attack armed: whom it can reach (the engine's list for the familiar's own action), and the words for the hint.
+  const famTargets = (mode) => { const S = S0(), f = S.entities[mode.familiar]; if (!f) return []; try { return targetsFor(S, f, { action: mode.attack }).filter((id) => S.entities[id] && hostile(S.entities[id], S.entities[mode.actor])); } catch { return []; } };
+  const famHint = (mode) => { const S = S0(), n = famTargets(mode).length; return n ? `${mode.label}: tap a target` : `${mode.label}: nobody within its reach`; };
   // The hint line for an armed recall.
-  const hintFor = (mode) => (mode.kind === 'recall' ? `Tap a space within 30 ft of ${S0().entities[mode.actor]?.name ?? 'the caster'} to call ${mode.name} back` : '');
+  const hintFor = (mode) => (mode.kind === 'famAttack' ? famHint(mode) : mode.kind === 'recall' ? `Tap a space within 30 ft of ${S0().entities[mode.actor]?.name ?? 'the caster'} to call ${mode.name} back` : '');
 
   // ---- the rows' own controls, bound on the panes that carry them ----
   function bindPane(pane) {
@@ -338,11 +389,12 @@ export function initCompanions(ctx) {
     run(e, r) {
       if (r.op === 'side') return ctx.act({ type: 'companionOrder', actor: e.id, id: r.target, order: r.order });
       if (r.op === 'dismount') return ctx.act({ type: 'dismount', actor: e.id });
+      if (r.op === 'fatk') return ctx.setMode(r.armed ? ctx.move : r.mode);
       if (r.op === 'deliver') return ctx.setMode({ kind: 'spell', id: r.spell, aim: null, keep: false, picked: [], deliver: r.familiar });
       if (['command', 'dismiss', 'recall', 'mount', 'auto'].includes(r.op)) { open = open?.op === r.op && open.actor === e.id ? null : { op: r.op, actor: e.id, draft: open?.op === 'command' ? open.draft : '' }; return ctx.render(); }
     },
     // The rows and the open picker for `e`.
-    rows(e) { const S = S0(); return companionRows(S, e, dryNow, { open: open?.actor === e.id ? open : null }); },
+    rows(e) { const S = S0(); return companionRows(S, e, dryNow, { open: open?.actor === e.id ? open : null, mode: ctx.mode() }); },
     picker(e) { return pickerHtml(S0(), e, open, dryNow); },
     subLine(e) { return subLine(S0(), e); },
     // After a pane was drawn: give the order field back its focus (a redraw replaced it).

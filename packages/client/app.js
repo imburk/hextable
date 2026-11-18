@@ -11,6 +11,7 @@ import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
 import { aiStep, autoPlays } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
+import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
@@ -37,6 +38,7 @@ import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
+import { refreshReport, refreshNote } from './refresh.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
@@ -169,6 +171,7 @@ function preview(e, a) {
 }
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
 let flick = null, closeTray = null, armed = null;
+let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh the party: the next update says what was remade (refresh.js)
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action) {
   if (skipping()) return;
@@ -290,9 +293,9 @@ function words(ev) {
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
     case 'std': return [`${n(ev.id)} uses ${ev.action}.`];
-    case 'note': return [`${n(ev.id)}: ${ev.text}.`];
+    case 'note': return [noteText(ev, n)];
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
-    case 'condEnd': return [`${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
+    case 'condEnd': return [ev.cond === 'grappled' ? heldEndText(ev, n) : `${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
     case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
     case 'effectStart': return [`${ev.name} takes hold${ev.conc ? ` (${n(ev.source)} is concentrating)` : ''}: ${ev.lasts}.`];
     case 'effectEnd': return [`${ev.name} ends: ${ev.why}.`];
@@ -326,7 +329,7 @@ function words(ev) {
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
     case 'check': {
-      const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
+      const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.escape !== undefined ? `tries to break free of ${ev.escape === 'someone' ? 'someone' : n(ev.escape)} (${(ev.skill ?? ev.ability ?? 'a check').replace(/-/g, ' ')})` : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
       const how = ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : '';
       const end = ev.search ? (ev.found ? ` and finds ${ev.found === 1 ? 'something' : `${ev.found} things`}.` : ' and finds nothing.') : ev.success === true ? ' Success.' : ev.success === false ? ' Failed.' : '';
       // Reliable Talent and the like: `floor` is { name, value, was }; the dice show the real face, the d20 counted as `value`.
@@ -375,7 +378,7 @@ function words(ev) {
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     // The transcript of a scene, one line each, until the scene screen is built.
     case 'say': return [ev.as === null ? `(${ev.name}, out of character) ${ev.text}` : `${ev.name}: “${ev.text}”`];
-    default: return HO.describe(ev) ?? SC.describe(ev);       // handouts and private notes; scenes
+    default: return holdWords(ev, n) ?? HO.describe(ev) ?? SC.describe(ev);       // handouts and private notes; scenes
   }
 }
 // The floating text an event throws, as [id, text, class], or null.
@@ -419,6 +422,8 @@ function onUpdate(state, events, fresh) {
   if (first) known.clear();
   for (const e of Object.values(S?.entities ?? {})) known.set(e.id, shownName(S, e));      // what a creature that vanishes in these events was called
   S = state; stamp++; dryCache.clear();
+  if (refreshAsk && Date.now() - refreshAsk.at > 8000) refreshAsk = null;
+  if (refreshAsk) { const say = refreshReport(events, (id) => known.get(id) ?? S.entities[id]?.name ?? 'Someone', refreshAsk); if (say) { refreshAsk = null; toast(say, !/Not refreshed/.test(say)); } }
   for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
   TL.setPace(pace());
   if (first) {
@@ -438,7 +443,7 @@ function onUpdate(state, events, fresh) {
     selId = own?.id ?? null;
   }
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
-  if (mode.kind === 'attack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
+  if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
   clearTimeout(aiTimer);
   aiSent = null;
   tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
@@ -590,11 +595,15 @@ function refresh() {
     if (my && up(e)) {
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
-      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(S, e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
+      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
-        hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
+        // Grapple, Shove and Punch and Grab: a target the engine would refuse (too big, no hand free) is not offered, and the hint says why (grapple.js).
+        const bad = targetRefusals(S, e, mode.id, mode.extra, hl.targets, dry);
+        if (bad.length) hl.targets = hl.targets.filter((id) => !bad.some((b) => b.id === id));
+        hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}${bad.length ? ` (${bad[0].why})` : ''}`
+          : bad.length ? `${a.name} with ${mode.label}: ${bad[0].why}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
@@ -630,7 +639,7 @@ function refresh() {
   if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
-  if (mode.kind === 'recall') hint = CP.hintFor(mode);
+  if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   showPick();
@@ -685,6 +694,7 @@ function renderSheet() {
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
       ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
+    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}
     ${featuresHtml(e, mine(e))}
     ${mine(e) ? pocketHtml(e) : ''}
     ${mine(e) ? reactionsHtml(S, e) : ''}
@@ -693,6 +703,7 @@ function renderSheet() {
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
+  if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };
   for (const b of $('sheet-body').querySelectorAll('[data-hb]')) b.onclick = () => PK.reading(b.dataset.hb);
   for (const b of $('sheet-body').querySelectorAll('[data-skill]')) b.onclick = () => act({ type: 'check', actor: e.id, skill: b.dataset.skill });
 }
@@ -856,7 +867,7 @@ R.onTap = ({ hex, id }) => {
   if (e && mine(e) && hex) {
     // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
     if (aloft(S, e) && altOf(e) > 0) {
-      const spot = [...moveOptions(S, e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
+      const spot = [...moveOptions(previewState(S, e), e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
       return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
     }
     lastMove = { hex, at: Date.now() };       // if the arena refuses it, the edge nearest this hex flashes (T.on.error)
@@ -914,6 +925,7 @@ $('dm-place').onclick = () => { if (!selId) return toast('Select a creature firs
 const SR = initShortRest({ host: $('dm-rest-all'), act, getState: () => S });
 $('dm-short-rest').addEventListener('click', () => CLS.restRows($('dm-short-box')));       // Arcane Recovery and Natural Recovery rows (classes.js), after the box is drawn
 $('dm-rest').onclick = () => act({ type: 'rest' });
+$('dm-refresh-party').onclick = () => { refreshAsk = { party: true, at: Date.now() }; act({ type: 'refresh' }); };
 $('dm-rest-all').onclick = () => act({ type: 'rest', ids: Object.values(S.entities).filter((e) => !e.dead).map((e) => e.id) });
 // Conditions: pick one, then put it on the selected creature or take it off.
 $('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
@@ -1102,7 +1114,7 @@ function syncCards() {
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   armAttack: (m) => setMode({ kind: 'attack', ...m }),
-  castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
+  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
@@ -1145,7 +1157,7 @@ function start(transport, map = null) {
   closeTray?.(); armed = null; DICE.skip();
   T.on.error = (msg, expired) => {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
-    flick = null;
+    flick = null; refreshAsk = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
