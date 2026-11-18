@@ -323,3 +323,20 @@ for (const grid of GRIDS) {
     assert.notEqual(current(s), skel);
   });
 }
+
+// ---------- a companion that holds a creature (stage G2 of docs/specs/grapple-shove.md; review of #468) ----------
+for (const grid of GRIDS) {
+  test(`${grid}: a never-commanded Skeleton that holds the goblin beside it Dodges and ends its turn, with no move the engine would refuse`, () => {
+    const { s, skel, gob } = skeletonTable(grid);
+    ok(apply(s, { type: "condition", actor: gob, condition: "blinded" }, DM));       // as above, a step away would be safe: it steps when it holds no one
+    s.entities[gob].cond.grappled = { source: skel, holds: [{ by: skel, with: "hand", escape: 10, range: 5 }] };
+    fight(s, grid);
+    turnOf(s, skel);
+    assert.equal(brainMode(s, s.entities[skel]), "guard");
+    const from = json(s.entities[skel].pos);
+    assert.deepEqual(autoTurn(s, skel).map((x) => x.a.type), ["dodge", "endTurn"], "the turn completes");
+    assert.equal(json(s.entities[skel].pos), from, "it stayed");
+    assert.deepEqual(s.entities[gob].cond.grappled.holds.map((h) => h.by), [skel], "its hold stays");
+    assert.notEqual(current(s), skel, "its turn is over");
+  });
+}

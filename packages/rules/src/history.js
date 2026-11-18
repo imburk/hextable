@@ -207,7 +207,7 @@ const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage acti
   editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
   feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', levelUp: 'levelled up', equip: 'put on or took off an item', shield: 'put a Shield away or took it up', attune: 'chose an item to attune to',
-  drop: 'dropped something', pickUp: 'picked something up' };
+  drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple' };
 
 // How a formation reads in a step's label (engine/world.js, SHAPES).
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
@@ -237,7 +237,9 @@ export function describeStep(action, events, before, after) {
   switch (a.type) {
     case 'move': label = `${who} moved`; break;
     case 'shield': label = ev('shield')?.on === false ? 'Shield away' : 'Shield up'; break;
-    case 'attack': label = `${who} attacked ${name(a.target)}`; break;
+    // An Unarmed Strike's Grapple and Shove options are named for what they are (docs/specs/grapple-shove.md).
+    case 'attack': label = `${who} ${a.option === 'grapple' ? 'grappled' : a.option === 'shove' ? 'shoved' : 'attacked'} ${name(a.target)}`; break;
+    case 'letGo': label = `${who} let go of ${name(a.target)}`; break;
     case 'cast': {
       // Its own cast, not a reaction cast against it (Counterspell). A spell that was countered
       // is named only for the DM: players are told whose spell failed, not which.

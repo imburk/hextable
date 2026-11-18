@@ -13,7 +13,7 @@ import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
 import { control, current, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
-import { checkEnd, fall, settleBonds } from './engine/resolve.js';
+import { checkEnd, fall, settleBonds, settleHolds } from './engine/resolve.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -29,7 +29,7 @@ export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying,
 export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
 export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
-export { aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
+export { aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
 export { checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
@@ -233,8 +233,9 @@ function applyInner(s, action, ctx) {
     throw err;
   }
   setRun(null);
-  // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
-  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
+  // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
+  // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
     if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
   }
