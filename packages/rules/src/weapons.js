@@ -19,13 +19,31 @@ const riding = (s, e) => {
 // Two-Handed (SRD "Weapons", Properties): "A Two-Handed weapon requires two hands when you attack with it." The sheet records a
 // Shield (`shield`, or put away `shieldStowed`: then `e.shield` is not set) and not what each hand holds, so only a Shield is checked; another weapon in hand is the DM's. A Lance
 // (`twoHandedUnlessMounted`) is one-handed while its wielder rides. Returns the reason, or ''.
-export function handsFull(s, e, atk) {
-  const w = weaponOf(atk);
+// A hand that holds a creature (a grapple with an Unarmed Strike, `with: 'hand'`; docs/specs/grapple-shove.md, Decision 4) is not
+// free either: a Two-Handed weapon, or a Versatile weapon's two-handed attack (`<weapon>-two-handed`, derive.js), is refused while
+// `e` holds one, and `grapple` (a new grapple with a hand) is refused when a Shield and one hold, or two holds, take both hands.
+export function handsFull(s, e, atk, grapple = false) {
+  const held = handHolds(s, e);
+  if (grapple) {
+    const used = held.length + (e.shield ? 1 : 0);
+    if (used < 2) return '';
+    return `${e.name} has no hand free to grapple: ${[...(e.shield ? ['a Shield'] : []), ...held.map((t) => t.name)].join(' and ')} ${used === 1 ? 'takes' : 'take'} both hands. ${held.length ? `Let go of ${held[0].name} first (letGo).` : ''}`.trim();
+  }
+  const w = weaponOf(atk), twoHands = (!!w?.properties?.includes('two-handed') && !(w.twoHandedUnlessMounted && riding(s, e))) || /-two-handed$/.test(atk?.id ?? '');
+  if (twoHands && held.length) return `${atk.name} needs both hands, and ${e.name} is holding ${held[0].name}. Let go first (letGo: no action needed).`;
   if (!w?.properties?.includes('two-handed') || !e.shield) return '';
   if (w.twoHandedUnlessMounted && riding(s, e)) return '';
   return e.sheet
     ? `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. ${e.name} can put the Shield away first (Put Shield away; in a fight it takes the Utilize action).`
     : `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield, which only the DM can change.`;
+}
+
+// The creatures `e` holds with a hand (engine/world.js, holdsOf, keeps the full list; this one is here so the checks above need
+// nothing from engine/). Without the game state (a list of a creature's reactions) none is known. A dead creature fills no hand:
+// its hold ends after the action that killed it (settleHolds), and this does not wait for that.
+export function handHolds(s, e) {
+  if (!s?.entities || !e) return [];
+  return Object.values(s.entities).filter((t) => !t.dead && (t.cond?.grappled?.holds ?? []).some((h) => h.by === e.id && h.with === 'hand'));
 }
 
 // Loading (SRD "Weapons", Properties): "You can fire only one piece of ammunition from a Loading weapon when you use an action,
