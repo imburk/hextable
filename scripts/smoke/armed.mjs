@@ -145,15 +145,16 @@ async function aimLock(browser, url, label, opts) {
 
       await run.do('a fight on the wizard\'s turn; Burning Hands armed: no aim yet, hover previews', async () => {
         await open(page, url); await playSolo(page);
-        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; const S = window.hextable.state; window.hextable.act({ type: 'startEncounter', center: S.entities.wizard.pos }); });
+        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; const S = window.hextable.state; const foe = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0); window.hextable.act({ type: 'startEncounter', center: foe.pos, radius: 14 }); });
         await wait(page, () => window.hextable.state.encounter, null, 8000);
+        await wait(page, () => window.hextable.waiting === 0, null, 20000).catch(async (e) => { throw new Error(`waiting stuck: ${await page.evaluate(() => JSON.stringify([window.hextable.waiting, !!window.hextable.armed, window.hextable.state.encounter?.turn]))}`); });
         for (let i = 0; i < 30; i++) {
           const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
           if (cur === 'wizard') break;
           await page.evaluate((x) => window.hextable.act({ type: 'endTurn', actor: x }), cur);
           await wait(page, () => window.hextable.waiting === 0, null, 20000);
         }
-        await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000);
+        await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
         await closePanels(page);
         await page.click('#party button:has-text("Tavin")');
         await panelTab(page, 'spells');
@@ -177,7 +178,7 @@ async function aimLock(browser, url, label, opts) {
         await shot('1-locked');
         await wander([b, c, wiz]);
         const w = await view();
-        if (w.aim?.q !== a.q || w.aim?.r !== a.r || w.area !== v.area) throw new Error(`the aim moved after the lock: ${JSON.stringify([v, w])}`);
+        if (w.aim?.q !== a.q || w.aim?.r !== a.r || w.area !== v.area || w.hint !== v.hint) throw new Error(`the aim moved after the lock: ${JSON.stringify([v, w])}`);
         await shot('2-pointer-at-cast');
       });
 
@@ -206,7 +207,7 @@ async function aimLock(browser, url, label, opts) {
           await page.evaluate((x) => window.hextable.act({ type: 'endTurn', actor: x }), cur);
           await wait(page, () => window.hextable.waiting === 0, null, 20000);
         }
-        await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000);
+        await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
         await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell');
