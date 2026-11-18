@@ -2,11 +2,12 @@
 // is spent, and the standing instruction for each (rules reactions.js). Shown to the creature's
 // controller and the DM only. It decides no rule: the list and the allowed values come from
 // `reactionsOf`, and a change is sent as { type: 'reactions', actor, set: { id: when } }.
-import { reactionsOf, instruction, WHEN, canReact } from './shared/reactions.js';
+import { reactionsOf, instruction, defaultOf, WHEN, canReact } from './shared/reactions.js';
 import { inFight } from './shared/engine.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const TRIGGER = { leave: 'when a creature leaves its reach', hit: 'when it is hit by an attack', targeted: 'when a spell targets it', cast: 'when a creature it can see casts a spell', damaged: 'when a creature damages it' };
+export const TRIGGER = { leave: 'when a creature leaves its reach', hit: 'when it is hit by an attack', targeted: 'when a spell targets it', cast: 'when a creature it can see casts a spell', damaged: 'when a creature damages it',
+  familiarDamaged: 'when its familiar takes damage: Resistance to it' };
 const COST = { attack: 'Costs only the Reaction.', spell: 'Spends a spell slot.', feature: '', trait: '' };
 
 // What was set for this creature: the DM is sent it on the creature, a player in `S.reactions`.
@@ -15,7 +16,8 @@ const setFor = (S, e) => e.reactions ?? S.reactions?.[e.id] ?? {};
 // Same shape as the reaction list, with each one's current instruction. Empty if there is nothing to show.
 export function reactionRows(S, e) {
   const set = setFor(S, e), at = { ...e, reactions: set };
-  return reactionsOf(e).map((r) => ({ ...r, now: instruction(at, r) }));
+  // A default that depends on who runs the creature (Investment of the Chain Master: `ask` for a player's) is worked out from the view.
+  return reactionsOf(e).map((r) => ({ ...r, now: instruction(at, r, S), dflt: defaultOf(r, S, e) }));
 }
 
 // What a `free` instruction waits for (#230): not a trigger of a Reaction, a moment of the fight.
