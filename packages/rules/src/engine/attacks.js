@@ -188,7 +188,7 @@ function familiarAttack(s, a, ctx, ev) {
   else {
     b.action--;
     if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
-    if (m.features.extraAttack) b.attacks = [[{ action: null, left: m.features.extraAttack }]];      // the Attack action's other attacks
+    if (m.features?.extraAttack) b.attacks = [[{ action: null, left: m.features.extraAttack }]];      // the Attack action's other attacks
   }
   if (forgo) {
     f.reactionUsed = true;
