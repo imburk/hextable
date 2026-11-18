@@ -625,6 +625,9 @@ function lintMonster(e, say, baked = false) {
         if (r.manual !== undefined && !isText(r.manual)) sub('reaction.manual is text for the DM');
       }
     }
+    // `masterHeal: { within }` (#464, C9c; the Otherworldly Steed's Life Bond): when its master regains Hit Points from a spell
+    // of level 1 or higher while within `within` feet of it, it regains the same number (engine/rolls.js, heal).
+    if (t.masterHeal !== undefined && !(t.masterHeal && Object.keys(t.masterHeal).length === 1 && isInt(t.masterHeal.within) && t.masterHeal.within > 0 && t.masterHeal.within <= 120 && t.masterHeal.within % 5 === 0)) sub('masterHeal is { within: feet }');
   }
   if (seenCounter(e.actions)) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   if (e.conditionImmune !== undefined && !(allOf(CONDITIONS)(e.conditionImmune) && e.conditionImmune.length > 0)) say('conditionImmune must be a list of conditions');
@@ -840,7 +843,12 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   // break (Relentless Hunter); Exhaustion lowered by a Short Rest (Tireless).
   'afterHit', 'markSpread', 'steadfast', 'restExhaustion',
   // A spell's range made longer (Eldritch Spear) and a push on its hits (Repelling Blast).
-  'spellRange', 'repel'];
+  'spellRange', 'repel',
+  // Since #464 (docs/specs/companions.md, amendment C9c): one of its attacks given up for its familiar's Reaction attack
+  // (Pact of the Chain), and what it gives the familiar that spell makes (Investment of the Chain Master).
+  'forgoAttack', 'invest'];
+// Investment of the Chain Master's `invest` (C9c): the keys it may hold, and the damage types it may turn into others.
+export const INVEST_KEYS = ['spell', 'speed', 'damage', 'saveDc', 'bonusAttack', 'ward'];
 const LEVELS = 20;
 // A number that grows with the class: a plain number, a column of the class table, an ability
 // modifier with a least value, or so many times the class level.
@@ -886,6 +894,26 @@ function bakeValues(list, cls, say) {
     for (const b of ['onHit', 'onMiss', 'onFail', 'onSuccess']) if (Array.isArray(x[b])) x[b] = bakeValues(x[b], cls, say);
   }
   return out;
+}
+// `invest` (C9c, Investment of the Chain Master): what the familiar `spell` makes for this caster is given.
+//   speed: { feet, of }        a Speed of `feet` in one way of moving of `of`, chosen at each casting (Fly or Swim 40)
+//   damage: { from, to }       damage of a type in `from` it deals may be of one type of `to` instead, chosen at the casting
+//   saveDc: true               a save it forces uses its master's spell save DC
+//   bonusAttack: true          a Bonus Action of its master's has it take the Attack action (`attack` with `familiar` and `via`)
+//   ward: true                 when it takes damage, its master's Reaction gives it Resistance to that damage (reactions.js)
+// Every key but `spell` is optional; at least one is there. Null if it is whole, or what is wrong.
+export function investProblem(x) {
+  if (!x || typeof x !== 'object' || Array.isArray(x) || !Object.keys(x).every((k) => INVEST_KEYS.includes(k))) return `invest is { ${INVEST_KEYS.join(', ')} }, each but spell optional`;
+  if (!ID.test(x.spell ?? '')) return 'invest names its spell';
+  if (Object.keys(x).length < 2) return 'invest gives the familiar something besides naming its spell';
+  const s = x.speed;
+  if (s !== undefined && !(s && Object.keys(s).length === 2 && isInt(s.feet) && s.feet > 0 && s.feet <= 120 && s.feet % 5 === 0
+    && Array.isArray(s.of) && s.of.length >= 1 && s.of.length <= 4 && s.of.every((m) => ['fly', 'swim', 'climb', 'burrow'].includes(m)) && new Set(s.of).size === s.of.length)) return 'invest.speed is { feet, of: [fly | swim | climb | burrow] }';
+  const d = x.damage;
+  if (d !== undefined && !(d && Object.keys(d).length === 2 && allOf(DAMAGE_TYPES)(d.from) && d.from.length && allOf(DAMAGE_TYPES)(d.to) && d.to.length
+    && new Set([...d.from, ...d.to]).size === d.from.length + d.to.length)) return 'invest.damage is { from: [types], to: [other types] }';
+  for (const k of ['saveDc', 'bonusAttack', 'ward']) if (x[k] !== undefined && x[k] !== true) return `invest.${k} is true or left out`;
+  return null;
 }
 function lintGrants(g, cls, say) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
@@ -1157,6 +1185,10 @@ function lintGrants(g, cls, say) {
   if (g.repel !== undefined && !(g.repel && ID.test(g.repel.spell ?? '') && isInt(g.repel.feet) && g.repel.feet > 0 && g.repel.feet % 5 === 0 && Object.keys(g.repel).length === 2)) say('repel is { spell, feet }');
   // `restExhaustion: 'short'`: each Short Rest it finishes lowers its Exhaustion by 1 (Tireless).
   if (g.restExhaustion !== undefined && g.restExhaustion !== 'short') say('restExhaustion is "short"');
+  // `forgoAttack: { spell }` (C9c, Pact of the Chain): when it takes the Attack action it may give up one of its attacks
+  // so that its familiar made by `spell` makes one attack with its Reaction (`attack` with `familiar` and `via`).
+  if (g.forgoAttack !== undefined && !(g.forgoAttack && ID.test(g.forgoAttack.spell ?? '') && Object.keys(g.forgoAttack).length === 1)) say('forgoAttack is { spell }');
+  if (g.invest !== undefined) { const why = investProblem(g.invest); if (why) say(why); }
   if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
 }
@@ -1565,7 +1597,7 @@ const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach'
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
-  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion', 'spellRange', 'repel'];
+  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion', 'spellRange', 'repel', 'forgoAttack', 'invest'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -1630,6 +1662,8 @@ function lintFeat(f, say) {
   if (f.restExhaustion !== undefined && f.restExhaustion !== 'short') sub('its restExhaustion is "short".');
   if (f.spellRange !== undefined && !(f.spellRange && ID.test(f.spellRange.spell ?? '') && isInt(f.spellRange.add) && f.spellRange.add > 0 && f.spellRange.add <= 600)) sub('its spellRange is { spell, add }.');
   if (f.repel !== undefined && !(f.repel && ID.test(f.repel.spell ?? '') && isInt(f.repel.feet) && f.repel.feet > 0 && f.repel.feet <= 30)) sub('its repel is { spell, feet }.');
+  if (f.forgoAttack !== undefined && !(f.forgoAttack && ID.test(f.forgoAttack.spell ?? ''))) sub('its forgoAttack is { spell }.');
+  if (f.invest !== undefined && investProblem(f.invest)) sub(`${investProblem(f.invest)}.`);
   if (f.empowered !== undefined && !(f.empowered && SCHOOLS.includes(f.empowered.school) && ID.test(f.empowered.list ?? '') && ABILITIES.includes(f.empowered.ability))) sub('its empowered is { school, list, ability }.');
   if (f.overchannel !== undefined && !(f.overchannel && ID.test(f.overchannel.list ?? '') && isInt(f.overchannel.maxSlot) && f.overchannel.maxSlot >= 1 && f.overchannel.maxSlot <= 9 && [4, 6, 8, 10, 12].includes(f.overchannel.die))) sub('its overchannel is { list, maxSlot, die }.');
   if (f.fleet !== undefined && !(f.fleet && ID.test(f.fleet.of ?? ''))) sub('its fleet is { of }.');
@@ -2454,6 +2488,8 @@ function lintShape(kind, e, say, { homebrew }) {
   lintKeys(kind, e, say, (shape, key, value, path) => {
     // Extra familiar forms are not for homebrew yet (#414): a feature that adds forms could make any SRD monster a familiar.
     if (homebrew && shape === 'freeCast' && key === 'forms') { bad++; say('A homebrew feature cannot add familiar forms yet.'); return; }
+    // Nor what changes a familiar or lets it attack (#464): a feat could otherwise arm any caster's familiar.
+    if (homebrew && shape === 'grants' && (key === 'invest' || key === 'forgoAttack')) { bad++; say('A homebrew feature cannot change a familiar or let it attack yet.'); return; }
     const t = typeProblem(shape, key, value); if (t) { bad++; say(`${path} ${t}`); }
   });
   if (homebrew && !bad) lintNumbers(kind, e, (m) => { bad++; say(m); });
