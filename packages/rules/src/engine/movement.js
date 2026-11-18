@@ -199,7 +199,10 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
         const oa = o.actions ? opportunityAttacks(o).find((a) => !partRefusal(s, o, a, [t])) ?? opportunityAttack(o, s) : opportunityAttack(o, s);
-        if (grab && SIZE_LIST.indexOf(e.size ?? 'medium') > SIZE_LIST.indexOf(o.size ?? 'medium') + 1) ev.push({ type: 'note', id: o.id, text: `${o.name} can't grapple it: too big to grapple. The Reaction is spent.` });
+        if (grab && SIZE_LIST.indexOf(e.size ?? 'medium') > SIZE_LIST.indexOf(o.size ?? 'medium') + 1) {
+          const text = `${o.name} can't grapple it: too big to grapple. The Reaction is spent.`;
+          ev.push(o.side === 'party' ? { type: 'note', id: o.id, text } : { type: 'manual', actor: o.id, name: 'Grapple', partial: true, text });
+        }
         else if (grab) strikeOption(s, o, e, grab, 'grapple', undefined, ev);
         else if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, t, oa, ev, { opportunity: true });

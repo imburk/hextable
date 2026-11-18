@@ -686,3 +686,15 @@ test("G6 review L5: two foes beside the mover: the first to grapple stops the wa
   assert.ok(dist(p, start) >= 2, "the steps already taken stay taken");
   assert.equal(u.s.encounter.budget.move, move0 - 5 * dist(p, start), "and are spent; the step not taken is not");
 });
+
+test("G6 review: the 'too big to grapple' message is a note to the party when the reactor is the party's", () => {
+  // (A reactor that is not the party's is never asked about a mover it cannot name: a creature that is not a party member sees by
+  // canSee alone, so the question names the mover and a too-big one is not offered. The DM-only `manual` there is not reachable by a prompt.)
+  const { s, away } = leaving(fighter(STR16), { size: "huge" });
+  s.entities.hero.senses = { ...s.entities.hero.senses, blindsight: 60 };
+  s.entities[s.foe].hiding = { dc: 30 };
+  ok(apply(s, away, DM));
+  const ev = ok(react(s, OPPORTUNITY_GRAPPLE)).events;
+  assert.ok(ev.some((e) => e.type === "note" && /too big to grapple/.test(e.text)));
+  assert.ok(!ev.some((e) => e.type === "manual" && /too big/.test(e.text)));
+});
