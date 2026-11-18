@@ -19,7 +19,7 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { aloft, below, creatureType, carry, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
@@ -73,38 +73,24 @@ export function fall(s, t, feet, ev) {
 // SRD gives no rule for (it is not the mount that is moved): the engine does not move it, and the DM is told.
 // It returns what became of it, for a caller that has to say: 'mount' (a riding creature: the DM is told, nothing moves), 'aloft' (the
 // creature stands on nothing, so no step is found), 'blocked' (a wall, a drop, a creature, or a boundary stops the first step),
-// 'moved'.
+// 'moved'. The step it takes is `forcedStep` (world.js), which the drag of a held creature asks too, before its grappler moves.
 function push(s, t, feet, dir, from, ev) {
   if (mountOf(s, t)) {
     ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
       text: `${t.name} would be ${dir === 'toward' ? 'pulled' : 'pushed'} ${feet} ft while riding ${mountOf(s, t).name}. The SRD has no rule for a rider moved off its mount this way, so the engine leaves ${t.name} riding: the DM moves ${t.name} (dismount, then place) if it should go.` });
     return 'mount';
   }
-  const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
+  const G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1;
   const r0 = riderOf(s, t), was = { ...t.pos };
   let rider = r0, asked = false, fallen = null;
-  const square = G.kind === 'square', rule = s.settings.diagonals ?? 'real';
+  const square = G.kind === 'square';
   let left = feet, odd = false, why = 'blocked';
-  const stride = (a, b) => (!square || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT);
   for (let i = 0; square ? left > 0 : i < Math.floor(feet / FT); i++) {
-    const here = ground(s.map, t.pos), d0 = G.dist(t.pos, from), w = G.toWorld(t.pos);
-    if (!here) { why = 'aloft'; break; }
-    let best = null;
-    for (const n of G.neighbors(t.pos)) {
-      if (G.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[col(n)])) continue;
-      const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
-      if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
-      const h = { q: n.q, r: n.r, z: sf.z };
-      if (living(s).some((c) => c.id !== t.id && c.id !== r0?.id && overlapAt(c, c.pos, t, h, G)) || !fitsOn(s.map, t, h, B)) continue;
-      if (square && below(left, stride(t.pos, n))) continue;                                                              // not enough of the push left for this step
-      if (square && !footprint(t, t.pos, G).every((f, j) => { const g = footprint(t, h, G)[j]; return !B.blocked(here.level.id, f, g) && cornerFree(s.map, G, B, f, g, t.pos.z); })) continue;     // every part: no wall, no corner
-      const nw = G.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
-      if (!best || straight > best.straight + 1e-9) best = { h, straight };
-    }
-    if (!best) break;
+    const best = forcedStep(s, t, from, sign, left, odd);
+    if (!best.h) { if (best.why === 'aloft') why = 'aloft'; break; }
     // The save is made once a step is found (the effect is about to move it).
     if (rider && !asked) { asked = true; if (!staysOn(s, rider, ev)) { fallen = rider; rider = null; } }
-    if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
+    if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= forcedStride(s, t.pos, best.h, odd); if (d) odd = !odd; }
     const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
     if (rider) carry(s, t);
@@ -1405,14 +1391,10 @@ export function endHold(s, t, by, why, ev) {
   for (const [c, v] of Object.entries(t.cond)) if (v?.grapple === by) { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
   return true;
 }
-// What the DM is told when a hold ends by distance, by what moved. A grappler's own walk is refused until G3 builds dragging
-// (movement.js), so a walk here is one the refusal does not cover (a mount carrying it): the DM is told the engine does not drag.
-// A teleport, or anything else, is said for what it was.
+// What the DM is told when a hold ends by distance: what moved the two apart. A grappler's own walk never ends a hold, for it drags
+// (movement.js); so it is a teleport, or a push, a fall or the DM's placing, said for what it was.
 function holdNote(s, g, t, h, ev) {
-  const mine = ev.filter((x) => x.type === 'moved' && x.id === g.id);
-  if (mine.some((x) => !x.forced && !x.teleport && !x.caughtUp)) return ev.push({ type: 'manual', actor: g.id, name: 'Grapple', partial: true,
-    text: `${g.name} moved away from ${t.name}, so the grapple ended: the engine does not drag a held creature yet. If ${g.name} meant to drag ${t.name} (each foot costing 1 extra foot unless ${t.name} is Tiny or two or more sizes smaller), the DM places ${t.name} and ${g.name} grapples again.` });
-  const what = mine.some((x) => x.teleport) ? `${g.name} teleported away from ${t.name}` : `${g.name} and ${t.name} are now more than ${h.range} ft apart`;
+  const what = ev.some((x) => x.type === 'moved' && x.id === g.id && x.teleport) ? `${g.name} teleported away from ${t.name}` : `${g.name} and ${t.name} are now more than ${h.range} ft apart`;
   ev.push({ type: 'note', id: t.id, text: `${what}, so the grapple ended` });
 }
 // After every action (engine.js, apply, beside settleBonds): every hold whose grappler is gone from the map, is dead, down or
