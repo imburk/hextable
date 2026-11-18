@@ -114,6 +114,13 @@
           "name": "Ember Memory",
           "text": "Remembers every face it has burned.",
           "modifiers": []
+        },
+        {
+          "id": "strong-grip",
+          "name": "Strong Grip",
+          "text": "Drags what it holds without slowing.",
+          "modifiers": [],
+          "dragFree": true
         }
       ],
       "actions": [

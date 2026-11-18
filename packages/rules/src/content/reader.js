@@ -263,7 +263,7 @@ export function sha256(text) {
 const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'costly', 'duration', 'concentration', 'ritual', 'target', 'effects',
   'higher', 'tier', 'checked', 'text', 'kinds', 'choice', 'terrain', 'zone', 'reaction'];
 const STEP_KEYS = {
-  attack: ['kind', 'bonus'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends'],
+  attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
   endConcentration: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
@@ -900,6 +900,14 @@ export const STEP_SENTENCES = {
       this.line('The engine has no spell attack bonus for a creature\'s action, so it makes no roll: it tells the DM, who rolls it and says whether it hits, and it counts as a miss meanwhile. The entry should be a weapon attack with a bonus.', depth);
       this.dm(`The attack of step ${at}: it is a spell attack, which has no bonus in a creature's action: rolling it and saying whether it hits.`);
     }
+    // `advantageIf` (a creature's action): Advantage on the roll when every tag holds, judged as a save's is (engine/resolve.js `rollToHit`).
+    if (st.advantageIf !== undefined) {
+      const tags = Array.isArray(st.advantageIf) ? st.advantageIf.filter((t) => typeof t === 'string' && Object.hasOwn(TAG_WORDS, t)) : [];
+      const un = tags.filter((t) => !JUDGED_ADVANTAGE_IF.includes(t));
+      if (!this.mon) this.bad(`Step ${at}: \`advantageIf\` on an attack is for a creature's action.`);
+      this.line(`The attack roll has Advantage if ${list(tags.map((t) => TAG_WORDS[t]))}${un.length ? `. The engine cannot tell whether ${list(un.map((t) => TAG_WORDS[t]))}: it rolls without that Advantage and tells the DM, who decides` : ''}.`, depth);
+      if (un.length) this.dm(`Deciding Advantage on the attack roll of step ${at}.`);
+    }
     // effects.js `exec`: the branch of an attack carries how the roll went (`mode`) into every step below it, so a `when` on Advantage or Disadvantage can be judged there.
     this.afterAtk++;
     try {
@@ -938,10 +946,25 @@ export const STEP_SENTENCES = {
     if (!CONDITIONS.includes(st.condition)) { this.bad(`Step ${at}: the condition is not one the engine knows.`); say(`${Who} gets a condition the engine does not know.`); return; }
     say(`${Who} has the ${cond(st.condition)} condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)`);
     const prone = st.condition === 'prone' && !this.fx;
-    const end = prone ? 'It ends when the creature stands up, as Prone always does.' : this.ending(st, at, 'condition');
+    // A creature's hold (docs/specs/grapple-shove.md, Decision 7): the engine keeps it, so the DM has nothing to remove by hand.
+    const hold = this.mon && ((st.condition === 'grappled' && isInt(st.escape)) || (st.condition !== 'grappled' && st.whileHeld === true));
+    if (st.condition === 'grappled' && st.escape !== undefined) {
+      if (!this.mon || !isInt(st.escape)) this.bad(`Step ${at}: a hold's escape DC is a whole number, in a creature's action.`);
+      else {
+        this.num(`${at}.escape`, st.escape, 'escape DC');
+        if (isInt(st.holds)) this.num(`${at}.holds`, st.holds, 'creatures');
+        const big = typeof st.largest === 'string' && ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'].includes(st.largest) ? ` Only a creature that is ${cap1(st.largest)} or smaller is held; a bigger one is not, and nothing is said.` : '';
+        const many = isInt(st.holds) && st.holds > 1 ? ` That action can hold ${st.holds} creatures at once; while it holds that many it cannot be used on another.` : ' That action holds one creature at a time, and cannot be used on another until it lets go.';
+        this.line(`It is a hold the engine keeps: escape DC ${st.escape}.${big}${many}${st.escapeDis === true ? ' Ability checks to escape have Disadvantage.' : ''} It ends when the creature escapes (an action and a Strength (Athletics) or Dexterity (Acrobatics) check), when the one holding it lets go, is Incapacitated, or is farther away than the action reaches.`, depth + 1);
+      }
+    } else if (st.condition !== 'grappled' && st.whileHeld !== undefined) {
+      if (!this.mon || st.whileHeld !== true) this.bad(`Step ${at}: \`whileHeld\` is true, in a creature's action.`);
+      else this.line('It goes on only if the creature using the action is holding the target, and it ends when that hold does.', depth + 1);
+    }
+    const end = hold ? null : prone ? 'It ends when the creature stands up, as Prone always does.' : this.ending(st, at, 'condition');
     if (end) this.line(end, depth + 1);
     if (st.condition === 'prone' && this.fx) this.line('The creature can also stand up out of it, as from any Prone.', depth + 1);
-    if (!this.fx && !prone) this.dm(`Removing the ${cond(st.condition)} condition that step ${at} puts on.`);
+    if (!this.fx && !prone && !hold) this.dm(`Removing the ${cond(st.condition)} condition that step ${at} puts on.`);
     if (CONTENT.conditions[st.condition]?.also) this.line(`The engine applies part of what ${cond(st.condition)} does; the DM applies the rest.`, depth + 1);
   },
   modifier({ st, at, depth, Who, say }) {
@@ -1194,7 +1217,7 @@ export const MONSTER_FIELDS = {
   abilities: 'fAbilities', initiative: 'fInitiative', saves: 'fSaves', skills: 'fSkills', senses: 'fSenses', resist: 'fResist', vulnerable: 'fVulnerable', immune: 'fImmune',
   conditionImmune: 'fConditionImmune', languages: 'fLanguages', mount: 'fMount', traits: 'fTraits', actions: 'fActions', tier: 'fTier', checked: 'fChecked', text: 'skip',
 };
-export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction' };
+export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
 export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range'];
 export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'];
@@ -1425,15 +1448,17 @@ class MonsterReading extends Reading {
     const at = `traits.${i}`;
     if (!isObj(t)) { this.bad(`${at} is not a trait.`); return this.line('(A trait the reader cannot read.)'); }
     this.odd(t, Object.keys(TRAIT_FIELDS), `Trait ${i + 1}`);
+    if (t.dragFree !== undefined && t.dragFree !== true) this.bad(`${at}: dragFree is true or left out.`);
     const name = typeof t.name === 'string' && t.name.trim() ? qt(t.name, 60) : '(no name)';
     const mods = Array.isArray(t.modifiers) ? t.modifiers : null;
     if (!mods) this.bad(`${at} has no list of modifiers (it may be empty).`);
-    const runs = (mods?.length ?? 0) > 0 || t.reaction !== undefined || Object.hasOwn(TRAIT_ID_WORDS, t.id);
+    const runs = (mods?.length ?? 0) > 0 || t.reaction !== undefined || t.dragFree === true || Object.hasOwn(TRAIT_ID_WORDS, t.id);
     this.line(`Trait ${name}: ${runs ? 'the engine runs this.' : 'text only. The engine does nothing with it; the DM runs it.'}`);
     if (!runs) { this.textOnly++; this.dm(`The trait ${name}: text only.`); }
     (mods ?? []).forEach((m, j) => this.traitMod(m, `${at}.modifiers.${j}`));
     if (t.reaction !== undefined) this.traitReaction(t.reaction, `${at}.reaction`);
     if (Object.hasOwn(TRAIT_ID_WORDS, t.id)) this.line(TRAIT_ID_WORDS[t.id], 1);
+    if (t.dragFree === true) this.line('Moving a creature it is grappling costs it no extra movement: the engine adds no extra feet when it drags what it holds.', 1);
     if (LEGENDARY.test(`${t.id} ${t.name}`)) {
       this.line('The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.', 1);
       this.dm(`Legendary, lair or mythic actions of the trait ${name}.`);

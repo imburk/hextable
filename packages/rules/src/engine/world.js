@@ -31,8 +31,10 @@ export function draggedBy(s, e) {
   return [...holdsOf(s, e), ...(r ? holdsOf(s, r) : [])].map(({ t, hold }) => ({ g: s.entities[hold.by], t, hold }));
 }
 // The extra feet that each foot of the grappler's movement costs for dragging `t` (SRD Grappled, "Movable"): 1, unless `t` is Tiny
-// or two or more sizes smaller than the grappler; or, with the Grappler feat (Fast Wrestler), the grappler's size or smaller.
+// or two or more sizes smaller than the grappler; or, with the Grappler feat (Fast Wrestler), the grappler's size or smaller; or none for
+// a grappler with a trait `dragFree` (the bugbears' Abduct, the shambling mound's Engulf: "costing it no extra movement").
 export function dragExtra(g, t) {
+  if (CONTENT.monsters[g.tpl]?.traits?.some((x) => x.dragFree)) return 0;
   const gi = SIZE_ORDER.indexOf(g.size ?? 'medium'), ti = SIZE_ORDER.indexOf(t.size ?? 'medium');
   return ti === 0 || ti <= gi - 2 || (ti <= gi && (g.feats ?? []).some((f) => f.id === 'feat-grappler')) ? 0 : 1;
 }

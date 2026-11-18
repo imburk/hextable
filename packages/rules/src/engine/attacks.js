@@ -6,7 +6,7 @@ import { apart, FT } from '../space.js';
 import { canReact, checkInstructions, reactionsOf } from '../reactions.js';
 import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
 import { rollMode } from './rolls.js';
-import { aimAction, showPlace } from './world.js';
+import { aimAction, holdsOf, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed } from '../weapons.js';
@@ -53,6 +53,23 @@ export function actionSpent(e, def) {
   return '';
 }
 
+// The part an action holds with (docs/specs/grapple-shove.md, Decision 7; SRD "Grappling", One Grapple per Hand): its Grappled step's `holds`
+// creatures at most (1 if left out). While it holds that many, it can't be used on another creature until one is let go or escapes.
+// Why `def` can't be used on `targets` ('' if it can); the monster AI asks this too, so it never picks an action the engine would refuse.
+export function partRefusal(s, e, def, targets) {
+  let n = 0;
+  walk(def.effects, (st) => { if (st?.condition === 'grappled' && st.escape !== undefined) n = Math.max(n, st.holds ?? 1); });
+  if (!n || !targets) return '';
+  const mine = holdsOf(s, e).filter((x) => x.hold.with === def.id);
+  if (mine.length < n) return '';
+  const other = targets.find((t) => !mine.some((x) => x.t.id === t.id));
+  return other ? `${e.name}'s ${def.name} holds ${mine.map((x) => x.t.name).join(', ')}; it can't be used on ${other.name} until ${mine.length === 1 ? 'it lets go' : 'one is let go'}.` : '';
+}
+function partFull(s, e, def, targets) {
+  const why = partRefusal(s, e, def, targets);
+  if (why) fail(why);
+}
+
 // Use an action: aim it, pay for it, run it. In a fight it costs the creature's action (or its
 // Bonus Action, for one with `time: 'bonus'`), unless it is one of the attacks a Multiattack
 // left this turn, which it spends instead.
@@ -60,6 +77,7 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   const why = actionSpent(e, def);
   if (why) fail(why);
   const { targets, hexes, origin } = aimAction(s, e, def, a, false, ctx);
+  partFull(s, e, def, def.target.creature ? targets : null);
   const p = actionProfile(def);
   if (!s.encounter && p.harmful && targets !== null && !def.target.self) {          // roll initiative first
     showPlace(s, e, ev);

@@ -208,7 +208,29 @@ const seenCounter = (actions) => { let n = false; for (const a of actions ?? [])
 function walkSteps(steps, visit) {
   for (const st of Array.isArray(steps) ? steps : []) { visit(st); for (const b of BRANCHES) if (st[b]) walkSteps(st[b], visit); }
 }
-function lintSteps(steps, say, seen = { manual: false }, under = false) {
+// A creature's hold (docs/specs/grapple-shove.md, Decision 7), on a condition step of its action: `escape` (the escape DC, on a Grappled
+// step), `largest` (the biggest size it holds), `holds` (how many creatures that action's part holds at once), `escapeDis` (Disadvantage
+// on the checks to escape), and `whileHeld` (on another condition of the same action: it ends with the hold).
+const HOLD_KEYS = ['escape', 'largest', 'holds', 'escapeDis', 'whileHeld'];
+function lintHold(step, say, inMonster) {
+  const used = HOLD_KEYS.filter((k) => step[k] !== undefined);
+  if (!used.length && !(inMonster && step.condition === 'grappled')) return;
+  if (!inMonster) return say(`\`${used[0]}\` is for a creature's action`);
+  if (step.condition === 'grappled') {
+    if (step.whileHeld !== undefined) say('`whileHeld` goes on a condition that ends with the grapple, not on Grappled');
+    if (step.ends !== undefined) say('a hold has no `ends`: the grapple decides when it ends');
+    if (step.escape === undefined) { say('a Grappled step needs `escape`, the escape DC'); return; }
+    if (!(isInt(step.escape) && step.escape >= 1 && step.escape <= 40)) say('`escape` is a whole number from 1 to 40');
+    if (step.largest !== undefined && !SIZES.includes(step.largest)) say(`\`largest\` is one of ${SIZES.join(', ')}`);
+    if (step.holds !== undefined && !(isInt(step.holds) && step.holds >= 1 && step.holds <= 20)) say('`holds` is a whole number from 1 to 20');
+    if (step.escapeDis !== undefined && step.escapeDis !== true) say('`escapeDis` is true or left out');
+  } else {
+    for (const k of ['escape', 'largest', 'holds', 'escapeDis']) if (step[k] !== undefined) say(`\`${k}\` is for a Grappled step`);
+    if (step.whileHeld !== undefined && step.whileHeld !== true) say('`whileHeld` is true or left out');
+    if (step.whileHeld !== undefined && step.ends !== undefined) say('a `whileHeld` step has no `ends`: the grapple decides when it ends');
+  }
+}
+function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   for (const step of steps) {
     const kinds = STEPS.filter((k) => k in step);
@@ -220,6 +242,12 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
       if (!['weapon', 'spell'].includes(step.kind)) say('an attack step needs kind "weapon" or "spell"');
       if (step.kind === 'weapon' && !isInt(step.bonus)) say('a weapon attack needs a whole-number bonus');
       if (!step.onHit && !step.onMiss) say('an attack step needs onHit or onMiss');
+      // `advantageIf: [tags]`: the attack roll has Advantage when every tag holds ("with Advantage if the target is Grappled by the
+      // bugbear", docs/specs/grapple-shove.md, Decision 7). For a creature's action: a spell attack takes its Advantage from modifiers.
+      if (step.advantageIf !== undefined) {
+        if (!(Array.isArray(step.advantageIf) && step.advantageIf.length)) say('`advantageIf` lists situation tags'); else lintWhen(step.advantageIf, say);
+        if (!inMonster) say('`advantageIf` on an attack is for a creature\'s action');
+      }
     }
     if (kind === 'save') {
       if (!ABILITIES.includes(step.save)) say(`save uses unknown ability "${step.save}"`);
@@ -238,6 +266,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
     if ((kind === 'heal' || kind === 'tempHp') && step.addMod !== undefined && step.addMod !== true) say('`addMod` is true or left out');
     if ((kind === 'heal' || kind === 'tempHp') && step.atLeast !== undefined && !(isInt(step.atLeast) && step.atLeast > 0)) say('`atLeast` is the fewest Hit Points a heal (or Temporary Hit Points a tempHp step: Tireless) gives');
     if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
+    if (kind === 'condition') lintHold(step, say, inMonster);
+    else for (const k of HOLD_KEYS) if (step[k] !== undefined && !(k === 'largest' && kind === 'move')) say(`\`${k}\` is for a condition step`);
     // What ends a condition or a modifier on its own: a turn boundary of the target or the source
     // ("until the end of your next turn"), or a repeat save.
     if (kind === 'condition' || kind === 'modifier') {
@@ -297,7 +327,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false) {
     // `endConcentration: true`: the creature loses Concentration on whatever it holds (Sleet Storm).
     if (kind === 'endConcentration' && step.endConcentration !== true) say('`endConcentration` is true');
     if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
-    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill');
+    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill', inMonster);
   }
   return seen;
 }
@@ -629,6 +659,8 @@ function lintMonster(e, say, baked = false) {
         if (r.manual !== undefined && !isText(r.manual)) sub('reaction.manual is text for the DM');
       }
     }
+    // `dragFree: true` (docs/specs/grapple-shove.md, Decision 7): it needn't spend extra movement to move a creature it is grappling (Abduct).
+    if (t.dragFree !== undefined && t.dragFree !== true) sub('dragFree is true or left out');
     // `masterHeal: { within }` (#464, C9c; the Otherworldly Steed's Life Bond): when its master regains Hit Points from a spell
     // of level 1 or higher while within `within` feet of it, it regains the same number (engine/rolls.js, heal).
     if (t.masterHeal !== undefined && !(t.masterHeal && Object.keys(t.masterHeal).length === 1 && isInt(t.masterHeal.within) && t.masterHeal.within > 0 && t.masterHeal.within <= 120 && t.masterHeal.within % 5 === 0)) sub('masterHeal is { within: feet }');
@@ -654,13 +686,19 @@ function lintMonster(e, say, baked = false) {
     // A creature's action says how far it reaches (`reach`, melee) or shoots (`range`): with neither the engine cannot tell who it can
     // aim at (a spell has its range on the spell, so this is for a creature's action only; #421).
     if (a.target?.creature && typeof a.target.creature === 'object' && a.target.creature.reach === undefined && a.target.creature.range === undefined) sub('a creature target needs `reach` (feet, for a melee attack) or `range` ([normal, long] feet)');
-    const seen = lintSteps(a.effects, sub);
+    const seen = lintSteps(a.effects, sub, undefined, false, true);
     // A creature's action has no spell attack bonus and no spellcasting modifier of its own (a spell takes them from its caster; the engine
     // gives an action neither), so a spell attack roll and a heal or Temporary Hit Points that add a modifier would have no number (#421).
     if (Array.isArray(a.effects)) walkSteps(a.effects, (st) => {
       if (st && 'attack' in st && st.kind === 'spell') sub('a creature\'s action has no spell attack bonus: make it a weapon attack with the bonus the stat block gives (`kind: "weapon"`, `bonus`)');
       if (st && ('heal' in st || 'tempHp' in st) && st.addMod !== undefined) sub('a creature\'s action has no spellcasting modifier to add: give the whole amount in the dice (`addMod` is for a spell)');
     });
+    // A condition that ends with the grapple needs a hold in the same action to end with.
+    if (Array.isArray(a.effects)) {
+      let held = false, tied = false;
+      walkSteps(a.effects, (st) => { if (st?.condition === 'grappled' && st.escape !== undefined) held = true; if (st?.whileHeld) tied = true; });
+      if (tied && !held) sub('`whileHeld` needs a Grappled step with `escape` in the same action');
+    }
     if (e.tier === 'auto' && seen.manual) sub('the monster is marked auto but this action has a manual step');
     if (seen.summons) sub('a summon step is for a spell (a creature\'s action that summons is the DM\'s for now)');
   }
@@ -1951,8 +1989,8 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 // homebrew.md, Decision 6, has shapes.js derive them in B2. A shape of `null` keys has its keys checked by the
 // linter already (a map of skills, of states, of levels); its values are walked for the shapes below.
 const STEP_KEYS = {
-  attack: ['kind', 'bonus', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill'],
-  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends'], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
+  attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill'],
+  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
   reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
@@ -1982,7 +2020,7 @@ const SHAPES = {
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
   over: { what: 'what a summon replaces', keys: ['speed'] },
   forms: { what: 'summon forms', keys: ['type', 'cr'] },
-  trait: { what: 'a trait', keys: ['id', 'name', 'text', 'modifiers', 'reaction'] },
+  trait: { what: 'a trait', keys: ['id', 'name', 'text', 'modifiers', 'reaction', 'dragFree'] },
   action: { what: 'an action', keys: ['id', 'name', 'text', 'time', 'target', 'effects', 'uses', 'recharge', 'multiattack'] },
   uses: { what: 'uses', keys: ['per', 'n'] },
   attackEntry: { what: 'a multiattack entry', keys: ['action', 'times'] },
@@ -2099,7 +2137,7 @@ function lintUnchecked(kind, e, say) {
   for (const l of lists) walkSteps(l, (st) => { if (st && typeof st === 'object') steps.push(st); });
   for (const st of steps) {
     if (st.half !== undefined && typeof st.half !== 'boolean') say('a save step\'s `half` is true or false');
-    if (st.largest !== undefined && !SIZES.includes(st.largest)) say(`a move step's \`largest\` is one of ${SIZES.join(', ')}`);
+    if (st.largest !== undefined && !SIZES.includes(st.largest)) say(`a move or condition step's \`largest\` is one of ${SIZES.join(', ')}`);
   }
   const area = kind === 'spells' ? [e.target?.area] : kind === 'monsters' ? (e.actions ?? []).map((a) => a?.target?.area) : [];
   for (const a of area) if (a?.height !== undefined && !(isInt(a.height) && a.height > 0 && a.height % 5 === 0)) say('an area\'s height is feet, a multiple of 5');
@@ -2127,7 +2165,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
-  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
+  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50],
   // items, feats, objects, weapons, armour
@@ -2395,7 +2433,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   count: { slot: 'i', base: 'i', above: 'i' },
   over: { speed: 'o' },
   forms: { type: 's', cr: 'n' },
-  trait: { id: 'id', name: 's', text: 's', modifiers: 'a', reaction: 'o' },
+  trait: { id: 'id', name: 's', text: 's', modifiers: 'a', reaction: 'o', dragFree: 'b' },
   action: { id: 'id', name: 's', text: 's', time: 's', target: 'o', effects: 'a', uses: 'o', recharge: 'i[]', multiattack: 'a|o' },
   uses: { per: 's', n: 'i' },
   attackEntry: { action: 's|s[]', times: 'i' },
@@ -2423,11 +2461,11 @@ export const HOMEBREW_TYPES = Object.freeze({
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
   states: { '*': 'o' }, 'trait[]': { '*': 'o' }, 'action[]': { '*': 'o' }, 'modifier[]': { '*': 'o' }, 'trigger[]': { '*': 'o' }, 'use[]': { '*': 'o' }, 'activate[]': { '*': 'o' }, 'attackEntry[]': { '*': 'o' },
-  'step.attack': { attack: 's', kind: 's', bonus: 'i', onHit: 'a', onMiss: 'a' },
+  'step.attack': { attack: 's', kind: 's', bonus: 'i', advantageIf: 's[]', onHit: 'a', onMiss: 'a' },
   'step.save': { save: 's', dc: 'i', half: 'b', advantageIf: 's[]', onFail: 'a', onSuccess: 'a' },
   'step.damage': { damage: 'd', type: 's', times: 'i', onZero: 'a', onKill: 'a' },
   'step.heal': { heal: 'd', addMod: 'b', atLeast: 'i' }, 'step.tempHp': { tempHp: 'd', addMod: 'b', atLeast: 'i' },
-  'step.condition': { condition: 's', ends: 'o' }, 'step.modifier': { modifier: 'o', ends: 'o', to: 's' },
+  'step.condition': { condition: 's', ends: 'o', escape: 'i', largest: 's', holds: 'i', escapeDis: 'b', whileHeld: 'b' }, 'step.modifier': { modifier: 'o', ends: 'o', to: 's' },
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },

@@ -243,7 +243,7 @@ A condition step that puts on `grappled` gains four keys, in `STEP_KEYS.conditio
   refuses it ("The ankheg's Bite holds the fighter; it can't bite another until it lets go"), and the AI does not
   offer it (Decision 8). The hold's `with` is the action's id and its `range` the action's reach or range.
 - `whileHeld: true` on a step in the same action ties that condition to the hold: the cond entry gets
-  `grapple: by`, and `endHold` ends it. This covers the stat blocks that Restrain "until the grapple ends" (the kraken, the
+  `grapples: [by, ...]` (every grappler that holds it), and `endHold` ends it when the last of them lets go. This covers the stat blocks that Restrain "until the grapple ends" (the kraken, the
   roper and others), which are `manual` lines or `text` today.
 - A trait `dragFree: true` (Abduct) is a new trait key.
 - An attack step gains `advantageIf: ['target.grappledBySelf']` (the bugbear's Morningstar, the ankheg's Bite),
@@ -452,7 +452,7 @@ build settled:
   needs nothing from `engine/`. A Versatile weapon's two-handed attack is the record whose id ends `-two-handed` (`derive.js`).
 - `settleHolds` runs after `settleBonds` in the after-pass, so a companion that vanished has already ended its holds (`settleSeen`,
   `gone`). A dead or 0 Hit Point grappler ends its hold with `why: 'incapacitated'`. It also ends a condition tied to a hold
-  (`grapple: by`) whose hold is no longer there, for G4's `whileHeld`. Until G3, a grappler whose own walk takes it out of range ends
+  (`grapples`) whose hold is no longer there, for G4's `whileHeld`. Until G3, a grappler whose own walk takes it out of range ends
   the hold (`distance`) and the DM is told the engine does not drag yet.
 - `escape` takes the action only in a fight and only on the actor's turn; the check is made with `escape: true` in the situation, read
   by the tag `check.escape`. Without `skill` the engine takes the better of Athletics and Acrobatics (no automatic failure, then
@@ -519,3 +519,43 @@ Fix round 1 of #468 (decided by the coordinator):
 - **Fix round 1 of #474 (decided by the coordinator).** The pull's first version checked each held creature alone and undid a step when a
   later pull failed; that left an Opportunity Attack spent and a zone entered for a step not taken. It is gone: the step is asked as a
   whole first (above). `moveOptions` takes `opts` (`{ aerial, unchecked }`) in place of the old boolean.
+
+**G4 (Monster grapples), #480.** Built to Decision 7 and the defaults of Q5 and Q7. Amendments, one for each new key (content is data; a new key
+is an engine change): in `content/schema.js` (`STEP_KEYS`, `HOMEBREW_TYPES`, `HOMEBREW_RANGES`, `lintHold`) and `content/reader.js` (its words).
+
+- **`escape`** on a `grappled` condition step of a creature's action: the escape DC, a whole number 1 to 40. Required on every `grappled` step
+  of every monster, SRD or homebrew (a hold with no DC is the DM's, which the engine can't end); refused on any other condition, and on a
+  spell, item or object step. Exec reads it in `effects.js` and hands it to `KIT.hold` (`engine/resolve.js`), which calls `grip`.
+- **`largest`** (a size): a target above it is not grappled, and nothing is said. No `largest` means no limit (Kraken, Roper, Tarrasque).
+- **`holds`** (1 to 20, 1 if left out): how many creatures that action's part holds at once. The hold's `with` is the action's id (`src.action`,
+  new in `runAction`), so the count is the holds this grappler has with that id. `takeAction` refuses the action on a creature it does not
+  hold while the part is full ("The ankheg's Bite holds Fi; it can't be used on Gob until it lets go"); on a creature it holds it is allowed
+  (the Ankheg's Advantage is against exactly that one). `KIT.hold` refuses again, with a note, for a way round `takeAction` (an Opportunity
+  Attack; DEBT T74).
+- **`escapeDis`** (true): Disadvantage on the checks to escape, copied to the hold (Mimic Pseudopod).
+- **`whileHeld`** (true) on another condition step of the same action: it goes on only if the grappler holds the target by then (a target too
+  big for `largest` is not Restrained either), is stored as `cond.<id>.grapples: [grappler ids]` (an older single `grapple: id` reads as a one-item list), and it ends
+  when the last grappler's hold ends (`endHold`, `settleHolds`): two couatls that Constrict one target both add themselves, and Restrained stays
+  until both let go. A condition the target already had from another source is left as it was, untagged, and no grapple ends it. The condition's `also` (Blinded's) is still told to the DM. The linter wants `escape` on every `grappled` step in a creature's action (a bare step is refused, SRD and
+  homebrew alike), and refuses `ends` on a hold step and on a `whileHeld` step: the grapple decides the end.
+- **`dragFree`** (true) on a trait: `dragExtra` (`engine/world.js`) counts no extra foot for anything the creature holds. Read from the pack
+  entry of the creature (`CONTENT.monsters[tpl].traits`). Set on both bugbears' Abduct, and on a new Shambling Mound trait, `engulf-carry`
+  (the SRD's Engulf: "the Grappled target moves with it, costing it no extra movement"; its only grapple is Engulf). It is not an SRD trait: it
+  is the SRD's Engulf sentence carried as a trait, and its text says so. The AI offers no action that `partRefusal` (the check `takeAction` uses) would refuse.
+- **`advantageIf: [tags]`** on an attack step of a creature's action: Advantage on the attack roll when every tag holds (the tags the save step's
+  `advantageIf` may use). `rollToHit` judges it (`judge`) after the modifiers, as the save does; a tag it cannot judge leaves the roll without the
+  Advantage and tells the DM. Used with `target.grappledBySelf` on the Ankheg Bite, both Bugbears' hammer and Morningstar, and the Mimic Bite.
+
+What the build settled:
+
+- **The count.** The pack has 36 `grappled` condition steps, one in each of 36 stat blocks, as the issue says. The SRD has 38 stat blocks that
+  grapple: the Animated Rug of Smothering and the Water Elemental are the other two, and stay `manual` (DEBT T74). The Mimic's Adhesive trait
+  (a hold in object form) is text; its Pseudopod is the Mimic's step. The Bugbear Warrior's one Light Hammer is two actions in the pack
+  (`light-hammer`, `light-hammer-thrown`), and both carry the Advantage.
+- **Parts.** "From one of two claws" is `holds: 2`; "from both claws" or "from all four tentacles" is one hold of the whole part, `holds` left
+  out (Barbed Devil, Griffon, Grick, Giant Octopus, Roc). The numbers are in the test, from the SRD.
+- **Range.** The hold's `range` is the action's reach, or the top of its range (`src.range`): Kraken 30, Roper 60, Quick Grapple 10.
+- **What was not changed.** Every entry's tier (all 36 stay `assist`), the Multiattacks, and no existing test. The `text` of each of the 36
+  actions no longer says the escape DC or the size limit, since the data does.
+- **Not built here.** Swallow, Fling, Reel, Swoop, Pummel, the Vortex's and the Engulf's damage over time and the Mimic Bite's extra
+  damage stay `manual` or text; the AI's use of any of it is G5.
