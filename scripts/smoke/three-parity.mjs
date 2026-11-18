@@ -32,12 +32,12 @@ export async function probeView(page, touch) {
     const pts = all.filter((_, i) => i % 2 === 0), rd = (v) => Math.round(v * 100) / 100, xy = (p) => p && { x: rd(p.x), y: rd(p.y) }, pair = (p) => p && [rd(p[0]), rd(p[1])];
     // the two views of one thing must undo each other: a point to the screen and back to the plane
     const UNIT = Math.sqrt(3) / 5, w = (R.inner ?? R).G.toWorld(pc.pos), fx0 = w.x / UNIT, fy0 = w.z / UNIT;       // the character's own place, in feet: near the view, wherever the map is
-    const feet = [[fx0, fy0, z], [fx0 + 10, fy0 + 10, z], [fx0 + 30, fy0 - 20, z + 10]], trip = feet.map(([x, y, f]) => { const s = R.screenPoint(x, y, f), p = s && R.planePoint(s.x, s.y, f); return p ? Math.hypot(p[0] - x, p[1] - y) : 1e9; });
+    const feet = [[fx0, fy0, z], [fx0 + 10, fy0 + 10, z], [fx0 + 30, fy0 - 20, z + 10]], trip = feet.map(([x, y, f]) => { const s = R.screenPoint(x, y, f), p = s && R.planePoint(s.x, s.y, f); return !s ? null : p ? Math.hypot(p[0] - x, p[1] - y) : 1e9; }).filter((d) => d !== null);       // a point behind the camera has no place on the screen: it is left out
     // and the axes are the way the plane moves under a finger: right along the screen's x, up along its y
     const c = [Math.round(W / 2), Math.round(Hh / 2)], p0 = R.planePoint(c[0], c[1], 0), dir = (p) => { const d = [p[0] - p0[0], p[1] - p0[1]], l = Math.hypot(...d) || 1; return [d[0] / l, d[1] / l]; };
     const ax = R.screenAxes(), mx = dir(R.planePoint(c[0] + 20, c[1], 0)), my = dir(R.planePoint(c[0], c[1] - 20, 0));
     return {
-      hexes, pts, canvas: pts.map(([x, y]) => document.elementFromPoint(x, y)?.id === 'gl'), trip: Math.max(...trip),
+      hexes, pts, canvas: pts.map(([x, y]) => document.elementFromPoint(x, y)?.id === 'gl'), trip: trip.length ? Math.max(...trip) : 1e9,
       axisErr: Math.max(Math.hypot(mx[0] - ax.right[0], mx[1] - ax.right[1]), Math.hypot(my[0] - ax.up[0], my[1] - ax.up[1])),
       screen: hexes.map((hx) => xy(R.screenOf(hx))), plane: pts.map(([x, y]) => [R.planeHex(x, y, 0), pair(R.planePoint(x, y, 0)), pair(R.planePoint(x, y, 10))]),
       point: [[0, 0, 0], [10, 10, 0], [30, -20, 10]].map((a) => xy(R.screenPoint(...a))), axes: { right: ax.right.map(rd), up: ax.up.map(rd) },
