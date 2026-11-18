@@ -159,7 +159,7 @@ test("a target two sizes larger is refused, before anything is spent; one size l
   ok(shove(v, "push"));
 });
 
-test("it is refused for a weapon attack, with no choice of what it does, or beside Brutal Strike; Grapple and Punch and Grab are not built yet", () => {
+test("it is refused for a weapon attack, with no choice of what it does, or beside Brutal Strike; Punch and Grab goes with the Damage option", () => {
   const s = field(fighter(STR16, ["longsword"]));
   const at = { type: "attack", actor: "hero", target: s.foe, attack: "unarmed-strike" };
   refused(s, { ...SHOVE, attack: "longsword", target: s.foe, shove: "push" }, /options of the Unarmed Strike/);
@@ -168,10 +168,10 @@ test("it is refused for a weapon attack, with no choice of what it does, or besi
   refused(s, { ...SHOVE, target: s.foe, shove: "push", brutal: "x" }, /Damage option/);
   refused(s, { ...SHOVE, target: s.foe, shove: "push", cunning: ["x"] }, /Damage option/);
   refused(s, { ...at, shove: "push" }, /goes with the Shove/);
-  refused(s, { ...at, option: "grapple" }, /not in the game yet/);
+  refused(s, { ...at, option: "grapple", shove: "push" }, /goes with the Shove/);      // stage G2 built the Grapple option (grapple.test.js)
   refused(s, { ...at, option: "kick" }, /Choose an option/);
-  refused(s, { ...at, grab: true }, /Punch and Grab is not in the game yet/);
-  refused(s, { ...SHOVE, target: s.foe, shove: "push", grab: true }, /Punch and Grab is not in the game yet/);
+  refused(s, { ...at, grab: true }, /Grappler feat/);                                 // stage G2 built Punch and Grab: it needs the feat
+  refused(s, { ...SHOVE, target: s.foe, shove: "push", grab: true }, /Punch and Grab goes with the Damage option/);
 });
 
 test("the refusals hold for a Flurry strike and the Monk's Bonus Action strike too, with the flurry and the Bonus Action left whole", () => {
@@ -182,7 +182,7 @@ test("the refusals hold for a Flurry strike and the Monk's Bonus Action strike t
   assert.equal(s.encounter.budget.bonusAttacks.left, 2);
   const t = field(monk(MONK));
   refused(t, { ...SHOVE, attack: "unarmed-strike-bonus", target: t.foe, shove: "sideways" }, /"push".*"prone"/);
-  refused(t, { ...SHOVE, attack: "unarmed-strike-bonus", target: t.foe, option: "grapple" }, /not in the game yet/);
+  refused(t, { ...SHOVE, attack: "unarmed-strike-bonus", target: t.foe, option: "grapple", shove: "push" }, /goes with the Shove/);
   assert.deepEqual([t.encounter.budget.bonus, t.encounter.budget.action], [1, 1]);
 });
 

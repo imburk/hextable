@@ -13,6 +13,13 @@ import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, level
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, remake, resheet } from './sheets.js';
+import { handHolds } from '../weapons.js';
+
+// A Shield needs a hand: one holding a creature in each (docs/specs/grapple-shove.md, Decision 4) has none.
+function freeHandForShield(s, e) {
+  const held = handHolds(s, e);
+  if (held.length >= 2) fail(`${e.name} has no hand free for a Shield: it is holding ${held.map((t) => t.name).join(' and ')}. Let go first (letGo).`);
+}
 
 export const handlers = {
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
@@ -183,6 +190,7 @@ export const handlers = {
     const def = CONTENT.items[x.item];
     def.wear !== 'carried' || fail(`${def.name} works from ${e.name}'s person; there is nothing to put on.`);
     (x.equipped === true) !== on || fail(`${itemName(def, x)} is already ${on ? 'worn' : 'off'}.`);
+    if (on && def.wear === 'shield') freeHandForShield(s, e);
     if (on) x.equipped = true; else delete x.equipped;
     resheet(s, e, sheet, ev);
     ev.push({ type: 'equip', id: e.id, key: x.id, item: itemName(def, x), on });
@@ -211,6 +219,7 @@ export const handlers = {
       else { delete held.equipped; name = itemName(CONTENT.items[held.item], held); key = held.id; }
     } else {
       !held || fail(`${e.name} already holds a Shield.`);
+      freeHandForShield(s, e);
       plain || items.length || fail(`${e.name} has no Shield.`);
       if (a.item !== undefined) items.some((y) => y.id === a.item) || fail(`${e.name} has no such Shield.`);
       if (plain && sheet.shieldStowed === true && a.item === undefined) delete sheet.shieldStowed;

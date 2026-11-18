@@ -112,6 +112,8 @@ export const TAG_WORDS = {
   'attack.str': 'the attack uses Strength', 'attack.spell': 'it is a spell\'s attack roll', 'self.notIncapacitated': 'it is not Incapacitated',
   'spell.cantrip': 'the damage is a cantrip\'s', 'target.fought': 'the caster\'s side is fighting the target', 'check.proficient': 'the check uses one of its proficiencies',
   'attack.opportunity': 'it is an Opportunity Attack', 'target.notFiend': 'the target is not a Fiend',
+  'target.notGrappler': 'the target is not a creature that grapples the attacker', 'target.grappledBySelf': 'the target is Grappled by the attacker',
+  'check.escape': 'the check is made to escape a grapple',
 };
 // What the engine can tell of each tag, where it is asked (modifiers.js `judge`; a test PLAYS every tag in every place through
 // `apply()` and holds these tables equal to what the engine does, so the reading cannot drift from it again, #430).
@@ -121,7 +123,7 @@ export const TAG_WORDS = {
 //    `onHit` or `onMiss`, how the roll went (Advantage or Disadvantage). A step that cannot be judged is NOT run: the DM is told.
 //  - a MODIFIER's `when` (modifiers.js `modifiers`) is asked with whatever its hook's caller knows. A modifier whose tag cannot be
 //    judged is skipped, without a word to anybody: it never takes effect.
-const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend'];
+const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.notGrappler', 'target.grappledBySelf'];
 export const JUDGED_STEP = WHERE;
 export const JUDGED_STEP_AFTER_ATTACK = [...WHERE, 'attack.advantage', 'attack.disadvantage'];
 export const JUDGED_ADVANTAGE_IF = WHERE;
@@ -131,7 +133,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 //   damage hook:  the attacker, the target, and whether it came from a hit, a weapon, a cantrip.
 //   holder hooks: only the creature itself (as the "target"), which the modifier is on.
 //   bare hooks:   nothing but the creature the modifier is on.
-const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'within5', 'beyond5', 'self.notIncapacitated'];
+const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
 export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken'];
@@ -141,13 +143,14 @@ export const UNREAD_HOOKS = ['hp.max', 'carry'];
 export const JUDGED_ON = {
   ...Object.fromEntries(ATTACK_HOOKS.map((h) => [h, [...SEES, 'ranged', 'melee', 'attack.spell', 'attack.opportunity', 'attack.str']])),
   ...Object.fromEntries(DAMAGE_HOOKS.map((h) => [h, [...SEES, 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'spell.cantrip']])),
-  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient'] : [])]])),
+  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient', 'check.escape'] : [])]])),
   ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
   ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),
 };
 // Judged only some of the time. At the attack hooks `attack.str` is known for a character's attack (it says which ability it uses) and for a
 // spell's (never Strength), and never for a creature's own action. At `damage.dealt`, the damage of a character's attack from its sheet knows
 // whether it was ranged and which ability it used; the damage of a spell or of a creature's action (effects.js) knows neither.
+// (At `check`, `check.escape` holds only for the `escape` action's check, and is false for every other check the engine rolls.)
 export const JUDGED_SOMETIMES = { 'attack.roll': ['attack.str'], 'attack.received': ['attack.str'], 'damage.dealt': ['ranged', 'melee', 'attack.str'] };
 // Judged, but never true there: a creature making a Death Saving Throw is at 0 Hit Points and so Incapacitated.
 export const NEVER_TRUE = { 'save.death': ['self.notIncapacitated'] };
