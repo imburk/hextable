@@ -252,6 +252,7 @@ export function describeStep(action, events, before, after) {
     case 'reveal': label = `${who} was ${a.hidden ? 'hidden' : 'revealed'}`; break;
     case 'revealRegion': label = `${(after.map.regions.find((r) => r.id === a.region) ?? {}).name ?? 'A place'} was ${a.revealed === false ? 'hidden' : 'revealed'}`; break;
     case 'setObject': label = 'Something on the map was changed'; break;
+    case 'refresh': label = 'Refreshed from sheet'; break;
     case 'mapEdit': label = 'The map was edited'; break;
     case 'loadMap': label = 'A new map was loaded'; break;
     case 'startEncounter': label = 'The fight began'; break;

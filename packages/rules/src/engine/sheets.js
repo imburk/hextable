@@ -50,6 +50,16 @@ export function resheet(s, e, sheet, ev) {
   problems.length === 0 || fail(`That can't be done. ${problems[0]}`);
   remake(s, e, derive(sheet).record, sheet, ev);
 }
+// A character made again from the sheet it already has (`refresh`): the sheet is checked whole, and a problem it has is named.
+// Unlike `resheet`, a problem the sheet had all along is not let through: the point is a sheet that plays as it is now.
+export function refreshOne(s, e, ev) {
+  e.kind === 'pc' || fail(`${e.name} is not a character.`);
+  e.sheet || fail(`${e.name} was typed in by hand and has no sheet to refresh from.`);
+  !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
+  const sheet = structuredClone(e.sheet), problems = validate(sheet);
+  problems.length === 0 || fail(`${e.name}'s sheet can't be played as it is. ${problems[0]}`);
+  remake(s, e, derive(sheet).record, sheet, ev);
+}
 // Magic items of the pack onto a built character's sheet, carried and not worn, each with the next free key ("i3").
 // Returns the sheet entries. Refused (a variant missing, too many items), nothing changes.
 export function landItem(s, e, specs, ev) {
@@ -105,17 +115,11 @@ function regrant(fresh, rec) {
   if (out.hover && fresh.speeds.fly) fresh.hover = true;
   if (Object.keys(out).length) fresh.speedSet = out;
 }
-export function remake(s, e, record, sheet, ev) {
-  !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
-  e.kind === 'pc' || fail(`${e.name} is not a character.`);
-  const problems = lintRecord(record, { spells: SPELLS });
-  problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
-  // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
-  // its way (space.js, `paired`; DEBT W13).
-  const body = { ...e, size: record.size ?? 'medium' };
-  (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
-  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
-  const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
+// The play state of a creature that its sheet or record does not hold, carried from the creature `e` onto `fresh`, the same
+// creature made again (DEBT C17). ONE list, for every remake: `remake` below (a sheet changed, a level, a rest, `refresh`)
+// and `editCharacter` (a record typed in). A new kind of play state is added here and nowhere else.
+// `sheet` is the new sheet, or undefined for a hand-typed record (it has no sheet, and its own gear stands).
+export function carryPlay(e, fresh, record, sheet) {
   const lost = e.maxHp - e.hp;
   fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
   // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13).
@@ -136,13 +140,27 @@ export function remake(s, e, record, sheet, ev) {
   }
   fresh.xp = Math.max(e.xp ?? 0, fresh.xp ?? 0);                     // XP earned is kept; a level given by hand starts at least at its threshold
   // Gear handed over in play (give, loot) is kept, unless the new sheet changes the gear list itself.
-  if (Array.isArray(e.gear) && JSON.stringify(sheet.gear ?? []) === JSON.stringify(e.sheet?.gear ?? [])) fresh.gear = [...e.gear];
-  fresh.sheet = sheet;
+  // A hand-typed record (`sheet` undefined, `editCharacter`) is the DM's word on the gear: it stands.
+  if (sheet && Array.isArray(e.gear) && JSON.stringify(sheet.gear ?? []) === JSON.stringify(e.sheet?.gear ?? [])) fresh.gear = [...e.gear];
   // What the DM set with `setSpeed` is laid over what the sheet gives (a creature with no record is made exactly as before).
   if (e.speedSet !== undefined) regrant(fresh, e.speedSet);
   // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's: it comes with it, and only that.
   delete fresh.pocket;
   if (e.pocket !== undefined) fresh.pocket = e.pocket;
+}
+export function remake(s, e, record, sheet, ev) {
+  !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
+  e.kind === 'pc' || fail(`${e.name} is not a character.`);
+  const problems = lintRecord(record, { spells: SPELLS });
+  problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
+  // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
+  // its way (space.js, `paired`; DEBT W13).
+  const body = { ...e, size: record.size ?? 'medium' };
+  (!ground(s.map, e.pos) || fitsOn(s.map, body, e.pos, barriers(s.map))) || fail(`There isn't room for ${e.name} to be ${body.size} there.`);
+  !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, body, e.pos, gridOf(s.map))) || fail(`Someone is in the way of ${e.name} growing.`);
+  const fresh = makeEntity(record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
+  carryPlay(e, fresh, record, sheet);
+  fresh.sheet = sheet;
   s.entities[e.id] = fresh;
   ev.push({ type: 'edited', id: e.id });
   donned(s, fresh, ev);
