@@ -34,7 +34,7 @@ export function handsFull(s, e, atk, grapple = false) {
   if (!w?.properties?.includes('two-handed') || !e.shield) return '';
   if (w.twoHandedUnlessMounted && riding(s, e)) return '';
   return e.sheet
-    ? `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. ${e.name} can put the Shield away with the shield action (in a fight it takes the Utilize action).`
+    ? `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield. ${e.name} can put the Shield away first (Put Shield away; in a fight it takes the Utilize action).`
     : `${atk.name} is a Two-Handed weapon and needs both hands, and ${e.name} carries a Shield, which only the DM can change.`;
 }
 

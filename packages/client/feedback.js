@@ -67,7 +67,7 @@ export const LINE_KINDS = {
   companionOrder: 'engine', pocketed: 'engine', recalled: 'engine', reformed: 'engine', delivered: 'engine', reasserted: 'engine', mounted: 'engine', dismounted: 'engine',
   undone: 'fixed', redone: 'fixed',
   note: 'typed', chronicle: 'typed', claimed: 'typed', released: 'typed', map: 'typed', region: 'typed', check: 'typed', object: 'typed', noticed: 'typed', triggered: 'typed',
-  gear: 'typed', item: 'typed', equip: 'typed', attuning: 'typed', attuned: 'typed', conclusion: 'typed',
+  gear: 'typed', item: 'typed', equip: 'typed', shield: 'typed', attuning: 'typed', attuned: 'typed', conclusion: 'typed',
   say: 'typed', privateNote: 'typed', handoutShown: 'typed', handout: 'typed', handoutHidden: 'typed', handoutRemoved: 'typed',
   sceneStart: 'typed', sceneEdit: 'typed', sceneEnd: 'typed', sceneNpc: 'typed', checkAsked: 'typed', commanded: 'typed', commandedTurn: 'typed',
 };

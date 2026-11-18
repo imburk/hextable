@@ -14,7 +14,7 @@ import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.j
 import { LIGHTS } from './shared/content/lights.js';
 import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
-import { SPELLS, MONSTERS } from './shared/content/index.js';
+import { SPELLS, MONSTERS, CONTENT } from './shared/content/index.js';
 import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
@@ -269,6 +269,8 @@ export function moveRows(S, e, { fly = null } = {}) {
   rows.push(hideRow(S, e, row));
   rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(checkBonus(e, { skill: 'perception' }))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
     why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } }));
+  const sh = shieldRow(S, e, row);
+  if (sh) rows.push(sh);
   for (const u of usesFor(S, e)) rows.push(row({ id: `use:${u.object}:${u.verb}`, kind: 'send', label: u.label, sub: u.name, chip: u.time === 'free' ? 'Free once a turn' : CHIP.action, time: u.time === 'free' ? 'free' : 'action', why: u.why,
     send: { type: 'use', actor: e.id, object: u.object, verb: u.verb }, std: false }));
   if (fly?.aloft) {
@@ -277,6 +279,22 @@ export function moveRows(S, e, { fly = null } = {}) {
     rows.push(row({ id: 'fly-down', kind: 'fly', label: alt ? 'Lower' : 'On the ground', sub: alt ? `Fly at ${alt - FT} ft${alt === FT ? ' (land)' : ''}` : 'Tap Higher to take off', delta: -FT, time: null, std: false, why: alt ? '' : 'Already as low as it goes.' }));
   }
   return rows;
+}
+// Put a Shield away or take it up (the `shield` action): one row for a built creature that carries a Shield, the sheet's own or a magic one. In a fight it costs the
+// action and is greyed with the engine's reason when that is spent or it is not the creature's turn; outside one it is free. The outcome is the engine's: a refusal is shown as it says it.
+export function shieldRow(S, e, row = (r) => r) {
+  const sheet = e.sheet;
+  if (!sheet) return null;
+  const mags = (Array.isArray(sheet.items) ? sheet.items : []).filter((y) => CONTENT.items?.[y?.item]?.wear === 'shield');
+  const plain = sheet.shield === true;
+  if (!plain && !mags.length) return null;
+  const held = mags.some((y) => y.equipped === true) || (plain && sheet.shieldStowed !== true), on = !held;
+  const fight = !!S.encounter && inFight(S, e.id);
+  const send = { type: 'shield', actor: e.id, on };
+  if (on && !(plain && sheet.shieldStowed === true)) send.item = mags.find((y) => y.equipped !== true)?.id;      // a magic Shield to take up; a stowed sheet Shield needs no name
+  if (send.item === undefined) delete send.item;
+  return row({ id: 'shield', kind: 'send', label: on ? 'Take up Shield' : 'Put Shield away', sub: on ? 'Back in hand: its Armor Class bonus returns' : 'A hand free for a Two-Handed weapon; loses its Armor Class bonus',
+    chip: fight ? CHIP.action : CHIP.free, time: fight ? 'action' : 'free', why: fight ? blocked(S, e, 'action') : '', send });
 }
 const hideRow = (S, e, row = (r) => r) => {
   const enc = S.encounter, time = e.features?.nimbleEscape ? 'bonus' : 'action';

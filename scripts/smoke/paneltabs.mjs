@@ -214,6 +214,53 @@ async function tabs(browser, url, label, opts) {
         await tap('#ap-move [data-row="fly-down"]');
         await wait(page, () => /On the ground/.test(document.querySelector('#ap-move [data-row="fly-down"]')?.textContent ?? ''));
       });
+
+      // The Shield button (#453). Brenna is made again from a sheet (a Shield and a Greatsword), so the engine has the action to offer.
+      await run.do('Shield: a Greatsword beside a Shield is refused; the Shield button puts it away (the action), next turn the Greatsword swings and the AC shown is lower; Take up Shield brings it back', async () => {
+        const dir = process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/` : null, size = touch ? 'phone' : 'desktop';
+        const shot = (n) => (dir ? page.screenshot({ path: `${dir}shield-${n}-${size}.png` }) : null);
+        const A = { str: 16, dex: 14, con: 14, int: 10, wis: 8, cha: 8 };
+        await page.evaluate((a) => window.hextable.act({ type: 'setSheet', actor: 'fighter', sheet: { name: 'Brenna', class: 'fighter', level: 5, subclass: 'champion', abilities: a, skills: ['athletics', 'perception'],
+          choices: { 'fighting-style': 'defense' }, armour: 'chain-mail', shield: true, weapons: ['greatsword'] } }), A);
+        await wait(page, () => window.hextable.state.entities.fighter.sheet?.weapons?.[0] === 'greatsword'); await idle(page);
+        const at = await state(page, (S) => S.entities.fighter.pos);
+        const foe = await spawnNear(page, 'goblin-warrior', { near: { q: at.q + 1, r: at.r }, min: 0, radius: 2, within: { center: { q: 0, r: 0 }, radius: 8 } });
+        await page.evaluate((f) => window.hextable.act({ type: 'setHp', actor: f, hp: 500 }), foe); await idle(page);
+        await turnOf(page, 'fighter'); await select(page, 'fighter');
+        if ((await state(page, (S, f) => { const G = window.hextable.R; return Math.max(Math.abs(S.entities[f].pos.q - S.entities.fighter.pos.q), Math.abs(S.entities[f].pos.r - S.entities.fighter.pos.r)); }, foe)) > 1) throw new Error('the goblin is not beside Brenna');
+        const ac0 = await state(page, (S) => S.entities.fighter.ac);
+        const swing = () => page.evaluate((f) => window.hextable.act({ type: 'attack', actor: 'fighter', target: f, attack: 'greatsword' }), foe);
+        await swing(); await waitShown(page, '#toast');
+        if (!/Two-Handed/.test(await text(page, '#toast'))) throw new Error(`the Greatsword with a Shield in hand was not refused with the engine's words: ${await text(page, '#toast')}`);
+        await panelTab(page, 'move');
+        const row = '#ap-move [data-row="shield"]';
+        await waitShown(page, row);
+        if (!/Put Shield away/.test(await text(page, row)) || !/Action/.test(await text(page, row))) throw new Error(`the Shield row says: ${await text(page, row)}`);
+        const small = await page.$eval(row, (b) => b.getBoundingClientRect().height);
+        if (small < 44) throw new Error(`the Shield row is ${small} px tall`);
+        await shot('in-hand');
+        await tap(row).catch((e) => { throw new Error(e.message.split('\n').slice(0, 12).join(' / ')); });
+        await wait(page, () => window.hextable.state.entities.fighter.sheet.shieldStowed === true && window.hextable.state.encounter.budget.action === 0); await idle(page);
+        const ac1 = await state(page, (S) => S.entities.fighter.ac);
+        if (ac1 !== ac0 - 2) throw new Error(`AC ${ac0} before, ${ac1} with the Shield away`);
+        await wait(page, (n) => document.querySelector('#c-ac')?.textContent === `AC ${n}`, ac1);
+        if ((await page.evaluate(() => window.hextable.describe({ type: 'shield', id: 'fighter', on: false }))) !== 'Brenna puts away their Shield.') throw new Error('the log has no plain line for putting the Shield away');
+        await wait(page, () => /Take up Shield/.test(document.querySelector('#ap-move [data-row="shield"]')?.textContent ?? ''));
+        if (!/already used an action/.test(await text(page, `${row} .ap-why`))) throw new Error(`the greyed row does not say why: ${await text(page, row)}`);
+        await shot('away');
+        await page.evaluate(() => window.hextable.act({ type: 'endTurn', actor: 'fighter' })); await idle(page);
+        await turnOf(page, 'fighter'); await select(page, 'fighter');
+        const n0 = await state(page, (S) => S.timeline.length);
+        await swing();
+        await wait(page, (n) => window.hextable.state.encounter.budget.action === 0 && window.hextable.state.timeline.length > n, n0, 8000);
+        await page.evaluate(() => window.hextable.act({ type: 'endTurn', actor: 'fighter' })); await idle(page);
+        await turnOf(page, 'fighter'); await select(page, 'fighter');
+        await waitShown(page, '#toast', false, 10000);
+        await panelTab(page, 'move'); await page.locator(row).scrollIntoViewIfNeeded({ timeout: 4000 }).catch(async (e) => { throw new Error(`no row: ${e.message.split('\\n').slice(0, 6).join(' / ')}; tabs ${JSON.stringify(await page.evaluate(() => [document.querySelector('#ap-move')?.hidden, document.querySelector('#ap-move')?.textContent.slice(0, 200)]))}`); }); await tap(row).catch((e) => { throw new Error(e.message.split('\n').slice(0, 12).join(' / ')); });
+        await wait(page, () => window.hextable.state.entities.fighter.sheet.shieldStowed === undefined); await idle(page);
+        if ((await state(page, (S) => S.entities.fighter.ac)) !== ac0) throw new Error('the Shield is up and the AC is not back');
+        if ((await page.evaluate(() => window.hextable.describe({ type: 'shield', id: 'fighter', on: true }))) !== 'Brenna takes up their Shield.') throw new Error('the log has no plain line for taking the Shield up');
+      });
     } finally { await ctx.close(); }
   });
 }
